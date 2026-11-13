@@ -68,7 +68,7 @@ fn enter(b: &Behaviour, fps: f64) -> Enter {
     Enter {
         start: b.start.to_frames(fps),
         duration: b.duration.to_frames(fps),
-        easing: b.easing,
+        curve: b.curve,
         from_offset,
     }
 }

@@ -1,6 +1,7 @@
 //! Unit tests for `src/shorthand/behaviour.rs`.
 
 use super::*;
+use crate::NAMED_CURVES;
 use crate::units::Time;
 #[test]
 fn behaviour_uses_defaults() {
@@ -11,7 +12,7 @@ fn behaviour_uses_defaults() {
             preset: Preset::FadeUp,
             distance: 40.0,
             duration: Time::Frames(12.0),
-            easing: Easing::EaseOut,
+            curve: Curve::named("ease-out").unwrap(),
             start: Time::Frames(0.0)
         }
     );
@@ -33,7 +34,7 @@ fn behaviour_rejects_unknown_and_repeated_tokens() {
     let e = Behaviour::parse("fade-upp").unwrap_err().to_string();
     assert!(e.contains("unknown preset `fade-upp`"));
     assert!(e.contains(
-        "`<preset> [<n>px] [<n>f|<n>s] [<easing>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`"
+        "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`"
     ));
     assert!(
         Behaviour::parse("fade 12f 10f")
@@ -49,7 +50,7 @@ fn behaviour_rejects_unknown_and_repeated_tokens() {
     );
 }
 #[test]
-fn behaviour_parses_every_preset_and_easing() {
+fn behaviour_parses_every_preset_and_curve() {
     let presets = [
         ("fade", Preset::Fade),
         ("fade-up", Preset::FadeUp),
@@ -60,16 +61,10 @@ fn behaviour_parses_every_preset_and_easing() {
     for (name, preset) in presets {
         assert_eq!(Behaviour::parse(name).unwrap().preset, preset);
     }
-    let easings = [
-        ("linear", Easing::Linear),
-        ("ease-in", Easing::EaseIn),
-        ("ease-out", Easing::EaseOut),
-        ("ease-in-out", Easing::EaseInOut),
-    ];
-    for (name, easing) in easings {
+    for (name, curve) in NAMED_CURVES {
         assert_eq!(
-            Behaviour::parse(&format!("fade {name}")).unwrap().easing,
-            easing
+            Behaviour::parse(&format!("fade {name}")).unwrap().curve,
+            *curve
         );
     }
 }
@@ -84,7 +79,7 @@ fn behaviour_order_does_not_matter() {
 fn behaviour_rejects_each_repeated_kind() {
     for (text, what) in [
         ("fade 1px 2px", "distance"),
-        ("fade linear ease-in", "easing"),
+        ("fade linear ease-in", "curve"),
         ("fade @1f @2f", "start"),
     ] {
         let e = Behaviour::parse(text).unwrap_err().to_string();
@@ -125,7 +120,7 @@ fn behaviour_repeat_error_shows_both_tokens() {
         .unwrap_err()
         .to_string();
     assert!(
-        e.contains("easing given twice: `linear` and `ease-in`"),
+        e.contains("curve given twice: `linear` and `ease-in`"),
         "{e}"
     );
 }
@@ -141,10 +136,10 @@ fn behaviour_value_errors_name_the_kind() {
 #[test]
 fn cubic_easing_gives_full_control() {
     let b = Behaviour::parse("fade-up cubic(.2,0,0,1) 20f").unwrap();
-    assert_eq!(b.easing, Easing::Cubic(0.2, 0.0, 0.0, 1.0));
+    assert_eq!(b.curve, Curve::Bezier(0.2, 0.0, 0.0, 1.0));
     // y may overshoot, for a spring past the target.
     let b = Behaviour::parse("fade cubic(0.3,-0.5,0.7,1.6)").unwrap();
-    assert_eq!(b.easing, Easing::Cubic(0.3, -0.5, 0.7, 1.6));
+    assert_eq!(b.curve, Curve::Bezier(0.3, -0.5, 0.7, 1.6));
 }
 
 #[test]
@@ -157,7 +152,7 @@ fn cubic_easing_errors_show_the_expected_form() {
     assert!(e("fade cubic(2,0,0,1)").contains("e.g. `cubic(.2,0,0,1)`"));
     assert!(
         e("fade ease-in cubic(.2,0,0,1)")
-            .contains("easing given twice: `ease-in` and `cubic(.2,0,0,1)`")
+            .contains("curve given twice: `ease-in` and `cubic(.2,0,0,1)`")
     );
 }
 

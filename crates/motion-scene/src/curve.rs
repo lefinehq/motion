@@ -1,23 +1,22 @@
-//! Easing curves: how progress through an animation maps to movement.
+//! Samples easing curves: how progress through an animation maps to movement.
 //!
-//! Part of step 2 (Compile), used by step 3 (Evaluate). Curves are cubic
-//! béziers, the same model used by CSS timing functions.
+//! Part of step 2 (Compile), used by step 3 (Evaluate). The curves
+//! themselves are parsed by `motion_format`; this turns one into a value.
 
-use motion_format::shorthand::Easing;
+use motion_format::Curve;
 
 /// Maps linear progress `p` (clamped to 0..=1) to eased progress.
-pub fn sample(e: Easing, p: f64) -> f64 {
+pub fn sample(curve: Curve, p: f64) -> f64 {
     let p = p.clamp(0.0, 1.0);
     // Pin the endpoints so bisection round-off never leaks out as 1e-25.
     if p == 0.0 || p == 1.0 {
         return p;
     }
-    match e {
-        Easing::Linear => p,
-        Easing::EaseIn => bezier(0.42, 0.0, 1.0, 1.0, p),
-        Easing::EaseOut => bezier(0.0, 0.0, 0.58, 1.0, p),
-        Easing::EaseInOut => bezier(0.42, 0.0, 0.58, 1.0, p),
-        Easing::Cubic(x1, y1, x2, y2) => bezier(x1, y1, x2, y2, p),
+    match curve {
+        Curve::Linear => p,
+        // p is below 1 here: the endpoints returned above.
+        Curve::Hold => 0.0,
+        Curve::Bezier(x1, y1, x2, y2) => bezier(x1, y1, x2, y2, p),
     }
 }
 
@@ -50,5 +49,5 @@ fn bezier(x1: f64, y1: f64, x2: f64, y2: f64, p: f64) -> f64 {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/easing.rs"]
+#[path = "../tests/unit/curve.rs"]
 mod tests;

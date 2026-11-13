@@ -7,7 +7,7 @@
 //! to know about shorthand strings.
 
 mod compile;
-pub mod easing;
+pub mod curve;
 mod graph;
 mod text;
 

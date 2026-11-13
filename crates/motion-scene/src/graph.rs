@@ -3,7 +3,7 @@
 //! Part of step 2 (Compile). Everything here is plain data in pixels and
 //! frames; nothing needs parsing or unit conversion any more.
 
-use motion_format::shorthand::Easing;
+use motion_format::Curve;
 
 /// A compiled scene: canvas, timing and nodes in paint order.
 #[derive(Debug, Clone, PartialEq)]
@@ -56,8 +56,8 @@ pub struct Enter {
     /// Length of the entrance in frames. 0 means the layer jumps to its final
     /// state (full opacity, no offset) at `start`.
     pub duration: f64,
-    /// Easing applied to the entrance's progress.
-    pub easing: Easing,
+    /// Curve applied to the entrance's progress.
+    pub curve: Curve,
     /// Where the node starts, relative to its final position, in pixels.
     pub from_offset: (f64, f64),
 }

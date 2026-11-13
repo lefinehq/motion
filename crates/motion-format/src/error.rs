@@ -4,6 +4,8 @@
 //! Part of step 1 (Read). Every error says which forms would have been
 //! accepted, so an agent can fix its input in one try.
 
+use std::borrow::Cow;
+
 use thiserror::Error;
 
 /// The message of a [`FormatError`] for a key that holds something other than
@@ -21,14 +23,14 @@ pub struct ShorthandError {
     /// What was wrong, including the offending input.
     pub message: String,
     /// The accepted forms, written for people, e.g. ``"`12f` or `0.4s`"``.
-    pub expected: &'static str,
+    pub expected: Cow<'static, str>,
 }
 
 impl ShorthandError {
-    pub(crate) fn new(message: impl Into<String>, expected: &'static str) -> Self {
+    pub(crate) fn new(message: impl Into<String>, expected: impl Into<Cow<'static, str>>) -> Self {
         Self {
             message: message.into(),
-            expected,
+            expected: expected.into(),
         }
     }
 }

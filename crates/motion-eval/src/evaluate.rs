@@ -4,7 +4,7 @@
 //! into the concrete values of a single frame.
 
 use crate::{FrameState, NodeState};
-use motion_scene::{Node, SceneGraph, easing};
+use motion_scene::{Node, SceneGraph, curve};
 
 /// Evaluates every node of `graph` at `frame`.
 ///
@@ -33,7 +33,7 @@ fn node_state(node: &Node, frame: f64) -> NodeState {
             } else {
                 (frame - enter.start) / enter.duration
             };
-            let k = easing::sample(enter.easing, p);
+            let k = curve::sample(enter.curve, p);
             // The offset shrinks to nothing as the entrance completes.
             (
                 k,
