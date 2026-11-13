@@ -278,3 +278,20 @@ mod never_panics {
         }
     }
 }
+
+#[test]
+fn overlapping_paths_are_rejected() {
+    for line in [
+        r#"card anim=[] anim.x="0 -> 1 @0-5f""#,
+        r#"card anim.x="0 -> 1 @0-5f" anim={}"#,
+    ] {
+        assert_eq!(
+            err(line),
+            "keys `anim` and `anim.x` overlap; set them in separate edits or merge them into one value",
+            "{line}"
+        );
+    }
+    assert!(err("card anim.x.y=1 anim.x=2").contains("keys `anim.x` and `anim.x.y` overlap"));
+    // Siblings and names that merely share a prefix are fine.
+    assert!(parse_edit("card anim.x=1 anim.y=2 animal=3 anim.xy=4").is_ok());
+}

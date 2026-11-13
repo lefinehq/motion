@@ -48,7 +48,8 @@ pub enum EditValue {
 /// Returns an [`EditError`] for an empty line, an unclosed quote, a quote
 /// that does not start a value, a missing target or changes, a word that is
 /// not `key=value`, an unsupported operator, an empty key, an empty path
-/// segment, an empty value, invalid or unbalanced JSON, or a key given twice.
+/// segment, an empty value, invalid or unbalanced JSON, a key given twice, or
+/// two keys where one is a dotted prefix of the other.
 pub fn parse_edit(line: &str) -> Result<Edit, EditError> {
     let mut words = split_words(line)?.into_iter();
     let target = words
@@ -67,6 +68,18 @@ pub fn parse_edit(line: &str) -> Result<Edit, EditError> {
         if changes.iter().any(|c| c.key == change.key) {
             return Err(EditError::new(format!("key `{}` given twice", change.key)));
         }
+        // `anim` and `anim.x` would write the same place twice, and which
+        // one wins would depend on their order.
+        if let Some(other) = changes.iter().find(|c| overlaps(&c.key, &change.key)) {
+            let (outer, inner) = if other.key.len() <= change.key.len() {
+                (&other.key, &change.key)
+            } else {
+                (&change.key, &other.key)
+            };
+            return Err(EditError::new(format!(
+                "keys `{outer}` and `{inner}` overlap; set them in separate edits or merge them into one value"
+            )));
+        }
         changes.push(change);
     }
     if changes.is_empty() {
@@ -75,6 +88,15 @@ pub fn parse_edit(line: &str) -> Result<Edit, EditError> {
         )));
     }
     Ok(Edit { target, changes })
+}
+
+/// True when one dotted key is a prefix of the other, segment by segment.
+fn overlaps(a: &str, b: &str) -> bool {
+    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    long == short
+        || long
+            .strip_prefix(short)
+            .is_some_and(|rest| rest.starts_with('.'))
 }
 
 /// One whitespace-separated word of an edit line, split at its first `=`.

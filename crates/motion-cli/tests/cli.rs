@@ -119,6 +119,11 @@ fn edit_takes_nested_keys_and_json_values() {
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let text = fs::read_to_string(&path).expect("read back");
     assert!(motion_format::parse_document(&text).is_ok());
+    // The nested keys really landed in the file.
+    let doc: serde_json::Value = serde_json::from_str(&text).expect("json");
+    let anim = &doc["layers"][0]["anim"]["opacity"];
+    assert_eq!(anim, &serde_json::json!([["0f", 0], ["12f", 1]]), "{text}");
+    assert!(doc["layers"][0].get("in").is_none(), "{text}");
 }
 
 #[test]
