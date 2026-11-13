@@ -10,5 +10,8 @@ repository.workspace = true
 [dependencies]
 motion-format = { path = "../motion-format" }
 
+[dev-dependencies]
+proptest.workspace = true
+
 [lints]
 workspace = true

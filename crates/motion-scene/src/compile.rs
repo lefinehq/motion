@@ -1,16 +1,22 @@
 //! The compiler: scene in, scene graph out.
 //!
 //! Part of step 2 (Compile). It resolves `center` coordinates, measures text,
-//! and converts entrance behaviours from seconds-or-frames into frames with a
-//! pixel offset to start from.
+//! and turns each layer's entrance and `anim` keys into one keyframe track per
+//! property, with times in frames.
 
 use motion_format::preset::Start;
-use motion_format::property::property;
-use motion_format::shorthand::{Behaviour, Coord};
-use motion_format::{Content, Scene};
+use motion_format::property::{PROPERTIES, property};
+use motion_format::shorthand::Coord;
+use motion_format::{Content, Curve, Layer, Scene};
 
-use crate::graph::{Enter, Node, NodeKind, SceneGraph};
+use crate::graph::{Node, NodeKind, SceneGraph};
 use crate::text::TextMeasure;
+use crate::track::{Key, Track};
+
+/// The registry name of the property that `at` sets horizontally.
+const AT_X: &str = "x";
+/// The registry name of the property that `at` sets vertically.
+const AT_Y: &str = "y";
 
 /// Compiles `scene` into a [`SceneGraph`], using `measure` to size text.
 pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
@@ -27,14 +33,14 @@ pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
                 }
                 Content::Rect(r) => (NodeKind::Rect, r.width, r.height),
             };
+            let (tracks, follows_at) = tracks(layer, scene, (width, height));
             Node {
                 id: layer.id.clone(),
                 kind,
-                x: resolve(layer.at.x, width),
-                y: resolve(layer.at.y, height),
                 width: w,
                 height: h,
-                enter: layer.enter.as_ref().map(|b| enter(b, scene, scene.fps)),
+                tracks,
+                follows_at,
             }
         })
         .collect();
@@ -55,33 +61,73 @@ fn resolve(c: Coord, extent: f64) -> f64 {
     }
 }
 
-/// Converts a behaviour into frames and a starting offset.
-fn enter(b: &Behaviour, scene: &Scene, fps: f64) -> Enter {
-    let d = b.distance;
-    // The node starts on the side it came from, so the offset points away
-    // from the direction of travel. y grows downwards: fade-up starts below.
-    // Task 4 replaces this bridge: until then an entrance can only offset
-    // x and y, so it reads those entries of the preset and ignores the rest.
-    // An absolute `Value` start on x or y is not supported yet and is ignored.
-    let offset = |axis: &str| {
-        let index = property(axis).map(|(i, _)| i);
-        let start = scene
-            .preset(&b.preset)
-            .and_then(|spec| spec.props.iter().find(|(i, _)| Some(*i) == index))
-            .map(|(_, s)| *s);
-        match start {
-            Some(Start::Plus) => d,
-            Some(Start::Minus) => -d,
-            _ => 0.0,
+/// Builds the tracks of `layer`, parallel to [`PROPERTIES`], and whether
+/// `(x, y)` still follow `at`.
+fn tracks(layer: &Layer, scene: &Scene, canvas: (f64, f64)) -> (Vec<Track>, (bool, bool)) {
+    let fps = scene.fps;
+    let index_of = |name: &str| property(name).map(|(i, _)| i);
+    let (x_at, y_at) = (index_of(AT_X), index_of(AT_Y));
+    // Resting values: `at` for the two position properties, the registry
+    // default for the rest.
+    let rest: Vec<f64> = PROPERTIES
+        .iter()
+        .enumerate()
+        .map(|(i, spec)| {
+            if Some(i) == x_at {
+                resolve(layer.at.x, canvas.0)
+            } else if Some(i) == y_at {
+                resolve(layer.at.y, canvas.1)
+            } else {
+                spec.default
+            }
+        })
+        .collect();
+    let mut tracks: Vec<Track> = rest.iter().map(|&v| Track::constant(v)).collect();
+
+    // The entrance: every property the preset names runs from its start
+    // value to its resting value.
+    if let Some(b) = &layer.enter
+        && let Some(spec) = scene.preset(&b.preset)
+    {
+        let start = b.start.to_frames(fps);
+        let end = start + b.duration.to_frames(fps);
+        for &(prop, from) in &spec.props {
+            let rest = rest[prop];
+            let from = match from {
+                Start::Value(v) => v,
+                Start::Plus => rest + b.distance,
+                Start::Minus => rest - b.distance,
+            };
+            tracks[prop] = Track::new(vec![
+                Key {
+                    frame: start,
+                    value: from,
+                    curve: b.curve,
+                },
+                Key {
+                    frame: end,
+                    value: rest,
+                    curve: Curve::Linear,
+                },
+            ]);
         }
-    };
-    let from_offset = (offset("x"), offset("y"));
-    Enter {
-        start: b.start.to_frames(fps),
-        duration: b.duration.to_frames(fps),
-        curve: b.curve,
-        from_offset,
     }
+
+    // `anim` wins over the entrance for the properties it names.
+    for a in &layer.anim {
+        let keys = a
+            .keys
+            .iter()
+            .map(|k| Key {
+                frame: k.time.to_frames(fps),
+                value: k.value,
+                curve: k.curve,
+            })
+            .collect();
+        tracks[a.property] = Track::new(keys);
+    }
+    let follows = |axis: Option<usize>| !layer.anim.iter().any(|a| Some(a.property) == axis);
+    (tracks, (follows(x_at), follows(y_at)))
 }
 
 #[cfg(test)]

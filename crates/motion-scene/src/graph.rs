@@ -3,7 +3,7 @@
 //! Part of step 2 (Compile). Everything here is plain data in pixels and
 //! frames; nothing needs parsing or unit conversion any more.
 
-use motion_format::Curve;
+use crate::track::Track;
 
 /// A compiled scene: canvas, timing and nodes in paint order.
 #[derive(Debug, Clone, PartialEq)]
@@ -29,35 +29,20 @@ pub enum NodeKind {
     Rect,
 }
 
-/// One drawable thing with a resolved box.
+/// One drawable thing with a resolved box and a track per property.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
     /// The layer id this node came from.
     pub id: String,
     /// What the node draws.
     pub kind: NodeKind,
-    /// Centre x in pixels.
-    pub x: f64,
-    /// Centre y in pixels.
-    pub y: f64,
     /// Box width in pixels.
     pub width: f64,
     /// Box height in pixels.
     pub height: f64,
-    /// Entrance animation, if the layer has one.
-    pub enter: Option<Enter>,
-}
-
-/// An entrance animation, with all times in frames.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Enter {
-    /// Frame at which the entrance begins.
-    pub start: f64,
-    /// Length of the entrance in frames. 0 means the layer jumps to its final
-    /// state (full opacity, no offset) at `start`.
-    pub duration: f64,
-    /// Curve applied to the entrance's progress.
-    pub curve: Curve,
-    /// Where the node starts, relative to its final position, in pixels.
-    pub from_offset: (f64, f64),
+    /// One track per property, parallel to `motion_format::PROPERTIES`.
+    pub tracks: Vec<Track>,
+    /// Whether `(x, y)` still follow the layer's `at`. False for an axis that
+    /// an `anim` track drives, because moving `at` then no longer moves it.
+    pub follows_at: (bool, bool),
 }

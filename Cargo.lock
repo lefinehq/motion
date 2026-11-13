@@ -380,6 +380,7 @@ name = "motion-scene"
 version = "0.0.0"
 dependencies = [
  "motion-format",
+ "proptest",
 ]
 
 [[package]]

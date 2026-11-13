@@ -4,7 +4,8 @@
 //! into the concrete values of a single frame.
 
 use crate::{FrameState, NodeState};
-use motion_scene::{Node, SceneGraph, curve};
+use motion_format::property::{PROPERTIES, property};
+use motion_scene::{Node, SceneGraph};
 
 /// Evaluates every node of `graph` at `frame`.
 ///
@@ -18,40 +19,31 @@ pub fn evaluate(graph: &SceneGraph, frame: f64) -> FrameState {
     }
 }
 
+/// The index of the property called `name` in the registry.
+fn index_of(name: &str) -> usize {
+    property(name)
+        .map(|(i, _)| i)
+        .expect("the registry holds the property NodeState reports")
+}
+
+/// Samples the track of the property called `name` at `frame`.
+fn sample(node: &Node, name: &str, frame: f64) -> f64 {
+    node.tracks[index_of(name)].sample(frame)
+}
+
 /// Resolves one node at `frame`.
 fn node_state(node: &Node, frame: f64) -> NodeState {
-    // Nodes without an entrance are always fully visible and in place.
-    let (k, dx, dy) = match node.enter {
-        None => (1.0, 0.0, 0.0),
-        Some(enter) => {
-            let p = if frame < enter.start {
-                0.0
-            } else if enter.duration <= 0.0 {
-                // A zero-length entrance would divide by zero: it simply
-                // jumps to its end at its start frame.
-                1.0
-            } else {
-                (frame - enter.start) / enter.duration
-            };
-            let k = curve::sample(enter.curve, p);
-            // The offset shrinks to nothing as the entrance completes.
-            (
-                k,
-                enter.from_offset.0 * (1.0 - k),
-                enter.from_offset.1 * (1.0 - k),
-            )
-        }
-    };
+    let opacity = index_of("opacity");
+    // A custom curve may overshoot to make the motion spring past its
+    // target; position follows it, but opacity cannot leave its range.
+    let (lo, hi) = PROPERTIES[opacity].range.unwrap_or((f64::MIN, f64::MAX));
     NodeState {
         id: node.id.clone(),
-        x: node.x + dx,
-        y: node.y + dy,
+        x: sample(node, "x", frame),
+        y: sample(node, "y", frame),
         width: node.width,
         height: node.height,
-        // A custom curve may overshoot (k > 1) to make the motion spring past
-        // its target; position follows it, but opacity cannot exceed fully
-        // opaque or go below invisible.
-        opacity: k.clamp(0.0, 1.0),
+        opacity: sample(node, "opacity", frame).clamp(lo, hi),
     }
 }
 
