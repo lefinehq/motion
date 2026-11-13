@@ -1,8 +1,10 @@
 //! The `rect` shorthand: a rectangle's size and corner radius.
+//!
+//! Part of step 1 (Read): parses a layer's `rect` string into a [`RectShape`].
 
 use crate::ShorthandError;
 
-const EXPECTED: &str = "`<width>x<height> [r<radius>]`, e.g. `300x400 r24`";
+pub(crate) const EXPECTED: &str = "`<width>x<height> [r<radius>]`, e.g. `300x400 r24`";
 
 /// A rectangle's size and corner radius, all in pixels.
 #[derive(Debug, Clone, Copy, PartialEq)]

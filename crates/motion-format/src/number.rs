@@ -1,4 +1,7 @@
 //! Number formatting shared by everything motion prints or writes.
+//!
+//! Part of step 1 (Read), though every later step uses it: one function so
+//! reports, fix hints and written scenes all show numbers the same way.
 
 /// Formats a number with at most two decimals and no trailing zeros.
 ///

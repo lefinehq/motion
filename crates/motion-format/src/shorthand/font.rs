@@ -1,8 +1,10 @@
 //! The `font` shorthand: family, size and weight in one string.
+//!
+//! Part of step 1 (Read): parses a text layer's `font` string into a [`Font`].
 
 use crate::ShorthandError;
 
-const EXPECTED: &str = "`<family> <size> [<weight>]`, e.g. `Inter 96 700`";
+pub(crate) const EXPECTED: &str = "`<family> <size> [<weight>]`, e.g. `Inter 96 700`";
 
 /// A text font: family, size in pixels and weight.
 #[derive(Debug, Clone, PartialEq)]

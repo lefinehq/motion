@@ -1,10 +1,13 @@
 //! The behaviour shorthand: an entrance preset with optional tuning tokens,
 //! e.g. `"fade-up 60px 12f ease-out @15f"`.
+//!
+//! Part of step 1 (Read): parses a layer's `in` string into a [`Behaviour`].
+//! Step 2 turns it into an entrance on the compiled graph.
 
 use crate::ShorthandError;
 use crate::units::Time;
 
-const EXPECTED: &str =
+pub(crate) const EXPECTED: &str =
     "`<preset> [<n>px] [<n>f|<n>s] [<easing>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`";
 
 /// The motion an entrance performs.
@@ -46,7 +49,7 @@ pub struct Behaviour {
     pub duration: Time,
     /// Easing curve; `ease-out` by default.
     pub easing: Easing,
-    /// When the motion starts, relative to the layer; frame 0 by default.
+    /// When the motion starts, measured from the start of the scene; frame 0 by default.
     pub start: Time,
 }
 

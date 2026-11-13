@@ -1,6 +1,15 @@
-//! The error type shared by every shorthand parser.
+//! The error types of the format: [`ShorthandError`] for one shorthand
+//! string and [`FormatError`] for a whole document.
+//!
+//! Part of step 1 (Read). Every error says which forms would have been
+//! accepted, so an agent can fix its input in one try.
 
 use std::fmt;
+
+/// The message of a [`FormatError`] for a key that holds something other than
+/// a string. `Document` consumers can test for it with
+/// [`FormatError::is_not_a_string`].
+pub(crate) const MUST_BE_STRING: &str = "must be a string";
 
 /// A shorthand string (such as a time, colour or size) could not be parsed.
 ///
@@ -59,6 +68,12 @@ impl FormatError {
         self
     }
 
+    /// True when the key was given a number, boolean or other non-string
+    /// value where a string is required.
+    pub fn is_not_a_string(&self) -> bool {
+        self.message == MUST_BE_STRING
+    }
+
     /// Lifts a shorthand failure to a document error at `path`, keeping its
     /// message and accepted forms.
     pub(crate) fn from_shorthand(path: impl Into<String>, e: ShorthandError) -> Self {
@@ -97,6 +112,12 @@ mod tests {
             e.to_string(),
             "layers[1].in: unknown preset `zoom`; expected `fade`"
         );
+    }
+
+    #[test]
+    fn not_a_string_is_recognised() {
+        assert!(FormatError::new("text", MUST_BE_STRING).is_not_a_string());
+        assert!(!FormatError::new("text", "invalid").is_not_a_string());
     }
 
     #[test]

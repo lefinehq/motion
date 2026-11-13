@@ -5,9 +5,10 @@
 
 use crate::ShorthandError;
 
-const TIME_EXPECTED: &str = "`<number>f` or `<number>s`, e.g. `12f` or `0.4s`";
-const COLOR_EXPECTED: &str = "`#RGB`, `#RRGGBB` or `#RRGGBBAA`";
-const SIZE_EXPECTED: &str = "`720p`, `1080p`, `4k`, `square`, `vertical` or `<width>x<height>`";
+pub(crate) const TIME_EXPECTED: &str = "`<number>f` or `<number>s`, e.g. `12f` or `0.4s`";
+pub(crate) const COLOR_EXPECTED: &str = "`#RGB`, `#RRGGBB` or `#RRGGBBAA`";
+pub(crate) const SIZE_EXPECTED: &str =
+    "`720p`, `1080p`, `4k`, `square`, `vertical` or `<width>x<height>`";
 
 /// A point or length in time, in the unit the author wrote it in.
 ///

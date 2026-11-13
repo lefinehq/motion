@@ -1,10 +1,14 @@
 //! The `at` shorthand: where a layer's centre sits, as `"<x> <y>"`.
+//!
+//! Part of step 1 (Read): parses a layer's `at` string into a [`Position`].
+//! Step 2 resolves `center` against the canvas.
 
 use std::fmt;
 
 use crate::{ShorthandError, fmt_num};
 
-const EXPECTED: &str = "`<x> <y>`, each a number of pixels or `center`, e.g. `center 260`";
+pub(crate) const EXPECTED: &str =
+    "`<x> <y>`, each a number of pixels or `center`, e.g. `center 260`";
 
 /// One axis of a [`Position`].
 #[derive(Debug, Clone, Copy, PartialEq)]
