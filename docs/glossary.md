@@ -16,6 +16,8 @@ The words we use in motion, and what they mean.
 
 **Craft lint.** Automatic checks on timing, easing, judder, text hold and layout, computed from the scene. See [Quality](design/quality.md).
 
+**Curve.** How progress eases between two keys: a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`. See [Scene format](design/scene-format.md#curves).
+
 **Draw-on.** A path operation that makes a stroke appear to draw itself.
 
 **Edit.** A one-line command that changes a scene, such as `card3 fill=red`.
@@ -29,6 +31,8 @@ The words we use in motion, and what they mean.
 **Golden image.** A stored, approved frame. Tests compare new renders against it to catch changes.
 
 **Jitter.** A modifier that adds a repeatable random shake.
+
+**Key.** One value of a property at one moment. Its curve says how the value eases to the next key.
 
 **Mask.** A shape that cuts out part of a layer.
 
@@ -44,7 +48,9 @@ The words we use in motion, and what they mean.
 
 **Pixel check.** A check that renders tiny frames and returns measurements, never images.
 
-**Preset.** A named, ready-made value or animation.
+**Preset.** A named entrance, stored as data: the properties it animates and where each starts. A scene can add its own.
+
+**Property.** One animatable value of a layer, such as `opacity` or `rotate`. Every property is listed once in a registry, with a default and a range.
 
 **Rasterise.** Turn shapes and text into pixels.
 
@@ -55,5 +61,7 @@ The words we use in motion, and what they mean.
 **Scene.** The JSON file that describes a video.
 
 **Shutter angle.** How much motion blur a frame gets, named after the film-camera setting.
+
+**Track.** The keys of one property over time. Presets, `anim` strings and keyframe lists all become tracks.
 
 **2.5D.** Flat layers moved and turned in 3D space and seen through a camera, as opposed to true 3D models.

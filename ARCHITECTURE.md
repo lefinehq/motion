@@ -46,6 +46,20 @@ Crates are added task by task. This table lists only crates that exist.
 | `motion-import` | Bring in assets and other formats. |
 | `motion-variants` | Turn one designed project into many variants. |
 
+## One property model
+
+Every animatable value is a registered property with a keyframe track (see [D27](docs/design/decisions.md#d27-one-generic-property-model)). The pieces live here:
+
+| What | Where |
+|---|---|
+| The property registry: name, default, range, meaning | `crates/motion-format/src/property.rs` |
+| Curves: the named table, `cubic(...)` and `hold` | `crates/motion-format/src/curve.rs` |
+| Presets, as data (a scene can add its own) | `crates/motion-format/src/presets.json`, read by `preset.rs` |
+| `anim` tracks and keyframes, as written | `crates/motion-format/src/anim.rs` |
+| Tracks: one property's keys, compiled and sampled | `crates/motion-scene/src/track.rs` |
+
+The rule: **names are data; add a row, not a branch.** A new property is a row in the registry, a new preset is an entry in `presets.json`, a new curve name is a row in the curve table. Code reads these tables and never lists the names itself, and errors about an unknown name list the allowed ones from the same table.
+
 ## Where to start reading
 
 1. `crates/motion-format/src/lib.rs`: the scene format and its units.

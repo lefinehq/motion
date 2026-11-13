@@ -11,6 +11,8 @@ An agent changes a scene with one-line commands, and checks it by asking motion 
 ```
 card3 fill=red delay+=10f
 title.in.dur=18f
+card anim.opacity="0 -> 1 @0-20f"
+card anim={"scale":[[0,1],["1s",1.2,"ease-out"]]}
 cards.* shadow=none
 add after title {"id":"sub","text":"Now in beta","font":"Inter 40 400","in":"fade 8f"}
 rm accent
@@ -36,6 +38,12 @@ A change uses one of four operators:
 - `*=` multiplies it
 
 There are also four structural commands: `add`, `rm` (remove), `mv` (move) and `dup` (duplicate).
+
+### Nested paths and JSON values
+
+A key can be a dotted path, such as `anim.opacity`. The edit sets that one leaf and creates the objects on the way, so `card anim.opacity="0 -> 1 @0-20f"` adds an `anim` object if the layer has none. A value that starts with `[` or `{` is read as JSON, up to its balanced end, and may contain spaces. Any other value is a number, `true`, `false`, `none` or a string; quote a string that would otherwise look like one of those.
+
+`none` removes the key. If that leaves its parent object empty, the parent is removed too, up the path, so `card anim.opacity=none` on a layer whose only animation is opacity also removes `anim`.
 
 ### Editing one copy in a repeat
 
@@ -88,6 +96,8 @@ Analytic checks are computed directly from the scene, for every frame. Nothing i
 - **Position:** `above`, `left-of`, `aligned`, `inside`.
 - **Measurement:** `gap(cards)=40±2`, `dir(card3.in)=up`, `visible(card3, 1s..5s)`.
 
+`at` prints `id x=… y=… w=… h=…` for each element, then only the other properties that differ from their default, such as `opacity=0.68` or `rotate=-8`. An element at rest shows nothing extra, so the line stays short.
+
 ### What `check` looks for
 
 - **Placement:**
@@ -110,6 +120,8 @@ Analytic checks are computed directly from the scene, for every frame. Nothing i
 - **Colour:** text without enough contrast against what is behind it.
 - **Assets:** missing fonts or files.
 
+Placement checks use the **transformed bounding box**: the layer's size times `scale`, turned by `rotate`, at every frame. A card that is on screen at rest but swings out while it rotates is reported.
+
 ### What a report looks like
 
 ```
@@ -126,6 +138,8 @@ Each line gives:
 - **the frames** where it fails
 - **the measured value against the limit**
 - **a fix**, written as an edit the agent can apply directly
+
+A fix moves `at`, which sets the resting position. It skips an axis that an `anim` track drives, because moving `at` would not change that axis; if no axis is left, the line has no fix.
 
 A clean scene reports one short line, for example `OK 42`.
 

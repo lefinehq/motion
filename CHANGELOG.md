@@ -14,3 +14,16 @@ All notable changes to this project are documented here. The format is based on 
 - `motion-query`: `check` and `at` over a scene graph.
 - `motion-edit`: a one-line edit language for scenes.
 - `motion-cli`: the `motion` tool with `check`, `at` and `edit` commands.
+- Curves as a table of names plus `cubic(x1,y1,x2,y2)` and `hold`, usable on any property.
+- A property registry (`x`, `y`, `opacity`, `scale`, `rotate`) with a default and a range for each.
+- Presets as data (`fade`, `fade-up`, `fade-down`, `fade-left`, `fade-right`, `pop`, `spin-in`), and a scene `presets` key to add or override them.
+- `anim` tracks, as a one-line string or a keyframe list, with a curve per key; `anim` and `in` may not animate the same property.
+- `scale` and `rotate` are evaluated, and `check` measures the transformed bounding box.
+- Nested edit paths (`card anim.opacity=...`), JSON values in edits, and removal of objects left empty by `none`.
+- Tooling: `thiserror` errors, `proptest` parser tests, `insta` snapshots, coverage and `cargo-deny`.
+
+### Changed
+
+- `at` prints only the properties that differ from their default after `x y w h`.
+- `check` fix hints skip axes driven by `anim`.
+- Unit tests moved out of `src/` into `tests/unit`, mirroring the source tree.

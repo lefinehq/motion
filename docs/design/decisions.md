@@ -199,6 +199,14 @@ motion's value lies in the parts the agent touches: the format, the edits and th
 - **Decision:** when the AI reinterprets a master, it may only use easings, durations, staggers, transitions, colours and type from the master's style profile.
 - **Why:** variants then move the way the designer moves. A style check makes this measurable.
 
+### D27. One generic property model
+
+- **Decision:** every animatable value is a registered property with a keyframe track. Curves, presets and shorthands are data that expand into tracks.
+- **Why:**
+  - Masters can use any curve on any property.
+  - Adding a preset or a property is a data change, not a code change.
+  - Evaluation, checks and the future renderer see one model.
+
 ## Open questions
 
 ### Q1. Name and packages (deferred)
