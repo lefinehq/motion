@@ -83,45 +83,47 @@ impl Behaviour {
                 "ease-in-out" => Some(Easing::EaseInOut),
                 _ => None,
             };
-            let bad_value = || err(format!("`{token}` is not a valid value"));
+            let bad = |kind: &str| err(format!("`{token}` is not a valid {kind}"));
             if let Some(e) = easing_name {
-                set_once(&mut easing, e, "easing", &err)?;
+                set_once(&mut easing, e, token, "easing", &err)?;
             } else if let Some(n) = token.strip_suffix("px") {
                 let v: f64 = n
                     .parse()
                     .ok()
                     .filter(|v: &f64| v.is_finite())
-                    .ok_or_else(bad_value)?;
-                set_once(&mut distance, v, "distance", &err)?;
+                    .ok_or_else(|| bad("distance"))?;
+                set_once(&mut distance, v, token, "distance", &err)?;
             } else if let Some(t) = token.strip_prefix('@') {
-                let v = Time::parse(t).map_err(|_| bad_value())?;
-                set_once(&mut start, v, "start", &err)?;
+                let v = Time::parse(t).map_err(|_| bad("start time"))?;
+                set_once(&mut start, v, token, "start", &err)?;
             } else if token.ends_with('f') || token.ends_with('s') {
-                let v = Time::parse(token).map_err(|_| bad_value())?;
-                set_once(&mut duration, v, "duration", &err)?;
+                let v = Time::parse(token).map_err(|_| bad("duration"))?;
+                set_once(&mut duration, v, token, "duration", &err)?;
             } else {
                 return Err(err(format!("unknown token `{token}`")));
             }
         }
         Ok(Behaviour {
             preset,
-            distance: distance.unwrap_or(40.0),
-            duration: duration.unwrap_or(Time::Frames(12.0)),
-            easing: easing.unwrap_or(Easing::EaseOut),
-            start: start.unwrap_or(Time::Frames(0.0)),
+            distance: distance.map_or(40.0, |(v, _)| v),
+            duration: duration.map_or(Time::Frames(12.0), |(v, _)| v),
+            easing: easing.map_or(Easing::EaseOut, |(v, _)| v),
+            start: start.map_or(Time::Frames(0.0), |(v, _)| v),
         })
     }
 }
 
-/// Stores `value` in `slot`, failing if that kind of token was already seen.
-fn set_once<T>(
-    slot: &mut Option<T>,
+/// Stores `value` (with the token it came from) in `slot`, failing with both
+/// tokens if that kind of token was already seen.
+fn set_once<'a, T>(
+    slot: &mut Option<(T, &'a str)>,
     value: T,
+    token: &'a str,
     what: &str,
     err: &impl Fn(String) -> ShorthandError,
 ) -> Result<(), ShorthandError> {
-    if slot.replace(value).is_some() {
-        return Err(err(format!("{what} given twice")));
+    if let Some((_, first)) = slot.replace((value, token)) {
+        return Err(err(format!("{what} given twice: `{first}` and `{token}`")));
     }
     Ok(())
 }
@@ -242,5 +244,25 @@ mod tests {
     #[test]
     fn behaviour_allows_negative_distance() {
         assert_eq!(Behaviour::parse("fade-up -10px").unwrap().distance, -10.0);
+    }
+    #[test]
+    fn behaviour_repeat_error_shows_both_tokens() {
+        let e = Behaviour::parse("fade 12f 10f").unwrap_err().to_string();
+        assert!(e.contains("duration given twice: `12f` and `10f`"), "{e}");
+        let e = Behaviour::parse("fade linear ease-in")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("easing given twice: `linear` and `ease-in`"),
+            "{e}"
+        );
+    }
+    #[test]
+    fn behaviour_value_errors_name_the_kind() {
+        let msg = |t: &str| Behaviour::parse(t).unwrap_err().message;
+        assert!(msg("fade 12x").contains("unknown token `12x`"));
+        assert!(msg("fade -3f").contains("`-3f` is not a valid duration"));
+        assert!(msg("fade xpx").contains("`xpx` is not a valid distance"));
+        assert!(msg("fade @12").contains("`@12` is not a valid start time"));
     }
 }
