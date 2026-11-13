@@ -64,6 +64,7 @@ This is hard to read and hard to extend, and each new field or shorthand repeats
   cargo test --workspace
   ```
   `cargo deny check` must also pass whenever dependencies change.
+- **Logging:** library crates use only `tracing` macros. There is no `println!`/`eprintln!` outside `motion-cli`'s output code, and stdout carries only command output.
 - **Behaviour:** the scene format, the edit language, the `check`/`at` output and the CLI exit codes do not change, apart from the wording of error messages. `examples/launch.json` checks `OK 4`, and the README commands print what the README shows.
 - **Commits:**
   - signed (`git commit -S`)
@@ -194,3 +195,58 @@ This is hard to read and hard to extend, and each new field or shorthand repeats
 - **`CHANGELOG.md`:** an `[Unreleased]` entry.
 - **D28** in `docs/design/decisions.md`: standard parsing tools and one diagnostic type.
 - Commit: `docs: explain diagnostics, grammars and validation (D28)`.
+
+---
+
+### Task 6: Logs and telemetry with `tracing`
+
+**Why:**
+- Nobody can see what the engine does or how long each step takes without a debugger.
+- The render-time targets (see Overview) will need per-step timings.
+- Agents need clean stdout.
+
+**Files:**
+- Create: `crates/motion-telemetry/{Cargo.toml,src/lib.rs,src/init.rs,src/timing.rs}` and its tests.
+- Modify:
+  - the library crates, to add instrumentation;
+  - `crates/motion-cli/src/main.rs`, to initialise logging and add the flags;
+  - `Cargo.toml`, for the workspace deps: `tracing`, and `tracing-subscriber` with `env-filter`, `fmt` and `json`;
+  - `deny.toml` if needed.
+
+**Interfaces:**
+- **Library crates** depend only on `tracing`. They emit events and spans, and they never print. These are the instrumentation points:
+  - **`motion-format`:** a `parse_document` span, with fields for the byte length and layer count. A `debug` event per validation rule that rejects, with the diagnostic kind and path.
+  - **`motion-scene`:** a `compile` span, with node and track counts.
+  - **`motion-eval`:** a `trace`-level span per `evaluate` call, with the frame. It is cheap when disabled.
+  - **`motion-query`:** a `check` span, with frames sampled, rules run, violations and passed. An `at` span.
+  - **`motion-edit`:** an `apply_edit` span, with the target, the change keys and the outcome.
+- **`motion-telemetry`** is used only by binaries and tests.
+  - `init(Options { level, format: Text | Json, timings: bool }) -> Guard`. It installs a `tracing-subscriber` that writes to **stderr only**.
+    - The filter comes from `MOTION_LOG`, using `EnvFilter` syntax such as `motion_query=debug`, falling back to `level`.
+    - `Json` writes one JSON object per line, for machines and agents.
+    - It is safe to call twice: the second call is a no-op returning a guard.
+  - `timing` holds a `Timings` layer that records each closed span's name and duration. `report()` returns a compact line such as `timings parse=0.4ms compile=0.1ms check=2.3ms`, which the CLI prints to stderr when `--timings` is on.
+  - `#[track_caller]`-free helpers only; no macros of our own. The `tracing` macros are the API.
+- **CLI:**
+  - global flags `--log <level>` (default `warn`), `--log-format text|json` and `--timings`;
+  - stdout is unchanged; everything else goes to stderr;
+  - a diagnostic error is also logged as an `error` event with its kind and path, before the `error:` line.
+- **Tests:**
+  - `init` is idempotent;
+  - the JSON format emits valid JSON lines, captured with a test writer;
+  - the timings layer records nested spans;
+  - a CLI test shows that `--log debug --log-format json` leaves stdout byte-identical to a run without it, and that stderr has JSON lines;
+  - a CLI test that `--timings` prints a `timings` line to stderr.
+
+- [ ] Steps:
+  - Add the crate and the instrumentation.
+  - Add the CLI flags.
+  - Write the tests.
+  - Add a CONTRIBUTING section, "Logs and timings": how to enable them, field naming (`snake_case`; ids as `id`), and levels:
+    - `error`: failures shown to the user
+    - `warn`: suspicious input
+    - `info`: one line per command
+    - `debug`: per step
+    - `trace`: per frame
+  - Run `cargo deny check`.
+  - Commit: `feat: add tracing-based logs and step timings`.
