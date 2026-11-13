@@ -29,7 +29,7 @@ cargo run -q -p motion-cli -- check examples/launch.json
 OK 4
 
 cargo run -q -p motion-cli -- at examples/launch.json 1s title
-title x=960 y=260 w=580.8 h=115.2 opacity=1
+title x=960 y=260 w=580.8 h=115.2
 
 cp examples/launch.json /tmp/launch.json
 cargo run -q -p motion-cli -- edit /tmp/launch.json 'card fill=#FF0000'

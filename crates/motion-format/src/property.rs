@@ -5,6 +5,26 @@
 //! table. Later steps use the defaults and ranges to evaluate and check
 //! values.
 
+/// The spellings of the properties whose meaning code depends on.
+///
+/// Geometry and visibility are computed from these few properties, so the
+/// code has to name them. This module is the one place where the spellings
+/// live; [`PROPERTIES`] and every other crate refer to them, so there is a
+/// single spelling. It is not a list of options: the registry stays the
+/// source of truth for which properties exist.
+pub mod names {
+    /// Centre x in pixels.
+    pub const X: &str = "x";
+    /// Centre y in pixels.
+    pub const Y: &str = "y";
+    /// Opacity, 0 (invisible) to 1 (solid).
+    pub const OPACITY: &str = "opacity";
+    /// Uniform size factor.
+    pub const SCALE: &str = "scale";
+    /// Rotation in degrees, clockwise.
+    pub const ROTATE: &str = "rotate";
+}
+
 /// One animatable property of a layer.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PropertySpec {
@@ -22,31 +42,31 @@ pub struct PropertySpec {
 /// everywhere else.
 pub const PROPERTIES: &[PropertySpec] = &[
     PropertySpec {
-        name: "x",
+        name: names::X,
         default: 0.0,
         range: None,
         doc: "centre x in px; the resting value comes from `at`",
     },
     PropertySpec {
-        name: "y",
+        name: names::Y,
         default: 0.0,
         range: None,
         doc: "centre y in px; the resting value comes from `at`",
     },
     PropertySpec {
-        name: "opacity",
+        name: names::OPACITY,
         default: 1.0,
         range: Some((0.0, 1.0)),
         doc: "how opaque the layer is, 0 (invisible) to 1 (solid)",
     },
     PropertySpec {
-        name: "scale",
+        name: names::SCALE,
         default: 1.0,
         range: None,
         doc: "uniform size factor; negative values mirror",
     },
     PropertySpec {
-        name: "rotate",
+        name: names::ROTATE,
         default: 0.0,
         range: None,
         doc: "rotation in degrees, clockwise",

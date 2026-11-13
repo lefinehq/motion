@@ -211,3 +211,31 @@ fn report_with_several_violations_snapshot() {
     ));
     insta::assert_snapshot!(report);
 }
+
+#[test]
+fn a_rotated_box_leaving_the_canvas_is_caught() {
+    // 400x40 upright fits at x=150, but turned 90 degrees it is 40 wide and
+    // 400 tall: 200 px from y=100 reaches 100 px above the canvas (the fix aims at the safe area, 54 px in).
+    assert_eq!(
+        one(r#"{"id":"r","rect":"400x40","at":"150 100","anim":{"rotate":"90 -> 90 @0-10f"}}"#),
+        "E offscreen r 0-29f +100px; fix: r at=\"150 254\"\nOK 0"
+    );
+}
+
+#[test]
+fn an_anim_driven_axis_gets_no_fix_shift() {
+    // x is driven by anim, so only y can move: y is 10 px out at the top and the fix aims at the safe area.
+    let report =
+        one(r#"{"id":"a","rect":"100x100","at":"500 40","anim":{"x":"-20 -> -20 @0-10f"}}"#);
+    assert!(report.contains("E offscreen a"), "{report}");
+    assert_eq!(fixed_at(&report), "500 104");
+}
+
+#[test]
+fn no_hint_when_no_axis_can_move() {
+    // x is anim-driven and off the left edge; y is fine.
+    let report =
+        one(r#"{"id":"a","rect":"100x100","at":"500 250","anim":{"x":"-20 -> -20 @0-10f"}}"#);
+    assert!(report.starts_with("E offscreen a "), "{report}");
+    assert!(!report.contains("fix:"), "{report}");
+}

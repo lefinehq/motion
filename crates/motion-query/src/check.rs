@@ -43,7 +43,17 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
             failed_codes.push(rule.code);
             let fix = sweep(index, &frames).and_then(|sweep| {
                 let (area, aim) = (rule.areas)(graph);
-                fix(&layer.id, layer.at, shift(sweep, area, aim), graph)
+                let (mut dx, mut dy) = shift(sweep, area, aim);
+                // An axis driven by an `anim` track ignores `at`, so moving
+                // `at` cannot fix it: leave that axis alone.
+                let (follows_x, follows_y) = graph.nodes[index].follows_at;
+                if !follows_x {
+                    dx = 0.0;
+                }
+                if !follows_y {
+                    dy = 0.0;
+                }
+                fix(&layer.id, layer.at, (dx, dy), graph)
             });
             for run in found {
                 violations.push(run.into_violation(rule, &layer.id, fix.clone()));
@@ -64,7 +74,7 @@ fn sweep(index: usize, frames: &[FrameState]) -> Option<Area> {
         .iter()
         .map(|state| &state.nodes[index])
         .filter(|node| visible(node))
-        .map(|n| (n.left(), n.top(), n.right(), n.bottom()))
+        .map(|n| n.bounds())
         .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
 }
 

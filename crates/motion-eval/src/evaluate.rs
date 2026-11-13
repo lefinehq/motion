@@ -4,7 +4,7 @@
 //! into the concrete values of a single frame.
 
 use crate::{FrameState, NodeState};
-use motion_format::property::{PROPERTIES, property};
+use motion_format::property::PROPERTIES;
 use motion_scene::{Node, SceneGraph};
 
 /// Evaluates every node of `graph` at `frame`.
@@ -19,31 +19,24 @@ pub fn evaluate(graph: &SceneGraph, frame: f64) -> FrameState {
     }
 }
 
-/// The index of the property called `name` in the registry.
-fn index_of(name: &str) -> usize {
-    property(name)
-        .map(|(i, _)| i)
-        .expect("the registry holds the property NodeState reports")
-}
-
-/// Samples the track of the property called `name` at `frame`.
-fn sample(node: &Node, name: &str, frame: f64) -> f64 {
-    node.tracks[index_of(name)].sample(frame)
-}
-
-/// Resolves one node at `frame`.
+/// Resolves one node at `frame`: every track sampled, then clamped.
 fn node_state(node: &Node, frame: f64) -> NodeState {
-    let opacity = index_of("opacity");
-    // A custom curve may overshoot to make the motion spring past its
-    // target; position follows it, but opacity cannot leave its range.
-    let (lo, hi) = PROPERTIES[opacity].range.unwrap_or((f64::MIN, f64::MAX));
+    let values = PROPERTIES
+        .iter()
+        .zip(&node.tracks)
+        .map(|(spec, track)| {
+            let value = track.sample(frame);
+            // A custom curve may overshoot so the motion springs past its
+            // target; unbounded properties follow it, but a bounded one
+            // (opacity) cannot leave its range.
+            spec.range.map_or(value, |(lo, hi)| value.clamp(lo, hi))
+        })
+        .collect();
     NodeState {
         id: node.id.clone(),
-        x: sample(node, "x", frame),
-        y: sample(node, "y", frame),
         width: node.width,
         height: node.height,
-        opacity: sample(node, "opacity", frame).clamp(lo, hi),
+        values,
     }
 }
 

@@ -41,6 +41,7 @@ mod bounds;
 
 use crate::report::Severity;
 use motion_eval::NodeState;
+use motion_format::property::names;
 use motion_scene::SceneGraph;
 
 /// A rule's finding on one frame.
@@ -81,7 +82,7 @@ const INVISIBLE: f64 = 0.0;
 
 /// Whether rules look at `node` on this frame.
 pub(crate) fn visible(node: &NodeState) -> bool {
-    node.opacity > INVISIBLE
+    node.get(names::OPACITY) > INVISIBLE
 }
 
 /// An axis-aligned rectangle as `(left, top, right, bottom)`.
@@ -94,8 +95,10 @@ pub(crate) type Area = (f64, f64, f64, f64);
 /// it. If neither axis is measured, or nothing overshoots by more than
 /// [`EPSILON`], the result is `None`.
 pub(super) fn overshoot(node: &NodeState, area: Area) -> Option<Overshoot> {
-    let x = axis_amount(node.left(), node.right(), (area.0, area.2));
-    let y = axis_amount(node.top(), node.bottom(), (area.1, area.3));
+    // The box as drawn: scale and rotation included.
+    let (left, top, right, bottom) = node.bounds();
+    let x = axis_amount(left, right, (area.0, area.2));
+    let y = axis_amount(top, bottom, (area.1, area.3));
     let amount = [x, y].into_iter().flatten().max_by(f64::total_cmp)?;
     Some(Overshoot { amount })
 }

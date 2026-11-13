@@ -6,6 +6,7 @@
 
 use motion_eval::evaluate;
 use motion_format::fmt_num;
+use motion_format::property::{PROPERTIES, names};
 use motion_scene::SceneGraph;
 
 use crate::error::QueryError;
@@ -13,7 +14,10 @@ use crate::error::QueryError;
 /// Describes the requested nodes at `frame`, one line each.
 ///
 /// An empty `ids` means every node. Lines follow scene order, and
-/// the format is `{id} x={x} y={y} w={w} h={h} opacity={o}`.
+/// the format is `{id} x={x} y={y} w={w} h={h}` followed by every other
+/// registered property, in registry order, whose value differs from its
+/// default, as `name={value}`. Values are compared as printed, so float dust
+/// such as a scale of 1.0000000000000002 does not show up.
 pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String, QueryError> {
     if frame < 0.0 {
         return Err(QueryError::new("time must be 0 or later"));
@@ -30,15 +34,25 @@ pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String, Quer
         .iter()
         .filter(|n| ids.is_empty() || ids.contains(&n.id))
         .map(|n| {
-            format!(
-                "{} x={} y={} w={} h={} opacity={}",
+            let mut line = format!(
+                "{} x={} y={} w={} h={}",
                 n.id,
-                fmt_num(n.x),
-                fmt_num(n.y),
+                fmt_num(n.get(names::X)),
+                fmt_num(n.get(names::Y)),
                 fmt_num(n.width),
-                fmt_num(n.height),
-                fmt_num(n.opacity)
-            )
+                fmt_num(n.height)
+            );
+            for (spec, &value) in PROPERTIES.iter().zip(&n.values) {
+                // x and y are always printed above.
+                if spec.name == names::X || spec.name == names::Y {
+                    continue;
+                }
+                let shown = fmt_num(value);
+                if shown != fmt_num(spec.default) {
+                    line.push_str(&format!(" {}={shown}", spec.name));
+                }
+            }
+            line
         })
         .collect();
     Ok(lines.join("\n"))
