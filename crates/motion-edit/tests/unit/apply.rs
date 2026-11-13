@@ -222,21 +222,12 @@ fn removing_nested_keys_cleans_up_empty_objects() {
     .unwrap();
     let out = apply_edit(&two, &parse_edit("card anim.opacity=none").unwrap()).unwrap();
     assert_eq!(keys(&out["layers"][1]["anim"]), ["scale"]);
-    // Cleanup climbs several levels, but never removes the scene itself.
-    let raw = json!({"a": {"b": {"c": 1}}});
-    let mut m = raw.as_object().unwrap().clone();
-    assert!(remove_path(&mut m, &["a", "b", "c"]));
-    assert!(m.is_empty());
 }
 
 #[test]
 fn removing_a_missing_path_is_a_no_op() {
     assert_eq!(run("card anim.opacity=none"), doc());
     assert_eq!(run("card in.x=none"), doc());
-    let raw = json!({"a": {}});
-    let mut m = raw.as_object().unwrap().clone();
-    assert!(!remove_path(&mut m, &["a", "x"]));
-    assert_eq!(m.len(), 1);
 }
 
 #[test]

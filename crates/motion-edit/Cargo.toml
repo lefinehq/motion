@@ -11,6 +11,7 @@ repository.workspace = true
 motion-diagnostic = { path = "../motion-diagnostic" }
 motion-format = { path = "../motion-format" }
 serde_json = { workspace = true }
+winnow.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

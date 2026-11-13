@@ -8,8 +8,9 @@
 
 use motion_diagnostic::{Diagnostic, Kind, Result};
 use motion_format::{LAYER_KEYS, SCENE_KEYS, scene_from_value};
-use serde_json::{Map, Value};
+use serde_json::Value;
 
+use crate::path;
 use crate::{Edit, EditValue};
 
 /// The reserved target that means the top level of the document.
@@ -49,26 +50,16 @@ pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value> {
 /// the result. Also returns the path of the edited object: empty for the
 /// scene, `layers[i]` for a layer.
 fn apply_changes(raw: &Value, edit: &Edit) -> Result<(Value, String)> {
-    let is_scene = edit.target == SCENE_TARGET;
     // Keys are checked first so a typo is reported even for a bad target.
-    check_keys(edit, is_scene)?;
+    check_keys(edit)?;
     let mut out = raw.clone();
-    let (object, target) = if is_scene {
-        let object = out
-            .as_object_mut()
-            .ok_or_else(|| Diagnostic::new(Kind::WrongType, "the document is not an object"))?;
-        (object, String::new())
-    } else {
-        let (index, object) = find_layer(&mut out, &edit.target)?;
-        (object, format!("layers[{index}]"))
-    };
+    let (target, object) = find_target(&mut out, &edit.target)?;
     for change in &edit.changes {
         match &change.value {
-            EditValue::Set(v) => set_path(object, &change.key, v.clone())?,
-            EditValue::Remove => {
-                let segments: Vec<&str> = change.key.split('.').collect();
-                remove_path(object, &segments);
-            }
+            EditValue::Set(value) => path::set(object, &change.path(), value.clone())?,
+            // Removing a key that is not there is not an error: the result is
+            // what was asked for.
+            EditValue::Remove => _ = path::remove(object, &change.path()),
         }
     }
     Ok((out, target))
@@ -121,90 +112,56 @@ fn key_path(target: &str, key: &str) -> String {
     }
 }
 
-/// Sets a dotted path, creating the objects it needs. Setting an existing key
-/// keeps its position (serde_json's `preserve_order`); a new key is appended.
-fn set_path(root: &mut Map<String, Value>, key: &str, value: Value) -> Result<()> {
-    let segments: Vec<&str> = key.split('.').collect();
-    let (leaf, parents) = segments.split_last().expect("split yields one part");
-    let mut object = root;
-    for (i, seg) in parents.iter().enumerate() {
-        let entry = object
-            .entry(seg.to_string())
-            .or_insert_with(|| Value::Object(Map::new()));
-        object = entry.as_object_mut().ok_or_else(|| {
-            Diagnostic::new(
-                Kind::WrongType,
-                format!(
-                    "cannot set `{key}`: `{}` is not an object",
-                    segments[..=i].join(".")
-                ),
-            )
-        })?;
-    }
-    object.insert((*leaf).to_string(), value);
-    Ok(())
-}
-
-/// Removes the leaf of a path, then any object that this left empty on the
-/// way back up. Returns whether something was removed; a missing path (or a
-/// non-object on the way) changes nothing. `object` itself is never removed.
-fn remove_path(object: &mut Map<String, Value>, segments: &[&str]) -> bool {
-    let [first, rest @ ..] = segments else {
-        return false;
-    };
-    if rest.is_empty() {
-        return object.shift_remove(*first).is_some();
-    }
-    let Some(Value::Object(child)) = object.get_mut(*first) else {
-        return false;
-    };
-    let removed = remove_path(child, rest);
-    if removed && child.is_empty() {
-        object.shift_remove(*first);
-    }
-    removed
-}
-
 /// Rejects keys that are not part of the format for this kind of target.
-fn check_keys(edit: &Edit, is_scene: bool) -> Result<()> {
-    let (allowed, what): (&[&str], &str) = if is_scene {
+/// Only the first segment of a path is checked here; deeper ones are checked
+/// by `scene_from_value` on the result.
+fn check_keys(edit: &Edit) -> Result<()> {
+    let (allowed, what): (&[&str], &str) = if edit.target == SCENE_TARGET {
         (&SCENE_KEYS, "scene key")
     } else {
         (&LAYER_KEYS, "layer key")
     };
-    for change in &edit.changes {
-        // Only the first segment is checked here; deeper ones are checked by
-        // `scene_from_value` on the result.
-        let first = change.key.split('.').next().unwrap_or_default();
-        if !allowed.contains(&first) {
-            return Err(Diagnostic::unknown(what, first, allowed));
-        }
-    }
-    Ok(())
+    edit.changes
+        .iter()
+        // A path always has a first segment, even when the key has no dot.
+        .map(|change| change.path()[0])
+        .find(|first| !allowed.contains(first))
+        .map_or(Ok(()), |first| {
+            Err(Diagnostic::unknown(what, first, allowed))
+        })
 }
 
-/// Finds the layer with the given id: its index in `layers` and its object.
-fn find_layer<'a>(doc: &'a mut Value, id: &str) -> Result<(usize, &'a mut Map<String, Value>)> {
+/// Finds the object `target` names in `doc`, with the path validation
+/// reports it under: the document itself (an empty path) for `scene`, or
+/// the layer with that id (`layers[i]`).
+fn find_target<'d>(doc: &'d mut Value, target: &str) -> Result<(String, &'d mut Value)> {
+    if target == SCENE_TARGET {
+        return if doc.is_object() {
+            Ok((String::new(), doc))
+        } else {
+            Err(Diagnostic::new(
+                Kind::WrongType,
+                "the document is not an object",
+            ))
+        };
+    }
     let layers = doc
         .get_mut("layers")
         .and_then(Value::as_array_mut)
         .ok_or_else(|| {
             Diagnostic::new(
                 Kind::Missing,
-                format!("the scene has no `layers` array, so there is no layer `{id}`"),
+                format!("the scene has no `layers` array, so there is no layer `{target}`"),
             )
         })?;
     let index = layers
         .iter()
-        .position(|l| l.get("id").and_then(Value::as_str) == Some(id))
+        .position(|l| l.get("id").and_then(Value::as_str) == Some(target))
         .ok_or_else(|| {
             let ids = layers.iter().filter_map(|l| l.get("id")?.as_str());
-            Diagnostic::unknown("layer id", id, ids)
+            Diagnostic::unknown("layer id", target, ids)
         })?;
-    let object = layers[index]
-        .as_object_mut()
-        .expect("a layer with an id is an object");
-    Ok((index, object))
+    Ok((format!("layers[{index}]"), &mut layers[index]))
 }
 
 #[cfg(test)]

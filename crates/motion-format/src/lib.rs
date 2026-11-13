@@ -11,7 +11,7 @@
 pub mod anim;
 mod curve;
 mod doc;
-mod lex;
+pub mod lex;
 mod number;
 mod parse;
 pub mod preset;

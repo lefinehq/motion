@@ -3,9 +3,15 @@
 //!
 //! Part of step 1 (Read). The units, the curves and the shorthands each
 //! implement `FromStr` with a small `winnow` grammar built from these pieces,
-//! and run it through [`parse_all`] or [`parse_whole`], so every module maps
+//! and run it through [`parse_all`] or `parse_whole`, so every module maps
 //! its failures in a single place. This module depends on no other module of
 //! the crate.
+//!
+//! The public items are the ones another grammar of the workspace (the edit
+//! line of `motion-edit`) shares, so both read words and spaces, and turn a
+//! failure into a [`Diagnostic`], the same way. [`Failure`] is not an error
+//! anyone sees: it only lives inside a grammar, and [`parse_all`] turns it
+//! into the one error type, [`Diagnostic`].
 
 use std::convert::Infallible;
 
@@ -25,7 +31,7 @@ use winnow::token::{any, take_till, take_while};
 /// carry text, or a nested shorthand's diagnostic. Modules that need no
 /// reason leave `R` [`Infallible`].
 #[derive(Debug)]
-pub(crate) struct Failure<R = Infallible>(Option<R>);
+pub struct Failure<R = Infallible>(Option<R>);
 
 impl<I: Stream, R> ParserError<I> for Failure<R> {
     type Inner = Self;
@@ -54,11 +60,11 @@ impl<I, R> FromExternalError<I, R> for Failure<R> {
 }
 
 /// The result of a shorthand grammar piece.
-pub(crate) type Parsed<T, R = Infallible> = ModalResult<T, Failure<R>>;
+pub type Parsed<T, R = Infallible> = ModalResult<T, Failure<R>>;
 
 /// Runs `grammar` over the whole of `text` and hands a failure's reason to
 /// `explain`, each module's one error mapping.
-pub(crate) fn parse_all<'s, T, R>(
+pub fn parse_all<'s, T, R>(
     text: &'s str,
     mut grammar: impl Parser<&'s str, T, ErrMode<Failure<R>>>,
     explain: impl FnOnce(Option<R>) -> Diagnostic,
@@ -87,17 +93,17 @@ pub(crate) fn number<R>(input: &mut &str) -> Parsed<f64, R> {
 }
 
 /// A run of non-whitespace: one token of a whitespace-separated shorthand.
-pub(crate) fn word<'s, R>(input: &mut &'s str) -> Parsed<&'s str, R> {
+pub fn word<'s, R>(input: &mut &'s str) -> Parsed<&'s str, R> {
     take_till(1.., char::is_whitespace).parse_next(input)
 }
 
 /// Whitespace between tokens: at least one character.
-pub(crate) fn blank1<'s, R>(input: &mut &'s str) -> Parsed<&'s str, R> {
+pub fn blank1<'s, R>(input: &mut &'s str) -> Parsed<&'s str, R> {
     take_while(1.., char::is_whitespace).parse_next(input)
 }
 
 /// Optional whitespace, as around a shorthand or inside `cubic(…)`.
-pub(crate) fn blank0<'s, R>(input: &mut &'s str) -> Parsed<&'s str, R> {
+pub fn blank0<'s, R>(input: &mut &'s str) -> Parsed<&'s str, R> {
     take_while(0.., char::is_whitespace).parse_next(input)
 }
 
