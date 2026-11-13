@@ -5,6 +5,7 @@
 //! property, with times in frames.
 
 use motion_format::preset::Start;
+use motion_format::property::names;
 use motion_format::property::{PROPERTIES, property};
 use motion_format::shorthand::Coord;
 use motion_format::{Content, Curve, Layer, Scene};
@@ -12,11 +13,6 @@ use motion_format::{Content, Curve, Layer, Scene};
 use crate::graph::{Node, NodeKind, SceneGraph};
 use crate::text::TextMeasure;
 use crate::track::{Key, Track};
-
-/// The registry name of the property that `at` sets horizontally.
-const AT_X: &str = "x";
-/// The registry name of the property that `at` sets vertically.
-const AT_Y: &str = "y";
 
 /// Compiles `scene` into a [`SceneGraph`], using `measure` to size text.
 pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
@@ -66,7 +62,8 @@ fn resolve(c: Coord, extent: f64) -> f64 {
 fn tracks(layer: &Layer, scene: &Scene, canvas: (f64, f64)) -> (Vec<Track>, (bool, bool)) {
     let fps = scene.fps;
     let index_of = |name: &str| property(name).map(|(i, _)| i);
-    let (x_at, y_at) = (index_of(AT_X), index_of(AT_Y));
+    // `at` sets the resting x and y.
+    let (x_at, y_at) = (index_of(names::X), index_of(names::Y));
     // Resting values: `at` for the two position properties, the registry
     // default for the rest.
     let rest: Vec<f64> = PROPERTIES
