@@ -113,7 +113,7 @@ This is hard to read and hard to extend, and each new field or shorthand repeats
 
 ### Task 2: Shorthands as `winnow` grammars
 
-**Files:** `crates/motion-format/src/shorthand/*`, `units.rs`, `curve.rs`, and a new `shorthand/serde_adapter.rs`.
+**Files:** `crates/motion-format/src/shorthand/*`, `units.rs`, `curve.rs`.
 
 **What to do:**
 - `Time`, `Color`, `Size`, `Position`, `RectShape`, `Font`, `Behaviour` and `Curve` each implement `FromStr<Err = Diagnostic>` with a `winnow` grammar. Each module has:
@@ -124,7 +124,6 @@ This is hard to read and hard to extend, and each new field or shorthand repeats
   - read the size and weight from the end;
   - three trailing numbers mean a family that ends in a number;
   - two ambiguous trailing numbers give an error.
-- **Serde adapter:** `serde_adapter.rs` holds one generic `Deserialize` for every `FromStr<Err = Diagnostic>` shorthand, for example a `FromStrDe<T>` wrapper or a `deserialize_from_str` function used with `#[serde(deserialize_with)]`, so serde fields can use these types directly. The `Diagnostic` must survive inside serde's custom error, so that validation can recover its kind and expected form.
 - **Tests:** keep every existing shorthand test, including the exact messages, unless the report lists a change. Keep the proptests and add a round-trip test where there is a `Display`.
 - Commit: `refactor(format): parse shorthands with winnow grammars`.
 
@@ -138,11 +137,11 @@ This is hard to read and hard to extend, and each new field or shorthand repeats
 - Fold into `doc.rs` and `validate.rs`: the `Value` walking in `anim.rs` and `preset.rs`.
 
 **What to do:**
-- **`doc.rs`:** `SceneDoc`, `LayerDoc`, `PresetDoc` and `TrackDoc`, all `#[serde(deny_unknown_fields)]`, with shorthand types as field types.
+- **`doc.rs`:** `SceneDoc`, `LayerDoc`, `PresetDoc` and `TrackDoc`, all `#[serde(deny_unknown_fields)]`, with shorthand fields as `String` (parsed in `validate.rs`).
   - `TrackDoc` is either a `String` (parsed by a `winnow` grammar in `anim.rs`) or a `Vec<KeyDoc>`. It has a custom `Deserialize` with `visit_str` and `visit_seq`, not `untagged`, so its errors stay specific.
   - `KeyDoc` is `[time, value]` or `[time, value, curve]`, via a sequence visitor.
 - **`parse_document`:** `serde_json::from_str` → `serde_path_to_error::deserialize` → `validate::scene(doc, raw)`.
-  - Serde errors become `Diagnostic`s carrying the path (`layers[1].fill`) and the inner shorthand diagnostic's kind and expected form.
+  - Serde reports only structural errors (unknown field, wrong type, missing field). One function maps them to a `Diagnostic` with the path (`layers[1].fill`; the root path `.` becomes no path) and the right kind (`WrongType`, `UnknownName`, `Missing`).
   - Unknown fields give `UnknownName` and list the allowed keys. Serde's own message already lists them; the expected part must still be present.
 - **`validate.rs`:** every cross-field rule, each a small named function called from one `scene()` function. Rules:
   - the version
@@ -198,15 +197,18 @@ This is hard to read and hard to extend, and each new field or shorthand repeats
 
 ---
 
-### Task 6: Logs and telemetry with `tracing`
+### Task 6: One engine entry point with error and telemetry handling, plus logs via `tracing`
 
 **Why:**
+- Every command repeats the same steps (read, parse, validate, compile, evaluate, check), each with its own error handling. The maintainer asked for one base function that runs these steps end to end, with the error and telemetry handling in one place.
 - Nobody can see what the engine does or how long each step takes without a debugger.
 - The render-time targets (see Overview) will need per-step timings.
 - Agents need clean stdout.
 
 **Files:**
 - Create: `crates/motion-telemetry/{Cargo.toml,src/lib.rs,src/init.rs,src/timing.rs}` and its tests.
+- Create: `crates/motion-engine/{Cargo.toml,src/lib.rs,src/stage.rs,src/session.rs}` and its tests.
+- Modify: `crates/motion-cli/src/commands/*`, so they call only `motion-engine`.
 - Modify:
   - the library crates, to add instrumentation;
   - `crates/motion-cli/src/main.rs`, to initialise logging and add the flags;
@@ -214,6 +216,20 @@ This is hard to read and hard to extend, and each new field or shorthand repeats
   - `deny.toml` if needed.
 
 **Interfaces:**
+- **`motion-engine`: the base function.**
+  - `stage<T>(name: &'static str, f: impl FnOnce() -> Result<T>) -> Result<T>` is the one wrapper every pipeline step runs through. It:
+    - opens a `tracing` span named after the step;
+    - times it;
+    - on error, logs one `error` event with the diagnostic's kind and path;
+    - returns the diagnostic unchanged.
+    - No step does its own logging or error mapping.
+  - `Session` runs the pipeline end to end and caches each step's result:
+    - `Session::open(path)` and `Session::from_str(text)`, for reading and parsing;
+    - `scene()`, `graph()`, `frame(t)`, `check()` and `at(time, ids)`;
+    - `edit(line)`, which applies, re-validates, re-runs `check` and returns the new report;
+    - `save()`, an atomic write.
+    - Every method goes through `stage`.
+  - The CLI, and later the MCP server and the Node binding, call only `Session`. They never call format, scene, eval or query directly.
 - **Library crates** depend only on `tracing`. They emit events and spans, and they never print. These are the instrumentation points:
   - **`motion-format`:** a `parse_document` span, with fields for the byte length and layer count. A `debug` event per validation rule that rejects, with the diagnostic kind and path.
   - **`motion-scene`:** a `compile` span, with node and track counts.
