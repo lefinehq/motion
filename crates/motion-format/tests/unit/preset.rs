@@ -3,7 +3,7 @@
 use super::*;
 use crate::parse_document;
 
-fn presets(json: &str) -> Result<Vec<(String, PresetSpec)>, FormatError> {
+fn presets(json: &str) -> Result<Vec<(String, PresetSpec)>> {
     parse_presets(&serde_json::from_str(json).unwrap(), "presets")
 }
 
@@ -42,7 +42,7 @@ fn start_forms_parse() {
 #[test]
 fn bad_start_value_shows_expected_form() {
     let e = presets(r#"{"a":{"x":"left"}}"#).unwrap_err();
-    assert_eq!(e.path, "presets.a.x");
+    assert_eq!(e.path.as_deref(), Some("presets.a.x"));
     assert!(
         e.to_string()
             .ends_with(r#"; expected a number, "+d" or "-d""#),
@@ -54,7 +54,7 @@ fn bad_start_value_shows_expected_form() {
 #[test]
 fn unknown_property_lists_the_registry() {
     let e = presets(r#"{"a":{"zoom":1}}"#).unwrap_err();
-    assert_eq!(e.path, "presets.a.zoom");
+    assert_eq!(e.path.as_deref(), Some("presets.a.zoom"));
     assert!(e.to_string().contains("unknown property `zoom`"));
     assert!(
         e.to_string()
@@ -96,7 +96,7 @@ fn unknown_preset_lists_resolved_names_without_duplicates() {
         r#"{{{BASE},"presets":{{"slide":{{"x":1}},"fade":{{"y":1}}}},"layers":[{{"id":"a","rect":"1x1","in":"zoom"}}]}}"#
     ))
     .unwrap_err();
-    assert_eq!(e.path, "layers[0].in");
+    assert_eq!(e.path.as_deref(), Some("layers[0].in"));
     let text = e.to_string();
     assert!(
         text.starts_with(

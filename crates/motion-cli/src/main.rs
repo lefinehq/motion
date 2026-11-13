@@ -10,8 +10,11 @@
 //! - `motion edit <scene> <line>` changes the scene file, then prints its check.
 //!
 //! Exit codes: `0` when all is well, `1` when the check report has an error
-//! line, `2` when the file, the time or the edit line is unusable. Output goes
-//! to stdout; failures print `error: {message}` to stderr, from here only.
+//! line, and otherwise the code of the diagnostic's kind
+//! ([`Kind::exit_code`](motion_diagnostic::Kind::exit_code), `2` for every
+//! kind today) when the file, the time or the edit line is unusable. Output
+//! goes to stdout; failures print `error: {diagnostic}` to stderr, from here
+//! only.
 
 mod commands;
 
@@ -64,9 +67,9 @@ fn main() -> ExitCode {
     };
     match result {
         Ok(code) => code,
-        Err(message) => {
-            eprintln!("error: {message}");
-            ExitCode::from(2)
+        Err(d) => {
+            eprintln!("error: {d}");
+            ExitCode::from(d.kind.exit_code())
         }
     }
 }

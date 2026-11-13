@@ -12,7 +12,7 @@
 //! (`anim.opacity`), and a value starting with `[` or `{` is JSON, read up
 //! to its balanced end (strings inside may contain spaces and brackets).
 
-use crate::EditError;
+use motion_diagnostic::{Diagnostic, Kind, Result};
 use serde_json::{Number, Value};
 
 /// A parsed edit: one target and the changes to make to it.
@@ -45,18 +45,18 @@ pub enum EditValue {
 /// Parses one edit line such as `card fill=#FF0000 in=none`.
 ///
 /// # Errors
-/// Returns an [`EditError`] for an empty line, an unclosed quote, a quote
+/// Returns a [`Diagnostic`] for an empty line, an unclosed quote, a quote
 /// that does not start a value, a missing target or changes, a word that is
 /// not `key=value`, an unsupported operator, an empty key, an empty path
 /// segment, an empty value, invalid or unbalanced JSON, a key given twice, or
 /// two keys where one is a dotted prefix of the other.
-pub fn parse_edit(line: &str) -> Result<Edit, EditError> {
+pub fn parse_edit(line: &str) -> Result<Edit> {
     let mut words = split_words(line)?.into_iter();
     let target = words
         .next()
-        .ok_or_else(|| EditError::new("empty edit; expected `<target> <key>=<value>`"))?;
+        .ok_or_else(|| Diagnostic::syntax("empty edit; expected `<target> <key>=<value>`"))?;
     if target.head.contains('=') {
-        return Err(EditError::new(format!(
+        return Err(Diagnostic::syntax(format!(
             "expected a target (a layer id or `scene`) before `{}`",
             target.shown()
         )));
@@ -66,7 +66,10 @@ pub fn parse_edit(line: &str) -> Result<Edit, EditError> {
     for word in words {
         let change = parse_change(&word)?;
         if changes.iter().any(|c| c.key == change.key) {
-            return Err(EditError::new(format!("key `{}` given twice", change.key)));
+            return Err(Diagnostic::new(
+                Kind::Conflict,
+                format!("key `{}` given twice", change.key),
+            ));
         }
         // `anim` and `anim.x` would write the same place twice, and which
         // one wins would depend on their order.
@@ -76,14 +79,17 @@ pub fn parse_edit(line: &str) -> Result<Edit, EditError> {
             } else {
                 (&change.key, &other.key)
             };
-            return Err(EditError::new(format!(
-                "keys `{outer}` and `{inner}` overlap; set them in separate edits or merge them into one value"
-            )));
+            return Err(Diagnostic::new(
+                Kind::Conflict,
+                format!(
+                    "keys `{outer}` and `{inner}` overlap; set them in separate edits or merge them into one value"
+                ),
+            ));
         }
         changes.push(change);
     }
     if changes.is_empty() {
-        return Err(EditError::new(format!(
+        return Err(Diagnostic::syntax(format!(
             "no changes after `{target}`; expected `<key>=<value>`"
         )));
     }
@@ -131,7 +137,7 @@ impl Word {
 /// quoted value, and a quote is only allowed as the first character of a
 /// value (right after the first `=`). This is the only place that decodes a
 /// quoted value.
-fn split_words(line: &str) -> Result<Vec<Word>, EditError> {
+fn split_words(line: &str) -> Result<Vec<Word>> {
     let mut words = Vec::new();
     let mut current: Option<Word> = None;
     let mut chars = line.chars().peekable();
@@ -149,7 +155,7 @@ fn split_words(line: &str) -> Result<Vec<Word>, EditError> {
                 word.quoted = true;
                 // Nothing may follow the closing quote but a space.
                 if let Some(next) = chars.peek().filter(|n| !n.is_whitespace()) {
-                    return Err(EditError::new(format!(
+                    return Err(Diagnostic::syntax(format!(
                         "unexpected text after the closing quote in `{}{next}`; \
                          put a space after the quote, or quote the whole value",
                         word.shown()
@@ -163,7 +169,7 @@ fn split_words(line: &str) -> Result<Vec<Word>, EditError> {
                 word.json = Some(value);
                 // Nothing may follow the balanced end but a space.
                 if let Some(next) = chars.peek().filter(|n| !n.is_whitespace()) {
-                    return Err(EditError::new(format!(
+                    return Err(Diagnostic::syntax(format!(
                         "unexpected text after the end of the JSON value in `{}{next}`; \
                          put a space after it; {JSON_FORM}",
                         word.shown()
@@ -189,7 +195,7 @@ fn read_json(
     open: char,
     chars: &mut impl Iterator<Item = char>,
     head: &str,
-) -> Result<(String, Value), EditError> {
+) -> Result<(String, Value)> {
     let mut raw = String::from(open);
     let (mut depth, mut in_string, mut escaped) = (1usize, false, false);
     for c in chars {
@@ -211,7 +217,7 @@ fn read_json(
                 if depth == 0 {
                     let key = head.strip_suffix('=').unwrap_or(head);
                     let value = serde_json::from_str(&raw).map_err(|e| {
-                        EditError::new(format!("invalid JSON in `{key}`: {e}; {JSON_FORM}"))
+                        Diagnostic::syntax(format!("invalid JSON in `{key}`: {e}; {JSON_FORM}"))
                     })?;
                     return Ok((raw, value));
                 }
@@ -219,42 +225,46 @@ fn read_json(
             _ => {}
         }
     }
-    Err(EditError::new(format!(
+    Err(Diagnostic::syntax(format!(
         "unclosed `{open}` in `{head}{raw}`; {JSON_FORM}"
     )))
 }
 
 /// Reads a quoted value after its opening quote, up to the closing quote,
 /// decoding `\"` and `\\`. `head` (`key=`) is only used in messages.
-fn read_quoted(chars: &mut impl Iterator<Item = char>, head: &str) -> Result<String, EditError> {
+fn read_quoted(chars: &mut impl Iterator<Item = char>, head: &str) -> Result<String> {
     let mut out = String::new();
     while let Some(c) = chars.next() {
         match c {
             '\\' => match chars.next() {
                 Some(e @ ('"' | '\\')) => out.push(e),
                 Some(other) => {
-                    return Err(EditError::new(format!(
+                    return Err(Diagnostic::syntax(format!(
                         "unknown escape `\\{other}` in a quoted value; only `\\\"` and `\\\\` are supported"
                     )));
                 }
-                None => return Err(EditError::new("dangling `\\` at the end of a quoted value")),
+                None => {
+                    return Err(Diagnostic::syntax(
+                        "dangling `\\` at the end of a quoted value",
+                    ));
+                }
             },
             '"' => return Ok(out),
             c => out.push(c),
         }
     }
-    Err(EditError::new(format!(
+    Err(Diagnostic::syntax(format!(
         "unclosed quote in `{head}\"{out}`; add a closing `\"`"
     )))
 }
 
 /// The error for a `"` that does not start a value: shows the word up to the
 /// next space and how to write the whole thing as one quoted value.
-fn stray_quote(word: &Word, chars: &mut impl Iterator<Item = char>) -> EditError {
+fn stray_quote(word: &Word, chars: &mut impl Iterator<Item = char>) -> Diagnostic {
     let so_far = format!("{}{}", word.head, word.value);
     // Without a `=` there is no key to build a suggestion from.
     let Some((key, _)) = so_far.split_once('=') else {
-        return EditError::new(format!(
+        return Diagnostic::syntax(format!(
             "unexpected quote in `{so_far}\"`; quotes only go around a value, as in `<key>=\"<value>\"`"
         ));
     };
@@ -297,27 +307,27 @@ fn stray_quote(word: &Word, chars: &mut impl Iterator<Item = char>) -> EditError
     }
     // Escape the suggestion so it can be pasted back as-is.
     let whole = whole.replace('\\', "\\\\").replace('"', "\\\"");
-    EditError::new(format!(
+    Diagnostic::syntax(format!(
         "unexpected quote in `{shown}`; quote the whole value: {key}=\"{whole}\""
     ))
 }
 
 /// Parses one `key=value` word.
-fn parse_change(word: &Word) -> Result<Change, EditError> {
+fn parse_change(word: &Word) -> Result<Change> {
     let Some(key) = word.head.strip_suffix('=') else {
-        return Err(EditError::new(format!(
+        return Err(Diagnostic::syntax(format!(
             "expected `<key>=<value>`, got `{}`; quote values that contain spaces",
             word.head
         )));
     };
     // `delay+=10f` splits as key `delay+`; only `=` is supported for now.
     if let Some(op) = key.chars().last().filter(|c| "+-*/<>!".contains(*c)) {
-        return Err(EditError::new(format!(
+        return Err(Diagnostic::syntax(format!(
             "operator `{op}=` is not supported yet; use `=`"
         )));
     }
     if key.is_empty() {
-        return Err(EditError::new(format!(
+        return Err(Diagnostic::syntax(format!(
             "missing key before `=` in `{}`; expected `<key>=<value>`",
             word.shown()
         )));
@@ -327,12 +337,12 @@ fn parse_change(word: &Word) -> Result<Change, EditError> {
         .split('.')
         .any(|seg| seg.is_empty() || !seg.chars().all(|c| c.is_alphanumeric() || "-_".contains(c)))
     {
-        return Err(EditError::new(format!(
+        return Err(Diagnostic::syntax(format!(
             "invalid key `{key}`: each dot-separated part must be non-empty letters, digits, `-` or `_`; expected `<key>[.<key>…]=<value>`"
         )));
     }
     if word.value.is_empty() && !word.quoted {
-        return Err(EditError::new(format!(
+        return Err(Diagnostic::syntax(format!(
             "missing value for `{key}`; use `{key}=\"\"` for an empty string"
         )));
     }

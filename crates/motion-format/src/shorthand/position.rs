@@ -5,7 +5,9 @@
 
 use std::fmt;
 
-use crate::{ShorthandError, fmt_num};
+use motion_diagnostic::{Diagnostic, Result};
+
+use crate::fmt_num;
 
 pub(crate) const EXPECTED: &str =
     "`<x> <y>`, each a number of pixels or `center`, e.g. `center 260`";
@@ -50,8 +52,9 @@ pub struct Position {
 impl Position {
     /// Parses exactly two whitespace-separated tokens, each a finite number
     /// of pixels or `center`.
-    pub fn parse(text: &str) -> Result<Position, ShorthandError> {
-        let bad = || ShorthandError::new(format!("`{text}` is not a valid position"), EXPECTED);
+    pub fn parse(text: &str) -> Result<Position> {
+        let bad =
+            || Diagnostic::syntax(format!("`{text}` is not a valid position")).expected(EXPECTED);
         let tokens: Vec<&str> = text.split_whitespace().collect();
         let [x, y] = tokens[..] else {
             return Err(bad());

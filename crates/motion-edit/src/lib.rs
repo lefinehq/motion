@@ -22,9 +22,7 @@
 //! ```
 
 mod apply;
-mod error;
 mod parse;
 
 pub use apply::apply_edit;
-pub use error::EditError;
 pub use parse::{Change, Edit, EditValue, parse_edit};

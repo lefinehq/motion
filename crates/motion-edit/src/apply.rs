@@ -6,9 +6,11 @@
 //! as the author wrote them. The result is re-validated with
 //! `motion_format::scene_from_value` before it is returned.
 
-use crate::{Edit, EditError, EditValue};
-use motion_format::{FormatError, LAYER_KEYS, SCENE_KEYS, scene_from_value};
+use motion_diagnostic::{Diagnostic, Kind, Result};
+use motion_format::{LAYER_KEYS, SCENE_KEYS, is_not_a_string, scene_from_value};
 use serde_json::{Map, Value};
+
+use crate::{Edit, EditValue};
 
 /// The reserved target that means the top level of the document.
 const SCENE_TARGET: &str = "scene";
@@ -22,18 +24,19 @@ const SCENE_TARGET: &str = "scene";
 /// a nested object removes the object too. `raw` is never changed.
 ///
 /// # Errors
-/// Returns an [`EditError`] for a key (its first path segment) that is not
+/// Returns a [`Diagnostic`] for a key (its first path segment) that is not
 /// allowed for the target, a path through a value that is not an object,
 /// an unknown layer id, a document without a `layers` array, or a result
-/// that no longer passes validation (`invalid result: ...`).
-pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value, EditError> {
+/// that no longer passes validation (`invalid result: ...`, with the kind of
+/// the validation failure).
+pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value> {
     let is_scene = edit.target == SCENE_TARGET;
     // Keys are checked first so a typo is reported even for a bad target.
     check_keys(edit, is_scene)?;
     let mut out = raw.clone();
     let object = if is_scene {
         out.as_object_mut()
-            .ok_or_else(|| EditError::new("the document is not an object"))?
+            .ok_or_else(|| Diagnostic::new(Kind::Invalid, "the document is not an object"))?
     } else {
         find_layer(&mut out, &edit.target)?
     };
@@ -46,8 +49,13 @@ pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value, EditError> {
             }
         }
     }
-    scene_from_value(&out)
-        .map_err(|e| EditError::new(format!("invalid result: {e}{}", quote_hint(edit, &e))))?;
+    // The whole validation message goes into this one; its kind is kept.
+    scene_from_value(&out).map_err(|e| {
+        Diagnostic::new(
+            e.kind,
+            format!("invalid result: {e}{}", quote_hint(edit, &e)),
+        )
+    })?;
     Ok(out)
 }
 
@@ -56,16 +64,17 @@ pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value, EditError> {
 ///
 /// The edit grammar turns `text=2024` into a JSON number, which the format
 /// then rejects as "must be a string"; the author almost always meant text.
-fn quote_hint(edit: &Edit, error: &FormatError) -> String {
-    if !error.is_not_a_string() {
+fn quote_hint(edit: &Edit, error: &Diagnostic) -> String {
+    if !is_not_a_string(error) {
         return String::new();
     }
+    let path = error.path.as_deref().unwrap_or_default();
     edit.changes
         .iter()
         .find_map(|c| match &c.value {
             // The error path is the bare key (scene) or ends in `.key` (layer).
             EditValue::Set(v @ (Value::Number(_) | Value::Bool(_)))
-                if error.path == c.key || error.path.ends_with(&format!(".{}", c.key)) =>
+                if path == c.key || path.ends_with(&format!(".{}", c.key)) =>
             {
                 Some(format!("; quote it: {}=\"{v}\"", c.key))
             }
@@ -76,7 +85,7 @@ fn quote_hint(edit: &Edit, error: &FormatError) -> String {
 
 /// Sets a dotted path, creating the objects it needs. Setting an existing key
 /// keeps its position (serde_json's `preserve_order`); a new key is appended.
-fn set_path(root: &mut Map<String, Value>, key: &str, value: Value) -> Result<(), EditError> {
+fn set_path(root: &mut Map<String, Value>, key: &str, value: Value) -> Result<()> {
     let segments: Vec<&str> = key.split('.').collect();
     let (leaf, parents) = segments.split_last().expect("split yields one part");
     let mut object = root;
@@ -85,10 +94,13 @@ fn set_path(root: &mut Map<String, Value>, key: &str, value: Value) -> Result<()
             .entry(seg.to_string())
             .or_insert_with(|| Value::Object(Map::new()));
         object = entry.as_object_mut().ok_or_else(|| {
-            EditError::new(format!(
-                "cannot set `{key}`: `{}` is not an object",
-                segments[..=i].join(".")
-            ))
+            Diagnostic::new(
+                Kind::Invalid,
+                format!(
+                    "cannot set `{key}`: `{}` is not an object",
+                    segments[..=i].join(".")
+                ),
+            )
         })?;
     }
     object.insert((*leaf).to_string(), value);
@@ -116,7 +128,7 @@ fn remove_path(object: &mut Map<String, Value>, segments: &[&str]) -> bool {
 }
 
 /// Rejects keys that are not part of the format for this kind of target.
-fn check_keys(edit: &Edit, is_scene: bool) -> Result<(), EditError> {
+fn check_keys(edit: &Edit, is_scene: bool) -> Result<()> {
     let (allowed, what): (&[&str], &str) = if is_scene {
         (&SCENE_KEYS, "the scene")
     } else {
@@ -127,30 +139,34 @@ fn check_keys(edit: &Edit, is_scene: bool) -> Result<(), EditError> {
         // `scene_from_value` on the result.
         let first = change.key.split('.').next().unwrap_or_default();
         if !allowed.contains(&first) {
-            return Err(EditError::new(format!(
-                "unknown key `{first}` for {what}; allowed: {}",
-                allowed.join(", ")
-            )));
+            return Err(Diagnostic::new(
+                Kind::UnknownName,
+                format!(
+                    "unknown key `{first}` for {what}; allowed: {}",
+                    allowed.join(", ")
+                ),
+            ));
         }
     }
     Ok(())
 }
 
 /// Finds the layer object with the given id.
-fn find_layer<'a>(doc: &'a mut Value, id: &str) -> Result<&'a mut Map<String, Value>, EditError> {
+fn find_layer<'a>(doc: &'a mut Value, id: &str) -> Result<&'a mut Map<String, Value>> {
     let layers = doc
         .get_mut("layers")
         .and_then(Value::as_array_mut)
         .ok_or_else(|| {
-            EditError::new(format!(
-                "the scene has no `layers` array, so there is no layer `{id}`"
-            ))
+            Diagnostic::new(
+                Kind::Missing,
+                format!("the scene has no `layers` array, so there is no layer `{id}`"),
+            )
         })?;
     layers
         .iter_mut()
         .filter_map(Value::as_object_mut)
         .find(|l| l.get("id").and_then(Value::as_str) == Some(id))
-        .ok_or_else(|| EditError::new(format!("no layer with id `{id}`")))
+        .ok_or_else(|| Diagnostic::new(Kind::UnknownName, format!("no layer with id `{id}`")))
 }
 
 #[cfg(test)]

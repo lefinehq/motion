@@ -5,9 +5,11 @@
 //! The preset name is a plain string here; the scene parser resolves it.
 //! Step 2 turns it into an entrance on the compiled graph.
 
+use motion_diagnostic::{Diagnostic, Kind, Result};
+
+use crate::Curve;
 use crate::parse::{ID_RULE, is_valid_id};
 use crate::units::Time;
-use crate::{Curve, ShorthandError};
 
 pub(crate) const EXPECTED: &str = "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`";
 
@@ -39,8 +41,8 @@ impl Behaviour {
     /// result, and a given string has exactly one meaning, so there is no
     /// "which number is the distance?" guess to get wrong. Each kind may
     /// appear once.
-    pub fn parse(text: &str) -> Result<Behaviour, ShorthandError> {
-        let err = |m: String| ShorthandError::new(m, EXPECTED);
+    pub fn parse(text: &str) -> Result<Behaviour> {
+        let err = |m: String| Diagnostic::syntax(m).expected(EXPECTED);
         let mut tokens = text.split_whitespace();
         // Only the shape of the name is checked here; whether a preset of
         // that name exists depends on the scene and is checked by the parser.
@@ -61,20 +63,20 @@ impl Behaviour {
             let bad = |kind: &str| err(format!("`{token}` is not a valid {kind}"));
             let has_digit = token.chars().any(|c| c.is_ascii_digit());
             if Curve::is_curve_token(token) {
-                set_once(&mut curve, Curve::parse(token)?, token, "curve", &err)?;
+                set_once(&mut curve, Curve::parse(token)?, token, "curve")?;
             } else if let Some(n) = token.strip_suffix("px") {
                 let v: f64 = n
                     .parse()
                     .ok()
                     .filter(|v: &f64| v.is_finite())
                     .ok_or_else(|| bad("distance"))?;
-                set_once(&mut distance, v, token, "distance", &err)?;
+                set_once(&mut distance, v, token, "distance")?;
             } else if let Some(t) = token.strip_prefix('@') {
                 let v = Time::parse(t).map_err(|_| bad("start time"))?;
-                set_once(&mut start, v, token, "start", &err)?;
+                set_once(&mut start, v, token, "start")?;
             } else if has_digit && (token.ends_with('f') || token.ends_with('s')) {
                 let v = Time::parse(token).map_err(|_| bad("duration"))?;
-                set_once(&mut duration, v, token, "duration", &err)?;
+                set_once(&mut duration, v, token, "duration")?;
             } else if !has_digit {
                 // No digit means no number, so it can only be a misspelt
                 // curve: let `Curve::parse` list the known names.
@@ -106,10 +108,13 @@ fn set_once<'a, T>(
     value: T,
     token: &'a str,
     what: &str,
-    err: &impl Fn(String) -> ShorthandError,
-) -> Result<(), ShorthandError> {
+) -> Result<()> {
     if let Some((_, first)) = slot.replace((value, token)) {
-        return Err(err(format!("{what} given twice: `{first}` and `{token}`")));
+        return Err(Diagnostic::new(
+            Kind::Conflict,
+            format!("{what} given twice: `{first}` and `{token}`"),
+        )
+        .expected(EXPECTED));
     }
     Ok(())
 }

@@ -2,7 +2,7 @@
 //!
 //! Part of step 1 (Read): parses a text layer's `font` string into a [`Font`].
 
-use crate::ShorthandError;
+use motion_diagnostic::{Diagnostic, Result};
 
 pub(crate) const EXPECTED: &str = "`<family> <size> [<weight>]`, e.g. `Inter 96 700`";
 
@@ -34,8 +34,8 @@ impl Font {
     ///   weight 120, or family `Baloo 2` with size 120;
     /// - three trailing numbers are a family ending in a number, then the
     ///   size and weight: `Baloo 2 120 400`.
-    pub fn parse(text: &str) -> Result<Font, ShorthandError> {
-        let err = |m: String| ShorthandError::new(m, EXPECTED);
+    pub fn parse(text: &str) -> Result<Font> {
+        let err = |m: String| Diagnostic::syntax(m).expected(EXPECTED);
         let tokens: Vec<&str> = text.split_whitespace().collect();
         let is_number = |s: &str| s.parse::<f64>().is_ok();
         let valid_weight = |s: &str| {

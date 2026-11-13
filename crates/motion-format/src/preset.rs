@@ -7,13 +7,14 @@
 
 use std::sync::OnceLock;
 
+use motion_diagnostic::{Diagnostic, Kind, Result};
 use serde_json::{Map, Value};
 
 use crate::anim::check_range;
+use crate::fmt_num;
 use crate::parse::{ID_RULE, is_valid_id};
 use crate::property::{PROPERTIES, names as prop, property, property_names};
 use crate::shorthand::{Behaviour, Coord, Position};
-use crate::{FormatError, fmt_num};
 
 /// The built-in presets, embedded at compile time.
 const BUILTIN_JSON: &str = include_str!("presets.json");
@@ -57,30 +58,32 @@ pub fn builtin_presets() -> &'static [(String, PresetSpec)] {
 
 /// Parses a `presets` object: name to `{property: start}`. `path` prefixes
 /// error paths (`presets` for a scene).
-pub fn parse_presets(value: &Value, path: &str) -> Result<Vec<(String, PresetSpec)>, FormatError> {
+pub fn parse_presets(value: &Value, path: &str) -> Result<Vec<(String, PresetSpec)>> {
     let obj = value.as_object().ok_or_else(|| {
-        FormatError::new(path, "must be an object")
-            .expecting(r#"e.g. {"slide":{"opacity":0,"x":"-d"}}"#)
+        Diagnostic::new(Kind::Invalid, "must be an object")
+            .at(path)
+            .expected(r#"e.g. {"slide":{"opacity":0,"x":"-d"}}"#)
     })?;
     let mut out = Vec::with_capacity(obj.len());
     for (name, body) in obj {
         let here = format!("{path}.{name}");
         if !is_valid_id(name) {
             return Err(
-                FormatError::new(&here, format!("invalid preset name `{name}`")).expecting(ID_RULE),
+                Diagnostic::new(Kind::Invalid, format!("invalid preset name `{name}`"))
+                    .at(&here)
+                    .expected(ID_RULE),
             );
         }
         let props_obj = body.as_object().ok_or_else(|| {
-            FormatError::new(&here, "must be an object of property starts")
-                .expecting(r#"e.g. {"opacity":0,"y":"+d"}"#)
+            Diagnostic::new(Kind::Invalid, "must be an object of property starts")
+                .at(&here)
+                .expected(r#"e.g. {"opacity":0,"y":"+d"}"#)
         })?;
         let mut props = Vec::with_capacity(props_obj.len());
         for (prop, start) in props_obj {
             let at = format!("{here}.{prop}");
-            let (index, spec) = property(prop).ok_or_else(|| {
-                FormatError::new(&at, format!("unknown property `{prop}`"))
-                    .expecting(format!("one of {}", property_names()))
-            })?;
+            let (index, spec) = property(prop)
+                .ok_or_else(|| Diagnostic::unknown("property", prop, property_names()).at(&at))?;
             let start = parse_start(start, &at)?;
             match start {
                 // An absolute start obeys the property's range, like an `anim` key.
@@ -90,21 +93,24 @@ pub fn parse_presets(value: &Value, path: &str) -> Result<Vec<(String, PresetSpe
                 // A distance in pixels means nothing for a bounded property
                 // such as opacity, and would leave its range.
                 Start::Plus | Start::Minus if spec.range.is_some() => {
-                    return Err(FormatError::new(
-                        &at,
+                    return Err(Diagnostic::new(
+                        Kind::OutOfRange,
                         format!("`{prop}` has a fixed range, so it cannot start at a distance"),
                     )
-                    .expecting("a number within its range, e.g. 0"));
+                    .at(&at)
+                    .expected("a number within its range, e.g. 0"));
                 }
                 Start::Plus | Start::Minus => {}
             }
             props.push((index, start));
         }
         if props.is_empty() {
-            return Err(
-                FormatError::new(&here, format!("preset `{name}` sets no properties"))
-                    .expecting(r#"e.g. {"opacity":0}"#),
-            );
+            return Err(Diagnostic::new(
+                Kind::Missing,
+                format!("preset `{name}` sets no properties"),
+            )
+            .at(&here)
+            .expected(r#"e.g. {"opacity":0}"#));
         }
         out.push((name.clone(), PresetSpec { props }));
     }
@@ -112,20 +118,20 @@ pub fn parse_presets(value: &Value, path: &str) -> Result<Vec<(String, PresetSpe
 }
 
 /// Reads one start value: a number, `"+d"` or `"-d"`.
-fn parse_start(value: &Value, path: &str) -> Result<Start, FormatError> {
+fn parse_start(value: &Value, path: &str) -> Result<Start> {
     match value {
-        Value::Number(n) => n
+        Value::String(s) if s == PLUS => Ok(Start::Plus),
+        Value::String(s) if s == MINUS => Ok(Start::Minus),
+        // `as_f64` is `None` for anything but a number.
+        _ => value
             .as_f64()
             .filter(|v| v.is_finite())
             .map(Start::Value)
             .ok_or_else(|| {
-                FormatError::new(path, format!("invalid start {value}")).expecting(START_EXPECTED)
+                Diagnostic::new(Kind::Invalid, format!("invalid start {value}"))
+                    .at(path)
+                    .expected(START_EXPECTED)
             }),
-        Value::String(s) if s == PLUS => Ok(Start::Plus),
-        Value::String(s) if s == MINUS => Ok(Start::Minus),
-        other => {
-            Err(FormatError::new(path, format!("invalid start {other}")).expecting(START_EXPECTED))
-        }
     }
 }
 

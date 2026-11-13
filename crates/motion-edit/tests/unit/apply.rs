@@ -195,3 +195,17 @@ fn only_the_first_segment_is_checked_as_a_key() {
     let m = err("card anim.nope=1");
     assert!(m.starts_with("invalid result: "), "{m}");
 }
+
+#[test]
+fn errors_say_what_kind_of_problem_they_are() {
+    let kind = |l: &str| {
+        apply_edit(&doc(), &parse_edit(l).unwrap())
+            .unwrap_err()
+            .kind
+    };
+    assert_eq!(kind("ghost fill=red"), Kind::UnknownName);
+    assert_eq!(kind("card colour=red"), Kind::UnknownName);
+    // A validation failure keeps the kind it had in the format.
+    assert_eq!(kind("card fill=blue"), Kind::Syntax);
+    assert_eq!(kind("title text=2024"), Kind::Invalid);
+}

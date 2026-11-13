@@ -2,7 +2,7 @@
 //! behaviour.
 //!
 //! Part of step 1 (Read). Each parser turns one compact string from a scene
-//! into a typed value, or a [`ShorthandError`](crate::ShorthandError) that
+//! into a typed value, or a [`Diagnostic`](motion_diagnostic::Diagnostic) that
 //! lists the accepted forms.
 
 mod behaviour;

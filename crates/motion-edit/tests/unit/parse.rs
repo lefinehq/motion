@@ -295,3 +295,12 @@ fn overlapping_paths_are_rejected() {
     // Siblings and names that merely share a prefix are fine.
     assert!(parse_edit("card anim.x=1 anim.y=2 animal=3 anim.xy=4").is_ok());
 }
+
+#[test]
+fn errors_say_what_kind_of_problem_they_are() {
+    let kind = |line: &str| parse_edit(line).unwrap_err().kind;
+    assert_eq!(kind(""), Kind::Syntax);
+    assert_eq!(kind("a fill=\"red"), Kind::Syntax);
+    assert_eq!(kind("a fill=red fill=blue"), Kind::Conflict);
+    assert_eq!(kind("a anim={} anim.x=1"), Kind::Conflict);
+}

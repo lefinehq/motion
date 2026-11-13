@@ -9,7 +9,7 @@ repository.workspace = true
 
 [dependencies]
 serde_json.workspace = true
-thiserror.workspace = true
+motion-diagnostic = { path = "../motion-diagnostic" }
 
 [dev-dependencies]
 proptest.workspace = true

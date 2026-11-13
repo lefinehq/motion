@@ -3,7 +3,7 @@
 //! Part of step 1 (Read). Scenes write `"0.4s"`, `"#0B0D12"` or `"1080p"`;
 //! these types are what the rest of the pipeline works with.
 
-use crate::ShorthandError;
+use motion_diagnostic::{Diagnostic, Result};
 
 pub(crate) const TIME_EXPECTED: &str = "`<number>f` or `<number>s`, e.g. `12f` or `0.4s`";
 pub(crate) const COLOR_EXPECTED: &str = "`#RGB`, `#RRGGBB` or `#RRGGBBAA`";
@@ -25,8 +25,9 @@ pub enum Time {
 impl Time {
     /// Parses `<number>f` or `<number>s`. The number must be finite and not
     /// negative, and the unit suffix is required.
-    pub fn parse(text: &str) -> Result<Time, ShorthandError> {
-        let bad = || ShorthandError::new(format!("`{text}` is not a valid time"), TIME_EXPECTED);
+    pub fn parse(text: &str) -> Result<Time> {
+        let bad =
+            || Diagnostic::syntax(format!("`{text}` is not a valid time")).expected(TIME_EXPECTED);
         let (number, is_frames) = if let Some(n) = text.strip_suffix('f') {
             (n, true)
         } else if let Some(n) = text.strip_suffix('s') {
@@ -71,8 +72,10 @@ pub struct Color {
 impl Color {
     /// Parses `#RGB`, `#RRGGBB` or `#RRGGBBAA`. Without an alpha digit pair
     /// the colour is opaque; `#RGB` doubles each digit (`#F80` is `#FF8800`).
-    pub fn parse(text: &str) -> Result<Color, ShorthandError> {
-        let bad = || ShorthandError::new(format!("`{text}` is not a valid colour"), COLOR_EXPECTED);
+    pub fn parse(text: &str) -> Result<Color> {
+        let bad = || {
+            Diagnostic::syntax(format!("`{text}` is not a valid colour")).expected(COLOR_EXPECTED)
+        };
         let digits = text.strip_prefix('#').ok_or_else(bad)?;
         // Checking ASCII first makes the byte-index slicing below safe.
         if !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -120,7 +123,7 @@ pub struct Size {
 impl Size {
     /// Parses a preset (`720p`, `1080p`, `4k`, `square`, `vertical`) or an
     /// explicit `<width>x<height>` where both sides are above zero.
-    pub fn parse(text: &str) -> Result<Size, ShorthandError> {
+    pub fn parse(text: &str) -> Result<Size> {
         let (width, height) = match text {
             "720p" => (1280, 720),
             "1080p" => (1920, 1080),
@@ -128,8 +131,10 @@ impl Size {
             "square" => (1080, 1080),
             "vertical" => (1080, 1920),
             _ => {
-                let bad =
-                    || ShorthandError::new(format!("`{text}` is not a valid size"), SIZE_EXPECTED);
+                let bad = || {
+                    Diagnostic::syntax(format!("`{text}` is not a valid size"))
+                        .expected(SIZE_EXPECTED)
+                };
                 let (w, h) = text.split_once('x').ok_or_else(bad)?;
                 let w: u32 = w.parse().map_err(|_| bad())?;
                 let h: u32 = h.parse().map_err(|_| bad())?;

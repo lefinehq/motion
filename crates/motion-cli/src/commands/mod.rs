@@ -11,14 +11,15 @@ pub mod edit;
 
 use std::path::Path;
 
+use motion_diagnostic::{Diagnostic, Kind, Result};
 use motion_format::{Document, Scene, parse_document};
 use motion_scene::{ApproxTextMeasure, SceneGraph, compile};
 
-/// Reads and validates a scene file; the error is ready to print.
-pub fn load(path: &Path) -> Result<Document, String> {
+/// Reads and validates a scene file.
+pub fn load(path: &Path) -> Result<Document> {
     let text = std::fs::read_to_string(path)
-        .map_err(|e| format!("cannot read `{}`: {e}", path.display()))?;
-    parse_document(&text).map_err(|e| e.to_string())
+        .map_err(|e| Diagnostic::new(Kind::Io, format!("cannot read `{}`: {e}", path.display())))?;
+    parse_document(&text)
 }
 
 /// Compiles a scene with the built-in approximate text measurer.

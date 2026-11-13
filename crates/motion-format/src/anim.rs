@@ -5,11 +5,12 @@
 //! produce the same [`AnimTrack`]. Property names and ranges come from the
 //! registry in [`crate::property`]; curve names from [`crate::Curve`].
 
+use motion_diagnostic::{Diagnostic, Kind, Result};
 use serde_json::Value;
 
 use crate::property::{PropertySpec, property, property_names};
 use crate::units::{TIME_EXPECTED, Time};
-use crate::{Curve, FormatError, fmt_num};
+use crate::{Curve, fmt_num};
 
 /// The accepted forms of a track, for error messages.
 const TRACK_EXPECTED: &str = r#""<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of [time, value] keys"#;
@@ -49,25 +50,25 @@ pub struct AnimTrack {
 ///
 /// Tracks come back in the order the author wrote them. `fps` is needed only
 /// to check that keys given in mixed units are in time order.
-pub fn parse_anim(value: &Value, path: &str, fps: f64) -> Result<Vec<AnimTrack>, FormatError> {
+pub fn parse_anim(value: &Value, path: &str, fps: f64) -> Result<Vec<AnimTrack>> {
     let obj = value.as_object().ok_or_else(|| {
-        FormatError::new(path, "must be an object of property tracks")
-            .expecting(r#"e.g. {"opacity":"0 -> 1 @0-12f"}"#)
+        Diagnostic::new(Kind::Invalid, "must be an object of property tracks")
+            .at(path)
+            .expected(r#"e.g. {"opacity":"0 -> 1 @0-12f"}"#)
     })?;
     let mut tracks = Vec::with_capacity(obj.len());
     for (name, body) in obj {
         let here = format!("{path}.{name}");
-        let (index, spec) = property(name).ok_or_else(|| {
-            FormatError::new(&here, format!("unknown property `{name}`"))
-                .expecting(format!("one of {}", property_names()))
-        })?;
+        let (index, spec) = property(name)
+            .ok_or_else(|| Diagnostic::unknown("property", name, property_names()).at(&here))?;
         let keys = match body {
             Value::String(s) => parse_track_string(s, &here, spec, fps)?,
             Value::Array(a) => parse_keys(a, &here, spec, fps)?,
             _ => {
                 return Err(
-                    FormatError::new(&here, "must be a string or a list of keys")
-                        .expecting(TRACK_EXPECTED),
+                    Diagnostic::new(Kind::Invalid, "must be a string or a list of keys")
+                        .at(&here)
+                        .expected(TRACK_EXPECTED),
                 );
             }
         };
@@ -80,16 +81,18 @@ pub fn parse_anim(value: &Value, path: &str, fps: f64) -> Result<Vec<AnimTrack>,
 }
 
 /// Checks `value` against the property's inclusive range.
-pub(crate) fn check_range(value: f64, spec: &PropertySpec, path: &str) -> Result<f64, FormatError> {
+pub(crate) fn check_range(value: f64, spec: &PropertySpec, path: &str) -> Result<f64> {
     if !value.is_finite() {
-        return Err(
-            FormatError::new(path, format!("`{value}` is not a finite number"))
-                .expecting("a finite number"),
-        );
+        return Err(Diagnostic::new(
+            Kind::OutOfRange,
+            format!("`{value}` is not a finite number"),
+        )
+        .at(path)
+        .expected("a finite number"));
     }
     match spec.range {
-        Some((lo, hi)) if value < lo || value > hi => Err(FormatError::new(
-            path,
+        Some((lo, hi)) if value < lo || value > hi => Err(Diagnostic::new(
+            Kind::OutOfRange,
             format!(
                 "value {} is outside {}..={}",
                 fmt_num(value),
@@ -97,15 +100,18 @@ pub(crate) fn check_range(value: f64, spec: &PropertySpec, path: &str) -> Result
                 fmt_num(hi)
             ),
         )
-        .expecting(format!("a number from {} to {}", fmt_num(lo), fmt_num(hi)))),
+        .at(path)
+        .expected(format!("a number from {} to {}", fmt_num(lo), fmt_num(hi)))),
         _ => Ok(value),
     }
 }
 
 /// Parses a value token of the string form.
-fn parse_number(token: &str, path: &str, spec: &PropertySpec) -> Result<f64, FormatError> {
+fn parse_number(token: &str, path: &str, spec: &PropertySpec) -> Result<f64> {
     let v: f64 = token.parse().map_err(|_| {
-        FormatError::new(path, format!("`{token}` is not a number")).expecting(STRING_EXPECTED)
+        Diagnostic::syntax(format!("`{token}` is not a number"))
+            .at(path)
+            .expected(STRING_EXPECTED)
     })?;
     check_range(v, spec, path)
 }
@@ -117,9 +123,9 @@ pub(crate) fn parse_track_string(
     path: &str,
     spec: &PropertySpec,
     fps: f64,
-) -> Result<Vec<AnimKey>, FormatError> {
+) -> Result<Vec<AnimKey>> {
     let tokens: Vec<&str> = text.split_whitespace().collect();
-    let err = |m: String| FormatError::new(path, m).expecting(STRING_EXPECTED);
+    let err = |m: String| Diagnostic::syntax(m).at(path).expected(STRING_EXPECTED);
     let arrow = tokens
         .iter()
         .position(|t| *t == ARROW)
@@ -146,7 +152,7 @@ pub(crate) fn parse_track_string(
         None => Curve::Linear,
         // Always parse, so an unknown name gets the error that lists the
         // known curves.
-        Some(t) => Curve::parse(t).map_err(|e| FormatError::from_shorthand(path, e))?,
+        Some(t) => Curve::parse(t).map_err(|e| e.under(path))?,
     };
     Ok(vec![
         AnimKey {
@@ -164,8 +170,8 @@ pub(crate) fn parse_track_string(
 
 /// Parses `@<start>-<end>`; the unit of `<end>` also applies to a bare
 /// `<start>`.
-fn parse_range(token: &str, path: &str, fps: f64) -> Result<(Time, Time), FormatError> {
-    let err = |m: String| FormatError::new(path, m).expecting(RANGE_EXPECTED);
+fn parse_range(token: &str, path: &str, fps: f64) -> Result<(Time, Time)> {
+    let err = |m: String| Diagnostic::syntax(m).at(path).expected(RANGE_EXPECTED);
     let body = token.trim_start_matches(RANGE_MARK);
     let (a, b) = body
         .split_once('-')
@@ -181,23 +187,24 @@ fn parse_range(token: &str, path: &str, fps: f64) -> Result<(Time, Time), Format
     } else {
         format!("{a}{end_unit}")
     };
-    let start = Time::parse(&start_text).map_err(|e| FormatError::from_shorthand(path, e))?;
-    let end = Time::parse(b).map_err(|e| FormatError::from_shorthand(path, e))?;
+    let start = Time::parse(&start_text).map_err(|e| e.under(path))?;
+    let end = Time::parse(b).map_err(|e| e.under(path))?;
     if start.to_frames(fps) > end.to_frames(fps) {
-        return Err(err(format!("`{token}` starts after it ends")));
+        return Err(
+            Diagnostic::new(Kind::Invalid, format!("`{token}` starts after it ends"))
+                .at(path)
+                .expected(RANGE_EXPECTED),
+        );
     }
     Ok((start, end))
 }
 
 /// Parses the key-list form.
-fn parse_keys(
-    list: &[Value],
-    path: &str,
-    spec: &PropertySpec,
-    fps: f64,
-) -> Result<Vec<AnimKey>, FormatError> {
+fn parse_keys(list: &[Value], path: &str, spec: &PropertySpec, fps: f64) -> Result<Vec<AnimKey>> {
     if list.is_empty() {
-        return Err(FormatError::new(path, "needs at least one key").expecting(KEYS_EXPECTED));
+        return Err(Diagnostic::new(Kind::Missing, "needs at least one key")
+            .at(path)
+            .expected(KEYS_EXPECTED));
     }
     let mut keys: Vec<AnimKey> = Vec::with_capacity(list.len());
     for (i, item) in list.iter().enumerate() {
@@ -207,8 +214,9 @@ fn parse_keys(
             && key.time.to_frames(fps) < prev.time.to_frames(fps)
         {
             return Err(
-                FormatError::new(&here, "key is earlier than the one before it")
-                    .expecting("keys in time order, earliest first"),
+                Diagnostic::new(Kind::Invalid, "key is earlier than the one before it")
+                    .at(&here)
+                    .expected("keys in time order, earliest first"),
             );
         }
         keys.push(key);
@@ -217,40 +225,51 @@ fn parse_keys(
 }
 
 /// Parses one `[time, value]` or `[time, value, curve]` key.
-fn parse_key(item: &Value, path: &str, spec: &PropertySpec) -> Result<AnimKey, FormatError> {
+fn parse_key(item: &Value, path: &str, spec: &PropertySpec) -> Result<AnimKey> {
     let key_form = r#"[time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"]"#;
     let parts = item
         .as_array()
         .filter(|a| (2..=3).contains(&a.len()))
         .ok_or_else(|| {
-            FormatError::new(path, "must be a list of 2 or 3 items").expecting(key_form)
+            Diagnostic::new(Kind::Invalid, "must be a list of 2 or 3 items")
+                .at(path)
+                .expected(key_form)
         })?;
     let time = match &parts[0] {
-        Value::String(s) => Time::parse(s).map_err(|e| FormatError::from_shorthand(path, e))?,
+        Value::String(s) => Time::parse(s).map_err(|e| e.under(path))?,
         Value::Number(n) => match n.as_f64() {
             Some(f) if f.is_finite() && f >= 0.0 => Time::Frames(f),
             _ => {
-                return Err(FormatError::new(path, format!("invalid time {n}"))
-                    .expecting(format!("a frame count of 0 or more, or {TIME_EXPECTED}")));
+                return Err(
+                    Diagnostic::new(Kind::OutOfRange, format!("invalid time {n}"))
+                        .at(path)
+                        .expected(format!("a frame count of 0 or more, or {TIME_EXPECTED}")),
+                );
             }
         },
         other => {
-            return Err(FormatError::new(path, format!("invalid time {other}"))
-                .expecting(format!("a frame count, or {TIME_EXPECTED}")));
+            return Err(
+                Diagnostic::new(Kind::Invalid, format!("invalid time {other}"))
+                    .at(path)
+                    .expected(format!("a frame count, or {TIME_EXPECTED}")),
+            );
         }
     };
     let value = parts[1].as_f64().ok_or_else(|| {
-        FormatError::new(path, format!("invalid value {}", parts[1])).expecting("a number")
+        Diagnostic::new(Kind::Invalid, format!("invalid value {}", parts[1]))
+            .at(path)
+            .expected("a number")
     })?;
     let value = check_range(value, spec, path)?;
     let curve = match parts.get(2) {
         None => Curve::Linear,
-        Some(Value::String(s)) => {
-            Curve::parse(s).map_err(|e| FormatError::from_shorthand(path, e))?
-        }
+        Some(Value::String(s)) => Curve::parse(s).map_err(|e| e.under(path))?,
         Some(other) => {
-            return Err(FormatError::new(path, format!("invalid curve {other}"))
-                .expecting("a curve name or cubic(x1,y1,x2,y2)"));
+            return Err(
+                Diagnostic::new(Kind::Invalid, format!("invalid curve {other}"))
+                    .at(path)
+                    .expected("a curve name or cubic(x1,y1,x2,y2)"),
+            );
         }
     };
     Ok(AnimKey { time, value, curve })

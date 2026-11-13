@@ -4,12 +4,11 @@
 //! step). Prints resolved numbers, so the agent never has to
 //! do easing or layout maths itself.
 
+use motion_diagnostic::{Diagnostic, Kind, Result};
 use motion_eval::evaluate;
 use motion_format::fmt_num;
 use motion_format::property::{PROPERTIES, names};
 use motion_scene::SceneGraph;
-
-use crate::error::QueryError;
 
 /// Describes the requested nodes at `frame`, one line each.
 ///
@@ -18,16 +17,19 @@ use crate::error::QueryError;
 /// registered property, in registry order, whose value differs from its
 /// default, as `name={value}`. Values are compared as printed, so float dust
 /// such as a scale of 1.0000000000000002 does not show up.
-pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String, QueryError> {
+pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
     if frame < 0.0 {
-        return Err(QueryError::new("time must be 0 or later"));
+        return Err(Diagnostic::new(Kind::OutOfRange, "time must be 0 or later"));
     }
     // Reject unknown ids up front so a typo never yields a partial answer.
     if let Some(unknown) = ids
         .iter()
         .find(|id| !graph.nodes.iter().any(|n| &n.id == *id))
     {
-        return Err(QueryError::new(format!("no layer with id `{unknown}`")));
+        return Err(Diagnostic::new(
+            Kind::UnknownName,
+            format!("no layer with id `{unknown}`"),
+        ));
     }
     let lines: Vec<String> = evaluate(graph, frame)
         .nodes

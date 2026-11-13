@@ -78,13 +78,9 @@ pub fn property(name: &str) -> Option<(usize, &'static PropertySpec)> {
     PROPERTIES.iter().enumerate().find(|(_, p)| p.name == name)
 }
 
-/// The property names, comma-separated in registry order, for error messages.
-pub fn property_names() -> String {
-    PROPERTIES
-        .iter()
-        .map(|p| p.name)
-        .collect::<Vec<_>>()
-        .join(", ")
+/// The property names in registry order, for error messages.
+pub fn property_names() -> impl Iterator<Item = &'static str> {
+    PROPERTIES.iter().map(|p| p.name)
 }
 
 #[cfg(test)]

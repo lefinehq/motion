@@ -2,7 +2,7 @@
 //!
 //! Part of step 1 (Read): parses a layer's `rect` string into a [`RectShape`].
 
-use crate::ShorthandError;
+use motion_diagnostic::{Diagnostic, Result};
 
 pub(crate) const EXPECTED: &str = "`<width>x<height> [r<radius>]`, e.g. `300x400 r24`";
 
@@ -20,8 +20,9 @@ pub struct RectShape {
 impl RectShape {
     /// Parses `<width>x<height>` with an optional `r<radius>` token. Width
     /// and height must be above zero; the radius defaults to 0.
-    pub fn parse(text: &str) -> Result<RectShape, ShorthandError> {
-        let bad = || ShorthandError::new(format!("`{text}` is not a valid rectangle"), EXPECTED);
+    pub fn parse(text: &str) -> Result<RectShape> {
+        let bad =
+            || Diagnostic::syntax(format!("`{text}` is not a valid rectangle")).expected(EXPECTED);
         let number = |s: &str| s.parse::<f64>().ok().filter(|v| v.is_finite());
         let tokens: Vec<&str> = text.split_whitespace().collect();
         let (size, radius) = match tokens[..] {

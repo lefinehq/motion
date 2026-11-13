@@ -107,6 +107,6 @@ fn every_non_bezier_curve_has_a_table_name() {
 
 #[test]
 fn cubic_expected_form_says_no_spaces() {
-    let e = Curve::parse("cubic(1,2)").unwrap_err();
-    assert!(e.expected.contains("(no spaces)"), "{}", e.expected);
+    let expected = Curve::parse("cubic(1,2)").unwrap_err().expected.unwrap();
+    assert!(expected.contains("(no spaces)"), "{expected}");
 }

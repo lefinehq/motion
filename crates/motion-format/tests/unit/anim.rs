@@ -4,7 +4,7 @@ use super::*;
 use crate::parse_document;
 use serde_json::json;
 
-fn anim(v: Value) -> Result<Vec<AnimTrack>, FormatError> {
+fn anim(v: Value) -> Result<Vec<AnimTrack>> {
     parse_anim(&v, "layers[1].anim", 30.0)
 }
 
@@ -56,7 +56,7 @@ fn unknown_property_lists_names() {
         e.starts_with("layers[1].anim.glow: unknown property `glow`"),
         "{e}"
     );
-    assert!(e.contains(&property_names()), "{e}");
+    assert!(e.contains("one of x, y, opacity, scale, rotate"), "{e}");
 }
 
 #[test]
@@ -121,7 +121,7 @@ fn mixed_units_order_uses_fps() {
     assert!(anim(json!({"x": [["1s", 0], [29, 1]]})).is_err());
 }
 
-fn scene(layer: &str) -> Result<crate::Document, FormatError> {
+fn scene(layer: &str) -> Result<crate::Document> {
     parse_document(&format!(
         r#"{{"motion":1,"dur":"2s","layers":[{{"id":"a","rect":"10x10",{layer}}}]}}"#
     ))

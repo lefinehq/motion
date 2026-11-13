@@ -8,9 +8,9 @@ rust-version.workspace = true
 repository.workspace = true
 
 [dependencies]
+motion-diagnostic = { path = "../motion-diagnostic" }
 motion-format = { path = "../motion-format" }
 serde_json = { workspace = true }
-thiserror.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

@@ -64,7 +64,7 @@ fn errors_carry_a_path_and_the_expected_form() {
         r#"{"motion":1,"dur":"2s","layers":[{"id":"a","rect":"10x10"},{"id":"b","rect":"10x10","in":"zoom"}]}"#,
     )
     .unwrap_err();
-    assert_eq!(e.path, "layers[1].in");
+    assert_eq!(e.path.as_deref(), Some("layers[1].in"));
     assert!(e.expected.is_some());
     assert!(
         e.to_string()
@@ -105,11 +105,11 @@ fn rejects_structural_mistakes() {
 #[test]
 fn unknown_key_lists_the_allowed_keys() {
     let e = parse_document(r#"{"motion":1,"dur":"1s","layers":[],"colour":"x"}"#).unwrap_err();
-    assert_eq!(e.path, "scene");
+    assert_eq!(e.path.as_deref(), Some("scene"));
     assert!(e.to_string().contains("expected one of `motion`, `size`"));
     let e = parse_document(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":"1x1","x":1}]}"#)
         .unwrap_err();
-    assert_eq!(e.path, "layers[0]");
+    assert_eq!(e.path.as_deref(), Some("layers[0]"));
 }
 
 #[test]
@@ -130,42 +130,64 @@ fn rejects_wrong_types_and_missing_required_keys() {
             .to_string()
             .contains("missing `layers`")
     );
-    assert_eq!(err(r#"{"motion":1,"dur":5,"layers":[]}"#).path, "dur");
-    assert_eq!(err(r#"{"motion":1,"dur":"1s","layers":{}}"#).path, "layers");
     assert_eq!(
-        err(r#"{"motion":1,"dur":"1s","layers":[1]}"#).path,
-        "layers[0]"
+        err(r#"{"motion":1,"dur":5,"layers":[]}"#).path.as_deref(),
+        Some("dur")
     );
     assert_eq!(
-        err(r#"{"motion":1,"dur":"1s","layers":[{"rect":"1x1"}]}"#).path,
-        "layers[0]"
+        err(r#"{"motion":1,"dur":"1s","layers":{}}"#)
+            .path
+            .as_deref(),
+        Some("layers")
     );
     assert_eq!(
-        err(r#"{"motion":1,"dur":"1s","fps":0,"layers":[]}"#).path,
-        "fps"
+        err(r#"{"motion":1,"dur":"1s","layers":[1]}"#)
+            .path
+            .as_deref(),
+        Some("layers[0]")
     );
     assert_eq!(
-        err(r#"{"motion":1,"dur":"1s","fps":"x","layers":[]}"#).path,
-        "fps"
+        err(r#"{"motion":1,"dur":"1s","layers":[{"rect":"1x1"}]}"#)
+            .path
+            .as_deref(),
+        Some("layers[0]")
     );
     assert_eq!(
-        err(r#"{"motion":1,"dur":"1s","size":"huge","layers":[]}"#).path,
-        "size"
+        err(r#"{"motion":1,"dur":"1s","fps":0,"layers":[]}"#)
+            .path
+            .as_deref(),
+        Some("fps")
     );
     assert_eq!(
-        err(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":3}]}"#).path,
-        "layers[0].text"
+        err(r#"{"motion":1,"dur":"1s","fps":"x","layers":[]}"#)
+            .path
+            .as_deref(),
+        Some("fps")
     );
     assert_eq!(
-        err(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":"1x1","text":"x"}]}"#).path,
-        "layers[0]"
+        err(r#"{"motion":1,"dur":"1s","size":"huge","layers":[]}"#)
+            .path
+            .as_deref(),
+        Some("size")
+    );
+    assert_eq!(
+        err(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":3}]}"#)
+            .path
+            .as_deref(),
+        Some("layers[0].text")
+    );
+    assert_eq!(
+        err(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":"1x1","text":"x"}]}"#)
+            .path
+            .as_deref(),
+        Some("layers[0]")
     );
 }
 
 #[test]
 fn shorthand_failures_keep_their_expected_form() {
     let e = parse_document(r#"{"motion":1,"dur":"soon","layers":[]}"#).unwrap_err();
-    assert_eq!(e.path, "dur");
+    assert_eq!(e.path.as_deref(), Some("dur"));
     assert_eq!(
         e.to_string(),
         "dur: `soon` is not a valid time; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`"
@@ -310,4 +332,41 @@ fn size_fps_and_bg_overrides_reach_the_scene() {
 fn raw_keeps_the_original_value() {
     let d = parse_document(r#"{"layers":[],"dur":"1s","motion":1}"#).unwrap();
     assert_eq!(d.raw["dur"], "1s");
+}
+
+#[test]
+fn errors_say_what_kind_of_problem_they_are() {
+    let kind = |j: &str| parse_document(j).unwrap_err().kind;
+    let layer = |l: &str| format!(r#"{{"motion":1,"dur":"1s","layers":[{l}]}}"#);
+    assert_eq!(kind("{"), Kind::Syntax);
+    assert_eq!(kind(r#"{"motion":1,"layers":[]}"#), Kind::Missing);
+    assert_eq!(
+        kind(r#"{"motion":1,"dur":"1s","layers":[],"x":1}"#),
+        Kind::UnknownName
+    );
+    assert_eq!(kind(&layer(r#"{"id":"a"}"#)), Kind::Missing);
+    assert_eq!(
+        kind(&layer(r#"{"id":"a","text":"t","rect":"1x1"}"#)),
+        Kind::Conflict
+    );
+    assert_eq!(
+        kind(&layer(r#"{"id":"a","rect":"1x1"},{"id":"a","rect":"1x1"}"#)),
+        Kind::Conflict
+    );
+    assert_eq!(
+        kind(&layer(r#"{"id":"a","rect":"1x1","in":"zoom"}"#)),
+        Kind::UnknownName
+    );
+    assert_eq!(
+        kind(&layer(r#"{"id":"a","rect":"1x1","fill":"red"}"#)),
+        Kind::Syntax
+    );
+}
+
+#[test]
+fn a_non_string_value_is_recognised() {
+    let e = parse_document(r#"{"motion":1,"dur":5,"layers":[]}"#).unwrap_err();
+    assert!(is_not_a_string(&e));
+    let e = parse_document(r#"{"motion":1,"dur":"5","layers":[]}"#).unwrap_err();
+    assert!(!is_not_a_string(&e));
 }

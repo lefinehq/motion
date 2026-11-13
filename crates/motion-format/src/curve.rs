@@ -8,7 +8,9 @@
 
 use std::fmt;
 
-use crate::{ShorthandError, fmt_num};
+use motion_diagnostic::{Diagnostic, Kind, Result};
+
+use crate::fmt_num;
 
 /// The expected form of a custom curve.
 const CUBIC_EXPECTED: &str =
@@ -58,18 +60,19 @@ impl Curve {
     }
 
     /// Parses a name from [`NAMED_CURVES`] or `cubic(x1,y1,x2,y2)`.
-    pub fn parse(token: &str) -> Result<Curve, ShorthandError> {
+    pub fn parse(token: &str) -> Result<Curve> {
         if let Some(curve) = Curve::named(token) {
             return Ok(curve);
         }
         let Some(inner) = token.strip_prefix(CUBIC_PREFIX) else {
             let names: Vec<&str> = NAMED_CURVES.iter().map(|(n, _)| *n).collect();
-            return Err(ShorthandError::new(
-                format!("unknown curve `{token}`"),
-                format!("one of {}, or cubic(x1,y1,x2,y2)", names.join(", ")),
-            ));
+            return Err(
+                Diagnostic::new(Kind::UnknownName, format!("unknown curve `{token}`")).expected(
+                    format!("one of {}, or cubic(x1,y1,x2,y2)", names.join(", ")),
+                ),
+            );
         };
-        let err = |m: String| ShorthandError::new(m, CUBIC_EXPECTED);
+        let err = |m: String| Diagnostic::syntax(m).expected(CUBIC_EXPECTED);
         let Some(inner) = inner.strip_suffix(')') else {
             return Err(err(format!("`{token}` is missing its closing `)`")));
         };

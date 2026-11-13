@@ -5,10 +5,10 @@
 
 use std::collections::HashSet;
 
+use motion_diagnostic::{Diagnostic, Kind, Result};
 use serde_json::{Map, Value};
 
 use crate::anim::{AnimTrack, parse_anim};
-use crate::error::MUST_BE_STRING;
 use crate::preset::{PresetSpec, expand_as_anim, lookup, names, parse_presets};
 use crate::property::PROPERTIES;
 use crate::shorthand::{
@@ -16,7 +16,7 @@ use crate::shorthand::{
     RECT_EXPECTED, RectShape,
 };
 use crate::units::{COLOR_EXPECTED, Color, SIZE_EXPECTED, Size, TIME_EXPECTED, Time};
-use crate::{Content, Document, FormatError, Layer, Scene};
+use crate::{Content, Document, Layer, Scene};
 
 /// The keys allowed at the top level of a scene.
 pub const SCENE_KEYS: [&str; 7] = ["motion", "size", "fps", "dur", "bg", "presets", "layers"];
@@ -32,11 +32,23 @@ const TEXT_EXAMPLE: &str = r#"e.g. "text":"Hello""#;
 pub(crate) const ID_RULE: &str =
     "ids use lowercase letters, digits, `-` and `_`, starting with a letter";
 
+/// The message for a key that holds a number, boolean or other non-string
+/// value where a string is required; see [`is_not_a_string`].
+const MUST_BE_STRING: &str = "must be a string";
+
+/// True when `d` reports a number, boolean or other non-string value on a
+/// key that requires a string. `motion-edit` uses it to suggest quoting.
+pub fn is_not_a_string(d: &Diagnostic) -> bool {
+    d.kind == Kind::Invalid && d.message == MUST_BE_STRING
+}
+
 /// Parses scene JSON text into a [`Document`]: the original value (kept so
 /// edits and writes preserve what the author wrote) plus the typed scene.
-pub fn parse_document(json: &str) -> Result<Document, FormatError> {
+pub fn parse_document(json: &str) -> Result<Document> {
     let raw: Value = serde_json::from_str(json).map_err(|e| {
-        FormatError::new("scene", format!("invalid JSON: {e}")).expecting(SCENE_EXAMPLE)
+        Diagnostic::syntax(format!("invalid JSON: {e}"))
+            .at("scene")
+            .expected(SCENE_EXAMPLE)
     })?;
     let scene = scene_from_value(&raw)?;
     Ok(Document { raw, scene })
@@ -44,10 +56,12 @@ pub fn parse_document(json: &str) -> Result<Document, FormatError> {
 
 /// Validates a JSON value and converts it into a typed [`Scene`], applying
 /// defaults for the keys that may be left out.
-pub fn scene_from_value(value: &Value) -> Result<Scene, FormatError> {
-    let obj = value
-        .as_object()
-        .ok_or_else(|| FormatError::new("scene", "must be an object").expecting(SCENE_EXAMPLE))?;
+pub fn scene_from_value(value: &Value) -> Result<Scene> {
+    let obj = value.as_object().ok_or_else(|| {
+        Diagnostic::new(Kind::Invalid, "must be an object")
+            .at("scene")
+            .expected(SCENE_EXAMPLE)
+    })?;
     check_keys(obj, &SCENE_KEYS, "scene")?;
 
     match obj.get("motion") {
@@ -55,13 +69,15 @@ pub fn scene_from_value(value: &Value) -> Result<Scene, FormatError> {
         Some(v) if v.as_u64() == Some(1) => {}
         Some(v) => {
             return Err(
-                FormatError::new("motion", format!("unsupported version {v}")).expecting("`1`"),
+                Diagnostic::new(Kind::Invalid, format!("unsupported version {v}"))
+                    .at("motion")
+                    .expected("`1`"),
             );
         }
     }
 
     let size = match opt_str(obj, "size", "", SIZE_EXPECTED)? {
-        Some(s) => Size::parse(s).map_err(|e| FormatError::from_shorthand("size", e))?,
+        Some(s) => Size::parse(s).map_err(|e| e.under("size"))?,
         None => Size {
             width: 1920,
             height: 1080,
@@ -73,17 +89,19 @@ pub fn scene_from_value(value: &Value) -> Result<Scene, FormatError> {
             Some(f) if f > 0.0 => f,
             _ => {
                 return Err(
-                    FormatError::new("fps", "must be a number above zero").expecting("e.g. `30`")
+                    Diagnostic::new(Kind::OutOfRange, "must be a number above zero")
+                        .at("fps")
+                        .expected("e.g. `30`"),
                 );
             }
         },
     };
     let duration = match opt_str(obj, "dur", "", TIME_EXPECTED)? {
-        Some(s) => Time::parse(s).map_err(|e| FormatError::from_shorthand("dur", e))?,
+        Some(s) => Time::parse(s).map_err(|e| e.under("dur"))?,
         None => return Err(missing("scene", "dur", r#""dur":"5s""#)),
     };
     let background = match opt_str(obj, "bg", "", COLOR_EXPECTED)? {
-        Some(s) => Color::parse(s).map_err(|e| FormatError::from_shorthand("bg", e))?,
+        Some(s) => Color::parse(s).map_err(|e| e.under("bg"))?,
         None => Color {
             r: 0,
             g: 0,
@@ -101,7 +119,9 @@ pub fn scene_from_value(value: &Value) -> Result<Scene, FormatError> {
         None => return Err(missing("scene", "layers", r#""layers":[]"#)),
         Some(Value::Array(a)) => a,
         Some(_) => {
-            return Err(FormatError::new("layers", "must be an array").expecting(LAYERS_EXAMPLE));
+            return Err(Diagnostic::new(Kind::Invalid, "must be an array")
+                .at("layers")
+                .expected(LAYERS_EXAMPLE));
         }
     };
     let mut seen = HashSet::new();
@@ -109,11 +129,11 @@ pub fn scene_from_value(value: &Value) -> Result<Scene, FormatError> {
     for (i, item) in list.iter().enumerate() {
         let layer = layer_from_value(item, i, &presets, fps, size)?;
         if !seen.insert(layer.id.clone()) {
-            return Err(FormatError::new(
-                format!("layers[{i}].id"),
-                format!("duplicate id `{}`", layer.id),
-            )
-            .expecting("every layer to have its own id"));
+            return Err(
+                Diagnostic::new(Kind::Conflict, format!("duplicate id `{}`", layer.id))
+                    .at(format!("layers[{i}].id"))
+                    .expected("every layer to have its own id"),
+            );
         }
         layers.push(layer);
     }
@@ -136,19 +156,21 @@ fn layer_from_value(
     presets: &[(String, PresetSpec)],
     fps: f64,
     size: Size,
-) -> Result<Layer, FormatError> {
+) -> Result<Layer> {
     let base = format!("layers[{i}]");
-    let obj = value
-        .as_object()
-        .ok_or_else(|| FormatError::new(&base, "must be an object").expecting(LAYER_EXAMPLE))?;
+    let obj = value.as_object().ok_or_else(|| {
+        Diagnostic::new(Kind::Invalid, "must be an object")
+            .at(&base)
+            .expected(LAYER_EXAMPLE)
+    })?;
     check_keys(obj, &LAYER_KEYS, &base)?;
 
     let id = opt_str(obj, "id", &base, ID_RULE)?
         .ok_or_else(|| missing(&base, "id", r#""id":"title""#))?;
     if !is_valid_id(id) {
-        return Err(
-            FormatError::new(format!("{base}.id"), format!("invalid id `{id}`")).expecting(ID_RULE),
-        );
+        return Err(Diagnostic::new(Kind::Invalid, format!("invalid id `{id}`"))
+            .at(format!("{base}.id"))
+            .expected(ID_RULE));
     }
 
     let path = |key: &str| format!("{base}.{key}");
@@ -158,9 +180,7 @@ fn layer_from_value(
     ) {
         (Some(text), None) => {
             let font = match opt_str(obj, "font", &base, FONT_EXPECTED)? {
-                Some(s) => {
-                    Font::parse(s).map_err(|e| FormatError::from_shorthand(path("font"), e))?
-                }
+                Some(s) => Font::parse(s).map_err(|e| e.under(path("font")))?,
                 None => Font {
                     family: "Inter".into(),
                     size: 48.0,
@@ -175,24 +195,31 @@ fn layer_from_value(
         (None, Some(rect)) => {
             if obj.contains_key("font") {
                 return Err(
-                    FormatError::new(path("font"), "`font` only applies to text layers")
-                        .expecting("`font` only next to `text`"),
+                    Diagnostic::new(Kind::Conflict, "`font` only applies to text layers")
+                        .at(path("font"))
+                        .expected("`font` only next to `text`"),
                 );
             }
-            Content::Rect(
-                RectShape::parse(rect).map_err(|e| FormatError::from_shorthand(path("rect"), e))?,
-            )
+            Content::Rect(RectShape::parse(rect).map_err(|e| e.under(path("rect")))?)
         }
-        _ => {
+        // Neither is missing content; both are a contradiction. The text is
+        // the same, since the fix is the same.
+        (text, _) => {
+            let kind = if text.is_none() {
+                Kind::Missing
+            } else {
+                Kind::Conflict
+            };
             return Err(
-                FormatError::new(&base, "needs exactly one of `text` or `rect`")
-                    .expecting(r#"e.g. "text":"Hello" or "rect":"300x100""#),
+                Diagnostic::new(kind, "needs exactly one of `text` or `rect`")
+                    .at(&base)
+                    .expected(r#"e.g. "text":"Hello" or "rect":"300x100""#),
             );
         }
     };
 
     let fill = match opt_str(obj, "fill", &base, COLOR_EXPECTED)? {
-        Some(s) => Color::parse(s).map_err(|e| FormatError::from_shorthand(path("fill"), e))?,
+        Some(s) => Color::parse(s).map_err(|e| e.under(path("fill")))?,
         None => Color {
             r: 255,
             g: 255,
@@ -201,7 +228,7 @@ fn layer_from_value(
         },
     };
     let at = match opt_str(obj, "at", &base, POSITION_EXPECTED)? {
-        Some(s) => Position::parse(s).map_err(|e| FormatError::from_shorthand(path("at"), e))?,
+        Some(s) => Position::parse(s).map_err(|e| e.under(path("at")))?,
         None => Position {
             x: Coord::Center,
             y: Coord::Center,
@@ -209,12 +236,9 @@ fn layer_from_value(
     };
     let enter = match opt_str(obj, "in", &base, BEHAVIOUR_EXPECTED)? {
         Some(s) => {
-            let b = Behaviour::parse(s).map_err(|e| FormatError::from_shorthand(path("in"), e))?;
+            let b = Behaviour::parse(s).map_err(|e| e.under(path("in")))?;
             if lookup(presets, &b.preset).is_none() {
-                return Err(
-                    FormatError::new(path("in"), format!("unknown preset `{}`", b.preset))
-                        .expecting(format!("one of {}", names(presets).join(", "))),
-                );
+                return Err(Diagnostic::unknown("preset", &b.preset, names(presets)).at(path("in")));
             }
             Some(b)
         }
@@ -269,7 +293,7 @@ struct Conflict<'a> {
 /// Rejects an `anim` track for a property the `in` preset already animates:
 /// two writers of one property would fight, so the author must pick one. The
 /// error gives the exact edit that moves the entrance into `anim`.
-fn check_conflicts(anim: &[AnimTrack], ctx: &Conflict, path: &str) -> Result<(), FormatError> {
+fn check_conflicts(anim: &[AnimTrack], ctx: &Conflict, path: &str) -> Result<()> {
     let Some(spec) = lookup(ctx.presets, &ctx.behaviour.preset) else {
         return Ok(());
     };
@@ -285,14 +309,15 @@ fn check_conflicts(anim: &[AnimTrack], ctx: &Conflict, path: &str) -> Result<(),
                 ctx.fps,
                 ctx.raw_anim.unwrap_or(&empty),
             );
-            return Err(FormatError::new(
-                format!("{path}.{name}"),
+            return Err(Diagnostic::new(
+                Kind::Conflict,
                 format!(
                     "`{name}` is already animated by `in` (preset `{}`)",
                     ctx.behaviour.preset
                 ),
             )
-            .expecting(format!(
+            .at(format!("{path}.{name}"))
+            .expected(format!(
                 "`{} in=none anim={expansion}` (the entrance as anim tracks; then adjust `{name}`), or define a scene preset without `{name}` under \"presets\"",
                 ctx.id
             )));
@@ -309,20 +334,21 @@ pub(crate) fn is_valid_id(id: &str) -> bool {
 }
 
 /// Rejects any key not in `allowed`, listing the allowed ones.
-fn check_keys(obj: &Map<String, Value>, allowed: &[&str], path: &str) -> Result<(), FormatError> {
+fn check_keys(obj: &Map<String, Value>, allowed: &[&str], path: &str) -> Result<()> {
     match obj.keys().find(|k| !allowed.contains(&k.as_str())) {
         None => Ok(()),
         Some(k) => {
-            let list: Vec<String> = allowed.iter().map(|a| format!("`{a}`")).collect();
-            Err(FormatError::new(path, format!("unknown key `{k}`"))
-                .expecting(format!("one of {}", list.join(", "))))
+            let allowed = allowed.iter().map(|a| format!("`{a}`"));
+            Err(Diagnostic::unknown("key", k, allowed).at(path))
         }
     }
 }
 
 /// A required key that is absent; `example` shows it written out.
-fn missing(path: &str, key: &str, example: &str) -> FormatError {
-    FormatError::new(path, format!("missing `{key}`")).expecting(format!("e.g. {example}"))
+fn missing(path: &str, key: &str, example: &str) -> Diagnostic {
+    Diagnostic::new(Kind::Missing, format!("missing `{key}`"))
+        .at(path)
+        .expected(format!("e.g. {example}"))
 }
 
 /// Reads an optional string key. `parent` is the path of the object holding
@@ -332,19 +358,15 @@ fn opt_str<'a>(
     obj: &'a Map<String, Value>,
     key: &str,
     parent: &str,
-    expected: &str,
-) -> Result<Option<&'a str>, FormatError> {
+    expected: &'static str,
+) -> Result<Option<&'a str>> {
     match obj.get(key) {
         None => Ok(None),
         Some(Value::String(s)) => Ok(Some(s)),
-        Some(_) => {
-            let path = if parent.is_empty() {
-                key.to_string()
-            } else {
-                format!("{parent}.{key}")
-            };
-            Err(FormatError::new(path, MUST_BE_STRING).expecting(expected))
-        }
+        Some(_) => Err(Diagnostic::new(Kind::Invalid, MUST_BE_STRING)
+            .at(key)
+            .under(parent)
+            .expected(expected)),
     }
 }
 

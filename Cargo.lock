@@ -329,6 +329,7 @@ name = "motion-cli"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "motion-diagnostic",
  "motion-edit",
  "motion-eval",
  "motion-format",
@@ -338,13 +339,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "motion-diagnostic"
+version = "0.0.0"
+dependencies = [
+ "proptest",
+ "thiserror",
+]
+
+[[package]]
 name = "motion-edit"
 version = "0.0.0"
 dependencies = [
+ "motion-diagnostic",
  "motion-format",
  "proptest",
  "serde_json",
- "thiserror",
 ]
 
 [[package]]
@@ -359,9 +368,9 @@ dependencies = [
 name = "motion-format"
 version = "0.0.0"
 dependencies = [
+ "motion-diagnostic",
  "proptest",
  "serde_json",
- "thiserror",
 ]
 
 [[package]]
@@ -369,10 +378,10 @@ name = "motion-query"
 version = "0.0.0"
 dependencies = [
  "insta",
+ "motion-diagnostic",
  "motion-eval",
  "motion-format",
  "motion-scene",
- "thiserror",
 ]
 
 [[package]]

@@ -21,7 +21,10 @@ fn registry_names_are_unique_and_documented() {
 
 #[test]
 fn names_list_follows_registry_order() {
-    assert_eq!(property_names(), "x, y, opacity, scale, rotate");
+    assert_eq!(
+        property_names().collect::<Vec<_>>(),
+        ["x", "y", "opacity", "scale", "rotate"]
+    );
 }
 
 #[test]

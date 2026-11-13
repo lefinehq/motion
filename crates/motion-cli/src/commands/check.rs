@@ -6,13 +6,14 @@
 use std::path::Path;
 use std::process::ExitCode;
 
+use motion_diagnostic::Result;
 use motion_format::Scene;
 use motion_query::check;
 
 use super::{compile_scene, load};
 
 /// Checks the scene file; exits 1 when the report has an error line.
-pub fn run(path: &Path) -> Result<ExitCode, String> {
+pub fn run(path: &Path) -> Result<ExitCode> {
     let doc = load(path)?;
     Ok(report(&doc.scene))
 }
