@@ -14,6 +14,7 @@ use winnow::prelude::*;
 use winnow::stream::AsChar;
 use winnow::token::{rest, take_while};
 
+use crate::doc::Form;
 use crate::fmt_num;
 use crate::lex::{self, Failure, Parsed, number};
 
@@ -54,6 +55,10 @@ impl FromStr for Time {
     fn from_str(text: &str) -> Result<Time> {
         lex::parse_whole(text, time, "time", TIME_EXPECTED)
     }
+}
+
+impl Form for Time {
+    const FORM: &str = TIME_EXPECTED;
 }
 
 impl fmt::Display for Time {
@@ -110,6 +115,10 @@ impl FromStr for Color {
     fn from_str(text: &str) -> Result<Color> {
         lex::parse_whole(text, hex_color, "colour", COLOR_EXPECTED)
     }
+}
+
+impl Form for Color {
+    const FORM: &str = COLOR_EXPECTED;
 }
 
 /// `#` and three, six or eight hex digits. The longest form is tried first,
@@ -188,6 +197,10 @@ impl FromStr for Size {
     fn from_str(text: &str) -> Result<Size> {
         lex::parse_whole(text, size, "size", SIZE_EXPECTED)
     }
+}
+
+impl Form for Size {
+    const FORM: &str = SIZE_EXPECTED;
 }
 
 /// A name from [`SIZES`] or `<width>x<height>`.

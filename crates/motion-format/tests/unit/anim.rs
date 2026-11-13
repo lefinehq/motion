@@ -188,7 +188,11 @@ fn array_form_errors() {
     assert!(err(json!({"x": [[0, 1, "nope"]]})).contains("unknown curve"));
     assert_eq!(
         err(json!({"x": [[0, 1, 3]]})),
-        "layers[1].anim.x[0][2]: invalid type: integer `3`; expected a string"
+        "layers[1].anim.x[0][2]: invalid type: integer `3`; expected a curve name such as `ease-out`, or `cubic(x1,y1,x2,y2)`"
+    );
+    assert_eq!(
+        err(json!({"x": [[0, 1, null]]})),
+        "layers[1].anim.x[0][2]: invalid type: null; expected a curve name such as `ease-out`, or `cubic(x1,y1,x2,y2)`"
     );
     assert_eq!(
         err(json!({"x": 3})),
@@ -196,7 +200,7 @@ fn array_form_errors() {
     );
     assert_eq!(
         err(json!([1])),
-        "layers[1].anim: invalid type: sequence; expected a map"
+        r#"layers[1].anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}"#
     );
 }
 

@@ -9,6 +9,7 @@ use winnow::ascii::float;
 use winnow::combinator::{alt, eof, peek, preceded, repeat_till, terminated};
 use winnow::prelude::*;
 
+use crate::doc::Form;
 use crate::lex::{self, Parsed, blank0, blank1, word};
 
 pub(crate) const EXPECTED: &str = "`<family> <size> [<weight>]`, e.g. `Inter 96 700`";
@@ -68,6 +69,10 @@ impl FromStr for Font {
             Diagnostic::syntax(message).expected(EXPECTED)
         })
     }
+}
+
+impl Form for Font {
+    const FORM: &str = EXPECTED;
 }
 
 /// What is wrong with a font string, with the text it is wrong about.

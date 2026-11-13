@@ -10,6 +10,7 @@ use motion_diagnostic::{Diagnostic, Result};
 use winnow::combinator::{alt, delimited, separated_pair};
 use winnow::prelude::*;
 
+use crate::doc::Form;
 use crate::fmt_num;
 use crate::lex::{self, Parsed, blank0, blank1, number};
 
@@ -51,6 +52,10 @@ impl FromStr for Position {
     fn from_str(text: &str) -> Result<Position> {
         lex::parse_whole(text, position, "position", EXPECTED)
     }
+}
+
+impl Form for Position {
+    const FORM: &str = EXPECTED;
 }
 
 /// `<x> <y>`, with any whitespace around and between them.

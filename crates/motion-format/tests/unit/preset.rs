@@ -1,6 +1,7 @@
 //! Unit tests for `src/preset.rs`.
 
 use super::*;
+use crate::doc::AnimDoc;
 use crate::property::property;
 use crate::validate::is_valid_id;
 use crate::{parse_document, scene_from_value};
@@ -181,11 +182,14 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
         .parse::<Behaviour>()
         .unwrap();
     let at = "center 300".parse::<Position>().unwrap();
-    let others: Map<String, Value> = serde_json::from_str(r#"{"opacity":"x","glow":1}"#).unwrap();
-    let json = expand_as_anim(&spec, &b, &at, (1000.0, 500.0), 30.0, Some(&others));
+    // Other tracks come back as written: whole numbers stay integers.
+    let others: AnimDoc =
+        serde_json::from_str(r#"{"opacity":"x","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2.0]]}"#)
+            .unwrap();
+    let json = expand_as_anim(&spec, &b, &at, (1000.0, 500.0), 30.0, &others);
     assert_eq!(
         json,
-        r#"{"opacity":"0 -> 1 @10-40f cubic(0.2,0,0,1)","x":"470 -> 500 @10-40f cubic(0.2,0,0,1)","y":"330 -> 300 @10-40f cubic(0.2,0,0,1)","scale":"0.5 -> 1 @10-40f cubic(0.2,0,0,1)","rotate":"30 -> 0 @10-40f cubic(0.2,0,0,1)","glow":1}"#
+        r#"{"opacity":"0 -> 1 @10-40f cubic(0.2,0,0,1)","x":"470 -> 500 @10-40f cubic(0.2,0,0,1)","y":"330 -> 300 @10-40f cubic(0.2,0,0,1)","scale":"0.5 -> 1 @10-40f cubic(0.2,0,0,1)","rotate":"30 -> 0 @10-40f cubic(0.2,0,0,1)","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2]]}"#
     );
     // The output is valid JSON.
     assert!(serde_json::from_str::<Value>(&json).is_ok());

@@ -120,10 +120,35 @@ fn number_or_bool_for_a_string_key_gets_a_quote_hint() {
     let e = apply_edit(&doc(), &parse_edit("title text=2024").unwrap()).unwrap_err();
     assert_eq!(e.kind, Kind::WrongType);
     assert!(err("title text=true").ends_with("; expected a quoted value: `text=\"true\"`"));
-    assert!(err("scene bg=1.5").ends_with("; expected a quoted value: `bg=\"1.5\"`"));
     // Other errors, and strings that are simply wrong, get no hint.
     assert!(!err("card fill=blue").contains("quoted"));
     assert!(!err("scene fps=\"fast\"").contains("quoted"));
+}
+
+#[test]
+fn a_quote_that_would_still_fail_there_gets_the_form_instead() {
+    // Quoted, `5` is a time without a unit and `1.5` is not a colour: the
+    // key's own form helps more than a quote.
+    assert_eq!(
+        err("scene dur=5"),
+        "dur: invalid result: invalid type: integer `5`; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`"
+    );
+    assert_eq!(
+        err("scene bg=1.5"),
+        "bg: invalid result: invalid type: floating point `1.5`; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`"
+    );
+}
+
+#[test]
+fn a_number_for_an_unknown_property_gets_the_track_form() {
+    // `anim.nope=1` is a wrong type first; quoting it would leave an unknown
+    // property at the same path, so there is no quote hint.
+    let e = apply_edit(&doc(), &parse_edit("card anim.nope=1").unwrap()).unwrap_err();
+    assert_eq!(e.kind, Kind::WrongType);
+    assert_eq!(
+        e.to_string(),
+        r#"layers[1].anim.nope: invalid result: invalid type: integer `1`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of [time, value] keys"#
+    );
 }
 
 #[test]

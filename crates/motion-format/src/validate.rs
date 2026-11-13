@@ -3,22 +3,28 @@
 //! Part of step 1 (Read), after `crate::doc`. Serde has already checked the
 //! shape; [`scene`] turns the document into the typed [`Scene`], parsing each
 //! shorthand where it was written and checking every rule that types cannot
-//! express. Each rule is a small function. Errors are built without the
-//! enclosing path and placed with [`Diagnostic::under`] by the caller, so a
-//! rule does not need to know where its value sits.
+//! express, including the keys a scene cannot do without. Each rule is a
+//! small function. Errors are built without the enclosing path and placed
+//! with [`Diagnostic::under`] by the caller, so a rule does not need to know
+//! where its value sits. Every key in a path is a constant of
+//! `crate::parse::key`.
 
 use std::collections::HashSet;
 use std::str::FromStr;
 
-use indexmap::IndexMap;
 use motion_diagnostic::{Diagnostic, Kind, Result};
-use serde_json::{Map, Value};
 
-use crate::anim::{AnimKey, AnimTrack, KEYS_EXPECTED, RANGE_EXPECTED, TrackLine};
-use crate::doc::{KeyDoc, KeyTime, LayerDoc, Number, Object, PresetDoc, SceneDoc, TrackDoc};
+use crate::anim::{AnimKey, AnimTrack, KEYS_EXPECTED, RANGE_EXPECTED, Span, TrackLine};
+use crate::doc::{
+    AnimDoc, KeyDoc, KeyTime, LayerDoc, List, Number, Object, PresetDoc, PresetsDoc, SceneDoc,
+    Shorthand, StartDoc, TrackDoc,
+};
+use crate::parse::key::{
+    ANIM, AT, BG, DUR, FILL, FONT, FPS, ID, IN, LAYERS, MOTION, PRESETS, RECT, SIZE,
+};
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
 use crate::property::{PROPERTIES, PropertySpec, property, property_names};
-use crate::shorthand::{Behaviour, Coord, Font, Position, RectShape};
+use crate::shorthand::{Behaviour, Coord, Font, Position};
 use crate::units::{Color, Size, TIME_EXPECTED, Time};
 use crate::{Content, Curve, Layer, Scene, fmt_num};
 
@@ -66,29 +72,26 @@ struct Stage<'a> {
 }
 
 /// Validates a scene document and builds the typed [`Scene`], applying the
-/// defaults of the keys left out. `raw` is the JSON `doc` was read from; it
-/// is only quoted back, in the hint of an `in`/`anim` conflict.
-pub(crate) fn scene(doc: &SceneDoc, raw: &Value) -> Result<Scene> {
-    version(doc.motion)?;
+/// defaults of the keys left out.
+pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
+    version(required(doc.motion, MOTION, "1")?)?;
     let fps = doc.fps.map_or(Ok(DEFAULT_FPS), fps)?;
-    let size = optional(doc.size.as_deref(), "size")?.unwrap_or(DEFAULT_SIZE);
-    let duration = parsed(&doc.dur, "dur")?;
-    let background = optional(doc.bg.as_deref(), "bg")?.unwrap_or(DEFAULT_BACKGROUND);
-    let presets = presets(&doc.presets).map_err(|e| e.under("presets"))?;
+    let size = optional(doc.size.as_ref(), SIZE)?.unwrap_or(DEFAULT_SIZE);
+    let duration = required(doc.dur.as_ref(), DUR, r#""5s""#)?.parse_at(DUR)?;
+    let background = optional(doc.bg.as_ref(), BG)?.unwrap_or(DEFAULT_BACKGROUND);
+    let Object(own_presets) = &doc.presets;
+    let presets = presets(own_presets).map_err(|e| e.under(PRESETS))?;
+    let List(layer_docs) = required(doc.layers.as_ref(), LAYERS, "[]")?;
     let stage = Stage {
         presets: &presets,
         fps,
         size,
     };
-    let layers = doc
-        .layers
+    let layers = layer_docs
         .iter()
         .enumerate()
         .map(|(i, Object(layer_doc))| {
-            let written = raw
-                .pointer(&format!("/layers/{i}/anim"))
-                .and_then(Value::as_object);
-            layer(layer_doc, &stage, written).map_err(|e| e.under(format!("layers[{i}]")))
+            layer(layer_doc, &stage).map_err(|e| e.under(format!("{LAYERS}[{i}]")))
         })
         .collect::<Result<Vec<_>>>()?;
     unique_ids(&layers)?;
@@ -105,14 +108,23 @@ pub(crate) fn scene(doc: &SceneDoc, raw: &Value) -> Result<Scene> {
 
 /// Validates the `presets` object: names to property starts, in the order
 /// written. The built-ins in `presets.json` go through the same rules.
-pub(crate) fn presets(doc: &IndexMap<String, PresetDoc>) -> Result<Vec<(String, PresetSpec)>> {
+pub(crate) fn presets(doc: &PresetsDoc) -> Result<Vec<(String, PresetSpec)>> {
     doc.iter()
-        .map(|(name, body)| {
+        .map(|(name, Object(body))| {
             preset(name, body)
                 .map(|spec| (name.clone(), spec))
                 .map_err(|e| e.under(name))
         })
         .collect()
+}
+
+/// A key the scene cannot do without. The expected form shows it written,
+/// with `value` as an example.
+fn required<T>(written: Option<T>, key: &str, value: &str) -> Result<T> {
+    written.ok_or_else(|| {
+        Diagnostic::new(Kind::Missing, format!("missing `{key}`"))
+            .expected(format!(r#"e.g. "{key}":{value}"#))
+    })
 }
 
 /// `motion` must be the one version there is.
@@ -122,7 +134,7 @@ fn version(motion: Number) -> Result<()> {
     }
     Err(
         Diagnostic::new(Kind::Invalid, format!("unsupported version {}", motion.0))
-            .at("motion")
+            .at(MOTION)
             .expected("`1`"),
     )
 }
@@ -134,51 +146,47 @@ fn fps(fps: Number) -> Result<f64> {
     }
     Err(
         Diagnostic::new(Kind::OutOfRange, "must be a number above zero")
-            .at("fps")
+            .at(FPS)
             .expected("e.g. `30`"),
     )
 }
 
-/// Parses the shorthand `text` written at `key`, placing an error there.
-fn parsed<T: FromStr<Err = Diagnostic>>(text: &str, key: &str) -> Result<T> {
-    text.parse().map_err(|e: Diagnostic| e.under(key))
-}
-
-/// [`parsed`] for a key that may be left out.
-fn optional<T: FromStr<Err = Diagnostic>>(text: Option<&str>, key: &str) -> Result<Option<T>> {
-    text.map(|text| parsed(text, key)).transpose()
+/// Parses the shorthand written at `key`, if the key is there.
+fn optional<T: FromStr<Err = Diagnostic>>(
+    written: Option<&Shorthand<T>>,
+    key: &str,
+) -> Result<Option<T>> {
+    written.map(|text| text.parse_at(key)).transpose()
 }
 
 /// Validates one layer, with paths relative to it.
-fn layer(
-    doc: &LayerDoc,
-    stage: &Stage,
-    written_anim: Option<&Map<String, Value>>,
-) -> Result<Layer> {
-    id(&doc.id)?;
+fn layer(doc: &LayerDoc, stage: &Stage) -> Result<Layer> {
+    let id = required(doc.id.as_deref(), ID, r#""title""#)?;
+    follows_id_rule(id)?;
+    let Object(tracks) = &doc.anim;
     let layer = Layer {
-        id: doc.id.clone(),
+        id: id.to_owned(),
         content: content(doc)?,
-        fill: optional(doc.fill.as_deref(), "fill")?.unwrap_or(DEFAULT_FILL),
-        at: optional(doc.at.as_deref(), "at")?.unwrap_or(DEFAULT_POSITION),
+        fill: optional(doc.fill.as_ref(), FILL)?.unwrap_or(DEFAULT_FILL),
+        at: optional(doc.at.as_ref(), AT)?.unwrap_or(DEFAULT_POSITION),
         enter: doc
             .enter
-            .as_deref()
-            .map(|text| entrance(text, stage.presets).map_err(|e| e.under("in")))
+            .as_ref()
+            .map(|written| entrance(written, stage.presets))
             .transpose()?,
-        anim: anim(&doc.anim, stage.fps).map_err(|e| e.under("anim"))?,
+        anim: anim(tracks, stage.fps).map_err(|e| e.under(ANIM))?,
     };
-    entrance_conflict(&layer, stage, written_anim)?;
+    entrance_conflict(&layer, stage, tracks)?;
     Ok(layer)
 }
 
 /// The id must follow [`ID_RULE`].
-fn id(id: &str) -> Result<()> {
+fn follows_id_rule(id: &str) -> Result<()> {
     if is_valid_id(id) {
         return Ok(());
     }
     Err(Diagnostic::new(Kind::Invalid, format!("invalid id `{id}`"))
-        .at("id")
+        .at(ID)
         .expected(ID_RULE))
 }
 
@@ -198,11 +206,11 @@ fn content(doc: &LayerDoc) -> Result<Content> {
     match (&doc.text, &doc.rect) {
         (Some(text), None) => Ok(Content::Text {
             text: text.clone(),
-            font: optional(doc.font.as_deref(), "font")?.unwrap_or_else(default_font),
+            font: optional(doc.font.as_ref(), FONT)?.unwrap_or_else(default_font),
         }),
         (None, Some(rect)) => {
             font_only_on_text(doc)?;
-            Ok(Content::Rect(parsed::<RectShape>(rect, "rect")?))
+            Ok(Content::Rect(rect.parse_at(RECT)?))
         }
         (None, None) => Err(Diagnostic::new(Kind::Missing, ONE_OF).expected(EXAMPLE)),
         (Some(_), Some(_)) => Err(Diagnostic::new(Kind::Conflict, ONE_OF).expected(EXAMPLE)),
@@ -224,7 +232,7 @@ fn font_only_on_text(doc: &LayerDoc) -> Result<()> {
         None => Ok(()),
         Some(_) => Err(
             Diagnostic::new(Kind::Conflict, "`font` only applies to text layers")
-                .at("font")
+                .at(FONT)
                 .expected("`font` only next to `text`"),
         ),
     }
@@ -232,15 +240,11 @@ fn font_only_on_text(doc: &LayerDoc) -> Result<()> {
 
 /// Parses `in` and checks that its preset exists, among the scene's own or
 /// the built-ins.
-fn entrance(text: &str, presets: &[(String, PresetSpec)]) -> Result<Behaviour> {
-    let behaviour: Behaviour = text.parse()?;
+fn entrance(written: &Shorthand<Behaviour>, presets: &[(String, PresetSpec)]) -> Result<Behaviour> {
+    let behaviour = written.parse_at(IN)?;
     match lookup(presets, &behaviour.preset) {
         Some(_) => Ok(behaviour),
-        None => Err(Diagnostic::unknown(
-            "preset",
-            &behaviour.preset,
-            names(presets),
-        )),
+        None => Err(Diagnostic::unknown("preset", &behaviour.preset, names(presets)).at(IN)),
     }
 }
 
@@ -251,14 +255,15 @@ fn unique_ids(layers: &[Layer]) -> Result<()> {
         None => Ok(()),
         Some(i) => Err(
             Diagnostic::new(Kind::Conflict, format!("duplicate id `{}`", layers[i].id))
-                .at(format!("layers[{i}].id"))
+                .at(ID)
+                .under(format!("{LAYERS}[{i}]"))
                 .expected("every layer to have its own id"),
         ),
     }
 }
 
 /// Validates the tracks of `anim`, in the order written.
-fn anim(tracks: &IndexMap<String, TrackDoc>, fps: f64) -> Result<Vec<AnimTrack>> {
+fn anim(tracks: &AnimDoc, fps: f64) -> Result<Vec<AnimTrack>> {
     tracks
         .iter()
         .map(|(name, doc)| track(name, doc, fps).map_err(|e| e.under(name)))
@@ -288,15 +293,21 @@ fn line(text: &str, spec: &PropertySpec, fps: f64) -> Result<Vec<AnimKey>> {
     let line: TrackLine = text.parse()?;
     in_range(line.from, spec)?;
     in_range(line.to, spec)?;
-    let span = line.span;
-    if span.start.to_frames(fps) > span.end.to_frames(fps) {
-        return Err(Diagnostic::new(
-            Kind::Invalid,
-            format!("`@{}-{}` starts after it ends", span.start, span.end),
-        )
-        .expected(RANGE_EXPECTED));
-    }
+    runs_forward(line.span, fps)?;
     Ok(line.keys())
+}
+
+/// A range starts no later than it ends. Its ends may use different units,
+/// so they are compared in frames.
+fn runs_forward(span: Span, fps: f64) -> Result<()> {
+    if span.start.to_frames(fps) <= span.end.to_frames(fps) {
+        return Ok(());
+    }
+    Err(Diagnostic::new(
+        Kind::Invalid,
+        format!("`@{}-{}` starts after it ends", span.start, span.end),
+    )
+    .expected(RANGE_EXPECTED))
 }
 
 /// The key-list form: at least one key, each valid, in time order.
@@ -319,23 +330,29 @@ fn key_list(docs: &[KeyDoc], spec: &PropertySpec, fps: f64) -> Result<Vec<AnimKe
 fn key(doc: &KeyDoc, spec: &PropertySpec) -> Result<AnimKey> {
     let time = match &doc.time {
         KeyTime::Written(text) => text.parse()?,
-        KeyTime::Frames(frames) if *frames >= 0.0 => Time::Frames(*frames),
-        KeyTime::Frames(frames) => {
-            return Err(
-                Diagnostic::new(Kind::OutOfRange, format!("invalid time {frames}"))
-                    .expected(format!("a frame count of 0 or more, or {TIME_EXPECTED}")),
-            );
-        }
+        KeyTime::Frames(frames) => not_negative(*frames)?,
     };
-    let curve = match &doc.curve {
-        Some(text) => text.parse()?,
-        None => Curve::Linear,
-    };
+    let curve = doc
+        .curve
+        .as_ref()
+        .map_or(Ok(Curve::Linear), Shorthand::parse)?;
     Ok(AnimKey {
         time,
         value: in_range(doc.value, spec)?,
         curve,
     })
+}
+
+/// A bare frame count is a time only when it is not negative. (A written
+/// time cannot be negative: its grammar has no sign.)
+fn not_negative(frames: f64) -> Result<Time> {
+    if frames >= 0.0 {
+        return Ok(Time::Frames(frames));
+    }
+    Err(
+        Diagnostic::new(Kind::OutOfRange, format!("invalid time {frames}"))
+            .expected(format!("a frame count of 0 or more, or {TIME_EXPECTED}")),
+    )
 }
 
 /// No key is earlier than the one before it. Keys may mix units, so they
@@ -394,7 +411,7 @@ fn preset(name: &str, body: &PresetDoc) -> Result<PresetSpec> {
     }
     let props = body
         .iter()
-        .map(|(prop, start)| preset_start(prop, *start).map_err(|e| e.under(prop)))
+        .map(|(prop, StartDoc(start))| preset_start(prop, *start).map_err(|e| e.under(prop)))
         .collect::<Result<_>>()?;
     Ok(PresetSpec { props })
 }
@@ -425,11 +442,7 @@ fn preset_start(prop: &str, start: Start) -> Result<(usize, Start)> {
 /// two writers of one property would fight, so the author must pick one. The
 /// error gives the exact edit that moves the entrance into `anim`, keeping
 /// the other tracks as written.
-fn entrance_conflict(
-    layer: &Layer,
-    stage: &Stage,
-    written_anim: Option<&Map<String, Value>>,
-) -> Result<()> {
+fn entrance_conflict(layer: &Layer, stage: &Stage, written: &AnimDoc) -> Result<()> {
     let Some(behaviour) = &layer.enter else {
         return Ok(());
     };
@@ -445,7 +458,7 @@ fn entrance_conflict(
     };
     let name = PROPERTIES[track.property].name;
     let canvas = (f64::from(stage.size.width), f64::from(stage.size.height));
-    let expansion = expand_as_anim(spec, behaviour, &layer.at, canvas, stage.fps, written_anim);
+    let expansion = expand_as_anim(spec, behaviour, &layer.at, canvas, stage.fps, written);
     Err(Diagnostic::new(
         Kind::Conflict,
         format!(
@@ -454,7 +467,7 @@ fn entrance_conflict(
         ),
     )
     .at(name)
-    .under("anim")
+    .under(ANIM)
     .expected(format!(
         "`{} in=none anim={expansion}` (the entrance as anim tracks; then adjust `{name}`), or define a scene preset without `{name}` under \"presets\"",
         layer.id

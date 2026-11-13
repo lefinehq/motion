@@ -81,10 +81,13 @@ fn apply_changes(raw: &Value, edit: &Edit) -> Result<(Value, String)> {
 /// rejects; the author almost always meant text. The decision is made on
 /// structure, not on message text: `error` is a [`Kind::WrongType`] at
 /// exactly the path a number or boolean change wrote, and the same edit with
-/// that value as a JSON string no longer fails there with a wrong type. The
+/// that value as a JSON string no longer fails there at all. The
 /// re-validation is what tells a string key from a number key: quoting
-/// `fps=true` leaves `fps` just as wrong, so it gets no hint. It runs only
-/// here, on the failure path, so a valid edit is validated once.
+/// `fps=true` leaves `fps` just as wrong, so it gets no hint. Any error at
+/// that path counts, not only a wrong type: quoting `dur=5` gives a time
+/// without a unit, so the author is better served by the time's form than by
+/// a quote. It runs only here, on the failure path, so a valid edit is
+/// validated once.
 fn quote_hint(raw: &Value, edit: &Edit, target: &str, error: &Diagnostic) -> Option<String> {
     if error.kind != Kind::WrongType {
         return None;
@@ -105,10 +108,7 @@ fn quote_hint(raw: &Value, edit: &Edit, target: &str, error: &Diagnostic) -> Opt
     let mut quoted = edit.clone();
     quoted.changes[index].value = EditValue::Set(Value::String(value.to_string()));
     let (retried, _) = apply_changes(raw, &quoted).ok()?;
-    let still_wrong = matches!(
-        scene_from_value(&retried),
-        Err(e) if e.kind == Kind::WrongType && e.path == error.path
-    );
+    let still_wrong = matches!(scene_from_value(&retried), Err(e) if e.path == error.path);
     (!still_wrong).then(|| format!("a quoted value: `{key}=\"{value}\"`"))
 }
 

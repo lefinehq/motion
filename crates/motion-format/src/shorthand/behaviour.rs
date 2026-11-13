@@ -15,6 +15,7 @@ use winnow::token::{one_of, rest, take_till};
 
 use crate::Curve;
 use crate::curve::CUBIC_PREFIX;
+use crate::doc::Form;
 use crate::lex::{self, Failure, Parsed, blank0, blank1, ends_with, number, word};
 use crate::units::{Time, time};
 use crate::validate::{ID_RULE, is_valid_id};
@@ -92,6 +93,10 @@ impl FromStr for Behaviour {
             Diagnostic::new(kind, message).expected(EXPECTED)
         })
     }
+}
+
+impl Form for Behaviour {
+    const FORM: &str = EXPECTED;
 }
 
 /// What is wrong with a behaviour string, with the text it is wrong about.

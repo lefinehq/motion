@@ -14,8 +14,13 @@ use winnow::combinator::{alt, cut_err, delimited, eof, preceded, separated_pair,
 use winnow::prelude::*;
 use winnow::token::rest;
 
+use crate::doc::Form;
 use crate::fmt_num;
 use crate::lex::{self, Parsed};
+
+/// The accepted forms of a curve, for a value that is not a string. The
+/// names are listed by the unknown-curve error, which reads [`NAMED_CURVES`].
+const EXPECTED: &str = "a curve name such as `ease-out`, or `cubic(x1,y1,x2,y2)`";
 
 /// The expected form of a custom curve.
 const CUBIC_EXPECTED: &str =
@@ -74,6 +79,10 @@ impl FromStr for Curve {
             Some(problem) => Diagnostic::syntax(problem.describe(token)).expected(CUBIC_EXPECTED),
         })
     }
+}
+
+impl Form for Curve {
+    const FORM: &str = EXPECTED;
 }
 
 /// What is wrong with a token that starts `cubic(`.

@@ -191,3 +191,15 @@ fn an_entrance_names_a_preset_that_exists() {
             .starts_with("layers[1].in: unknown preset `zoom`")
     );
 }
+
+#[test]
+fn a_value_that_is_not_finite_is_out_of_range() {
+    let e = err(&scene(
+        r#"{"id":"a","rect":"1x1","anim":{"x":"inf -> 1 @0-5f"}}"#,
+    ));
+    assert_eq!(e.kind, Kind::OutOfRange);
+    assert_eq!(
+        e.to_string(),
+        "layers[0].anim.x: `inf` is not a finite number; expected a finite number"
+    );
+}

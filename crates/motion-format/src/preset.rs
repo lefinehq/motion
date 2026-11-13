@@ -7,10 +7,9 @@
 
 use std::sync::OnceLock;
 
-use indexmap::IndexMap;
 use serde_json::{Map, Value};
 
-use crate::doc::PresetDoc;
+use crate::doc::{AnimDoc, PresetsDoc};
 use crate::fmt_num;
 use crate::property::{PROPERTIES, names as prop};
 use crate::shorthand::{Behaviour, Coord, Position};
@@ -56,7 +55,7 @@ pub struct PresetSpec {
 pub fn builtin_presets() -> &'static [(String, PresetSpec)] {
     static BUILTIN: OnceLock<Vec<(String, PresetSpec)>> = OnceLock::new();
     BUILTIN.get_or_init(|| {
-        let doc: IndexMap<String, PresetDoc> =
+        let doc: PresetsDoc =
             serde_json::from_str(BUILTIN_JSON).expect("presets.json holds preset objects");
         validate::presets(&doc).expect("presets.json holds valid presets")
     })
@@ -70,17 +69,16 @@ pub fn builtin_presets() -> &'static [(String, PresetSpec)] {
 /// the behaviour's frames and with its curve, which is what the compiler
 /// builds from `in`. The resting value is the registry default, except for
 /// the two properties `at` sets, which are resolved against `canvas`
-/// (`center` is half the size). `others` are the layer's existing `anim`
-/// entries as written, if any; those for properties the preset does not
-/// animate are appended unchanged, so the object can replace the whole
-/// `anim`.
+/// (`center` is half the size). `others` are the layer's `anim` tracks as
+/// written; those for properties the preset does not animate are appended
+/// unchanged, so the object can replace the whole `anim`.
 pub(crate) fn expand_as_anim(
     spec: &PresetSpec,
     behaviour: &Behaviour,
     at: &Position,
     canvas: (f64, f64),
     fps: f64,
-    others: Option<&Map<String, Value>>,
+    others: &AnimDoc,
 ) -> String {
     let resolve = |c: Coord, extent: f64| match c {
         Coord::Center => extent / 2.0,
@@ -88,7 +86,7 @@ pub(crate) fn expand_as_anim(
     };
     let start = behaviour.start.to_frames(fps);
     let end = start + behaviour.duration.to_frames(fps);
-    let mut entries: Vec<(&str, Value)> = Vec::new();
+    let mut tracks = Map::new();
     for &(index, from) in &spec.props {
         let property = &PROPERTIES[index];
         let rest = match property.name {
@@ -109,18 +107,16 @@ pub(crate) fn expand_as_anim(
             fmt_num(end),
             behaviour.curve
         );
-        entries.push((property.name, Value::String(track)));
+        tracks.insert(property.name.to_owned(), Value::String(track));
     }
-    for (name, value) in others.into_iter().flatten() {
-        if !entries.iter().any(|(n, _)| n == name) {
-            entries.push((name, value.clone()));
-        }
+    for (name, track) in others {
+        tracks.entry(name.as_str()).or_insert_with(|| {
+            // A track holds only strings and finite numbers, which always
+            // convert.
+            serde_json::to_value(track).expect("a track converts to JSON")
+        });
     }
-    let body: Vec<String> = entries
-        .iter()
-        .map(|(n, v)| format!("\"{n}\":{v}"))
-        .collect();
-    format!("{{{}}}", body.join(","))
+    Value::Object(tracks).to_string()
 }
 
 /// Finds `name` among a scene's own presets first, then the built-ins.

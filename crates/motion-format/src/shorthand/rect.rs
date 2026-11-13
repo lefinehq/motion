@@ -8,6 +8,7 @@ use motion_diagnostic::{Diagnostic, Result};
 use winnow::combinator::{delimited, opt, preceded, separated_pair};
 use winnow::prelude::*;
 
+use crate::doc::Form;
 use crate::lex::{self, Parsed, blank0, blank1, number};
 
 pub(crate) const EXPECTED: &str = "`<width>x<height> [r<radius>]`, e.g. `300x400 r24`";
@@ -31,6 +32,10 @@ impl FromStr for RectShape {
     fn from_str(text: &str) -> Result<RectShape> {
         lex::parse_whole(text, rect, "rectangle", EXPECTED)
     }
+}
+
+impl Form for RectShape {
+    const FORM: &str = EXPECTED;
 }
 
 /// `<width>x<height> [r<radius>]`, with any whitespace around and between.
