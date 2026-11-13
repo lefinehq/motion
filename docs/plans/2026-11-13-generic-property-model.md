@@ -16,7 +16,13 @@
 - **`anim`.** Layers can animate any registered property directly, either with a two-key string (`"0 -> 1 @0-12f ease-out"`) or with a keyframe array (`[["0f",0],["12f",1,"cubic(.2,0,0,1)"]]`).
 - **Edits.** Edits can address nested keys (`card anim.opacity=...`) and take JSON arrays and objects as values.
 
-**Tech stack:** unchanged. Rust 1.91, edition 2024, `serde_json` with `preserve_order`, `clap`. No new dependencies.
+**Tech stack:**
+- Rust 1.91, edition 2024
+- `serde_json` with `preserve_order`
+- `clap`
+- `thiserror` 2 for error types (Task 0)
+- dev-only: `proptest` and `insta`
+- CI tools: `cargo-llvm-cov` and `cargo-deny`
 
 **Spec:**
 - `docs/design/scene-format.md`: the three animation levels (behaviours, property tracks, keyframes)
@@ -39,6 +45,7 @@
   - Presets, named curves and property names are data: tables or embedded JSON, looked up by name.
   - A `match` is fine for a closed set of genuinely different behaviours, such as the three `Curve` variants or the content kinds. It is not acceptable for listing names that are really data.
   - Errors about an unknown name list the allowed names, taken from the same table.
+- **Dependencies:** only those listed under Tech stack. Every error type derives `thiserror::Error`; no hand-written `Display` for errors. Every parser of user text gets a `proptest` test showing it never panics.
 - **Errors** name what was wrong and show the expected form (`; expected …`), because an agent must be able to fix its input in one try.
 - **Tests and checks:** every task's tests ship in the same commit as its code. Before every commit, all three of these must pass:
   ```
@@ -63,6 +70,33 @@
 4. **The same property in `in` and in `anim`:** a format error that says to put the entrance in `anim` instead (Task 3).
 5. **Rotated or scaled boxes:** checks use the axis-aligned bounding box of the transformed box (Task 5).
 6. **A fix hint on an axis driven by `anim`:** no shift on that axis, because `at` does not move it (Task 5).
+
+---
+
+### Task 0: Tooling for contributors
+
+**Files:**
+- Modify:
+  - `Cargo.toml`: `[workspace.dependencies]` gains `thiserror = "2"`, `proptest = "1"` and `insta = "1"`.
+  - the error types in `motion-format` (`error.rs`), `motion-query` (`error.rs`) and `motion-edit` (`error.rs`)
+  - `.github/workflows/ci.yml`
+  - `CONTRIBUTING.md`
+- Create:
+  - `deny.toml`
+  - proptest tests next to each shorthand parser and the edit tokenizer
+
+**What to do:**
+- **Errors.** `ShorthandError`, `FormatError`, `QueryError` and `EditError` derive `thiserror::Error`, with `#[error(...)]` replacing the hand-written `Display` impls. Every message stays byte-identical, and the existing tests prove it.
+- **Property tests.** `proptest` tests assert that `Time::parse`, `Color::parse`, `Size::parse`, `Position::parse`, `RectShape::parse`, `Font::parse`, `Behaviour::parse` and `parse_edit` never panic on arbitrary strings. Where a parser has a `Display`, `parse(display(x)) == x`.
+- **CI.** Two new jobs:
+  - **Coverage:** `cargo llvm-cov --workspace --fail-under-lines 85`, with the tool installed by `taiki-e/install-action`.
+  - **Licences and advisories:** `cargo deny check`.
+- **`deny.toml`.** Allowed licences: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unicode-3.0 and Zlib. Copyleft is not allowed (the codec licence policy). Advisories: deny vulnerabilities.
+- **`CONTRIBUTING.md`.** A short "Tools" section: how to run coverage and `cargo deny` locally, and that `insta` is for snapshot tests of text output (`cargo insta review`).
+
+- [ ] **Step 1:** Convert the errors and add the property tests. All existing tests must pass unchanged.
+- [ ] **Step 2:** Add `deny.toml`, the CI jobs and the CONTRIBUTING section. If `cargo-deny` or `cargo-llvm-cov` is installed locally, run it. Otherwise say so in the report; CI will run them.
+- [ ] **Step 3: Run all three checks. Commit:** `build: add thiserror, property tests, coverage and licence checks`.
 
 ---
 
