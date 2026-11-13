@@ -14,6 +14,25 @@ cargo test --workspace
 
 CI runs the same commands on Linux and macOS.
 
+## Where tests live
+
+There is no test code in `src/`. Unit tests for `crates/<c>/src/<path>.rs` live in `crates/<c>/tests/unit/<path>.rs`. The source file ends with a child module that points at them, so the tests can still reach private items:
+
+```rust
+#[cfg(test)]
+#[path = "../tests/unit/curve.rs"]
+mod tests;
+```
+
+The path is relative to the source file's directory. There is no `tests/unit/main.rs`, so Cargo does not build the folder as a test target. Tests that use only the public API (such as the CLI tests) stay directly in `tests/`. `include_str!` paths are relative to the test file.
+
+## Tools
+
+- **Coverage:** `cargo install cargo-llvm-cov`, then `cargo llvm-cov --workspace --fail-under-lines 85`. CI fails below 85% line coverage.
+- **Licences and advisories:** `cargo install cargo-deny --locked`, then `cargo deny check`. The policy is in `deny.toml`: permissive licences only.
+- **Property tests:** `proptest` checks that every parser of user text never panics on arbitrary strings, and that printing then parsing gives back the same value.
+- **Snapshot tests:** `insta` is for tests of text output. Run `cargo insta review` (from `cargo install cargo-insta`) to accept or reject changed snapshots, and commit the `.snap` files.
+
 ## Rules
 
 - **Every change comes with tests.** New behaviour gets a test that fails without it; a bug fix gets a test that reproduces the bug. Tests ship in the same commit as the code.

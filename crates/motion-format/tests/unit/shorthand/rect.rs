@@ -1,0 +1,61 @@
+//! Unit tests for `src/shorthand/rect.rs`.
+
+use super::*;
+#[test]
+fn rect_parses_size_and_optional_radius() {
+    assert_eq!(
+        RectShape::parse("300x400 r24").unwrap(),
+        RectShape {
+            width: 300.0,
+            height: 400.0,
+            radius: 24.0
+        }
+    );
+    assert_eq!(RectShape::parse("240x8").unwrap().radius, 0.0);
+    assert!(
+        RectShape::parse("300")
+            .unwrap_err()
+            .to_string()
+            .contains("`<width>x<height> [r<radius>]`, e.g. `300x400 r24`")
+    );
+    assert!(RectShape::parse("0x10").is_err());
+}
+#[test]
+fn rect_rejects_malformed_input() {
+    for bad in [
+        "",
+        "10x",
+        "x10",
+        "10x-5",
+        "10x10 24",
+        "10x10 r-1",
+        "10x10 r",
+        "10x10 r1 r2",
+        "axb",
+    ] {
+        assert!(RectShape::parse(bad).is_err(), "{bad:?} should be rejected");
+    }
+}
+#[test]
+fn rect_accepts_fractions_and_zero_radius() {
+    let r = RectShape::parse("10.5x2 r0").unwrap();
+    assert_eq!((r.width, r.height, r.radius), (10.5, 2.0, 0.0));
+}
+
+/// Property tests: the parsers must reject bad text with an error, never panic.
+mod never_panics {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn rect_any_string(s in ".*") {
+        let _ = RectShape::parse(&s);
+        }
+
+        #[test]
+        fn rect_short_printable_ascii(s in "[ -~]{0,40}") {
+        let _ = RectShape::parse(&s);
+        }
+    }
+}

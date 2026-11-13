@@ -7,14 +7,19 @@
 //! typed values, and writes a scene back out ([`write_document`]) keeping
 //! what the author wrote. It never touches pixels or files.
 
+pub mod anim;
+mod curve;
 mod error;
 mod number;
 mod parse;
+pub mod preset;
+pub mod property;
 mod scene;
 pub mod shorthand;
 pub mod units;
 mod write;
 
+pub use curve::{Curve, NAMED_CURVES};
 pub use error::{FormatError, ShorthandError};
 pub use number::fmt_num;
 pub use parse::{LAYER_KEYS, SCENE_KEYS, parse_document, scene_from_value};

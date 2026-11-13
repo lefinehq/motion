@@ -1,0 +1,6 @@
+---
+source: crates/motion-query/src/../tests/unit/at.rs
+expression: "at(&g, 5.0, &[]).unwrap()"
+---
+a x=300 y=400 w=100 h=100 opacity=0.5 scale=0.8
+b x=700 y=400 w=100 h=100 opacity=0.5 rotate=-45

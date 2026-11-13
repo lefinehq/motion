@@ -24,7 +24,7 @@ Here is what each layer does:
 - **`cards`** is five cards in a row, one per label. They fade up one after another, starting at frame 15 and six frames apart.
 - **`bloom`** has no content, only an effect. It adds a soft glow to everything below it.
 
-The syntax shown here is illustrative. The exact grammar is part of the spec work.
+The syntax shown here is illustrative, and `repeat`, `layout`, `data`, `item` and `fx` are designed but not built yet. What is built today is the canvas, `text` and `rect` layers, `fill`, `at`, `in`, `anim` and `presets`; the sections below say what is still planned.
 
 ## The canvas
 
@@ -66,9 +66,23 @@ Every layer can also have:
 - **`mblur`:** motion blur
 - in and out points, and a time offset
 
+## Properties
+
+Every animatable value of a layer is a **property**. They are listed once, in `crates/motion-format/src/property.rs`; this table mirrors that list, and a test checks that the names match.
+
+| Property | Default | Range | Meaning |
+|---|---|---|---|
+| `x` | 0 | any | Centre x in px. The resting value comes from `at`. |
+| `y` | 0 | any | Centre y in px. The resting value comes from `at`. |
+| `opacity` | 1 | 0 to 1 | How opaque the layer is, 0 (invisible) to 1 (solid). |
+| `scale` | 1 | any | Uniform size factor. Negative values mirror. |
+| `rotate` | 0 | any | Rotation in degrees, clockwise. |
+
+`at` sets the resting `x` and `y`. A property that nothing animates stays at its default, or at the value `at` gives. Checks measure the transformed box: a layer's size times `scale`, turned by `rotate`.
+
 ## Animation, at three levels of detail
 
-All three levels compile to the same thing inside the engine. Use the simplest level that does the job.
+All three levels compile to the same thing inside the engine: a **track** of keys for each property. Use the simplest level that does the job.
 
 **1. Behaviours.** These say what happens in a few words:
 
@@ -76,17 +90,63 @@ All three levels compile to the same thing inside the engine. Use the simplest l
 "in":"fade-up 60px 12f ease-out @15f stagger 6f"
 ```
 
-Easing is a cubic bézier, as in CSS. `linear`, `ease-in`, `ease-out` and `ease-in-out` are shortcuts; `cubic(x1,y1,x2,y2)` sets the curve exactly, for example `cubic(.2,0,0,1)`. The y values may go outside 0–1 to overshoot.
-
-**2. Property tracks.** These animate one value from A to B:
+**2. Property tracks.** These animate one property, in the `anim` object. The string form goes from A to B:
 
 ```json
 "anim":{"x":"0 -> 200 @0-30f ease-out"}
 ```
 
-**3. Keyframes.** These give exact values at exact frames, with bezier easing. They are the escape hatch for full control.
+The range after `@` takes `f` (frames) or `s` (seconds). The curve is optional and defaults to `linear`. Values outside the property's range are rejected.
+
+**3. Keyframes.** These give exact values at exact times, as a list of `[time, value]` or `[time, value, curve]`:
+
+```json
+"anim":{"rotate":[[0,-10],["1s",0,"cubic(.2,0,0,1)"],["2s",5]]}
+```
+
+A bare time is frames; a string such as `"1s"` carries its unit. Keys go in time order. The curve on a key leads to the next key. The last key's curve is unused. Before its first key a property holds the first value, and after its last key the last value.
 
 We store the highest level that fits. A delay or a stagger therefore stays a single value, and changing it is a single edit.
+
+### Curves
+
+A curve is a cubic bézier, as in CSS, or `hold`. The names are shortcuts from one table:
+
+| Name | What it does |
+|---|---|
+| `linear` | Constant speed. |
+| `hold` | Keeps the start value, then jumps to the end value at the end. |
+| `ease` | Starts and ends gently. |
+| `ease-in` | Starts slowly. |
+| `ease-out` | Ends slowly. |
+| `ease-in-out` | Starts and ends slowly. |
+
+`cubic(x1,y1,x2,y2)` sets the curve exactly, for example `cubic(.2,0,0,1)`. The x values must be between 0 and 1, so time only moves forward. The y values may go outside 0 to 1, which makes the value overshoot (`cubic(.3,1.6,.5,1)`) or wind up first.
+
+### Presets
+
+A preset is data: a list of properties and where each starts. The behaviour then animates each one from its start to its resting value. These are built in (`crates/motion-format/src/presets.json`):
+
+| Preset | Starts from |
+|---|---|
+| `fade` | opacity 0 |
+| `fade-up` | opacity 0, moved down by the distance, so it rises into place |
+| `fade-down` | opacity 0, moved up by the distance |
+| `fade-left` | opacity 0, moved right by the distance |
+| `fade-right` | opacity 0, moved left by the distance |
+| `pop` | opacity 0, scale 0.6 |
+| `spin-in` | opacity 0, rotated -90 degrees |
+
+A start is a number, `"+d"` (the resting value plus the behaviour's distance) or `"-d"` (minus it). A scene adds presets, or overrides a built-in one by reusing its name, with a `presets` key:
+
+```json
+"presets":{"drop":{"opacity":0,"y":"-d","scale":0.8}},
+"layers":[{"id":"title","text":"Hi","in":"drop 80px 12f ease-out"}]
+```
+
+### One writer per property
+
+If `in` already animates a property, `anim` may not also animate it: the file is rejected, naming the property and the preset. There are two ways out. Move the entrance into `anim`: set `in=none` and write the preset as `anim` tracks, one per property it sets; the error message gives that edit for the layer, computed from the preset, the layer's `at` and the scene size (custom curves are shown to two decimals). Or define a scene preset under `presets` that leaves the property out. For example `"in":"fade 10f"` with `"anim":{"opacity":"0 -> 1 @0-12f"}` is an error; `anim` on `rotate` is fine.
 
 ## Repeats and data
 

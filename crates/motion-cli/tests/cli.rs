@@ -106,6 +106,27 @@ fn edit_writes_canonical_file_and_prints_report() {
 }
 
 #[test]
+fn edit_takes_nested_keys_and_json_values() {
+    let path = copy_to(
+        "edit_nested_json",
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/launch.json"),
+    );
+    let out = motion(&[
+        "edit",
+        &path,
+        r#"title in=none anim.opacity=[["0f",0],["12f",1]]"#,
+    ]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = fs::read_to_string(&path).expect("read back");
+    assert!(motion_format::parse_document(&text).is_ok());
+    // The nested keys really landed in the file.
+    let doc: serde_json::Value = serde_json::from_str(&text).expect("json");
+    let anim = &doc["layers"][0]["anim"]["opacity"];
+    assert_eq!(anim, &serde_json::json!([["0f", 0], ["12f", 1]]), "{text}");
+    assert!(doc["layers"][0].get("in").is_none(), "{text}");
+}
+
+#[test]
 fn edit_invalid_value_leaves_file_untouched() {
     let path = copy_to("edit_invalid", OFFSCREEN);
     let before = fs::read(&path).expect("read");

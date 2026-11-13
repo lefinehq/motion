@@ -1,7 +1,5 @@
 # Foundations and first slice: implementation plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** a local `motion` repository that a newcomer enjoys reading, plus the first working slice. The slice reads a minimal scene, evaluates it at any frame, runs `check` (off-screen and outside-safe-area), applies one-line edits, and exposes all of this through a `motion` command-line tool. Every part is covered by detailed unit tests.
 
 **Architecture:**

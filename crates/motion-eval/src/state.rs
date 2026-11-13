@@ -3,42 +3,68 @@
 //! Part of step 3 (Evaluate). Plain data in pixels, one [`NodeState`] per
 //! node, so checks and renderers never need to know about animations.
 
+use motion_format::property::{names, property};
+
 /// One node's resolved values at a single frame.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeState {
     /// The layer id this state belongs to.
     pub id: String,
-    /// Centre x in pixels, with any entrance offset applied.
-    pub x: f64,
-    /// Centre y in pixels, with any entrance offset applied.
-    pub y: f64,
-    /// Box width in pixels.
+    /// Box width in pixels, before `scale` and `rotate`.
     pub width: f64,
-    /// Box height in pixels.
+    /// Box height in pixels, before `scale` and `rotate`.
     pub height: f64,
-    /// Opacity from 0 (invisible) to 1 (fully visible).
-    pub opacity: f64,
+    /// One value per property, parallel to `motion_format::property::PROPERTIES` and clamped to each
+    /// property's range. Read them with [`NodeState::get`].
+    pub values: Vec<f64>,
 }
 
 impl NodeState {
-    /// The x coordinate of the left edge.
+    /// The value of the property called `name`.
+    ///
+    /// Panics only if `name` is not in the registry: that is a bug in the
+    /// caller, not bad user input.
+    pub fn get(&self, name: &str) -> f64 {
+        let (index, _) = property(name).unwrap_or_else(|| panic!("no property `{name}`"));
+        self.values[index]
+    }
+
+    /// The axis-aligned bounding box `(left, top, right, bottom)` of the
+    /// box as drawn: `width x |scale|` by `height x |scale|`, rotated by
+    /// `rotate` degrees around the centre `(x, y)`.
+    pub fn bounds(&self) -> (f64, f64, f64, f64) {
+        let (x, y) = (self.get(names::X), self.get(names::Y));
+        // Mirroring (a negative scale) does not change the covered area.
+        let scale = self.get(names::SCALE).abs();
+        let (half_w, half_h) = (self.width * scale / 2.0, self.height * scale / 2.0);
+        let theta = self.get(names::ROTATE).to_radians();
+        // At 90 degrees cos is 6e-17, not 0; snap such dust so a quarter turn
+        // gives exact edges instead of fractions of a pixel.
+        let snap = |v: f64| if v.abs() < 1e-12 { 0.0 } else { v.abs() };
+        let (cos, sin) = (snap(theta.cos()), snap(theta.sin()));
+        let half_x = half_w * cos + half_h * sin;
+        let half_y = half_w * sin + half_h * cos;
+        (x - half_x, y - half_y, x + half_x, y + half_y)
+    }
+
+    /// The x coordinate of the left edge of [`NodeState::bounds`].
     pub fn left(&self) -> f64 {
-        self.x - self.width / 2.0
+        self.bounds().0
     }
 
-    /// The x coordinate of the right edge.
+    /// The x coordinate of the right edge of [`NodeState::bounds`].
     pub fn right(&self) -> f64 {
-        self.x + self.width / 2.0
+        self.bounds().2
     }
 
-    /// The y coordinate of the top edge.
+    /// The y coordinate of the top edge of [`NodeState::bounds`].
     pub fn top(&self) -> f64 {
-        self.y - self.height / 2.0
+        self.bounds().1
     }
 
-    /// The y coordinate of the bottom edge.
+    /// The y coordinate of the bottom edge of [`NodeState::bounds`].
     pub fn bottom(&self) -> f64 {
-        self.y + self.height / 2.0
+        self.bounds().3
     }
 }
 
@@ -50,3 +76,7 @@ pub struct FrameState {
     /// One state per node, in the graph's paint order.
     pub nodes: Vec<NodeState>,
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/state.rs"]
+mod tests;

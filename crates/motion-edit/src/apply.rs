@@ -18,10 +18,12 @@ const SCENE_TARGET: &str = "scene";
 /// The target `scene` always means the top level of the document, so a
 /// layer whose id is `scene` cannot be edited this way.
 /// Setting an existing key keeps its position; a new key is appended;
-/// removing a key that is not there does nothing. `raw` is never changed.
+/// removing a key that is not there does nothing; removing the last key of
+/// a nested object removes the object too. `raw` is never changed.
 ///
 /// # Errors
-/// Returns an [`EditError`] for a key that is not allowed for the target,
+/// Returns an [`EditError`] for a key (its first path segment) that is not
+/// allowed for the target, a path through a value that is not an object,
 /// an unknown layer id, a document without a `layers` array, or a result
 /// that no longer passes validation (`invalid result: ...`).
 pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value, EditError> {
@@ -37,13 +39,10 @@ pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value, EditError> {
     };
     for change in &edit.changes {
         match &change.value {
-            EditValue::Set(v) => {
-                // `insert` replaces in place when the key exists (order is
-                // preserved by serde_json's `preserve_order`), else appends.
-                object.insert(change.key.clone(), v.clone());
-            }
+            EditValue::Set(v) => set_path(object, &change.key, v.clone())?,
             EditValue::Remove => {
-                object.shift_remove(&change.key);
+                let segments: Vec<&str> = change.key.split('.').collect();
+                remove_path(object, &segments);
             }
         }
     }
@@ -75,6 +74,47 @@ fn quote_hint(edit: &Edit, error: &FormatError) -> String {
         .unwrap_or_default()
 }
 
+/// Sets a dotted path, creating the objects it needs. Setting an existing key
+/// keeps its position (serde_json's `preserve_order`); a new key is appended.
+fn set_path(root: &mut Map<String, Value>, key: &str, value: Value) -> Result<(), EditError> {
+    let segments: Vec<&str> = key.split('.').collect();
+    let (leaf, parents) = segments.split_last().expect("split yields one part");
+    let mut object = root;
+    for (i, seg) in parents.iter().enumerate() {
+        let entry = object
+            .entry(seg.to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+        object = entry.as_object_mut().ok_or_else(|| {
+            EditError::new(format!(
+                "cannot set `{key}`: `{}` is not an object",
+                segments[..=i].join(".")
+            ))
+        })?;
+    }
+    object.insert((*leaf).to_string(), value);
+    Ok(())
+}
+
+/// Removes the leaf of a path, then any object that this left empty on the
+/// way back up. Returns whether something was removed; a missing path (or a
+/// non-object on the way) changes nothing. `object` itself is never removed.
+fn remove_path(object: &mut Map<String, Value>, segments: &[&str]) -> bool {
+    let [first, rest @ ..] = segments else {
+        return false;
+    };
+    if rest.is_empty() {
+        return object.shift_remove(*first).is_some();
+    }
+    let Some(Value::Object(child)) = object.get_mut(*first) else {
+        return false;
+    };
+    let removed = remove_path(child, rest);
+    if removed && child.is_empty() {
+        object.shift_remove(*first);
+    }
+    removed
+}
+
 /// Rejects keys that are not part of the format for this kind of target.
 fn check_keys(edit: &Edit, is_scene: bool) -> Result<(), EditError> {
     let (allowed, what): (&[&str], &str) = if is_scene {
@@ -83,10 +123,12 @@ fn check_keys(edit: &Edit, is_scene: bool) -> Result<(), EditError> {
         (&LAYER_KEYS, "a layer")
     };
     for change in &edit.changes {
-        if !allowed.contains(&change.key.as_str()) {
+        // Only the first segment is checked here; deeper ones are checked by
+        // `scene_from_value` on the result.
+        let first = change.key.split('.').next().unwrap_or_default();
+        if !allowed.contains(&first) {
             return Err(EditError::new(format!(
-                "unknown key `{}` for {what}; allowed: {}",
-                change.key,
+                "unknown key `{first}` for {what}; allowed: {}",
                 allowed.join(", ")
             )));
         }
@@ -112,133 +154,5 @@ fn find_layer<'a>(doc: &'a mut Value, id: &str) -> Result<&'a mut Map<String, Va
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::parse_edit;
-    use serde_json::json;
-
-    fn doc() -> Value {
-        motion_format::parse_document(include_str!("../../../examples/launch.json"))
-            .unwrap()
-            .raw
-    }
-    fn run(l: &str) -> Value {
-        apply_edit(&doc(), &parse_edit(l).unwrap()).unwrap()
-    }
-    fn err(l: &str) -> String {
-        apply_edit(&doc(), &parse_edit(l).unwrap())
-            .unwrap_err()
-            .to_string()
-    }
-    fn keys(v: &Value) -> Vec<&str> {
-        v.as_object().unwrap().keys().map(String::as_str).collect()
-    }
-
-    #[test]
-    fn sets_and_removes_layer_keys() {
-        let out = apply_edit(&doc(), &parse_edit(r#"card fill=#FF0000 in=none"#).unwrap()).unwrap();
-        assert_eq!(out["layers"][1]["fill"], "#FF0000");
-        assert!(out["layers"][1].get("in").is_none());
-        assert_eq!(out["layers"][0], doc()["layers"][0]); // untouched layers stay byte-identical
-    }
-
-    #[test]
-    fn edits_the_scene_itself() {
-        assert_eq!(
-            apply_edit(&doc(), &parse_edit("scene bg=#000000 fps=60").unwrap()).unwrap()["fps"],
-            60
-        );
-    }
-
-    #[test]
-    fn reports_unknown_targets_keys_and_invalid_results() {
-        let err = |l: &str| {
-            apply_edit(&doc(), &parse_edit(l).unwrap())
-                .unwrap_err()
-                .to_string()
-        };
-        assert_eq!(err("ghost fill=#FFF"), "no layer with id `ghost`");
-        assert!(err("card colour=#FFF").contains(
-            "unknown key `colour` for a layer; allowed: id, text, rect, font, fill, at, in"
-        ));
-        assert!(err("card fill=blue").starts_with("invalid result: layers[1].fill"));
-        assert!(err("card id=title").contains("duplicate id `title`"));
-    }
-
-    #[test]
-    fn existing_key_keeps_its_position() {
-        let out = run("card rect=\"10x10\"");
-        assert_eq!(keys(&out["layers"][1]), keys(&doc()["layers"][1]));
-        assert_eq!(out["layers"][1]["rect"], "10x10");
-    }
-
-    #[test]
-    fn new_key_is_appended() {
-        let out = run("title fill=#FFFFFF");
-        let k = keys(&out["layers"][0]);
-        assert_eq!(k.last(), Some(&"fill"));
-        assert_eq!(k.len(), keys(&doc()["layers"][0]).len() + 1);
-    }
-
-    #[test]
-    fn removing_a_missing_key_is_a_no_op() {
-        assert_eq!(run("title fill=none"), doc());
-    }
-
-    #[test]
-    fn scene_keys_are_validated_against_scene_keys() {
-        assert!(err("scene colour=red").contains(
-            "unknown key `colour` for the scene; allowed: motion, size, fps, dur, bg, layers"
-        ));
-        // A layer key is not a scene key.
-        assert!(err("scene fill=#FFF").contains("unknown key `fill` for the scene"));
-    }
-
-    #[test]
-    fn unknown_keys_are_reported_before_unknown_targets() {
-        assert!(err("ghost colour=red").contains("unknown key `colour`"));
-    }
-
-    #[test]
-    fn invalid_scene_result_is_reported() {
-        assert!(err("scene fps=\"fast\"").starts_with("invalid result: "));
-    }
-
-    #[test]
-    fn number_or_bool_for_a_string_key_gets_a_quote_hint() {
-        assert_eq!(
-            err("title text=2024"),
-            "invalid result: layers[0].text: must be a string; expected e.g. \"text\":\"Hello\"; quote it: text=\"2024\""
-        );
-        assert!(err("title text=true").ends_with("; quote it: text=\"true\""));
-        assert!(err("scene bg=1.5").ends_with("; quote it: bg=\"1.5\""));
-        // Other errors, and strings that are simply wrong, get no hint.
-        assert!(!err("card fill=blue").contains("quote it"));
-        assert!(!err("scene fps=\"fast\"").contains("quote it"));
-    }
-
-    #[test]
-    fn input_is_not_mutated() {
-        let before = doc();
-        let _ = apply_edit(&before, &parse_edit("card fill=#000000 in=none").unwrap());
-        assert_eq!(before, doc());
-    }
-
-    #[test]
-    fn numbers_and_bools_are_written_as_json() {
-        assert_eq!(run("scene fps=24")["fps"], json!(24));
-    }
-
-    #[test]
-    fn missing_layers_array_is_an_error_not_a_panic() {
-        let raw = json!({"motion": 1});
-        let e = apply_edit(&raw, &parse_edit("card fill=#FFF").unwrap()).unwrap_err();
-        assert!(e.to_string().contains("no `layers` array"));
-    }
-
-    #[test]
-    fn non_object_document_is_an_error() {
-        let e = apply_edit(&json!([1]), &parse_edit("scene fps=1").unwrap()).unwrap_err();
-        assert!(e.to_string().contains("not an object"));
-    }
-}
+#[path = "../tests/unit/apply.rs"]
+mod tests;

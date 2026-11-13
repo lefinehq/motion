@@ -1,14 +1,18 @@
 //! The compiler: scene in, scene graph out.
 //!
 //! Part of step 2 (Compile). It resolves `center` coordinates, measures text,
-//! and converts entrance behaviours from seconds-or-frames into frames with a
-//! pixel offset to start from.
+//! and turns each layer's entrance and `anim` keys into one keyframe track per
+//! property, with times in frames.
 
-use motion_format::shorthand::{Behaviour, Coord, Preset};
-use motion_format::{Content, Scene};
+use motion_format::preset::Start;
+use motion_format::property::names;
+use motion_format::property::{PROPERTIES, property};
+use motion_format::shorthand::Coord;
+use motion_format::{Content, Curve, Layer, Scene};
 
-use crate::graph::{Enter, Node, NodeKind, SceneGraph};
+use crate::graph::{Node, NodeKind, SceneGraph};
 use crate::text::TextMeasure;
+use crate::track::{Key, Track};
 
 /// Compiles `scene` into a [`SceneGraph`], using `measure` to size text.
 pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
@@ -25,14 +29,14 @@ pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
                 }
                 Content::Rect(r) => (NodeKind::Rect, r.width, r.height),
             };
+            let (tracks, follows_at) = tracks(layer, scene, (width, height));
             Node {
                 id: layer.id.clone(),
                 kind,
-                x: resolve(layer.at.x, width),
-                y: resolve(layer.at.y, height),
                 width: w,
                 height: h,
-                enter: layer.enter.as_ref().map(|b| enter(b, scene.fps)),
+                tracks,
+                follows_at,
             }
         })
         .collect();
@@ -53,108 +57,91 @@ fn resolve(c: Coord, extent: f64) -> f64 {
     }
 }
 
-/// Converts a behaviour into frames and a starting offset.
-fn enter(b: &Behaviour, fps: f64) -> Enter {
-    let d = b.distance;
-    // The node starts on the side it came from, so the offset points away
-    // from the direction of travel. y grows downwards: fade-up starts below.
-    let from_offset = match b.preset {
-        Preset::Fade => (0.0, 0.0),
-        Preset::FadeUp => (0.0, d),
-        Preset::FadeDown => (0.0, -d),
-        Preset::FadeLeft => (d, 0.0),
-        Preset::FadeRight => (-d, 0.0),
-    };
-    Enter {
-        start: b.start.to_frames(fps),
-        duration: b.duration.to_frames(fps),
-        easing: b.easing,
-        from_offset,
-    }
-}
+/// Builds the tracks of `layer`, parallel to [`PROPERTIES`], and whether
+/// `(x, y)` still follow `at`.
+fn tracks(layer: &Layer, scene: &Scene, canvas: (f64, f64)) -> (Vec<Track>, (bool, bool)) {
+    let fps = scene.fps;
+    let index_of = |name: &str| property(name).map(|(i, _)| i);
+    // `at` sets the resting x and y.
+    let (x_at, y_at) = (index_of(names::X), index_of(names::Y));
+    // Resting values: `at` for the two position properties, the registry
+    // default for the rest.
+    let rest: Vec<f64> = PROPERTIES
+        .iter()
+        .enumerate()
+        .map(|(i, spec)| {
+            if Some(i) == x_at {
+                resolve(layer.at.x, canvas.0)
+            } else if Some(i) == y_at {
+                resolve(layer.at.y, canvas.1)
+            } else {
+                spec.default
+            }
+        })
+        .collect();
+    let mut tracks: Vec<Track> = rest.iter().map(|&v| Track::constant(v)).collect();
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::text::ApproxTextMeasure;
-
-    fn launch() -> motion_format::Scene {
-        motion_format::parse_document(include_str!("../../../examples/launch.json"))
-            .unwrap()
-            .scene
-    }
-
-    #[test]
-    fn resolves_centre_positions_and_sizes() {
-        let g = compile(&launch(), &ApproxTextMeasure);
-        assert_eq!(
-            (g.width, g.height, g.duration_frames),
-            (1920.0, 1080.0, 150.0)
-        );
-        let t = &g.nodes[0];
-        assert_eq!((t.x, t.y), (960.0, 260.0));
-        assert!((t.width - 580.8).abs() < 1e-9 && (t.height - 115.2).abs() < 1e-9);
-        let c = &g.nodes[1];
-        assert_eq!((c.x, c.y, c.width, c.height), (960.0, 700.0, 300.0, 400.0));
-    }
-
-    #[test]
-    fn converts_behaviours_to_frame_based_entrances() {
-        let g = compile(&launch(), &ApproxTextMeasure);
-        let e = g.nodes[1].enter.as_ref().unwrap();
-        assert_eq!(
-            (e.start, e.duration, e.from_offset),
-            (15.0, 12.0, (0.0, 60.0))
-        );
-    }
-
-    #[test]
-    fn offsets_point_away_from_the_direction_of_travel() {
-        // fade-up starts below (+y), fade-down above (-y), fade-left right of (+x), fade-right left of (-x)
-        for (preset, off) in [
-            ("fade-up", (0.0, 40.0)),
-            ("fade-down", (0.0, -40.0)),
-            ("fade-left", (40.0, 0.0)),
-            ("fade-right", (-40.0, 0.0)),
-            ("fade", (0.0, 0.0)),
-        ] {
-            let j = format!(
-                r#"{{"motion":1,"dur":"1s","layers":[{{"id":"a","rect":"10x10","in":"{preset}"}}]}}"#
-            );
-            let s = motion_format::parse_document(&j).unwrap().scene;
-            assert_eq!(
-                compile(&s, &ApproxTextMeasure).nodes[0]
-                    .enter
-                    .as_ref()
-                    .unwrap()
-                    .from_offset,
-                off,
-                "{preset}"
-            );
+    // The entrance: every property the preset names runs from its start
+    // value to its resting value.
+    // A missing preset is impossible after parsing, which checks the name.
+    let entrance = layer
+        .enter
+        .as_ref()
+        .and_then(|b| scene.preset(&b.preset).map(|spec| (b, spec)));
+    if let Some((b, spec)) = entrance {
+        let start = b.start.to_frames(fps);
+        let end = start + b.duration.to_frames(fps);
+        for &(prop, from) in &spec.props {
+            let rest = rest[prop];
+            let from = match from {
+                Start::Value(v) => v,
+                Start::Plus => rest + b.distance,
+                Start::Minus => rest - b.distance,
+            };
+            tracks[prop] = Track::new(vec![
+                Key {
+                    frame: start,
+                    value: from,
+                    curve: b.curve,
+                },
+                Key {
+                    frame: end,
+                    value: rest,
+                    curve: Curve::Linear,
+                },
+            ]);
         }
     }
 
-    #[test]
-    fn seconds_convert_to_frames_at_a_non_default_fps() {
-        let j = r#"{"motion":1,"fps":60,"dur":"2s","layers":[{"id":"a","rect":"10x10","in":"fade-up 40px 0.25s @0.5s"}]}"#;
-        let s = motion_format::parse_document(j).unwrap().scene;
-        let g = compile(&s, &ApproxTextMeasure);
-        let e = g.nodes[0].enter.as_ref().unwrap();
-        // 0.5 s and 0.25 s at 60 fps.
-        assert_eq!((e.start, e.duration), (30.0, 15.0));
-        assert_eq!((g.fps, g.duration_frames), (60.0, 120.0));
+    // The parser rejects an `anim` track for a property the entrance also
+    // animates, so this override only matters for scenes built in code.
+    for a in &layer.anim {
+        let keys = a
+            .keys
+            .iter()
+            .map(|k| Key {
+                frame: k.time.to_frames(fps),
+                value: k.value,
+                curve: k.curve,
+            })
+            .collect();
+        tracks[a.property] = Track::new(keys);
     }
-
-    #[test]
-    fn layers_without_entrance_have_none_and_kinds_match() {
-        let j = r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":"10x10"}]}"#;
-        let s = motion_format::parse_document(j).unwrap().scene;
-        let g = compile(&s, &ApproxTextMeasure);
-        assert!(g.nodes[0].enter.is_none());
-        assert_eq!(g.nodes[0].kind, NodeKind::Rect);
-        assert_eq!(
-            launch().layers.len(),
-            compile(&launch(), &ApproxTextMeasure).nodes.len()
-        );
-    }
+    // An axis stops following `at` when `anim` drives it, or when the
+    // entrance starts it at an absolute value: only the end of that track
+    // moves with `at`, so shifting `at` cannot bring the start into view.
+    let follows = |axis: Option<usize>| {
+        let by_anim = layer.anim.iter().any(|a| Some(a.property) == axis);
+        let by_start = entrance.is_some_and(|(_, spec)| {
+            spec.props
+                .iter()
+                .any(|&(p, s)| Some(p) == axis && matches!(s, Start::Value(_)))
+        });
+        !by_anim && !by_start
+    };
+    (tracks, (follows(x_at), follows(y_at)))
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/compile.rs"]
+mod tests;

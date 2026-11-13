@@ -8,7 +8,9 @@
 //! Grammar: `<target> <key>=<value> [<key>=<value> ...]`, where a value is a
 //! quoted string (`\"` and `\\` escapes), `none` (remove the key), a number,
 //! `true`/`false`, or any other bare word (a string). A quote is only
-//! allowed as the first character of a value.
+//! allowed as the first character of a value. A key may be a dotted path
+//! (`anim.opacity`), and a value starting with `[` or `{` is JSON, read up
+//! to its balanced end (strings inside may contain spaces and brackets).
 
 use crate::EditError;
 use serde_json::{Number, Value};
@@ -25,7 +27,7 @@ pub struct Edit {
 /// One `key=value` pair of an edit.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Change {
-    /// The key to change, e.g. `fill`.
+    /// The key to change, e.g. `fill`, or a dotted path such as `anim.opacity`.
     pub key: String,
     /// What to do with it.
     pub value: EditValue,
@@ -45,8 +47,9 @@ pub enum EditValue {
 /// # Errors
 /// Returns an [`EditError`] for an empty line, an unclosed quote, a quote
 /// that does not start a value, a missing target or changes, a word that is
-/// not `key=value`, an unsupported operator, an empty key or value, or a key
-/// given twice.
+/// not `key=value`, an unsupported operator, an empty key, an empty path
+/// segment, an empty value, invalid or unbalanced JSON, a key given twice, or
+/// two keys where one is a dotted prefix of the other.
 pub fn parse_edit(line: &str) -> Result<Edit, EditError> {
     let mut words = split_words(line)?.into_iter();
     let target = words
@@ -65,6 +68,18 @@ pub fn parse_edit(line: &str) -> Result<Edit, EditError> {
         if changes.iter().any(|c| c.key == change.key) {
             return Err(EditError::new(format!("key `{}` given twice", change.key)));
         }
+        // `anim` and `anim.x` would write the same place twice, and which
+        // one wins would depend on their order.
+        if let Some(other) = changes.iter().find(|c| overlaps(&c.key, &change.key)) {
+            let (outer, inner) = if other.key.len() <= change.key.len() {
+                (&other.key, &change.key)
+            } else {
+                (&change.key, &other.key)
+            };
+            return Err(EditError::new(format!(
+                "keys `{outer}` and `{inner}` overlap; set them in separate edits or merge them into one value"
+            )));
+        }
         changes.push(change);
     }
     if changes.is_empty() {
@@ -73,6 +88,15 @@ pub fn parse_edit(line: &str) -> Result<Edit, EditError> {
         )));
     }
     Ok(Edit { target, changes })
+}
+
+/// True when one dotted key is a prefix of the other, segment by segment.
+fn overlaps(a: &str, b: &str) -> bool {
+    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    long == short
+        || long
+            .strip_prefix(short)
+            .is_some_and(|rest| rest.starts_with('.'))
 }
 
 /// One whitespace-separated word of an edit line, split at its first `=`.
@@ -87,6 +111,9 @@ struct Word {
     /// always a string, so `"none"` and `"60"` do not become a removal or a
     /// number.
     quoted: bool,
+    /// The parsed value when it was written as JSON (`[…]` or `{…}`); `value`
+    /// then holds the raw text.
+    json: Option<Value>,
 }
 
 impl Word {
@@ -129,6 +156,20 @@ fn split_words(line: &str) -> Result<Vec<Word>, EditError> {
                     )));
                 }
             }
+            // `[` or `{` opens a JSON value only straight after the first `=`.
+            '[' | '{' if value_started && word.value.is_empty() && !word.quoted => {
+                let (raw, value) = read_json(c, &mut chars, &word.head)?;
+                word.value = raw;
+                word.json = Some(value);
+                // Nothing may follow the balanced end but a space.
+                if let Some(next) = chars.peek().filter(|n| !n.is_whitespace()) {
+                    return Err(EditError::new(format!(
+                        "unexpected text after the end of the JSON value in `{}{next}`; \
+                         put a space after it; {JSON_FORM}",
+                        word.shown()
+                    )));
+                }
+            }
             '"' => return Err(stray_quote(word, &mut chars)),
             c if word.head.contains('=') => word.value.push(c),
             c => word.head.push(c),
@@ -136,6 +177,51 @@ fn split_words(line: &str) -> Result<Vec<Word>, EditError> {
     }
     words.extend(current);
     Ok(words)
+}
+
+/// The expected form shown with every JSON value error.
+const JSON_FORM: &str = "expected `<key>=[…]` or `<key>={…}`, valid JSON";
+
+/// Reads a JSON value whose opening bracket `open` was just consumed, up to
+/// its balanced end, skipping brackets inside JSON strings (with escapes).
+/// Returns the raw text and the parsed value. `head` (`key=`) is for messages.
+fn read_json(
+    open: char,
+    chars: &mut impl Iterator<Item = char>,
+    head: &str,
+) -> Result<(String, Value), EditError> {
+    let mut raw = String::from(open);
+    let (mut depth, mut in_string, mut escaped) = (1usize, false, false);
+    for c in chars {
+        raw.push(c);
+        if in_string {
+            match (escaped, c) {
+                (true, _) => escaped = false,
+                (false, '\\') => escaped = true,
+                (false, '"') => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        match c {
+            '"' => in_string = true,
+            '[' | '{' => depth += 1,
+            ']' | '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    let key = head.strip_suffix('=').unwrap_or(head);
+                    let value = serde_json::from_str(&raw).map_err(|e| {
+                        EditError::new(format!("invalid JSON in `{key}`: {e}; {JSON_FORM}"))
+                    })?;
+                    return Ok((raw, value));
+                }
+            }
+            _ => {}
+        }
+    }
+    Err(EditError::new(format!(
+        "unclosed `{open}` in `{head}{raw}`; {JSON_FORM}"
+    )))
 }
 
 /// Reads a quoted value after its opening quote, up to the closing quote,
@@ -236,6 +322,15 @@ fn parse_change(word: &Word) -> Result<Change, EditError> {
             word.shown()
         )));
     }
+    // Every segment of a dotted path must be a plain name.
+    if key
+        .split('.')
+        .any(|seg| seg.is_empty() || !seg.chars().all(|c| c.is_alphanumeric() || "-_".contains(c)))
+    {
+        return Err(EditError::new(format!(
+            "invalid key `{key}`: each dot-separated part must be non-empty letters, digits, `-` or `_`; expected `<key>[.<key>…]=<value>`"
+        )));
+    }
     if word.value.is_empty() && !word.quoted {
         return Err(EditError::new(format!(
             "missing value for `{key}`; use `{key}=\"\"` for an empty string"
@@ -243,7 +338,9 @@ fn parse_change(word: &Word) -> Result<Change, EditError> {
     }
     Ok(Change {
         key: key.to_string(),
-        value: if word.quoted {
+        value: if let Some(json) = &word.json {
+            EditValue::Set(json.clone())
+        } else if word.quoted {
             EditValue::Set(Value::String(word.value.clone()))
         } else {
             parse_bare(&word.value)
@@ -278,211 +375,5 @@ fn parse_number(raw: &str) -> Option<Value> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn set(line: &str) -> Value {
-        match &parse_edit(line).unwrap().changes[0].value {
-            EditValue::Set(v) => v.clone(),
-            EditValue::Remove => panic!("expected Set"),
-        }
-    }
-    fn err(line: &str) -> String {
-        parse_edit(line).unwrap_err().to_string()
-    }
-
-    #[test]
-    fn parses_targets_keys_and_typed_values() {
-        let e = parse_edit(r#"title text="Launch \"Week\"" fill=#FFF fps=60 in=none"#).unwrap();
-        assert_eq!(e.target, "title");
-        assert_eq!(e.changes[0].value, EditValue::Set(json!("Launch \"Week\"")));
-        assert_eq!(e.changes[1].value, EditValue::Set(json!("#FFF")));
-        assert_eq!(e.changes[2].value, EditValue::Set(json!(60)));
-        assert_eq!(e.changes[3].value, EditValue::Remove);
-    }
-
-    #[test]
-    fn unquoted_spaces_get_a_helpful_error() {
-        let m = parse_edit("card at=center 666").unwrap_err().to_string();
-        assert!(
-            m.contains("expected `<key>=<value>`, got `666`")
-                && m.contains("quote values that contain spaces")
-        );
-    }
-
-    #[test]
-    fn rejects_unsupported_operators_and_empty_lines() {
-        assert!(
-            parse_edit("card delay+=10f")
-                .unwrap_err()
-                .to_string()
-                .contains("operator `+=` is not supported yet; use `=`")
-        );
-        assert!(
-            parse_edit("   ")
-                .unwrap_err()
-                .to_string()
-                .contains("empty edit")
-        );
-        assert!(
-            parse_edit("card")
-                .unwrap_err()
-                .to_string()
-                .contains("no changes")
-        );
-        assert!(
-            parse_edit(r#"card text="open"#)
-                .unwrap_err()
-                .to_string()
-                .contains("unclosed quote")
-        );
-    }
-
-    #[test]
-    fn backslash_escape_gives_one_backslash() {
-        assert_eq!(set(r#"a text="C:\\dir""#), json!("C:\\dir"));
-    }
-
-    #[test]
-    fn escaped_quote_does_not_end_the_string_or_split_the_word() {
-        assert_eq!(
-            set(r#"a text="say \"hi there\" now""#),
-            json!("say \"hi there\" now")
-        );
-    }
-
-    #[test]
-    fn quoted_value_may_contain_equals_and_spaces() {
-        let e = parse_edit(r#"a text="x = y" fill=red"#).unwrap();
-        assert_eq!(e.changes[0].value, EditValue::Set(json!("x = y")));
-        assert_eq!(e.changes[1].key, "fill");
-    }
-
-    #[test]
-    fn quoted_keywords_and_numbers_stay_strings() {
-        assert_eq!(set(r#"a text="none""#), json!("none"));
-        assert_eq!(set(r#"a text="60""#), json!("60"));
-        assert_eq!(set(r#"a text="true""#), json!("true"));
-    }
-
-    #[test]
-    fn parses_booleans() {
-        assert_eq!(set("a x=true"), json!(true));
-        assert_eq!(set("a x=false"), json!(false));
-    }
-
-    #[test]
-    fn parses_floats_and_negatives() {
-        assert_eq!(set("a x=1.5"), json!(1.5));
-        assert_eq!(set("a x=-2"), json!(-2));
-        assert_eq!(set("a x=-0.25"), json!(-0.25));
-        assert_eq!(set("a x=1e3"), json!(1000.0));
-    }
-
-    #[test]
-    fn non_numbers_stay_strings() {
-        assert_eq!(set("a x=12f"), json!("12f"));
-        assert_eq!(set("a x=NaN"), json!("NaN"));
-        assert_eq!(set("a x=inf"), json!("inf"));
-        assert_eq!(set("a x=-inf"), json!("-inf"));
-        assert_eq!(set("a x=1e999"), json!("1e999"));
-        assert_eq!(set("a x=center"), json!("center"));
-    }
-
-    #[test]
-    fn repeated_key_is_an_error() {
-        assert!(err("a fill=red fill=blue").contains("key `fill` given twice"));
-    }
-
-    #[test]
-    fn empty_key_is_an_error() {
-        assert!(err("a =x").contains("missing key before `=`"));
-    }
-
-    #[test]
-    fn empty_value_is_an_error_with_a_hint() {
-        assert_eq!(
-            err("a fill="),
-            "missing value for `fill`; use `fill=\"\"` for an empty string"
-        );
-        assert_eq!(set(r#"a fill="""#), json!(""));
-    }
-
-    #[test]
-    fn missing_target_is_an_error() {
-        assert!(err("fill=red").contains("expected a target"));
-    }
-
-    #[test]
-    fn a_quote_inside_a_bare_value_is_rejected_with_the_whole_value_suggested() {
-        assert_eq!(
-            err(r#"a x=ab"c d""#),
-            r#"unexpected quote in `x=ab"c`; quote the whole value: x="abc d""#
-        );
-        // Quote straight after the closing one, and a second `=` before it.
-        assert_eq!(
-            err(r#"a x=ab"c""#),
-            r#"unexpected quote in `x=ab"c"`; quote the whole value: x="abc""#
-        );
-        // The suggestion is escaped, so it parses when pasted back.
-        let message = err(r#"a x=a"b\"c""#);
-        assert_eq!(
-            message,
-            r#"unexpected quote in `x=a"b\"c"`; quote the whole value: x="ab\"c""#
-        );
-        let suggestion = message.rsplit("quote the whole value: ").next().unwrap();
-        let e = parse_edit(&format!("a {suggestion}")).unwrap();
-        assert_eq!(
-            e.changes[0].value,
-            EditValue::Set(serde_json::json!("ab\"c"))
-        );
-        assert_eq!(
-            err(r#"a x=1="2 3" y=4"#),
-            r#"unexpected quote in `x=1="2`; quote the whole value: x="1=2 3""#
-        );
-    }
-
-    #[test]
-    fn a_quote_outside_a_value_names_the_expected_form() {
-        assert_eq!(
-            err(r#"a"b x=1"#),
-            r#"unexpected quote in `a"`; quotes only go around a value, as in `<key>="<value>"`"#
-        );
-        assert_eq!(
-            err(r#"a "x"=1"#),
-            r#"unexpected quote in `"`; quotes only go around a value, as in `<key>="<value>"`"#
-        );
-    }
-
-    #[test]
-    fn text_after_a_closing_quote_is_rejected() {
-        assert_eq!(
-            err(r#"a x="b"c"#),
-            "unexpected text after the closing quote in `x=\"b\"c`; put a space after the quote, or quote the whole value"
-        );
-    }
-
-    #[test]
-    fn unclosed_quote_shows_what_was_read() {
-        assert_eq!(
-            err(r#"a text="open"#),
-            r#"unclosed quote in `text="open`; add a closing `"`"#
-        );
-    }
-
-    #[test]
-    fn well_formed_quotes_still_work_next_to_other_words() {
-        let e = parse_edit(r#"a x="b c" y="" z=3"#).unwrap();
-        assert_eq!(e.changes[0].value, EditValue::Set(json!("b c")));
-        assert_eq!(e.changes[1].value, EditValue::Set(json!("")));
-        assert_eq!(e.changes[2].value, EditValue::Set(json!(3)));
-    }
-
-    #[test]
-    fn bad_quoting_and_escapes_are_errors() {
-        assert!(err(r#"a text="x"y"#).contains("after the closing quote"));
-        assert!(err(r#"a text="x"y""#).contains("after the closing quote"));
-        assert!(err(r#"a text="a\nb""#).contains("unknown escape"));
-    }
-}
+#[path = "../tests/unit/parse.rs"]
+mod tests;
