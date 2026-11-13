@@ -352,6 +352,7 @@ dependencies = [
 name = "motion-edit"
 version = "0.0.0"
 dependencies = [
+ "insta",
  "motion-diagnostic",
  "motion-format",
  "motion-grammar",

@@ -15,6 +15,7 @@ serde_json = { workspace = true }
 winnow.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
 proptest.workspace = true
 
 [lints]

@@ -27,4 +27,4 @@ mod parse;
 mod path;
 
 pub use apply::apply_edit;
-pub use parse::{Change, Edit, EditValue, parse_edit};
+pub use parse::{Change, Edit, EditValue, KeyPath, parse_edit};

@@ -25,9 +25,9 @@ fn parses_targets_keys_and_typed_values() {
 
 #[test]
 fn unquoted_spaces_get_a_helpful_error() {
-    let m = parse_edit("card at=center 666").unwrap_err().to_string();
-    assert!(
-        m == "`666` is not a change; expected `<key>=<value>`, with quotes around a value that has spaces"
+    assert_eq!(
+        err("card at=center 666"),
+        "`666` is not a change; expected `<key>=<value>`, with quotes around a value that has spaces"
     );
 }
 
@@ -37,7 +37,7 @@ fn rejects_unsupported_operators_and_empty_lines() {
         parse_edit("card delay+=10f")
             .unwrap_err()
             .to_string()
-            .contains("operator `+=` is not supported yet; use `=`")
+            .contains("operator `+=` is not supported yet")
     );
     assert!(
         parse_edit("   ")
@@ -76,7 +76,7 @@ fn escaped_quote_does_not_end_the_string_or_split_the_word() {
 fn quoted_value_may_contain_equals_and_spaces() {
     let e = parse_edit(r#"a text="x = y" fill=red"#).unwrap();
     assert_eq!(e.changes[0].value, EditValue::Set(json!("x = y")));
-    assert_eq!(e.changes[1].key, "fill");
+    assert_eq!(e.changes[1].key.as_str(), "fill");
 }
 
 #[test]
@@ -219,14 +219,15 @@ fn bad_quoting_and_escapes_are_errors() {
 #[test]
 fn dotted_keys_and_json_values() {
     let e = parse_edit(r#"card anim.opacity=[["0f",0],["12f",1,"ease out ]"]] in=none"#).unwrap();
-    assert_eq!(e.changes[0].key, "anim.opacity");
+    assert_eq!(e.changes[0].key.as_str(), "anim.opacity");
+    assert_eq!(e.changes[0].key.segments(), ["anim", "opacity"]);
     assert_eq!(
         e.changes[0].value,
         EditValue::Set(json!([["0f", 0], ["12f", 1, "ease out ]"]]))
     );
     assert_eq!(e.changes[1].value, EditValue::Remove);
     let e = parse_edit(r#"scene presets.my-pop={"opacity":0,"scale":0.5} fps=60"#).unwrap();
-    assert_eq!(e.changes[0].key, "presets.my-pop");
+    assert_eq!(e.changes[0].key.segments(), ["presets", "my-pop"]);
     assert_eq!(
         e.changes[0].value,
         EditValue::Set(json!({"opacity":0,"scale":0.5}))
@@ -250,7 +251,7 @@ fn empty_path_segments_are_errors() {
 fn json_errors_show_the_expected_form() {
     assert_eq!(
         err(r#"a x=[1,"]" y=2"#),
-        "unclosed `[` in `x=[1,\"]\" y=2`; expected `<key>=[…]` or `<key>={…}`, valid JSON"
+        "invalid JSON in `x`: expected `,` or `]` at line 1 column 8; expected `<key>=[…]` or `<key>={…}`, valid JSON"
     );
     assert!(err("a x={\"a\":1").starts_with("unclosed `{` in `x={\"a\":1`"));
     let m = err("a x=[1,]");
@@ -313,14 +314,14 @@ mod round_trips {
         fn quoted_text_reads_back_as_the_same_string(key in KEY, text in ".*") {
             let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
             let change = only_change(&format!("card {key}=\"{escaped}\""));
-            prop_assert_eq!(change.key, key);
+            prop_assert_eq!(change.key.as_str(), key.as_str());
             prop_assert_eq!(change.value, EditValue::Set(Value::String(text)));
         }
 
         #[test]
         fn integers_read_back_as_integers(key in KEY, n in prop::num::i64::ANY) {
             let change = only_change(&format!("scene {key}={n}"));
-            prop_assert_eq!(change.key, key);
+            prop_assert_eq!(change.key.as_str(), key.as_str());
             prop_assert_eq!(change.value, EditValue::Set(Value::from(n)));
         }
 
@@ -340,7 +341,7 @@ fn operators_other_than_equals_are_named() {
     for (line, op) in [("a x+=1", "+"), ("a x-=1", "-"), ("a anim.x*=2", "*")] {
         assert_eq!(
             err(line),
-            format!("operator `{op}=` is not supported yet; use `=`; expected `<key>=<value>`"),
+            format!("operator `{op}=` is not supported yet; expected `<key>=<value>`"),
             "{line}"
         );
     }
@@ -369,17 +370,17 @@ fn a_misquoted_value_with_an_open_quote_still_gets_a_suggestion() {
 }
 
 #[test]
-fn json_is_read_to_its_balanced_end_only() {
+fn json_is_read_to_its_closing_bracket_only() {
     // A mismatched closing bracket is serde_json's to report.
     assert!(err("a x=[1}").starts_with("invalid JSON in `x`: "));
     assert_eq!(
         err("a x=[1]y"),
-        "unexpected text after the end of the JSON value in `x=[1]y`; put a space after it; expected `<key>=[…]` or `<key>={…}`, valid JSON"
+        "unexpected text after the end of the JSON value in `x=[1]y`; expected a space after the closing bracket"
     );
     let deep = format!("a x={}{}", "[".repeat(200), "]".repeat(200));
     assert_eq!(
         err(&deep),
-        "the JSON value of `x` nests deeper than 128 levels; expected `<key>=[…]` or `<key>={…}`, valid JSON"
+        "invalid JSON in `x`: recursion limit exceeded at line 1 column 128; expected `<key>=[…]` or `<key>={…}`, valid JSON"
     );
 }
 
@@ -420,4 +421,44 @@ fn errors_say_what_kind_of_problem_they_are() {
     assert_eq!(kind("a fill=\"red"), Kind::Syntax);
     assert_eq!(kind("a fill=red fill=blue"), Kind::Conflict);
     assert_eq!(kind("a anim={} anim.x=1"), Kind::Conflict);
+}
+
+/// Every error message of the edit language, one sample line each, so a
+/// change of wording shows up in review.
+#[test]
+fn every_error_message() {
+    let samples = [
+        "",
+        "fill=red",
+        "card",
+        "card at=center 666",
+        r#"a"b x=1"#,
+        r#"a x"y=1"#,
+        r#"a x=ab"c d""#,
+        r#"a x=a"b\"c""#,
+        "card delay+=10f",
+        "a x-=1",
+        "a =x",
+        "a x$y=1",
+        "a anim..x=1",
+        "a fill=",
+        r#"a text="open"#,
+        r#"a x="b"c"#,
+        r#"a text="a\nb""#,
+        r#"a text="a\"#,
+        "a x=[1, 2",
+        r#"a x={"a":1"#,
+        "a x=[1,]",
+        "a x=[1}",
+        r#"a x=[1,"]" y=2"#,
+        "a x=[1]y",
+        "a fill=red fill=blue",
+        "card anim={} anim.x=1",
+        "card anim.x.y=1 anim.x=2",
+    ];
+    let report: Vec<String> = samples
+        .iter()
+        .map(|line| format!("`{line}` → {}", err(line)))
+        .collect();
+    insta::assert_snapshot!(report.join("\n"));
 }

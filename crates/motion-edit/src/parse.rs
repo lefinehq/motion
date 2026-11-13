@@ -12,26 +12,30 @@
 //! path    = segment ("." segment)*      a segment is letters, digits, `-` and `_`
 //! value   = quoted | json | bare
 //! quoted  = '"' (char | '\"' | '\\')* '"'
-//! json    = a balanced `[…]` or `{…}`, then read by serde_json
+//! json    = a JSON array or object, read by serde_json up to its closing bracket
 //! bare    = text up to the next space: `none`, `true`, `false`, a number, or a string
 //! ```
 //!
 //! A quote is only allowed around a whole value, and a quoted or JSON value
-//! must end its word. Every failure names a [`Problem`] where it happens, and
-//! [`Problem::diagnostic`] is the one place that turns it into a
-//! [`Diagnostic`].
+//! must end its word. Every syntax failure names a [`Problem`] where it
+//! happens, and [`Problem::diagnostic`] is the one place that turns it into a
+//! [`Diagnostic`]. Two changes that write the same place are a conflict, not
+//! a syntax error, and [`Edit::check_conflicts`] reports them once the line
+//! is read.
 
 use std::borrow::Cow;
+use std::fmt;
 
 use motion_diagnostic::{Diagnostic, Kind, Result};
-use motion_grammar::{Failure, Parsed, blank0, blank1, parse_all, word};
+use motion_grammar::{Failure, Parsed, blank0, blank1, ends_with, parse_all, word};
 use serde_json::{Number, Value};
 use winnow::combinator::{
-    alt, cut_err, delimited, dispatch, empty, eof, fail, opt, peek, preceded, repeat, repeat_till,
-    separated, terminated,
+    alt, cut_err, delimited, dispatch, empty, eof, fail, opt, peek, preceded, repeat, separated,
+    terminated,
 };
-use winnow::error::ErrMode;
+use winnow::error::{ErrMode, FromExternalError};
 use winnow::prelude::*;
+use winnow::stream::Stream;
 use winnow::token::{any, none_of, one_of, take_till, take_while};
 
 /// A parsed edit: one target and the changes to make to it.
@@ -39,7 +43,8 @@ use winnow::token::{any, none_of, one_of, take_till, take_while};
 pub struct Edit {
     /// A layer id, or `scene` for the top level of the document.
     pub target: String,
-    /// The changes, in the order they were written.
+    /// The changes, in the order they were written. No two of them write
+    /// the same place.
     pub changes: Vec<Change>,
 }
 
@@ -47,7 +52,7 @@ pub struct Edit {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Change {
     /// The key to change, e.g. `fill`, or a dotted path such as `anim.opacity`.
-    pub key: String,
+    pub key: KeyPath,
     /// What to do with it.
     pub value: EditValue,
 }
@@ -61,6 +66,43 @@ pub enum EditValue {
     Remove,
 }
 
+/// The key of a change: a dotted path such as `anim.opacity`, kept both as
+/// written and as its segments, so neither has to be rebuilt from the other.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyPath {
+    /// The key as written, segments joined by `.`.
+    text: String,
+    /// The names of the path; never empty.
+    segments: Vec<String>,
+}
+
+impl KeyPath {
+    /// The key as written: `anim.opacity`.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.text
+    }
+
+    /// The names of the path, outermost first: `anim`, `opacity`. There is
+    /// always at least one.
+    #[must_use]
+    pub fn segments(&self) -> &[String] {
+        &self.segments
+    }
+
+    /// True when one key is the other or a prefix of it, segment by
+    /// segment: `anim` and `anim.x`, but not `anim` and `animal`.
+    fn overlaps(&self, other: &KeyPath) -> bool {
+        self.segments.starts_with(&other.segments) || other.segments.starts_with(&self.segments)
+    }
+}
+
+impl fmt::Display for KeyPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.text)
+    }
+}
+
 /// Parses one edit line such as `card fill=#FF0000 in=none`.
 ///
 /// # Errors
@@ -71,22 +113,43 @@ pub enum EditValue {
 /// straight after a quoted or JSON value, a key given twice, or two keys
 /// where one is a dotted prefix of the other.
 pub fn parse_edit(line: &str) -> Result<Edit> {
-    parse_all(line, edit, |problem| {
+    let edit = parse_all(line, edit, |problem| {
         // Every other failure names its problem where it happens, so a
         // failure without one can only mean the line has no word at all.
         problem.unwrap_or(Problem::Empty).diagnostic()
-    })
+    })?;
+    edit.check_conflicts()?;
+    Ok(edit)
 }
 
-impl Change {
-    /// The segments of the key's dotted path: `anim.opacity` is `anim`, `opacity`.
-    pub(crate) fn path(&self) -> Vec<&str> {
-        self.key.split('.').collect()
+impl Edit {
+    /// Rejects two changes that write the same place: `anim` and `anim.x`
+    /// would, and which one wins would depend on their order.
+    fn check_conflicts(&self) -> Result<()> {
+        for (i, later) in self.changes.iter().enumerate() {
+            let Some(earlier) = self.changes[..i]
+                .iter()
+                .find(|earlier| earlier.key.overlaps(&later.key))
+            else {
+                continue;
+            };
+            let (outer, inner) = if earlier.key.segments.len() <= later.key.segments.len() {
+                (&earlier.key, &later.key)
+            } else {
+                (&later.key, &earlier.key)
+            };
+            let message = if outer == inner {
+                format!("key `{outer}` given twice")
+            } else {
+                format!(
+                    "keys `{outer}` and `{inner}` overlap; set them in separate edits or merge them into one value"
+                )
+            };
+            return Err(Diagnostic::new(Kind::Conflict, message));
+        }
+        Ok(())
     }
 }
-
-/// A change as the grammar reads it, with its key borrowed from the line.
-type Written<'s> = (&'s str, EditValue);
 
 /// What the edit grammar fails with.
 type Error<'s> = ErrMode<Failure<Problem<'s>>>;
@@ -103,11 +166,9 @@ const JSON_FORM: &str = "`<key>=[…]` or `<key>={…}`, valid JSON";
 const ESCAPES: &str = "`\\\"` or `\\\\`";
 /// The operators people try before `=`; only `=` is supported for now.
 const OPERATORS: [char; 7] = ['+', '-', '*', '/', '<', '>', '!'];
-/// How deeply a JSON value may nest: serde_json's own limit, which also
-/// bounds the recursion of [`bracketed`].
-const MAX_DEPTH: usize = 128;
 
-/// What is wrong with an edit line, with the text it is wrong about.
+/// What is wrong with the syntax of an edit line, with the text it is
+/// wrong about.
 #[derive(Debug, Clone)]
 enum Problem<'s> {
     /// The line has no word at all.
@@ -144,42 +205,25 @@ enum Problem<'s> {
     Escape(char),
     /// A `\` at the very end of the line.
     DanglingEscape,
-    /// A JSON value without its closing bracket; `rest` is the line from the
-    /// value on.
+    /// A JSON value cut short by the end of the line; `rest` is the line
+    /// from the value on.
     UnclosedJson {
         key: &'s str,
         open: char,
         rest: &'s str,
     },
-    /// Balanced JSON that serde_json rejects, with its reason.
+    /// A JSON value serde_json rejects, with its reason.
     InvalidJson { key: &'s str, reason: String },
     /// A JSON value followed by more text; `text` is the value with it.
     TextAfterJson { key: &'s str, text: &'s str },
-    /// A JSON value nested deeper than [`MAX_DEPTH`].
-    TooDeep(&'s str),
-    /// The same key in two changes.
-    Twice(&'s str),
-    /// Two keys where the first is a dotted prefix of the second.
-    Overlap(&'s str, &'s str),
 }
 
 impl Problem<'_> {
     /// The diagnostic for this problem: the one place the edit grammar's
-    /// failures become messages. Every syntax problem names its text and the
-    /// form expected there.
+    /// failures become messages. Every problem names its text and the form
+    /// expected there.
     fn diagnostic(self) -> Diagnostic {
         let (message, expected): (String, Cow<'static, str>) = match self {
-            Problem::Twice(key) => {
-                return Diagnostic::new(Kind::Conflict, format!("key `{key}` given twice"));
-            }
-            Problem::Overlap(outer, inner) => {
-                return Diagnostic::new(
-                    Kind::Conflict,
-                    format!(
-                        "keys `{outer}` and `{inner}` overlap; set them in separate edits or merge them into one value"
-                    ),
-                );
-            }
             Problem::Empty => ("empty edit".into(), LINE_FORM.into()),
             Problem::NoTarget(word) => (
                 format!("no target before `{word}`"),
@@ -209,7 +253,7 @@ impl Problem<'_> {
                 )
             }
             Problem::Operator(op) => (
-                format!("operator `{op}=` is not supported yet; use `=`"),
+                format!("operator `{op}=` is not supported yet"),
                 CHANGE_FORM.into(),
             ),
             Problem::MissingKey(word) => (
@@ -251,60 +295,12 @@ impl Problem<'_> {
                 JSON_FORM.into(),
             ),
             Problem::TextAfterJson { key, text } => (
-                format!(
-                    "unexpected text after the end of the JSON value in `{key}={text}`; put a space after it"
-                ),
-                JSON_FORM.into(),
-            ),
-            Problem::TooDeep(key) => (
-                format!("the JSON value of `{key}` nests deeper than {MAX_DEPTH} levels"),
-                JSON_FORM.into(),
+                format!("unexpected text after the end of the JSON value in `{key}={text}`"),
+                "a space after the closing bracket".into(),
             ),
         };
         Diagnostic::syntax(message).expected(expected)
     }
-}
-
-impl Edit {
-    /// The edit of `target` with `changes`, unless there are none, or two of
-    /// them write the same place.
-    fn checked<'s>(
-        target: &'s str,
-        changes: Vec<Written<'s>>,
-    ) -> std::result::Result<Edit, Problem<'s>> {
-        if changes.is_empty() {
-            return Err(Problem::NoChanges(target));
-        }
-        for (i, &(key, _)) in changes.iter().enumerate() {
-            // `anim` and `anim.x` would write the same place twice, and which
-            // one wins would depend on their order.
-            if let Some(&(earlier, _)) = changes[..i].iter().find(|(e, _)| overlaps(e, key)) {
-                return Err(if earlier == key {
-                    Problem::Twice(key)
-                } else if earlier.len() < key.len() {
-                    Problem::Overlap(earlier, key)
-                } else {
-                    Problem::Overlap(key, earlier)
-                });
-            }
-        }
-        Ok(Edit {
-            target: target.to_owned(),
-            changes: changes
-                .into_iter()
-                .map(|(key, value)| Change {
-                    key: key.to_owned(),
-                    value,
-                })
-                .collect(),
-        })
-    }
-}
-
-/// True when one dotted key is the other or a prefix of it, segment by
-/// segment: `anim` and `anim.x`, but not `anim` and `animal`.
-fn overlaps(a: &str, b: &str) -> bool {
-    a.split('.').zip(b.split('.')).all(|(a, b)| a == b)
 }
 
 /// The whole line: the target, then each change after a space.
@@ -318,7 +314,16 @@ fn edit<'s>(input: &mut &'s str) -> Parsed<Edit, Problem<'s>> {
         ),
         blank0,
     )
-    .try_map(|(target, changes)| Edit::checked(target, changes))
+    .try_map(|(target, changes): (&str, Vec<Change>)| {
+        if changes.is_empty() {
+            Err(Problem::NoChanges(target))
+        } else {
+            Ok(Edit {
+                target: target.to_owned(),
+                changes,
+            })
+        }
+    })
     .parse_next(input)
 }
 
@@ -342,11 +347,12 @@ fn target<'s>(input: &mut &'s str) -> Parsed<&'s str, Problem<'s>> {
 
 /// One change, `path=value`. Any other word is a problem that says what it
 /// is instead.
-fn change<'s>(input: &mut &'s str) -> Parsed<Written<'s>, Problem<'s>> {
+fn change<'s>(input: &mut &'s str) -> Parsed<Change, Problem<'s>> {
     dispatch! {(peek(word), take_till(0.., ends_key), opt(one_of(['=', '"'])));
         (written, "", Some('=')) => cut_err(fail).context(Problem::MissingKey(written)),
-        // The key was read up to its `=`; `and_then` checks it is a path.
-        (written, key, Some('=')) => (empty.value(key).and_then(path), value(key, written)),
+        // The key was read up to its `=`; `and_then` reads it as a path.
+        (written, key, Some('=')) => (empty.value(key).and_then(path), value(key, written))
+            .map(|(key, value)| Change { key, value }),
         (_, before, Some('"')) => cut_err(fail).context(Problem::StrayQuote(before)),
         (_, word, _) => cut_err(fail).context(Problem::NotAChange(word)),
     }
@@ -356,25 +362,21 @@ fn change<'s>(input: &mut &'s str) -> Parsed<Written<'s>, Problem<'s>> {
 /// A key, the whole of the input: a dotted path of names. A key that ends
 /// in an operator (`delay+` of `delay+=10f`) is that operator, even `-`,
 /// which a name may otherwise contain.
-fn path<'s>(input: &mut &'s str) -> Parsed<&'s str, Problem<'s>> {
-    let key = *input;
+fn path<'s>(input: &mut &'s str) -> Parsed<KeyPath, Problem<'s>> {
+    let text = *input;
     preceded(
-        peek(opt(operator)).try_map(|op| match op {
+        peek(opt(ends_with(one_of(OPERATORS)))).try_map(|op| match op {
             Some(op) => Err(Problem::Operator(op)),
             None => Ok(()),
         }),
-        terminated(separated(1.., segment, '.').map(|()| ()), eof)
-            .take()
-            .context(Problem::InvalidKey(key)),
+        terminated(separated(1.., segment.map(str::to_owned), '.'), eof)
+            .context(Problem::InvalidKey(text)),
     )
+    .map(|segments| KeyPath {
+        text: text.to_owned(),
+        segments,
+    })
     .parse_next(input)
-}
-
-/// The operator at the end of a key.
-fn operator<'s>(input: &mut &'s str) -> Parsed<char, Problem<'s>> {
-    repeat_till(0.., any.void(), terminated(one_of(OPERATORS), eof))
-        .map(|((), op)| op)
-        .parse_next(input)
 }
 
 /// One name of a path: letters, digits, `-` and `_`.
@@ -391,9 +393,8 @@ fn value<'s>(key: &'s str, written: &'s str) -> impl Parser<&'s str, EditValue, 
             Some('"') => closed(quoted, |text| Problem::TextAfterQuote { key, text })
                 .map(|text| EditValue::Set(Value::String(text)))
                 .context(Problem::UnclosedQuote { key, rest }),
-            Some(open @ ('[' | '{')) => closed(json(key), |text| Problem::TextAfterJson { key, text })
-                .map(EditValue::Set)
-                .context(Problem::UnclosedJson { key, open, rest }),
+            Some(open @ ('[' | '{')) => closed(json(key, open), |text| Problem::TextAfterJson { key, text })
+                .map(EditValue::Set),
             Some(c) if !c.is_whitespace() => bare(key, written),
             _ => fail.context(Problem::MissingValue(key)),
         }
@@ -432,49 +433,27 @@ fn escape<'s>(input: &mut &'s str) -> Parsed<char, Problem<'s>> {
     .parse_next(input)
 }
 
-/// A JSON array or object for `key`, read to its balanced end, then parsed
-/// by serde_json.
-fn json<'s>(key: &'s str) -> impl Parser<&'s str, Value, Error<'s>> {
-    (move |input: &mut &'s str| bracketed(key, 0, input))
-        .take()
-        .try_map(move |text| {
-            serde_json::from_str(text).map_err(|e| Problem::InvalidJson {
+/// A JSON array or object for `key` that starts with `open`. serde_json
+/// reads it and stops at its closing bracket without looking further, so
+/// whatever follows is left to the line's grammar.
+fn json<'s>(key: &'s str, open: char) -> impl Parser<&'s str, Value, Error<'s>> {
+    move |input: &mut &'s str| {
+        let rest = *input;
+        let mut values = serde_json::Deserializer::from_str(rest).into_iter::<Value>();
+        let read = match values.next() {
+            Some(Ok(value)) => Ok(value),
+            Some(Err(error)) if !error.is_eof() => Err(Problem::InvalidJson {
                 key,
-                reason: e.to_string(),
-            })
-        })
-}
-
-/// A bracketed JSON value at nesting `depth`. Brackets inside JSON strings
-/// do not count, and any closing bracket ends it: serde_json reports a
-/// mismatched one.
-fn bracketed<'s>(key: &'s str, depth: usize, input: &mut &'s str) -> Parsed<(), Problem<'s>> {
-    (
-        one_of(['[', '{']),
-        cut_err(empty.verify(|_: &()| depth < MAX_DEPTH)).context(Problem::TooDeep(key)),
-        repeat::<_, _, (), _, _>(
-            0..,
-            alt((
-                (move |input: &mut &'s str| bracketed(key, depth + 1, input)),
-                json_string,
-                take_till(1.., ['[', ']', '{', '}', '"']).void(),
-            )),
-        ),
-        one_of([']', '}']),
-    )
-        .void()
-        .parse_next(input)
-}
-
-/// A string inside a JSON value, skipped whole so its brackets do not count.
-fn json_string<'s>(input: &mut &'s str) -> Parsed<(), Problem<'s>> {
-    (
-        '"',
-        repeat::<_, _, (), _, _>(0.., alt((preceded('\\', any), none_of(['"', '\\'])))),
-        '"',
-    )
-        .void()
-        .parse_next(input)
+                reason: error.to_string(),
+            }),
+            // The end of the line came first. (`None` means there was no
+            // value at all, which cannot happen after an opening bracket.)
+            _ => Err(Problem::UnclosedJson { key, open, rest }),
+        };
+        let value = read.map_err(|problem| ErrMode::from_external_error(input, problem).cut())?;
+        input.next_slice(values.byte_offset());
+        Ok(value)
+    }
 }
 
 /// A bare value: the text up to the next space. A quote inside it is a
@@ -496,17 +475,11 @@ fn bare<'s>(key: &'s str, written: &'s str) -> impl Parser<&'s str, EditValue, E
 }
 
 /// The rest of a word from a stray quote, as its author meant it: quotes
-/// group text, spaces included, and inside them a `\` takes the next
-/// character as it is. It needs at least one character: after a bare run,
-/// only a quote can start one, so a word that simply ends reads as `None`.
+/// group text, spaces included. It needs at least one character: after a
+/// bare run, only a quote can start one, so a word that simply ends reads
+/// as `None`.
 fn meant<'s>(input: &mut &'s str) -> Parsed<String, Problem<'s>> {
-    let group = preceded(
-        '"',
-        terminated(
-            repeat(0.., alt((preceded('\\', any), none_of(['"', '\\'])))),
-            opt('"'),
-        ),
-    );
+    let group = preceded('"', terminated(repeat(0.., meant_char), opt('"')));
     let run = take_till(1.., |c: char| c.is_whitespace() || c == '"').map(str::to_owned);
     repeat(1.., alt((group, run)))
         .fold(String::new, |mut whole, part: String| {
@@ -514,6 +487,13 @@ fn meant<'s>(input: &mut &'s str) -> Parsed<String, Problem<'s>> {
             whole
         })
         .parse_next(input)
+}
+
+/// One character inside a misquoted group, as its author meant it. Unlike
+/// [`escape`], it never fails: a `\` takes whatever character follows as it
+/// is, since the suggestion only needs a best reading of the text.
+fn meant_char<'s>(input: &mut &'s str) -> Parsed<char, Problem<'s>> {
+    alt((preceded('\\', any), none_of(['"', '\\']))).parse_next(input)
 }
 
 /// What an unquoted value means: `none` removes the key, `true` and `false`

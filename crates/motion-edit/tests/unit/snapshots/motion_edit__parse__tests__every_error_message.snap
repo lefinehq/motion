@@ -1,0 +1,31 @@
+---
+source: crates/motion-edit/src/../tests/unit/parse.rs
+expression: "report.join(\"\\n\")"
+---
+`` → empty edit; expected `<target> <key>=<value>`
+`fill=red` → no target before `fill=red`; expected a target first: a layer id or `scene`
+`card` → no changes after `card`; expected `<key>=<value>`
+`card at=center 666` → `666` is not a change; expected `<key>=<value>`, with quotes around a value that has spaces
+`a"b x=1` → unexpected quote in `a"`; expected quotes only around a value, as in `<key>="<value>"`
+`a x"y=1` → unexpected quote in `x"`; expected quotes only around a value, as in `<key>="<value>"`
+`a x=ab"c d"` → unexpected quote in `x=ab"c`; expected the whole value quoted: x="abc d"
+`a x=a"b\"c"` → unexpected quote in `x=a"b\"c"`; expected the whole value quoted: x="ab\"c"
+`card delay+=10f` → operator `+=` is not supported yet; expected `<key>=<value>`
+`a x-=1` → operator `-=` is not supported yet; expected `<key>=<value>`
+`a =x` → missing key before `=` in `=x`; expected `<key>=<value>`
+`a x$y=1` → invalid key `x$y`: each dot-separated part must be non-empty letters, digits, `-` or `_`; expected `<key>[.<key>…]=<value>`
+`a anim..x=1` → invalid key `anim..x`: each dot-separated part must be non-empty letters, digits, `-` or `_`; expected `<key>[.<key>…]=<value>`
+`a fill=` → missing value for `fill`; expected `fill=<value>`, or `fill=""` for an empty string
+`a text="open` → unclosed quote in `text="open`; expected a closing `"`
+`a x="b"c` → unexpected text after the closing quote in `x="b"c`; expected a space after the quote, or the whole value quoted
+`a text="a\nb"` → unknown escape `\n` in a quoted value; expected `\"` or `\\`
+`a text="a\` → dangling `\` at the end of a quoted value; expected `\"` or `\\`
+`a x=[1, 2` → unclosed `[` in `x=[1, 2`; expected `<key>=[…]` or `<key>={…}`, valid JSON
+`a x={"a":1` → unclosed `{` in `x={"a":1`; expected `<key>=[…]` or `<key>={…}`, valid JSON
+`a x=[1,]` → invalid JSON in `x`: trailing comma at line 1 column 4; expected `<key>=[…]` or `<key>={…}`, valid JSON
+`a x=[1}` → invalid JSON in `x`: expected `,` or `]` at line 1 column 3; expected `<key>=[…]` or `<key>={…}`, valid JSON
+`a x=[1,"]" y=2` → invalid JSON in `x`: expected `,` or `]` at line 1 column 8; expected `<key>=[…]` or `<key>={…}`, valid JSON
+`a x=[1]y` → unexpected text after the end of the JSON value in `x=[1]y`; expected a space after the closing bracket
+`a fill=red fill=blue` → key `fill` given twice
+`card anim={} anim.x=1` → keys `anim` and `anim.x` overlap; set them in separate edits or merge them into one value
+`card anim.x.y=1 anim.x=2` → keys `anim.x` and `anim.x.y` overlap; set them in separate edits or merge them into one value

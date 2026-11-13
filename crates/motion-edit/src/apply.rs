@@ -56,10 +56,10 @@ fn apply_changes(raw: &Value, edit: &Edit) -> Result<(Value, String)> {
     let (target, object) = find_target(&mut out, &edit.target)?;
     for change in &edit.changes {
         match &change.value {
-            EditValue::Set(value) => path::set(object, &change.path(), value.clone())?,
+            EditValue::Set(value) => path::set(object, change.key.segments(), value.clone())?,
             // Removing a key that is not there is not an error: the result is
             // what was asked for.
-            EditValue::Remove => _ = path::remove(object, &change.path()),
+            EditValue::Remove => _ = path::remove(object, change.key.segments()),
         }
     }
     Ok((out, target))
@@ -89,7 +89,7 @@ fn quote_hint(raw: &Value, edit: &Edit, target: &str, error: &Diagnostic) -> Opt
         .enumerate()
         .find_map(|(i, c)| match &c.value {
             EditValue::Set(v @ (Value::Number(_) | Value::Bool(_)))
-                if error.path.as_deref() == Some(key_path(target, &c.key).as_str()) =>
+                if error.path.as_deref() == Some(key_path(target, c.key.as_str()).as_str()) =>
             {
                 Some((i, v))
             }
@@ -124,7 +124,7 @@ fn check_keys(edit: &Edit) -> Result<()> {
     edit.changes
         .iter()
         // A path always has a first segment, even when the key has no dot.
-        .map(|change| change.path()[0])
+        .map(|change| change.key.segments()[0].as_str())
         .find(|first| !allowed.contains(first))
         .map_or(Ok(()), |first| {
             Err(Diagnostic::unknown(what, first, allowed))
