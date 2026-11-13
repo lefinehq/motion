@@ -32,16 +32,6 @@ const TEXT_EXAMPLE: &str = r#"e.g. "text":"Hello""#;
 pub(crate) const ID_RULE: &str =
     "ids use lowercase letters, digits, `-` and `_`, starting with a letter";
 
-/// The message for a key that holds a number, boolean or other non-string
-/// value where a string is required; see [`is_not_a_string`].
-const MUST_BE_STRING: &str = "must be a string";
-
-/// True when `d` reports a number, boolean or other non-string value on a
-/// key that requires a string. `motion-edit` uses it to suggest quoting.
-pub fn is_not_a_string(d: &Diagnostic) -> bool {
-    d.kind == Kind::Invalid && d.message == MUST_BE_STRING
-}
-
 /// Parses scene JSON text into a [`Document`]: the original value (kept so
 /// edits and writes preserve what the author wrote) plus the typed scene.
 pub fn parse_document(json: &str) -> Result<Document> {
@@ -58,7 +48,7 @@ pub fn parse_document(json: &str) -> Result<Document> {
 /// defaults for the keys that may be left out.
 pub fn scene_from_value(value: &Value) -> Result<Scene> {
     let obj = value.as_object().ok_or_else(|| {
-        Diagnostic::new(Kind::Invalid, "must be an object")
+        Diagnostic::new(Kind::WrongType, "must be an object")
             .at("scene")
             .expected(SCENE_EXAMPLE)
     })?;
@@ -83,18 +73,20 @@ pub fn scene_from_value(value: &Value) -> Result<Scene> {
             height: 1080,
         },
     };
-    let fps = match obj.get("fps") {
+    let fps = match obj.get("fps").map(Value::as_f64) {
         None => 30.0,
-        Some(v) => match v.as_f64() {
-            Some(f) if f > 0.0 => f,
-            _ => {
-                return Err(
-                    Diagnostic::new(Kind::OutOfRange, "must be a number above zero")
-                        .at("fps")
-                        .expected("e.g. `30`"),
-                );
-            }
-        },
+        Some(Some(f)) if f > 0.0 => f,
+        // One message covers both failures; the kind tells a value that is
+        // not a number from a number that is too small.
+        Some(number) => {
+            let kind = match number {
+                Some(_) => Kind::OutOfRange,
+                None => Kind::WrongType,
+            };
+            return Err(Diagnostic::new(kind, "must be a number above zero")
+                .at("fps")
+                .expected("e.g. `30`"));
+        }
     };
     let duration = match opt_str(obj, "dur", "", TIME_EXPECTED)? {
         Some(s) => Time::parse(s).map_err(|e| e.under("dur"))?,
@@ -119,7 +111,7 @@ pub fn scene_from_value(value: &Value) -> Result<Scene> {
         None => return Err(missing("scene", "layers", r#""layers":[]"#)),
         Some(Value::Array(a)) => a,
         Some(_) => {
-            return Err(Diagnostic::new(Kind::Invalid, "must be an array")
+            return Err(Diagnostic::new(Kind::WrongType, "must be an array")
                 .at("layers")
                 .expected(LAYERS_EXAMPLE));
         }
@@ -159,7 +151,7 @@ fn layer_from_value(
 ) -> Result<Layer> {
     let base = format!("layers[{i}]");
     let obj = value.as_object().ok_or_else(|| {
-        Diagnostic::new(Kind::Invalid, "must be an object")
+        Diagnostic::new(Kind::WrongType, "must be an object")
             .at(&base)
             .expected(LAYER_EXAMPLE)
     })?;
@@ -337,10 +329,7 @@ pub(crate) fn is_valid_id(id: &str) -> bool {
 fn check_keys(obj: &Map<String, Value>, allowed: &[&str], path: &str) -> Result<()> {
     match obj.keys().find(|k| !allowed.contains(&k.as_str())) {
         None => Ok(()),
-        Some(k) => {
-            let allowed = allowed.iter().map(|a| format!("`{a}`"));
-            Err(Diagnostic::unknown("key", k, allowed).at(path))
-        }
+        Some(k) => Err(Diagnostic::unknown("key", k, allowed).at(path)),
     }
 }
 
@@ -363,7 +352,7 @@ fn opt_str<'a>(
     match obj.get(key) {
         None => Ok(None),
         Some(Value::String(s)) => Ok(Some(s)),
-        Some(_) => Err(Diagnostic::new(Kind::Invalid, MUST_BE_STRING)
+        Some(_) => Err(Diagnostic::new(Kind::WrongType, "must be a string")
             .at(key)
             .under(parent)
             .expected(expected)),

@@ -116,6 +116,23 @@ fn array_form_errors() {
 }
 
 #[test]
+fn array_form_errors_say_what_kind_of_problem_they_are() {
+    let kind = |v: Value| anim(v).unwrap_err().kind;
+    assert_eq!(kind(json!([1])), Kind::WrongType);
+    assert_eq!(kind(json!({"x": 3})), Kind::WrongType);
+    assert_eq!(kind(json!({"x": [5]})), Kind::WrongType);
+    assert_eq!(kind(json!({"x": [[true, 0]]})), Kind::WrongType);
+    assert_eq!(kind(json!({"x": [[0, "a"]]})), Kind::WrongType);
+    assert_eq!(kind(json!({"x": [[0, 1, 3]]})), Kind::WrongType);
+    assert_eq!(kind(json!({"x": [[0]]})), Kind::Invalid);
+    assert_eq!(kind(json!({"x": [[5, 0], [2, 1]]})), Kind::Invalid);
+    assert_eq!(kind(json!({"x": [[-1, 0]]})), Kind::OutOfRange);
+    assert_eq!(kind(json!({"opacity": [[0, 2]]})), Kind::OutOfRange);
+    assert_eq!(kind(json!({"x": []})), Kind::Missing);
+    assert_eq!(kind(json!({"zoom": []})), Kind::UnknownName);
+}
+
+#[test]
 fn mixed_units_order_uses_fps() {
     assert!(anim(json!({"x": [["1s", 0], [31, 1]]})).is_ok());
     assert!(anim(json!({"x": [["1s", 0], [29, 1]]})).is_err());

@@ -20,6 +20,6 @@ mod write;
 
 pub use curve::{Curve, NAMED_CURVES};
 pub use number::fmt_num;
-pub use parse::{LAYER_KEYS, SCENE_KEYS, is_not_a_string, parse_document, scene_from_value};
+pub use parse::{LAYER_KEYS, SCENE_KEYS, parse_document, scene_from_value};
 pub use scene::{Content, Document, Layer, Scene};
 pub use write::write_document;

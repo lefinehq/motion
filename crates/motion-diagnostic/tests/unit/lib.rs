@@ -19,10 +19,10 @@ fn syntax_is_a_syntax_kind() {
 
 #[test]
 fn display_is_the_bare_message_without_path_or_expected() {
-    let d = Diagnostic::new(Kind::UnknownName, "no layer with id `ghost`");
-    assert_eq!(d.to_string(), "no layer with id `ghost`");
+    let d = Diagnostic::new(Kind::UnknownName, "unknown layer id `ghost`");
+    assert_eq!(d.to_string(), "unknown layer id `ghost`");
     let boxed: Box<dyn std::error::Error> = Box::new(d);
-    assert_eq!(boxed.to_string(), "no layer with id `ghost`");
+    assert_eq!(boxed.to_string(), "unknown layer id `ghost`");
 }
 
 #[test]
@@ -105,11 +105,28 @@ fn unknown_lists_the_allowed_names() {
 
 #[test]
 fn unknown_accepts_any_displayable_names() {
-    let d = Diagnostic::unknown("key", "colour", ["fill", "at"].map(|k| format!("`{k}`")));
+    let d = Diagnostic::unknown(
+        "layer id",
+        "ghost",
+        vec![String::from("title"), "card".into()],
+    );
     assert_eq!(
         d.to_string(),
-        "unknown key `colour`; expected one of `fill`, `at`"
+        "unknown layer id `ghost`; expected one of title, card"
     );
+}
+
+#[test]
+fn or_expected_extends_the_name_list() {
+    let d = Diagnostic::unknown("curve", "bounce", ["linear"]).or_expected("cubic(…)");
+    assert_eq!(d.kind, Kind::UnknownName);
+    assert_eq!(d.expected.as_deref(), Some("one of linear, or cubic(…)"));
+}
+
+#[test]
+fn or_expected_sets_a_missing_form() {
+    let d = Diagnostic::syntax("bad").or_expected("`12f`");
+    assert_eq!(d.expected.as_deref(), Some("`12f`"));
 }
 
 #[test]
@@ -120,6 +137,7 @@ fn every_kind_exits_2() {
         Kind::OutOfRange,
         Kind::Missing,
         Kind::Conflict,
+        Kind::WrongType,
         Kind::Invalid,
         Kind::Io,
     ];

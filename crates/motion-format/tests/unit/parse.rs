@@ -106,7 +106,7 @@ fn rejects_structural_mistakes() {
 fn unknown_key_lists_the_allowed_keys() {
     let e = parse_document(r#"{"motion":1,"dur":"1s","layers":[],"colour":"x"}"#).unwrap_err();
     assert_eq!(e.path.as_deref(), Some("scene"));
-    assert!(e.to_string().contains("expected one of `motion`, `size`"));
+    assert!(e.to_string().contains("expected one of motion, size, fps"));
     let e = parse_document(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":"1x1","x":1}]}"#)
         .unwrap_err();
     assert_eq!(e.path.as_deref(), Some("layers[0]"));
@@ -364,9 +364,35 @@ fn errors_say_what_kind_of_problem_they_are() {
 }
 
 #[test]
-fn a_non_string_value_is_recognised() {
-    let e = parse_document(r#"{"motion":1,"dur":5,"layers":[]}"#).unwrap_err();
-    assert!(is_not_a_string(&e));
-    let e = parse_document(r#"{"motion":1,"dur":"5","layers":[]}"#).unwrap_err();
-    assert!(!is_not_a_string(&e));
+fn wrong_json_types_are_wrong_type() {
+    let kind = |j: &str| parse_document(j).unwrap_err().kind;
+    let scene = |extra: &str| format!(r#"{{"motion":1,"dur":"1s","layers":[]{extra}}}"#);
+    assert_eq!(kind("[]"), Kind::WrongType);
+    assert_eq!(kind(r#"{"motion":1,"dur":5,"layers":[]}"#), Kind::WrongType);
+    assert_eq!(
+        kind(r#"{"motion":1,"dur":"1s","layers":{}}"#),
+        Kind::WrongType
+    );
+    assert_eq!(
+        kind(r#"{"motion":1,"dur":"1s","layers":[1]}"#),
+        Kind::WrongType
+    );
+    assert_eq!(kind(&scene(r#","presets":[]"#)), Kind::WrongType);
+    // A string of the wrong shape is a syntax error, not a type error.
+    assert_eq!(kind(r#"{"motion":1,"dur":"5","layers":[]}"#), Kind::Syntax);
+}
+
+#[test]
+fn fps_tells_a_wrong_type_from_a_bound() {
+    let fps = |v: &str| {
+        parse_document(&format!(
+            r#"{{"motion":1,"dur":"1s","fps":{v},"layers":[]}}"#
+        ))
+        .unwrap_err()
+    };
+    assert_eq!(fps(r#""x""#).kind, Kind::WrongType);
+    assert_eq!(fps("true").kind, Kind::WrongType);
+    assert_eq!(fps("0").kind, Kind::OutOfRange);
+    assert_eq!(fps("-1").kind, Kind::OutOfRange);
+    assert_eq!(fps("0").message, fps(r#""x""#).message);
 }

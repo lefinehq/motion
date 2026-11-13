@@ -72,7 +72,10 @@ fn at_without_ids_prints_every_node() {
 #[test]
 fn at_unknown_id_exits_two() {
     let out = motion(&["at", LAUNCH, "1s", "nope"]);
-    assert_eq!(stderr(&out), "error: no layer with id `nope`\n");
+    assert_eq!(
+        stderr(&out),
+        "error: unknown layer id `nope`; expected one of title, card\n"
+    );
     assert_eq!(out.status.code(), Some(2));
 }
 

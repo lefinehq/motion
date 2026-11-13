@@ -7,7 +7,7 @@
 //! `motion_format::scene_from_value` before it is returned.
 
 use motion_diagnostic::{Diagnostic, Kind, Result};
-use motion_format::{LAYER_KEYS, SCENE_KEYS, is_not_a_string, scene_from_value};
+use motion_format::{LAYER_KEYS, SCENE_KEYS, scene_from_value};
 use serde_json::{Map, Value};
 
 use crate::{Edit, EditValue};
@@ -27,18 +27,40 @@ const SCENE_TARGET: &str = "scene";
 /// Returns a [`Diagnostic`] for a key (its first path segment) that is not
 /// allowed for the target, a path through a value that is not an object,
 /// an unknown layer id, a document without a `layers` array, or a result
-/// that no longer passes validation (`invalid result: ...`, with the kind of
-/// the validation failure).
+/// that no longer passes validation. The last keeps the validation
+/// failure's kind, path and expected form, with `invalid result: ` before
+/// its message; when quoting a bare number or boolean would fix it, the
+/// expected form shows the quoted change instead.
 pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value> {
+    let (out, target) = apply_changes(raw, edit)?;
+    match scene_from_value(&out) {
+        Ok(_) => Ok(out),
+        Err(mut e) => {
+            if let Some(quoted) = quote_hint(raw, edit, &target, &e) {
+                e.expected = Some(quoted.into());
+            }
+            e.message = format!("invalid result: {}", e.message);
+            Err(e)
+        }
+    }
+}
+
+/// Applies the changes of `edit` to a clone of `raw`, without validating
+/// the result. Also returns the path of the edited object: empty for the
+/// scene, `layers[i]` for a layer.
+fn apply_changes(raw: &Value, edit: &Edit) -> Result<(Value, String)> {
     let is_scene = edit.target == SCENE_TARGET;
     // Keys are checked first so a typo is reported even for a bad target.
     check_keys(edit, is_scene)?;
     let mut out = raw.clone();
-    let object = if is_scene {
-        out.as_object_mut()
-            .ok_or_else(|| Diagnostic::new(Kind::Invalid, "the document is not an object"))?
+    let (object, target) = if is_scene {
+        let object = out
+            .as_object_mut()
+            .ok_or_else(|| Diagnostic::new(Kind::WrongType, "the document is not an object"))?;
+        (object, String::new())
     } else {
-        find_layer(&mut out, &edit.target)?
+        let (index, object) = find_layer(&mut out, &edit.target)?;
+        (object, format!("layers[{index}]"))
     };
     for change in &edit.changes {
         match &change.value {
@@ -49,38 +71,54 @@ pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value> {
             }
         }
     }
-    // The whole validation message goes into this one; its kind is kept.
-    scene_from_value(&out).map_err(|e| {
-        Diagnostic::new(
-            e.kind,
-            format!("invalid result: {e}{}", quote_hint(edit, &e)),
-        )
-    })?;
-    Ok(out)
+    Ok((out, target))
 }
 
-/// When a bare number or boolean landed on a key that needs a string, says
-/// how to write it: `; quote it: text="2024"`. Empty for every other error.
+/// When a bare number or boolean landed on a key that needs a string, the
+/// quoted change to write instead, e.g. ``a quoted value: `text="2024"` ``.
 ///
 /// The edit grammar turns `text=2024` into a JSON number, which the format
-/// then rejects as "must be a string"; the author almost always meant text.
-fn quote_hint(edit: &Edit, error: &Diagnostic) -> String {
-    if !is_not_a_string(error) {
-        return String::new();
+/// rejects; the author almost always meant text. The decision is made on
+/// structure, not on message text: `error` is a [`Kind::WrongType`] at
+/// exactly the path a number or boolean change wrote, and the same edit with
+/// that value as a JSON string no longer fails there with a wrong type. The
+/// re-validation is what tells a string key from a number key: quoting
+/// `fps=true` leaves `fps` just as wrong, so it gets no hint. It runs only
+/// here, on the failure path, so a valid edit is validated once.
+fn quote_hint(raw: &Value, edit: &Edit, target: &str, error: &Diagnostic) -> Option<String> {
+    if error.kind != Kind::WrongType {
+        return None;
     }
-    let path = error.path.as_deref().unwrap_or_default();
-    edit.changes
+    let (index, value) = edit
+        .changes
         .iter()
-        .find_map(|c| match &c.value {
-            // The error path is the bare key (scene) or ends in `.key` (layer).
+        .enumerate()
+        .find_map(|(i, c)| match &c.value {
             EditValue::Set(v @ (Value::Number(_) | Value::Bool(_)))
-                if path == c.key || path.ends_with(&format!(".{}", c.key)) =>
+                if error.path.as_deref() == Some(key_path(target, &c.key).as_str()) =>
             {
-                Some(format!("; quote it: {}=\"{v}\"", c.key))
+                Some((i, v))
             }
             _ => None,
-        })
-        .unwrap_or_default()
+        })?;
+    let key = &edit.changes[index].key;
+    let mut quoted = edit.clone();
+    quoted.changes[index].value = EditValue::Set(Value::String(value.to_string()));
+    let (retried, _) = apply_changes(raw, &quoted).ok()?;
+    let still_wrong = matches!(
+        scene_from_value(&retried),
+        Err(e) if e.kind == Kind::WrongType && e.path == error.path
+    );
+    (!still_wrong).then(|| format!("a quoted value: `{key}=\"{value}\"`"))
+}
+
+/// The path validation reports for `key` on the object at `target`.
+fn key_path(target: &str, key: &str) -> String {
+    if target.is_empty() {
+        key.to_string()
+    } else {
+        format!("{target}.{key}")
+    }
 }
 
 /// Sets a dotted path, creating the objects it needs. Setting an existing key
@@ -95,7 +133,7 @@ fn set_path(root: &mut Map<String, Value>, key: &str, value: Value) -> Result<()
             .or_insert_with(|| Value::Object(Map::new()));
         object = entry.as_object_mut().ok_or_else(|| {
             Diagnostic::new(
-                Kind::Invalid,
+                Kind::WrongType,
                 format!(
                     "cannot set `{key}`: `{}` is not an object",
                     segments[..=i].join(".")
@@ -130,29 +168,23 @@ fn remove_path(object: &mut Map<String, Value>, segments: &[&str]) -> bool {
 /// Rejects keys that are not part of the format for this kind of target.
 fn check_keys(edit: &Edit, is_scene: bool) -> Result<()> {
     let (allowed, what): (&[&str], &str) = if is_scene {
-        (&SCENE_KEYS, "the scene")
+        (&SCENE_KEYS, "scene key")
     } else {
-        (&LAYER_KEYS, "a layer")
+        (&LAYER_KEYS, "layer key")
     };
     for change in &edit.changes {
         // Only the first segment is checked here; deeper ones are checked by
         // `scene_from_value` on the result.
         let first = change.key.split('.').next().unwrap_or_default();
         if !allowed.contains(&first) {
-            return Err(Diagnostic::new(
-                Kind::UnknownName,
-                format!(
-                    "unknown key `{first}` for {what}; allowed: {}",
-                    allowed.join(", ")
-                ),
-            ));
+            return Err(Diagnostic::unknown(what, first, allowed));
         }
     }
     Ok(())
 }
 
-/// Finds the layer object with the given id.
-fn find_layer<'a>(doc: &'a mut Value, id: &str) -> Result<&'a mut Map<String, Value>> {
+/// Finds the layer with the given id: its index in `layers` and its object.
+fn find_layer<'a>(doc: &'a mut Value, id: &str) -> Result<(usize, &'a mut Map<String, Value>)> {
     let layers = doc
         .get_mut("layers")
         .and_then(Value::as_array_mut)
@@ -162,11 +194,17 @@ fn find_layer<'a>(doc: &'a mut Value, id: &str) -> Result<&'a mut Map<String, Va
                 format!("the scene has no `layers` array, so there is no layer `{id}`"),
             )
         })?;
-    layers
-        .iter_mut()
-        .filter_map(Value::as_object_mut)
-        .find(|l| l.get("id").and_then(Value::as_str) == Some(id))
-        .ok_or_else(|| Diagnostic::new(Kind::UnknownName, format!("no layer with id `{id}`")))
+    let index = layers
+        .iter()
+        .position(|l| l.get("id").and_then(Value::as_str) == Some(id))
+        .ok_or_else(|| {
+            let ids = layers.iter().filter_map(|l| l.get("id")?.as_str());
+            Diagnostic::unknown("layer id", id, ids)
+        })?;
+    let object = layers[index]
+        .as_object_mut()
+        .expect("a layer with an id is an object");
+    Ok((index, object))
 }
 
 #[cfg(test)]

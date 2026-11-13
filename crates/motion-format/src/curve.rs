@@ -8,7 +8,7 @@
 
 use std::fmt;
 
-use motion_diagnostic::{Diagnostic, Kind, Result};
+use motion_diagnostic::{Diagnostic, Result};
 
 use crate::fmt_num;
 
@@ -65,11 +65,9 @@ impl Curve {
             return Ok(curve);
         }
         let Some(inner) = token.strip_prefix(CUBIC_PREFIX) else {
-            let names: Vec<&str> = NAMED_CURVES.iter().map(|(n, _)| *n).collect();
+            let names = NAMED_CURVES.iter().map(|(name, _)| name);
             return Err(
-                Diagnostic::new(Kind::UnknownName, format!("unknown curve `{token}`")).expected(
-                    format!("one of {}, or cubic(x1,y1,x2,y2)", names.join(", ")),
-                ),
+                Diagnostic::unknown("curve", token, names).or_expected("cubic(x1,y1,x2,y2)")
             );
         };
         let err = |m: String| Diagnostic::syntax(m).expected(CUBIC_EXPECTED);

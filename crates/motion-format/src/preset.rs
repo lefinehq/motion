@@ -60,7 +60,7 @@ pub fn builtin_presets() -> &'static [(String, PresetSpec)] {
 /// error paths (`presets` for a scene).
 pub fn parse_presets(value: &Value, path: &str) -> Result<Vec<(String, PresetSpec)>> {
     let obj = value.as_object().ok_or_else(|| {
-        Diagnostic::new(Kind::Invalid, "must be an object")
+        Diagnostic::new(Kind::WrongType, "must be an object")
             .at(path)
             .expected(r#"e.g. {"slide":{"opacity":0,"x":"-d"}}"#)
     })?;
@@ -75,7 +75,7 @@ pub fn parse_presets(value: &Value, path: &str) -> Result<Vec<(String, PresetSpe
             );
         }
         let props_obj = body.as_object().ok_or_else(|| {
-            Diagnostic::new(Kind::Invalid, "must be an object of property starts")
+            Diagnostic::new(Kind::WrongType, "must be an object of property starts")
                 .at(&here)
                 .expected(r#"e.g. {"opacity":0,"y":"+d"}"#)
         })?;
@@ -128,7 +128,13 @@ fn parse_start(value: &Value, path: &str) -> Result<Start> {
             .filter(|v| v.is_finite())
             .map(Start::Value)
             .ok_or_else(|| {
-                Diagnostic::new(Kind::Invalid, format!("invalid start {value}"))
+                // Any other string is the right type with the wrong content.
+                let kind = if value.is_string() {
+                    Kind::Invalid
+                } else {
+                    Kind::WrongType
+                };
+                Diagnostic::new(kind, format!("invalid start {value}"))
                     .at(path)
                     .expected(START_EXPECTED)
             }),

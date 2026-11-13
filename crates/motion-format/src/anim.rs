@@ -52,7 +52,7 @@ pub struct AnimTrack {
 /// to check that keys given in mixed units are in time order.
 pub fn parse_anim(value: &Value, path: &str, fps: f64) -> Result<Vec<AnimTrack>> {
     let obj = value.as_object().ok_or_else(|| {
-        Diagnostic::new(Kind::Invalid, "must be an object of property tracks")
+        Diagnostic::new(Kind::WrongType, "must be an object of property tracks")
             .at(path)
             .expected(r#"e.g. {"opacity":"0 -> 1 @0-12f"}"#)
     })?;
@@ -66,7 +66,7 @@ pub fn parse_anim(value: &Value, path: &str, fps: f64) -> Result<Vec<AnimTrack>>
             Value::Array(a) => parse_keys(a, &here, spec, fps)?,
             _ => {
                 return Err(
-                    Diagnostic::new(Kind::Invalid, "must be a string or a list of keys")
+                    Diagnostic::new(Kind::WrongType, "must be a string or a list of keys")
                         .at(&here)
                         .expected(TRACK_EXPECTED),
                 );
@@ -227,14 +227,20 @@ fn parse_keys(list: &[Value], path: &str, spec: &PropertySpec, fps: f64) -> Resu
 /// Parses one `[time, value]` or `[time, value, curve]` key.
 fn parse_key(item: &Value, path: &str, spec: &PropertySpec) -> Result<AnimKey> {
     let key_form = r#"[time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"]"#;
-    let parts = item
-        .as_array()
-        .filter(|a| (2..=3).contains(&a.len()))
-        .ok_or_else(|| {
-            Diagnostic::new(Kind::Invalid, "must be a list of 2 or 3 items")
+    let parts = match item.as_array() {
+        Some(parts) if (2..=3).contains(&parts.len()) => parts,
+        // One message covers both failures; the kind tells a value that is
+        // not a list from a list of the wrong length.
+        list => {
+            let kind = match list {
+                Some(_) => Kind::Invalid,
+                None => Kind::WrongType,
+            };
+            return Err(Diagnostic::new(kind, "must be a list of 2 or 3 items")
                 .at(path)
-                .expected(key_form)
-        })?;
+                .expected(key_form));
+        }
+    };
     let time = match &parts[0] {
         Value::String(s) => Time::parse(s).map_err(|e| e.under(path))?,
         Value::Number(n) => match n.as_f64() {
@@ -249,14 +255,14 @@ fn parse_key(item: &Value, path: &str, spec: &PropertySpec) -> Result<AnimKey> {
         },
         other => {
             return Err(
-                Diagnostic::new(Kind::Invalid, format!("invalid time {other}"))
+                Diagnostic::new(Kind::WrongType, format!("invalid time {other}"))
                     .at(path)
                     .expected(format!("a frame count, or {TIME_EXPECTED}")),
             );
         }
     };
     let value = parts[1].as_f64().ok_or_else(|| {
-        Diagnostic::new(Kind::Invalid, format!("invalid value {}", parts[1]))
+        Diagnostic::new(Kind::WrongType, format!("invalid value {}", parts[1]))
             .at(path)
             .expected("a number")
     })?;
@@ -266,7 +272,7 @@ fn parse_key(item: &Value, path: &str, spec: &PropertySpec) -> Result<AnimKey> {
         Some(Value::String(s)) => Curve::parse(s).map_err(|e| e.under(path))?,
         Some(other) => {
             return Err(
-                Diagnostic::new(Kind::Invalid, format!("invalid curve {other}"))
+                Diagnostic::new(Kind::WrongType, format!("invalid curve {other}"))
                     .at(path)
                     .expected("a curve name or cubic(x1,y1,x2,y2)"),
             );

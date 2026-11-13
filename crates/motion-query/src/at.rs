@@ -26,10 +26,8 @@ pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
         .iter()
         .find(|id| !graph.nodes.iter().any(|n| &n.id == *id))
     {
-        return Err(Diagnostic::new(
-            Kind::UnknownName,
-            format!("no layer with id `{unknown}`"),
-        ));
+        let ids = graph.nodes.iter().map(|n| &n.id);
+        return Err(Diagnostic::unknown("layer id", unknown, ids));
     }
     let lines: Vec<String> = evaluate(graph, frame)
         .nodes

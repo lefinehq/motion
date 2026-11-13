@@ -39,12 +39,9 @@ fn behaviour_rejects_unknown_and_repeated_tokens() {
     assert!(e.contains(
         "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`"
     ));
-    assert!(
-        Behaviour::parse("fade 12f 10f")
-            .unwrap_err()
-            .to_string()
-            .contains("duration given twice")
-    );
+    let e = Behaviour::parse("fade 12f 10f").unwrap_err();
+    assert_eq!(e.kind, Kind::Conflict);
+    assert!(e.to_string().contains("duration given twice"));
     assert!(
         Behaviour::parse("fade bounce")
             .unwrap_err()

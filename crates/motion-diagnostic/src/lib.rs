@@ -1,8 +1,8 @@
 //! `motion-diagnostic`: the one error type of motion.
 //!
-//! This crate is not a pipeline step. Every step and side branch (format,
-//! scene, eval, query, edit) and the CLI report failures as a [`Diagnostic`],
-//! so a message reads the same wherever it comes from: what was wrong, where
+//! This crate is not a pipeline step. Every crate that can fail on input
+//! (format, query, edit) and the CLI report failures as a [`Diagnostic`], so
+//! a message reads the same wherever it comes from: what was wrong, where
 //! it was (`layers[1].fill`), and which forms would have been accepted, so an
 //! agent can fix its input in one try.
 //!
@@ -37,8 +37,11 @@ pub enum Kind {
     Missing,
     /// Two parts of the input that cannot both hold, such as a duplicate id.
     Conflict,
-    /// A value that breaks a semantic rule of the format, such as a wrong
-    /// JSON type or an id that does not follow the id rule.
+    /// A JSON value of the wrong type, such as a number where a string is
+    /// required.
+    WrongType,
+    /// A semantic rule the value breaks, such as an id that does not follow
+    /// the id rule.
     Invalid,
     /// A file that cannot be read or written.
     Io,
@@ -56,6 +59,7 @@ impl Kind {
             | Kind::OutOfRange
             | Kind::Missing
             | Kind::Conflict
+            | Kind::WrongType
             | Kind::Invalid
             | Kind::Io => 2,
         }
@@ -105,7 +109,9 @@ impl Diagnostic {
     /// `allowed`: ``unknown {what} `{name}`; expected one of a, b, c``.
     ///
     /// `allowed` should come from the table that holds the names, so the
-    /// message can never drift from what is accepted.
+    /// message can never drift from what is accepted. Names are listed as
+    /// they are, without quotes; [`or_expected`](Diagnostic::or_expected)
+    /// adds a form that is not a name, such as a pattern.
     pub fn unknown(
         what: impl fmt::Display,
         name: impl fmt::Display,
@@ -152,8 +158,33 @@ impl Diagnostic {
         self.expected = Some(form.into());
         self
     }
+
+    /// Adds one more accepted form after those already set, as
+    /// `{expected}, or {form}`; sets it when none is set yet.
+    ///
+    /// ```
+    /// use motion_diagnostic::Diagnostic;
+    ///
+    /// let d = Diagnostic::unknown("curve", "bounce", ["linear", "ease"])
+    ///     .or_expected("cubic(x1,y1,x2,y2)");
+    /// assert_eq!(
+    ///     d.to_string(),
+    ///     "unknown curve `bounce`; expected one of linear, ease, or cubic(x1,y1,x2,y2)"
+    /// );
+    /// ```
+    #[must_use]
+    pub fn or_expected(mut self, form: impl fmt::Display) -> Self {
+        let joined = match self.expected.take() {
+            Some(expected) => format!("{expected}, or {form}"),
+            None => form.to_string(),
+        };
+        self.expected = Some(joined.into());
+        self
+    }
 }
 
+// Written by hand rather than with `#[error(...)]`, because the path and
+// the expected form are each optional.
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(path) = &self.path {

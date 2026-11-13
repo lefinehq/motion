@@ -1,6 +1,7 @@
 //! Unit tests for `src/curve.rs`.
 
 use super::*;
+use motion_diagnostic::Kind;
 
 #[test]
 fn every_table_name_parses_to_its_entry() {
@@ -33,6 +34,7 @@ fn cubic_errors_show_the_expected_form() {
 
 #[test]
 fn unknown_name_lists_the_table() {
+    assert_eq!(Curve::parse("foo").unwrap_err().kind, Kind::UnknownName);
     let e = Curve::parse("foo").unwrap_err().to_string();
     assert_eq!(
         e,

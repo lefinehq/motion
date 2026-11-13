@@ -48,7 +48,11 @@ fn bad_start_value_shows_expected_form() {
             .ends_with(r#"; expected a number, "+d" or "-d""#),
         "{e}"
     );
-    assert!(presets(r#"{"a":{"x":true}}"#).is_err());
+    assert_eq!(e.kind, Kind::Invalid);
+    let e = presets(r#"{"a":{"x":true}}"#).unwrap_err();
+    assert_eq!(e.kind, Kind::WrongType);
+    assert_eq!(presets(r#"{"a":3}"#).unwrap_err().kind, Kind::WrongType);
+    assert_eq!(presets("[]").unwrap_err().kind, Kind::WrongType);
 }
 
 #[test]
