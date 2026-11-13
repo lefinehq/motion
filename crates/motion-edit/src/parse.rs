@@ -1,12 +1,14 @@
 //! Parsing of one-line edits into typed [`Edit`] values.
 //!
-//! Part of the edit step of the pipeline. It only reads text; it knows
+//! A side branch working on the output of step 3 (not a numbered rendering
+//! step). It only reads text; it knows
 //! nothing about scenes. Whether a key is valid for its target is checked
 //! later, in `apply`.
 //!
 //! Grammar: `<target> <key>=<value> [<key>=<value> ...]`, where a value is a
 //! quoted string (`\"` and `\\` escapes), `none` (remove the key), a number,
-//! `true`/`false`, or any other bare word (a string).
+//! `true`/`false`, or any other bare word (a string). A quote is only
+//! allowed as the first character of a value.
 
 use crate::EditError;
 use serde_json::{Number, Value};
@@ -41,23 +43,25 @@ pub enum EditValue {
 /// Parses one edit line such as `card fill=#FF0000 in=none`.
 ///
 /// # Errors
-/// Returns an [`EditError`] for an empty line, an unclosed quote, a missing
-/// target or changes, a word that is not `key=value`, an unsupported
-/// operator, an empty key or value, or a key given twice.
+/// Returns an [`EditError`] for an empty line, an unclosed quote, a quote
+/// that does not start a value, a missing target or changes, a word that is
+/// not `key=value`, an unsupported operator, an empty key or value, or a key
+/// given twice.
 pub fn parse_edit(line: &str) -> Result<Edit, EditError> {
-    let tokens = split_tokens(line)?;
-    let mut tokens = tokens.into_iter();
-    let target = tokens
+    let mut words = split_words(line)?.into_iter();
+    let target = words
         .next()
         .ok_or_else(|| EditError::new("empty edit; expected `<target> <key>=<value>`"))?;
-    if target.contains('=') {
+    if target.head.contains('=') {
         return Err(EditError::new(format!(
-            "expected a target (a layer id or `scene`) before `{target}`"
+            "expected a target (a layer id or `scene`) before `{}`",
+            target.shown()
         )));
     }
+    let target = target.head;
     let mut changes: Vec<Change> = Vec::new();
-    for token in tokens {
-        let change = parse_change(&token)?;
+    for word in words {
+        let change = parse_change(&word)?;
         if changes.iter().any(|c| c.key == change.key) {
             return Err(EditError::new(format!("key `{}` given twice", change.key)));
         }
@@ -71,95 +75,73 @@ pub fn parse_edit(line: &str) -> Result<Edit, EditError> {
     Ok(Edit { target, changes })
 }
 
-/// Splits a line into whitespace-separated words, keeping quoted text
-/// (spaces included) inside its word. Quotes and escapes are left in place;
-/// `parse_value` unescapes them later.
-fn split_tokens(line: &str) -> Result<Vec<String>, EditError> {
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-    let mut in_quote = false;
-    let mut chars = line.chars();
-    while let Some(c) = chars.next() {
-        match c {
-            // Inside quotes a backslash protects the next char, so `\"`
-            // does not end the string. Both chars stay in the token.
-            '\\' if in_quote => {
-                current.push(c);
-                if let Some(next) = chars.next() {
-                    current.push(next);
-                }
-            }
-            '"' => {
-                in_quote = !in_quote;
-                current.push(c);
-            }
-            c if c.is_whitespace() && !in_quote => {
-                if !current.is_empty() {
-                    tokens.push(std::mem::take(&mut current));
-                }
-            }
-            c => current.push(c),
+/// One whitespace-separated word of an edit line, split at its first `=`.
+#[derive(Debug, Default)]
+struct Word {
+    /// The text up to and including the first `=`; the whole word if it has
+    /// no `=` (a target, or a mistake).
+    head: String,
+    /// The text after the `=`, already unescaped when `quoted`.
+    value: String,
+    /// True if the value was written in double quotes. A quoted value is
+    /// always a string, so `"none"` and `"60"` do not become a removal or a
+    /// number.
+    quoted: bool,
+}
+
+impl Word {
+    /// The word as the author wrote it, for error messages.
+    fn shown(&self) -> String {
+        if self.quoted {
+            format!("{}\"{}\"", self.head, self.value)
+        } else {
+            format!("{}{}", self.head, self.value)
         }
     }
-    if in_quote {
-        return Err(EditError::new(format!(
-            "unclosed quote in `{}`; add a closing `\"`",
-            current.trim()
-        )));
-    }
-    if !current.is_empty() {
-        tokens.push(current);
-    }
-    Ok(tokens)
 }
 
-/// Parses one `key=value` word.
-fn parse_change(token: &str) -> Result<Change, EditError> {
-    let Some((key, raw_value)) = token.split_once('=') else {
-        return Err(EditError::new(format!(
-            "expected `<key>=<value>`, got `{token}`; quote values that contain spaces"
-        )));
-    };
-    // `delay+=10f` splits as key `delay+`; only `=` is supported for now.
-    if let Some(op) = key.chars().last().filter(|c| "+-*/<>!".contains(*c)) {
-        return Err(EditError::new(format!(
-            "operator `{op}=` is not supported yet; use `=`"
-        )));
+/// Splits a line into [`Word`]s. Whitespace separates words except inside a
+/// quoted value, and a quote is only allowed as the first character of a
+/// value (right after the first `=`). This is the only place that decodes a
+/// quoted value.
+fn split_words(line: &str) -> Result<Vec<Word>, EditError> {
+    let mut words = Vec::new();
+    let mut current: Option<Word> = None;
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c.is_whitespace() {
+            words.extend(current.take());
+            continue;
+        }
+        let word = current.get_or_insert_with(Word::default);
+        let value_started = word.head.ends_with('=');
+        match c {
+            // A quote opens a value only straight after the first `=`.
+            '"' if value_started && word.value.is_empty() && !word.quoted => {
+                word.value = read_quoted(&mut chars, &word.head)?;
+                word.quoted = true;
+                // Nothing may follow the closing quote but a space.
+                if let Some(next) = chars.peek().filter(|n| !n.is_whitespace()) {
+                    return Err(EditError::new(format!(
+                        "unexpected text after the closing quote in `{}{next}`; \
+                         put a space after the quote, or quote the whole value",
+                        word.shown()
+                    )));
+                }
+            }
+            '"' => return Err(stray_quote(word, &mut chars)),
+            c if word.head.contains('=') => word.value.push(c),
+            c => word.head.push(c),
+        }
     }
-    if key.is_empty() {
-        return Err(EditError::new(format!(
-            "missing key before `=` in `{token}`; expected `<key>=<value>`"
-        )));
-    }
-    if raw_value.is_empty() {
-        return Err(EditError::new(format!(
-            "missing value for `{key}`; use `{key}=\"\"` for an empty string"
-        )));
-    }
-    Ok(Change {
-        key: key.to_string(),
-        value: parse_value(raw_value)?,
-    })
+    words.extend(current);
+    Ok(words)
 }
 
-/// Turns the text after `=` into an [`EditValue`].
-fn parse_value(raw: &str) -> Result<EditValue, EditError> {
-    if let Some(rest) = raw.strip_prefix('"') {
-        return unquote(rest).map(|s| EditValue::Set(Value::String(s)));
-    }
-    Ok(match raw {
-        "none" => EditValue::Remove,
-        "true" => EditValue::Set(Value::Bool(true)),
-        "false" => EditValue::Set(Value::Bool(false)),
-        _ => EditValue::Set(parse_number(raw).unwrap_or_else(|| Value::String(raw.to_string()))),
-    })
-}
-
-/// Unescapes the body of a quoted string (the opening quote is already
-/// removed). The closing quote must be the last character.
-fn unquote(rest: &str) -> Result<String, EditError> {
+/// Reads a quoted value after its opening quote, up to the closing quote,
+/// decoding `\"` and `\\`. `head` (`key=`) is only used in messages.
+fn read_quoted(chars: &mut impl Iterator<Item = char>, head: &str) -> Result<String, EditError> {
     let mut out = String::new();
-    let mut chars = rest.chars();
     while let Some(c) = chars.next() {
         match c {
             '\\' => match chars.next() {
@@ -171,19 +153,110 @@ fn unquote(rest: &str) -> Result<String, EditError> {
                 }
                 None => return Err(EditError::new("dangling `\\` at the end of a quoted value")),
             },
-            '"' => {
-                return if chars.next().is_none() {
-                    Ok(out)
-                } else {
-                    Err(EditError::new(format!(
-                        "unexpected text after the closing quote in `\"{rest}`"
-                    )))
-                };
-            }
+            '"' => return Ok(out),
             c => out.push(c),
         }
     }
-    Err(EditError::new("unclosed quote in a value"))
+    Err(EditError::new(format!(
+        "unclosed quote in `{head}\"{out}`; add a closing `\"`"
+    )))
+}
+
+/// The error for a `"` that does not start a value: shows the word up to the
+/// next space and how to write the whole thing as one quoted value.
+fn stray_quote(word: &Word, chars: &mut impl Iterator<Item = char>) -> EditError {
+    let so_far = format!("{}{}", word.head, word.value);
+    // Without a `=` there is no key to build a suggestion from.
+    let Some((key, _)) = so_far.split_once('=') else {
+        return EditError::new(format!(
+            "unexpected quote in `{so_far}\"`; quotes only go around a value, as in `<key>=\"<value>\"`"
+        ));
+    };
+    // Walk the rest of the word, following its quotes, to build the
+    // suggestion. `shown` stops at the first space so the message points at
+    // the exact token; `whole` keeps going to the real end of the word.
+    let mut shown = format!("{so_far}\"");
+    let mut whole = so_far[key.len() + 1..].to_string();
+    let (mut shown_open, mut inside) = (true, true);
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' if inside => {
+                if let Some(e) = chars.next() {
+                    whole.push(e);
+                    if shown_open {
+                        shown.extend([c, e]);
+                    }
+                }
+            }
+            '"' => {
+                inside = !inside;
+                if shown_open {
+                    shown.push(c);
+                }
+            }
+            c if c.is_whitespace() => {
+                if !inside {
+                    break;
+                }
+                shown_open = false;
+                whole.push(c);
+            }
+            c => {
+                whole.push(c);
+                if shown_open {
+                    shown.push(c);
+                }
+            }
+        }
+    }
+    EditError::new(format!(
+        "unexpected quote in `{shown}`; quote the whole value: {key}=\"{whole}\""
+    ))
+}
+
+/// Parses one `key=value` word.
+fn parse_change(word: &Word) -> Result<Change, EditError> {
+    let Some(key) = word.head.strip_suffix('=') else {
+        return Err(EditError::new(format!(
+            "expected `<key>=<value>`, got `{}`; quote values that contain spaces",
+            word.head
+        )));
+    };
+    // `delay+=10f` splits as key `delay+`; only `=` is supported for now.
+    if let Some(op) = key.chars().last().filter(|c| "+-*/<>!".contains(*c)) {
+        return Err(EditError::new(format!(
+            "operator `{op}=` is not supported yet; use `=`"
+        )));
+    }
+    if key.is_empty() {
+        return Err(EditError::new(format!(
+            "missing key before `=` in `{}`; expected `<key>=<value>`",
+            word.shown()
+        )));
+    }
+    if word.value.is_empty() && !word.quoted {
+        return Err(EditError::new(format!(
+            "missing value for `{key}`; use `{key}=\"\"` for an empty string"
+        )));
+    }
+    Ok(Change {
+        key: key.to_string(),
+        value: if word.quoted {
+            EditValue::Set(Value::String(word.value.clone()))
+        } else {
+            parse_bare(&word.value)
+        },
+    })
+}
+
+/// Turns an unquoted value into an [`EditValue`].
+fn parse_bare(raw: &str) -> EditValue {
+    match raw {
+        "none" => EditValue::Remove,
+        "true" => EditValue::Set(Value::Bool(true)),
+        "false" => EditValue::Set(Value::Bool(false)),
+        _ => EditValue::Set(parse_number(raw).unwrap_or_else(|| Value::String(raw.to_string()))),
+    }
 }
 
 /// Reads a number token. Integers stay JSON integers (so `fps=60` is `60`,
@@ -340,9 +413,62 @@ mod tests {
     }
 
     #[test]
+    fn a_quote_inside_a_bare_value_is_rejected_with_the_whole_value_suggested() {
+        assert_eq!(
+            err(r#"a x=ab"c d""#),
+            r#"unexpected quote in `x=ab"c`; quote the whole value: x="abc d""#
+        );
+        // Quote straight after the closing one, and a second `=` before it.
+        assert_eq!(
+            err(r#"a x=ab"c""#),
+            r#"unexpected quote in `x=ab"c"`; quote the whole value: x="abc""#
+        );
+        assert_eq!(
+            err(r#"a x=1="2 3" y=4"#),
+            r#"unexpected quote in `x=1="2`; quote the whole value: x="1=2 3""#
+        );
+    }
+
+    #[test]
+    fn a_quote_outside_a_value_names_the_expected_form() {
+        assert_eq!(
+            err(r#"a"b x=1"#),
+            r#"unexpected quote in `a"`; quotes only go around a value, as in `<key>="<value>"`"#
+        );
+        assert_eq!(
+            err(r#"a "x"=1"#),
+            r#"unexpected quote in `"`; quotes only go around a value, as in `<key>="<value>"`"#
+        );
+    }
+
+    #[test]
+    fn text_after_a_closing_quote_is_rejected() {
+        assert_eq!(
+            err(r#"a x="b"c"#),
+            "unexpected text after the closing quote in `x=\"b\"c`; put a space after the quote, or quote the whole value"
+        );
+    }
+
+    #[test]
+    fn unclosed_quote_shows_what_was_read() {
+        assert_eq!(
+            err(r#"a text="open"#),
+            r#"unclosed quote in `text="open`; add a closing `"`"#
+        );
+    }
+
+    #[test]
+    fn well_formed_quotes_still_work_next_to_other_words() {
+        let e = parse_edit(r#"a x="b c" y="" z=3"#).unwrap();
+        assert_eq!(e.changes[0].value, EditValue::Set(json!("b c")));
+        assert_eq!(e.changes[1].value, EditValue::Set(json!("")));
+        assert_eq!(e.changes[2].value, EditValue::Set(json!(3)));
+    }
+
+    #[test]
     fn bad_quoting_and_escapes_are_errors() {
         assert!(err(r#"a text="x"y"#).contains("after the closing quote"));
-        assert!(err(r#"a text="x"y""#).contains("unclosed quote"));
+        assert!(err(r#"a text="x"y""#).contains("after the closing quote"));
         assert!(err(r#"a text="a\nb""#).contains("unknown escape"));
     }
 }
