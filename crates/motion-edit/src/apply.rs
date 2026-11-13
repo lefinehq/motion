@@ -6,7 +6,7 @@
 //! `motion_format::scene_from_value` before it is returned.
 
 use crate::{Edit, EditError, EditValue};
-use motion_format::{LAYER_KEYS, SCENE_KEYS, scene_from_value};
+use motion_format::{FormatError, LAYER_KEYS, SCENE_KEYS, scene_from_value};
 use serde_json::{Map, Value};
 
 /// The reserved target that means the top level of the document.
@@ -46,8 +46,32 @@ pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value, EditError> {
             }
         }
     }
-    scene_from_value(&out).map_err(|e| EditError::new(format!("invalid result: {e}")))?;
+    scene_from_value(&out)
+        .map_err(|e| EditError::new(format!("invalid result: {e}{}", quote_hint(edit, &e))))?;
     Ok(out)
+}
+
+/// When a bare number or boolean landed on a key that needs a string, says
+/// how to write it: `; quote it: text="2024"`. Empty for every other error.
+///
+/// The edit grammar turns `text=2024` into a JSON number, which the format
+/// then rejects as "must be a string"; the author almost always meant text.
+fn quote_hint(edit: &Edit, error: &FormatError) -> String {
+    if !error.is_not_a_string() {
+        return String::new();
+    }
+    edit.changes
+        .iter()
+        .find_map(|c| match &c.value {
+            // The error path is the bare key (scene) or ends in `.key` (layer).
+            EditValue::Set(v @ (Value::Number(_) | Value::Bool(_)))
+                if error.path == c.key || error.path.ends_with(&format!(".{}", c.key)) =>
+            {
+                Some(format!("; quote it: {}=\"{v}\"", c.key))
+            }
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 /// Rejects keys that are not part of the format for this kind of target.
@@ -177,6 +201,19 @@ mod tests {
     #[test]
     fn invalid_scene_result_is_reported() {
         assert!(err("scene fps=\"fast\"").starts_with("invalid result: "));
+    }
+
+    #[test]
+    fn number_or_bool_for_a_string_key_gets_a_quote_hint() {
+        assert_eq!(
+            err("title text=2024"),
+            "invalid result: layers[0].text: must be a string; expected e.g. \"text\":\"Hello\"; quote it: text=\"2024\""
+        );
+        assert!(err("title text=true").ends_with("; quote it: text=\"true\""));
+        assert!(err("scene bg=1.5").ends_with("; quote it: bg=\"1.5\""));
+        // Other errors, and strings that are simply wrong, get no hint.
+        assert!(!err("card fill=blue").contains("quote it"));
+        assert!(!err("scene fps=\"fast\"").contains("quote it"));
     }
 
     #[test]
