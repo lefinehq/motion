@@ -75,7 +75,7 @@ fn every_named_bezier_equals_its_cubic_form() {
         let Curve::Bezier(a, b, c, d) = *curve else {
             continue;
         };
-        let cubic = Curve::parse(&format!("cubic({a},{b},{c},{d})")).unwrap();
+        let cubic = format!("cubic({a},{b},{c},{d})").parse::<Curve>().unwrap();
         for p in [0.1, 0.25, 0.5, 0.9] {
             assert_eq!(sample(*curve, p), sample(cubic, p), "{name}");
         }

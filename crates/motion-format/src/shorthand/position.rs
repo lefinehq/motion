@@ -4,9 +4,13 @@
 //! Step 2 resolves `center` against the canvas.
 
 use std::fmt;
+use std::str::FromStr;
 
 use motion_diagnostic::{Diagnostic, Result};
+use winnow::combinator::{alt, delimited, separated_pair};
+use winnow::prelude::*;
 
+use super::lex::{self, Parsed, blank0, blank1, number};
 use crate::fmt_num;
 
 pub(crate) const EXPECTED: &str =
@@ -19,16 +23,6 @@ pub enum Coord {
     Center,
     /// A distance in pixels from the frame's top-left corner.
     Px(f64),
-}
-
-impl Coord {
-    fn parse(token: &str) -> Option<Coord> {
-        if token == "center" {
-            return Some(Coord::Center);
-        }
-        let value: f64 = token.parse().ok()?;
-        value.is_finite().then_some(Coord::Px(value))
-    }
 }
 
 impl fmt::Display for Coord {
@@ -49,21 +43,28 @@ pub struct Position {
     pub y: Coord,
 }
 
-impl Position {
+impl FromStr for Position {
+    type Err = Diagnostic;
+
     /// Parses exactly two whitespace-separated tokens, each a finite number
     /// of pixels or `center`.
-    pub fn parse(text: &str) -> Result<Position> {
-        let bad =
-            || Diagnostic::syntax(format!("`{text}` is not a valid position")).expected(EXPECTED);
-        let tokens: Vec<&str> = text.split_whitespace().collect();
-        let [x, y] = tokens[..] else {
-            return Err(bad());
-        };
-        Ok(Position {
-            x: Coord::parse(x).ok_or_else(bad)?,
-            y: Coord::parse(y).ok_or_else(bad)?,
+    fn from_str(text: &str) -> Result<Position> {
+        lex::parse_all(text, position, |_| {
+            Diagnostic::syntax(format!("`{text}` is not a valid position")).expected(EXPECTED)
         })
     }
+}
+
+/// `<x> <y>`, with any whitespace around and between them.
+fn position(input: &mut &str) -> Parsed<Position> {
+    delimited(blank0, separated_pair(coord, blank1, coord), blank0)
+        .map(|(x, y)| Position { x, y })
+        .parse_next(input)
+}
+
+/// One axis: `center` or a number of pixels.
+fn coord(input: &mut &str) -> Parsed<Coord> {
+    alt(("center".value(Coord::Center), number.map(Coord::Px))).parse_next(input)
 }
 
 impl fmt::Display for Position {

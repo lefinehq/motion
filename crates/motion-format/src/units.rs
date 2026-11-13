@@ -3,7 +3,18 @@
 //! Part of step 1 (Read). Scenes write `"0.4s"`, `"#0B0D12"` or `"1080p"`;
 //! these types are what the rest of the pipeline works with.
 
+use std::convert::Infallible;
+use std::str::FromStr;
+
 use motion_diagnostic::{Diagnostic, Result};
+use winnow::ascii::digit1;
+use winnow::combinator::{alt, opt, preceded, separated_pair};
+use winnow::error::ErrMode;
+use winnow::prelude::*;
+use winnow::stream::AsChar;
+use winnow::token::take_while;
+
+use crate::shorthand::lex::{self, Failure, Parsed};
 
 pub(crate) const TIME_EXPECTED: &str = "`<number>f` or `<number>s`, e.g. `12f` or `0.4s`";
 pub(crate) const COLOR_EXPECTED: &str = "`#RGB`, `#RRGGBB` or `#RRGGBBAA`";
@@ -23,29 +34,6 @@ pub enum Time {
 }
 
 impl Time {
-    /// Parses `<number>f` or `<number>s`. The number must be finite and not
-    /// negative, and the unit suffix is required.
-    pub fn parse(text: &str) -> Result<Time> {
-        let bad =
-            || Diagnostic::syntax(format!("`{text}` is not a valid time")).expected(TIME_EXPECTED);
-        let (number, is_frames) = if let Some(n) = text.strip_suffix('f') {
-            (n, true)
-        } else if let Some(n) = text.strip_suffix('s') {
-            (n, false)
-        } else {
-            return Err(bad());
-        };
-        let value: f64 = number.parse().map_err(|_| bad())?;
-        if !value.is_finite() || value < 0.0 {
-            return Err(bad());
-        }
-        Ok(if is_frames {
-            Time::Frames(value)
-        } else {
-            Time::Seconds(value)
-        })
-    }
-
     /// Converts to frames at `fps` frames per second. Frame counts are
     /// returned unchanged; seconds are multiplied by `fps`.
     pub fn to_frames(self, fps: f64) -> f64 {
@@ -69,48 +57,6 @@ pub struct Color {
     pub a: u8,
 }
 
-impl Color {
-    /// Parses `#RGB`, `#RRGGBB` or `#RRGGBBAA`. Without an alpha digit pair
-    /// the colour is opaque; `#RGB` doubles each digit (`#F80` is `#FF8800`).
-    pub fn parse(text: &str) -> Result<Color> {
-        let bad = || {
-            Diagnostic::syntax(format!("`{text}` is not a valid colour")).expected(COLOR_EXPECTED)
-        };
-        let digits = text.strip_prefix('#').ok_or_else(bad)?;
-        // Checking ASCII first makes the byte-index slicing below safe.
-        if !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(bad());
-        }
-        let pair = |i: usize| u8::from_str_radix(&digits[i..i + 2], 16).map_err(|_| bad());
-        let nibble = |i: usize| {
-            u8::from_str_radix(&digits[i..i + 1], 16)
-                .map(|n| n * 17)
-                .map_err(|_| bad())
-        };
-        match digits.len() {
-            3 => Ok(Color {
-                r: nibble(0)?,
-                g: nibble(1)?,
-                b: nibble(2)?,
-                a: 255,
-            }),
-            6 => Ok(Color {
-                r: pair(0)?,
-                g: pair(2)?,
-                b: pair(4)?,
-                a: 255,
-            }),
-            8 => Ok(Color {
-                r: pair(0)?,
-                g: pair(2)?,
-                b: pair(4)?,
-                a: pair(6)?,
-            }),
-            _ => Err(bad()),
-        }
-    }
-}
-
 /// A frame size in whole pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Size {
@@ -120,32 +66,111 @@ pub struct Size {
     pub height: u32,
 }
 
-impl Size {
+impl FromStr for Time {
+    type Err = Diagnostic;
+
+    /// Parses `<number>f` or `<number>s`. The number must be finite and not
+    /// negative, and the unit suffix is required.
+    fn from_str(text: &str) -> Result<Time> {
+        lex::parse_all(text, lex::time::<Infallible>, |_| {
+            Diagnostic::syntax(format!("`{text}` is not a valid time")).expected(TIME_EXPECTED)
+        })
+    }
+}
+
+impl FromStr for Color {
+    type Err = Diagnostic;
+
+    /// Parses `#RGB`, `#RRGGBB` or `#RRGGBBAA`. Without an alpha digit pair
+    /// the colour is opaque; `#RGB` doubles each digit (`#F80` is `#FF8800`).
+    fn from_str(text: &str) -> Result<Color> {
+        lex::parse_all(text, hex_color, |_| {
+            Diagnostic::syntax(format!("`{text}` is not a valid colour")).expected(COLOR_EXPECTED)
+        })
+    }
+}
+
+impl FromStr for Size {
+    type Err = Diagnostic;
+
     /// Parses a preset (`720p`, `1080p`, `4k`, `square`, `vertical`) or an
     /// explicit `<width>x<height>` where both sides are above zero.
-    pub fn parse(text: &str) -> Result<Size> {
-        let (width, height) = match text {
-            "720p" => (1280, 720),
-            "1080p" => (1920, 1080),
-            "4k" => (3840, 2160),
-            "square" => (1080, 1080),
-            "vertical" => (1080, 1920),
-            _ => {
-                let bad = || {
-                    Diagnostic::syntax(format!("`{text}` is not a valid size"))
-                        .expected(SIZE_EXPECTED)
-                };
-                let (w, h) = text.split_once('x').ok_or_else(bad)?;
-                let w: u32 = w.parse().map_err(|_| bad())?;
-                let h: u32 = h.parse().map_err(|_| bad())?;
-                if w == 0 || h == 0 {
-                    return Err(bad());
-                }
-                (w, h)
-            }
-        };
-        Ok(Size { width, height })
+    fn from_str(text: &str) -> Result<Size> {
+        lex::parse_all(text, size, |_| {
+            Diagnostic::syntax(format!("`{text}` is not a valid size")).expected(SIZE_EXPECTED)
+        })
     }
+}
+
+/// `#` and three, six or eight hex digits. The longest form is tried first,
+/// so `#RRGGBB` is not read as `#RGB` with digits left over.
+fn hex_color(input: &mut &str) -> Parsed<Color> {
+    preceded(
+        '#',
+        alt((
+            (channel, channel, channel, channel).map(|(r, g, b, a)| Color { r, g, b, a }),
+            (channel, channel, channel).map(|(r, g, b)| Color { r, g, b, a: 255 }),
+            (short_channel, short_channel, short_channel).map(|(r, g, b)| Color {
+                r,
+                g,
+                b,
+                a: 255,
+            }),
+        )),
+    )
+    .parse_next(input)
+}
+
+/// Two hex digits: one channel of `#RRGGBB`.
+fn channel(input: &mut &str) -> Parsed<u8> {
+    hex_digits(2).parse_next(input)
+}
+
+/// One hex digit, doubled: one channel of `#RGB`, where `F` means `FF`.
+fn short_channel(input: &mut &str) -> Parsed<u8> {
+    hex_digits(1).map(|n| n * 17).parse_next(input)
+}
+
+/// Exactly `count` hex digits, read as one byte.
+fn hex_digits<'s>(count: usize) -> impl Parser<&'s str, u8, ErrMode<Failure>> {
+    take_while(count, AsChar::is_hex_digit).verify_map(|digits| u8::from_str_radix(digits, 16).ok())
+}
+
+/// A named size or `<width>x<height>`.
+fn size(input: &mut &str) -> Parsed<Size> {
+    alt((
+        "720p".value(Size {
+            width: 1280,
+            height: 720,
+        }),
+        "1080p".value(Size {
+            width: 1920,
+            height: 1080,
+        }),
+        "4k".value(Size {
+            width: 3840,
+            height: 2160,
+        }),
+        "square".value(Size {
+            width: 1080,
+            height: 1080,
+        }),
+        "vertical".value(Size {
+            width: 1080,
+            height: 1920,
+        }),
+        separated_pair(pixels, 'x', pixels).map(|(width, height)| Size { width, height }),
+    ))
+    .parse_next(input)
+}
+
+/// A whole number of pixels above zero, as `u32` reads it: an optional `+`,
+/// then digits.
+fn pixels(input: &mut &str) -> Parsed<u32> {
+    preceded(opt('+'), digit1)
+        .parse_to()
+        .verify(|n: &u32| *n > 0)
+        .parse_next(input)
 }
 
 #[cfg(test)]

@@ -152,7 +152,7 @@ pub(crate) fn parse_track_string(
         None => Curve::Linear,
         // Always parse, so an unknown name gets the error that lists the
         // known curves.
-        Some(t) => Curve::parse(t).map_err(|e| e.under(path))?,
+        Some(t) => t.parse::<Curve>().map_err(|e| e.under(path))?,
     };
     Ok(vec![
         AnimKey {
@@ -187,8 +187,8 @@ fn parse_range(token: &str, path: &str, fps: f64) -> Result<(Time, Time)> {
     } else {
         format!("{a}{end_unit}")
     };
-    let start = Time::parse(&start_text).map_err(|e| e.under(path))?;
-    let end = Time::parse(b).map_err(|e| e.under(path))?;
+    let start = start_text.parse::<Time>().map_err(|e| e.under(path))?;
+    let end = b.parse::<Time>().map_err(|e| e.under(path))?;
     if start.to_frames(fps) > end.to_frames(fps) {
         return Err(
             Diagnostic::new(Kind::Invalid, format!("`{token}` starts after it ends"))
@@ -242,7 +242,7 @@ fn parse_key(item: &Value, path: &str, spec: &PropertySpec) -> Result<AnimKey> {
         }
     };
     let time = match &parts[0] {
-        Value::String(s) => Time::parse(s).map_err(|e| e.under(path))?,
+        Value::String(s) => s.parse::<Time>().map_err(|e| e.under(path))?,
         Value::Number(n) => match n.as_f64() {
             Some(f) if f.is_finite() && f >= 0.0 => Time::Frames(f),
             _ => {
@@ -269,7 +269,7 @@ fn parse_key(item: &Value, path: &str, spec: &PropertySpec) -> Result<AnimKey> {
     let value = check_range(value, spec, path)?;
     let curve = match parts.get(2) {
         None => Curve::Linear,
-        Some(Value::String(s)) => Curve::parse(s).map_err(|e| e.under(path))?,
+        Some(Value::String(s)) => s.parse::<Curve>().map_err(|e| e.under(path))?,
         Some(other) => {
             return Err(
                 Diagnostic::new(Kind::WrongType, format!("invalid curve {other}"))

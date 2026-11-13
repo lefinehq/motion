@@ -167,8 +167,10 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
         .unwrap()
         .remove(0)
         .1;
-    let b = Behaviour::parse("p 30px 1s cubic(.2,0,0,1) @10f").unwrap();
-    let at = Position::parse("center 300").unwrap();
+    let b = "p 30px 1s cubic(.2,0,0,1) @10f"
+        .parse::<Behaviour>()
+        .unwrap();
+    let at = "center 300".parse::<Position>().unwrap();
     let others: Map<String, Value> = serde_json::from_str(r#"{"opacity":"x","glow":1}"#).unwrap();
     let json = expand_as_anim(&spec, &b, &at, (1000.0, 500.0), 30.0, &others);
     assert_eq!(

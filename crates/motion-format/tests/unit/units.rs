@@ -4,25 +4,25 @@ use super::*;
 
 #[test]
 fn time_parses_frames_and_seconds() {
-    assert_eq!(Time::parse("12f").unwrap(), Time::Frames(12.0));
-    assert_eq!(Time::parse("0.4s").unwrap(), Time::Seconds(0.4));
-    assert_eq!(Time::parse("5s").unwrap().to_frames(30.0), 150.0);
-    assert_eq!(Time::parse("12f").unwrap().to_frames(60.0), 12.0);
+    assert_eq!("12f".parse::<Time>().unwrap(), Time::Frames(12.0));
+    assert_eq!("0.4s".parse::<Time>().unwrap(), Time::Seconds(0.4));
+    assert_eq!("5s".parse::<Time>().unwrap().to_frames(30.0), 150.0);
+    assert_eq!("12f".parse::<Time>().unwrap().to_frames(60.0), 12.0);
 }
 #[test]
 fn time_rejects_bad_input_with_expected_form() {
-    let e = Time::parse("12").unwrap_err();
+    let e = "12".parse::<Time>().unwrap_err();
     assert!(
         e.to_string()
             .contains("expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`")
     );
-    assert!(Time::parse("-3f").is_err());
-    assert!(Time::parse("f").is_err());
+    assert!("-3f".parse::<Time>().is_err());
+    assert!("f".parse::<Time>().is_err());
 }
 #[test]
 fn color_parses_three_six_and_eight_digits() {
     assert_eq!(
-        Color::parse("#FFF").unwrap(),
+        "#FFF".parse::<Color>().unwrap(),
         Color {
             r: 255,
             g: 255,
@@ -31,7 +31,7 @@ fn color_parses_three_six_and_eight_digits() {
         }
     );
     assert_eq!(
-        Color::parse("#0B0D12").unwrap(),
+        "#0B0D12".parse::<Color>().unwrap(),
         Color {
             r: 11,
             g: 13,
@@ -39,62 +39,64 @@ fn color_parses_three_six_and_eight_digits() {
             a: 255
         }
     );
-    assert_eq!(Color::parse("#00000033").unwrap().a, 0x33);
+    assert_eq!("#00000033".parse::<Color>().unwrap().a, 0x33);
     assert!(
-        Color::parse("red")
+        "red"
+            .parse::<Color>()
             .unwrap_err()
             .to_string()
             .contains("`#RGB`, `#RRGGBB` or `#RRGGBBAA`")
     );
-    assert!(Color::parse("#GGG").is_err());
+    assert!("#GGG".parse::<Color>().is_err());
 }
 #[test]
 fn size_parses_presets_and_explicit_pixels() {
     assert_eq!(
-        Size::parse("1080p").unwrap(),
+        "1080p".parse::<Size>().unwrap(),
         Size {
             width: 1920,
             height: 1080
         }
     );
     assert_eq!(
-        Size::parse("720p").unwrap(),
+        "720p".parse::<Size>().unwrap(),
         Size {
             width: 1280,
             height: 720
         }
     );
     assert_eq!(
-        Size::parse("4k").unwrap(),
+        "4k".parse::<Size>().unwrap(),
         Size {
             width: 3840,
             height: 2160
         }
     );
     assert_eq!(
-        Size::parse("square").unwrap(),
+        "square".parse::<Size>().unwrap(),
         Size {
             width: 1080,
             height: 1080
         }
     );
     assert_eq!(
-        Size::parse("vertical").unwrap(),
+        "vertical".parse::<Size>().unwrap(),
         Size {
             width: 1080,
             height: 1920
         }
     );
     assert_eq!(
-        Size::parse("640x360").unwrap(),
+        "640x360".parse::<Size>().unwrap(),
         Size {
             width: 640,
             height: 360
         }
     );
-    assert!(Size::parse("0x360").is_err());
+    assert!("0x360".parse::<Size>().is_err());
     assert!(
-        Size::parse("big")
+        "big"
+            .parse::<Size>()
             .unwrap_err()
             .to_string()
             .contains("`720p`, `1080p`, `4k`, `square`, `vertical` or `<width>x<height>`")
@@ -103,18 +105,18 @@ fn size_parses_presets_and_explicit_pixels() {
 #[test]
 fn time_rejects_non_finite_and_malformed_numbers() {
     for bad in ["", "nanf", "inff", "infs", "1.2.3s", "1 s", "12F", "s"] {
-        assert!(Time::parse(bad).is_err(), "{bad:?} should be rejected");
+        assert!(bad.parse::<Time>().is_err(), "{bad:?} should be rejected");
     }
-    assert_eq!(Time::parse("0f").unwrap(), Time::Frames(0.0));
+    assert_eq!("0f".parse::<Time>().unwrap(), Time::Frames(0.0));
 }
 #[test]
 fn time_error_names_the_input() {
-    assert!(Time::parse("12").unwrap_err().message.contains("`12`"));
+    assert!("12".parse::<Time>().unwrap_err().message.contains("`12`"));
 }
 #[test]
 fn color_three_digits_double_each_digit() {
     assert_eq!(
-        Color::parse("#F80").unwrap(),
+        "#F80".parse::<Color>().unwrap(),
         Color {
             r: 255,
             g: 136,
@@ -123,8 +125,8 @@ fn color_three_digits_double_each_digit() {
         }
     );
     assert_eq!(
-        Color::parse("#abc").unwrap(),
-        Color::parse("#AABBCC").unwrap()
+        "#abc".parse::<Color>().unwrap(),
+        "#AABBCC".parse::<Color>().unwrap()
     );
 }
 #[test]
@@ -132,7 +134,7 @@ fn color_rejects_wrong_lengths_missing_hash_and_non_ascii() {
     for bad in [
         "", "#", "#12", "#1234", "#12345", "#1234567", "FFF", "#ééé", "#+12",
     ] {
-        assert!(Color::parse(bad).is_err(), "{bad:?} should be rejected");
+        assert!(bad.parse::<Color>().is_err(), "{bad:?} should be rejected");
     }
 }
 #[test]
@@ -140,7 +142,7 @@ fn size_rejects_malformed_explicit_sizes() {
     for bad in [
         "", "640x", "x360", "640x0", "-1x5", "1.5x2", "640X360", "1x2x3",
     ] {
-        assert!(Size::parse(bad).is_err(), "{bad:?} should be rejected");
+        assert!(bad.parse::<Size>().is_err(), "{bad:?} should be rejected");
     }
 }
 
@@ -152,16 +154,16 @@ mod never_panics {
     proptest! {
         #[test]
         fn time_color_size_any_string(s in ".*") {
-        let _ = Time::parse(&s);
-        let _ = Color::parse(&s);
-        let _ = Size::parse(&s);
+        let _ = s.parse::<Time>();
+        let _ = s.parse::<Color>();
+        let _ = s.parse::<Size>();
         }
 
         #[test]
         fn time_color_size_short_printable_ascii(s in "[ -~]{0,40}") {
-        let _ = Time::parse(&s);
-        let _ = Color::parse(&s);
-        let _ = Size::parse(&s);
+        let _ = s.parse::<Time>();
+        let _ = s.parse::<Color>();
+        let _ = s.parse::<Size>();
         }
     }
 }

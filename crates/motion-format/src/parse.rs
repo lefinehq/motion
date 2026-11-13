@@ -67,7 +67,7 @@ pub fn scene_from_value(value: &Value) -> Result<Scene> {
     }
 
     let size = match opt_str(obj, "size", "", SIZE_EXPECTED)? {
-        Some(s) => Size::parse(s).map_err(|e| e.under("size"))?,
+        Some(s) => s.parse::<Size>().map_err(|e| e.under("size"))?,
         None => Size {
             width: 1920,
             height: 1080,
@@ -89,11 +89,11 @@ pub fn scene_from_value(value: &Value) -> Result<Scene> {
         }
     };
     let duration = match opt_str(obj, "dur", "", TIME_EXPECTED)? {
-        Some(s) => Time::parse(s).map_err(|e| e.under("dur"))?,
+        Some(s) => s.parse::<Time>().map_err(|e| e.under("dur"))?,
         None => return Err(missing("scene", "dur", r#""dur":"5s""#)),
     };
     let background = match opt_str(obj, "bg", "", COLOR_EXPECTED)? {
-        Some(s) => Color::parse(s).map_err(|e| e.under("bg"))?,
+        Some(s) => s.parse::<Color>().map_err(|e| e.under("bg"))?,
         None => Color {
             r: 0,
             g: 0,
@@ -172,7 +172,7 @@ fn layer_from_value(
     ) {
         (Some(text), None) => {
             let font = match opt_str(obj, "font", &base, FONT_EXPECTED)? {
-                Some(s) => Font::parse(s).map_err(|e| e.under(path("font")))?,
+                Some(s) => s.parse::<Font>().map_err(|e| e.under(path("font")))?,
                 None => Font {
                     family: "Inter".into(),
                     size: 48.0,
@@ -192,7 +192,10 @@ fn layer_from_value(
                         .expected("`font` only next to `text`"),
                 );
             }
-            Content::Rect(RectShape::parse(rect).map_err(|e| e.under(path("rect")))?)
+            Content::Rect(
+                rect.parse::<RectShape>()
+                    .map_err(|e| e.under(path("rect")))?,
+            )
         }
         // Neither is missing content; both are a contradiction. The text is
         // the same, since the fix is the same.
@@ -211,7 +214,7 @@ fn layer_from_value(
     };
 
     let fill = match opt_str(obj, "fill", &base, COLOR_EXPECTED)? {
-        Some(s) => Color::parse(s).map_err(|e| e.under(path("fill")))?,
+        Some(s) => s.parse::<Color>().map_err(|e| e.under(path("fill")))?,
         None => Color {
             r: 255,
             g: 255,
@@ -220,7 +223,7 @@ fn layer_from_value(
         },
     };
     let at = match opt_str(obj, "at", &base, POSITION_EXPECTED)? {
-        Some(s) => Position::parse(s).map_err(|e| e.under(path("at")))?,
+        Some(s) => s.parse::<Position>().map_err(|e| e.under(path("at")))?,
         None => Position {
             x: Coord::Center,
             y: Coord::Center,
@@ -228,7 +231,7 @@ fn layer_from_value(
     };
     let enter = match opt_str(obj, "in", &base, BEHAVIOUR_EXPECTED)? {
         Some(s) => {
-            let b = Behaviour::parse(s).map_err(|e| e.under(path("in")))?;
+            let b = s.parse::<Behaviour>().map_err(|e| e.under(path("in")))?;
             if lookup(presets, &b.preset).is_none() {
                 return Err(Diagnostic::unknown("preset", &b.preset, names(presets)).at(path("in")));
             }

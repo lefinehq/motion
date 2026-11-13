@@ -16,7 +16,7 @@ use super::{compile_scene, load};
 pub fn run(path: &Path, time: &str, ids: &[String]) -> Result<ExitCode> {
     let doc = load(path)?;
     // The time may be seconds, so it needs the scene's frame rate.
-    let frame = Time::parse(time)?.to_frames(doc.scene.fps);
+    let frame = time.parse::<Time>()?.to_frames(doc.scene.fps);
     let graph = compile_scene(&doc.scene);
     let text = at(&graph, frame, ids)?;
     println!("{text}");
