@@ -95,7 +95,7 @@ fn unknown_keys_are_reported_before_unknown_targets() {
 fn invalid_scene_result_is_reported() {
     assert_eq!(
         err("scene fps=\"fast\""),
-        "fps: invalid result: must be a number above zero; expected e.g. `30`"
+        r#"fps: invalid result: invalid type: string "fast"; expected a number"#
     );
 }
 
@@ -115,7 +115,7 @@ fn invalid_result_keeps_the_validation_diagnostic() {
 fn number_or_bool_for_a_string_key_gets_a_quote_hint() {
     assert_eq!(
         err("title text=2024"),
-        "layers[0].text: invalid result: must be a string; expected a quoted value: `text=\"2024\"`"
+        "layers[0].text: invalid result: invalid type: integer `2024`; expected a quoted value: `text=\"2024\"`"
     );
     let e = apply_edit(&doc(), &parse_edit("title text=2024").unwrap()).unwrap_err();
     assert_eq!(e.kind, Kind::WrongType);
@@ -133,7 +133,7 @@ fn a_wrong_type_on_a_number_key_gets_no_quote_hint() {
     assert_eq!(e.kind, Kind::WrongType);
     assert_eq!(
         e.to_string(),
-        "fps: invalid result: must be a number above zero; expected e.g. `30`"
+        "fps: invalid result: invalid type: boolean `true`; expected a number"
     );
 }
 
@@ -225,7 +225,7 @@ fn setting_through_a_non_object_is_an_error() {
 #[test]
 fn only_the_first_segment_is_checked_as_a_key() {
     assert!(err("card nope.x=1").starts_with("unknown layer key `nope`; expected one of "));
-    let m = err("card anim.nope=1");
+    let m = err("card anim.nope=[[0,1]]");
     assert!(
         m.starts_with("layers[1].anim.nope: invalid result: unknown property `nope`"),
         "{m}"

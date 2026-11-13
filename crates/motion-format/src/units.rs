@@ -3,6 +3,7 @@
 //! Part of step 1 (Read). Scenes write `"0.4s"`, `"#0B0D12"` or `"1080p"`;
 //! these types are what the rest of the pipeline works with.
 
+use std::fmt;
 use std::str::FromStr;
 
 use motion_diagnostic::{Diagnostic, Result};
@@ -13,6 +14,7 @@ use winnow::prelude::*;
 use winnow::stream::AsChar;
 use winnow::token::{rest, take_while};
 
+use crate::fmt_num;
 use crate::lex::{self, Failure, Parsed, number};
 
 pub(crate) const TIME_EXPECTED: &str = "`<number>f` or `<number>s`, e.g. `12f` or `0.4s`";
@@ -54,13 +56,35 @@ impl FromStr for Time {
     }
 }
 
+impl fmt::Display for Time {
+    /// Writes the time as a scene would: `12f` or `0.4s`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Time::Frames(frames) => write!(f, "{}f", fmt_num(*frames)),
+            Time::Seconds(seconds) => write!(f, "{}s", fmt_num(*seconds)),
+        }
+    }
+}
+
 /// `<number>f` or `<number>s`: a time in frames or seconds, not negative.
-/// Also a part of the behaviour grammar.
+/// Also a part of the behaviour and anim grammars.
 pub(crate) fn time<R>(input: &mut &str) -> Parsed<Time, R> {
-    let value = number.verify(|v: &f64| *v >= 0.0).parse_next(input)?;
+    (amount, unit)
+        .map(|(value, unit)| unit(value))
+        .parse_next(input)
+}
+
+/// The number of a time: finite and not negative.
+pub(crate) fn amount<R>(input: &mut &str) -> Parsed<f64, R> {
+    number.verify(|v: &f64| *v >= 0.0).parse_next(input)
+}
+
+/// The unit of a time, `f` or `s`, as the variant it builds. The anim range
+/// reads it apart from the number, because a bare start borrows the end's.
+pub(crate) fn unit<R>(input: &mut &str) -> Parsed<fn(f64) -> Time, R> {
     alt((
-        'f'.value(Time::Frames(value)),
-        's'.value(Time::Seconds(value)),
+        'f'.value(Time::Frames as fn(f64) -> Time),
+        's'.value(Time::Seconds as fn(f64) -> Time),
     ))
     .parse_next(input)
 }

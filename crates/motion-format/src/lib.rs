@@ -1,14 +1,16 @@
 //! `motion-format`: the scene format of motion.
 //!
-//! This crate is step 1 of the pipeline (Read). It parses scene JSON into a
-//! typed [`Scene`] ([`parse_document`], [`scene_from_value`]), validates it
-//! with errors that name the key and the accepted form, expands the short
-//! strings people and agents write (`"0.4s"`, `"#0B0D12"`, `"1080p"`) into
-//! typed values, and writes a scene back out ([`write_document`]) keeping
-//! what the author wrote. It never touches pixels or files.
+//! This crate is step 1 of the pipeline (Read). It reads scene JSON with
+//! serde into a typed [`Scene`] ([`parse_document`], [`scene_from_value`]),
+//! validating it in one pass with errors that name the key and the accepted
+//! form; expands the short strings people and agents write (`"0.4s"`,
+//! `"#0B0D12"`, `"1080p"`) into typed values; and writes a scene back out
+//! ([`write_document`]) keeping what the author wrote. It never touches
+//! pixels or files.
 
 pub mod anim;
 mod curve;
+mod doc;
 mod lex;
 mod number;
 mod parse;
@@ -17,6 +19,7 @@ pub mod property;
 mod scene;
 pub mod shorthand;
 pub mod units;
+mod validate;
 mod write;
 
 pub use curve::{Curve, NAMED_CURVES};

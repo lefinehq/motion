@@ -1,10 +1,20 @@
 //! Unit tests for `src/preset.rs`.
 
 use super::*;
-use crate::parse_document;
+use crate::property::property;
+use crate::validate::is_valid_id;
+use crate::{parse_document, scene_from_value};
+use motion_diagnostic::{Kind, Result};
 
+/// The presets of a scene whose `presets` is `value`.
+fn presets_of(value: Value) -> Result<Vec<(String, PresetSpec)>> {
+    let scene = serde_json::json!({"motion": 1, "dur": "1s", "presets": value, "layers": []});
+    scene_from_value(&scene).map(|s| s.presets)
+}
+
+/// [`presets_of`] for JSON text.
 fn presets(json: &str) -> Result<Vec<(String, PresetSpec)>> {
-    parse_presets(&serde_json::from_str(json).unwrap(), "presets")
+    presets_of(serde_json::from_str(json).unwrap())
 }
 
 #[test]
@@ -75,7 +85,7 @@ fn bad_names_and_shapes_are_rejected() {
             .contains("invalid preset name")
     );
     assert!(presets(r#"{"a":3}"#).is_err());
-    assert!(parse_presets(&Value::Null, "presets").is_err());
+    assert!(presets_of(Value::Null).is_err());
 }
 
 const BASE: &str = r#""motion":1,"dur":"1s""#;
@@ -120,7 +130,7 @@ mod never_panics {
         #[test]
         fn parse_presets_any_json(s in ".*") {
             if let Ok(v) = serde_json::from_str::<Value>(&s) {
-                let _ = parse_presets(&v, "presets");
+                let _ = presets_of(v);
             }
         }
 
@@ -135,7 +145,7 @@ mod never_panics {
                 Some(n) => serde_json::json!({ name: { prop: n } }),
                 None => serde_json::json!({ name: { prop: start } }),
             };
-            let _ = parse_presets(&v, "presets");
+            let _ = presets_of(v);
         }
     }
 }
@@ -172,7 +182,7 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
         .unwrap();
     let at = "center 300".parse::<Position>().unwrap();
     let others: Map<String, Value> = serde_json::from_str(r#"{"opacity":"x","glow":1}"#).unwrap();
-    let json = expand_as_anim(&spec, &b, &at, (1000.0, 500.0), 30.0, &others);
+    let json = expand_as_anim(&spec, &b, &at, (1000.0, 500.0), 30.0, Some(&others));
     assert_eq!(
         json,
         r#"{"opacity":"0 -> 1 @10-40f cubic(0.2,0,0,1)","x":"470 -> 500 @10-40f cubic(0.2,0,0,1)","y":"330 -> 300 @10-40f cubic(0.2,0,0,1)","scale":"0.5 -> 1 @10-40f cubic(0.2,0,0,1)","rotate":"30 -> 0 @10-40f cubic(0.2,0,0,1)","glow":1}"#
@@ -183,7 +193,7 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
 
 #[test]
 fn a_bounded_property_cannot_start_at_a_distance() {
-    let e = parse_presets(&serde_json::json!({"dim":{"opacity":"-d"}}), "presets")
+    let e = presets(r#"{"dim":{"opacity":"-d"}}"#)
         .unwrap_err()
         .to_string();
     assert_eq!(
@@ -191,5 +201,5 @@ fn a_bounded_property_cannot_start_at_a_distance() {
         "presets.dim.opacity: `opacity` has a fixed range, so it cannot start at a distance; expected a number within its range, e.g. 0"
     );
     // Unbounded properties still may.
-    assert!(parse_presets(&serde_json::json!({"rise":{"y":"+d"}}), "presets").is_ok());
+    assert!(presets(r#"{"rise":{"y":"+d"}}"#).is_ok());
 }

@@ -7,25 +7,20 @@
 
 use std::sync::OnceLock;
 
-use motion_diagnostic::{Diagnostic, Kind, Result};
+use indexmap::IndexMap;
 use serde_json::{Map, Value};
 
-use crate::anim::check_range;
+use crate::doc::PresetDoc;
 use crate::fmt_num;
-use crate::parse::{ID_RULE, is_valid_id};
-use crate::property::{PROPERTIES, names as prop, property, property_names};
+use crate::property::{PROPERTIES, names as prop};
 use crate::shorthand::{Behaviour, Coord, Position};
+use crate::validate;
 
 /// The built-in presets, embedded at compile time.
 const BUILTIN_JSON: &str = include_str!("presets.json");
 
-/// The accepted forms of a start value, for error messages.
-const START_EXPECTED: &str = r#"a number, "+d" or "-d""#;
-
-/// The JSON text of [`Start::Plus`].
-const PLUS: &str = "+d";
-/// The JSON text of [`Start::Minus`].
-const MINUS: &str = "-d";
+/// The starts JSON writes as strings, the one place they are spelled.
+const DISTANCES: [(&str, Start); 2] = [("+d", Start::Plus), ("-d", Start::Minus)];
 
 /// Where a property starts when an entrance begins.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,6 +31,16 @@ pub enum Start {
     Plus,
     /// The resting value minus the behaviour's distance; JSON `"-d"`.
     Minus,
+}
+
+impl Start {
+    /// The start a string stands for: `"+d"` or `"-d"`.
+    pub(crate) fn distance(text: &str) -> Option<Start> {
+        DISTANCES
+            .iter()
+            .find(|(written, _)| *written == text)
+            .map(|(_, start)| *start)
+    }
 }
 
 /// A preset: the properties it animates and where each starts.
@@ -51,94 +56,10 @@ pub struct PresetSpec {
 pub fn builtin_presets() -> &'static [(String, PresetSpec)] {
     static BUILTIN: OnceLock<Vec<(String, PresetSpec)>> = OnceLock::new();
     BUILTIN.get_or_init(|| {
-        let value: Value = serde_json::from_str(BUILTIN_JSON).expect("presets.json is valid JSON");
-        parse_presets(&value, "presets.json").expect("presets.json holds valid presets")
+        let doc: IndexMap<String, PresetDoc> =
+            serde_json::from_str(BUILTIN_JSON).expect("presets.json holds preset objects");
+        validate::presets(&doc).expect("presets.json holds valid presets")
     })
-}
-
-/// Parses a `presets` object: name to `{property: start}`. `path` prefixes
-/// error paths (`presets` for a scene).
-pub fn parse_presets(value: &Value, path: &str) -> Result<Vec<(String, PresetSpec)>> {
-    let obj = value.as_object().ok_or_else(|| {
-        Diagnostic::new(Kind::WrongType, "must be an object")
-            .at(path)
-            .expected(r#"e.g. {"slide":{"opacity":0,"x":"-d"}}"#)
-    })?;
-    let mut out = Vec::with_capacity(obj.len());
-    for (name, body) in obj {
-        let here = format!("{path}.{name}");
-        if !is_valid_id(name) {
-            return Err(
-                Diagnostic::new(Kind::Invalid, format!("invalid preset name `{name}`"))
-                    .at(&here)
-                    .expected(ID_RULE),
-            );
-        }
-        let props_obj = body.as_object().ok_or_else(|| {
-            Diagnostic::new(Kind::WrongType, "must be an object of property starts")
-                .at(&here)
-                .expected(r#"e.g. {"opacity":0,"y":"+d"}"#)
-        })?;
-        let mut props = Vec::with_capacity(props_obj.len());
-        for (prop, start) in props_obj {
-            let at = format!("{here}.{prop}");
-            let (index, spec) = property(prop)
-                .ok_or_else(|| Diagnostic::unknown("property", prop, property_names()).at(&at))?;
-            let start = parse_start(start, &at)?;
-            match start {
-                // An absolute start obeys the property's range, like an `anim` key.
-                Start::Value(v) => {
-                    check_range(v, spec, &at)?;
-                }
-                // A distance in pixels means nothing for a bounded property
-                // such as opacity, and would leave its range.
-                Start::Plus | Start::Minus if spec.range.is_some() => {
-                    return Err(Diagnostic::new(
-                        Kind::OutOfRange,
-                        format!("`{prop}` has a fixed range, so it cannot start at a distance"),
-                    )
-                    .at(&at)
-                    .expected("a number within its range, e.g. 0"));
-                }
-                Start::Plus | Start::Minus => {}
-            }
-            props.push((index, start));
-        }
-        if props.is_empty() {
-            return Err(Diagnostic::new(
-                Kind::Missing,
-                format!("preset `{name}` sets no properties"),
-            )
-            .at(&here)
-            .expected(r#"e.g. {"opacity":0}"#));
-        }
-        out.push((name.clone(), PresetSpec { props }));
-    }
-    Ok(out)
-}
-
-/// Reads one start value: a number, `"+d"` or `"-d"`.
-fn parse_start(value: &Value, path: &str) -> Result<Start> {
-    match value {
-        Value::String(s) if s == PLUS => Ok(Start::Plus),
-        Value::String(s) if s == MINUS => Ok(Start::Minus),
-        // `as_f64` is `None` for anything but a number.
-        _ => value
-            .as_f64()
-            .filter(|v| v.is_finite())
-            .map(Start::Value)
-            .ok_or_else(|| {
-                // Any other string is the right type with the wrong content.
-                let kind = if value.is_string() {
-                    Kind::Invalid
-                } else {
-                    Kind::WrongType
-                };
-                Diagnostic::new(kind, format!("invalid start {value}"))
-                    .at(path)
-                    .expected(START_EXPECTED)
-            }),
-    }
 }
 
 /// Writes a layer's entrance as an `anim` object in JSON text: one string
@@ -150,15 +71,16 @@ fn parse_start(value: &Value, path: &str) -> Result<Start> {
 /// builds from `in`. The resting value is the registry default, except for
 /// the two properties `at` sets, which are resolved against `canvas`
 /// (`center` is half the size). `others` are the layer's existing `anim`
-/// entries; those for properties the preset does not animate are appended
-/// unchanged, so the object can replace the whole `anim`.
+/// entries as written, if any; those for properties the preset does not
+/// animate are appended unchanged, so the object can replace the whole
+/// `anim`.
 pub(crate) fn expand_as_anim(
     spec: &PresetSpec,
     behaviour: &Behaviour,
     at: &Position,
     canvas: (f64, f64),
     fps: f64,
-    others: &Map<String, Value>,
+    others: Option<&Map<String, Value>>,
 ) -> String {
     let resolve = |c: Coord, extent: f64| match c {
         Coord::Center => extent / 2.0,
@@ -189,7 +111,7 @@ pub(crate) fn expand_as_anim(
         );
         entries.push((property.name, Value::String(track)));
     }
-    for (name, value) in others {
+    for (name, value) in others.into_iter().flatten() {
         if !entries.iter().any(|(n, _)| n == name) {
             entries.push((name, value.clone()));
         }

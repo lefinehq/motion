@@ -1,11 +1,20 @@
-//! Unit tests for `src/anim.rs`.
+//! Unit tests for `src/anim.rs`: the string grammar, and tracks read
+//! through a whole scene.
 
 use super::*;
-use crate::parse_document;
-use serde_json::json;
+use crate::property::property;
+use crate::{parse_document, scene_from_value};
+use motion_diagnostic::Kind;
+use serde_json::{Value, json};
 
+/// The tracks of `v` as the `anim` of the second layer of a scene.
 fn anim(v: Value) -> Result<Vec<AnimTrack>> {
-    parse_anim(&v, "layers[1].anim", 30.0)
+    let scene = json!({
+        "motion": 1,
+        "dur": "1s",
+        "layers": [{"id": "z", "rect": "1x1"}, {"id": "a", "rect": "1x1", "anim": v}],
+    });
+    scene_from_value(&scene).map(|mut s| s.layers.remove(1).anim)
 }
 
 fn err(v: Value) -> String {
@@ -102,17 +111,93 @@ fn string_form_errors() {
 }
 
 #[test]
+fn string_form_messages() {
+    let line = |text: &str| text.parse::<TrackLine>().unwrap_err().to_string();
+    let form =
+        r#"expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out""#;
+    assert_eq!(
+        line("0 1 @0-5f"),
+        format!("missing `->` after the start value in `0 1 @0-5f`; {form}")
+    );
+    assert_eq!(
+        line("0 -> 1 2 @0-5f"),
+        format!("missing `@<start>-<end>` after the end value in `0 -> 1 2 @0-5f`; {form}")
+    );
+    assert_eq!(line("a -> 1 @0-5f"), format!("`a` is not a number; {form}"));
+    assert_eq!(
+        line("0 -> 1 @0-5f ease ease"),
+        format!("unexpected `ease` after the curve; {form}")
+    );
+    assert_eq!(line(""), format!("`` is not a valid track; {form}"));
+    let range = "expected `@<start>-<end>` with a unit, e.g. `@0-30f`, `@0.5s-1s`";
+    assert_eq!(
+        line("0 -> 1 @05f"),
+        format!("`@05f` has no `-` between start and end; {range}")
+    );
+    assert_eq!(
+        line("0 -> 1 @0-5"),
+        format!("`@0-5` needs a unit (`f` or `s`) after the end; {range}")
+    );
+    assert_eq!(
+        line("0 -> 1 @x-5f"),
+        format!("`@x-5f` is not a valid range; {range}")
+    );
+    assert_eq!(
+        err(json!({"x": "0 -> 1 @5-0f"})),
+        format!("layers[1].anim.x: `@5f-0f` starts after it ends; {range}")
+    );
+}
+
+#[test]
+fn ranges_borrow_the_end_unit() {
+    let span = |text: &str| text.parse::<Span>().unwrap();
+    assert_eq!(
+        span("@0-30f"),
+        Span {
+            start: Time::Frames(0.0),
+            end: Time::Frames(30.0)
+        }
+    );
+    assert_eq!(span("@1-1.5s").start, Time::Seconds(1.0));
+    assert_eq!(span("@0f-1s").start, Time::Frames(0.0));
+    assert!("@-1-5f".parse::<Span>().is_err());
+}
+
+#[test]
 fn array_form_errors() {
     assert!(err(json!({"x": []})).contains("anim.x: needs at least one key"));
     assert!(err(json!({"x": [[5, 0], [2, 1]]})).starts_with("layers[1].anim.x[1]: key is earlier"));
-    assert!(err(json!({"x": [[0]]})).starts_with("layers[1].anim.x[0]: must be a list of 2 or 3"));
-    assert!(err(json!({"x": [[-1, 0]]})).starts_with("layers[1].anim.x[0]: invalid time"));
+    assert_eq!(
+        err(json!({"x": [[0]]})),
+        r#"layers[1].anim.x[0]: invalid length 1; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"]"#
+    );
+    assert_eq!(
+        err(json!({"x": [[0, 1, "linear", 4]]})),
+        r#"layers[1].anim.x[0]: invalid length 4; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"]"#
+    );
+    assert!(err(json!({"x": [[-1, 0]]})).starts_with("layers[1].anim.x[0]: invalid time -1"));
     assert!(err(json!({"x": [["12", 0]]})).starts_with("layers[1].anim.x[0]: "));
-    assert!(err(json!({"x": [[0, "a"]]})).contains("invalid value"));
+    assert_eq!(
+        err(json!({"x": [[true, 0]]})),
+        "layers[1].anim.x[0][0]: invalid type: boolean `true`; expected a frame count, or a time such as `12f` or `0.4s`"
+    );
+    assert_eq!(
+        err(json!({"x": [[0, "a"]]})),
+        r#"layers[1].anim.x[0][1]: invalid type: string "a"; expected a number"#
+    );
     assert!(err(json!({"x": [[0, 1, "nope"]]})).contains("unknown curve"));
-    assert!(err(json!({"x": [[0, 1, 3]]})).contains("invalid curve"));
-    assert!(err(json!({"x": 3})).contains("must be a string or a list"));
-    assert!(err(json!([1])).starts_with("layers[1].anim: must be an object"));
+    assert_eq!(
+        err(json!({"x": [[0, 1, 3]]})),
+        "layers[1].anim.x[0][2]: invalid type: integer `3`; expected a string"
+    );
+    assert_eq!(
+        err(json!({"x": 3})),
+        r#"layers[1].anim.x: invalid type: integer `3`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of [time, value] keys"#
+    );
+    assert_eq!(
+        err(json!([1])),
+        "layers[1].anim: invalid type: sequence; expected a map"
+    );
 }
 
 #[test]
@@ -194,22 +279,22 @@ mod props {
     proptest! {
         #[test]
         fn string_form_never_panics(s in ".{0,40}") {
-            let spec = property("opacity").unwrap().1;
-            let _ = parse_track_string(&s, "p", spec, 30.0);
+            let _ = s.parse::<TrackLine>();
+            let _ = s.parse::<Span>();
         }
 
         #[test]
         fn string_form_shaped_input_never_panics(
             a in "[-0-9.a-z]{0,5}", b in "[-0-9.a-z]{0,5}", r in "[-@0-9.fs]{0,10}", c in "[a-z(),0-9.-]{0,12}"
         ) {
-            let spec = property("x").unwrap().1;
-            let _ = parse_track_string(&format!("{a} -> {b} @{r} {c}"), "p", spec, 30.0);
+            let _ = format!("{a} -> {b} @{r} {c}").parse::<TrackLine>();
+            let _ = anim(json!({"opacity": format!("{a} -> {b} @{r} {c}")}));
         }
 
         #[test]
-        fn parse_anim_never_panics(v in arb_json()) {
-            let _ = parse_anim(&v, "anim", 30.0);
-            let _ = parse_anim(&json!({"opacity": v.clone(), "x": v}), "anim", 24.0);
+        fn anim_never_panics(v in arb_json()) {
+            let _ = anim(v.clone());
+            let _ = anim(json!({"opacity": v.clone(), "x": v}));
         }
     }
 

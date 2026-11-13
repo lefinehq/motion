@@ -12,11 +12,6 @@ mod font;
 mod position;
 mod rect;
 
-pub(crate) use behaviour::EXPECTED as BEHAVIOUR_EXPECTED;
-pub(crate) use font::EXPECTED as FONT_EXPECTED;
-pub(crate) use position::EXPECTED as POSITION_EXPECTED;
-pub(crate) use rect::EXPECTED as RECT_EXPECTED;
-
 pub use behaviour::Behaviour;
 pub use font::Font;
 pub use position::{Coord, Position};

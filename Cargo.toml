@@ -17,7 +17,10 @@ missing_docs = "warn"
 all = "warn"
 
 [workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+serde_path_to_error = "0.1"
+indexmap = { version = "2", features = ["serde"] }
 thiserror = "2"
 winnow = "1"
 proptest = "1"

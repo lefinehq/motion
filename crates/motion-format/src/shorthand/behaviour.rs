@@ -16,8 +16,8 @@ use winnow::token::{one_of, rest, take_till};
 use crate::Curve;
 use crate::curve::CUBIC_PREFIX;
 use crate::lex::{self, Failure, Parsed, blank0, blank1, ends_with, number, word};
-use crate::parse::{ID_RULE, is_valid_id};
 use crate::units::{Time, time};
+use crate::validate::{ID_RULE, is_valid_id};
 
 pub(crate) const EXPECTED: &str = "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`";
 
