@@ -1,0 +1,5 @@
+{"motion":1,"size":"1080p","fps":30,"dur":"5s","bg":"#0B0D12",
+"layers":[
+{"id":"title","text":"Launch Week","font":"Inter 96 700","at":"center 260","in":"fade-up 12f"},
+{"id":"card","rect":"300x400 r24","fill":"#FFFFFF","at":"center 700","in":"fade-up 60px 12f ease-out @15f"}
+]}

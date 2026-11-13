@@ -1,0 +1,15 @@
+[package]
+name = "motion-edit"
+description = "A one-line edit language for motion scenes: parse a line like `card fill=#FF0000`, apply it, validate the result."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+motion-format = { path = "../motion-format" }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

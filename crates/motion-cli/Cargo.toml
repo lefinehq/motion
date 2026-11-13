@@ -1,0 +1,24 @@
+[package]
+name = "motion-cli"
+description = "The `motion` command-line tool: check, query and edit motion scenes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "motion"
+path = "src/main.rs"
+
+[dependencies]
+motion-format = { path = "../motion-format" }
+motion-scene = { path = "../motion-scene" }
+motion-eval = { path = "../motion-eval" }
+motion-query = { path = "../motion-query" }
+motion-edit = { path = "../motion-edit" }
+clap = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

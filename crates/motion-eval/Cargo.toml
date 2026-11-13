@@ -1,0 +1,17 @@
+[package]
+name = "motion-eval"
+description = "Evaluates a motion scene graph at any frame: the position, size and opacity of every node, without rendering."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+motion-scene = { path = "../motion-scene" }
+
+[dev-dependencies]
+motion-format = { path = "../motion-format" }
+
+[lints]
+workspace = true
