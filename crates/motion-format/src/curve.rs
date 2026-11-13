@@ -7,16 +7,15 @@
 //! shortcuts listed once, in [`NAMED_CURVES`].
 
 use std::fmt;
-
 use std::str::FromStr;
 
 use motion_diagnostic::{Diagnostic, Result};
 use winnow::combinator::{alt, cut_err, delimited, eof, preceded, separated_pair, terminated};
 use winnow::prelude::*;
-use winnow::token::take_while;
+use winnow::token::rest;
 
 use crate::fmt_num;
-use crate::shorthand::lex::{self, Parsed};
+use crate::lex::{self, Parsed};
 
 /// The expected form of a custom curve.
 const CUBIC_EXPECTED: &str =
@@ -106,29 +105,41 @@ fn curve(input: &mut &str) -> Parsed<Curve, Cubic> {
     alt((preceded(CUBIC_PREFIX, cut_err(cubic_arguments)), named)).parse_next(input)
 }
 
-/// A curve name, looked up in [`NAMED_CURVES`]: names are data, so none is
-/// written in the grammar.
+/// A curve name: the whole token, looked up in [`NAMED_CURVES`]. Names are
+/// data, so the grammar knows none of them, nor their alphabet.
 fn named(input: &mut &str) -> Parsed<Curve, Cubic> {
-    take_while(1.., ('a'..='z', '-'))
-        .verify_map(Curve::named)
-        .parse_next(input)
+    rest.verify_map(Curve::named).parse_next(input)
 }
 
 /// `x1,y1,x2,y2)`: what follows `cubic(`. The token must end with `)`
-/// before its arguments are read.
+/// before its arguments are read. Each step gives its own reason where it
+/// can fail, and the first reason given sticks.
 fn cubic_arguments(input: &mut &str) -> Parsed<Curve, Cubic> {
-    lex::ends_with(')')
-        .take()
+    closed
         .context(Cubic::Unclosed)
-        .and_then(terminated(separated_pair(point, ',', point), (')', eof)).context(Cubic::Count))
-        // With x outside 0..=1 the curve could run backwards in time, and a
-        // frame would have two values.
-        .verify(|((x1, _), (x2, _)): &(Point, Point)| {
-            (0.0..=1.0).contains(x1) && (0.0..=1.0).contains(x2)
-        })
+        .and_then(arguments)
+        .parse_next(input)
+}
+
+/// Everything up to and including the closing `)`, which ends the token.
+fn closed<'s>(input: &mut &'s str) -> Parsed<&'s str, Cubic> {
+    lex::ends_with(')').take().parse_next(input)
+}
+
+/// The four numbers and the `)` after them, with `x1` and `x2` in range.
+fn arguments(input: &mut &str) -> Parsed<Curve, Cubic> {
+    terminated(separated_pair(point, ',', point), (')', eof))
+        .context(Cubic::Count)
+        .verify(x_in_range)
         .context(Cubic::XRange)
         .map(|((x1, y1), (x2, y2))| Curve::Bezier(x1, y1, x2, y2))
         .parse_next(input)
+}
+
+/// Whether both control points have `x` in 0..=1. Outside it the curve could
+/// run backwards in time, and a frame would have two values.
+fn x_in_range(((x1, _), (x2, _)): &(Point, Point)) -> bool {
+    (0.0..=1.0).contains(x1) && (0.0..=1.0).contains(x2)
 }
 
 /// A control point of a cubic curve, `(x, y)`.

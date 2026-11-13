@@ -8,7 +8,7 @@ use motion_diagnostic::{Diagnostic, Result};
 use winnow::combinator::{delimited, opt, preceded, separated_pair};
 use winnow::prelude::*;
 
-use super::lex::{self, Parsed, blank0, blank1, number};
+use crate::lex::{self, Parsed, blank0, blank1, number};
 
 pub(crate) const EXPECTED: &str = "`<width>x<height> [r<radius>]`, e.g. `300x400 r24`";
 
@@ -29,9 +29,7 @@ impl FromStr for RectShape {
     /// Parses `<width>x<height>` with an optional `r<radius>` token. Width
     /// and height must be above zero; the radius defaults to 0.
     fn from_str(text: &str) -> Result<RectShape> {
-        lex::parse_all(text, rect, |_| {
-            Diagnostic::syntax(format!("`{text}` is not a valid rectangle")).expected(EXPECTED)
-        })
+        lex::parse_whole(text, rect, "rectangle", EXPECTED)
     }
 }
 

@@ -63,3 +63,15 @@ mod never_panics {
         }
     }
 }
+
+#[test]
+fn rect_allows_whitespace_around_and_between_its_parts() {
+    assert_eq!(
+        " 10x10  r2 ".parse::<RectShape>().unwrap(),
+        RectShape {
+            width: 10.0,
+            height: 10.0,
+            radius: 2.0
+        }
+    );
+}

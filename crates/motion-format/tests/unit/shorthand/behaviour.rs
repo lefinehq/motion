@@ -197,3 +197,11 @@ fn behaviour_token_shape_decides_the_kind_reported() {
     assert_eq!(msg("fade 1.2.3s"), "`1.2.3s` is not a valid duration");
     assert!(msg("fade fades").starts_with("unknown curve `fades`"));
 }
+
+#[test]
+fn behaviour_allows_any_whitespace_around_and_between_tokens() {
+    let expected = "fade 12f".parse::<Behaviour>().unwrap();
+    for text in ["  fade  12f  ", "fade\t12f", "fade\u{a0}12f"] {
+        assert_eq!(text.parse::<Behaviour>().unwrap(), expected, "{text:?}");
+    }
+}

@@ -19,7 +19,7 @@ all = "warn"
 [workspace.dependencies]
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
-winnow = "0.7"
+winnow = "1"
 proptest = "1"
 insta = "1"
 clap = { version = "4", features = ["derive"] }

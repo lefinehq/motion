@@ -9,7 +9,7 @@ use winnow::ascii::float;
 use winnow::combinator::{alt, eof, peek, preceded, repeat_till, terminated};
 use winnow::prelude::*;
 
-use super::lex::{self, Parsed, blank0, blank1, word};
+use crate::lex::{self, Parsed, blank0, blank1, word};
 
 pub(crate) const EXPECTED: &str = "`<family> <size> [<weight>]`, e.g. `Inter 96 700`";
 
@@ -47,11 +47,43 @@ impl FromStr for Font {
     /// - three trailing numbers are a family ending in a number, then the
     ///   size and weight: `Baloo 2 120 400`.
     fn from_str(text: &str) -> Result<Font> {
-        let words = lex::parse_all(text, words, |_| {
-            Diagnostic::syntax(format!("`{text}` has no size")).expected(EXPECTED)
-        })?;
-        words.into_font(text)
+        lex::parse_all(text, font, |problem| {
+            // `Words::into_font` names every other problem, so a failure
+            // without one means the grammar found no trailing number.
+            let message = match problem.unwrap_or(Problem::NoSize) {
+                Problem::NoSize => format!("`{text}` has no size"),
+                Problem::NoFamily => format!("`{text}` has no font family"),
+                Problem::Ambiguous { explicit } => format!(
+                    "`{text}` is ambiguous: if the family name ends in a number, \
+                     write the size and weight explicitly, e.g. `{explicit} 400`; \
+                     otherwise the {WEIGHT_RULE}"
+                ),
+                Problem::Weight(weight) => {
+                    format!("`{weight}` is not a valid weight; the {WEIGHT_RULE}")
+                }
+                Problem::Size(size) => {
+                    format!("`{size}` is not a valid size; it must be above zero")
+                }
+            };
+            Diagnostic::syntax(message).expected(EXPECTED)
+        })
     }
+}
+
+/// What is wrong with a font string, with the text it is wrong about.
+#[derive(Debug)]
+enum Problem<'s> {
+    /// The string does not end in a number.
+    NoSize,
+    /// The string has numbers only.
+    NoFamily,
+    /// Two trailing numbers whose last is not a weight; `explicit` is the
+    /// string with the family ending in the first number.
+    Ambiguous { explicit: String },
+    /// The last of three or more trailing numbers is not a weight.
+    Weight(&'s str),
+    /// The size is not above zero.
+    Size(&'s str),
 }
 
 /// A font string split by the grammar: the family words, then the numbers
@@ -68,52 +100,33 @@ struct Words<'s> {
 /// A number word: its text, for messages and the weight, and its value.
 type Number<'s> = (&'s str, f64);
 
-impl Words<'_> {
+impl<'s> Words<'s> {
     /// Applies the rules of [`Font::from_str`] to the trailing numbers.
-    fn into_font(self, text: &str) -> Result<Font> {
+    fn into_font(self) -> std::result::Result<Font, Problem<'s>> {
         let Words {
-            family,
+            mut family,
             numbers,
             last,
         } = self;
         // The family words end in a word that is not a number, so an empty
         // list means the family would be numbers alone, as in `96 700`.
         if family.is_empty() {
-            return Err(
-                Diagnostic::syntax(format!("`{text}` has no font family")).expected(EXPECTED)
-            );
+            return Err(Problem::NoFamily);
         }
         // `extra` holds the trailing numbers that end the family name.
         let (extra, (size_text, size), weight) = match (numbers.as_slice(), weight(last.0)) {
-            ([], _) => (&[][..], last, DEFAULT_WEIGHT),
+            (no_extra @ [], _) => (no_extra, last, DEFAULT_WEIGHT),
             ([extra @ .., size], Some(weight)) => (extra, *size, weight),
             ([size], None) => {
-                let explicit = [family.join(" ").as_str(), size.0, last.0].join(" ");
-                return Err(Diagnostic::syntax(format!(
-                    "`{text}` is ambiguous: if the family name ends in a number, \
-                     write the size and weight explicitly, e.g. `{explicit} 400`; \
-                     otherwise the {WEIGHT_RULE}"
-                ))
-                .expected(EXPECTED));
+                let explicit = format!("{} {} {}", family.join(" "), size.0, last.0);
+                return Err(Problem::Ambiguous { explicit });
             }
-            (_, None) => {
-                return Err(Diagnostic::syntax(format!(
-                    "`{}` is not a valid weight; the {WEIGHT_RULE}",
-                    last.0
-                ))
-                .expected(EXPECTED));
-            }
+            (_, None) => return Err(Problem::Weight(last.0)),
         };
         if !(size.is_finite() && size > 0.0) {
-            return Err(Diagnostic::syntax(format!(
-                "`{size_text}` is not a valid size; it must be above zero"
-            ))
-            .expected(EXPECTED));
+            return Err(Problem::Size(size_text));
         }
-        let family: Vec<&str> = family
-            .into_iter()
-            .chain(extra.iter().map(|(word, _)| *word))
-            .collect();
+        family.extend(extra.iter().map(|(word, _)| *word));
         Ok(Font {
             family: family.join(" "),
             size,
@@ -130,10 +143,15 @@ fn weight(word: &str) -> Option<u16> {
         .filter(|w| (100..=900).contains(w) && w % 100 == 0)
 }
 
+/// A font string, checked against the rules of [`Font::from_str`].
+fn font<'s>(input: &mut &'s str) -> Parsed<Font, Problem<'s>> {
+    words.try_map(Words::into_font).parse_next(input)
+}
+
 /// Family words, then the numbers that end the string. `repeat_till` tries
 /// the trailing numbers before each word, so the family stops at the last
 /// word that is not a number.
-fn words<'s>(input: &mut &'s str) -> Parsed<Words<'s>> {
+fn words<'s, R>(input: &mut &'s str) -> Parsed<Words<'s>, R> {
     preceded(
         blank0,
         repeat_till(0.., terminated(word, blank1), trailing_numbers),
@@ -148,7 +166,7 @@ fn words<'s>(input: &mut &'s str) -> Parsed<Words<'s>> {
 
 /// The numbers that end a font string: numbers until the last one, which
 /// ends the text.
-fn trailing_numbers<'s>(input: &mut &'s str) -> Parsed<(Vec<Number<'s>>, Number<'s>)> {
+fn trailing_numbers<'s, R>(input: &mut &'s str) -> Parsed<(Vec<Number<'s>>, Number<'s>), R> {
     repeat_till(
         0..,
         terminated(number_word, blank1),
@@ -159,7 +177,7 @@ fn trailing_numbers<'s>(input: &mut &'s str) -> Parsed<(Vec<Number<'s>>, Number<
 
 /// A whole word that is a number, with its text. Any number counts, even
 /// `inf`: it still ends the family, and the size check then rejects it.
-fn number_word<'s>(input: &mut &'s str) -> Parsed<Number<'s>> {
+fn number_word<'s, R>(input: &mut &'s str) -> Parsed<Number<'s>, R> {
     terminated(float, peek(alt((blank1, eof))))
         .with_taken()
         .map(|(value, text)| (text, value))

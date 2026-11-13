@@ -10,8 +10,8 @@ use motion_diagnostic::{Diagnostic, Result};
 use winnow::combinator::{alt, delimited, separated_pair};
 use winnow::prelude::*;
 
-use super::lex::{self, Parsed, blank0, blank1, number};
 use crate::fmt_num;
+use crate::lex::{self, Parsed, blank0, blank1, number};
 
 pub(crate) const EXPECTED: &str =
     "`<x> <y>`, each a number of pixels or `center`, e.g. `center 260`";
@@ -49,9 +49,7 @@ impl FromStr for Position {
     /// Parses exactly two whitespace-separated tokens, each a finite number
     /// of pixels or `center`.
     fn from_str(text: &str) -> Result<Position> {
-        lex::parse_all(text, position, |_| {
-            Diagnostic::syntax(format!("`{text}` is not a valid position")).expected(EXPECTED)
-        })
+        lex::parse_whole(text, position, "position", EXPECTED)
     }
 }
 

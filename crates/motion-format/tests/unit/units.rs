@@ -146,6 +146,16 @@ fn size_rejects_malformed_explicit_sizes() {
     }
 }
 
+#[test]
+fn size_expected_lists_every_named_size_in_order() {
+    let names: Vec<String> = SIZES.iter().map(|(name, _)| format!("`{name}`")).collect();
+    let listed = format!("{} or `<width>x<height>`", names.join(", "));
+    assert_eq!(SIZE_EXPECTED, listed);
+    for (name, size) in SIZES {
+        assert_eq!(name.parse::<Size>().unwrap(), *size);
+    }
+}
+
 /// Property tests: the parsers must reject bad text with an error, never panic.
 mod never_panics {
     use super::*;

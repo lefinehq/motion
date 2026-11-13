@@ -3,7 +3,6 @@
 //! Part of step 1 (Read). Scenes write `"0.4s"`, `"#0B0D12"` or `"1080p"`;
 //! these types are what the rest of the pipeline works with.
 
-use std::convert::Infallible;
 use std::str::FromStr;
 
 use motion_diagnostic::{Diagnostic, Result};
@@ -12,12 +11,13 @@ use winnow::combinator::{alt, opt, preceded, separated_pair};
 use winnow::error::ErrMode;
 use winnow::prelude::*;
 use winnow::stream::AsChar;
-use winnow::token::take_while;
+use winnow::token::{rest, take_while};
 
-use crate::shorthand::lex::{self, Failure, Parsed};
+use crate::lex::{self, Failure, Parsed, number};
 
 pub(crate) const TIME_EXPECTED: &str = "`<number>f` or `<number>s`, e.g. `12f` or `0.4s`";
 pub(crate) const COLOR_EXPECTED: &str = "`#RGB`, `#RRGGBB` or `#RRGGBBAA`";
+/// Lists the names in [`SIZES`] in order; a unit test keeps the two in step.
 pub(crate) const SIZE_EXPECTED: &str =
     "`720p`, `1080p`, `4k`, `square`, `vertical` or `<width>x<height>`";
 
@@ -44,6 +44,27 @@ impl Time {
     }
 }
 
+impl FromStr for Time {
+    type Err = Diagnostic;
+
+    /// Parses `<number>f` or `<number>s`. The number must be finite and not
+    /// negative, and the unit suffix is required.
+    fn from_str(text: &str) -> Result<Time> {
+        lex::parse_whole(text, time, "time", TIME_EXPECTED)
+    }
+}
+
+/// `<number>f` or `<number>s`: a time in frames or seconds, not negative.
+/// Also a part of the behaviour grammar.
+pub(crate) fn time<R>(input: &mut &str) -> Parsed<Time, R> {
+    let value = number.verify(|v: &f64| *v >= 0.0).parse_next(input)?;
+    alt((
+        'f'.value(Time::Frames(value)),
+        's'.value(Time::Seconds(value)),
+    ))
+    .parse_next(input)
+}
+
 /// An 8-bit-per-channel RGBA colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
@@ -57,48 +78,13 @@ pub struct Color {
     pub a: u8,
 }
 
-/// A frame size in whole pixels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Size {
-    /// Width in pixels, always above zero.
-    pub width: u32,
-    /// Height in pixels, always above zero.
-    pub height: u32,
-}
-
-impl FromStr for Time {
-    type Err = Diagnostic;
-
-    /// Parses `<number>f` or `<number>s`. The number must be finite and not
-    /// negative, and the unit suffix is required.
-    fn from_str(text: &str) -> Result<Time> {
-        lex::parse_all(text, lex::time::<Infallible>, |_| {
-            Diagnostic::syntax(format!("`{text}` is not a valid time")).expected(TIME_EXPECTED)
-        })
-    }
-}
-
 impl FromStr for Color {
     type Err = Diagnostic;
 
     /// Parses `#RGB`, `#RRGGBB` or `#RRGGBBAA`. Without an alpha digit pair
     /// the colour is opaque; `#RGB` doubles each digit (`#F80` is `#FF8800`).
     fn from_str(text: &str) -> Result<Color> {
-        lex::parse_all(text, hex_color, |_| {
-            Diagnostic::syntax(format!("`{text}` is not a valid colour")).expected(COLOR_EXPECTED)
-        })
-    }
-}
-
-impl FromStr for Size {
-    type Err = Diagnostic;
-
-    /// Parses a preset (`720p`, `1080p`, `4k`, `square`, `vertical`) or an
-    /// explicit `<width>x<height>` where both sides are above zero.
-    fn from_str(text: &str) -> Result<Size> {
-        lex::parse_all(text, size, |_| {
-            Diagnostic::syntax(format!("`{text}` is not a valid size")).expected(SIZE_EXPECTED)
-        })
+        lex::parse_whole(text, hex_color, "colour", COLOR_EXPECTED)
     }
 }
 
@@ -136,29 +122,54 @@ fn hex_digits<'s>(count: usize) -> impl Parser<&'s str, u8, ErrMode<Failure>> {
     take_while(count, AsChar::is_hex_digit).verify_map(|digits| u8::from_str_radix(digits, 16).ok())
 }
 
-/// A named size or `<width>x<height>`.
+/// A frame size in whole pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Size {
+    /// Width in pixels, always above zero.
+    pub width: u32,
+    /// Height in pixels, always above zero.
+    pub height: u32,
+}
+
+/// The sizes that have a name, the only place size names are listed.
+const SIZES: &[(&str, Size)] = &[
+    ("720p", Size::new(1280, 720)),
+    ("1080p", Size::new(1920, 1080)),
+    ("4k", Size::new(3840, 2160)),
+    ("square", Size::new(1080, 1080)),
+    ("vertical", Size::new(1080, 1920)),
+];
+
+impl Size {
+    /// A size of `width` by `height` pixels.
+    const fn new(width: u32, height: u32) -> Size {
+        Size { width, height }
+    }
+
+    /// Looks a size up in [`SIZES`] by name.
+    fn named(name: &str) -> Option<Size> {
+        SIZES
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, size)| *size)
+    }
+}
+
+impl FromStr for Size {
+    type Err = Diagnostic;
+
+    /// Parses a name from [`SIZES`] (`720p`, `1080p`, `4k`, `square`,
+    /// `vertical`) or an explicit `<width>x<height>` where both sides are
+    /// above zero.
+    fn from_str(text: &str) -> Result<Size> {
+        lex::parse_whole(text, size, "size", SIZE_EXPECTED)
+    }
+}
+
+/// A name from [`SIZES`] or `<width>x<height>`.
 fn size(input: &mut &str) -> Parsed<Size> {
     alt((
-        "720p".value(Size {
-            width: 1280,
-            height: 720,
-        }),
-        "1080p".value(Size {
-            width: 1920,
-            height: 1080,
-        }),
-        "4k".value(Size {
-            width: 3840,
-            height: 2160,
-        }),
-        "square".value(Size {
-            width: 1080,
-            height: 1080,
-        }),
-        "vertical".value(Size {
-            width: 1080,
-            height: 1920,
-        }),
+        rest.verify_map(Size::named),
         separated_pair(pixels, 'x', pixels).map(|(width, height)| Size { width, height }),
     ))
     .parse_next(input)

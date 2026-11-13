@@ -35,7 +35,7 @@ This is hard to read and hard to extend, and each new field or shorthand repeats
 - `serde` with `derive`
 - `serde_json` with `preserve_order`
 - `serde_path_to_error`
-- `winnow` 0.7
+- `winnow` 1
 - `thiserror` 2
 - `clap`
 - dev-only: `proptest` and `insta`

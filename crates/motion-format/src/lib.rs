@@ -9,6 +9,7 @@
 
 pub mod anim;
 mod curve;
+mod lex;
 mod number;
 mod parse;
 pub mod preset;
