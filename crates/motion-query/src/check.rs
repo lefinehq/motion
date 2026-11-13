@@ -3,10 +3,11 @@
 //! A side branch working on the output of step 3 (not a numbered rendering
 //! step). Frames are sampled at whole numbers, each rule is
 //! asked about each node, and consecutive failing frames become one
-//! [`Violation`] so the report stays short.
+//! [`Violation`] so the report stays short. Fix hints come from the box a
+//! node sweeps over all its visible frames (see the `rules` module docs).
 
 use crate::report::{Report, Violation};
-use crate::rules::{Overshoot, RULES, Rule};
+use crate::rules::{Area, Overshoot, RULES, Rule, shift, visible};
 use motion_eval::{FrameState, evaluate};
 use motion_format::Scene;
 use motion_format::shorthand::{Coord, Position};
@@ -40,12 +41,31 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
                 continue;
             }
             failed_codes.push(rule.code);
+            let fix = sweep(index, &frames).and_then(|sweep| {
+                let (area, aim) = (rule.areas)(graph);
+                fix(&layer.id, layer.at, shift(sweep, area, aim), graph)
+            });
             for run in found {
-                violations.push(run.into_violation(rule, &layer.id, layer.at, graph));
+                violations.push(run.into_violation(rule, &layer.id, fix.clone()));
             }
         }
     }
     Report { violations, passed }
+}
+
+/// The box node `index` covers over all frames on which it is visible, or
+/// `None` if it is never visible.
+///
+/// A fix moves the resting position, and so every frame at once; clamping
+/// this whole sweep (not one frame) is what makes a hint for an animated
+/// layer settle in one edit instead of trading one bad frame for another.
+fn sweep(index: usize, frames: &[FrameState]) -> Option<Area> {
+    frames
+        .iter()
+        .map(|state| &state.nodes[index])
+        .filter(|node| visible(node))
+        .map(|n| (n.left(), n.top(), n.right(), n.bottom()))
+        .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
 }
 
 /// A stretch of consecutive failing frames for one (rule, node).
@@ -82,7 +102,7 @@ fn runs(rule: &Rule, index: usize, frames: &[FrameState], graph: &SceneGraph) ->
 }
 
 impl Run {
-    fn into_violation(self, rule: &Rule, id: &str, at: Position, graph: &SceneGraph) -> Violation {
+    fn into_violation(self, rule: &Rule, id: &str, fix: Option<String>) -> Violation {
         // Round up to whole pixels, ignoring float noise: 60 * (11 / 12) is
         // 55.000000000000007 and must read +55, not +56.
         let amount = (self.worst.amount - crate::rules::EPSILON).ceil();
@@ -93,12 +113,12 @@ impl Run {
             first_frame: self.first,
             last_frame: self.last,
             amount_px: amount,
-            fix: fix(id, at, self.worst.shift, graph),
+            fix,
         }
     }
 }
 
-/// Builds `id at="x y"` from the rule's shift, or `None` if nothing moves.
+/// Builds `id at="x y"` from a shift, or `None` if nothing moves.
 ///
 /// An axis that does not move keeps its original coordinate (so `center`
 /// stays `center`); a moving axis resolves `center` to pixels first.
@@ -239,6 +259,49 @@ mod tests {
             let after = one(&format!(r#"{{"id":"n","rect":"{rect}","at":"{moved}"}}"#));
             assert_eq!(after, "OK 2", "{rect} at {at} -> {moved}: {after}");
         }
+    }
+
+    #[test]
+    fn hints_for_animated_layers_settle_in_one_edit() {
+        // Each entrance sweeps a larger box than any single frame. The hint is
+        // applied once; after that there must be no error and no further hint
+        // (a warning without a hint is fine: the sweep cannot fit the safe area).
+        for (rect, at, enter) in [
+            ("300x950", "center 560", "fade-up 60px 12f linear"),
+            ("1700x100", "center center", "fade-left 60px 12f linear"),
+            ("300x200", "1900 1150", "fade-right 60px 12f linear"),
+            ("300x100", "center 1000", "fade-up 60px 12f linear"),
+        ] {
+            let layer = |at: &str| {
+                one(&format!(
+                    r#"{{"id":"n","rect":"{rect}","at":"{at}","in":"{enter}"}}"#
+                ))
+            };
+            let mut report = layer(at);
+            if report.contains("fix:") {
+                report = layer(&fixed_at(&report));
+            }
+            assert!(
+                !report.contains("fix:") && !report.contains("E "),
+                "{rect} at {at} {enter}: {report}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_hint_also_clears_the_safe_area_on_the_other_axis() {
+        // Off the canvas on the right, only outside the safe area at the bottom:
+        // the offscreen hint fixes both, so no unsafe warning follows.
+        let before = one(r#"{"id":"c","rect":"300x200","at":"1900 980"}"#);
+        assert_eq!(
+            before,
+            "E offscreen c 0-29f +130px; fix: c at=\"1674 926\"\nOK 0"
+        );
+        let after = one(&format!(
+            r#"{{"id":"c","rect":"300x200","at":"{}"}}"#,
+            fixed_at(&before)
+        ));
+        assert_eq!(after, "OK 2");
     }
 
     #[test]

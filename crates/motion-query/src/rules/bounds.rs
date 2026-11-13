@@ -6,7 +6,7 @@
 //! a full-bleed background is never reported (see the module docs of
 //! `rules`).
 
-use super::{Area, Overshoot, Rule, overshoot};
+use super::{Area, Overshoot, Rule, overshoot, visible};
 use crate::report::Severity;
 use motion_eval::NodeState;
 use motion_scene::SceneGraph;
@@ -14,15 +14,15 @@ use motion_scene::SceneGraph;
 /// The title-safe area keeps this fraction of the canvas free on each side.
 const SAFE_INSET: f64 = 0.05;
 
-/// An opacity at or below this counts as invisible.
-const INVISIBLE: f64 = 0.0;
-
 /// A visible node must lie inside the canvas.
 pub(super) const OFFSCREEN: Rule = Rule {
     code: "offscreen",
     severity: Severity::Error,
     suppressed_by: None,
     evaluate: offscreen,
+    // Aim the fix at the safe area so one edit clears both rules; a sweep
+    // that does not fit the safe area falls back to the canvas.
+    areas: |graph| (canvas(graph), safe_area(graph)),
 };
 
 /// A visible node should lie inside the title-safe area.
@@ -32,7 +32,13 @@ pub(super) const UNSAFE: Rule = Rule {
     // An off-screen node is also outside the safe area; say it once.
     suppressed_by: Some("offscreen"),
     evaluate: outside_safe_area,
+    areas: |graph| (safe_area(graph), safe_area(graph)),
 };
+
+/// The whole canvas.
+fn canvas(graph: &SceneGraph) -> Area {
+    (0.0, 0.0, graph.width, graph.height)
+}
 
 /// The title-safe area of the canvas.
 fn safe_area(graph: &SceneGraph) -> Area {
@@ -42,21 +48,17 @@ fn safe_area(graph: &SceneGraph) -> Area {
 
 fn offscreen(node: &NodeState, graph: &SceneGraph) -> Option<Overshoot> {
     // Invisible nodes (before their entrance) may start off-screen.
-    if node.opacity <= INVISIBLE {
+    if !visible(node) {
         return None;
     }
-    let canvas = (0.0, 0.0, graph.width, graph.height);
-    // Aim the fix at the safe area so one edit clears both rules; `overshoot`
-    // falls back to the canvas on an axis where the box does not fit it.
-    overshoot(node, canvas, safe_area(graph))
+    overshoot(node, canvas(graph))
 }
 
 fn outside_safe_area(node: &NodeState, graph: &SceneGraph) -> Option<Overshoot> {
-    if node.opacity <= INVISIBLE {
+    if !visible(node) {
         return None;
     }
-    let safe = safe_area(graph);
-    overshoot(node, safe, safe)
+    overshoot(node, safe_area(graph))
 }
 
 #[cfg(test)]
@@ -101,25 +103,23 @@ mod tests {
     }
 
     #[test]
-    fn reports_the_largest_axis_and_aims_at_the_safe_area() {
-        // 30 px past the right edge, 10 px past the top: both axes move at once.
-        // Safe x range for the centre is 100..900 (box is 100 wide, area 50..950),
-        // safe y range is 75..425.
+    fn reports_the_largest_axis() {
+        // 30 px past the right edge, 10 px past the top.
         let o = offscreen(&node(980.0, 40.0, 100.0, 100.0, 1.0), &graph()).unwrap();
-        assert_eq!((o.amount, o.shift), (30.0, (-80.0, 35.0)));
+        assert_eq!(o.amount, 30.0);
     }
 
     #[test]
-    fn single_axis_overshoot_moves_only_that_axis() {
+    fn single_axis_overshoot() {
         let o = offscreen(&node(500.0, -10.0, 100.0, 100.0, 1.0), &graph()).unwrap();
-        assert_eq!((o.amount, o.shift), (60.0, (0.0, 85.0)));
+        assert_eq!(o.amount, 60.0);
     }
 
     #[test]
     fn oversize_axis_is_not_measured() {
         // 2000 wide: no horizontal measurement, but 10 px past the top is found.
         let o = offscreen(&node(500.0, 40.0, 2000.0, 100.0, 1.0), &graph()).unwrap();
-        assert_eq!((o.amount, o.shift), (10.0, (0.0, 35.0)));
+        assert_eq!(o.amount, 10.0);
         // Larger than the canvas on both axes: nothing to report at all.
         assert_eq!(
             offscreen(&node(0.0, 0.0, 2000.0, 900.0, 1.0), &graph()),
@@ -135,10 +135,14 @@ mod tests {
     }
 
     #[test]
-    fn box_too_big_for_the_safe_area_aims_at_the_canvas() {
-        // 980 wide fits the canvas but not the safe area (900): fall back to 0..1000.
-        let o = offscreen(&node(520.0, 250.0, 980.0, 100.0, 1.0), &graph()).unwrap();
-        assert_eq!(o.shift, (-10.0, 0.0));
+    fn offscreen_aims_at_the_safe_area_and_unsafe_at_itself() {
+        let (area, aim) = (OFFSCREEN.areas)(&graph());
+        assert_eq!(
+            (area, aim),
+            ((0.0, 0.0, 1000.0, 500.0), (50.0, 25.0, 950.0, 475.0))
+        );
+        let (area, aim) = (UNSAFE.areas)(&graph());
+        assert_eq!(area, aim);
     }
 
     #[test]
@@ -157,7 +161,7 @@ mod tests {
     fn safe_area_is_five_percent_per_side() {
         // Safe area is x 50..950, y 25..475. Left edge at 40 is 10 px out.
         let o = outside_safe_area(&node(90.0, 250.0, 100.0, 100.0, 1.0), &graph()).unwrap();
-        assert_eq!((o.amount, o.shift), (10.0, (10.0, 0.0)));
+        assert_eq!(o.amount, 10.0);
         assert_eq!(
             outside_safe_area(&node(100.0, 250.0, 100.0, 100.0, 1.0), &graph()),
             None

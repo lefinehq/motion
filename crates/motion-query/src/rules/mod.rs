@@ -12,15 +12,23 @@
 //! rule's area on that axis (the canvas for `offscreen`, the 90% safe area
 //! for `unsafe`). A larger box is deliberate bleed, such as a full-bleed
 //! background; it is not reported on that axis, and if no axis is measured
-//! the rule reports nothing for that node. Fix hints clamp the box centre
-//! per axis, so one edit fixes a corner overshoot and applying it makes the
-//! rule pass.
+//! the rule reports nothing for that node.
+//!
+//! # Fix hints
+//!
+//! A fix moves the layer's resting position, which moves the box on every
+//! frame. So the hint is not taken from one frame: [`shift`] gets the box
+//! the node sweeps over all its visible frames (entrance included) and
+//! clamps that whole sweep into the rule's aim area, on both axes at once.
+//! Applying the hint therefore clears the rule in one edit; an axis whose
+//! sweep cannot fit is left alone, and if nothing moves there is no hint.
 //!
 //! # Adding a rule
 //!
-//! 1. Create `rules/<name>.rs` with a `pub(super) const RULE: Rule` and a
+//! 1. Create `rules/<name>.rs` with a `pub(super) const RULE: Rule`, a
 //!    function `fn(&NodeState, &SceneGraph) -> Option<Overshoot>` that
-//!    returns `None` when the node is fine on that frame.
+//!    returns `None` when the node is fine on that frame, and the areas its
+//!    fix hint aims at (see [`Rule::areas`]).
 //! 2. Declare the module below and add `<name>::RULE` to [`RULES`]. Order
 //!    matters: it is the order of lines in the report.
 //! 3. If the rule would only repeat a bigger problem, set `suppressed_by` to
@@ -35,14 +43,11 @@ use crate::report::Severity;
 use motion_eval::NodeState;
 use motion_scene::SceneGraph;
 
-/// A rule's finding on one frame: how far, and how to move back.
+/// A rule's finding on one frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Overshoot {
     /// The largest overshoot over the measured axes, in pixels.
     pub amount: f64,
-    /// The move that brings the box back, in whole pixels where possible:
-    /// `(dx, dy)`, with 0 on an axis that does not need to move.
-    pub shift: (f64, f64),
 }
 
 /// A rule that can be run on a node at one frame.
@@ -55,6 +60,10 @@ pub(crate) struct Rule {
     pub suppressed_by: Option<&'static str>,
     /// The test itself.
     pub evaluate: fn(&NodeState, &SceneGraph) -> Option<Overshoot>,
+    /// The rule's area and the area its fix hint aims at, as
+    /// `(area, aim)`. The aim may be stricter than the area, so that one
+    /// edit clears this rule and the rules after it.
+    pub areas: fn(&SceneGraph) -> (Area, Area),
 }
 
 /// Every rule, in report order.
@@ -66,62 +75,125 @@ pub(crate) const RULES: &[Rule] = &[bounds::OFFSCREEN, bounds::UNSAFE];
 /// round up to 56 instead of 55.
 pub(crate) const EPSILON: f64 = 1e-9;
 
-/// An axis-aligned rectangle as `(left, top, right, bottom)`.
-pub(super) type Area = (f64, f64, f64, f64);
+/// An opacity at or below this counts as invisible: an invisible node (for
+/// example before its entrance) may sit anywhere.
+const INVISIBLE: f64 = 0.0;
 
-/// Measures `node`'s box against `area` and says how to move it back.
+/// Whether rules look at `node` on this frame.
+pub(crate) fn visible(node: &NodeState) -> bool {
+    node.opacity > INVISIBLE
+}
+
+/// An axis-aligned rectangle as `(left, top, right, bottom)`.
+pub(crate) type Area = (f64, f64, f64, f64);
+
+/// Measures `node`'s box against `area` on one frame.
 ///
 /// An axis on which the box is larger than `area` is **not measured**: that
 /// is deliberate bleed (a full-bleed background), and no move could satisfy
 /// it. If neither axis is measured, or nothing overshoots by more than
 /// [`EPSILON`], the result is `None`.
-///
-/// The shift clamps the box centre into the range that keeps the whole box
-/// inside `aim`, on every axis that overshoots (both at once for a corner).
-/// An axis whose box does not fit `aim` falls back to `area`, which it does
-/// fit, because it was measured.
-pub(super) fn overshoot(node: &NodeState, area: Area, aim: Area) -> Option<Overshoot> {
-    let x = axis(node.x, node.width, (area.0, area.2), (aim.0, aim.2));
-    let y = axis(node.y, node.height, (area.1, area.3), (aim.1, aim.3));
-    let amount = [x, y]
-        .into_iter()
-        .flatten()
-        .map(|a| a.0)
-        .max_by(f64::total_cmp)?;
-    Some(Overshoot {
-        amount,
-        shift: (x.map_or(0.0, |a| a.1), y.map_or(0.0, |a| a.1)),
-    })
+pub(super) fn overshoot(node: &NodeState, area: Area) -> Option<Overshoot> {
+    let x = axis_amount(node.left(), node.right(), (area.0, area.2));
+    let y = axis_amount(node.top(), node.bottom(), (area.1, area.3));
+    let amount = [x, y].into_iter().flatten().max_by(f64::total_cmp)?;
+    Some(Overshoot { amount })
 }
 
-/// One axis of [`overshoot`]: `(amount, shift)` or `None` when this axis is
-/// unmeasured or inside `area`. `centre` and `size` describe the box.
-fn axis(centre: f64, size: f64, area: (f64, f64), aim: (f64, f64)) -> Option<(f64, f64)> {
+/// One axis of [`overshoot`]: the amount, or `None` when this axis is
+/// unmeasured or inside `area`. `lo..hi` is the box on this axis.
+fn axis_amount(lo: f64, hi: f64, area: (f64, f64)) -> Option<f64> {
     // Larger than the area: deliberate bleed, not measured.
-    if size > area.1 - area.0 + EPSILON {
+    if hi - lo > area.1 - area.0 + EPSILON {
         return None;
     }
-    let amount = (area.0 - (centre - size / 2.0)).max(centre + size / 2.0 - area.1);
-    if amount <= EPSILON {
-        return None;
-    }
-    let aim = if size <= aim.1 - aim.0 + EPSILON {
+    let amount = (area.0 - lo).max(hi - area.1);
+    (amount > EPSILON).then_some(amount)
+}
+
+/// The move `(dx, dy)` that brings `sweep` (the box a node covers over all
+/// its visible frames) inside `aim`, or failing that inside `area`.
+///
+/// Each axis is handled on its own: a sweep that fits `aim` is clamped into
+/// it, one that only fits `area` is clamped into `area`, and one that fits
+/// neither does not move. Because the whole sweep is clamped, the move is
+/// right for every frame of an entrance, not just the worst one.
+pub(crate) fn shift(sweep: Area, area: Area, aim: Area) -> (f64, f64) {
+    (
+        axis_shift((sweep.0, sweep.2), (area.0, area.2), (aim.0, aim.2)),
+        axis_shift((sweep.1, sweep.3), (area.1, area.3), (aim.1, aim.3)),
+    )
+}
+
+/// One axis of [`shift`]. All pairs are `(low edge, high edge)`.
+fn axis_shift(sweep: (f64, f64), area: (f64, f64), aim: (f64, f64)) -> f64 {
+    let fits = |r: (f64, f64)| sweep.1 - sweep.0 <= r.1 - r.0 + EPSILON;
+    let target = if fits(aim) {
         aim
-    } else {
+    } else if fits(area) {
         area
-    };
-    let (lo, hi) = (aim.0 + size / 2.0, aim.1 - size / 2.0);
-    let target = centre.clamp(lo, hi);
-    let exact = target - centre;
-    // Whole pixels read better, and ignoring float noise keeps 55.000000000000007
-    // at 55. Rounding away from zero can only overshoot the target range by
-    // less than a pixel; fall back to the exact value if it would.
-    let whole = exact.signum() * (exact.abs() - EPSILON).ceil();
-    let rounded_centre = centre + whole;
-    let shift = if rounded_centre >= lo - EPSILON && rounded_centre <= hi + EPSILON {
-        whole
     } else {
-        exact
+        return 0.0;
     };
-    Some((amount, shift))
+    let exact = if sweep.0 < target.0 - EPSILON {
+        target.0 - sweep.0
+    } else if sweep.1 > target.1 + EPSILON {
+        target.1 - sweep.1
+    } else {
+        return 0.0;
+    };
+    // Whole pixels read better, and ignoring float noise keeps 55.000000000000007
+    // at 55. Rounding away from zero can push the far edge out by under a
+    // pixel; fall back to the exact value if it would.
+    let whole = exact.signum() * (exact.abs() - EPSILON).ceil();
+    let inside = sweep.0 + whole >= target.0 - EPSILON && sweep.1 + whole <= target.1 + EPSILON;
+    if inside { whole } else { exact }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const AREA: (f64, f64) = (0.0, 1000.0);
+    const AIM: (f64, f64) = (50.0, 950.0);
+
+    #[test]
+    fn a_sweep_inside_the_aim_does_not_move() {
+        assert_eq!(axis_shift((100.0, 200.0), AREA, AIM), 0.0);
+    }
+
+    #[test]
+    fn a_sweep_past_either_edge_is_clamped_into_the_aim() {
+        assert_eq!(axis_shift((900.0, 1030.0), AREA, AIM), -80.0);
+        assert_eq!(axis_shift((-10.0, 90.0), AREA, AIM), 60.0);
+    }
+
+    #[test]
+    fn a_sweep_too_big_for_the_aim_is_clamped_into_the_area() {
+        assert_eq!(axis_shift((30.0, 1010.0), AREA, AIM), -10.0);
+    }
+
+    #[test]
+    fn a_sweep_too_big_for_the_area_does_not_move() {
+        assert_eq!(axis_shift((-100.0, 1100.0), AREA, AIM), 0.0);
+    }
+
+    #[test]
+    fn whole_pixels_unless_rounding_would_leave_the_target() {
+        assert_eq!(axis_shift((900.0, 950.5), AREA, AIM), -1.0);
+        // 899.8 wide in a 900 aim: rounding 0.6 up to 1 would push the
+        // other edge out, so the exact move is kept.
+        let s = axis_shift((49.4, 949.2), AREA, AIM);
+        assert!((s - 0.6).abs() < 1e-9, "{s}");
+    }
+
+    #[test]
+    fn both_axes_move_at_once() {
+        let s = shift(
+            (900.0, -10.0, 1030.0, 90.0),
+            (0.0, 0.0, 1000.0, 500.0),
+            (50.0, 25.0, 950.0, 475.0),
+        );
+        assert_eq!(s, (-80.0, 35.0));
+    }
 }
