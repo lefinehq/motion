@@ -7,8 +7,11 @@
 use crate::ShorthandError;
 use crate::units::Time;
 
-pub(crate) const EXPECTED: &str =
-    "`<preset> [<n>px] [<n>f|<n>s] [<easing>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`";
+pub(crate) const EXPECTED: &str = "`<preset> [<n>px] [<n>f|<n>s] [<easing>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; an easing is `linear`, `ease-in`, `ease-out`, `ease-in-out` or `cubic(x1,y1,x2,y2)`";
+
+/// The expected form of a custom curve.
+const CUBIC_EXPECTED: &str =
+    "`cubic(x1,y1,x2,y2)` with x1 and x2 between 0 and 1, e.g. `cubic(.2,0,0,1)`";
 
 /// The motion an entrance performs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,7 +29,11 @@ pub enum Preset {
 }
 
 /// How a behaviour's progress is eased over its duration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Every easing is a cubic bézier from (0,0) to (1,1), the same model as CSS
+/// timing functions. The names are shortcuts for common curves; `Cubic`
+/// gives full control.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Easing {
     /// Constant speed.
     Linear,
@@ -36,6 +43,40 @@ pub enum Easing {
     EaseOut,
     /// Slow at both ends.
     EaseInOut,
+    /// A custom curve with control points `(x1, y1)` and `(x2, y2)`, written
+    /// `cubic(x1,y1,x2,y2)`. `x1` and `x2` lie in 0..=1 so that time only
+    /// moves forward; `y1` and `y2` may leave 0..=1 to overshoot or
+    /// anticipate.
+    Cubic(f64, f64, f64, f64),
+}
+
+impl Easing {
+    /// Parses `cubic(x1,y1,x2,y2)`; `None` if `token` is not a `cubic(...)`
+    /// token at all, so the caller can try other token kinds.
+    fn parse_cubic(token: &str) -> Option<Result<Easing, ShorthandError>> {
+        let inner = token.strip_prefix("cubic(")?;
+        let err = |m: String| ShorthandError::new(m, CUBIC_EXPECTED);
+        let Some(inner) = inner.strip_suffix(')') else {
+            return Some(Err(err(format!("`{token}` is missing its closing `)`"))));
+        };
+        let values: Vec<f64> = match inner
+            .split(',')
+            .map(|v| v.trim().parse::<f64>().ok().filter(|v| v.is_finite()))
+            .collect::<Option<Vec<f64>>>()
+        {
+            Some(v) if v.len() == 4 => v,
+            _ => return Some(Err(err(format!("`{token}` needs four numbers")))),
+        };
+        let (x1, y1, x2, y2) = (values[0], values[1], values[2], values[3]);
+        // With x outside 0..=1 the curve could run backwards in time, and a
+        // frame would have two values.
+        if !(0.0..=1.0).contains(&x1) || !(0.0..=1.0).contains(&x2) {
+            return Some(Err(err(format!(
+                "`{token}`: x1 and x2 must be between 0 and 1"
+            ))));
+        }
+        Some(Ok(Easing::Cubic(x1, y1, x2, y2)))
+    }
 }
 
 /// A parsed behaviour: a preset plus its tuning, with defaults filled in.
@@ -87,6 +128,10 @@ impl Behaviour {
                 _ => None,
             };
             let bad = |kind: &str| err(format!("`{token}` is not a valid {kind}"));
+            let easing_name = match Easing::parse_cubic(token) {
+                Some(cubic) => Some(cubic?),
+                None => easing_name,
+            };
             if let Some(e) = easing_name {
                 set_once(&mut easing, e, token, "easing", &err)?;
             } else if let Some(n) = token.strip_suffix("px") {
@@ -267,5 +312,28 @@ mod tests {
         assert!(msg("fade -3f").contains("`-3f` is not a valid duration"));
         assert!(msg("fade xpx").contains("`xpx` is not a valid distance"));
         assert!(msg("fade @12").contains("`@12` is not a valid start time"));
+    }
+
+    #[test]
+    fn cubic_easing_gives_full_control() {
+        let b = Behaviour::parse("fade-up cubic(.2,0,0,1) 20f").unwrap();
+        assert_eq!(b.easing, Easing::Cubic(0.2, 0.0, 0.0, 1.0));
+        // y may overshoot, for a spring past the target.
+        let b = Behaviour::parse("fade cubic(0.3,-0.5,0.7,1.6)").unwrap();
+        assert_eq!(b.easing, Easing::Cubic(0.3, -0.5, 0.7, 1.6));
+    }
+
+    #[test]
+    fn cubic_easing_errors_show_the_expected_form() {
+        let e = |t: &str| Behaviour::parse(t).unwrap_err().to_string();
+        assert!(e("fade cubic(1.2,0,0,1)").contains("x1 and x2 must be between 0 and 1"));
+        assert!(e("fade cubic(.2,0,1)").contains("`cubic(.2,0,1)` needs four numbers"));
+        assert!(e("fade cubic(.2,0,0,a)").contains("needs four numbers"));
+        assert!(e("fade cubic(.2,0,0,1").contains("missing its closing `)`"));
+        assert!(e("fade cubic(2,0,0,1)").contains("e.g. `cubic(.2,0,0,1)`"));
+        assert!(
+            e("fade ease-in cubic(.2,0,0,1)")
+                .contains("easing given twice: `ease-in` and `cubic(.2,0,0,1)`")
+        );
     }
 }

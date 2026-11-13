@@ -48,7 +48,10 @@ fn node_state(node: &Node, frame: f64) -> NodeState {
         y: node.y + dy,
         width: node.width,
         height: node.height,
-        opacity: k,
+        // A custom curve may overshoot (k > 1) to make the motion spring past
+        // its target; position follows it, but opacity cannot exceed fully
+        // opaque or go below invisible.
+        opacity: k.clamp(0.0, 1.0),
     }
 }
 
@@ -119,5 +122,17 @@ mod tests {
         assert_eq!(s.frame, 3.5);
         let ids: Vec<_> = s.nodes.iter().map(|n| n.id.as_str()).collect();
         assert_eq!(ids, ["a", "b"]);
+    }
+
+    #[test]
+    fn an_overshooting_curve_moves_past_the_target_but_opacity_stays_at_one() {
+        let json = r#"{"motion":1,"dur":"2s","layers":[{"id":"c","rect":"100x100","at":"center 700","in":"fade-up 60px 12f cubic(.3,0,.3,1.6) @0f"}]}"#;
+        let g = graph(json);
+        let past = (1..12)
+            .map(|f| evaluate(&g, f as f64).nodes[0].clone())
+            .find(|n| n.y < 700.0)
+            .expect("the curve overshoots above its resting place");
+        assert_eq!(past.opacity, 1.0);
+        assert_eq!(evaluate(&g, 12.0).nodes[0].y, 700.0);
     }
 }

@@ -17,6 +17,7 @@ pub fn sample(e: Easing, p: f64) -> f64 {
         Easing::EaseIn => bezier(0.42, 0.0, 1.0, 1.0, p),
         Easing::EaseOut => bezier(0.0, 0.0, 0.58, 1.0, p),
         Easing::EaseInOut => bezier(0.42, 0.0, 0.58, 1.0, p),
+        Easing::Cubic(x1, y1, x2, y2) => bezier(x1, y1, x2, y2, p),
     }
 }
 
@@ -31,7 +32,8 @@ fn coord(a: f64, b: f64, t: f64) -> f64 {
 /// `y` that belongs to `x == p`.
 fn bezier(x1: f64, y1: f64, x2: f64, y2: f64, p: f64) -> f64 {
     // The curve is given as x(t), y(t), but we need y for a known x, so we
-    // first find t. x(t) is monotonic on [0, 1] for these control points, so
+    // first find t. x(t) is monotonic on [0, 1] whenever x1 and x2 lie in
+    // 0..=1 (the format enforces this for custom curves), so
     // bisection always converges. We use it because it is robust and has no
     // special cases; speed does not matter yet. 40 halvings narrow the
     // interval to about 1e-12, far below a pixel.
@@ -83,5 +85,29 @@ mod tests {
     fn ease_in_is_slow_at_first_and_ease_out_fast() {
         assert!(sample(Easing::EaseIn, 0.25) < 0.25);
         assert!(sample(Easing::EaseOut, 0.25) > 0.25);
+    }
+
+    #[test]
+    fn named_easings_equal_their_cubic_curves() {
+        for (named, cubic) in [
+            (Easing::EaseIn, Easing::Cubic(0.42, 0.0, 1.0, 1.0)),
+            (Easing::EaseOut, Easing::Cubic(0.0, 0.0, 0.58, 1.0)),
+            (Easing::EaseInOut, Easing::Cubic(0.42, 0.0, 0.58, 1.0)),
+        ] {
+            for p in [0.1, 0.25, 0.5, 0.9] {
+                assert_eq!(sample(named, p), sample(cubic, p));
+            }
+        }
+    }
+
+    #[test]
+    fn a_cubic_curve_can_overshoot_and_still_ends_at_one() {
+        let back = Easing::Cubic(0.3, 0.0, 0.3, 1.6);
+        let peak = (1..100)
+            .map(|i| sample(back, i as f64 / 100.0))
+            .fold(f64::MIN, f64::max);
+        assert!(peak > 1.05, "{peak}");
+        assert_eq!(sample(back, 1.0), 1.0);
+        assert_eq!(sample(back, 0.0), 0.0);
     }
 }
