@@ -47,6 +47,7 @@
   - Errors about an unknown name list the allowed names, taken from the same table.
 - **Dependencies:** only those listed under Tech stack. Every error type derives `thiserror::Error`; no hand-written `Display` for errors. Every parser of user text gets a `proptest` test showing it never panics.
 - **Errors** name what was wrong and show the expected form (`; expected …`), because an agent must be able to fix its input in one try.
+- **Where tests live** (user requirement): no test code in `src/`. Unit tests live in a separate folder that mirrors `src/`: the tests for `crates/<c>/src/<path>.rs` are in `crates/<c>/tests/unit/<path>.rs`. They are attached as a child module, so they can still reach private items: the last line of the source file is `#[cfg(test)] #[path = "<relative path>"] mod tests;`, where the path is relative to the source file's directory (for example `../tests/unit/curve.rs` from `src/curve.rs`). There is no `tests/unit/main.rs`, so Cargo does not build the folder as an integration target. Integration tests that use only the public API (such as the CLI tests) stay directly in `tests/`. `include_str!` paths are relative to the test file.
 - **Tests and checks:** every task's tests ship in the same commit as its code. Before every commit, all three of these must pass:
   ```
   cargo fmt --all -- --check
@@ -80,9 +81,11 @@
   - `Cargo.toml`: `[workspace.dependencies]` gains `thiserror = "2"`, `proptest = "1"` and `insta = "1"`.
   - the error types in `motion-format` (`error.rs`), `motion-query` (`error.rs`) and `motion-edit` (`error.rs`)
   - `.github/workflows/ci.yml`
-  - `CONTRIBUTING.md`
+  - `CONTRIBUTING.md`: also explain where tests live.
+  - every `src/**/*.rs` file that has a `mod tests` block
 - Create:
   - `deny.toml`
+  - `crates/*/tests/unit/**`
   - proptest tests next to each shorthand parser and the edit tokenizer
 
 **What to do:**
@@ -94,9 +97,12 @@
 - **`deny.toml`.** Allowed licences: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unicode-3.0 and Zlib. Copyleft is not allowed (the codec licence policy). Advisories: deny vulnerabilities.
 - **`CONTRIBUTING.md`.** A short "Tools" section: how to run coverage and `cargo deny` locally, and that `insta` is for snapshot tests of text output (`cargo insta review`).
 
-- [ ] **Step 1:** Convert the errors and add the property tests. All existing tests must pass unchanged.
-- [ ] **Step 2:** Add `deny.toml`, the CI jobs and the CONTRIBUTING section. If `cargo-deny` or `cargo-llvm-cov` is installed locally, run it. Otherwise say so in the report; CI will run them.
-- [ ] **Step 3: Run all three checks. Commit:** `build: add thiserror, property tests, coverage and licence checks`.
+- [ ] **Step 1:** Move every existing `#[cfg(test)] mod tests { … }` block out of `src/` into `tests/unit/`, following the "Where tests live" rule. This is a pure move: test bodies stay unchanged except for `include_str!` paths and `use` lines, and the test count must stay the same (report it before and after).
+- [ ] **Step 2:** Convert the errors and add the property tests, the new tests also under `tests/unit/`. All existing tests must pass unchanged.
+- [ ] **Step 3:** Add `deny.toml`, the CI jobs and the CONTRIBUTING section. If `cargo-deny` or `cargo-llvm-cov` is installed locally, run it. Otherwise say so in the report; CI will run them.
+- [ ] **Step 4: Run all three checks, and commit in two parts:**
+  1. `test: move unit tests into tests/unit` (the move only)
+  2. `build: add thiserror, property tests, coverage and licence checks`
 
 ---
 
