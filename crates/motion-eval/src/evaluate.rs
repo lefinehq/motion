@@ -21,6 +21,8 @@ pub fn evaluate(graph: &SceneGraph, frame: f64) -> FrameState {
 
 /// Resolves one node at `frame`: every track sampled, then clamped.
 fn node_state(node: &Node, frame: f64) -> NodeState {
+    // `zip` would silently drop a missing track, so check the invariant.
+    debug_assert_eq!(node.tracks.len(), PROPERTIES.len());
     let values = PROPERTIES
         .iter()
         .zip(&node.tracks)

@@ -1,6 +1,6 @@
 [package]
 name = "motion-eval"
-description = "Evaluates a motion scene graph at any frame: the position, size and opacity of every node, without rendering."
+description = "Evaluates a motion scene graph at any frame: the value of every property of every node, without rendering."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
