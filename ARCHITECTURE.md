@@ -1,6 +1,6 @@
 # Architecture
 
-motion turns a scene into video in five steps. Steps 1 to 3 never touch pixels. The full reasoning is in [docs/design/rendering.md](docs/design/rendering.md).
+motion turns a scene into video in five steps. Steps 1 to 3 never touch pixels. Checks, edits and the command-line tool are a side branch that works on the output of steps 2 and 3. The full reasoning is in [docs/design/rendering.md](docs/design/rendering.md).
 
 ```
 scene.json
@@ -9,15 +9,15 @@ scene.json
  1. Read      parse the JSON, expand presets and short strings, validate
    │
    ▼
- 2. Compile   expand repeats, nested comps and layout; shape text  ──► checks and edits work from here
+ 2. Compile   expand repeats, nested comps and layout; shape text
    │
    ▼
- 3. Evaluate  for frame t: every layer's exact position, size, colour and opacity
-   │
-   ▼
- 4. Draw      rasterise each layer, then composite: effects, masks, mattes, blend modes, depth
-   │
-   ▼
+ 3. Evaluate  for frame t: every layer's exact position, size, colour and opacity ──┐
+   │                                                                                │
+   ▼                                                                                ▼
+ 4. Draw      rasterise each layer, then composite:             side branch: checks, edits and the CLI
+   │          effects, masks, mattes, blend modes, depth        work on the output of steps 2 and 3;
+   ▼                                                            they are not a numbered rendering step
  5. Encode    turn frames into MP4, WebM, MOV or PNG files, and mix in audio
 ```
 
@@ -27,7 +27,12 @@ Each crate has one job and a list of things it must never do. Keeping those rule
 
 | Crate | What it does | What it must never do |
 |---|---|---|
-| `motion-format` | Reads the scene format: shorthand units, parsing and validation (step 1). | Touch pixels. |
+| `motion-format` | Reads the scene format: shorthand units, parsing, validation and writing (step 1). | Touch pixels. |
+| `motion-scene` | Compiles a scene into a scene graph with resolved positions, sizes and entrances (step 2). | Touch pixels or read files. |
+| `motion-eval` | Works out every node's position, size and opacity at a frame (step 3). | Touch pixels or read files. |
+| `motion-query` | Side branch: `check` and `at` answer questions about a scene with numbers. | Write files or touch pixels. |
+| `motion-edit` | Side branch: parses one-line edits and applies them to the raw scene. | Write files or touch pixels. |
+| `motion-cli` | The `motion` command: wires the crates together. | Hold engine logic. It is the only place that reads or writes files and prints. |
 
 Crates are added task by task. This table lists only crates that exist.
 
@@ -44,4 +49,4 @@ Crates are added task by task. This table lists only crates that exist.
 ## Where to start reading
 
 1. `crates/motion-format/src/lib.rs`: the scene format and its units.
-2. `crates/motion-eval/src/evaluate.rs`: how a frame's values are worked out (not yet created).
+2. `crates/motion-eval/src/evaluate.rs`: how a frame's values are worked out.

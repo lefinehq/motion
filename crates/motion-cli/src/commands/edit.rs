@@ -1,4 +1,7 @@
 //! `motion edit`: apply one edit line to a scene file, save it, then check it.
+//!
+//! Uses the `motion-edit` side branch on the raw document, writes the result
+//! with `motion-format`, then runs the same check as `motion check`.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

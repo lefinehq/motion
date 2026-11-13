@@ -1,7 +1,7 @@
 //! The error type shared by parsing and applying edits.
 //!
-//! Part of the edit step of the pipeline (format → scene → eval → query/edit
-//! → cli). Messages are written for people and agents: they name what was
+//! A side branch working on the output of step 3 (not a numbered rendering
+//! step). Messages are written for people and agents: they name what was
 //! received and what was expected.
 
 use std::fmt;

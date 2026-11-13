@@ -1,6 +1,7 @@
 //! The result of `check`: what was found, and how it is printed.
 //!
-//! Part of step 4 (Query). The text format is compact on purpose, because an
+//! A side branch working on the output of step 3 (not a numbered rendering
+//! step). The text format is compact on purpose, because an
 //! agent reads it instead of looking at frames.
 
 use motion_format::fmt_num;

@@ -1,4 +1,7 @@
 //! `motion at`: print where layers are at one moment in time.
+//!
+//! Loads and compiles the scene (steps 1 and 2), then asks `motion-query`
+//! for the evaluated values (step 3) at one time.
 
 use std::path::Path;
 use std::process::ExitCode;

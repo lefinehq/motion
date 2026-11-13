@@ -1,33 +1,14 @@
 //! The `at` query: where things are at one moment.
 //!
-//! Part of step 4 (Query). Prints resolved numbers, so the agent never has to
+//! A side branch working on the output of step 3 (not a numbered rendering
+//! step). Prints resolved numbers, so the agent never has to
 //! do easing or layout maths itself.
 
 use motion_eval::evaluate;
 use motion_format::fmt_num;
 use motion_scene::SceneGraph;
-use std::fmt;
 
-/// Why a query could not be answered.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct QueryError {
-    /// A message ready to show to the user.
-    pub message: String,
-}
-
-impl fmt::Display for QueryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for QueryError {}
-
-fn error(message: impl Into<String>) -> QueryError {
-    QueryError {
-        message: message.into(),
-    }
-}
+use crate::error::QueryError;
 
 /// Describes the requested nodes at `frame`, one line each.
 ///
@@ -35,14 +16,14 @@ fn error(message: impl Into<String>) -> QueryError {
 /// the format is `{id} x={x} y={y} w={w} h={h} opacity={o}`.
 pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String, QueryError> {
     if frame < 0.0 {
-        return Err(error("time must be 0 or later"));
+        return Err(QueryError::new("time must be 0 or later"));
     }
     // Reject unknown ids up front so a typo never yields a partial answer.
     if let Some(unknown) = ids
         .iter()
         .find(|id| !graph.nodes.iter().any(|n| &n.id == *id))
     {
-        return Err(error(format!("no layer with id `{unknown}`")));
+        return Err(QueryError::new(format!("no layer with id `{unknown}`")));
     }
     let lines: Vec<String> = evaluate(graph, frame)
         .nodes

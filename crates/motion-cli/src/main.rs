@@ -1,5 +1,7 @@
-//! The `motion` command-line tool, the last step of the pipeline
-//! (format → scene → eval → query/edit → cli).
+//! The `motion` command-line tool: the only place that reads and writes files
+//! and prints. It holds no engine logic; it wires `motion-format`,
+//! `motion-scene`, `motion-eval`, `motion-query` and `motion-edit` together
+//! (a side branch of the pipeline, not a numbered rendering step).
 //!
 //! Commands:
 //!

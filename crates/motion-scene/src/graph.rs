@@ -53,7 +53,8 @@ pub struct Node {
 pub struct Enter {
     /// Frame at which the entrance begins.
     pub start: f64,
-    /// Length of the entrance in frames.
+    /// Length of the entrance in frames. 0 means the layer jumps to its final
+    /// state (full opacity, no offset) at `start`.
     pub duration: f64,
     /// Easing applied to the entrance's progress.
     pub easing: Easing,

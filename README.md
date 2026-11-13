@@ -36,7 +36,7 @@ cargo run -q -p motion-cli -- edit /tmp/launch.json 'card fill=#FF0000'
 OK 4
 ```
 
-`check` exits 1 when it finds an error, and every command exits 2 when the file, the time or the edit line is unusable.
+`check` exits 1 when it finds an error. `edit` saves a valid scene even when the scene still has check errors, and then exits 1 as well. Every command exits 2 when the file, the time or the edit line is unusable.
 
 ## Licence
 

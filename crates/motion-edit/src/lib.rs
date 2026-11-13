@@ -1,7 +1,8 @@
 //! `motion-edit`: change a scene with one short line.
 //!
-//! This crate is the edit half of step 4 of the pipeline
-//! (format → scene → eval → query/edit → cli). Where `motion-query` asks a
+//! This crate is a side branch of the pipeline, not a numbered rendering
+//! step: it works on the same scene the earlier steps read (format, scene,
+//! eval), next to `motion-query`. Where `motion-query` asks a
 //! scene questions, this crate changes it: [`parse_edit`] turns a line into
 //! an [`Edit`], and [`apply_edit`] applies it to the raw scene JSON and
 //! re-validates the result with `motion-format`, so an edit can never leave

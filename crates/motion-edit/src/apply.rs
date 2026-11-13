@@ -1,6 +1,7 @@
 //! Applying a parsed [`Edit`] to a raw scene document.
 //!
-//! Part of the edit step of the pipeline. It works on the raw JSON (not the
+//! A side branch working on the output of step 3 (not a numbered rendering
+//! step). It works on the raw JSON (not the
 //! typed scene) so that untouched parts, and the order of keys, stay exactly
 //! as the author wrote them. The result is re-validated with
 //! `motion_format::scene_from_value` before it is returned.

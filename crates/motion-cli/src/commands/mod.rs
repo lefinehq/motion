@@ -1,5 +1,9 @@
 //! The commands behind the `motion` binary, plus the steps they share:
 //! loading a scene file and compiling it into a scene graph.
+//!
+//! The command layer of the CLI: the only code in the workspace that touches
+//! files. It runs steps 1 to 3 (read, compile, evaluate) and hands the result
+//! to the query and edit side branch.
 
 pub mod at;
 pub mod check;

@@ -1,4 +1,7 @@
 //! `motion check`: compile a scene and print its check report.
+//!
+//! Loads and compiles the scene (steps 1 and 2), then runs the `motion-query`
+//! side branch over the evaluated frames and prints its report.
 
 use std::path::Path;
 use std::process::ExitCode;
