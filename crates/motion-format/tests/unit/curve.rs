@@ -96,3 +96,11 @@ mod props {
         }
     }
 }
+
+#[test]
+fn every_non_bezier_curve_has_a_table_name() {
+    // Display relies on this: it has no other way to name these curves.
+    for curve in [Curve::Linear, Curve::Hold] {
+        assert!(NAMED_CURVES.iter().any(|(_, c)| *c == curve), "{curve:?}");
+    }
+}

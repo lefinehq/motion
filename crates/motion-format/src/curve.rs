@@ -107,9 +107,11 @@ impl fmt::Display for Curve {
                 fmt_num(*x2),
                 fmt_num(*y2)
             ),
-            // Both are in the table, so they were printed by name above.
-            Curve::Linear => f.write_str("linear"),
-            Curve::Hold => f.write_str("hold"),
+            // Every non-bézier curve has a table entry (a unit test checks
+            // this), so it was printed by name above; names live only there.
+            Curve::Linear | Curve::Hold => {
+                unreachable!("every non-bézier curve has a NAMED_CURVES entry")
+            }
         }
     }
 }
