@@ -88,7 +88,7 @@ The spec implies these inputs but no happy-path test exercises them. Each one is
 
 **Setup and root files:**
 
-- [ ] **Step 1: Set up the repository.** In `/Users/fatihdevs/Desktop/Projects/better-i18n/motion`, run `git init -b main`. Then write:
+- [ ] **Step 1: Set up the repository.** In a new `motion` directory, run `git init -b main`. Then write:
   - the workspace `Cargo.toml`, with `members = ["crates/*"]`, `resolver = "3"`, the `[workspace.package]` fields (`version = "0.0.0"`, `edition = "2024"`, `license = "MIT OR Apache-2.0"`, `rust-version = "1.91"`, `repository = "https://github.com/lefinehq/motion"`), the lint tables from Global constraints, and `[workspace.dependencies]` with `serde_json = { version = "1", features = ["preserve_order"] }` and `clap = { version = "4", features = ["derive"] }`;
   - the toolchain, rustfmt and gitignore files.
 
