@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use serde_json::{Map, Value};
 
 use crate::error::MUST_BE_STRING;
+use crate::preset::{PresetSpec, lookup, names, parse_presets};
 use crate::shorthand::{
     BEHAVIOUR_EXPECTED, Behaviour, Coord, FONT_EXPECTED, Font, POSITION_EXPECTED, Position,
     RECT_EXPECTED, RectShape,
@@ -16,7 +17,7 @@ use crate::units::{COLOR_EXPECTED, Color, SIZE_EXPECTED, Size, TIME_EXPECTED, Ti
 use crate::{Content, Document, FormatError, Layer, Scene};
 
 /// The keys allowed at the top level of a scene.
-pub const SCENE_KEYS: [&str; 6] = ["motion", "size", "fps", "dur", "bg", "layers"];
+pub const SCENE_KEYS: [&str; 7] = ["motion", "size", "fps", "dur", "bg", "presets", "layers"];
 /// The keys allowed on a layer.
 pub const LAYER_KEYS: [&str; 7] = ["id", "text", "rect", "font", "fill", "at", "in"];
 
@@ -26,7 +27,8 @@ const LAYER_EXAMPLE: &str = r#"e.g. {"id":"box","rect":"100x100"}"#;
 const LAYERS_EXAMPLE: &str = r#"e.g. "layers":[{"id":"box","rect":"100x100"}]"#;
 const TEXT_EXAMPLE: &str = r#"e.g. "text":"Hello""#;
 
-const ID_RULE: &str = "ids use lowercase letters, digits, `-` and `_`, starting with a letter";
+pub(crate) const ID_RULE: &str =
+    "ids use lowercase letters, digits, `-` and `_`, starting with a letter";
 
 /// Parses scene JSON text into a [`Document`]: the original value (kept so
 /// edits and writes preserve what the author wrote) plus the typed scene.
@@ -88,6 +90,11 @@ pub fn scene_from_value(value: &Value) -> Result<Scene, FormatError> {
         },
     };
 
+    let presets = match obj.get("presets") {
+        None => Vec::new(),
+        Some(v) => parse_presets(v, "presets")?,
+    };
+
     let list = match obj.get("layers") {
         None => return Err(missing("scene", "layers", r#""layers":[]"#)),
         Some(Value::Array(a)) => a,
@@ -98,7 +105,7 @@ pub fn scene_from_value(value: &Value) -> Result<Scene, FormatError> {
     let mut seen = HashSet::new();
     let mut layers = Vec::with_capacity(list.len());
     for (i, item) in list.iter().enumerate() {
-        let layer = layer_from_value(item, i)?;
+        let layer = layer_from_value(item, i, &presets)?;
         if !seen.insert(layer.id.clone()) {
             return Err(FormatError::new(
                 format!("layers[{i}].id"),
@@ -115,12 +122,17 @@ pub fn scene_from_value(value: &Value) -> Result<Scene, FormatError> {
         fps,
         duration,
         background,
+        presets,
         layers,
     })
 }
 
 /// Converts the layer at index `i` of `layers`.
-fn layer_from_value(value: &Value, i: usize) -> Result<Layer, FormatError> {
+fn layer_from_value(
+    value: &Value,
+    i: usize,
+    presets: &[(String, PresetSpec)],
+) -> Result<Layer, FormatError> {
     let base = format!("layers[{i}]");
     let obj = value
         .as_object()
@@ -193,7 +205,14 @@ fn layer_from_value(value: &Value, i: usize) -> Result<Layer, FormatError> {
     };
     let enter = match opt_str(obj, "in", &base, BEHAVIOUR_EXPECTED)? {
         Some(s) => {
-            Some(Behaviour::parse(s).map_err(|e| FormatError::from_shorthand(path("in"), e))?)
+            let b = Behaviour::parse(s).map_err(|e| FormatError::from_shorthand(path("in"), e))?;
+            if lookup(presets, &b.preset).is_none() {
+                return Err(
+                    FormatError::new(path("in"), format!("unknown preset `{}`", b.preset))
+                        .expecting(format!("one of {}", names(presets).join(", "))),
+                );
+            }
+            Some(b)
         }
         None => None,
     };
@@ -208,7 +227,7 @@ fn layer_from_value(value: &Value, i: usize) -> Result<Layer, FormatError> {
 }
 
 /// `[a-z][a-z0-9_-]*`
-fn is_valid_id(id: &str) -> bool {
+pub(crate) fn is_valid_id(id: &str) -> bool {
     let mut chars = id.chars();
     chars.next().is_some_and(|c| c.is_ascii_lowercase())
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')

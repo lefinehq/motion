@@ -11,6 +11,8 @@ mod curve;
 mod error;
 mod number;
 mod parse;
+pub mod preset;
+pub mod property;
 mod scene;
 pub mod shorthand;
 pub mod units;

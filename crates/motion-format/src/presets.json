@@ -1,0 +1,7 @@
+{"fade":{"opacity":0},
+ "fade-up":{"opacity":0,"y":"+d"},
+ "fade-down":{"opacity":0,"y":"-d"},
+ "fade-left":{"opacity":0,"x":"+d"},
+ "fade-right":{"opacity":0,"x":"-d"},
+ "pop":{"opacity":0,"scale":0.6},
+ "spin-in":{"opacity":0,"rotate":-90}}

@@ -9,7 +9,7 @@ fn behaviour_uses_defaults() {
     assert_eq!(
         b,
         Behaviour {
-            preset: Preset::FadeUp,
+            preset: "fade-up".to_string(),
             distance: 40.0,
             duration: Time::Frames(12.0),
             curve: Curve::named("ease-out").unwrap(),
@@ -31,8 +31,11 @@ fn behaviour_reads_every_token_in_any_order() {
 }
 #[test]
 fn behaviour_rejects_unknown_and_repeated_tokens() {
-    let e = Behaviour::parse("fade-upp").unwrap_err().to_string();
-    assert!(e.contains("unknown preset `fade-upp`"));
+    let e = Behaviour::parse("Fade-Up").unwrap_err().to_string();
+    assert!(e.contains("`Fade-Up` is not a valid preset name"));
+    assert!(e.contains("ids use lowercase letters"));
+    // Whether the preset exists is the scene parser's business, not this one's.
+    assert!(Behaviour::parse("fade-upp 12f").is_ok());
     assert!(e.contains(
         "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`"
     ));
@@ -51,15 +54,8 @@ fn behaviour_rejects_unknown_and_repeated_tokens() {
 }
 #[test]
 fn behaviour_parses_every_preset_and_curve() {
-    let presets = [
-        ("fade", Preset::Fade),
-        ("fade-up", Preset::FadeUp),
-        ("fade-down", Preset::FadeDown),
-        ("fade-left", Preset::FadeLeft),
-        ("fade-right", Preset::FadeRight),
-    ];
-    for (name, preset) in presets {
-        assert_eq!(Behaviour::parse(name).unwrap().preset, preset);
+    for name in ["fade", "fade-up", "my_preset2"] {
+        assert_eq!(Behaviour::parse(name).unwrap().preset, name);
     }
     for (name, curve) in NAMED_CURVES {
         assert_eq!(

@@ -77,7 +77,7 @@ fn removing_a_missing_key_is_a_no_op() {
 #[test]
 fn scene_keys_are_validated_against_scene_keys() {
     assert!(err("scene colour=red").contains(
-        "unknown key `colour` for the scene; allowed: motion, size, fps, dur, bg, layers"
+        "unknown key `colour` for the scene; allowed: motion, size, fps, dur, bg, presets, layers"
     ));
     // A layer key is not a scene key.
     assert!(err("scene fill=#FFF").contains("unknown key `fill` for the scene"));

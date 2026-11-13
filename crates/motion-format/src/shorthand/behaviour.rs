@@ -2,8 +2,10 @@
 //! e.g. `"fade-up 60px 12f ease-out @15f"`.
 //!
 //! Part of step 1 (Read): parses a layer's `in` string into a [`Behaviour`].
+//! The preset name is a plain string here; the scene parser resolves it.
 //! Step 2 turns it into an entrance on the compiled graph.
 
+use crate::parse::{ID_RULE, is_valid_id};
 use crate::units::Time;
 use crate::{Curve, ShorthandError};
 
@@ -12,26 +14,12 @@ pub(crate) const EXPECTED: &str = "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<ti
 /// Name of the default curve, which must be in `NAMED_CURVES`.
 const DEFAULT_CURVE: &str = "ease-out";
 
-/// The motion an entrance performs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Preset {
-    /// Fade in without moving.
-    Fade,
-    /// Fade in while rising from below.
-    FadeUp,
-    /// Fade in while sinking from above.
-    FadeDown,
-    /// Fade in while moving in from the right, heading left.
-    FadeLeft,
-    /// Fade in while moving in from the left, heading right.
-    FadeRight,
-}
-
 /// A parsed behaviour: a preset plus its tuning, with defaults filled in.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Behaviour {
-    /// The motion to perform.
-    pub preset: Preset,
+    /// The name of the preset to perform; checked against the scene's presets
+    /// when the scene is parsed.
+    pub preset: String,
     /// Travel distance in pixels; 40 by default.
     pub distance: f64,
     /// How long the motion lasts; 12 frames by default.
@@ -54,14 +42,16 @@ impl Behaviour {
     pub fn parse(text: &str) -> Result<Behaviour, ShorthandError> {
         let err = |m: String| ShorthandError::new(m, EXPECTED);
         let mut tokens = text.split_whitespace();
+        // Only the shape of the name is checked here; whether a preset of
+        // that name exists depends on the scene and is checked by the parser.
         let preset = match tokens.next() {
             None => return Err(err("a behaviour needs a preset".into())),
-            Some("fade") => Preset::Fade,
-            Some("fade-up") => Preset::FadeUp,
-            Some("fade-down") => Preset::FadeDown,
-            Some("fade-left") => Preset::FadeLeft,
-            Some("fade-right") => Preset::FadeRight,
-            Some(other) => return Err(err(format!("unknown preset `{other}`"))),
+            Some(name) if is_valid_id(name) => name.to_string(),
+            Some(other) => {
+                return Err(err(format!(
+                    "`{other}` is not a valid preset name; {ID_RULE}"
+                )));
+            }
         };
         let mut distance = None;
         let mut duration = None;

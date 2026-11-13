@@ -4,7 +4,9 @@
 //! and converts entrance behaviours from seconds-or-frames into frames with a
 //! pixel offset to start from.
 
-use motion_format::shorthand::{Behaviour, Coord, Preset};
+use motion_format::preset::Start;
+use motion_format::property::property;
+use motion_format::shorthand::{Behaviour, Coord};
 use motion_format::{Content, Scene};
 
 use crate::graph::{Enter, Node, NodeKind, SceneGraph};
@@ -32,7 +34,7 @@ pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
                 y: resolve(layer.at.y, height),
                 width: w,
                 height: h,
-                enter: layer.enter.as_ref().map(|b| enter(b, scene.fps)),
+                enter: layer.enter.as_ref().map(|b| enter(b, scene, scene.fps)),
             }
         })
         .collect();
@@ -54,17 +56,26 @@ fn resolve(c: Coord, extent: f64) -> f64 {
 }
 
 /// Converts a behaviour into frames and a starting offset.
-fn enter(b: &Behaviour, fps: f64) -> Enter {
+fn enter(b: &Behaviour, scene: &Scene, fps: f64) -> Enter {
     let d = b.distance;
     // The node starts on the side it came from, so the offset points away
     // from the direction of travel. y grows downwards: fade-up starts below.
-    let from_offset = match b.preset {
-        Preset::Fade => (0.0, 0.0),
-        Preset::FadeUp => (0.0, d),
-        Preset::FadeDown => (0.0, -d),
-        Preset::FadeLeft => (d, 0.0),
-        Preset::FadeRight => (-d, 0.0),
+    // Task 4 replaces this bridge: until then an entrance can only offset
+    // x and y, so it reads those entries of the preset and ignores the rest.
+    // An absolute `Value` start on x or y is not supported yet and is ignored.
+    let offset = |axis: &str| {
+        let index = property(axis).map(|(i, _)| i);
+        let start = scene
+            .preset(&b.preset)
+            .and_then(|spec| spec.props.iter().find(|(i, _)| Some(*i) == index))
+            .map(|(_, s)| *s);
+        match start {
+            Some(Start::Plus) => d,
+            Some(Start::Minus) => -d,
+            _ => 0.0,
+        }
     };
+    let from_offset = (offset("x"), offset("y"));
     Enter {
         start: b.start.to_frames(fps),
         duration: b.duration.to_frames(fps),

@@ -5,6 +5,7 @@
 
 use serde_json::Value;
 
+use crate::preset::{PresetSpec, lookup, names};
 use crate::shorthand::{Behaviour, Font, Position, RectShape};
 use crate::units::{Color, Size, Time};
 
@@ -21,8 +22,23 @@ pub struct Scene {
     pub duration: Time,
     /// Canvas colour behind every layer.
     pub background: Color,
+    /// Presets the scene defines itself; they take precedence over the
+    /// built-ins of the same name. JSON key `presets`.
+    pub presets: Vec<(String, PresetSpec)>,
     /// Layers in paint order: the first is at the back.
     pub layers: Vec<Layer>,
+}
+
+impl Scene {
+    /// Finds a preset by name: the scene's own first, then the built-ins.
+    pub fn preset(&self, name: &str) -> Option<&PresetSpec> {
+        lookup(&self.presets, name)
+    }
+
+    /// Every usable preset name, the scene's own first, without duplicates.
+    pub fn preset_names(&self) -> Vec<&str> {
+        names(&self.presets)
+    }
 }
 
 /// One thing on the canvas.
