@@ -1,0 +1,196 @@
+# Idiomatic parsing and errors: implementation plan
+
+**Goal:** replace hand-written parsing and the per-module error helpers with standard Rust tools:
+- **One diagnostic type** shared by every crate.
+- **`serde` derive** for the scene document, with paths from `serde_path_to_error`.
+- **`winnow` grammars** for the shorthands and the edit language.
+- **One validation pass** for the rules that types cannot express.
+
+**Why:**
+- `parse.rs`, `anim.rs` and `preset.rs` walk `serde_json::Value` by hand, with if/else chains.
+- Every shorthand has its own tokenizer, with local `err`/`bad` closures.
+- The edit tokenizer is a 380-line char loop.
+- There are four unrelated error types, and the CLI turns errors into `String`s.
+
+This is hard to read and hard to extend, and each new field or shorthand repeats the same code.
+
+**Architecture:**
+- **`motion-diagnostic`** (new crate) holds `Diagnostic`, `Kind` and `Result<T>`. Every fallible public function in the workspace returns `motion_diagnostic::Result`. The CLI prints a diagnostic and takes its exit code from the `Kind`.
+- **Shorthands:**
+  - Each shorthand type implements `FromStr<Err = Diagnostic>`, using a `winnow` grammar in its own module.
+  - One generic adapter lets serde deserialize any `FromStr` type, so the document structs can use the shorthand types directly as field types.
+- **Document:** `doc.rs` holds `#[derive(Deserialize)] #[serde(deny_unknown_fields)]` structs that mirror the JSON. `serde_path_to_error` supplies paths such as `layers[1].fill`. A track (`anim.<prop>`) has a small custom `Deserialize` that accepts a string or a key list.
+- **Validation:** `validate.rs` turns the document structs into the typed `Scene`. It holds every cross-field rule:
+  - `motion` = 1 and `fps` > 0
+  - exactly one of `text` or `rect`
+  - `font` only on text
+  - unique ids
+  - presets exist
+  - `in`/`anim` conflicts
+  - value ranges
+- **Edits:** a `winnow` grammar for the edit line, and one small module for setting and removing a path in a JSON value.
+
+**Tech stack:**
+- Rust 1.91, edition 2024
+- `serde` with `derive`
+- `serde_json` with `preserve_order`
+- `serde_path_to_error`
+- `winnow` 0.7
+- `thiserror` 2
+- `clap`
+- dev-only: `proptest` and `insta`
+
+## Global constraints
+
+- **No hand-written parsing or validation sprawl** (user requirement):
+  - Never walk `serde_json::Value` with if/else to read the document; use serde derive.
+  - Never write a char-by-char tokenizer; use a `winnow` grammar.
+  - No module-local error helpers (`err`, `bad`, `missing`, `opt_str`): every error is built with the one `Diagnostic` builder.
+  - A reviewer flags any of these as Important.
+- **One error type:** `motion_diagnostic::Diagnostic`. No other public error types. Its `Display` is `"{path}: {message}; expected {expected}"`, where the path and the expected part are each optional. Every user-facing diagnostic names what was wrong. Every syntax or unknown-name diagnostic has an expected form.
+- **Names are data** (D27): names stay in their tables (`PROPERTIES`, `NAMED_CURVES`, `presets.json`). Unknown-name errors list the names from the table.
+- **Error text may change** where serde or winnow phrase it better, but every error keeps a path and an expected form. Update the tests to the new exact text, and list each change in the task report.
+- **Documentation, comments and tests:**
+  - every module has a `//!` doc with its place in the pipeline;
+  - every public item has a `///` doc;
+  - non-obvious logic gets a short comment saying why;
+  - unit tests live in `crates/<c>/tests/unit/<path>.rs`, attached by `#[cfg(test)] #[path = "…"] mod tests;`;
+  - every parser has a never-panic proptest;
+  - text output gets an `insta` snapshot where it helps.
+- **Checks before every commit:**
+  ```
+  cargo fmt --all -- --check
+  cargo clippy --workspace --all-targets -- -D warnings
+  cargo test --workspace
+  ```
+  `cargo deny check` must also pass whenever dependencies change.
+- **Behaviour:** the scene format, the edit language, the `check`/`at` output and the CLI exit codes do not change, apart from the wording of error messages. `examples/launch.json` checks `OK 4`, and the README commands print what the README shows.
+- **Commits:**
+  - signed (`git commit -S`)
+  - Conventional Commits, in English
+  - no attribution trailers of any kind
+  - only your own paths
+  - no pushing
+
+---
+
+### Task 1: `motion-diagnostic`
+
+**Files:**
+- Create: `crates/motion-diagnostic/{Cargo.toml,src/lib.rs}` and its tests.
+- Modify:
+  - every crate's error module, to remove its own error type;
+  - their call sites;
+  - `crates/motion-cli/src/main.rs` and `commands/*`: no more `String` errors.
+
+**Interfaces:**
+- `enum Kind`. The CLI exit codes are 2 for every kind. `Kind` keeps them in one method, `exit_code()`, so a future kind can differ. The kinds:
+  - `Syntax`: a shorthand or edit line that cannot be parsed
+  - `UnknownName`: a key, preset, curve, property or layer id
+  - `OutOfRange`
+  - `Missing`
+  - `Conflict`
+  - `Invalid`: a semantic rule
+  - `Io`
+- `struct Diagnostic { kind, path: Option<String>, message: String, expected: Option<Cow<'static, str>> }`. It derives `thiserror::Error`.
+  - Builders: `Diagnostic::new(kind, message)`, `.at(path)`, `.under(prefix)` (prefixes an existing path: `prefix.path`, or `prefix[i]` for an index segment), `.expected(form)`.
+  - Shorthand constructors: `syntax(msg)`, `unknown(what, name, allowed: impl IntoIterator<Item = impl Display>)`, which writes `unknown {what} \`{name}\`; expected one of a, b, c`.
+- `type Result<T> = std::result::Result<T, Diagnostic>`.
+- **Replaces:**
+  - `ShorthandError` and `FormatError` (motion-format)
+  - `QueryError` (motion-query)
+  - `EditError` (motion-edit)
+  - the CLI's `String` errors: the CLI prints `error: {diagnostic}` and exits with `kind.exit_code()`.
+
+- [ ] **Steps:**
+  - Add the crate, with tests for the builders, `Display`, `under` with fields and indices, and `unknown`.
+  - Move every crate onto it.
+  - All tests keep passing with identical messages.
+  - Commit: `refactor: share one diagnostic type across all crates`.
+
+---
+
+### Task 2: Shorthands as `winnow` grammars
+
+**Files:** `crates/motion-format/src/shorthand/*`, `units.rs`, `curve.rs`, and a new `shorthand/serde_adapter.rs`.
+
+**What to do:**
+- `Time`, `Color`, `Size`, `Position`, `RectShape`, `Font`, `Behaviour` and `Curve` each implement `FromStr<Err = Diagnostic>` with a `winnow` grammar. Each module has:
+  - one parser function per piece (`number`, `unit`, `coord`, …), combined declaratively;
+  - errors mapped once, at the end of the grammar, into a `Diagnostic` of kind `Syntax` with the module's expected form.
+- **Behaviour** stays order-free, using `winnow` `alt` over the token kinds in a repeat. "Given twice" is detected once, generically, for every kind.
+- **Font** keeps the R5 rules:
+  - read the size and weight from the end;
+  - three trailing numbers mean a family that ends in a number;
+  - two ambiguous trailing numbers give an error.
+- **Serde adapter:** `serde_adapter.rs` holds one generic `Deserialize` for every `FromStr<Err = Diagnostic>` shorthand, for example a `FromStrDe<T>` wrapper or a `deserialize_from_str` function used with `#[serde(deserialize_with)]`, so serde fields can use these types directly. The `Diagnostic` must survive inside serde's custom error, so that validation can recover its kind and expected form.
+- **Tests:** keep every existing shorthand test, including the exact messages, unless the report lists a change. Keep the proptests and add a round-trip test where there is a `Display`.
+- Commit: `refactor(format): parse shorthands with winnow grammars`.
+
+---
+
+### Task 3: The document via serde, plus one validation pass
+
+**Files:**
+- Create: `crates/motion-format/src/doc.rs` and `src/validate.rs`.
+- Rewrite: `parse.rs`, so it only parses JSON, deserializes it and validates it.
+- Fold into `doc.rs` and `validate.rs`: the `Value` walking in `anim.rs` and `preset.rs`.
+
+**What to do:**
+- **`doc.rs`:** `SceneDoc`, `LayerDoc`, `PresetDoc` and `TrackDoc`, all `#[serde(deny_unknown_fields)]`, with shorthand types as field types.
+  - `TrackDoc` is either a `String` (parsed by a `winnow` grammar in `anim.rs`) or a `Vec<KeyDoc>`. It has a custom `Deserialize` with `visit_str` and `visit_seq`, not `untagged`, so its errors stay specific.
+  - `KeyDoc` is `[time, value]` or `[time, value, curve]`, via a sequence visitor.
+- **`parse_document`:** `serde_json::from_str` → `serde_path_to_error::deserialize` → `validate::scene(doc, raw)`.
+  - Serde errors become `Diagnostic`s carrying the path (`layers[1].fill`) and the inner shorthand diagnostic's kind and expected form.
+  - Unknown fields give `UnknownName` and list the allowed keys. Serde's own message already lists them; the expected part must still be present.
+- **`validate.rs`:** every cross-field rule, each a small named function called from one `scene()` function. Rules:
+  - the version
+  - fps
+  - `text` xor `rect`
+  - `font` only on text
+  - the id rule
+  - unique ids
+  - preset existence
+  - range checks
+  - key order
+  - the `in`/`anim` conflict, with the pasteable hint
+  - preset start rules
+- **Keep `scene_from_value`** for motion-edit, now implemented through the same path.
+- **Keep `SCENE_KEYS` and `LAYER_KEYS`**, used by edit, and add a test that every listed key is accepted by the serde structs and an unlisted key is rejected.
+- **Delete** `opt_str`, `missing`, `check_keys` and the hand-walking code.
+- Commit: `refactor(format): read the scene with serde and validate in one pass`.
+
+---
+
+### Task 4: The edit language as a `winnow` grammar
+
+**Files:**
+- `crates/motion-edit/src/parse.rs`: rewrite.
+- `src/apply.rs`.
+- Create: `src/path.rs`, for setting and removing a path in a JSON value.
+
+**What to do:**
+- **Grammar:** `line = target ws change (ws change)*`; `change = path "=" value`; `path = segment ("." segment)*`.
+  - A value is one of: a quoted string with escapes, JSON (a balanced `[` or `{`, parsed with serde_json), `none`, a number, `true`/`false`, or a bare word.
+  - All the existing behaviours stay:
+    - operators other than `=` are rejected with "not supported yet";
+    - stray-quote errors keep their pasteable suggestion;
+    - overlapping keys are rejected;
+    - duplicate keys are rejected;
+    - errors for an unclosed quote or bracket.
+- **`path.rs`:** `set(&mut Value, &[&str], Value) -> Result<()>` and `remove(&mut Value, &[&str]) -> bool`, with empty-parent cleanup.
+- **`apply.rs`:** it shrinks to: check the first segments, then set or remove, then `scene_from_value`, then the quoting hint.
+- Commit: `refactor(edit): parse edit lines with a winnow grammar`.
+
+---
+
+### Task 5: Documents
+
+- **`CONTRIBUTING.md`:**
+  - **"How errors work":** the `Diagnostic` builder, the kinds, and paths via `under`.
+  - **"Adding a shorthand":** a grammar plus `FromStr`, with the serde adapter for free.
+  - **"Adding a field":** a `doc.rs` field plus a rule in `validate.rs`.
+- **`ARCHITECTURE.md`:** the new crate, and where parsing and validation live.
+- **`CHANGELOG.md`:** an `[Unreleased]` entry.
+- **D28** in `docs/design/decisions.md`: standard parsing tools and one diagnostic type.
+- Commit: `docs: explain diagnostics, grammars and validation (D28)`.
