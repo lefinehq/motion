@@ -24,7 +24,7 @@
 use std::borrow::Cow;
 
 use motion_diagnostic::{Diagnostic, Kind, Result};
-use motion_format::lex::{self, Failure, Parsed, blank0, blank1, word};
+use motion_grammar::{Failure, Parsed, blank0, blank1, parse_all, word};
 use serde_json::{Number, Value};
 use winnow::combinator::{
     alt, cut_err, delimited, dispatch, empty, eof, fail, opt, peek, preceded, repeat, repeat_till,
@@ -71,7 +71,7 @@ pub enum EditValue {
 /// straight after a quoted or JSON value, a key given twice, or two keys
 /// where one is a dotted prefix of the other.
 pub fn parse_edit(line: &str) -> Result<Edit> {
-    lex::parse_all(line, edit, |problem| {
+    parse_all(line, edit, |problem| {
         // Every other failure names its problem where it happens, so a
         // failure without one can only mean the line has no word at all.
         problem.unwrap_or(Problem::Empty).diagnostic()

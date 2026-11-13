@@ -5,12 +5,12 @@
 use std::str::FromStr;
 
 use motion_diagnostic::{Diagnostic, Result};
+use motion_grammar::{Parsed, blank0, blank1, parse_all, word};
 use winnow::ascii::float;
 use winnow::combinator::{alt, eof, peek, preceded, repeat_till, terminated};
 use winnow::prelude::*;
 
 use crate::doc::Form;
-use crate::lex::{self, Parsed, blank0, blank1, word};
 
 pub(crate) const EXPECTED: &str = "`<family> <size> [<weight>]`, e.g. `Inter 96 700`";
 
@@ -48,7 +48,7 @@ impl FromStr for Font {
     /// - three trailing numbers are a family ending in a number, then the
     ///   size and weight: `Baloo 2 120 400`.
     fn from_str(text: &str) -> Result<Font> {
-        lex::parse_all(text, font, |problem| {
+        parse_all(text, font, |problem| {
             // `Words::into_font` names every other problem, so a failure
             // without one means the grammar found no trailing number.
             let message = match problem.unwrap_or(Problem::NoSize) {

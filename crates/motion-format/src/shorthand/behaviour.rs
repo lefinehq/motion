@@ -8,6 +8,7 @@
 use std::str::FromStr;
 
 use motion_diagnostic::{Diagnostic, Kind, Result};
+use motion_grammar::{Failure, Parsed, blank0, blank1, ends_with, number, parse_all, word};
 use winnow::combinator::{alt, cut_err, delimited, eof, peek, preceded, repeat, terminated};
 use winnow::error::ErrMode;
 use winnow::prelude::*;
@@ -16,7 +17,6 @@ use winnow::token::{one_of, rest, take_till};
 use crate::Curve;
 use crate::curve::CUBIC_PREFIX;
 use crate::doc::Form;
-use crate::lex::{self, Failure, Parsed, blank0, blank1, ends_with, number, word};
 use crate::units::{Time, time};
 use crate::validate::{ID_RULE, is_valid_id};
 
@@ -70,7 +70,7 @@ impl FromStr for Behaviour {
     /// "which number is the distance?" guess to get wrong. Each kind may
     /// appear once.
     fn from_str(text: &str) -> Result<Behaviour> {
-        lex::parse_all(text, behaviour, |problem| {
+        parse_all(text, behaviour, |problem| {
             // Every other failure names its problem where it happens, so a
             // failure without one can only mean there was no word at all.
             let (kind, message) = match problem.unwrap_or(Problem::NoPreset) {

@@ -10,13 +10,13 @@ use std::fmt;
 use std::str::FromStr;
 
 use motion_diagnostic::{Diagnostic, Result};
+use motion_grammar::{Parsed, blank0, ends_with, number, parse_all};
 use winnow::combinator::{alt, cut_err, delimited, eof, preceded, separated_pair, terminated};
 use winnow::prelude::*;
 use winnow::token::rest;
 
 use crate::doc::Form;
 use crate::fmt_num;
-use crate::lex::{self, Parsed};
 
 /// The accepted forms of a curve, for a value that is not a string. The
 /// names are listed by the unknown-curve error, which reads [`NAMED_CURVES`].
@@ -71,7 +71,7 @@ impl FromStr for Curve {
 
     /// Parses a name from [`NAMED_CURVES`] or `cubic(x1,y1,x2,y2)`.
     fn from_str(token: &str) -> Result<Curve> {
-        lex::parse_all(token, curve, |problem| match problem {
+        parse_all(token, curve, |problem| match problem {
             None => {
                 let names = NAMED_CURVES.iter().map(|(name, _)| name);
                 Diagnostic::unknown("curve", token, names).or_expected(CUBIC_FORM)
@@ -132,7 +132,7 @@ fn cubic_arguments(input: &mut &str) -> Parsed<Curve, Cubic> {
 
 /// Everything up to and including the closing `)`, which ends the token.
 fn closed<'s>(input: &mut &'s str) -> Parsed<&'s str, Cubic> {
-    lex::ends_with(')').take().parse_next(input)
+    ends_with(')').take().parse_next(input)
 }
 
 /// The four numbers and the `)` after them, with `x1` and `x2` in range.
@@ -161,7 +161,7 @@ fn point(input: &mut &str) -> Parsed<Point, Cubic> {
 
 /// One number of a control point, optionally padded with spaces.
 fn coordinate(input: &mut &str) -> Parsed<f64, Cubic> {
-    delimited(lex::blank0, lex::number, lex::blank0).parse_next(input)
+    delimited(blank0, number, blank0).parse_next(input)
 }
 
 impl fmt::Display for Curve {

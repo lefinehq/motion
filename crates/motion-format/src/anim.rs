@@ -10,11 +10,11 @@
 use std::str::FromStr;
 
 use motion_diagnostic::{Diagnostic, Result};
+use motion_grammar::{Parsed, blank0, blank1, parse_all, word};
 use winnow::combinator::{opt, peek, preceded};
 use winnow::prelude::*;
 
 use crate::Curve;
-use crate::lex::{self, Parsed};
 use crate::units::{Time, amount, unit};
 
 /// The accepted forms of a track, for error messages.
@@ -92,7 +92,7 @@ impl FromStr for TrackLine {
 
     /// Parses `"<from> -> <to> @<start>-<end> [<curve>]"`.
     fn from_str(text: &str) -> Result<TrackLine> {
-        lex::parse_all(text, line, |problem| {
+        parse_all(text, line, |problem| {
             let message = match problem {
                 Some(Problem::Part(diagnostic)) => return diagnostic,
                 Some(Problem::NotNumber(word)) => format!("`{word}` is not a number"),
@@ -125,7 +125,7 @@ impl FromStr for Span {
 
     /// Parses `@<start>-<end>`, e.g. `@0-30f` or `@0.5s-1s`.
     fn from_str(token: &str) -> Result<Span> {
-        lex::parse_all(token, span, |problem| {
+        parse_all(token, span, |problem| {
             let message = match problem {
                 Some(SpanProblem::NoDash) => {
                     format!("`{token}` has no `-` between start and end")
@@ -168,11 +168,9 @@ enum SpanProblem {
 /// The whole string form: words separated by whitespace, in a fixed order.
 fn line(input: &mut &str) -> Parsed<TrackLine, Problem> {
     let (from, (), to, span, curve, ()) = (
-        preceded(lex::blank0, value),
-        preceded(lex::blank1, ARROW)
-            .void()
-            .context(Problem::NoArrow),
-        preceded(lex::blank1, value),
+        preceded(blank0, value),
+        preceded(blank1, ARROW).void().context(Problem::NoArrow),
+        preceded(blank1, value),
         range,
         curve,
         nothing_after,
@@ -189,17 +187,16 @@ fn line(input: &mut &str) -> Parsed<TrackLine, Problem> {
 /// A value word, read as `f64` reads it. Its range is checked later, so a
 /// non-finite value gets the range error rather than this one.
 fn value(input: &mut &str) -> Parsed<f64, Problem> {
-    lex::word
-        .try_map(|word: &str| {
-            word.parse::<f64>()
-                .map_err(|_| Problem::NotNumber(word.to_owned()))
-        })
-        .parse_next(input)
+    word.try_map(|word: &str| {
+        word.parse::<f64>()
+            .map_err(|_| Problem::NotNumber(word.to_owned()))
+    })
+    .parse_next(input)
 }
 
 /// The word that starts with `@`, read as a [`Span`].
 fn range(input: &mut &str) -> Parsed<Span, Problem> {
-    preceded(lex::blank1, preceded(peek(RANGE_MARK), lex::word))
+    preceded(blank1, preceded(peek(RANGE_MARK), word))
         .context(Problem::NoRange)
         .try_map(|word: &str| word.parse::<Span>().map_err(Problem::Part))
         .parse_next(input)
@@ -209,7 +206,7 @@ fn range(input: &mut &str) -> Parsed<Span, Problem> {
 /// it is parsed, so a bad curve reports the curve's error instead of
 /// backtracking to "unexpected word".
 fn curve(input: &mut &str) -> Parsed<Curve, Problem> {
-    opt(preceded(lex::blank1, lex::word))
+    opt(preceded(blank1, word))
         .try_map(|word: Option<&str>| {
             word.map_or(Ok(Curve::Linear), |w| w.parse::<Curve>())
                 .map_err(Problem::Part)
@@ -220,10 +217,10 @@ fn curve(input: &mut &str) -> Parsed<Curve, Problem> {
 /// The end of the line, after optional whitespace; a further word is named.
 fn nothing_after(input: &mut &str) -> Parsed<(), Problem> {
     (
-        opt(preceded(lex::blank1, lex::word)).try_map(|word: Option<&str>| {
+        opt(preceded(blank1, word)).try_map(|word: Option<&str>| {
             word.map_or(Ok(()), |w| Err(Problem::Trailing(w.to_owned())))
         }),
-        lex::blank0,
+        blank0,
     )
         .void()
         .parse_next(input)

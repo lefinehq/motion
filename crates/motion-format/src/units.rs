@@ -7,6 +7,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use motion_diagnostic::{Diagnostic, Result};
+use motion_grammar::{Failure, Parsed, number, parse_whole};
 use winnow::ascii::digit1;
 use winnow::combinator::{alt, opt, preceded, separated_pair};
 use winnow::error::ErrMode;
@@ -16,7 +17,6 @@ use winnow::token::{rest, take_while};
 
 use crate::doc::Form;
 use crate::fmt_num;
-use crate::lex::{self, Failure, Parsed, number};
 
 pub(crate) const TIME_EXPECTED: &str = "`<number>f` or `<number>s`, e.g. `12f` or `0.4s`";
 pub(crate) const COLOR_EXPECTED: &str = "`#RGB`, `#RRGGBB` or `#RRGGBBAA`";
@@ -53,7 +53,7 @@ impl FromStr for Time {
     /// Parses `<number>f` or `<number>s`. The number must be finite and not
     /// negative, and the unit suffix is required.
     fn from_str(text: &str) -> Result<Time> {
-        lex::parse_whole(text, time, "time", TIME_EXPECTED)
+        parse_whole(text, time, "time", TIME_EXPECTED)
     }
 }
 
@@ -113,7 +113,7 @@ impl FromStr for Color {
     /// Parses `#RGB`, `#RRGGBB` or `#RRGGBBAA`. Without an alpha digit pair
     /// the colour is opaque; `#RGB` doubles each digit (`#F80` is `#FF8800`).
     fn from_str(text: &str) -> Result<Color> {
-        lex::parse_whole(text, hex_color, "colour", COLOR_EXPECTED)
+        parse_whole(text, hex_color, "colour", COLOR_EXPECTED)
     }
 }
 
@@ -195,7 +195,7 @@ impl FromStr for Size {
     /// `vertical`) or an explicit `<width>x<height>` where both sides are
     /// above zero.
     fn from_str(text: &str) -> Result<Size> {
-        lex::parse_whole(text, size, "size", SIZE_EXPECTED)
+        parse_whole(text, size, "size", SIZE_EXPECTED)
     }
 }
 
