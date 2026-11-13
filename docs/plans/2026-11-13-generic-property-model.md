@@ -1,7 +1,5 @@
 # Generic property model: implementation plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** replace the first slice's hard-coded animation logic with one generic model. In that model, anything a designer can animate is expressible, and adding a preset, a curve or a property is a data change, not a new branch in the code.
 
 **Why:**

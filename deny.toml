@@ -11,7 +11,7 @@ yanked = "deny"
 
 [licenses]
 version = 2
-# Permissive licences only: copyleft is not allowed (the codec licence policy).
+# Permissive licences only: copyleft is not allowed (D13 in docs/design/decisions.md).
 allow = [
     "MIT",
     "Apache-2.0",
