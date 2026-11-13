@@ -135,6 +135,17 @@ mod tests {
     }
 
     #[test]
+    fn seconds_convert_to_frames_at_a_non_default_fps() {
+        let j = r#"{"motion":1,"fps":60,"dur":"2s","layers":[{"id":"a","rect":"10x10","in":"fade-up 40px 0.25s @0.5s"}]}"#;
+        let s = motion_format::parse_document(j).unwrap().scene;
+        let g = compile(&s, &ApproxTextMeasure);
+        let e = g.nodes[0].enter.as_ref().unwrap();
+        // 0.5 s and 0.25 s at 60 fps.
+        assert_eq!((e.start, e.duration), (30.0, 15.0));
+        assert_eq!((g.fps, g.duration_frames), (60.0, 120.0));
+    }
+
+    #[test]
     fn layers_without_entrance_have_none_and_kinds_match() {
         let j = r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":"10x10"}]}"#;
         let s = motion_format::parse_document(j).unwrap().scene;
