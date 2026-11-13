@@ -12,7 +12,7 @@ use crate::{ShorthandError, fmt_num};
 
 /// The expected form of a custom curve.
 const CUBIC_EXPECTED: &str =
-    "`cubic(x1,y1,x2,y2)` with x1 and x2 between 0 and 1, e.g. `cubic(.2,0,0,1)`";
+    "`cubic(x1,y1,x2,y2)` (no spaces) with x1 and x2 between 0 and 1, e.g. `cubic(.2,0,0,1)`";
 
 /// The prefix that marks a custom curve token.
 const CUBIC_PREFIX: &str = "cubic(";
@@ -93,7 +93,8 @@ impl Curve {
 
 impl fmt::Display for Curve {
     /// Prints the table name when the curve equals a table entry, otherwise
-    /// `cubic(x1,y1,x2,y2)`, so the output parses back to the same curve.
+    /// `cubic(x1,y1,x2,y2)`. The output parses back to the same curve up to two
+    /// decimals, because numbers go through `fmt_num`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some((name, _)) = NAMED_CURVES.iter().find(|(_, c)| c == self) {
             return f.write_str(name);

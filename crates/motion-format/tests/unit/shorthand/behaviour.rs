@@ -49,8 +49,13 @@ fn behaviour_rejects_unknown_and_repeated_tokens() {
         Behaviour::parse("fade bounce")
             .unwrap_err()
             .to_string()
-            .contains("unknown token `bounce`")
+            .contains("unknown curve `bounce`; expected one of linear, hold, ease")
     );
+    // A misspelt curve gets the curve error even when it ends like a unit.
+    let m = Behaviour::parse("fade easeout").unwrap_err().message;
+    assert!(m.contains("unknown curve `easeout`"), "{m}");
+    let m = Behaviour::parse("fade ease-ins").unwrap_err().message;
+    assert!(m.contains("unknown curve `ease-ins`"), "{m}");
 }
 #[test]
 fn behaviour_parses_every_preset_and_curve() {

@@ -93,7 +93,7 @@ fn scene_preset_adds_a_name_and_overrides_a_builtin() {
 #[test]
 fn unknown_preset_lists_resolved_names_without_duplicates() {
     let e = parse_document(&format!(
-        r#"{{{BASE},"presets":{{"slide":{{}},"fade":{{}}}},"layers":[{{"id":"a","rect":"1x1","in":"zoom"}}]}}"#
+        r#"{{{BASE},"presets":{{"slide":{{"x":1}},"fade":{{"y":1}}}},"layers":[{{"id":"a","rect":"1x1","in":"zoom"}}]}}"#
     ))
     .unwrap_err();
     assert_eq!(e.path, "layers[0].in");
@@ -134,4 +134,43 @@ mod never_panics {
             let _ = parse_presets(&v, "presets");
         }
     }
+}
+
+#[test]
+fn absolute_start_obeys_the_property_range() {
+    let e = presets(r#"{"a":{"opacity":2}}"#).unwrap_err().to_string();
+    assert_eq!(
+        e,
+        "presets.a.opacity: value 2 is outside 0..=1; expected a number from 0 to 1"
+    );
+    // Unbounded properties take any value.
+    assert!(presets(r#"{"a":{"x":1900,"opacity":0.5}}"#).is_ok());
+}
+
+#[test]
+fn empty_preset_is_rejected() {
+    let e = presets(r#"{"x":{}}"#).unwrap_err().to_string();
+    assert_eq!(
+        e,
+        r#"presets.x: preset `x` sets no properties; expected e.g. {"opacity":0}"#
+    );
+}
+
+#[test]
+fn expand_as_anim_writes_the_entrance_as_tracks() {
+    use crate::shorthand::Position;
+    let spec = presets(r#"{"p":{"opacity":0,"x":"-d","y":"+d","scale":0.5,"rotate":"+d"}}"#)
+        .unwrap()
+        .remove(0)
+        .1;
+    let b = Behaviour::parse("p 30px 1s cubic(.2,0,0,1) @10f").unwrap();
+    let at = Position::parse("center 300").unwrap();
+    let others: Map<String, Value> = serde_json::from_str(r#"{"opacity":"x","glow":1}"#).unwrap();
+    let json = expand_as_anim(&spec, &b, &at, (1000.0, 500.0), 30.0, &others);
+    assert_eq!(
+        json,
+        r#"{"opacity":"0 -> 1 @10-40f cubic(0.2,0,0,1)","x":"470 -> 500 @10-40f cubic(0.2,0,0,1)","y":"330 -> 300 @10-40f cubic(0.2,0,0,1)","scale":"0.5 -> 1 @10-40f cubic(0.2,0,0,1)","rotate":"30 -> 0 @10-40f cubic(0.2,0,0,1)","glow":1}"#
+    );
+    // The output is valid JSON.
+    assert!(serde_json::from_str::<Value>(&json).is_ok());
 }

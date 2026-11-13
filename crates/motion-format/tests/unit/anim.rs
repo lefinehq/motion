@@ -80,7 +80,10 @@ fn string_form_errors() {
         ("0 -> 1", "missing `@<start>-<end>`"),
         ("0 -> 1 @0-5", "needs a unit"),
         ("0 -> 1 @5f-0f", "starts after it ends"),
-        ("0 -> 1 @0-5f bouncy", "`bouncy` is not a curve"),
+        (
+            "0 -> 1 @0-5f bouncy",
+            "unknown curve `bouncy`; expected one of linear, hold, ease",
+        ),
         ("a -> 1 @0-5f", "`a` is not a number"),
         ("0 -> 1 @0-5f ease ease", "unexpected"),
         ("0 -> 1 @0-5f cubic(1,2)", "four numbers"),
@@ -139,8 +142,26 @@ fn conflict_with_in_preset() {
         .to_string();
     assert_eq!(
         e,
-        "layers[0].anim.opacity: `opacity` is already animated by `in` (preset `fade-up`); expected remove it from `in` or put the whole animation in `anim`"
+        r#"layers[0].anim.opacity: `opacity` is already animated by `in` (preset `fade-up`); expected `in=none anim={"opacity":"0 -> 1 @0-12f ease-out","y":"580 -> 540 @0-12f ease-out"}` (the entrance as anim tracks), or define a scene preset without `opacity` under "presets""#
     );
+}
+
+#[test]
+fn conflict_hint_uses_at_tuning_and_keeps_other_tracks() {
+    let e = scene(
+        r#""at":"100 760","in":"fade-up 60px 0.5s linear @15f","anim":{"opacity":"0 -> 1 @0-5f","rotate":"0 -> 5 @0-5f"}"#,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        e.contains(r#"`in=none anim={"opacity":"0 -> 1 @15-30f linear","y":"820 -> 760 @15-30f linear","rotate":"0 -> 5 @0-5f"}`"#),
+        "{e}"
+    );
+    // The hint parses back and no longer conflicts.
+    let fixed = scene(
+        r#""at":"100 760","anim":{"opacity":"0 -> 1 @15-30f linear","y":"820 -> 760 @15-30f linear","rotate":"0 -> 5 @0-5f"}"#,
+    );
+    assert!(fixed.is_ok());
 }
 
 #[test]

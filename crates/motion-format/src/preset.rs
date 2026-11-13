@@ -7,11 +7,13 @@
 
 use std::sync::OnceLock;
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-use crate::FormatError;
+use crate::anim::check_range;
 use crate::parse::{ID_RULE, is_valid_id};
-use crate::property::{property, property_names};
+use crate::property::{PROPERTIES, names as prop, property, property_names};
+use crate::shorthand::{Behaviour, Coord, Position};
+use crate::{FormatError, fmt_num};
 
 /// The built-in presets, embedded at compile time.
 const BUILTIN_JSON: &str = include_str!("presets.json");
@@ -75,11 +77,22 @@ pub fn parse_presets(value: &Value, path: &str) -> Result<Vec<(String, PresetSpe
         let mut props = Vec::with_capacity(props_obj.len());
         for (prop, start) in props_obj {
             let at = format!("{here}.{prop}");
-            let (index, _) = property(prop).ok_or_else(|| {
+            let (index, spec) = property(prop).ok_or_else(|| {
                 FormatError::new(&at, format!("unknown property `{prop}`"))
                     .expecting(format!("one of {}", property_names()))
             })?;
-            props.push((index, parse_start(start, &at)?));
+            let start = parse_start(start, &at)?;
+            // An absolute start obeys the property's range, like an `anim` key.
+            if let Start::Value(v) = start {
+                check_range(v, spec, &at)?;
+            }
+            props.push((index, start));
+        }
+        if props.is_empty() {
+            return Err(
+                FormatError::new(&here, format!("preset `{name}` sets no properties"))
+                    .expecting(r#"e.g. {"opacity":0}"#),
+            );
         }
         out.push((name.clone(), PresetSpec { props }));
     }
@@ -102,6 +115,66 @@ fn parse_start(value: &Value, path: &str) -> Result<Start, FormatError> {
             Err(FormatError::new(path, format!("invalid start {other}")).expecting(START_EXPECTED))
         }
     }
+}
+
+/// Writes a layer's entrance as an `anim` object in JSON text: one string
+/// track per property of `spec`, e.g.
+/// `{"opacity":"0 -> 1 @15-27f ease-out","y":"760 -> 700 @15-27f ease-out"}`.
+///
+/// Each track runs from the preset's start value to the resting value, over
+/// the behaviour's frames and with its curve, which is what the compiler
+/// builds from `in`. The resting value is the registry default, except for
+/// the two properties `at` sets, which are resolved against `canvas`
+/// (`center` is half the size). `others` are the layer's existing `anim`
+/// entries; those for properties the preset does not animate are appended
+/// unchanged, so the object can replace the whole `anim`.
+pub(crate) fn expand_as_anim(
+    spec: &PresetSpec,
+    behaviour: &Behaviour,
+    at: &Position,
+    canvas: (f64, f64),
+    fps: f64,
+    others: &Map<String, Value>,
+) -> String {
+    let resolve = |c: Coord, extent: f64| match c {
+        Coord::Center => extent / 2.0,
+        Coord::Px(v) => v,
+    };
+    let start = behaviour.start.to_frames(fps);
+    let end = start + behaviour.duration.to_frames(fps);
+    let mut entries: Vec<(&str, Value)> = Vec::new();
+    for &(index, from) in &spec.props {
+        let property = &PROPERTIES[index];
+        let rest = match property.name {
+            n if n == prop::X => resolve(at.x, canvas.0),
+            n if n == prop::Y => resolve(at.y, canvas.1),
+            _ => property.default,
+        };
+        let from = match from {
+            Start::Value(v) => v,
+            Start::Plus => rest + behaviour.distance,
+            Start::Minus => rest - behaviour.distance,
+        };
+        let track = format!(
+            "{} -> {} @{}-{}f {}",
+            fmt_num(from),
+            fmt_num(rest),
+            fmt_num(start),
+            fmt_num(end),
+            behaviour.curve
+        );
+        entries.push((property.name, Value::String(track)));
+    }
+    for (name, value) in others {
+        if !entries.iter().any(|(n, _)| n == name) {
+            entries.push((name, value.clone()));
+        }
+    }
+    let body: Vec<String> = entries
+        .iter()
+        .map(|(n, v)| format!("\"{n}\":{v}"))
+        .collect();
+    format!("{{{}}}", body.join(","))
 }
 
 /// Finds `name` among a scene's own presets first, then the built-ins.

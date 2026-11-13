@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 
 use crate::anim::{AnimTrack, parse_anim};
 use crate::error::MUST_BE_STRING;
-use crate::preset::{PresetSpec, lookup, names, parse_presets};
+use crate::preset::{PresetSpec, expand_as_anim, lookup, names, parse_presets};
 use crate::property::PROPERTIES;
 use crate::shorthand::{
     BEHAVIOUR_EXPECTED, Behaviour, Coord, FONT_EXPECTED, Font, POSITION_EXPECTED, Position,
@@ -107,7 +107,7 @@ pub fn scene_from_value(value: &Value) -> Result<Scene, FormatError> {
     let mut seen = HashSet::new();
     let mut layers = Vec::with_capacity(list.len());
     for (i, item) in list.iter().enumerate() {
-        let layer = layer_from_value(item, i, &presets, fps)?;
+        let layer = layer_from_value(item, i, &presets, fps, size)?;
         if !seen.insert(layer.id.clone()) {
             return Err(FormatError::new(
                 format!("layers[{i}].id"),
@@ -135,6 +135,7 @@ fn layer_from_value(
     i: usize,
     presets: &[(String, PresetSpec)],
     fps: f64,
+    size: Size,
 ) -> Result<Layer, FormatError> {
     let base = format!("layers[{i}]");
     let obj = value
@@ -225,7 +226,15 @@ fn layer_from_value(
         Some(v) => parse_anim(v, &path("anim"), fps)?,
     };
     if let Some(b) = &enter {
-        check_conflicts(&anim, b, presets, &path("anim"))?;
+        let ctx = Conflict {
+            behaviour: b,
+            presets,
+            at: &at,
+            canvas: (f64::from(size.width), f64::from(size.height)),
+            fps,
+            raw_anim: obj.get("anim").and_then(Value::as_object),
+        };
+        check_conflicts(&anim, &ctx, &path("anim"))?;
     }
 
     Ok(Layer {
@@ -238,28 +247,51 @@ fn layer_from_value(
     })
 }
 
+/// What [`check_conflicts`] needs to say how to fix a conflict.
+struct Conflict<'a> {
+    /// The layer's `in`.
+    behaviour: &'a Behaviour,
+    /// The scene's own presets.
+    presets: &'a [(String, PresetSpec)],
+    /// The layer's `at`.
+    at: &'a Position,
+    /// Canvas size in pixels.
+    canvas: (f64, f64),
+    /// Frames per second.
+    fps: f64,
+    /// The layer's `anim` as written.
+    raw_anim: Option<&'a Map<String, Value>>,
+}
+
 /// Rejects an `anim` track for a property the `in` preset already animates:
-/// two writers of one property would fight, so the author must pick one.
-fn check_conflicts(
-    anim: &[AnimTrack],
-    behaviour: &Behaviour,
-    presets: &[(String, PresetSpec)],
-    path: &str,
-) -> Result<(), FormatError> {
-    let Some(spec) = lookup(presets, &behaviour.preset) else {
+/// two writers of one property would fight, so the author must pick one. The
+/// error gives the exact edit that moves the entrance into `anim`.
+fn check_conflicts(anim: &[AnimTrack], ctx: &Conflict, path: &str) -> Result<(), FormatError> {
+    let Some(spec) = lookup(ctx.presets, &ctx.behaviour.preset) else {
         return Ok(());
     };
     for track in anim {
         if spec.props.iter().any(|(p, _)| *p == track.property) {
             let name = PROPERTIES[track.property].name;
+            let empty = Map::new();
+            let expansion = expand_as_anim(
+                spec,
+                ctx.behaviour,
+                ctx.at,
+                ctx.canvas,
+                ctx.fps,
+                ctx.raw_anim.unwrap_or(&empty),
+            );
             return Err(FormatError::new(
                 format!("{path}.{name}"),
                 format!(
                     "`{name}` is already animated by `in` (preset `{}`)",
-                    behaviour.preset
+                    ctx.behaviour.preset
                 ),
             )
-            .expecting("remove it from `in` or put the whole animation in `anim`"));
+            .expecting(format!(
+                "`in=none anim={expansion}` (the entrance as anim tracks), or define a scene preset without `{name}` under \"presets\""
+            )));
         }
     }
     Ok(())

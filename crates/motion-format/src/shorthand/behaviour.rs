@@ -59,6 +59,7 @@ impl Behaviour {
         let mut start = None;
         for token in tokens {
             let bad = |kind: &str| err(format!("`{token}` is not a valid {kind}"));
+            let has_digit = token.chars().any(|c| c.is_ascii_digit());
             if Curve::is_curve_token(token) {
                 set_once(&mut curve, Curve::parse(token)?, token, "curve", &err)?;
             } else if let Some(n) = token.strip_suffix("px") {
@@ -71,9 +72,14 @@ impl Behaviour {
             } else if let Some(t) = token.strip_prefix('@') {
                 let v = Time::parse(t).map_err(|_| bad("start time"))?;
                 set_once(&mut start, v, token, "start", &err)?;
-            } else if token.ends_with('f') || token.ends_with('s') {
+            } else if has_digit && (token.ends_with('f') || token.ends_with('s')) {
                 let v = Time::parse(token).map_err(|_| bad("duration"))?;
                 set_once(&mut duration, v, token, "duration", &err)?;
+            } else if !has_digit {
+                // No digit means no number, so it can only be a misspelt
+                // curve: let `Curve::parse` list the known names.
+                Curve::parse(token)?;
+                return Err(err(format!("unknown token `{token}`")));
             } else {
                 return Err(err(format!("unknown token `{token}`")));
             }

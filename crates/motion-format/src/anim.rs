@@ -80,7 +80,7 @@ pub fn parse_anim(value: &Value, path: &str, fps: f64) -> Result<Vec<AnimTrack>,
 }
 
 /// Checks `value` against the property's inclusive range.
-fn check_range(value: f64, spec: &PropertySpec, path: &str) -> Result<f64, FormatError> {
+pub(crate) fn check_range(value: f64, spec: &PropertySpec, path: &str) -> Result<f64, FormatError> {
     if !value.is_finite() {
         return Err(
             FormatError::new(path, format!("`{value}` is not a finite number"))
@@ -144,12 +144,9 @@ pub(crate) fn parse_track_string(
     let (start, end) = parse_range(tokens[3], path, fps)?;
     let curve = match tokens.get(4) {
         None => Curve::Linear,
-        Some(t) if Curve::is_curve_token(t) => {
-            Curve::parse(t).map_err(|e| FormatError::from_shorthand(path, e))?
-        }
-        Some(t) => {
-            return Err(err(format!("`{t}` is not a curve")));
-        }
+        // Always parse, so an unknown name gets the error that lists the
+        // known curves.
+        Some(t) => Curve::parse(t).map_err(|e| FormatError::from_shorthand(path, e))?,
     };
     Ok(vec![
         AnimKey {
