@@ -1,6 +1,6 @@
 //! Applying a parsed [`Edit`] to a raw scene document.
 //!
-//! A side branch working on the output of step 3 (not a numbered rendering
+//! A side branch working on the raw document from step 1 (not a numbered rendering
 //! step). It works on the raw JSON (not the
 //! typed scene) so that untouched parts, and the order of keys, stay exactly
 //! as the author wrote them. The result is re-validated with

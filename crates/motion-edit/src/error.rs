@@ -1,6 +1,6 @@
 //! The error type shared by parsing and applying edits.
 //!
-//! A side branch working on the output of step 3 (not a numbered rendering
+//! A side branch working on the raw document from step 1 (not a numbered rendering
 //! step). Messages are written for people and agents: they name what was
 //! received and what was expected.
 

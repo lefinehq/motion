@@ -1,6 +1,6 @@
 //! Parsing of one-line edits into typed [`Edit`] values.
 //!
-//! A side branch working on the output of step 3 (not a numbered rendering
+//! A side branch working on the raw document from step 1 (not a numbered rendering
 //! step). It only reads text; it knows
 //! nothing about scenes. Whether a key is valid for its target is checked
 //! later, in `apply`.
@@ -209,6 +209,8 @@ fn stray_quote(word: &Word, chars: &mut impl Iterator<Item = char>) -> EditError
             }
         }
     }
+    // Escape the suggestion so it can be pasted back as-is.
+    let whole = whole.replace('\\', "\\\\").replace('"', "\\\"");
     EditError::new(format!(
         "unexpected quote in `{shown}`; quote the whole value: {key}=\"{whole}\""
     ))
@@ -422,6 +424,18 @@ mod tests {
         assert_eq!(
             err(r#"a x=ab"c""#),
             r#"unexpected quote in `x=ab"c"`; quote the whole value: x="abc""#
+        );
+        // The suggestion is escaped, so it parses when pasted back.
+        let message = err(r#"a x=a"b\"c""#);
+        assert_eq!(
+            message,
+            r#"unexpected quote in `x=a"b\"c"`; quote the whole value: x="ab\"c""#
+        );
+        let suggestion = message.rsplit("quote the whole value: ").next().unwrap();
+        let e = parse_edit(&format!("a {suggestion}")).unwrap();
+        assert_eq!(
+            e.changes[0].value,
+            EditValue::Set(serde_json::json!("ab\"c"))
         );
         assert_eq!(
             err(r#"a x=1="2 3" y=4"#),
