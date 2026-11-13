@@ -6,6 +6,7 @@
 
 mod error;
 mod number;
+pub mod shorthand;
 pub mod units;
 
 pub use error::ShorthandError;
