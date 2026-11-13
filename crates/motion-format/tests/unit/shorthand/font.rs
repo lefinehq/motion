@@ -82,3 +82,21 @@ fn font_errors_name_their_cause() {
     assert!(msg("Inter 96 700 750").contains("weight must be 100, 200"));
     assert!(msg("Inter 96 700 750").contains("`750` is not a valid weight"));
 }
+
+/// Property tests: the parsers must reject bad text with an error, never panic.
+mod never_panics {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn font_any_string(s in ".*") {
+        let _ = Font::parse(&s);
+        }
+
+        #[test]
+        fn font_short_printable_ascii(s in "[ -~]{0,40}") {
+        let _ = Font::parse(&s);
+        }
+    }
+}

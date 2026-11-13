@@ -4,10 +4,11 @@
 //! step). Messages are written for people and agents: they name what was
 //! received and what was expected.
 
-use std::fmt;
+use thiserror::Error;
 
 /// Why an edit line could not be parsed or applied.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("{message}")]
 pub struct EditError {
     /// The full human-readable message.
     pub message: String,
@@ -21,15 +22,6 @@ impl EditError {
         }
     }
 }
-
-impl fmt::Display for EditError {
-    /// Prints the bare message, with no prefix.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for EditError {}
 
 #[cfg(test)]
 #[path = "../tests/unit/error.rs"]

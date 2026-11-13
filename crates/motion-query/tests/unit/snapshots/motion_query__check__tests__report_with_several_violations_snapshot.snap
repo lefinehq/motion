@@ -1,0 +1,8 @@
+---
+source: crates/motion-query/src/../tests/unit/check.rs
+expression: report
+---
+E offscreen a 0-29f +120px; fix: a at="center 826"
+W unsafe b 0-29f +34px; fix: b at="center 976"
+E offscreen c 0-29f +50px; fix: c at="196 center"
+OK 1

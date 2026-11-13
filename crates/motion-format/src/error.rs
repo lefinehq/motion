@@ -4,7 +4,7 @@
 //! Part of step 1 (Read). Every error says which forms would have been
 //! accepted, so an agent can fix its input in one try.
 
-use std::fmt;
+use thiserror::Error;
 
 /// The message of a [`FormatError`] for a key that holds something other than
 /// a string. `Document` consumers can test for it with
@@ -15,7 +15,8 @@ pub(crate) const MUST_BE_STRING: &str = "must be a string";
 ///
 /// The error always says which forms would have been accepted, so an agent
 /// can correct its input without reading the documentation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("{message}; expected {expected}")]
 pub struct ShorthandError {
     /// What was wrong, including the offending input.
     pub message: String,
@@ -32,19 +33,12 @@ impl ShorthandError {
     }
 }
 
-impl fmt::Display for ShorthandError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}; expected {}", self.message, self.expected)
-    }
-}
-
-impl std::error::Error for ShorthandError {}
-
 /// A scene document is invalid.
 ///
 /// Carries the path of the offending key (`layers[1].in`, or `scene` for the
 /// top level) so an agent knows exactly what to fix.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("{path}: {message}{}", self.expected_suffix())]
 pub struct FormatError {
     /// Where the problem is, e.g. `layers[1].in`.
     pub path: String,
@@ -68,6 +62,15 @@ impl FormatError {
         self
     }
 
+    /// The `; expected …` tail of the message, or nothing when there is no
+    /// short way to say the accepted forms.
+    fn expected_suffix(&self) -> String {
+        self.expected
+            .as_ref()
+            .map(|e| format!("; expected {e}"))
+            .unwrap_or_default()
+    }
+
     /// True when the key was given a number, boolean or other non-string
     /// value where a string is required.
     pub fn is_not_a_string(&self) -> bool {
@@ -80,18 +83,6 @@ impl FormatError {
         Self::new(path, e.message).expecting(e.expected)
     }
 }
-
-impl fmt::Display for FormatError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.path, self.message)?;
-        if let Some(e) = &self.expected {
-            write!(f, "; expected {e}")?;
-        }
-        Ok(())
-    }
-}
-
-impl std::error::Error for FormatError {}
 
 #[cfg(test)]
 #[path = "../tests/unit/error.rs"]

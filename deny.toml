@@ -1,0 +1,32 @@
+# Licence and advisory policy, checked in CI by `cargo deny check`.
+# See https://embarkstudios.github.io/cargo-deny/ for the format.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+# Known vulnerabilities and unmaintained or yanked crates fail the check.
+yanked = "deny"
+
+[licenses]
+version = 2
+# Permissive licences only: copyleft is not allowed (the codec licence policy).
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.93
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

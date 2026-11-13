@@ -41,3 +41,21 @@ fn rect_accepts_fractions_and_zero_radius() {
     let r = RectShape::parse("10.5x2 r0").unwrap();
     assert_eq!((r.width, r.height, r.radius), (10.5, 2.0, 0.0));
 }
+
+/// Property tests: the parsers must reject bad text with an error, never panic.
+mod never_panics {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn rect_any_string(s in ".*") {
+        let _ = RectShape::parse(&s);
+        }
+
+        #[test]
+        fn rect_short_printable_ascii(s in "[ -~]{0,40}") {
+        let _ = RectShape::parse(&s);
+        }
+    }
+}

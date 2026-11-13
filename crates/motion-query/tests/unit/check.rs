@@ -197,3 +197,17 @@ fn run_shows_the_worst_overshoot_not_the_first() {
 fn empty_scene_is_ok_zero() {
     assert_eq!(run(r#"{"motion":1,"dur":"1s","layers":[]}"#), "OK 0");
 }
+
+/// Snapshot of a whole report with several violations, so a change to the
+/// text format shows up as one reviewable diff (`cargo insta review`).
+#[test]
+fn report_with_several_violations_snapshot() {
+    let report = run(concat!(
+        r#"{"motion":1,"dur":"1s","layers":["#,
+        r#"{"id":"a","rect":"300x400","at":"center 1000"},"#,
+        r#"{"id":"b","rect":"300x100","at":"center 1010"},"#,
+        r#"{"id":"c","rect":"200x100","at":"50 center"}"#,
+        r#"]}"#
+    ));
+    insta::assert_snapshot!(report);
+}

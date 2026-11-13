@@ -160,3 +160,21 @@ fn cubic_easing_errors_show_the_expected_form() {
             .contains("easing given twice: `ease-in` and `cubic(.2,0,0,1)`")
     );
 }
+
+/// Property tests: the parsers must reject bad text with an error, never panic.
+mod never_panics {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn behaviour_any_string(s in ".*") {
+        let _ = Behaviour::parse(&s);
+        }
+
+        #[test]
+        fn behaviour_short_printable_ascii(s in "[ -~]{0,40}") {
+        let _ = Behaviour::parse(&s);
+        }
+    }
+}

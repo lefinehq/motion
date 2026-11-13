@@ -31,3 +31,43 @@ fn position_rejects_wrong_counts_and_non_finite_numbers() {
         assert!(Position::parse(bad).is_err(), "{bad:?} should be rejected");
     }
 }
+
+/// Property tests: the parsers must reject bad text with an error, never panic.
+mod never_panics {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn position_any_string(s in ".*") {
+        let _ = Position::parse(&s);
+        }
+
+        #[test]
+        fn position_short_printable_ascii(s in "[ -~]{0,40}") {
+        let _ = Position::parse(&s);
+        }
+    }
+}
+
+/// Property test: printing a position and parsing it back gives the same
+/// position, for any pixel value that survives `fmt_num` (halves of integers).
+mod round_trip {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn coord() -> impl Strategy<Value = Coord> {
+        prop_oneof![
+            Just(Coord::Center),
+            (-20_000i32..20_000).prop_map(|n| Coord::Px(f64::from(n) / 2.0)),
+        ]
+    }
+
+    proptest! {
+        #[test]
+        fn display_then_parse_is_identity(x in coord(), y in coord()) {
+            let p = Position { x, y };
+            prop_assert_eq!(Position::parse(&p.to_string()).unwrap(), p);
+        }
+    }
+}

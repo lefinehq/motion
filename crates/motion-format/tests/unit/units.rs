@@ -143,3 +143,25 @@ fn size_rejects_malformed_explicit_sizes() {
         assert!(Size::parse(bad).is_err(), "{bad:?} should be rejected");
     }
 }
+
+/// Property tests: the parsers must reject bad text with an error, never panic.
+mod never_panics {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn time_color_size_any_string(s in ".*") {
+        let _ = Time::parse(&s);
+        let _ = Color::parse(&s);
+        let _ = Size::parse(&s);
+        }
+
+        #[test]
+        fn time_color_size_short_printable_ascii(s in "[ -~]{0,40}") {
+        let _ = Time::parse(&s);
+        let _ = Color::parse(&s);
+        let _ = Size::parse(&s);
+        }
+    }
+}

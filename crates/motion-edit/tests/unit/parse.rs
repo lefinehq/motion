@@ -206,3 +206,21 @@ fn bad_quoting_and_escapes_are_errors() {
     assert!(err(r#"a text="x"y""#).contains("after the closing quote"));
     assert!(err(r#"a text="a\nb""#).contains("unknown escape"));
 }
+
+/// Property tests: the parsers must reject bad text with an error, never panic.
+mod never_panics {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn parse_edit_any_string(s in ".*") {
+        let _ = parse_edit(&s);
+        }
+
+        #[test]
+        fn parse_edit_short_printable_ascii(s in "[ -~]{0,40}") {
+        let _ = parse_edit(&s);
+        }
+    }
+}

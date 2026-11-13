@@ -4,10 +4,11 @@
 //! step). Messages are written for people and agents: they say what was
 //! wrong and what is accepted.
 
-use std::fmt;
+use thiserror::Error;
 
 /// Why a query could not be answered.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("{message}")]
 pub struct QueryError {
     /// A message ready to show to the user.
     pub message: String,
@@ -21,15 +22,6 @@ impl QueryError {
         }
     }
 }
-
-impl fmt::Display for QueryError {
-    /// Prints the bare message, with no prefix.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for QueryError {}
 
 #[cfg(test)]
 #[path = "../tests/unit/error.rs"]
