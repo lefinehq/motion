@@ -23,3 +23,19 @@ fn registry_names_are_unique_and_documented() {
 fn names_list_follows_registry_order() {
     assert_eq!(property_names(), "x, y, opacity, scale, rotate");
 }
+
+#[test]
+fn scene_format_doc_lists_exactly_the_registry_names() {
+    let doc = include_str!("../../../../docs/design/scene-format.md");
+    // Rows of the table that starts at the `| Property |` header.
+    let documented: Vec<&str> = doc
+        .lines()
+        .skip_while(|l| !l.starts_with("| Property |"))
+        .skip(2)
+        .take_while(|l| l.starts_with('|'))
+        .filter_map(|l| l.split('|').nth(1))
+        .map(|cell| cell.trim().trim_matches('`'))
+        .collect();
+    let registry: Vec<&str> = PROPERTIES.iter().map(|p| p.name).collect();
+    assert_eq!(documented, registry);
+}

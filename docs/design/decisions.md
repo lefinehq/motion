@@ -204,7 +204,7 @@ motion's value lies in the parts the agent touches: the format, the edits and th
 - **Decision:** every animatable value is a registered property with a keyframe track. Curves, presets and shorthands are data that expand into tracks.
 - **Why:**
   - Masters can use any curve on any property.
-  - Adding a preset or a property is a data change, not a code change.
+  - Adding a preset is a data change, not a code change. Adding a property is a registry row for parsing, `anim`, presets, edits, `at` output and clamping. A property with a geometric or visual effect also needs code in `NodeState::bounds()` and the renderer.
   - Evaluation, checks and the future renderer see one model.
 
 ## Open questions

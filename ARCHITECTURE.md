@@ -58,7 +58,7 @@ Every animatable value is a registered property with a keyframe track (see [D27]
 | `anim` tracks and keyframes, as written | `crates/motion-format/src/anim.rs` |
 | Tracks: one property's keys, compiled and sampled | `crates/motion-scene/src/track.rs` |
 
-The rule: **names are data; add a row, not a branch.** A new property is a row in the registry, a new preset is an entry in `presets.json`, a new curve name is a row in the curve table. Code reads these tables and never lists the names itself, and errors about an unknown name list the allowed ones from the same table.
+The rule: **names are data; add a row, not a branch.** A new property is a row in the registry, which covers parsing, `anim`, presets, edits, `at` output and clamping (a property with a geometric or visual effect also needs code in `NodeState::bounds()` and the renderer), a new preset is an entry in `presets.json`, a new curve name is a row in the curve table. Code reads these tables and never lists the names itself, and errors about an unknown name list the allowed ones from the same table.
 
 ## Where to start reading
 
