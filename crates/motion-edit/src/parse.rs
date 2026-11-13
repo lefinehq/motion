@@ -8,7 +8,9 @@
 //! Grammar: `<target> <key>=<value> [<key>=<value> ...]`, where a value is a
 //! quoted string (`\"` and `\\` escapes), `none` (remove the key), a number,
 //! `true`/`false`, or any other bare word (a string). A quote is only
-//! allowed as the first character of a value.
+//! allowed as the first character of a value. A key may be a dotted path
+//! (`anim.opacity`), and a value starting with `[` or `{` is JSON, read up
+//! to its balanced end (strings inside may contain spaces and brackets).
 
 use crate::EditError;
 use serde_json::{Number, Value};
@@ -25,7 +27,7 @@ pub struct Edit {
 /// One `key=value` pair of an edit.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Change {
-    /// The key to change, e.g. `fill`.
+    /// The key to change, e.g. `fill`, or a dotted path such as `anim.opacity`.
     pub key: String,
     /// What to do with it.
     pub value: EditValue,
@@ -45,8 +47,8 @@ pub enum EditValue {
 /// # Errors
 /// Returns an [`EditError`] for an empty line, an unclosed quote, a quote
 /// that does not start a value, a missing target or changes, a word that is
-/// not `key=value`, an unsupported operator, an empty key or value, or a key
-/// given twice.
+/// not `key=value`, an unsupported operator, an empty key, an empty path
+/// segment, an empty value, invalid or unbalanced JSON, or a key given twice.
 pub fn parse_edit(line: &str) -> Result<Edit, EditError> {
     let mut words = split_words(line)?.into_iter();
     let target = words
@@ -87,6 +89,9 @@ struct Word {
     /// always a string, so `"none"` and `"60"` do not become a removal or a
     /// number.
     quoted: bool,
+    /// The parsed value when it was written as JSON (`[…]` or `{…}`); `value`
+    /// then holds the raw text.
+    json: Option<Value>,
 }
 
 impl Word {
@@ -129,6 +134,20 @@ fn split_words(line: &str) -> Result<Vec<Word>, EditError> {
                     )));
                 }
             }
+            // `[` or `{` opens a JSON value only straight after the first `=`.
+            '[' | '{' if value_started && word.value.is_empty() && !word.quoted => {
+                let (raw, value) = read_json(c, &mut chars, &word.head)?;
+                word.value = raw;
+                word.json = Some(value);
+                // Nothing may follow the balanced end but a space.
+                if let Some(next) = chars.peek().filter(|n| !n.is_whitespace()) {
+                    return Err(EditError::new(format!(
+                        "unexpected text after the end of the JSON value in `{}{next}`; \
+                         put a space after it; {JSON_FORM}",
+                        word.shown()
+                    )));
+                }
+            }
             '"' => return Err(stray_quote(word, &mut chars)),
             c if word.head.contains('=') => word.value.push(c),
             c => word.head.push(c),
@@ -136,6 +155,51 @@ fn split_words(line: &str) -> Result<Vec<Word>, EditError> {
     }
     words.extend(current);
     Ok(words)
+}
+
+/// The expected form shown with every JSON value error.
+const JSON_FORM: &str = "expected `<key>=[…]` or `<key>={…}`, valid JSON";
+
+/// Reads a JSON value whose opening bracket `open` was just consumed, up to
+/// its balanced end, skipping brackets inside JSON strings (with escapes).
+/// Returns the raw text and the parsed value. `head` (`key=`) is for messages.
+fn read_json(
+    open: char,
+    chars: &mut impl Iterator<Item = char>,
+    head: &str,
+) -> Result<(String, Value), EditError> {
+    let mut raw = String::from(open);
+    let (mut depth, mut in_string, mut escaped) = (1usize, false, false);
+    for c in chars {
+        raw.push(c);
+        if in_string {
+            match (escaped, c) {
+                (true, _) => escaped = false,
+                (false, '\\') => escaped = true,
+                (false, '"') => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        match c {
+            '"' => in_string = true,
+            '[' | '{' => depth += 1,
+            ']' | '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    let key = head.strip_suffix('=').unwrap_or(head);
+                    let value = serde_json::from_str(&raw).map_err(|e| {
+                        EditError::new(format!("invalid JSON in `{key}`: {e}; {JSON_FORM}"))
+                    })?;
+                    return Ok((raw, value));
+                }
+            }
+            _ => {}
+        }
+    }
+    Err(EditError::new(format!(
+        "unclosed `{open}` in `{head}{raw}`; {JSON_FORM}"
+    )))
 }
 
 /// Reads a quoted value after its opening quote, up to the closing quote,
@@ -236,6 +300,15 @@ fn parse_change(word: &Word) -> Result<Change, EditError> {
             word.shown()
         )));
     }
+    // Every segment of a dotted path must be a plain name.
+    if key
+        .split('.')
+        .any(|seg| seg.is_empty() || !seg.chars().all(|c| c.is_alphanumeric() || "-_".contains(c)))
+    {
+        return Err(EditError::new(format!(
+            "invalid key `{key}`: each dot-separated part must be non-empty letters, digits, `-` or `_`; expected `<key>[.<key>…]=<value>`"
+        )));
+    }
     if word.value.is_empty() && !word.quoted {
         return Err(EditError::new(format!(
             "missing value for `{key}`; use `{key}=\"\"` for an empty string"
@@ -243,7 +316,9 @@ fn parse_change(word: &Word) -> Result<Change, EditError> {
     }
     Ok(Change {
         key: key.to_string(),
-        value: if word.quoted {
+        value: if let Some(json) = &word.json {
+            EditValue::Set(json.clone())
+        } else if word.quoted {
             EditValue::Set(Value::String(word.value.clone()))
         } else {
             parse_bare(&word.value)

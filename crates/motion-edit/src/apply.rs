@@ -18,10 +18,12 @@ const SCENE_TARGET: &str = "scene";
 /// The target `scene` always means the top level of the document, so a
 /// layer whose id is `scene` cannot be edited this way.
 /// Setting an existing key keeps its position; a new key is appended;
-/// removing a key that is not there does nothing. `raw` is never changed.
+/// removing a key that is not there does nothing; removing the last key of
+/// a nested object removes the object too. `raw` is never changed.
 ///
 /// # Errors
-/// Returns an [`EditError`] for a key that is not allowed for the target,
+/// Returns an [`EditError`] for a key (its first path segment) that is not
+/// allowed for the target, a path through a value that is not an object,
 /// an unknown layer id, a document without a `layers` array, or a result
 /// that no longer passes validation (`invalid result: ...`).
 pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value, EditError> {
@@ -37,13 +39,10 @@ pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value, EditError> {
     };
     for change in &edit.changes {
         match &change.value {
-            EditValue::Set(v) => {
-                // `insert` replaces in place when the key exists (order is
-                // preserved by serde_json's `preserve_order`), else appends.
-                object.insert(change.key.clone(), v.clone());
-            }
+            EditValue::Set(v) => set_path(object, &change.key, v.clone())?,
             EditValue::Remove => {
-                object.shift_remove(&change.key);
+                let segments: Vec<&str> = change.key.split('.').collect();
+                remove_path(object, &segments);
             }
         }
     }
@@ -75,6 +74,47 @@ fn quote_hint(edit: &Edit, error: &FormatError) -> String {
         .unwrap_or_default()
 }
 
+/// Sets a dotted path, creating the objects it needs. Setting an existing key
+/// keeps its position (serde_json's `preserve_order`); a new key is appended.
+fn set_path(root: &mut Map<String, Value>, key: &str, value: Value) -> Result<(), EditError> {
+    let segments: Vec<&str> = key.split('.').collect();
+    let (leaf, parents) = segments.split_last().expect("split yields one part");
+    let mut object = root;
+    for (i, seg) in parents.iter().enumerate() {
+        let entry = object
+            .entry(seg.to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+        object = entry.as_object_mut().ok_or_else(|| {
+            EditError::new(format!(
+                "cannot set `{key}`: `{}` is not an object",
+                segments[..=i].join(".")
+            ))
+        })?;
+    }
+    object.insert((*leaf).to_string(), value);
+    Ok(())
+}
+
+/// Removes the leaf of a path, then any object that this left empty on the
+/// way back up. Returns whether something was removed; a missing path (or a
+/// non-object on the way) changes nothing. `object` itself is never removed.
+fn remove_path(object: &mut Map<String, Value>, segments: &[&str]) -> bool {
+    let [first, rest @ ..] = segments else {
+        return false;
+    };
+    if rest.is_empty() {
+        return object.shift_remove(*first).is_some();
+    }
+    let Some(Value::Object(child)) = object.get_mut(*first) else {
+        return false;
+    };
+    let removed = remove_path(child, rest);
+    if removed && child.is_empty() {
+        object.shift_remove(*first);
+    }
+    removed
+}
+
 /// Rejects keys that are not part of the format for this kind of target.
 fn check_keys(edit: &Edit, is_scene: bool) -> Result<(), EditError> {
     let (allowed, what): (&[&str], &str) = if is_scene {
@@ -83,10 +123,12 @@ fn check_keys(edit: &Edit, is_scene: bool) -> Result<(), EditError> {
         (&LAYER_KEYS, "a layer")
     };
     for change in &edit.changes {
-        if !allowed.contains(&change.key.as_str()) {
+        // Only the first segment is checked here; deeper ones are checked by
+        // `scene_from_value` on the result.
+        let first = change.key.split('.').next().unwrap_or_default();
+        if !allowed.contains(&first) {
             return Err(EditError::new(format!(
-                "unknown key `{}` for {what}; allowed: {}",
-                change.key,
+                "unknown key `{first}` for {what}; allowed: {}",
                 allowed.join(", ")
             )));
         }

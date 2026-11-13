@@ -207,6 +207,50 @@ fn bad_quoting_and_escapes_are_errors() {
     assert!(err(r#"a text="a\nb""#).contains("unknown escape"));
 }
 
+#[test]
+fn dotted_keys_and_json_values() {
+    let e = parse_edit(r#"card anim.opacity=[["0f",0],["12f",1,"ease out ]"]] in=none"#).unwrap();
+    assert_eq!(e.changes[0].key, "anim.opacity");
+    assert_eq!(
+        e.changes[0].value,
+        EditValue::Set(json!([["0f", 0], ["12f", 1, "ease out ]"]]))
+    );
+    assert_eq!(e.changes[1].value, EditValue::Remove);
+    let e = parse_edit(r#"scene presets.my-pop={"opacity":0,"scale":0.5} fps=60"#).unwrap();
+    assert_eq!(e.changes[0].key, "presets.my-pop");
+    assert_eq!(
+        e.changes[0].value,
+        EditValue::Set(json!({"opacity":0,"scale":0.5}))
+    );
+    assert_eq!(e.changes[1].value, EditValue::Set(json!(60)));
+    // Escaped quotes inside a JSON string do not end it.
+    assert_eq!(set(r#"a x=["a\"]b"]"#), json!(["a\"]b"]));
+}
+
+#[test]
+fn empty_path_segments_are_errors() {
+    for line in ["a anim..x=1", "a .x=1", "a x.=1"] {
+        assert!(
+            err(line).ends_with("expected `<key>[.<key>…]=<value>`"),
+            "{line}"
+        );
+    }
+}
+
+#[test]
+fn json_errors_show_the_expected_form() {
+    assert_eq!(
+        err(r#"a x=[1,"]" y=2"#),
+        "unclosed `[` in `x=[1,\"]\" y=2`; expected `<key>=[…]` or `<key>={…}`, valid JSON"
+    );
+    assert!(err("a x={\"a\":1").starts_with("unclosed `{` in `x={\"a\":1`"));
+    let m = err("a x=[1,]");
+    assert!(m.starts_with("invalid JSON in `x`: ") && m.ends_with("valid JSON"));
+    assert!(err("a x=[1]y").contains("after the end of the JSON value"));
+    // A `[` that does not start a value stays an ordinary character.
+    assert_eq!(set("a x=a[1"), json!("a[1"));
+}
+
 /// Property tests: the parsers must reject bad text with an error, never panic.
 mod never_panics {
     use super::*;
@@ -216,6 +260,16 @@ mod never_panics {
         #[test]
         fn parse_edit_any_string(s in ".*") {
         let _ = parse_edit(&s);
+        }
+
+        #[test]
+        fn parse_edit_bracket_heavy(s in r#"[a-z.=\[\]{}", \\0-9]{0,40}"#) {
+            let _ = parse_edit(&s);
+        }
+
+        #[test]
+        fn parse_edit_json_after_equals(s in r#"a x=[\[\]{}", \\a0-9:]{0,30}"#) {
+            let _ = parse_edit(&s);
         }
 
         #[test]

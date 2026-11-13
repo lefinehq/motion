@@ -128,3 +128,70 @@ fn non_object_document_is_an_error() {
     let e = apply_edit(&json!([1]), &parse_edit("scene fps=1").unwrap()).unwrap_err();
     assert!(e.to_string().contains("not an object"));
 }
+
+fn with_anim() -> Value {
+    run(r#"card in=none anim.opacity=[["0f",0],["12f",1,"ease-out"]]"#)
+}
+
+#[test]
+fn json_array_round_trips_into_a_valid_scene() {
+    let out = with_anim();
+    assert_eq!(
+        out["layers"][1]["anim"]["opacity"],
+        json!([["0f", 0], ["12f", 1, "ease-out"]])
+    );
+    assert!(motion_format::scene_from_value(&out).is_ok());
+}
+
+#[test]
+fn preset_defined_then_used() {
+    let out = run(r#"scene presets.my-pop={"opacity":0,"scale":0.5}"#);
+    assert_eq!(out["presets"]["my-pop"], json!({"opacity":0,"scale":0.5}));
+    let out = apply_edit(&out, &parse_edit("card in=my-pop").unwrap()).unwrap();
+    assert_eq!(out["layers"][1]["in"], "my-pop");
+}
+
+#[test]
+fn removing_nested_keys_cleans_up_empty_objects() {
+    let base = with_anim();
+    let out = apply_edit(&base, &parse_edit("card anim.opacity=none").unwrap()).unwrap();
+    assert!(out["layers"][1].get("anim").is_none());
+    // Siblings keep the parent alive.
+    let two = apply_edit(
+        &base,
+        &parse_edit("card anim.scale=[[\"0f\",1],[\"6f\",2]]").unwrap(),
+    )
+    .unwrap();
+    let out = apply_edit(&two, &parse_edit("card anim.opacity=none").unwrap()).unwrap();
+    assert_eq!(keys(&out["layers"][1]["anim"]), ["scale"]);
+    // Cleanup climbs several levels, but never removes the scene itself.
+    let raw = json!({"a": {"b": {"c": 1}}});
+    let mut m = raw.as_object().unwrap().clone();
+    assert!(remove_path(&mut m, &["a", "b", "c"]));
+    assert!(m.is_empty());
+}
+
+#[test]
+fn removing_a_missing_path_is_a_no_op() {
+    assert_eq!(run("card anim.opacity=none"), doc());
+    assert_eq!(run("card in.x=none"), doc());
+    let raw = json!({"a": {}});
+    let mut m = raw.as_object().unwrap().clone();
+    assert!(!remove_path(&mut m, &["a", "x"]));
+    assert_eq!(m.len(), 1);
+}
+
+#[test]
+fn setting_through_a_non_object_is_an_error() {
+    assert_eq!(
+        err("card in.opacity=1"),
+        "cannot set `in.opacity`: `in` is not an object"
+    );
+}
+
+#[test]
+fn only_the_first_segment_is_checked_as_a_key() {
+    assert!(err("card nope.x=1").contains("unknown key `nope` for a layer; allowed:"));
+    let m = err("card anim.nope=1");
+    assert!(m.starts_with("invalid result: "), "{m}");
+}
