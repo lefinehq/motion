@@ -107,7 +107,7 @@ fn fix(id: &str, at: Position, (dx, dy): (f64, f64), graph: &SceneGraph) -> Opti
         return None;
     }
     let moved = |c: Coord, delta: f64, canvas: f64| match (c, delta) {
-        (c, d) if d == 0.0 => c,
+        (c, 0.0) => c,
         (Coord::Px(v), d) => Coord::Px(v + d),
         (Coord::Center, d) => Coord::Px(canvas / 2.0 + d),
     };
