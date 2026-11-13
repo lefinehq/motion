@@ -174,3 +174,16 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
     // The output is valid JSON.
     assert!(serde_json::from_str::<Value>(&json).is_ok());
 }
+
+#[test]
+fn a_bounded_property_cannot_start_at_a_distance() {
+    let e = parse_presets(&serde_json::json!({"dim":{"opacity":"-d"}}), "presets")
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        e,
+        "presets.dim.opacity: `opacity` has a fixed range, so it cannot start at a distance; expected a number within its range, e.g. 0"
+    );
+    // Unbounded properties still may.
+    assert!(parse_presets(&serde_json::json!({"rise":{"y":"+d"}}), "presets").is_ok());
+}

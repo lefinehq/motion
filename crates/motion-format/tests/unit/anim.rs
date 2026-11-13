@@ -142,7 +142,7 @@ fn conflict_with_in_preset() {
         .to_string();
     assert_eq!(
         e,
-        r#"layers[0].anim.opacity: `opacity` is already animated by `in` (preset `fade-up`); expected `in=none anim={"opacity":"0 -> 1 @0-12f ease-out","y":"580 -> 540 @0-12f ease-out"}` (the entrance as anim tracks), or define a scene preset without `opacity` under "presets""#
+        r#"layers[0].anim.opacity: `opacity` is already animated by `in` (preset `fade-up`); expected `a in=none anim={"opacity":"0 -> 1 @0-12f ease-out","y":"580 -> 540 @0-12f ease-out"}` (the entrance as anim tracks; then adjust `opacity`), or define a scene preset without `opacity` under "presets""#
     );
 }
 
@@ -154,7 +154,7 @@ fn conflict_hint_uses_at_tuning_and_keeps_other_tracks() {
     .unwrap_err()
     .to_string();
     assert!(
-        e.contains(r#"`in=none anim={"opacity":"0 -> 1 @15-30f linear","y":"820 -> 760 @15-30f linear","rotate":"0 -> 5 @0-5f"}`"#),
+        e.contains(r#"`a in=none anim={"opacity":"0 -> 1 @15-30f linear","y":"820 -> 760 @15-30f linear","rotate":"0 -> 5 @0-5f"}`"#),
         "{e}"
     );
     // The hint parses back and no longer conflicts.

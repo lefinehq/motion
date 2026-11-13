@@ -44,6 +44,7 @@ pub struct Node {
     /// length must equal the registry's, which evaluation relies on.
     pub tracks: Vec<Track>,
     /// Whether `(x, y)` still follow the layer's `at`. False for an axis that
-    /// an `anim` track drives, because moving `at` then no longer moves it.
+    /// an `anim` track drives or whose entrance starts at an absolute value,
+    /// because moving `at` then no longer moves the whole motion.
     pub follows_at: (bool, bool),
 }

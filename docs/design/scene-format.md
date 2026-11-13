@@ -146,7 +146,7 @@ A start is a number, `"+d"` (the resting value plus the behaviour's distance) or
 
 ### One writer per property
 
-If `in` already animates a property, `anim` may not also animate it: the file is rejected, naming the property and the preset. There are two ways out. Move the entrance into `anim`: set `in=none` and write the preset as `anim` tracks, one per property it sets; the error message gives that exact edit, computed from the preset, the layer's `at` and the scene size. Or define a scene preset under `presets` that leaves the property out. For example `"in":"fade 10f"` with `"anim":{"opacity":"0 -> 1 @0-12f"}` is an error; `anim` on `rotate` is fine.
+If `in` already animates a property, `anim` may not also animate it: the file is rejected, naming the property and the preset. There are two ways out. Move the entrance into `anim`: set `in=none` and write the preset as `anim` tracks, one per property it sets; the error message gives that edit for the layer, computed from the preset, the layer's `at` and the scene size (custom curves are shown to two decimals). Or define a scene preset under `presets` that leaves the property out. For example `"in":"fade 10f"` with `"anim":{"opacity":"0 -> 1 @0-12f"}` is an error; `anim` on `rotate` is fine.
 
 ## Repeats and data
 

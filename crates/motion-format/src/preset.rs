@@ -82,9 +82,21 @@ pub fn parse_presets(value: &Value, path: &str) -> Result<Vec<(String, PresetSpe
                     .expecting(format!("one of {}", property_names()))
             })?;
             let start = parse_start(start, &at)?;
-            // An absolute start obeys the property's range, like an `anim` key.
-            if let Start::Value(v) = start {
-                check_range(v, spec, &at)?;
+            match start {
+                // An absolute start obeys the property's range, like an `anim` key.
+                Start::Value(v) => {
+                    check_range(v, spec, &at)?;
+                }
+                // A distance in pixels means nothing for a bounded property
+                // such as opacity, and would leave its range.
+                Start::Plus | Start::Minus if spec.range.is_some() => {
+                    return Err(FormatError::new(
+                        &at,
+                        format!("`{prop}` has a fixed range, so it cannot start at a distance"),
+                    )
+                    .expecting("a number within its range, e.g. 0"));
+                }
+                Start::Plus | Start::Minus => {}
             }
             props.push((index, start));
         }

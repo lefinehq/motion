@@ -227,6 +227,7 @@ fn layer_from_value(
     };
     if let Some(b) = &enter {
         let ctx = Conflict {
+            id,
             behaviour: b,
             presets,
             at: &at,
@@ -249,6 +250,8 @@ fn layer_from_value(
 
 /// What [`check_conflicts`] needs to say how to fix a conflict.
 struct Conflict<'a> {
+    /// The layer's id, so the suggested edit can be pasted as-is.
+    id: &'a str,
     /// The layer's `in`.
     behaviour: &'a Behaviour,
     /// The scene's own presets.
@@ -290,7 +293,8 @@ fn check_conflicts(anim: &[AnimTrack], ctx: &Conflict, path: &str) -> Result<(),
                 ),
             )
             .expecting(format!(
-                "`in=none anim={expansion}` (the entrance as anim tracks), or define a scene preset without `{name}` under \"presets\""
+                "`{} in=none anim={expansion}` (the entrance as anim tracks; then adjust `{name}`), or define a scene preset without `{name}` under \"presets\"",
+                ctx.id
             )));
         }
     }
