@@ -11,3 +11,11 @@ pub mod units;
 
 pub use error::ShorthandError;
 pub use number::fmt_num;
+mod parse;
+mod scene;
+mod write;
+
+pub use error::FormatError;
+pub use parse::{LAYER_KEYS, SCENE_KEYS, parse_document, scene_from_value};
+pub use scene::{Content, Document, Layer, Scene};
+pub use write::write_document;
