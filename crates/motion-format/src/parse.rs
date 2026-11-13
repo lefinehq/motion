@@ -7,8 +7,10 @@ use std::collections::HashSet;
 
 use serde_json::{Map, Value};
 
+use crate::anim::{AnimTrack, parse_anim};
 use crate::error::MUST_BE_STRING;
 use crate::preset::{PresetSpec, lookup, names, parse_presets};
+use crate::property::PROPERTIES;
 use crate::shorthand::{
     BEHAVIOUR_EXPECTED, Behaviour, Coord, FONT_EXPECTED, Font, POSITION_EXPECTED, Position,
     RECT_EXPECTED, RectShape,
@@ -19,7 +21,7 @@ use crate::{Content, Document, FormatError, Layer, Scene};
 /// The keys allowed at the top level of a scene.
 pub const SCENE_KEYS: [&str; 7] = ["motion", "size", "fps", "dur", "bg", "presets", "layers"];
 /// The keys allowed on a layer.
-pub const LAYER_KEYS: [&str; 7] = ["id", "text", "rect", "font", "fill", "at", "in"];
+pub const LAYER_KEYS: [&str; 8] = ["id", "text", "rect", "font", "fill", "at", "in", "anim"];
 
 /// Examples shown when a required key is missing or has the wrong type.
 const SCENE_EXAMPLE: &str = r#"e.g. {"motion":1,"dur":"5s","layers":[]}"#;
@@ -105,7 +107,7 @@ pub fn scene_from_value(value: &Value) -> Result<Scene, FormatError> {
     let mut seen = HashSet::new();
     let mut layers = Vec::with_capacity(list.len());
     for (i, item) in list.iter().enumerate() {
-        let layer = layer_from_value(item, i, &presets)?;
+        let layer = layer_from_value(item, i, &presets, fps)?;
         if !seen.insert(layer.id.clone()) {
             return Err(FormatError::new(
                 format!("layers[{i}].id"),
@@ -132,6 +134,7 @@ fn layer_from_value(
     value: &Value,
     i: usize,
     presets: &[(String, PresetSpec)],
+    fps: f64,
 ) -> Result<Layer, FormatError> {
     let base = format!("layers[{i}]");
     let obj = value
@@ -217,13 +220,49 @@ fn layer_from_value(
         None => None,
     };
 
+    let anim = match obj.get("anim") {
+        None => Vec::new(),
+        Some(v) => parse_anim(v, &path("anim"), fps)?,
+    };
+    if let Some(b) = &enter {
+        check_conflicts(&anim, b, presets, &path("anim"))?;
+    }
+
     Ok(Layer {
         id: id.to_string(),
         content,
         fill,
         at,
         enter,
+        anim,
     })
+}
+
+/// Rejects an `anim` track for a property the `in` preset already animates:
+/// two writers of one property would fight, so the author must pick one.
+fn check_conflicts(
+    anim: &[AnimTrack],
+    behaviour: &Behaviour,
+    presets: &[(String, PresetSpec)],
+    path: &str,
+) -> Result<(), FormatError> {
+    let Some(spec) = lookup(presets, &behaviour.preset) else {
+        return Ok(());
+    };
+    for track in anim {
+        if spec.props.iter().any(|(p, _)| *p == track.property) {
+            let name = PROPERTIES[track.property].name;
+            return Err(FormatError::new(
+                format!("{path}.{name}"),
+                format!(
+                    "`{name}` is already animated by `in` (preset `{}`)",
+                    behaviour.preset
+                ),
+            )
+            .expecting("remove it from `in` or put the whole animation in `anim`"));
+        }
+    }
+    Ok(())
 }
 
 /// `[a-z][a-z0-9_-]*`

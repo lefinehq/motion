@@ -45,11 +45,9 @@ fn reports_unknown_targets_keys_and_invalid_results() {
             .to_string()
     };
     assert_eq!(err("ghost fill=#FFF"), "no layer with id `ghost`");
-    assert!(
-        err("card colour=#FFF").contains(
-            "unknown key `colour` for a layer; allowed: id, text, rect, font, fill, at, in"
-        )
-    );
+    assert!(err("card colour=#FFF").contains(
+        "unknown key `colour` for a layer; allowed: id, text, rect, font, fill, at, in, anim"
+    ));
     assert!(err("card fill=blue").starts_with("invalid result: layers[1].fill"));
     assert!(err("card id=title").contains("duplicate id `title`"));
 }

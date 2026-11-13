@@ -7,6 +7,7 @@
 //! typed values, and writes a scene back out ([`write_document`]) keeping
 //! what the author wrote. It never touches pixels or files.
 
+pub mod anim;
 mod curve;
 mod error;
 mod number;

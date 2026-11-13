@@ -5,6 +5,7 @@
 
 use serde_json::Value;
 
+use crate::anim::AnimTrack;
 use crate::preset::{PresetSpec, lookup, names};
 use crate::shorthand::{Behaviour, Font, Position, RectShape};
 use crate::units::{Color, Size, Time};
@@ -54,6 +55,8 @@ pub struct Layer {
     pub at: Position,
     /// Entrance behaviour; JSON key `in`.
     pub enter: Option<Behaviour>,
+    /// Free-form animation tracks; JSON key `anim`.
+    pub anim: Vec<AnimTrack>,
 }
 
 /// What a layer draws.
