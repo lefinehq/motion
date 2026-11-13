@@ -20,6 +20,24 @@ You need the Rust toolchain; `rust-toolchain.toml` pins the version and `rustup`
 cargo test --workspace
 ```
 
+## Try it
+
+Build the `motion` tool and point it at the example scene:
+
+```
+cargo run -q -p motion-cli -- check examples/launch.json
+OK 4
+
+cargo run -q -p motion-cli -- at examples/launch.json 1s title
+title x=960 y=260 w=580.8 h=115.2 opacity=1
+
+cp examples/launch.json /tmp/launch.json
+cargo run -q -p motion-cli -- edit /tmp/launch.json 'card fill=#FF0000'
+OK 4
+```
+
+`check` exits 1 when it finds an error, and every command exits 2 when the file, the time or the edit line is unusable.
+
 ## Licence
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT licence](LICENSE-MIT), at your option.
