@@ -83,9 +83,12 @@ fn tracks(layer: &Layer, scene: &Scene, canvas: (f64, f64)) -> (Vec<Track>, (boo
 
     // The entrance: every property the preset names runs from its start
     // value to its resting value.
-    if let Some(b) = &layer.enter
-        && let Some(spec) = scene.preset(&b.preset)
-    {
+    // A missing preset is impossible after parsing, which checks the name.
+    let entrance = layer
+        .enter
+        .as_ref()
+        .and_then(|b| scene.preset(&b.preset).map(|spec| (b, spec)));
+    if let Some((b, spec)) = entrance {
         let start = b.start.to_frames(fps);
         let end = start + b.duration.to_frames(fps);
         for &(prop, from) in &spec.props {
@@ -110,7 +113,8 @@ fn tracks(layer: &Layer, scene: &Scene, canvas: (f64, f64)) -> (Vec<Track>, (boo
         }
     }
 
-    // `anim` wins over the entrance for the properties it names.
+    // The parser rejects an `anim` track for a property the entrance also
+    // animates, so this override only matters for scenes built in code.
     for a in &layer.anim {
         let keys = a
             .keys
@@ -123,7 +127,18 @@ fn tracks(layer: &Layer, scene: &Scene, canvas: (f64, f64)) -> (Vec<Track>, (boo
             .collect();
         tracks[a.property] = Track::new(keys);
     }
-    let follows = |axis: Option<usize>| !layer.anim.iter().any(|a| Some(a.property) == axis);
+    // An axis stops following `at` when `anim` drives it, or when the
+    // entrance starts it at an absolute value: only the end of that track
+    // moves with `at`, so shifting `at` cannot bring the start into view.
+    let follows = |axis: Option<usize>| {
+        let by_anim = layer.anim.iter().any(|a| Some(a.property) == axis);
+        let by_start = entrance.is_some_and(|(_, spec)| {
+            spec.props
+                .iter()
+                .any(|&(p, s)| Some(p) == axis && matches!(s, Start::Value(_)))
+        });
+        !by_anim && !by_start
+    };
     (tracks, (follows(x_at), follows(y_at)))
 }
 

@@ -239,3 +239,14 @@ fn no_hint_when_no_axis_can_move() {
     assert!(report.starts_with("E offscreen a "), "{report}");
     assert!(!report.contains("fix:"), "{report}");
 }
+
+#[test]
+fn absolute_preset_start_gets_no_hint_on_that_axis() {
+    // The entrance starts x at 1900, offscreen. Moving `at` only moves the
+    // end of the track, so a hint on x would never converge: give none.
+    let report = run(
+        r#"{"motion":1,"dur":"1s","presets":{"swoop":{"x":1900}},"layers":[{"id":"a","rect":"300x100","at":"center center","in":"swoop 12f linear"}]}"#,
+    );
+    assert!(report.contains("E offscreen a"), "{report}");
+    assert!(!report.contains("fix:"), "{report}");
+}

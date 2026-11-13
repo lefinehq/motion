@@ -158,3 +158,13 @@ fn a_scene_preset_overrides_a_built_in() {
     assert_eq!(pairs(track(n, "y")).first(), Some(&(0.0, 230.0)));
     assert!(!track(n, "y").is_constant());
 }
+
+#[test]
+fn follows_at_is_false_for_an_axis_with_an_absolute_preset_start() {
+    let top = r#""presets":{"swoop":{"x":1900},"drop":{"y":"-d"}},"#;
+    let n = &one(r#","in":"swoop""#, top).nodes[0];
+    assert_eq!(n.follows_at, (false, true));
+    // A relative start moves with `at`.
+    let n = &one(r#","in":"drop""#, top).nodes[0];
+    assert_eq!(n.follows_at, (true, true));
+}

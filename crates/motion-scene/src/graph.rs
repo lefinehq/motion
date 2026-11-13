@@ -40,7 +40,8 @@ pub struct Node {
     pub width: f64,
     /// Box height in pixels.
     pub height: f64,
-    /// One track per property, parallel to `motion_format::PROPERTIES`.
+    /// One track per property, parallel to `motion_format::PROPERTIES`: the
+    /// length must equal the registry's, which evaluation relies on.
     pub tracks: Vec<Track>,
     /// Whether `(x, y)` still follow the layer's `at`. False for an axis that
     /// an `anim` track drives, because moving `at` then no longer moves it.
