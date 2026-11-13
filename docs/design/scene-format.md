@@ -76,6 +76,8 @@ All three levels compile to the same thing inside the engine. Use the simplest l
 "in":"fade-up 60px 12f ease-out @15f stagger 6f"
 ```
 
+Easing is a cubic bézier, as in CSS. `linear`, `ease-in`, `ease-out` and `ease-in-out` are shortcuts; `cubic(x1,y1,x2,y2)` sets the curve exactly, for example `cubic(.2,0,0,1)`. The y values may go outside 0–1 to overshoot.
+
 **2. Property tracks.** These animate one value from A to B:
 
 ```json
