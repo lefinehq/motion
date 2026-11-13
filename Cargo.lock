@@ -58,6 +58,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "motion-query"
+version = "0.0.0"
+dependencies = [
+ "motion-eval",
+ "motion-format",
+ "motion-scene",
+]
+
+[[package]]
 name = "motion-scene"
 version = "0.0.0"
 dependencies = [

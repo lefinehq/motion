@@ -1,0 +1,16 @@
+[package]
+name = "motion-query"
+description = "Answers questions about a motion scene as numbers: the standard checks and where things are at a given time."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+motion-format = { path = "../motion-format" }
+motion-scene = { path = "../motion-scene" }
+motion-eval = { path = "../motion-eval" }
+
+[lints]
+workspace = true
