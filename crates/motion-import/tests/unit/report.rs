@@ -1,5 +1,7 @@
 //! Unit tests for `src/report.rs`.
 
+use pretty_assertions::assert_eq;
+
 use super::*;
 use crate::test_support::sample_project;
 

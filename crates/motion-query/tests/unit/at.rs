@@ -2,6 +2,7 @@
 
 use crate::at;
 use motion_format::{Diagnostic, Kind};
+use rstest::rstest;
 
 #[test]
 fn at_prints_resolved_values() {
@@ -38,21 +39,22 @@ fn graph(layer: &str) -> motion_scene::SceneGraph {
     motion_scene::compile(&s, &motion_scene::ApproxTextMeasure)
 }
 
-#[test]
-fn non_default_properties_follow_the_fixed_columns() {
-    let g =
-        graph(r#"{"id":"a","rect":"100x100","at":"500 400","in":"fade-up 60px 10f linear @0f"}"#);
-    // Frame 5: half faded in and half way up the 60 px entrance.
-    assert_eq!(
-        at(&g, 5.0, &[]).unwrap(),
-        "a x=500 y=430 w=100 h=100 opacity=0.5"
-    );
-}
-
-#[test]
-fn properties_at_their_default_are_left_out() {
-    let g = graph(r#"{"id":"a","rect":"100x100","at":"500 400","in":"pop 10f linear @0f"}"#);
-    assert_eq!(at(&g, 10.0, &[]).unwrap(), "a x=500 y=400 w=100 h=100");
+/// x, y, w and h are fixed columns; other properties follow only when they
+/// differ from their default.
+#[rstest]
+// Frame 5: half faded in and half way up the 60 px entrance.
+#[case::non_default_properties_follow_the_fixed_columns(
+    r#"{"id":"a","rect":"100x100","at":"500 400","in":"fade-up 60px 10f linear @0f"}"#,
+    5.0,
+    "a x=500 y=430 w=100 h=100 opacity=0.5"
+)]
+#[case::properties_at_their_default_are_left_out(
+    r#"{"id":"a","rect":"100x100","at":"500 400","in":"pop 10f linear @0f"}"#,
+    10.0,
+    "a x=500 y=400 w=100 h=100"
+)]
+fn prints_one_line_per_node(#[case] layer: &str, #[case] frame: f64, #[case] line: &str) {
+    assert_eq!(at(&graph(layer), frame, &[]).unwrap(), line);
 }
 
 #[test]

@@ -1,6 +1,7 @@
 //! Unit tests for `src/state.rs`.
 
 use super::*;
+use rstest::rstest;
 
 /// A 100x50 box at (500, 300) with the given scale and rotation.
 fn state(scale: f64, rotate: f64) -> NodeState {
@@ -26,34 +27,18 @@ fn close(a: Rect, b: Rect) {
     assert!(d.iter().all(|v| v.abs() < 1e-9), "{a:?} vs {b:?}");
 }
 
-#[test]
-fn bounds_of_a_plain_box() {
-    assert_eq!(
-        state(1.0, 0.0).bounds(),
-        Rect::new(450.0, 275.0, 550.0, 325.0)
-    );
-}
-
-#[test]
-fn bounds_grow_with_scale() {
-    close(
-        state(2.0, 0.0).bounds(),
-        Rect::new(400.0, 250.0, 600.0, 350.0),
-    );
+/// Exact edges: a quarter turn must snap the cos dust at 90 degrees away.
+#[rstest]
+#[case::plain(1.0, 0.0, Rect::new(450.0, 275.0, 550.0, 325.0))]
+#[case::scaled(2.0, 0.0, Rect::new(400.0, 250.0, 600.0, 350.0))]
+#[case::quarter_turn_swaps_the_extents(1.0, 90.0, Rect::new(475.0, 250.0, 525.0, 350.0))]
+fn bounds(#[case] scale: f64, #[case] rotate: f64, #[case] expected: Rect) {
+    assert_eq!(state(scale, rotate).bounds(), expected);
 }
 
 #[test]
 fn a_negative_scale_mirrors_without_changing_the_area() {
     assert_eq!(state(-1.0, 0.0).bounds(), state(1.0, 0.0).bounds());
-}
-
-#[test]
-fn a_quarter_turn_swaps_the_extents_exactly() {
-    // Exact equality: the cos dust at 90 degrees must be snapped away.
-    assert_eq!(
-        state(1.0, 90.0).bounds(),
-        Rect::new(475.0, 250.0, 525.0, 350.0)
-    );
 }
 
 #[test]

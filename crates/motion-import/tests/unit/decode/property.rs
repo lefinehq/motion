@@ -2,6 +2,8 @@
 
 use std::collections::BTreeMap;
 
+use pretty_assertions::assert_eq;
+
 use super::*;
 use crate::model::Interpolation;
 use crate::test_support::{chunk, list, record, text_body, text_document};

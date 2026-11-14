@@ -8,6 +8,9 @@ use tracing::span::{Attributes, Id};
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::{Context, SubscriberExt};
 
+use pretty_assertions::assert_eq;
+use rstest::rstest;
+
 use super::*;
 use crate::telemetry::timing::Timings;
 use crate::test_support::with_subscriber;
@@ -111,16 +114,11 @@ fn a_parsed_session_has_nowhere_to_save() {
     assert_eq!(session.save().unwrap_err().kind, Kind::Missing);
 }
 
-#[test]
-fn temp_path_is_a_sibling_with_a_suffix() {
-    assert_eq!(
-        temp_path(Path::new("dir/scene.json")),
-        Path::new("dir/scene.json.tmp")
-    );
-    assert_eq!(
-        temp_path(Path::new("scene.json")),
-        Path::new("scene.json.tmp")
-    );
+#[rstest]
+#[case("dir/scene.json", "dir/scene.json.tmp")]
+#[case("scene.json", "scene.json.tmp")]
+fn temp_path_is_a_sibling_with_a_suffix(#[case] path: &str, #[case] temp: &str) {
+    assert_eq!(temp_path(Path::new(path)), Path::new(temp));
 }
 
 /// A layer that counts the `compile` spans of `motion-scene`, one per
