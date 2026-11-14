@@ -5,13 +5,19 @@ use super::*;
 fn violation(severity: Severity, fix: Option<&str>) -> Violation {
     Violation {
         severity,
-        code: "offscreen",
+        code: Code::Offscreen,
         id: "card".into(),
         first_frame: 3,
         last_frame: 9,
         amount_px: 12.0,
         fix: fix.map(String::from),
     }
+}
+
+#[test]
+fn codes_display_as_their_names() {
+    assert_eq!(Code::Offscreen.to_string(), "offscreen");
+    assert_eq!(Code::Unsafe.to_string(), "unsafe");
 }
 
 #[test]

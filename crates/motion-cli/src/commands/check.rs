@@ -1,29 +1,13 @@
-//! `motion check`: compile a scene and print its check report.
-//!
-//! Loads and compiles the scene (steps 1 and 2), then runs the `motion-query`
-//! side branch over the evaluated frames and prints its report.
+//! `motion check`: print a scene's check report.
 
 use std::path::Path;
 use std::process::ExitCode;
 
-use motion_format::Scene;
-use motion_query::check;
+use motion_engine::{Result, Session};
 
-use super::{compile_scene, load};
+use super::print_report;
 
 /// Checks the scene file; exits 1 when the report has an error line.
-pub fn run(path: &Path) -> Result<ExitCode, String> {
-    let doc = load(path)?;
-    Ok(report(&doc.scene))
-}
-
-/// Prints the check report for a scene and maps it to an exit code.
-pub fn report(scene: &Scene) -> ExitCode {
-    let report = check(scene, &compile_scene(scene));
-    println!("{report}");
-    if report.has_errors() {
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
-    }
+pub fn run(path: &Path) -> Result<ExitCode> {
+    Ok(print_report(&Session::open(path)?.check()))
 }

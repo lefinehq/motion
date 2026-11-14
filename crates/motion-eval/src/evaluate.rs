@@ -6,12 +6,15 @@
 use crate::{FrameState, NodeState};
 use motion_format::property::PROPERTIES;
 use motion_scene::{Node, SceneGraph};
+use tracing::instrument;
 
 /// Evaluates every node of `graph` at `frame`.
 ///
 /// `frame` is measured in frames from the start of the scene and may be
 /// fractional: sub-frame times are allowed, for example to sample several
 /// instants inside one frame for motion blur later.
+// A `trace` span: per frame, and only a cached level check when disabled.
+#[instrument(level = "trace", skip(graph))]
 pub fn evaluate(graph: &SceneGraph, frame: f64) -> FrameState {
     FrameState {
         frame,

@@ -1,0 +1,19 @@
+[package]
+name = "motion-telemetry"
+description = "Logs and step timings for motion binaries: a `tracing` subscriber on stderr."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

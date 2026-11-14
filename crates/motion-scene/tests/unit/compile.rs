@@ -6,17 +6,18 @@ use crate::text::ApproxTextMeasure;
 fn launch() -> motion_format::Scene {
     motion_format::parse_document(include_str!("../../../../examples/launch.json"))
         .unwrap()
-        .scene
+        .scene()
+        .clone()
 }
 
 fn compile_json(json: &str) -> SceneGraph {
-    let scene = motion_format::parse_document(json).unwrap().scene;
+    let scene = motion_format::parse_document(json).unwrap().scene().clone();
     compile(&scene, &ApproxTextMeasure)
 }
 
 /// The track of `node` for the property called `name`.
 fn track<'a>(node: &'a Node, name: &str) -> &'a Track {
-    &node.tracks[property(name).unwrap().0]
+    &node.tracks[Prop::named(name).unwrap().index()]
 }
 
 /// The keys of a track as `(frame, value)` pairs.

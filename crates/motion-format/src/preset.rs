@@ -9,22 +9,18 @@ use std::sync::OnceLock;
 
 use serde_json::{Map, Value};
 
-use crate::anim::check_range;
-use crate::parse::{ID_RULE, is_valid_id};
-use crate::property::{PROPERTIES, names as prop, property, property_names};
-use crate::shorthand::{Behaviour, Coord, Position};
-use crate::{FormatError, fmt_num};
+use crate::doc::{AnimDoc, PresetsDoc};
+use crate::fmt_num;
+use crate::property::Prop;
+use crate::shorthand::{Behaviour, Position};
+use crate::table;
+use crate::validate;
 
 /// The built-in presets, embedded at compile time.
 const BUILTIN_JSON: &str = include_str!("presets.json");
 
-/// The accepted forms of a start value, for error messages.
-const START_EXPECTED: &str = r#"a number, "+d" or "-d""#;
-
-/// The JSON text of [`Start::Plus`].
-const PLUS: &str = "+d";
-/// The JSON text of [`Start::Minus`].
-const MINUS: &str = "-d";
+/// The starts JSON writes as strings, the one place they are spelled.
+const DISTANCES: [(&str, Start); 2] = [("+d", Start::Plus), ("-d", Start::Minus)];
 
 /// Where a property starts when an entrance begins.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -37,11 +33,40 @@ pub enum Start {
     Minus,
 }
 
+impl Start {
+    /// The start a string stands for: `"+d"` or `"-d"`.
+    pub(crate) fn distance(text: &str) -> Option<Start> {
+        table::lookup(&DISTANCES, text).map(|(_, start)| *start)
+    }
+
+    /// The accepted forms of a start, for errors: `a number, "+d" or "-d"`,
+    /// with the strings read from the table.
+    pub(crate) fn form() -> &'static str {
+        static FORM: OnceLock<String> = OnceLock::new();
+        FORM.get_or_init(|| {
+            let written: Vec<String> = table::names(&DISTANCES)
+                .map(|name| format!("\"{name}\""))
+                .collect();
+            format!("a number, {}", written.join(" or "))
+        })
+    }
+
+    /// The value a property starts at, for a property resting at `rest`
+    /// and a behaviour that travels `distance` pixels.
+    pub fn resolve(self, rest: f64, distance: f64) -> f64 {
+        match self {
+            Start::Value(v) => v,
+            Start::Plus => rest + distance,
+            Start::Minus => rest - distance,
+        }
+    }
+}
+
 /// A preset: the properties it animates and where each starts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PresetSpec {
-    /// `(index into PROPERTIES, start)` in the order written.
-    pub props: Vec<(usize, Start)>,
+    /// Each property and its start, in the order written.
+    pub props: Vec<(Prop, Start)>,
 }
 
 /// The built-in presets in file order, parsed once.
@@ -50,83 +75,10 @@ pub struct PresetSpec {
 pub fn builtin_presets() -> &'static [(String, PresetSpec)] {
     static BUILTIN: OnceLock<Vec<(String, PresetSpec)>> = OnceLock::new();
     BUILTIN.get_or_init(|| {
-        let value: Value = serde_json::from_str(BUILTIN_JSON).expect("presets.json is valid JSON");
-        parse_presets(&value, "presets.json").expect("presets.json holds valid presets")
+        let doc: PresetsDoc =
+            serde_json::from_str(BUILTIN_JSON).expect("presets.json holds preset objects");
+        validate::presets(&doc).expect("presets.json holds valid presets")
     })
-}
-
-/// Parses a `presets` object: name to `{property: start}`. `path` prefixes
-/// error paths (`presets` for a scene).
-pub fn parse_presets(value: &Value, path: &str) -> Result<Vec<(String, PresetSpec)>, FormatError> {
-    let obj = value.as_object().ok_or_else(|| {
-        FormatError::new(path, "must be an object")
-            .expecting(r#"e.g. {"slide":{"opacity":0,"x":"-d"}}"#)
-    })?;
-    let mut out = Vec::with_capacity(obj.len());
-    for (name, body) in obj {
-        let here = format!("{path}.{name}");
-        if !is_valid_id(name) {
-            return Err(
-                FormatError::new(&here, format!("invalid preset name `{name}`")).expecting(ID_RULE),
-            );
-        }
-        let props_obj = body.as_object().ok_or_else(|| {
-            FormatError::new(&here, "must be an object of property starts")
-                .expecting(r#"e.g. {"opacity":0,"y":"+d"}"#)
-        })?;
-        let mut props = Vec::with_capacity(props_obj.len());
-        for (prop, start) in props_obj {
-            let at = format!("{here}.{prop}");
-            let (index, spec) = property(prop).ok_or_else(|| {
-                FormatError::new(&at, format!("unknown property `{prop}`"))
-                    .expecting(format!("one of {}", property_names()))
-            })?;
-            let start = parse_start(start, &at)?;
-            match start {
-                // An absolute start obeys the property's range, like an `anim` key.
-                Start::Value(v) => {
-                    check_range(v, spec, &at)?;
-                }
-                // A distance in pixels means nothing for a bounded property
-                // such as opacity, and would leave its range.
-                Start::Plus | Start::Minus if spec.range.is_some() => {
-                    return Err(FormatError::new(
-                        &at,
-                        format!("`{prop}` has a fixed range, so it cannot start at a distance"),
-                    )
-                    .expecting("a number within its range, e.g. 0"));
-                }
-                Start::Plus | Start::Minus => {}
-            }
-            props.push((index, start));
-        }
-        if props.is_empty() {
-            return Err(
-                FormatError::new(&here, format!("preset `{name}` sets no properties"))
-                    .expecting(r#"e.g. {"opacity":0}"#),
-            );
-        }
-        out.push((name.clone(), PresetSpec { props }));
-    }
-    Ok(out)
-}
-
-/// Reads one start value: a number, `"+d"` or `"-d"`.
-fn parse_start(value: &Value, path: &str) -> Result<Start, FormatError> {
-    match value {
-        Value::Number(n) => n
-            .as_f64()
-            .filter(|v| v.is_finite())
-            .map(Start::Value)
-            .ok_or_else(|| {
-                FormatError::new(path, format!("invalid start {value}")).expecting(START_EXPECTED)
-            }),
-        Value::String(s) if s == PLUS => Ok(Start::Plus),
-        Value::String(s) if s == MINUS => Ok(Start::Minus),
-        other => {
-            Err(FormatError::new(path, format!("invalid start {other}")).expecting(START_EXPECTED))
-        }
-    }
 }
 
 /// Writes a layer's entrance as an `anim` object in JSON text: one string
@@ -135,10 +87,10 @@ fn parse_start(value: &Value, path: &str) -> Result<Start, FormatError> {
 ///
 /// Each track runs from the preset's start value to the resting value, over
 /// the behaviour's frames and with its curve, which is what the compiler
-/// builds from `in`. The resting value is the registry default, except for
-/// the two properties `at` sets, which are resolved against `canvas`
-/// (`center` is half the size). `others` are the layer's existing `anim`
-/// entries; those for properties the preset does not animate are appended
+/// builds from `in`. The resting value is the property's
+/// [`rest`](crate::property::PropertySpec::rest): the registry default, or
+/// the `at` axis resolved against `canvas`. `others` are the layer's `anim` tracks as
+/// written; those for properties the preset does not animate are appended
 /// unchanged, so the object can replace the whole `anim`.
 pub(crate) fn expand_as_anim(
     spec: &PresetSpec,
@@ -146,27 +98,13 @@ pub(crate) fn expand_as_anim(
     at: &Position,
     canvas: (f64, f64),
     fps: f64,
-    others: &Map<String, Value>,
+    others: &AnimDoc,
 ) -> String {
-    let resolve = |c: Coord, extent: f64| match c {
-        Coord::Center => extent / 2.0,
-        Coord::Px(v) => v,
-    };
-    let start = behaviour.start.to_frames(fps);
-    let end = start + behaviour.duration.to_frames(fps);
-    let mut entries: Vec<(&str, Value)> = Vec::new();
-    for &(index, from) in &spec.props {
-        let property = &PROPERTIES[index];
-        let rest = match property.name {
-            n if n == prop::X => resolve(at.x, canvas.0),
-            n if n == prop::Y => resolve(at.y, canvas.1),
-            _ => property.default,
-        };
-        let from = match from {
-            Start::Value(v) => v,
-            Start::Plus => rest + behaviour.distance,
-            Start::Minus => rest - behaviour.distance,
-        };
+    let (start, end) = behaviour.frames(fps);
+    let mut tracks = Map::new();
+    for &(prop, from) in &spec.props {
+        let rest = prop.spec().rest(at, canvas);
+        let from = from.resolve(rest, behaviour.distance);
         let track = format!(
             "{} -> {} @{}-{}f {}",
             fmt_num(from),
@@ -175,34 +113,30 @@ pub(crate) fn expand_as_anim(
             fmt_num(end),
             behaviour.curve
         );
-        entries.push((property.name, Value::String(track)));
+        tracks.insert(prop.name().to_owned(), Value::String(track));
     }
-    for (name, value) in others {
-        if !entries.iter().any(|(n, _)| n == name) {
-            entries.push((name, value.clone()));
-        }
+    for (name, track) in others {
+        tracks.entry(name.as_str()).or_insert_with(|| {
+            // A track holds only strings and finite numbers, which always
+            // convert.
+            serde_json::to_value(track).expect("a track converts to JSON")
+        });
     }
-    let body: Vec<String> = entries
-        .iter()
-        .map(|(n, v)| format!("\"{n}\":{v}"))
-        .collect();
-    format!("{{{}}}", body.join(","))
+    Value::Object(tracks).to_string()
 }
 
 /// Finds `name` among a scene's own presets first, then the built-ins.
 pub(crate) fn lookup<'a>(own: &'a [(String, PresetSpec)], name: &str) -> Option<&'a PresetSpec> {
-    own.iter()
-        .chain(builtin_presets())
-        .find(|(n, _)| n == name)
-        .map(|(_, spec)| spec)
+    table::lookup(own.iter().chain(builtin_presets()), name).map(|(_, spec)| spec)
 }
 
 /// The names of the resolved table, a scene's own first, without duplicates.
 pub(crate) fn names(own: &[(String, PresetSpec)]) -> Vec<&str> {
     let mut out: Vec<&str> = Vec::new();
-    for (n, _) in own.iter().chain(builtin_presets()) {
-        if !out.contains(&n.as_str()) {
-            out.push(n);
+    for name in table::names(own.iter().chain(builtin_presets())) {
+        // A scene's own preset hides the built-in of the same name.
+        if !out.contains(&name) {
+            out.push(name);
         }
     }
     out

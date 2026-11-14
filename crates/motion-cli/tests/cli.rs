@@ -7,10 +7,21 @@ use std::process::{Command, Output};
 const LAUNCH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/launch.json");
 const OFFSCREEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/offscreen.json");
 
-/// Runs `motion` with the given arguments.
+/// Runs `motion` with the given arguments, without a `MOTION_LOG` from the
+/// environment.
 fn motion(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_motion"))
         .args(args)
+        .env_remove("MOTION_LOG")
+        .output()
+        .expect("run motion")
+}
+
+/// Runs `motion` with `MOTION_LOG` set to `filter`.
+fn motion_with_log(filter: &str, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_motion"))
+        .args(args)
+        .env("MOTION_LOG", filter)
         .output()
         .expect("run motion")
 }
@@ -72,7 +83,10 @@ fn at_without_ids_prints_every_node() {
 #[test]
 fn at_unknown_id_exits_two() {
     let out = motion(&["at", LAUNCH, "1s", "nope"]);
-    assert_eq!(stderr(&out), "error: no layer with id `nope`\n");
+    assert_eq!(
+        stderr(&out),
+        "error: unknown layer id `nope`; expected one of title, card\n"
+    );
     assert_eq!(out.status.code(), Some(2));
 }
 
@@ -80,17 +94,19 @@ fn at_unknown_id_exits_two() {
 fn at_bad_time_exits_two() {
     let out = motion(&["at", LAUNCH, "soon", "title"]);
     assert_eq!(out.status.code(), Some(2));
-    assert!(stderr(&out).starts_with("error: "));
+    assert_eq!(
+        stderr(&out),
+        "error: `soon` is not a valid time; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`\n"
+    );
 }
 
 #[test]
 fn missing_file_exits_two() {
     let out = motion(&["check", "/definitely/not/here.json"]);
     assert_eq!(out.status.code(), Some(2));
-    assert!(
-        stderr(&out).starts_with("error: cannot read"),
-        "{}",
-        stderr(&out)
+    assert_eq!(
+        stderr(&out),
+        "error: cannot read `/definitely/not/here.json`: No such file or directory (os error 2)\n"
     );
 }
 
@@ -141,7 +157,10 @@ fn edit_malformed_line_leaves_file_untouched() {
     let before = fs::read(&path).expect("read");
     let out = motion(&["edit", &path, "card"]);
     assert_eq!(out.status.code(), Some(2));
-    assert!(stderr(&out).starts_with("error: "));
+    assert_eq!(
+        stderr(&out),
+        "error: no changes after `card`; expected `<key>=<value>`\n"
+    );
     assert_eq!(fs::read(&path).expect("read"), before);
 }
 
@@ -171,5 +190,156 @@ fn invalid_scene_exits_two_with_path() {
         stderr(&out).contains("layers[0].in: unknown preset `zoom`"),
         "{}",
         stderr(&out)
+    );
+}
+
+#[test]
+fn a_failure_is_logged_once_before_the_error_line() {
+    let out = motion(&["--log", "error", "at", LAUNCH, "1s", "nope"]);
+    let text = stderr(&out);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 2, "{text}");
+    assert!(
+        lines[0].contains("ERROR") && lines[0].contains("kind=UnknownName"),
+        "{text}"
+    );
+    assert!(lines[1].starts_with("error: "), "{text}");
+}
+
+#[test]
+fn a_plain_failing_run_prints_exactly_one_error_line() {
+    for args in [
+        &["at", LAUNCH, "1s", "nope"][..],
+        &["at", LAUNCH, "soon"],
+        &["check", "/definitely/not/here.json"],
+    ] {
+        let out = motion(args);
+        let text = stderr(&out);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 1, "{args:?}: {text}");
+        assert!(lines[0].starts_with("error: "), "{args:?}: {text}");
+    }
+}
+
+#[test]
+fn info_logs_one_line_per_command() {
+    let out = motion(&["--log", "info", "check", LAUNCH]);
+    let text = stderr(&out);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 1, "{text}");
+    assert!(
+        lines[0].contains(r#"command="check""#) && lines[0].contains(&format!("file={LAUNCH}")),
+        "{text}"
+    );
+}
+
+#[test]
+fn an_invalid_motion_log_is_one_warning_then_the_level() {
+    let out = motion_with_log("motion=loud", &["at", LAUNCH, "1s", "nope"]);
+    let text = stderr(&out);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 2, "{text}");
+    assert!(
+        lines[0].contains(" WARN motion_telemetry") && lines[0].contains("value=motion=loud"),
+        "{text}"
+    );
+    assert_eq!(
+        lines[1],
+        "error: unknown layer id `nope`; expected one of title, card"
+    );
+}
+
+#[test]
+fn json_logs_leave_stdout_unchanged() {
+    for args in [
+        &["check", LAUNCH][..],
+        &["check", OFFSCREEN],
+        &["at", LAUNCH, "1s"],
+        &["at", LAUNCH, "1s", "nope"],
+    ] {
+        let plain = motion(args);
+        let logged = motion(&[&["--log", "debug", "--log-format", "json"], args].concat());
+        assert_eq!(logged.stdout, plain.stdout, "{args:?}");
+        assert_eq!(logged.status.code(), plain.status.code(), "{args:?}");
+        let text = stderr(&logged);
+        let logs: Vec<&str> = text.lines().filter(|l| !l.starts_with("error: ")).collect();
+        assert!(!logs.is_empty(), "{args:?}: {text}");
+        for line in logs {
+            let event: serde_json::Value = serde_json::from_str(line).expect(line);
+            assert!(event["level"].is_string(), "{line}");
+        }
+    }
+}
+
+#[test]
+fn json_logs_carry_the_step_counts() {
+    let out = motion(&["--log", "debug", "--log-format", "json", "check", LAUNCH]);
+    let text = stderr(&out);
+    assert!(
+        text.lines()
+            .any(|l| l.contains(r#""name":"check""#) && l.contains(r#""passed":4"#)),
+        "{text}"
+    );
+}
+
+#[test]
+fn timings_print_one_line_on_stderr() {
+    let out = motion(&["--timings", "check", LAUNCH]);
+    assert_eq!(stdout(&out), "OK 4\n");
+    let text = stderr(&out);
+    let line = text
+        .lines()
+        .find(|l| l.starts_with("timings "))
+        .unwrap_or_else(|| panic!("no timings line: {text}"));
+    for step in ["read=", "parse=", "compile=", "check="] {
+        assert!(line.contains(step), "{line}");
+    }
+}
+
+#[test]
+fn every_text_line_step_has_one_json_event() {
+    let path = copy_to("json_timings", LAUNCH);
+    for args in [
+        &["check", LAUNCH][..],
+        &["at", LAUNCH, "1s"],
+        &["edit", &path, "card rect=500x400"],
+    ] {
+        let text = stderr(&motion(&[&["--timings"], args].concat()));
+        let steps: Vec<&str> = text
+            .strip_prefix("timings ")
+            .unwrap_or_else(|| panic!("{args:?}: {text}"))
+            .split_whitespace()
+            .map(|step| step.split_once('=').expect("name=time").0)
+            .collect();
+        let json = stderr(&motion(
+            &[&["--timings", "--log-format", "json"], args].concat(),
+        ));
+        let events: Vec<String> = json
+            .lines()
+            .map(|line| {
+                let event: serde_json::Value = serde_json::from_str(line).expect("a JSON line");
+                assert_eq!(event["level"], "INFO", "{json}");
+                assert_eq!(event["target"], "motion::timings", "{json}");
+                assert!(event["fields"]["ms"].is_number(), "{json}");
+                event["fields"]["stage"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("no stage: {json}"))
+                    .to_owned()
+            })
+            .collect();
+        assert_eq!(events, steps, "{args:?}");
+    }
+}
+
+#[test]
+fn timings_follow_a_failure_too() {
+    let out = motion(&["at", LAUNCH, "soon", "--timings"]);
+    assert_eq!(out.status.code(), Some(2));
+    let text = stderr(&out);
+    assert!(
+        text.lines()
+            .last()
+            .is_some_and(|l| l.starts_with("timings read=")),
+        "{text}"
     );
 }

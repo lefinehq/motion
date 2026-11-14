@@ -6,7 +6,8 @@
 //! scene questions, this crate changes it: [`parse_edit`] turns a line into
 //! an [`Edit`], and [`apply_edit`] applies it to the raw scene JSON and
 //! re-validates the result with `motion-format`, so an edit can never leave
-//! a broken scene behind.
+//! a broken scene behind. Between them, `path` sets and removes a dotted
+//! key such as `anim.opacity` in the raw JSON.
 //!
 //! An edit line is `<target> <key>=<value> ...`:
 //!
@@ -22,9 +23,11 @@
 //! ```
 
 mod apply;
-mod error;
+mod key_path;
 mod parse;
+mod path;
+mod problem;
 
 pub use apply::apply_edit;
-pub use error::EditError;
+pub use key_path::KeyPath;
 pub use parse::{Change, Edit, EditValue, parse_edit};

@@ -7,7 +7,7 @@
 //! `rules`).
 
 use super::{Area, Overshoot, Rule, overshoot, visible};
-use crate::report::Severity;
+use crate::report::{Code, Severity};
 use motion_eval::NodeState;
 use motion_scene::SceneGraph;
 
@@ -16,7 +16,7 @@ const SAFE_INSET: f64 = 0.05;
 
 /// A visible node must lie inside the canvas.
 pub(super) const OFFSCREEN: Rule = Rule {
-    code: "offscreen",
+    code: Code::Offscreen,
     severity: Severity::Error,
     suppressed_by: None,
     evaluate: offscreen,
@@ -27,10 +27,10 @@ pub(super) const OFFSCREEN: Rule = Rule {
 
 /// A visible node should lie inside the title-safe area.
 pub(super) const UNSAFE: Rule = Rule {
-    code: "unsafe",
+    code: Code::Unsafe,
     severity: Severity::Warning,
     // An off-screen node is also outside the safe area; say it once.
-    suppressed_by: Some("offscreen"),
+    suppressed_by: Some(Code::Offscreen),
     evaluate: outside_safe_area,
     areas: |graph| (safe_area(graph), safe_area(graph)),
 };

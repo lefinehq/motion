@@ -1,7 +1,7 @@
 //! Unit tests for `src/rules/bounds.rs`.
 
 use super::*;
-use motion_format::property::{PROPERTIES, names};
+use motion_format::property::Prop;
 
 fn graph() -> SceneGraph {
     SceneGraph {
@@ -19,15 +19,14 @@ fn node(x: f64, y: f64, w: f64, h: f64, opacity: f64) -> NodeState {
 
 /// Like `node`, with a scale and a rotation (degrees).
 fn rotated(x: f64, y: f64, w: f64, h: f64, opacity: f64, scale: f64, rotate: f64) -> NodeState {
-    let values = PROPERTIES
-        .iter()
-        .map(|p| match p.name {
-            n if n == names::X => x,
-            n if n == names::Y => y,
-            n if n == names::OPACITY => opacity,
-            n if n == names::SCALE => scale,
-            n if n == names::ROTATE => rotate,
-            _ => p.default,
+    let values = Prop::all()
+        .map(|p| match p {
+            Prop::X => x,
+            Prop::Y => y,
+            Prop::OPACITY => opacity,
+            Prop::SCALE => scale,
+            Prop::ROTATE => rotate,
+            _ => p.spec().default,
         })
         .collect();
     NodeState {

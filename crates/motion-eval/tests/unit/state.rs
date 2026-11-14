@@ -1,18 +1,16 @@
 //! Unit tests for `src/state.rs`.
 
 use super::*;
-use motion_format::property::PROPERTIES;
 
 /// A 100x50 box at (500, 300) with the given scale and rotation.
 fn state(scale: f64, rotate: f64) -> NodeState {
-    let values = PROPERTIES
-        .iter()
-        .map(|p| match p.name {
-            n if n == names::X => 500.0,
-            n if n == names::Y => 300.0,
-            n if n == names::SCALE => scale,
-            n if n == names::ROTATE => rotate,
-            _ => p.default,
+    let values = Prop::all()
+        .map(|p| match p {
+            Prop::X => 500.0,
+            Prop::Y => 300.0,
+            Prop::SCALE => scale,
+            Prop::ROTATE => rotate,
+            _ => p.spec().default,
         })
         .collect();
     NodeState {
@@ -68,7 +66,8 @@ fn the_edge_getters_read_from_bounds() {
 }
 
 #[test]
-#[should_panic(expected = "no property `nope`")]
-fn an_unknown_name_panics() {
-    state(1.0, 0.0).get("nope");
+fn get_reads_the_value_of_a_property() {
+    let s = state(2.0, 45.0);
+    assert_eq!((s.get(Prop::SCALE), s.get(Prop::ROTATE)), (2.0, 45.0));
+    assert_eq!(s.get(Prop::OPACITY), 1.0);
 }

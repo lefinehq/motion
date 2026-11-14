@@ -1,12 +1,13 @@
 # Architecture
 
-motion turns a scene into video in five steps. Steps 1 to 3 never touch pixels. Checks, edits and the command-line tool are a side branch that works on the output of steps 2 and 3. The full reasoning is in [docs/design/rendering.md](docs/design/rendering.md).
+motion turns a scene into video in five steps. Steps 1 to 3 never touch pixels. Checks, edits and the command-line tool are a side branch that works on the output of steps 2 and 3. Every tool (the command line today, an agent server and a Node binding later) reaches the pipeline through one entry point, the engine's `Session`. The full reasoning is in [docs/design/rendering.md](docs/design/rendering.md).
 
 ```
+tools (CLI, later MCP and Node) ──▶ Session (motion-engine) ──▶ the steps below
 scene.json
    │
    ▼
- 1. Read      parse the JSON, expand presets and short strings, validate
+ 1. Read      parse the JSON (serde), read short strings (winnow grammars), validate
    │
    ▼
  2. Compile   expand repeats, nested comps and layout; shape text
@@ -27,12 +28,16 @@ Each crate has one job and a list of things it must never do. Keeping those rule
 
 | Crate | What it does | What it must never do |
 |---|---|---|
-| `motion-format` | Reads the scene format: shorthand units, parsing, validation and writing (step 1). | Touch pixels. |
+| `motion-diagnostic` | The one error type, `Diagnostic`, with a `Kind` and an exit code. | Depend on any other motion crate, or format an error anywhere else. |
+| `motion-grammar` | The shared `winnow` pieces every text grammar uses, and the one mapping from a grammar's failure to a `Diagnostic`. | Expose `winnow` types in other crates' public APIs. |
+| `motion-format` | Reads the scene format: a serde document for the JSON shape, `winnow` grammars for the shorthands, then validation and writing (step 1). | Touch pixels. |
 | `motion-scene` | Compiles a scene into a scene graph with resolved positions, sizes and entrances (step 2). | Touch pixels or read files. |
 | `motion-eval` | Works out every node's position, size and opacity at a frame (step 3). | Touch pixels or read files. |
 | `motion-query` | Side branch: `check` and `at` answer questions about a scene with numbers. | Write files or touch pixels. |
-| `motion-edit` | Side branch: parses one-line edits and applies them to the raw scene. | Write files or touch pixels. |
-| `motion-cli` | The `motion` command: wires the crates together. | Hold engine logic. It is the only place that reads or writes files and prints. |
+| `motion-edit` | Side branch: parses one-line edits and applies them to a parsed scene's raw JSON. | Write files or touch pixels. |
+| `motion-engine` | `Session`: the only entry point for tools. It reads, parses, compiles and evaluates a scene and runs `check`, `at` and edits, each step inside a `tracing` span. | Print, read arguments, or let a tool bypass it to call a step directly. |
+| `motion-telemetry` | Starts logging and step timings (`--log`, `MOTION_LOG`, `--timings`) from the spans the engine opens. | Be started by a library: only binaries and tests install a subscriber. |
+| `motion-cli` | The `motion` command: reads the arguments, runs each command through a `Session`, and prints its output. | Hold engine logic. It is the only place that prints, and it reaches scenes only through `Session`. |
 
 Crates are added task by task. This table lists only crates that exist.
 
@@ -45,6 +50,22 @@ Crates are added task by task. This table lists only crates that exist.
 | `motion-encode` | Write video and audio files (step 5). |
 | `motion-import` | Bring in assets and other formats. |
 | `motion-variants` | Turn one designed project into many variants. |
+
+## Parsing, validation and errors
+
+Libraries never print: they return a `Diagnostic` or log with `tracing`, and only `motion-cli` writes to stdout and stderr.
+
+| What | Where |
+|---|---|
+| The error type, its kinds and exit codes | `crates/motion-diagnostic/src/lib.rs` |
+| Shared grammar pieces and the failure-to-`Diagnostic` mapping | `crates/motion-grammar/src/lib.rs` |
+| The scene's JSON shape, as serde types (`SceneDoc`, `LayerDoc`) | `crates/motion-format/src/doc.rs` |
+| Shorthand grammars: units, rect, font, position, behaviour, tracks | `crates/motion-format/src/units.rs`, `shorthand/`, `anim.rs`, `curve.rs` |
+| Validation: every rule beyond the shape | `crates/motion-format/src/validate.rs` |
+| The edit line grammar and path edits | `crates/motion-edit/src/parse.rs`, `apply.rs` |
+| The entry point and its step spans | `crates/motion-engine/src/session.rs`, `stage.rs` |
+
+See [Contributing](CONTRIBUTING.md#how-errors-work) for how to add a shorthand or a field.
 
 ## One property model
 

@@ -9,6 +9,6 @@ fn example_scene_parses_and_round_trips_byte_for_byte() {
     ))
     .unwrap();
     let doc = motion_format::parse_document(&src).unwrap();
-    assert_eq!(doc.scene.layers.len(), 2);
-    assert_eq!(motion_format::write_document(&doc.raw), src);
+    assert_eq!(doc.scene().layers.len(), 2);
+    assert_eq!(motion_format::write_document(doc.raw()), src);
 }

@@ -44,3 +44,21 @@ fn both_axes_move_at_once() {
     );
     assert_eq!(s, (-80.0, 35.0));
 }
+
+#[test]
+fn each_rule_has_its_own_code_and_is_suppressed_only_by_an_earlier_rule() {
+    for (i, rule) in RULES.iter().enumerate() {
+        assert!(
+            RULES[..i].iter().all(|earlier| earlier.code != rule.code),
+            "{}",
+            rule.code
+        );
+        if let Some(by) = rule.suppressed_by {
+            assert!(
+                RULES[..i].iter().any(|earlier| earlier.code == by),
+                "{} is suppressed by {by}, which must run before it",
+                rule.code
+            );
+        }
+    }
+}

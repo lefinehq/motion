@@ -1,10 +1,22 @@
 //! Unit tests for `src/preset.rs`.
 
 use super::*;
+use crate::doc::AnimDoc;
+use crate::parse::scene_from_value;
 use crate::parse_document;
+use crate::property::Prop;
+use crate::validate::is_valid_id;
+use motion_diagnostic::{Kind, Result};
 
-fn presets(json: &str) -> Result<Vec<(String, PresetSpec)>, FormatError> {
-    parse_presets(&serde_json::from_str(json).unwrap(), "presets")
+/// The presets of a scene whose `presets` is `value`.
+fn presets_of(value: Value) -> Result<Vec<(String, PresetSpec)>> {
+    let scene = serde_json::json!({"motion": 1, "dur": "1s", "presets": value, "layers": []});
+    scene_from_value(&scene).map(|s| s.presets)
+}
+
+/// [`presets_of`] for JSON text.
+fn presets(json: &str) -> Result<Vec<(String, PresetSpec)>> {
+    presets_of(serde_json::from_str(json).unwrap())
 }
 
 #[test]
@@ -13,15 +25,12 @@ fn builtin_file_parses_and_names_known_properties() {
     assert!(!table.is_empty());
     for (name, spec) in table {
         assert!(is_valid_id(name), "{name}");
-        for (i, _) in &spec.props {
-            assert!(*i < crate::property::PROPERTIES.len(), "{name}");
-        }
+        assert!(!spec.props.is_empty(), "{name}");
     }
     // Order of the file is kept.
     assert_eq!(table[0].0, "fade");
     let up = lookup(&[], "fade-up").unwrap();
-    let y = property("y").unwrap().0;
-    assert!(up.props.contains(&(y, Start::Plus)));
+    assert!(up.props.contains(&(Prop::Y, Start::Plus)));
 }
 
 #[test]
@@ -42,19 +51,23 @@ fn start_forms_parse() {
 #[test]
 fn bad_start_value_shows_expected_form() {
     let e = presets(r#"{"a":{"x":"left"}}"#).unwrap_err();
-    assert_eq!(e.path, "presets.a.x");
+    assert_eq!(e.path.as_deref(), Some("presets.a.x"));
     assert!(
         e.to_string()
             .ends_with(r#"; expected a number, "+d" or "-d""#),
         "{e}"
     );
-    assert!(presets(r#"{"a":{"x":true}}"#).is_err());
+    assert_eq!(e.kind, Kind::Invalid);
+    let e = presets(r#"{"a":{"x":true}}"#).unwrap_err();
+    assert_eq!(e.kind, Kind::WrongType);
+    assert_eq!(presets(r#"{"a":3}"#).unwrap_err().kind, Kind::WrongType);
+    assert_eq!(presets("[]").unwrap_err().kind, Kind::WrongType);
 }
 
 #[test]
 fn unknown_property_lists_the_registry() {
     let e = presets(r#"{"a":{"zoom":1}}"#).unwrap_err();
-    assert_eq!(e.path, "presets.a.zoom");
+    assert_eq!(e.path.as_deref(), Some("presets.a.zoom"));
     assert!(e.to_string().contains("unknown property `zoom`"));
     assert!(
         e.to_string()
@@ -71,7 +84,7 @@ fn bad_names_and_shapes_are_rejected() {
             .contains("invalid preset name")
     );
     assert!(presets(r#"{"a":3}"#).is_err());
-    assert!(parse_presets(&Value::Null, "presets").is_err());
+    assert!(presets_of(Value::Null).is_err());
 }
 
 const BASE: &str = r#""motion":1,"dur":"1s""#;
@@ -83,7 +96,7 @@ fn scene_preset_adds_a_name_and_overrides_a_builtin() {
         "layers":[{{"id":"a","rect":"1x1","in":"slide"}},{{"id":"b","rect":"1x1","in":"fade"}}]}}"#
     ))
     .unwrap();
-    let s = &d.scene;
+    let s = d.scene();
     assert_eq!(s.preset("slide").unwrap().props.len(), 1);
     assert_eq!(s.preset("fade").unwrap().props.len(), 2);
     assert_eq!(s.preset("pop").unwrap().props.len(), 2);
@@ -96,7 +109,7 @@ fn unknown_preset_lists_resolved_names_without_duplicates() {
         r#"{{{BASE},"presets":{{"slide":{{"x":1}},"fade":{{"y":1}}}},"layers":[{{"id":"a","rect":"1x1","in":"zoom"}}]}}"#
     ))
     .unwrap_err();
-    assert_eq!(e.path, "layers[0].in");
+    assert_eq!(e.path.as_deref(), Some("layers[0].in"));
     let text = e.to_string();
     assert!(
         text.starts_with(
@@ -116,7 +129,7 @@ mod never_panics {
         #[test]
         fn parse_presets_any_json(s in ".*") {
             if let Ok(v) = serde_json::from_str::<Value>(&s) {
-                let _ = parse_presets(&v, "presets");
+                let _ = presets_of(v);
             }
         }
 
@@ -131,7 +144,7 @@ mod never_panics {
                 Some(n) => serde_json::json!({ name: { prop: n } }),
                 None => serde_json::json!({ name: { prop: start } }),
             };
-            let _ = parse_presets(&v, "presets");
+            let _ = presets_of(v);
         }
     }
 }
@@ -163,13 +176,18 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
         .unwrap()
         .remove(0)
         .1;
-    let b = Behaviour::parse("p 30px 1s cubic(.2,0,0,1) @10f").unwrap();
-    let at = Position::parse("center 300").unwrap();
-    let others: Map<String, Value> = serde_json::from_str(r#"{"opacity":"x","glow":1}"#).unwrap();
+    let b = "p 30px 1s cubic(.2,0,0,1) @10f"
+        .parse::<Behaviour>()
+        .unwrap();
+    let at = "center 300".parse::<Position>().unwrap();
+    // Other tracks come back as written: whole numbers stay integers.
+    let others: AnimDoc =
+        serde_json::from_str(r#"{"opacity":"x","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2.0]]}"#)
+            .unwrap();
     let json = expand_as_anim(&spec, &b, &at, (1000.0, 500.0), 30.0, &others);
     assert_eq!(
         json,
-        r#"{"opacity":"0 -> 1 @10-40f cubic(0.2,0,0,1)","x":"470 -> 500 @10-40f cubic(0.2,0,0,1)","y":"330 -> 300 @10-40f cubic(0.2,0,0,1)","scale":"0.5 -> 1 @10-40f cubic(0.2,0,0,1)","rotate":"30 -> 0 @10-40f cubic(0.2,0,0,1)","glow":1}"#
+        r#"{"opacity":"0 -> 1 @10-40f cubic(0.2,0,0,1)","x":"470 -> 500 @10-40f cubic(0.2,0,0,1)","y":"330 -> 300 @10-40f cubic(0.2,0,0,1)","scale":"0.5 -> 1 @10-40f cubic(0.2,0,0,1)","rotate":"30 -> 0 @10-40f cubic(0.2,0,0,1)","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2]]}"#
     );
     // The output is valid JSON.
     assert!(serde_json::from_str::<Value>(&json).is_ok());
@@ -177,7 +195,7 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
 
 #[test]
 fn a_bounded_property_cannot_start_at_a_distance() {
-    let e = parse_presets(&serde_json::json!({"dim":{"opacity":"-d"}}), "presets")
+    let e = presets(r#"{"dim":{"opacity":"-d"}}"#)
         .unwrap_err()
         .to_string();
     assert_eq!(
@@ -185,5 +203,5 @@ fn a_bounded_property_cannot_start_at_a_distance() {
         "presets.dim.opacity: `opacity` has a fixed range, so it cannot start at a distance; expected a number within its range, e.g. 0"
     );
     // Unbounded properties still may.
-    assert!(parse_presets(&serde_json::json!({"rise":{"y":"+d"}}), "presets").is_ok());
+    assert!(presets(r#"{"rise":{"y":"+d"}}"#).is_ok());
 }

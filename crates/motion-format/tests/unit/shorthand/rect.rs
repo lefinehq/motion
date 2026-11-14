@@ -4,21 +4,22 @@ use super::*;
 #[test]
 fn rect_parses_size_and_optional_radius() {
     assert_eq!(
-        RectShape::parse("300x400 r24").unwrap(),
+        "300x400 r24".parse::<RectShape>().unwrap(),
         RectShape {
             width: 300.0,
             height: 400.0,
             radius: 24.0
         }
     );
-    assert_eq!(RectShape::parse("240x8").unwrap().radius, 0.0);
+    assert_eq!("240x8".parse::<RectShape>().unwrap().radius, 0.0);
     assert!(
-        RectShape::parse("300")
+        "300"
+            .parse::<RectShape>()
             .unwrap_err()
             .to_string()
             .contains("`<width>x<height> [r<radius>]`, e.g. `300x400 r24`")
     );
-    assert!(RectShape::parse("0x10").is_err());
+    assert!("0x10".parse::<RectShape>().is_err());
 }
 #[test]
 fn rect_rejects_malformed_input() {
@@ -33,12 +34,15 @@ fn rect_rejects_malformed_input() {
         "10x10 r1 r2",
         "axb",
     ] {
-        assert!(RectShape::parse(bad).is_err(), "{bad:?} should be rejected");
+        assert!(
+            bad.parse::<RectShape>().is_err(),
+            "{bad:?} should be rejected"
+        );
     }
 }
 #[test]
 fn rect_accepts_fractions_and_zero_radius() {
-    let r = RectShape::parse("10.5x2 r0").unwrap();
+    let r = "10.5x2 r0".parse::<RectShape>().unwrap();
     assert_eq!((r.width, r.height, r.radius), (10.5, 2.0, 0.0));
 }
 
@@ -50,12 +54,24 @@ mod never_panics {
     proptest! {
         #[test]
         fn rect_any_string(s in ".*") {
-        let _ = RectShape::parse(&s);
+        let _ = s.parse::<RectShape>();
         }
 
         #[test]
         fn rect_short_printable_ascii(s in "[ -~]{0,40}") {
-        let _ = RectShape::parse(&s);
+        let _ = s.parse::<RectShape>();
         }
     }
+}
+
+#[test]
+fn rect_allows_whitespace_around_and_between_its_parts() {
+    assert_eq!(
+        " 10x10  r2 ".parse::<RectShape>().unwrap(),
+        RectShape {
+            width: 10.0,
+            height: 10.0,
+            radius: 2.0
+        }
+    );
 }

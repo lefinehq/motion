@@ -1,30 +1,30 @@
 //! Unit tests for `src/curve.rs`.
 
 use super::*;
+use motion_diagnostic::Kind;
 
 #[test]
 fn every_table_name_parses_to_its_entry() {
     for (name, curve) in NAMED_CURVES {
-        assert_eq!(Curve::parse(name).unwrap(), *curve, "{name}");
-        assert!(Curve::is_curve_token(name));
+        assert_eq!(name.parse::<Curve>().unwrap(), *curve, "{name}");
     }
 }
 
 #[test]
 fn cubic_values_parse() {
     assert_eq!(
-        Curve::parse("cubic(.2,0,0,1)").unwrap(),
+        "cubic(.2,0,0,1)".parse::<Curve>().unwrap(),
         Curve::Bezier(0.2, 0.0, 0.0, 1.0)
     );
     assert_eq!(
-        Curve::parse("cubic(0.3, -0.5, 0.7, 1.6)").unwrap(),
+        "cubic(0.3, -0.5, 0.7, 1.6)".parse::<Curve>().unwrap(),
         Curve::Bezier(0.3, -0.5, 0.7, 1.6)
     );
 }
 
 #[test]
 fn cubic_errors_show_the_expected_form() {
-    let e = |t: &str| Curve::parse(t).unwrap_err().to_string();
+    let e = |t: &str| t.parse::<Curve>().unwrap_err().to_string();
     assert!(e("cubic(1.2,0,0,1)").contains("x1 and x2 must be between 0 and 1"));
     assert!(e("cubic(.2,0,1)").contains("`cubic(.2,0,1)` needs four numbers"));
     assert!(e("cubic(.2,0,0,1").contains("missing its closing `)`"));
@@ -33,7 +33,8 @@ fn cubic_errors_show_the_expected_form() {
 
 #[test]
 fn unknown_name_lists_the_table() {
-    let e = Curve::parse("foo").unwrap_err().to_string();
+    assert_eq!("foo".parse::<Curve>().unwrap_err().kind, Kind::UnknownName);
+    let e = "foo".parse::<Curve>().unwrap_err().to_string();
     assert_eq!(
         e,
         "unknown curve `foo`; expected one of linear, hold, ease, ease-in, ease-out, ease-in-out, or cubic(x1,y1,x2,y2)"
@@ -44,16 +45,9 @@ fn unknown_name_lists_the_table() {
 }
 
 #[test]
-fn curve_tokens_are_classified() {
-    assert!(Curve::is_curve_token("cubic(1,2"));
-    assert!(!Curve::is_curve_token("bounce"));
-    assert!(!Curve::is_curve_token("12f"));
-}
-
-#[test]
 fn display_uses_table_names_and_round_trips() {
     assert_eq!(
-        Curve::parse("cubic(0,0,0.58,1)").unwrap().to_string(),
+        "cubic(0,0,0.58,1)".parse::<Curve>().unwrap().to_string(),
         "ease-out"
     );
     assert_eq!(
@@ -86,13 +80,12 @@ mod props {
     proptest! {
         #[test]
         fn display_round_trips(c in curves()) {
-            prop_assert_eq!(Curve::parse(&c.to_string()).unwrap(), c);
+            prop_assert_eq!(c.to_string().parse::<Curve>().unwrap(), c);
         }
 
         #[test]
         fn parse_never_panics(s in ".*") {
-            let _ = Curve::parse(&s);
-            let _ = Curve::is_curve_token(&s);
+            let _ = s.parse::<Curve>();
         }
     }
 }
@@ -107,6 +100,16 @@ fn every_non_bezier_curve_has_a_table_name() {
 
 #[test]
 fn cubic_expected_form_says_no_spaces() {
-    let e = Curve::parse("cubic(1,2)").unwrap_err();
-    assert!(e.expected.contains("(no spaces)"), "{}", e.expected);
+    let expected = "cubic(1,2)".parse::<Curve>().unwrap_err().expected.unwrap();
+    assert!(expected.contains("(no spaces)"), "{expected}");
+}
+
+#[test]
+fn cubic_closing_paren_must_end_the_token() {
+    let message = |t: &str| t.parse::<Curve>().unwrap_err().message;
+    assert_eq!(message("cubic(1,2))"), "`cubic(1,2))` needs four numbers");
+    assert_eq!(
+        message("cubic(0,0,1,1)x"),
+        "`cubic(0,0,1,1)x` is missing its closing `)`"
+    );
 }

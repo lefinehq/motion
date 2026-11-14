@@ -2,7 +2,7 @@
 
 use crate::check;
 fn run(json: &str) -> String {
-    let s = motion_format::parse_document(json).unwrap().scene;
+    let s = motion_format::parse_document(json).unwrap().scene().clone();
     let g = motion_scene::compile(&s, &motion_scene::ApproxTextMeasure);
     check(&s, &g).to_string()
 }

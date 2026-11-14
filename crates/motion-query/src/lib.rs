@@ -9,11 +9,9 @@
 
 mod at;
 mod check;
-mod error;
 mod report;
 mod rules;
 
 pub use at::at;
 pub use check::check;
-pub use error::QueryError;
-pub use report::{Report, Severity, Violation};
+pub use report::{Code, Report, Severity, Violation};
