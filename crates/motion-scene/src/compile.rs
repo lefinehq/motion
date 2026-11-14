@@ -121,7 +121,7 @@ fn nodes(
 /// shapes and pivots.
 fn content_box(content: &NodeContent, scene: &Scene) -> Rect {
     match content {
-        NodeContent::Text(text) => text.layout.bounds(),
+        NodeContent::Text { text, .. } => text.layout.bounds(),
         NodeContent::Rect(r) => Rect::new(0.0, 0.0, r.width, r.height),
         NodeContent::Comp(index) => {
             let size = scene.comps[*index].size;
@@ -139,7 +139,10 @@ fn node_content(
     typesetter: &mut Typesetter,
 ) -> Result<NodeContent> {
     Ok(match &layer.content {
-        Content::Text(text) => NodeContent::Text(text::set(text, typesetter)?),
+        Content::Text(content) => NodeContent::Text {
+            text: text::set(content, typesetter)?,
+            animators: item_nodes(&content.animators, fps),
+        },
         Content::Rect(r) => NodeContent::Rect(*r),
         Content::Shapes(items) => NodeContent::Shapes(item_nodes(items, fps)),
         Content::Comp(id) => NodeContent::Comp(
@@ -183,6 +186,14 @@ fn item_node(item: &Item, fps: f64) -> ItemNode {
             .collect(),
         settings: item.settings.clone(),
         items: item_nodes(&item.items, fps),
+        written: item
+            .kind
+            .registry
+            .props()
+            .filter(|&prop| {
+                item.value(prop).is_some() || item.anim.iter().any(|t| t.target.prop == prop)
+            })
+            .collect(),
     }
 }
 

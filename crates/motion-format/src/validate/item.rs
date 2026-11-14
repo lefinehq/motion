@@ -7,7 +7,7 @@ use serde_json::Value as Json;
 
 use super::{anim, follows_id_rule, typed_value};
 use crate::doc::{ItemDoc, ItemsDoc, List, Object, ValueDoc};
-use crate::item::{Item, ItemKind, Role};
+use crate::item::{Item, ItemKind, Primary};
 use crate::parse::key::{ANIM, HIDDEN, ID};
 use crate::property::{Prop, Target};
 use crate::table;
@@ -31,21 +31,27 @@ fn item(doc: &ItemDoc, kinds: &'static [ItemKind], fps: f64) -> Result<Item> {
     for (key, written) in &doc.values {
         let place = |e: Diagnostic| e.under(key.as_str());
         if key == kind.name {
-            match kind.primary() {
-                Some(prop) => values.insert(0, (prop, value_of(written, prop).map_err(place)?)),
-                None => items = group_items(written, kinds, fps).map_err(place)?,
+            match kind.primary {
+                Primary::Property(_) => {
+                    let prop = kind.primary_prop().expect("a property");
+                    values.insert(0, (prop, value_of(written, prop).map_err(place)?));
+                }
+                Primary::Setting(_) => {
+                    let at = kind.primary_setting().expect("a setting");
+                    settings[at] = choice(written, kind, at).map_err(place)?;
+                }
+                Primary::Items(table) => items = nested(written, table, fps).map_err(place)?,
             }
+        } else if kind.primary_name() == Some(key.as_str()) {
+            return Err(Diagnostic::new(
+                Kind::Conflict,
+                format!("`{key}` is the value `{}` holds", kind.name),
+            )
+            .at(key.as_str())
+            .expected(format!("`{key}` written as the value of `{}`", kind.name)));
         } else if let Some(at) = table::position(kind.settings, key) {
             settings[at] = choice(written, kind, at).map_err(place)?;
         } else if let Some(prop) = kind.registry.prop(key) {
-            if kind.primary() == Some(prop) {
-                return Err(Diagnostic::new(
-                    Kind::Conflict,
-                    format!("`{key}` is the value `{}` holds", kind.name),
-                )
-                .at(key.as_str())
-                .expected(format!("the {key} only as the value of `{}`", kind.name)));
-            }
             values.push((prop, value_of(written, prop).map_err(place)?));
         } else {
             return Err(
@@ -98,8 +104,8 @@ fn value_of(written: &Json, prop: Prop) -> Result<Value> {
         .and_then(|doc| typed_value(&doc, Target::whole(prop)))
 }
 
-/// A group's items: a list of shape items.
-fn group_items(written: &Json, kinds: &'static [ItemKind], fps: f64) -> Result<Vec<Item>> {
+/// The items a kind key holds: a list of items of `kinds`.
+fn nested(written: &Json, kinds: &'static [ItemKind], fps: f64) -> Result<Vec<Item>> {
     let List(docs) = crate::de::from_value::<List<ItemsDoc>>(written)?;
     items(&docs, kinds, fps)
 }
@@ -115,11 +121,12 @@ fn choice(written: &Json, kind: &ItemKind, at: usize) -> Result<usize> {
 
 /// Every key an item of `kind` may hold, for an unknown-key error.
 fn keys(kind: &'static ItemKind) -> impl Iterator<Item = &'static str> {
-    let primary = kind.primary;
+    let primary = kind.primary_name();
     [kind.name, ID, HIDDEN, ANIM]
         .into_iter()
         .chain(kind.settings.iter().map(|s| s.name))
-        .chain(kind.registry.names().filter(move |n| Some(*n) != primary))
+        .chain(kind.registry.names())
+        .filter(move |n| Some(*n) != primary)
 }
 
 /// No two items of a layer's `items`, at any depth, share an id. The error
@@ -138,7 +145,7 @@ pub(super) fn unique_ids(items: &[Item], list: &str) -> Result<()> {
                         .expected("every item of a layer to have its own id"),
                 );
             }
-            if item.kind.role == Role::Group {
+            if item.kind.items().is_some() {
                 walk(&item.items, &format!("{here}.{}", item.kind.name), seen)?;
             }
         }

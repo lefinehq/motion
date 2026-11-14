@@ -1,6 +1,7 @@
 //! The scene graph: the compiler's output, plain data in pixels and frames.
 
 use motion_format::item::ItemKind;
+use motion_format::property::Prop;
 use std::sync::Arc;
 
 use kurbo::Rect;
@@ -51,8 +52,13 @@ pub struct CompGraph {
 /// What a node draws.
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeContent {
-    /// Text, set.
-    Text(Arc<TextNode>),
+    /// Text, set, and its animators.
+    Text {
+        /// The words, their style and their layout.
+        text: Arc<TextNode>,
+        /// Its animators, in order; hidden ones are left out.
+        animators: Vec<ItemNode>,
+    },
     /// A rectangle the size of the node's box.
     Rect(RectShape),
     /// Shape items; the first draws on top.
@@ -75,8 +81,10 @@ pub struct ItemNode {
     pub tracks: Vec<PropertyTrack>,
     /// The choice of each of the kind's settings.
     pub settings: Vec<usize>,
-    /// A group's items; the first draws on top.
+    /// A group's items, or an animator's selectors; the first draws on top.
     pub items: Vec<ItemNode>,
+    /// The properties it sets or animates, in registry order.
+    pub written: Vec<Prop>,
 }
 
 /// When a node shows and how its own time runs, in frames of its composition's

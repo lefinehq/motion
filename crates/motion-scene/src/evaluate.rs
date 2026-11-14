@@ -6,6 +6,7 @@ use motion_format::Value;
 use motion_format::property::{PROPERTIES, Prop, PropertySpec};
 use tracing::instrument;
 
+use crate::animate::{self, AnimatorState};
 use crate::shape::{self, ShapeDraw};
 use crate::{
     ContentState, FrameState, ItemNode, ItemState, Node, NodeContent, NodeState, PropertyTrack,
@@ -43,7 +44,23 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
             let local = node.timing.local(frame);
             let mut shown = node.timing.shows_at(frame);
             let content = match &node.content {
-                NodeContent::Text(text) => ContentState::Text(text.clone()),
+                NodeContent::Text { text, animators } => ContentState::Text {
+                    text: text.clone(),
+                    glyphs: match animators.is_empty() {
+                        true => Vec::new(),
+                        false => {
+                            let animators: Vec<AnimatorState> = animators
+                                .iter()
+                                .zip(items_at(animators, local))
+                                .map(|(node, item)| AnimatorState {
+                                    item,
+                                    applies: node.written.clone(),
+                                })
+                                .collect();
+                            animate::glyph_states(text, &text.parts, &animators)
+                        }
+                    },
+                },
                 NodeContent::Rect(r) => ContentState::Rect(*r),
                 NodeContent::Shapes(items) => {
                     ContentState::Shapes(shape::draws(&items_at(items, local)))
@@ -60,6 +77,9 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
                 NodeContent::Pivot => ContentState::Pivot,
             };
             let local_bounds = match &content {
+                ContentState::Text { text, glyphs } if !glyphs.is_empty() => {
+                    animate::bounds(text, glyphs)
+                }
                 ContentState::Shapes(draws) => draws
                     .iter()
                     .map(ShapeDraw::bounds)

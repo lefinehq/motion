@@ -3,8 +3,10 @@
 
 use serde_json::Value as Json;
 
+use super::item;
 use crate::doc::{LayerDoc, List, Number, Object, StyleDoc, ValueDoc};
-use crate::parse::key::{BOX, FILL, FONT, PARAGRAPHS, RUNS, STYLE};
+use crate::item::ANIMATORS;
+use crate::parse::key::{ANIMATE, BOX, FILL, FONT, PARAGRAPHS, RUNS, STYLE};
 use crate::shorthand::Font;
 use crate::text::{
     CharacterStyle, Level, ParagraphStyle, STYLE_KEYS, Setter, StyleKey, TextContent, TextRun,
@@ -23,6 +25,7 @@ pub(super) fn text(
     text: &str,
     default_font: Font,
     default_fill: [f64; 4],
+    fps: f64,
 ) -> Result<TextContent> {
     let font = match &*doc.font {
         Some(written) => written.parse_at(FONT)?,
@@ -84,6 +87,12 @@ pub(super) fn text(
         runs: runs_of(styles, &base),
         base,
         paragraphs,
+        animators: match &*doc.animate {
+            Some(List(docs)) => item::items(docs, &ANIMATORS, fps)
+                .and_then(|animators| item::unique_ids(&animators, "").map(|()| animators))
+                .map_err(|e| e.under(ANIMATE))?,
+            None => Vec::new(),
+        },
         frame: doc
             .frame
             .as_ref()

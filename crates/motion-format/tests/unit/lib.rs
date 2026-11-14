@@ -344,6 +344,23 @@ fn every_error_message() {
             layers,
         ),
         section(
+            "animators",
+            &[
+                r#"{"id":"a","rect":"1x1","animate":[]}"#,
+                r#"{"id":"a","text":"x","animate":[{"range":"char"}]}"#,
+                r#"{"id":"a","text":"x","animate":[{"animator":{}}]}"#,
+                r#"{"id":"a","text":"x","animate":[{"animator":[{"rect":[1,1]}]}]}"#,
+                r#"{"id":"a","text":"x","animate":[{"animator":[{"range":"sentence"}]}]}"#,
+                r#"{"id":"a","text":"x","animate":[{"animator":[{"range":"char","by":"word"}]}]}"#,
+                r#"{"id":"a","text":"x","animate":[{"animator":[{"range":"char","offset":2}]}]}"#,
+                r#"{"id":"a","text":"x","animate":[{"animator":[{"range":"char","shape":"wave"}]}]}"#,
+                r#"{"id":"a","text":"x","animate":[{"animator":[],"y":3}]}"#,
+                r#"{"id":"a","text":"x","animate":[{"animator":[],"opacity":2}]}"#,
+                r#"{"id":"a","text":"x","animate":[{"animator":[],"anim":{"glow":"0 -> 1 @0-5f"}}]}"#,
+            ],
+            layers,
+        ),
+        section(
             "fonts",
             &[
                 r#"{"motion":1,"dur":"1s","fonts":"fonts","layers":[]}"#,

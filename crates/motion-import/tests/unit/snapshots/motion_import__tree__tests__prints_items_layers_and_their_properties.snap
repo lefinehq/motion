@@ -1,6 +1,5 @@
 ---
 source: crates/motion-import/src/../tests/unit/tree.rs
-assertion_line: 8
 expression: sample_project().to_string()
 ---
 project 94.9, 8 bits per channel

@@ -23,9 +23,9 @@ use crate::doc::{
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, SHAPES};
 use crate::parse::key::{
-    ANIM, AT, BG, BOX, COMP, DUR, FILL, FONT, FPS, FX, ID, IN, LAYERS, MOTION, OFFSET, PARAGRAPHS,
-    PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT,
-    comp_path, layer_path,
+    ANIM, ANIMATE, AT, BG, BOX, COMP, DUR, FILL, FONT, FPS, FX, ID, IN, LAYERS, MOTION, OFFSET,
+    PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH,
+    STYLE, TEXT, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -446,6 +446,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         (doc.runs.is_some(), RUNS),
         (doc.paragraphs.is_some(), PARAGRAPHS),
         (doc.frame.is_some(), BOX),
+        (doc.animate.is_some(), ANIMATE),
     ] {
         only_on(written, name, key, &[TEXT])?;
     }
@@ -455,6 +456,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
             doc.text.as_deref().expect("written"),
             default_font(),
             DEFAULT_FILL,
+            context.fps,
         )?))),
         RECT => Ok(Content::Rect(
             doc.rect.as_ref().expect("written").parse_at(RECT)?,

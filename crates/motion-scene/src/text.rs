@@ -4,6 +4,8 @@
 use std::sync::Arc;
 
 use motion_format::Result;
+
+use crate::animate::Parts;
 use motion_format::key::{FONT, RUNS};
 use motion_format::text::{Align, Caps, CharacterStyle, Leading, TextContent};
 use motion_text::{
@@ -18,6 +20,8 @@ pub struct TextNode {
     /// The lines and glyph runs, in the layer's own coordinates: point
     /// text's first baseline starts at the origin, box text's box does.
     pub layout: TextLayout,
+    /// Which character, word and line each glyph belongs to, for animators.
+    pub parts: Parts,
 }
 
 impl TextNode {
@@ -54,10 +58,16 @@ pub(crate) fn set(content: &TextContent, typesetter: &mut Typesetter) -> Result<
             })?;
     }
     let layout = typesetter.layout(&styled)?;
-    Ok(Arc::new(TextNode {
+    let mut node = TextNode {
         content: content.clone(),
         layout,
-    }))
+        parts: Parts {
+            glyphs: Vec::new(),
+            counts: [0; 4],
+        },
+    };
+    node.parts = Parts::of(&node);
+    Ok(Arc::new(node))
 }
 
 /// `content` as the typesetter takes it: byte ranges, font queries and its enums.

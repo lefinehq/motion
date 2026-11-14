@@ -25,6 +25,22 @@ pub enum Role {
     Paint,
     /// Changes the pixels of the layer it is on, after its content is drawn.
     Effect,
+    /// Moves, scales, turns, fades or recolours the parts of a text its
+    /// selectors choose, by as much as they choose them.
+    Animator,
+    /// Chooses how much of each character, word or line an animator applies to.
+    Selector,
+}
+
+/// What an item's kind key holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Primary {
+    /// Items of a table: a group's shapes, an animator's selectors.
+    Items(&'static [ItemKind]),
+    /// The resting value of the property with this name.
+    Property(&'static str),
+    /// The choice of the setting with this name.
+    Setting(&'static str),
 }
 
 /// A fixed setting of an item: one name out of a list.
@@ -65,8 +81,8 @@ pub struct ItemKind {
     pub role: Role,
     /// Its animatable properties.
     pub registry: &'static Registry,
-    /// The property the kind's key holds; `None` for a group, whose key holds its items.
-    pub primary: Option<&'static str>,
+    /// What the kind's key holds.
+    pub primary: Primary,
     /// Its fixed settings.
     pub settings: &'static [SettingSpec],
     /// What it draws or does, for people and agents.
@@ -74,10 +90,40 @@ pub struct ItemKind {
 }
 
 impl ItemKind {
-    /// The property its key holds, if it is not a group.
-    pub fn primary(&'static self) -> Option<Prop> {
-        self.primary
-            .map(|name| self.registry.prop(name).expect("the primary is a property"))
+    /// The property its key holds, if it holds one.
+    pub fn primary_prop(&'static self) -> Option<Prop> {
+        match self.primary {
+            Primary::Property(name) => {
+                Some(self.registry.prop(name).expect("the primary is a property"))
+            }
+            Primary::Items(_) | Primary::Setting(_) => None,
+        }
+    }
+
+    /// The index of the setting its key holds, if it holds one.
+    pub fn primary_setting(&self) -> Option<usize> {
+        match self.primary {
+            Primary::Setting(name) => {
+                Some(table::position(self.settings, name).expect("the primary is a setting"))
+            }
+            Primary::Items(_) | Primary::Property(_) => None,
+        }
+    }
+
+    /// The table its key's items come from, if it holds items.
+    pub fn items(&self) -> Option<&'static [ItemKind]> {
+        match self.primary {
+            Primary::Items(kinds) => Some(kinds),
+            Primary::Property(_) | Primary::Setting(_) => None,
+        }
+    }
+
+    /// The name of the property or setting its key holds, if any.
+    pub fn primary_name(&self) -> Option<&'static str> {
+        match self.primary {
+            Primary::Property(name) | Primary::Setting(name) => Some(name),
+            Primary::Items(_) => None,
+        }
     }
 
     /// The setting called `name`, if the kind has one.
@@ -171,9 +217,9 @@ const fn opacity(doc: &'static str) -> PropertySpec {
     number("opacity", 1.0, Some((0.0, 1.0)), doc)
 }
 
-const fn color(rest: [f64; 4], doc: &'static str) -> PropertySpec {
+const fn color(name: &'static str, rest: [f64; 4], doc: &'static str) -> PropertySpec {
     PropertySpec {
-        name: "color",
+        name,
         ty: ValueType::Color,
         rest: Rest::Value(Value::Color(rest)),
         components: &[],
@@ -256,7 +302,7 @@ pub static PATH: Registry = Registry {
 pub static FILL: Registry = Registry {
     kind: "fill",
     rows: &[
-        color(WHITE, "the colour inside the outlines"),
+        color("color", WHITE, "the colour inside the outlines"),
         opacity("how opaque the fill is, 0 to 1"),
     ],
 };
@@ -265,7 +311,7 @@ pub static FILL: Registry = Registry {
 pub static STROKE: Registry = Registry {
     kind: "stroke",
     rows: &[
-        color(WHITE, "the colour along the outlines"),
+        color("color", WHITE, "the colour along the outlines"),
         opacity("how opaque the stroke is, 0 to 1"),
         number(
             "width",
@@ -286,7 +332,11 @@ pub static STROKE: Registry = Registry {
 pub static FILL_EFFECT: Registry = Registry {
     kind: "fill effect",
     rows: &[
-        color(WHITE, "the colour every drawn pixel of the layer takes"),
+        color(
+            "color",
+            WHITE,
+            "the colour every drawn pixel of the layer takes",
+        ),
         opacity("how much of the colour shows over the layer, 0 to 1"),
     ],
 };
@@ -297,7 +347,7 @@ pub static SHAPES: [ItemKind; 6] = [
         name: "group",
         role: Role::Group,
         registry: &GROUP,
-        primary: None,
+        primary: Primary::Items(&SHAPES),
         settings: &[],
         doc: "items under one transform and opacity; paints in it draw the outlines above them, \
               in it and in its groups",
@@ -306,7 +356,7 @@ pub static SHAPES: [ItemKind; 6] = [
         name: "rect",
         role: Role::Geometry,
         registry: &RECT,
-        primary: Some("size"),
+        primary: Primary::Property("size"),
         settings: &[],
         doc: "a rectangle centred on `position`, with rounded corners",
     },
@@ -314,7 +364,7 @@ pub static SHAPES: [ItemKind; 6] = [
         name: "ellipse",
         role: Role::Geometry,
         registry: &ELLIPSE,
-        primary: Some("size"),
+        primary: Primary::Property("size"),
         settings: &[],
         doc: "an ellipse centred on `position`",
     },
@@ -322,7 +372,7 @@ pub static SHAPES: [ItemKind; 6] = [
         name: "path",
         role: Role::Geometry,
         registry: &PATH,
-        primary: Some("path"),
+        primary: Primary::Property("path"),
         settings: &[],
         doc: "a bézier outline, open or closed",
     },
@@ -330,7 +380,7 @@ pub static SHAPES: [ItemKind; 6] = [
         name: "fill",
         role: Role::Paint,
         registry: &FILL,
-        primary: Some("color"),
+        primary: Primary::Property("color"),
         settings: &[SettingSpec {
             name: "rule",
             choices: &["nonzero", "evenodd"],
@@ -343,7 +393,7 @@ pub static SHAPES: [ItemKind; 6] = [
         name: "stroke",
         role: Role::Paint,
         registry: &STROKE,
-        primary: Some("color"),
+        primary: Primary::Property("color"),
         settings: &[
             SettingSpec {
                 name: "cap",
@@ -367,14 +417,179 @@ pub static EFFECTS: [ItemKind; 1] = [ItemKind {
     name: "fill",
     role: Role::Effect,
     registry: &FILL_EFFECT,
-    primary: Some("color"),
+    primary: Primary::Property("color"),
     settings: &[],
     doc: "turns every drawn pixel of the layer one colour, keeping its coverage",
+}];
+
+const fn point(
+    name: &'static str,
+    rest: [f64; 2],
+    components: &'static [&'static str],
+    broadcast: bool,
+    doc: &'static str,
+) -> PropertySpec {
+    PropertySpec {
+        name,
+        ty: ValueType::Point,
+        rest: Rest::Value(Value::Point(rest)),
+        components,
+        range: None,
+        broadcast,
+        spatial: false,
+        doc,
+    }
+}
+
+/// What a text animator applies to the parts its selectors choose: each
+/// part takes the value scaled by how much it is chosen. An animator
+/// applies only the properties it sets or animates.
+pub static ANIMATOR: Registry = Registry {
+    kind: "animator",
+    rows: &[
+        point(
+            "position",
+            [0.0, 0.0],
+            &["x", "y"],
+            false,
+            "how far each part moves, in px",
+        ),
+        point(
+            "anchor",
+            [0.0, 0.0],
+            &["anchor-x", "anchor-y"],
+            false,
+            "how far each part's own anchor moves from the middle of its baseline, in px",
+        ),
+        point(
+            "scale",
+            [1.0, 1.0],
+            &["scale-x", "scale-y"],
+            true,
+            "the size factor each part grows to; one number scales both axes",
+        ),
+        number(
+            "rotate",
+            0.0,
+            None,
+            "how far each part turns about its anchor, in degrees clockwise",
+        ),
+        number(
+            "opacity",
+            1.0,
+            Some((0.0, 1.0)),
+            "the opacity each part fades to, 0 to 1",
+        ),
+        color("fill", WHITE, "the colour each part's fill turns to"),
+        color("stroke", WHITE, "the colour each part's stroke turns to"),
+        number(
+            "stroke-width",
+            0.0,
+            Some((0.0, f64::INFINITY)),
+            "the stroke width each part's stroke turns to, in px",
+        ),
+        number(
+            "tracking",
+            0.0,
+            None,
+            "extra space after each part, in thousandths of an em; the parts after it on its line move along",
+        ),
+    ],
+};
+
+/// The properties of a range selector. Start, end and offset are fractions
+/// of the parts it counts: 0 is before the first, 1 after the last.
+pub static RANGE: Registry = Registry {
+    kind: "range",
+    rows: &[
+        number(
+            "start",
+            0.0,
+            None,
+            "where the range starts, as a fraction of the parts",
+        ),
+        number(
+            "end",
+            1.0,
+            None,
+            "where the range ends, as a fraction of the parts",
+        ),
+        number(
+            "offset",
+            0.0,
+            Some((-1.0, 1.0)),
+            "how far start and end both move, as a fraction of the parts",
+        ),
+        number(
+            "amount",
+            1.0,
+            Some((-1.0, 1.0)),
+            "how strongly the chosen parts are chosen; negative reverses the animator",
+        ),
+        number(
+            "smooth",
+            1.0,
+            Some((0.0, 1.0)),
+            "for the `square` shape: 1 chooses a part by how much of it the range covers, \
+             0 all or nothing by its middle",
+        ),
+    ],
+};
+
+/// Every kind of text animator.
+pub static ANIMATORS: [ItemKind; 1] = [ItemKind {
+    name: "animator",
+    role: Role::Animator,
+    registry: &ANIMATOR,
+    primary: Primary::Items(&SELECTORS),
+    settings: &[],
+    doc: "applies its properties to the parts of the text its selectors choose",
+}];
+
+/// Every kind of text selector.
+pub static SELECTORS: [ItemKind; 1] = [ItemKind {
+    name: "range",
+    role: Role::Selector,
+    registry: &RANGE,
+    primary: Primary::Setting("by"),
+    settings: &[
+        SettingSpec {
+            name: "by",
+            choices: &["char", "char-no-space", "word", "line"],
+            default: "char",
+            doc: "what it counts: characters, characters other than spaces, words or lines",
+        },
+        SettingSpec {
+            name: "shape",
+            choices: &[
+                "square",
+                "ramp-up",
+                "ramp-down",
+                "triangle",
+                "round",
+                "smooth",
+            ],
+            default: "square",
+            doc: "how the choice rises and falls across the range",
+        },
+        SettingSpec {
+            name: "mode",
+            choices: &["add", "subtract", "intersect", "min", "max", "difference"],
+            default: "add",
+            doc: "how it combines with the selectors before it",
+        },
+    ],
+    doc: "chooses the parts between `start` and `end`, moved by `offset`",
 }];
 
 /// The shape item kind called `name`, if there is one.
 pub fn shape_kind(name: &str) -> Option<&'static ItemKind> {
     table::lookup(&SHAPES, name)
+}
+
+/// The text animator kind called `name`, if there is one.
+pub fn animator_kind(name: &str) -> Option<&'static ItemKind> {
+    table::lookup(&ANIMATORS, name)
 }
 
 /// The effect kind called `name`, if there is one.
@@ -384,7 +599,7 @@ pub fn effect_kind(name: &str) -> Option<&'static ItemKind> {
 
 /// The properties code depends on, for the drawing and measuring of items.
 pub mod props {
-    use super::{ELLIPSE, FILL, FILL_EFFECT, PATH, Prop, RECT, STROKE};
+    use super::{ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, PATH, Prop, RANGE, RECT, STROKE};
 
     /// A rectangle's width and height.
     pub const RECT_SIZE: Prop = Prop::of(&RECT, 0);
@@ -414,6 +629,34 @@ pub mod props {
     pub const FILL_EFFECT_COLOR: Prop = Prop::of(&FILL_EFFECT, 0);
     /// The fill effect's opacity.
     pub const FILL_EFFECT_OPACITY: Prop = Prop::of(&FILL_EFFECT, 1);
+    /// How far an animator moves each part.
+    pub const ANIMATOR_POSITION: Prop = Prop::of(&ANIMATOR, 0);
+    /// How far an animator moves each part's anchor.
+    pub const ANIMATOR_ANCHOR: Prop = Prop::of(&ANIMATOR, 1);
+    /// The size factor an animator grows each part to.
+    pub const ANIMATOR_SCALE: Prop = Prop::of(&ANIMATOR, 2);
+    /// How far an animator turns each part.
+    pub const ANIMATOR_ROTATE: Prop = Prop::of(&ANIMATOR, 3);
+    /// The opacity an animator fades each part to.
+    pub const ANIMATOR_OPACITY: Prop = Prop::of(&ANIMATOR, 4);
+    /// The fill colour an animator turns each part to.
+    pub const ANIMATOR_FILL: Prop = Prop::of(&ANIMATOR, 5);
+    /// The stroke colour an animator turns each part to.
+    pub const ANIMATOR_STROKE: Prop = Prop::of(&ANIMATOR, 6);
+    /// The stroke width an animator turns each part to.
+    pub const ANIMATOR_STROKE_WIDTH: Prop = Prop::of(&ANIMATOR, 7);
+    /// The tracking an animator adds after each part.
+    pub const ANIMATOR_TRACKING: Prop = Prop::of(&ANIMATOR, 8);
+    /// Where a range selector starts.
+    pub const RANGE_START: Prop = Prop::of(&RANGE, 0);
+    /// Where a range selector ends.
+    pub const RANGE_END: Prop = Prop::of(&RANGE, 1);
+    /// How far a range selector's range moves.
+    pub const RANGE_OFFSET: Prop = Prop::of(&RANGE, 2);
+    /// How strongly a range selector chooses.
+    pub const RANGE_AMOUNT: Prop = Prop::of(&RANGE, 3);
+    /// How smooth a square range selector's edges are.
+    pub const RANGE_SMOOTH: Prop = Prop::of(&RANGE, 4);
 }
 
 #[cfg(test)]

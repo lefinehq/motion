@@ -1,6 +1,5 @@
 ---
 source: crates/motion-import/tests/fixtures.rs
-assertion_line: 71
 expression: "format!(\"{project}{}\", project.report())"
 ---
 project 94.4, 8 bits per channel
