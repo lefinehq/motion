@@ -72,6 +72,9 @@ pub struct Mapping {
     /// Every expression the import met that is switched on, and what it
     /// became.
     pub expressions: Vec<ExpressionReport>,
+    /// Every expression control the import met, with its values: what
+    /// expressions read, kept for live links.
+    pub controls: Vec<ControlReport>,
 }
 
 /// What one expression became.
@@ -79,7 +82,8 @@ pub struct Mapping {
 pub struct ExpressionReport {
     /// Where its property is, as `composition/layer/match name/…`.
     pub at: String,
-    /// Its first line.
+    /// Its source, whole, as the project stores it, so a live link can
+    /// later be made from it.
     pub source: String,
     /// The engine it was evaluated as: `modern` or `legacy`.
     pub engine: String,
@@ -87,6 +91,21 @@ pub struct ExpressionReport {
     pub frames: usize,
     /// What it became.
     pub outcome: Outcome,
+}
+
+/// An expression control: a slider, colour, checkbox, angle, point or layer
+/// that expressions read.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ControlReport {
+    /// Where it is, as `composition/layer/…`.
+    pub at: String,
+    /// The name the designer gave it, else its kind's.
+    pub name: String,
+    /// Its match name, such as `ADBE Color Control`.
+    pub kind: String,
+    /// Its parameters' values, by name, as the project stores them; a keyed
+    /// one as its keys.
+    pub values: BTreeMap<String, serde_json::Value>,
 }
 
 /// What an expression became.

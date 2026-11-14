@@ -67,6 +67,7 @@ Libraries never print: they return a `Diagnostic` or log with `tracing`, and onl
 | The `.aep` model, and the table of property bodies | `crates/motion-import/src/model.rs`, `decode/property.rs` |
 | A property's value from its keys, as an expression reads it, eased by the scene's own curves and paths | `crates/motion-import/src/eval.rs` |
 | Expressions baked at import: the project as the expression host, the evaluation order, then samples fitted into scene keys | `crates/motion-import/src/bake/`, `map/expressions.rs` |
+| Export by patching the project: where values came from and where the map wrote them, the chunk writer, the plan, patch and check | `crates/motion-import/src/map/sources.rs`, `rifx.rs`, `export.rs`, `crates/motion-engine/src/export.rs` |
 | Fonts: faces and their names, the font set, the fallback for a missing font, and text layout | `crates/motion-text/src/font.rs`, `set.rs`, `fallback.rs`, `typeset.rs` |
 | The entry point and its step spans | `crates/motion-engine/src/session.rs`, `stage.rs` |
 | From an evaluated frame to a display list: layers, shapes, text with faux bold and italic, compositions, effects joined by name | `crates/motion-engine/src/render/` |

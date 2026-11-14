@@ -69,7 +69,7 @@ impl Bakes {
 /// One property's expression, evaluated.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bake {
-    /// The expression's first line.
+    /// The expression's source, whole, as the project stores it.
     pub source: String,
     /// The engine it was evaluated as.
     pub dialect: Dialect,

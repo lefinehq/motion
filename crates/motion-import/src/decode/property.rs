@@ -9,8 +9,8 @@ use motion_format::{Diagnostic, Kind, Result};
 
 use super::{Decoder, Scan, UTF8};
 use crate::model::{
-    Child, Color, Ease, Expression, Group, Keyframe, Path, Property, Reason, Spatial, Stream,
-    Value, Vertex,
+    Child, Color, Ease, Expression, Group, Keyframe, Origin, Path, Property, Reason, Spatial,
+    Stream, Value, Vertex,
 };
 use crate::record::{
     Bound, Cdat, KeyBody, KeyItem, Layout, Lhd3, OneEase, Otda, Points, Record, Shph, Tdb4, Tdsb,
@@ -293,8 +293,13 @@ impl Decoder {
         let flags = Flags::of(scan.optional::<Tdsb>()?);
         let name = self.display_name(&mut scan)?;
         let tdb4: Tdb4 = scan.record()?;
+        let mut origin = None;
         let value = match scan.find(Cdat::NAME) {
-            Some(cdat) => Stream::Static(static_value(&scan, cdat, &tdb4, values)?),
+            Some(cdat) => {
+                let value = static_value(&scan, cdat, &tdb4, values)?;
+                origin = self.origin(cdat, &tdb4, &value);
+                Stream::Static(value)
+            }
             None => {
                 let list = scan.require_list(KEYFRAMES)?;
                 Stream::Animated(keyframes(list, &tdb4, values, timing)?)
@@ -323,6 +328,23 @@ impl Decoder {
             expression,
             min,
             max,
+            origin,
+        })
+    }
+
+    /// Where a static value read from `cdat` is in the file, when it is one
+    /// the export can write back: numbers, read from the chunk itself.
+    fn origin(&self, cdat: Chunk<'_>, tdb4: &Tdb4, value: &Value) -> Option<Origin> {
+        let readable = !matches!(
+            tdb4.layout(),
+            Layout::SingleEaseValueless | Layout::Valueless
+        ) && value.numbers().is_some();
+        let dims = usize::from(tdb4.dims);
+        let start = cdat.body.as_ptr().addr().checked_sub(self.base.get())?;
+        (readable && dims > 0 && cdat.body.len() >= dims * 8).then(|| Origin {
+            numbers: start..start + dims * 8,
+            dims,
+            color: tdb4.is_color(),
         })
     }
 
@@ -558,6 +580,7 @@ fn opaque(match_name: String, reason: Reason) -> Property {
         expression: None,
         min: None,
         max: None,
+        origin: None,
     }
 }
 

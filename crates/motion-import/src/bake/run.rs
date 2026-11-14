@@ -118,12 +118,7 @@ impl Baker {
         let source = self.sources.get(&target.node).cloned().unwrap_or_default();
         let outcome = self.samples(target);
         Bake {
-            source: source
-                .lines()
-                .find(|l| !l.trim().is_empty())
-                .unwrap_or_default()
-                .trim()
-                .to_owned(),
+            source,
             dialect: self.dialect,
             repairs: self.repairs.get(&target.node).cloned().unwrap_or_default(),
             outcome,

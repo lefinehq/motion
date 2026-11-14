@@ -25,6 +25,7 @@ pub(crate) fn sample_project() -> Project {
         expression: None,
         min: None,
         max: None,
+        origin: None,
     };
     let group = |match_name: &str, children| Group {
         match_name: match_name.into(),
@@ -433,6 +434,7 @@ pub(crate) mod build {
             expression: None,
             min: None,
             max: None,
+            origin: None,
         }
     }
 

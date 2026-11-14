@@ -115,3 +115,45 @@ fn an_expression_that_fails_keeps_its_keys_and_says_why() {
         )
     );
 }
+
+#[test]
+fn controls_and_whole_sources_are_kept_in_the_report() {
+    use crate::test_support::build::{property, slider};
+    let controls = layer(
+        2,
+        "CONTROLS",
+        vec![slider(
+            "Speed",
+            Some(property("ADBE Slider Control-0001", number(4.0))),
+        )],
+    );
+    let title = layer(
+        1,
+        "Title",
+        vec![transform(vec![expressed(
+            "ADBE Rotate Z",
+            number(0.0),
+            "// spin\nthisComp.layer(\"CONTROLS\").effect(\"Speed\")(\"Slider\") * time",
+        )])],
+    );
+    let import = import(
+        &project(vec![(5, "Main", comp(vec![title, controls], 2.0))]),
+        &Options::default(),
+    )
+    .expect("it imports");
+    let control = &import.mapping.controls[0];
+    assert_eq!(control.name, "Speed");
+    assert_eq!(control.kind, "ADBE Slider Control");
+    assert_eq!(control.values["Slider"], json!({ "number": 4.0 }));
+    assert!(
+        control
+            .at
+            .ends_with("CONTROLS/ADBE Effect Parade/ADBE Slider Control"),
+        "{}",
+        control.at
+    );
+    assert_eq!(
+        import.mapping.expressions[0].source,
+        "// spin\nthisComp.layer(\"CONTROLS\").effect(\"Speed\")(\"Slider\") * time"
+    );
+}

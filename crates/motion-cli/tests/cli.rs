@@ -486,3 +486,76 @@ fn bad_render_arguments_are_usage_errors(#[case] args: &[&str]) {
     assert_eq!(run.status.code(), Some(2));
     assert!(stdout(&run).is_empty());
 }
+
+/// A fixture project from motion-import's own.
+const HAMBURGER: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../motion-import/tests/fixtures/HamburgerArrow.aep"
+);
+
+#[test]
+fn export_writes_an_unedited_scene_back_unchanged_and_an_edit_into_the_project() {
+    let dir = scratch("export");
+    let scene = dir.join("scene.json");
+    let out = motion(&["import", HAMBURGER, "--out", scene.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
+    let same = dir.join("same.aep");
+    let out = motion(&[
+        "export",
+        scene.to_str().unwrap(),
+        "--project",
+        HAMBURGER,
+        "--out",
+        same.to_str().unwrap(),
+    ]);
+    assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
+    assert!(
+        stdout(&out).contains("0 written back, 0 not"),
+        "{}",
+        stdout(&out)
+    );
+    assert_eq!(fs::read(&same).unwrap(), fs::read(HAMBURGER).unwrap());
+
+    let text = fs::read_to_string(&scene).unwrap();
+    let mut json: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let rotator = json["layers"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|l| l["id"] == "rotator")
+        .unwrap();
+    rotator["anchor"] = serde_json::json!([0.25, 0.75]);
+    fs::write(&scene, json.to_string()).unwrap();
+    let edited = dir.join("edited.aep");
+    let out = motion(&[
+        "export",
+        scene.to_str().unwrap(),
+        "--project",
+        HAMBURGER,
+        "--out",
+        edited.to_str().unwrap(),
+    ]);
+    assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
+    assert!(
+        stdout(&out).contains("1 written back, 0 not"),
+        "{}",
+        stdout(&out)
+    );
+    let back = dir.join("back.json");
+    let out = motion(&[
+        "import",
+        edited.to_str().unwrap(),
+        "--out",
+        back.to_str().unwrap(),
+    ]);
+    assert_eq!(out.status.code(), Some(0));
+    let back: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&back).unwrap()).unwrap();
+    let rotator = back["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["id"] == "rotator")
+        .unwrap();
+    assert_eq!(rotator["anchor"], serde_json::json!([0.25, 0.75]));
+}

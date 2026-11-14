@@ -21,14 +21,16 @@ mod fonts;
 mod footage;
 mod ids;
 mod items;
-mod keys;
+pub(crate) mod keys;
 mod layer;
 mod report;
 mod rows;
+pub(crate) mod sources;
 mod text;
 
 pub use footage::{STILL_EXTENSIONS, file_name};
-pub use report::{Counts, ExpressionReport, Finding, Mapping, Named, Outcome};
+pub use report::{ControlReport, Counts, ExpressionReport, Finding, Mapping, Named, Outcome};
+pub use sources::Sources;
 
 use ids::Ids;
 use keys::num;
@@ -63,6 +65,11 @@ pub struct Import {
     /// Every font the scene's text is set in, by PostScript name, with where
     /// each is used: what [`Import::substitute_fonts`] may replace.
     pub fonts: BTreeMap<String, Vec<String>>,
+    /// Where the scene holds values the project stores, and how each goes
+    /// back: what an export writes ([D45]).
+    ///
+    /// [D45]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d45-export-patches-the-project-it-came-from
+    pub sources: Sources,
 }
 
 /// The lines a project laid one text layer out in, at its first text.
@@ -86,7 +93,16 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
     let root = root(project, options.comp.as_deref())?;
     let bakes = crate::bake::bake(project, Some(root.0.id));
     let mut walk = Walk::new(project, &options.footage, &bakes);
-    let json = walk.scene(root, options);
+    let mut json = walk.scene(root, options);
+    let sources = Sources(
+        sources::extract(&mut json)
+            .into_iter()
+            .filter_map(|(path, index)| {
+                let writable = walk.sources.get(index)?.clone();
+                Some(sources::Source { path, writable })
+            })
+            .collect(),
+    );
     let document = read_back(&json)?;
     Ok(Import {
         json,
@@ -94,6 +110,7 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
         mapping: walk.mapping,
         texts: walk.texts,
         fonts: walk.fonts,
+        sources,
     })
 }
 
@@ -189,6 +206,8 @@ struct Walk<'p> {
     found: &'p BTreeMap<String, String>,
     /// The project's expressions, evaluated.
     bakes: &'p crate::bake::Bakes,
+    /// How each value marked in the scene goes back into the project.
+    sources: Vec<sources::Writable>,
 }
 
 impl<'p> Walk<'p> {
@@ -211,7 +230,14 @@ impl<'p> Walk<'p> {
             fonts: BTreeMap::new(),
             found,
             bakes,
+            sources: Vec::new(),
         }
+    }
+
+    /// Numbers `writable`, for a mark in the scene.
+    fn source(&mut self, writable: sources::Writable) -> usize {
+        self.sources.push(writable);
+        self.sources.len() - 1
     }
 
     /// The scene: the root composition's canvas and layers, the compositions

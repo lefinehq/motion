@@ -58,6 +58,7 @@ const MAX_DEPTH: usize = 128;
 pub fn decode(file: &[u8]) -> Result<Project> {
     let root = rifx::read(file)?;
     let decoder = Decoder::default();
+    decoder.base.set(file.as_ptr().addr());
     let mut scan = Scan::new(
         &decoder,
         root.chunks().map_err(|d| d.at(ROOT))?,
@@ -120,6 +121,9 @@ struct Decoder {
     /// Whether names are `Utf8` chunks inside their wrapper, as from
     /// [`Head::WRAPPED_TEXT`] on, rather than NUL-terminated bytes.
     wrapped_text: Cell<bool>,
+    /// The address of the file's first byte, so a chunk's place in the file
+    /// is its address less this.
+    base: Cell<usize>,
     /// The chunks passed over so far, by name.
     skipped: RefCell<BTreeMap<String, usize>>,
     /// The effect definitions read so far, by match name.

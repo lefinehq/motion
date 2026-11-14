@@ -119,6 +119,9 @@ pub(super) enum Policy {
     OnlyEmpty(&'static str),
     /// Layer styles: each style is a group that is right only switched off.
     Styles,
+    /// An expression control: it draws nothing, and expressions read it, so
+    /// the report keeps it with its values for live links (D44).
+    Control,
 }
 
 const LINE_CAPS: &[(i64, &str)] = &[(1, "butt"), (2, "round"), (3, "square")];
@@ -659,34 +662,13 @@ pub(super) static POLICIES: [(&str, Policy); 28] = [
         "ADBE Text More Options",
         Policy::OnlyEmpty("text anchor grouping and render order"),
     ),
-    (
-        "ADBE Slider Control",
-        Policy::Ignore("an expression control, which draws nothing"),
-    ),
-    (
-        "ADBE Angle Control",
-        Policy::Ignore("an expression control, which draws nothing"),
-    ),
-    (
-        "ADBE Checkbox Control",
-        Policy::Ignore("an expression control, which draws nothing"),
-    ),
-    (
-        "ADBE Color Control",
-        Policy::Ignore("an expression control, which draws nothing"),
-    ),
-    (
-        "ADBE Point Control",
-        Policy::Ignore("an expression control, which draws nothing"),
-    ),
-    (
-        "ADBE Point3D Control",
-        Policy::Ignore("an expression control, which draws nothing"),
-    ),
-    (
-        "ADBE Layer Control",
-        Policy::Ignore("an expression control, which draws nothing"),
-    ),
+    ("ADBE Slider Control", Policy::Control),
+    ("ADBE Angle Control", Policy::Control),
+    ("ADBE Checkbox Control", Policy::Control),
+    ("ADBE Color Control", Policy::Control),
+    ("ADBE Point Control", Policy::Control),
+    ("ADBE Point3D Control", Policy::Control),
+    ("ADBE Layer Control", Policy::Control),
     (
         "ADBE Camera Options Group",
         Policy::Ignore("the options of a camera layer, which is reported"),

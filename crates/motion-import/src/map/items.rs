@@ -8,8 +8,9 @@ use serde_json::{Map, Value as Json, json};
 
 use super::Walk;
 use super::keys::{Clock, Written, num, written};
-use super::report::Fate;
+use super::report::{ControlReport, Fate};
 use super::rows::{self, Kind, Missing, Part, Policy, Row, To};
+use super::sources::{Marks, Writable};
 use crate::model::{
     Child, ComposedLine, Control, EffectDefinition, Group, Property, Stream, Value,
 };
@@ -52,6 +53,8 @@ pub(super) struct Out {
     pub anim: Map<String, Json>,
     /// The lines the project laid its text out in, for a text layer.
     pub lines: Option<Vec<ComposedLine>>,
+    /// Where it holds values the project stores, for an export.
+    pub marks: Marks,
 }
 
 impl Out {
@@ -71,11 +74,13 @@ impl Out {
         }
     }
 
-    /// The object, with its tracks under `anim` when it has any.
+    /// The object, with its tracks under `anim` when it has any, and the
+    /// marks of where it holds values the project stores.
     pub(super) fn finish(mut self) -> Map<String, Json> {
         if !self.anim.is_empty() {
             self.keys.insert("anim".into(), Json::Object(self.anim));
         }
+        self.marks.write(&mut self.keys);
         self.keys
     }
 }
@@ -168,19 +173,37 @@ impl Walk<'_> {
                     .registry
                     .target(target)
                     .filter(|t| t.component.is_some());
+                let expression = property.expression.as_ref().is_some_and(|e| e.enabled);
                 if let Some(bake) = baked {
                     let found = sink.registry.target(target);
                     if let Some(tracks) =
                         self.baked_tracks(bake, property, (target, found), row.convert, place)
                     {
+                        let source = self.source(Writable::Expression);
                         for track in tracks {
-                            insert(out, sink, &track.name, track.component, track.written);
+                            let (name, component) = (&track.name, track.component);
+                            insert(out, sink, name, component, track.written, Some(source));
                         }
                         return self.mapping.count(name, Fate::Mapped);
                     }
                 }
                 match written(&property.value, row.convert, spatial, place.clock) {
-                    Some(written) => insert(out, sink, target, component, written),
+                    Some(written) => {
+                        let writable = match (&written, &property.value, &property.origin) {
+                            _ if expression => Some(Writable::Expression),
+                            (Written::Track { .. }, ..) => Some(Writable::Keyed),
+                            (Written::Value(_), Stream::Static(value), Some(origin)) => {
+                                Some(Writable::Static {
+                                    origin: origin.clone(),
+                                    convert: row.convert,
+                                    template: value.clone(),
+                                })
+                            }
+                            _ => None,
+                        };
+                        let source = writable.map(|w| self.source(w));
+                        insert(out, sink, target, component, written, source);
+                    }
                     None => {
                         self.mapping.count(name, Fate::Unsupported);
                         return self
@@ -345,6 +368,7 @@ impl Walk<'_> {
             Primary::Property(name) => out
                 .keys
                 .remove(name)
+                .inspect(|_| out.marks.rename(name, kind.item))
                 .or_else(|| sink.registry.target(name).and_then(rest_json))
                 .unwrap_or(Json::Null),
             Primary::Setting(name) => out
@@ -370,6 +394,11 @@ impl Walk<'_> {
         }
         match rows::policy(name) {
             Some(Policy::Ignore(why)) => self.mapping.ignore(name, why),
+            Some(Policy::Control) => {
+                self.mapping
+                    .ignore(name, "an expression control, which draws nothing");
+                self.control(group, place);
+            }
             Some(Policy::OnlyEmpty(why)) => {
                 match group.properties().any(|property| !property.hidden) {
                     false => self.mapping.ignore(name, "empty"),
@@ -406,26 +435,94 @@ impl Walk<'_> {
     }
 }
 
+impl Walk<'_> {
+    /// Records an expression control with its values.
+    fn control(&mut self, group: &Group, place: &Place<'_>) {
+        let definition = self.project.effects.get(&group.match_name);
+        let name = group
+            .name
+            .clone()
+            .or_else(|| definition.map(|d| d.name.clone()))
+            .unwrap_or_else(|| group.match_name.clone());
+        let stored = |p: &Property| match &p.value {
+            Stream::Static(value) => serde_json::to_value(value),
+            Stream::Animated(keys) => serde_json::to_value(keys),
+        };
+        let values = match definition {
+            // Every parameter, those the project leaves at their default too.
+            Some(definition) => definition
+                .parameters
+                .iter()
+                .filter(|d| !d.match_name.ends_with("-0000"))
+                .map(|d| {
+                    let value = match group.properties().find(|p| p.match_name == d.match_name) {
+                        Some(p) => stored(p),
+                        None => serde_json::to_value(&d.control).map(|c| json!({ "default": c })),
+                    };
+                    (d.name.clone(), value.unwrap_or(Json::Null))
+                })
+                .collect(),
+            None => group
+                .properties()
+                .map(|p| (p.match_name.clone(), stored(p).unwrap_or(Json::Null)))
+                .collect(),
+        };
+        self.mapping.controls.push(ControlReport {
+            at: place.at.clone(),
+            name,
+            kind: group.match_name.clone(),
+            values,
+        });
+    }
+}
+
 /// Puts a track for `name` into `out`, with the resting value its first key
 /// gives where the scene needs one: a component's, or a kind's primary
 /// property's.
-fn insert(out: &mut Out, sink: Sink, name: &str, component: Option<Target>, written: Written) {
-    match written {
-        Written::Value(value) => match component {
-            Some(component) => out.set_component(component, value),
-            None => {
-                out.keys.insert(name.into(), value);
+fn insert(
+    out: &mut Out,
+    sink: Sink,
+    name: &str,
+    component: Option<Target>,
+    written: Written,
+    source: Option<usize>,
+) {
+    // Where the resting value is: a component of a whole value, or the key.
+    let rest = match component {
+        Some(c) => format!("{}/{}", c.prop.name(), c.component.unwrap_or(0)),
+        None => name.to_owned(),
+    };
+    let (marked, rest_written) = match written {
+        Written::Value(value) => {
+            match component {
+                Some(component) => out.set_component(component, value),
+                None => {
+                    out.keys.insert(name.into(), value);
+                }
             }
-        },
+            (vec![rest], true)
+        }
         Written::Track { keys, first } => {
             out.anim.insert(name.into(), keys);
-            match component {
-                Some(component) => out.set_component(component, first),
+            let rest_written = match component {
+                Some(component) => {
+                    out.set_component(component, first);
+                    true
+                }
                 None if primary_property(sink.kind) == Some(name) => {
                     out.keys.insert(name.into(), first);
+                    true
                 }
-                None => {}
-            }
+                None => false,
+            };
+            (vec![format!("anim/{name}"), rest], rest_written)
+        }
+    };
+    let Some(source) = source else { return };
+    for (i, path) in marked.into_iter().enumerate() {
+        // A track's resting value is marked only where it was written.
+        if i == 0 || rest_written {
+            out.marks.add(path, source);
         }
     }
 }

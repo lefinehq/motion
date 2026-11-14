@@ -41,25 +41,35 @@ impl<'p> Walk<'p> {
                 .stopped
                 .clone()
                 .unwrap_or_else(|| "it was not evaluated".into());
-            self.not_baked(place, None, &why);
+            self.not_baked(place, property, None, &why);
             return None;
         };
         if let Err(why) = &bake.outcome {
-            self.not_baked(place, Some(bake), why);
+            self.not_baked(place, property, Some(bake), why);
             return None;
         }
         Some(bake)
     }
 
     /// Reports an expression that is not baked; the keys under it stay.
-    pub(super) fn not_baked(&mut self, place: &Place<'_>, bake: Option<&Bake>, why: &str) {
+    pub(super) fn not_baked(
+        &mut self,
+        place: &Place<'_>,
+        property: &Property,
+        bake: Option<&Bake>,
+        why: &str,
+    ) {
         self.mapping.unsupported(
             &place.at,
             format!("an expression it could not bake: {why} (the keys under it are kept)"),
         );
         self.mapping.expressions.push(ExpressionReport {
             at: place.at.clone(),
-            source: bake.map(|b| b.source.clone()).unwrap_or_default(),
+            source: property
+                .expression
+                .as_ref()
+                .map(|e| e.text.clone())
+                .unwrap_or_default(),
             engine: bake.map_or("", |b| engine_name(b.dialect)).to_owned(),
             frames: 0,
             outcome: Outcome::NotBaked {
@@ -89,6 +99,7 @@ impl<'p> Walk<'p> {
         else {
             self.not_baked(
                 place,
+                property,
                 Some(bake),
                 "it gives text for a value that is not text",
             );
@@ -149,6 +160,7 @@ impl<'p> Walk<'p> {
             let Some(written) = written else {
                 self.not_baked(
                     place,
+                    property,
                     Some(bake),
                     "its values are not of the kind the scene takes here",
                 );
@@ -190,7 +202,12 @@ impl<'p> Walk<'p> {
             approximate,
         }) = &bake.outcome
         else {
-            self.not_baked(place, Some(bake), "it gives a number for source text");
+            self.not_baked(
+                place,
+                property,
+                Some(bake),
+                "it gives a number for source text",
+            );
             return None;
         };
         let first = texts.first()?.replace('\r', "\n");
