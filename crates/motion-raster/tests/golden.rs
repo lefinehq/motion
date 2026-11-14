@@ -14,8 +14,8 @@ use motion_raster::kurbo::{Affine, BezPath, Circle, Point, Rect, Shape};
 use motion_raster::peniko::{Blob, FontData};
 use motion_raster::{
     BLEND_MODES, Cap, Clip, Color, Dashes, DrawStyle, Effect, FillRule, Frame, Glyph, GlyphDraw,
-    Image, Join, Layer, Matte, MatteMode, Node, ParamValue, PathDraw, RenderOptions, StrokeStyle,
-    render_with,
+    Image, ImageDraw, Join, Layer, Matte, MatteMode, Node, ParamValue, PathDraw, Picture,
+    RenderOptions, StrokeStyle, render_with,
 };
 
 const FONT: &[u8] = include_bytes!("fixtures/FixtureSans-Black.ttf");
@@ -103,6 +103,61 @@ fn rotated_rect_about_its_anchor() {
         )])
     };
     golden("rotated_rect", &frame(vec![Node::Layer(layer)]), 64, 64);
+}
+
+/// An 8x4 picture: four columns of colour over two rows, the bottom-right
+/// pixel half transparent.
+fn tiles() -> Picture {
+    let colours: [[u8; 4]; 4] = [
+        [255, 196, 0, 255],
+        [20, 120, 255, 255],
+        [30, 200, 120, 255],
+        [240, 60, 90, 255],
+    ];
+    let mut pixels = Vec::new();
+    for y in 0..4 {
+        for x in 0..8 {
+            let mut colour = colours[x / 2];
+            if y >= 2 {
+                colour.swap(0, 2);
+            }
+            if (x, y) == (7, 3) {
+                colour[3] = 128;
+            }
+            pixels.extend(colour);
+        }
+    }
+    Picture::from_image(&Image::new(8, 4, pixels).unwrap()).unwrap()
+}
+
+#[test]
+fn pictures_stretched_turned_and_faded() {
+    // As drawn, then stretched into a 24x12 box at the corner, then the same
+    // box turned 20° about its centre at 60% opacity over a bar, so the bar
+    // shows through it.
+    let draw = |rect: Rect| {
+        Node::Image(ImageDraw {
+            picture: tiles(),
+            rect,
+        })
+    };
+    let turned = Layer {
+        transform: Affine::translate((38.0, 40.0))
+            * Affine::rotate(20f64.to_radians())
+            * Affine::translate((-12.0, -6.0)),
+        opacity: 0.6,
+        ..Layer::new(vec![draw(Rect::new(0.0, 0.0, 24.0, 12.0))])
+    };
+    let nodes = vec![
+        draw(Rect::new(2.0, 2.0, 10.0, 6.0)),
+        draw(Rect::new(14.0, 4.0, 38.0, 16.0)),
+        fill(
+            Rect::new(0.0, 36.0, 64.0, 44.0).to_path(0.1),
+            solid(0.1, 0.1, 0.1, 1.0),
+        ),
+        Node::Layer(turned),
+    ];
+    golden("pictures", &frame(nodes), 64, 64);
 }
 
 #[test]

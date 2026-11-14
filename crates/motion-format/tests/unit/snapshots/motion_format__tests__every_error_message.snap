@@ -33,13 +33,17 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":1e300,"rect":"1x1"}` → layers[0].id: invalid type: floating point `1e300`; expected a string
 `{"id":"Bad Id","rect":"1x1"}` → layers[0].id: invalid id `Bad Id`; expected ids use lowercase letters, digits, `-` and `_`, starting with a letter
 `{"id":"a","rect":"1x1"},{"id":"a","rect":"1x1"}` → layers[1].id: duplicate id `a`; expected every layer to have its own id
-`{"id":"a"}` → layers[0]: needs exactly one of `text`, `rect`, `shapes`, `comp` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card" or "pivot":true
-`{"id":"a","rect":"1x1","text":"x"}` → layers[0].rect: needs exactly one of `text`, `rect`, `shapes`, `comp` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card" or "pivot":true
+`{"id":"a"}` → layers[0]: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg" or "pivot":true
+`{"id":"a","rect":"1x1","text":"x"}` → layers[0].rect: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg" or "pivot":true
 `{"id":"a","text":null}` → layers[0].text: invalid type: null; expected a string
 `{"id":"a","text":3}` → layers[0].text: invalid type: integer `3`; expected a string
 `{"id":"a","rect":1}` → layers[0].rect: invalid type: integer `1`; expected `<width>x<height> [r<radius>]`, e.g. `300x400 r24`
 `{"id":"a","text":"x","font":1}` → layers[0].font: invalid type: integer `1`; expected `<family> <size> [<weight>]`, e.g. `Inter 96 700`
 `{"id":"a","rect":"1x1","font":"Inter 9"}` → layers[0].font: `font` only applies to `text` layers; expected `font` only next to `text`
+`{"id":"a","image":"a.png"}` → layers[0]: missing `box`: an image layer fills its box; expected the picture's size in px, e.g. "box":[1920,1080]
+`{"id":"a","image":"","box":[1,1]}` → layers[0].image: an empty image path; expected a PNG or JPEG file, relative to the scene file, e.g. `photos/beach.jpg`
+`{"id":"a","image":"a.png","box":[0,1]}` → layers[0].box: a box's width and height are above zero; expected `[width, height]` from the layer's origin, or `[x, y, width, height]` from the box's top-left corner, in px, the sizes above zero, e.g. `[600, 300]` or `[-300, -150, 600, 300]`
+`{"id":"a","image":3,"box":[1,1]}` → layers[0].image: invalid type: integer `3`; expected a string
 `{"id":"a","rect":"1x1","fill":1}` → layers[0].fill: 1 numbers do not make a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
 `{"id":"a","rect":"1x1","fill":"red"}` → layers[0].fill: `red` is not a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
 `{"id":"a","rect":"1x1","at":1}` → layers[0].at: invalid type: integer `1`; expected `<x> <y>`, each a number of pixels or `center`, e.g. `center 260`
@@ -48,7 +52,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","in":"zoom"}` → layers[0].in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in
 `{"id":"a","rect":"1x1","anim":null}` → layers[0].anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
 `{"id":"a","rect":"1x1","anim":[]}` → layers[0].anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
-`{"id":"a","rect":"1x1","x":1}` → layers[0].x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, matte, position, anchor, scale, rotate, opacity
+`{"id":"a","rect":"1x1","x":1}` → layers[0].x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, image, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, matte, position, anchor, scale, rotate, opacity
 `{"id":"a","rect":"1x1","at":"1 2","position":[1,2]}` → layers[0].position: `position` and `at` both place the layer; expected one of them: "at":"540 960" places it in the parent's box, "position":[540,960] at an exact point in the parent's own coordinates
 `{"id":"a","rect":"1x1","rotate":"x"}` → layers[0].rotate: `x` is not a number; expected a number, e.g. `0.5`
 `{"id":"a","rect":"1x1","scale":[1,2,3]}` → layers[0].scale: 3 numbers do not make a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
@@ -175,7 +179,7 @@ expression: "report.join(\"\\n\\n\")"
 `0 -> 1 @0-5f ease ease` → unexpected `ease` after the curve; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
 
 ## contents
-`{"id":"a","shapes":[],"comp":"x"}` → layers[0].comp: needs exactly one of `text`, `rect`, `shapes`, `comp` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card" or "pivot":true
+`{"id":"a","shapes":[],"comp":"x"}` → layers[0].comp: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg" or "pivot":true
 `{"id":"a","pivot":false}` → layers[0].pivot: `pivot` is `true` or left out; expected "pivot":true
 `{"id":"a","pivot":true,"fill":"#fff"}` → layers[0].fill: `fill` only applies to `text` or `rect` layers; expected `fill` only next to `text` or `rect`
 `{"id":"a","shapes":{}}` → layers[0].shapes: invalid type: map; expected a list of item objects, e.g. [{"rect":[300,100]},{"fill":"#FFE000"}]
@@ -210,7 +214,7 @@ expression: "report.join(\"\\n\\n\")"
 
 ## text
 `{"id":"a","rect":"1x1","style":{"tracking":1}}` → layers[0].style: `style` only applies to `text` layers; expected `style` only next to `text`
-`{"id":"a","rect":"1x1","box":[1,1]}` → layers[0].box: `box` only applies to `text` layers; expected `box` only next to `text`
+`{"id":"a","rect":"1x1","box":[1,1]}` → layers[0].box: `box` only applies to `text` or `image` layers; expected `box` only next to `text` or `image`
 `{"id":"a","text":"x","style":[]}` → layers[0].style: invalid type: sequence; expected an object of text style keys, e.g. {"tracking":20,"align":"center"}
 `{"id":"a","text":"x","style":{"font":"Inter 9"}}` → layers[0].style.font: `font` is set on the layer, not in `style`; expected `font` as a layer key
 `{"id":"a","text":"x","style":{"kerning":1}}` → layers[0].style.kerning: unknown style key `kerning`; expected one of font, italic, fill, stroke, stroke-width, paint, tracking, leading, baseline, caps, faux-bold, faux-italic, align, indent-first, indent-start, indent-end, space-before, space-after, auto-leading
@@ -264,7 +268,7 @@ expression: "report.join(\"\\n\\n\")"
 `"card":{"size":"1x1","dur":"1s"}` → comps.card: missing `layers`; expected e.g. "layers":[]
 `"card":{"size":"1x1","dur":"1s","fps":0,"layers":[]}` → comps.card.fps: must be a number above zero; expected e.g. `30`
 `"card":{"size":"1x1","dur":"1s","layers":[],"tint":1}` → comps.card.tint: unknown field `tint`; expected one of size, fps, dur, bg, layers
-`"card":{"size":"1x1","dur":"1s","layers":[{"id":"x"}]}` → comps.card.layers[0]: needs exactly one of `text`, `rect`, `shapes`, `comp` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card" or "pivot":true
+`"card":{"size":"1x1","dur":"1s","layers":[{"id":"x"}]}` → comps.card.layers[0]: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg" or "pivot":true
 `"card":{"size":"1x1","dur":"1s","layers":[{"id":"x","comp":"card"}]}` → comps.card.layers[0].comp: composition `card` would draw itself through its layers; expected compositions that never lead back to themselves
 `"card":{"size":"1x1","dur":"1s","layers":[{"id":"x","comp":"b"}]},"b":{"size":"1x1","dur":"1s","layers":[{"id":"y","comp":"card"}]}` → comps.card.layers[0].comp: composition `card` would draw itself through its layers; expected compositions that never lead back to themselves
 

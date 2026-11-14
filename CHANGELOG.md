@@ -49,6 +49,8 @@ All notable changes to this project are documented here. The format is based on 
 - The text check compares glyph ids with those the project stored, and the import report says when they differ.
 - Font fallback at import: a font the import does not have is replaced by the closest available face (the same family, else the built-in Inter, at the same slant and nearest weight; a missing font's style is read from its PostScript name's suffix), and each use is reported as `missing fonts, substituted (`<font> → <face>`)`. `motion import` and `motion fidelity` substitute; scenes written by hand still fail on an unknown font ([D40](docs/design/decisions.md#d40-missing-fonts-are-substituted-at-import)).
 - Quoted edit values take `\n` (new line) and `\t` (tab) escapes besides `\"` and `\\`, so `title text="Make\nit move"` sets two lines.
+- Image layers: `"image":"photos/beach.jpg"` with a `box` draws a PNG or JPEG file stretched over the box, relative to the scene file. The engine decodes each file once, when a frame first shows it; `motion-raster` gains `Picture` and the `ImageDraw` leaf, decoding PNG with `png` and JPEG with `zune-jpeg` ([D41](docs/design/decisions.md#d41-image-layers-name-their-file-and-carry-their-box)).
+- The import draws still footage: it looks for each footage file where the project stored it, then by name under the project's folder, and writes the pictures it finds as image layers. Footage it cannot find, video, image sequences and audio are reported with why. `motion_engine::import_scene` takes where the scene will be saved, so footage paths are relative to it.
 
 ### Changed
 

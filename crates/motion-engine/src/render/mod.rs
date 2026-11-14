@@ -3,7 +3,8 @@
 //! crates never touch pixels and the rasteriser never sees a scene.
 //!
 //! Every visible node becomes one layer under its canvas transform, with its
-//! opacity and effects; what it draws becomes the layer's leaves. A nested
+//! opacity and effects; what it draws becomes the layer's leaves, and an
+//! image layer's leaf is its picture, which the caller decodes. A nested
 //! composition is a layer clipped to the composition's canvas and isolated,
 //! holding the composition's background and its own nodes at the time the
 //! scene evaluated it.
@@ -19,13 +20,14 @@ mod effect;
 mod shape;
 mod text;
 
-use motion_format::Result;
+use motion_format::key::IMAGE;
 use motion_format::property::Prop;
 use motion_format::shorthand::{MatteMode, RectShape};
+use motion_format::{ImageContent, Result};
 use motion_raster::kurbo::{Affine, Rect, RoundedRect, Shape};
 use motion_raster::{
-    Blending, Clip, Color, DrawStyle, FillRule, Frame, Layer, Matte, MatteMode as RasterMatte,
-    Node, Paint, PathDraw,
+    Blending, Clip, Color, DrawStyle, FillRule, Frame, ImageDraw, Layer, Matte,
+    MatteMode as RasterMatte, Node, Paint, PathDraw, Picture,
 };
 use motion_scene::{ContentState, FrameState, Node as GraphNode, NodeState, SceneGraph};
 
@@ -33,42 +35,57 @@ use motion_scene::{ContentState, FrameState, Node as GraphNode, NodeState, Scene
 /// from shapes, such as a rounded rectangle's corners, in pixels.
 const TOLERANCE: f64 = 0.01;
 
+/// Finds the picture an image layer's `image` names.
+pub(crate) type Pictures<'a> = dyn Fn(&str) -> Result<Picture> + 'a;
+
+/// What drawing one frame reads besides the frame's state: the compiled
+/// scene, and the pictures its image layers name.
+#[derive(Clone, Copy)]
+struct Sources<'a> {
+    graph: &'a SceneGraph,
+    pictures: &'a Pictures<'a>,
+}
+
 /// The display list of `state`, one frame of `graph`'s scene, drawn over
-/// `background` (straight RGBA from 0 to 1; a clear one draws nothing).
+/// `background` (straight RGBA from 0 to 1; a clear one draws nothing),
+/// with the image layers' pictures from `pictures`.
 ///
 /// # Errors
 /// A diagnostic for an effect the rasteriser has no row for, or a parameter
-/// it rejects, at the effect's place in the layer's `fx`.
+/// it rejects, at the effect's place in the layer's `fx`; or the one
+/// `pictures` returns, at the layer's `image`.
 pub(crate) fn display_list(
     graph: &SceneGraph,
     background: [f64; 4],
     state: &FrameState,
+    pictures: &Pictures<'_>,
 ) -> Result<Frame> {
+    let sources = Sources { graph, pictures };
     Ok(Frame {
         background: opaque_enough(background).then(|| color(background)),
         blending: Blending::Gamma,
-        nodes: nodes(graph, &graph.nodes, state)?,
+        nodes: nodes(sources, &graph.nodes, state)?,
     })
 }
 
 /// The layers of one canvas's nodes, back to front: `list` is the canvas's
 /// compiled nodes, `state` their state at this frame.
-fn nodes(graph: &SceneGraph, list: &[GraphNode], state: &FrameState) -> Result<Vec<Node>> {
+fn nodes(sources: Sources<'_>, list: &[GraphNode], state: &FrameState) -> Result<Vec<Node>> {
     (0..state.nodes.len())
         .filter(|&i| state.nodes[i].visible())
-        .filter_map(|i| matted(graph, list, state, i).transpose())
+        .filter_map(|i| matted(sources, list, state, i).transpose())
         .collect()
 }
 
 /// The layer of node `i` of a canvas, with its matte if it has one, or
 /// `None` when it draws nothing.
 fn matted(
-    graph: &SceneGraph,
+    sources: Sources<'_>,
     list: &[GraphNode],
     state: &FrameState,
     i: usize,
 ) -> Result<Option<Node>> {
-    let Some(Node::Layer(drawn)) = layer(graph, &state.nodes[i])? else {
+    let Some(Node::Layer(drawn)) = layer(sources, &state.nodes[i])? else {
         return Ok(None);
     };
     let Some((source, mode)) = list[i].matte else {
@@ -78,7 +95,7 @@ fn matted(
     // nothing outside its span; it may be matted in turn.
     let matte = &state.nodes[source];
     let source = match matte.shown {
-        true => matted(graph, list, state, source)?,
+        true => matted(sources, list, state, source)?,
         false => None,
     };
     Ok(Some(Node::Layer(Layer {
@@ -96,7 +113,7 @@ fn matted(
 }
 
 /// The layer of one node without its matte, or `None` when it draws nothing.
-fn layer(graph: &SceneGraph, node: &NodeState) -> Result<Option<Node>> {
+fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
     let opacity = node.number(Prop::OPACITY) as f32;
     if opacity <= 0.0 {
         return Ok(None);
@@ -107,8 +124,11 @@ fn layer(graph: &SceneGraph, node: &NodeState) -> Result<Option<Node>> {
         ContentState::Rect(shape) => vec![rect(shape, node.fill)],
         ContentState::Shapes(draws) => shape::draws(draws),
         ContentState::Text { text, glyphs } => text::draws(text, glyphs),
+        ContentState::Image(content) => {
+            vec![image(content, sources.pictures).map_err(|e| e.under(node.id.as_str()))?]
+        }
         ContentState::Comp(index, Some(inner)) => {
-            let comp = &graph.comps[*index];
+            let comp = &sources.graph.comps[*index];
             let canvas = Rect::new(0.0, 0.0, comp.width, comp.height);
             clip = Some(Clip::Rect(canvas));
             isolate = true;
@@ -116,7 +136,7 @@ fn layer(graph: &SceneGraph, node: &NodeState) -> Result<Option<Node>> {
             if opaque_enough(comp.background) {
                 children.push(fill(canvas.to_path(TOLERANCE), color(comp.background)));
             }
-            children.extend(nodes(graph, &comp.nodes, inner)?);
+            children.extend(nodes(sources, &comp.nodes, inner)?);
             children
         }
         ContentState::Comp(_, None) | ContentState::Pivot => Vec::new(),
@@ -144,6 +164,16 @@ fn rect(shape: &RectShape, rgba: [f64; 4]) -> Node {
     let radius = shape.radius.clamp(0.0, width.min(height) / 2.0);
     let outline = RoundedRect::new(0.0, 0.0, width, height, radius).to_path(TOLERANCE);
     fill(outline, color(rgba))
+}
+
+/// An image node: its picture stretched over its box. The picture's errors
+/// are placed at `image`, and name the file.
+fn image(content: &ImageContent, pictures: &Pictures<'_>) -> Result<Node> {
+    let picture = pictures(&content.path).map_err(|e| e.at(IMAGE))?;
+    Ok(Node::Image(ImageDraw {
+        picture,
+        rect: content.frame,
+    }))
 }
 
 /// `path` filled with `color` by the non-zero rule.

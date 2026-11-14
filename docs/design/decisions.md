@@ -335,6 +335,16 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Reporting each substitute keeps the gap measurable, as the rest of the mapping report does ([D32](#d32-one-format-for-authored-and-imported-scenes)).
 - **Not now:** metric-compatible substitutes chosen by measured widths, and faces that answer to another font's name (see D39).
 
+### D41. Image layers name their file and carry their box
+
+- **Decision:** a layer draws a still picture with `"image":"<file>"`, a PNG or JPEG file relative to the scene file, and the layer's `box` (the key box text already has) says where it goes: `[width, height]` from the origin, or `[x, y, width, height]`. The picture is stretched to fill the box. `box` is required. The file is decoded when a frame first shows it, once per session, by the engine; the rasteriser receives decoded pixels and never reads files. An import writes the size the project gives the footage, and the path of the file it found beside the project.
+- **Why:**
+  - The scene stays checkable without its files: compile, `check`, `at` and anchors all need the layer's size, and those steps never read files (the same rule as text, [D33](#d33-text-is-shaped-from-font-assets)). A size taken from the file would make a scene's layout depend on a file that may be missing or replaced.
+  - Reusing `box` keeps one way to say "this layer's box" across kinds, and its four-number form already covers a box that does not start at the origin.
+  - Stretching to the box keeps a render exact when a file is swapped for a smaller or larger one (a proxy, a variant's photo): the layout does not move.
+  - A shorthand such as `"photo.jpg 1920x1080"` was rejected: file names hold spaces, so splitting the string is guesswork.
+- **Not now:** video and image sequences (phase 2), fit modes other than stretch (`contain`, `cover`), colour profiles other than sRGB, and filtering beyond bilinear for strong reductions.
+
 ## Open questions
 
 ### Q1. Name and packages (deferred)

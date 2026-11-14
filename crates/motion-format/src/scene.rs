@@ -139,8 +139,21 @@ pub enum Content {
     Shapes(Vec<Item>),
     /// The composition with this id, drawn in the layer's box at the layer's time.
     Comp(String),
+    /// A picture file stretched over the layer's box.
+    Image(ImageContent),
     /// Nothing: a point that other layers move with.
     Pivot,
+}
+
+/// An image layer's picture and where it goes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageContent {
+    /// The PNG or JPEG file, as written: relative to the scene file's folder,
+    /// or absolute.
+    pub path: String,
+    /// The layer's box, which the picture's pixels are stretched to fill,
+    /// in the layer's own coordinates.
+    pub frame: kurbo::Rect,
 }
 
 /// A parsed scene file: the typed scene and the JSON it came from, kept so

@@ -226,9 +226,10 @@ fn runs_of(styles: Vec<(CharacterStyle, Option<usize>)>, base: &CharacterStyle) 
     runs
 }
 
-/// Box text's box: `[width, height]` from the layer's origin, or
-/// `[x, y, width, height]` from its top-left corner, the sizes above zero.
-fn frame(written: &ValueDoc) -> Result<kurbo::Rect> {
+/// A layer's box, which text wraps in and a picture fills: `[width,
+/// height]` from the layer's origin, or `[x, y, width, height]` from its
+/// top-left corner, the sizes above zero.
+pub(super) fn frame(written: &ValueDoc) -> Result<kurbo::Rect> {
     const FORM: &str = "`[width, height]` from the layer's origin, or `[x, y, width, height]` \
                         from the box's top-left corner, in px, the sizes above zero, \
                         e.g. `[600, 300]` or `[-300, -150, 600, 300]`";

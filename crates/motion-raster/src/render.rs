@@ -12,7 +12,7 @@ use vello_cpu::{
 
 use crate::effect::EffectContext;
 use crate::image::Image;
-use crate::list::{Blending, Frame, GlyphDraw, Layer, Matte, MatteMode, Node, PathDraw};
+use crate::list::{Blending, Frame, GlyphDraw, ImageDraw, Layer, Matte, MatteMode, Node, PathDraw};
 use crate::style::{Color, DrawStyle};
 
 /// How the rasteriser computes colours.
@@ -208,6 +208,10 @@ impl Painter {
                 Ok(())
             }
             Node::Glyphs(glyphs) => self.glyphs(glyphs, transform),
+            Node::Image(image) => {
+                self.image(image, transform);
+                Ok(())
+            }
         })
     }
 
@@ -268,6 +272,31 @@ impl Painter {
                 self.ctx.stroke_path(&draw.path);
             }
         }
+    }
+
+    /// Fills the draw's rectangle with its picture, whose pixels the paint
+    /// transform stretches over it, sampled from the copy that suits the
+    /// size it lands at.
+    fn image(&mut self, draw: &ImageDraw, transform: Affine) {
+        let rect = draw.rect;
+        let stretch = |width: u32, height: u32| {
+            Affine::translate((rect.x0, rect.y0))
+                * Affine::scale_non_uniform(
+                    rect.width() / f64::from(width),
+                    rect.height() / f64::from(height),
+                )
+        };
+        // How far one picture pixel reaches on the target, along whichever
+        // of its sides is drawn longer.
+        let [a, b, c, d, _, _] =
+            (transform * stretch(draw.picture.width(), draw.picture.height())).as_coeffs();
+        let (paint, width, height) = draw.picture.paint(a.hypot(b).max(c.hypot(d)));
+        self.ctx.set_transform(transform);
+        self.ctx.set_paint_transform(stretch(width, height));
+        self.ctx.set_paint(paint);
+        self.ctx.fill_rect(&rect);
+        // Later paints are placed by their geometry alone.
+        self.ctx.reset_paint_transform();
     }
 
     fn glyphs(&mut self, draw: &GlyphDraw, transform: Affine) -> Result<()> {

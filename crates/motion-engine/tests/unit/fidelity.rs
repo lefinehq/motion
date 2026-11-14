@@ -83,7 +83,7 @@ fn a_sample_measured_against_its_own_frames_has_no_error() {
         settled: Some(1.0),
     };
     // The reference: the imported scene itself, drawn every second.
-    let import = import_scene(STAR, &Options::default()).unwrap();
+    let import = import_scene(STAR, &Options::default(), None).unwrap();
     let session: Session = write_document(&import.json).parse().unwrap();
     fs::create_dir_all(&first.reference).unwrap();
     for (i, frame) in [0.0, 60.0, 120.0].iter().enumerate() {

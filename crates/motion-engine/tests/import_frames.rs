@@ -33,7 +33,7 @@ fn every_fixture_draws_as_it_did() {
             .file_stem()
             .and_then(|s| s.to_str())
             .expect("a UTF-8 name");
-        let meaning = match import_scene(&path, &first_composition(&path)) {
+        let meaning = match import_scene(&path, &first_composition(&path), None) {
             Err(error) => format!("not imported: {error}"),
             Ok(import) => match write_document(&import.json).parse::<Session>() {
                 Err(error) => format!("not read: {error}"),
@@ -57,5 +57,6 @@ fn first_composition(path: &Path) -> ImportOptions {
     ImportOptions {
         comp,
         fonts: Vec::new(),
+        ..Default::default()
     }
 }

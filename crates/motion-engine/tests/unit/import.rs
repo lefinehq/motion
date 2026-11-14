@@ -79,8 +79,9 @@ fn imported_text() -> Import {
     let options = Options {
         comp,
         fonts: Vec::new(),
+        ..Default::default()
     };
-    import_scene(TEXT_FIXTURE, &options).expect("the fixture imports")
+    import_scene(TEXT_FIXTURE, &options, None).expect("the fixture imports")
 }
 
 #[test]
@@ -133,4 +134,92 @@ fn a_font_the_set_has_is_kept() {
     let before = import.json.clone();
     substitute_fonts(&mut import, &fonts).expect("nothing to do");
     assert_eq!(import.json, before);
+}
+
+/// A committed fixture with one still footage layer, `Heart-80.png`, whose
+/// stored path is on its author's machine, under `…/assets/Images/`.
+const FOOTAGE_FIXTURE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../motion-import/tests/fixtures/Benchmark.aep"
+);
+
+/// The footage fixture copied into a fresh folder, with an 80x80 picture
+/// at each of `pictures` beside it; returns the copy's path.
+fn footage_project(name: &str, pictures: &[&str]) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "motion-engine-footage-import-{}-{name}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    let project = dir.join("template/Benchmark.aep");
+    fs::create_dir_all(project.parent().unwrap()).expect("create the project folder");
+    fs::copy(FOOTAGE_FIXTURE, &project).expect("copy the fixture");
+    let png = motion_raster::Image::new(80, 80, [200, 20, 60, 255].repeat(80 * 80))
+        .unwrap()
+        .to_png()
+        .unwrap();
+    for picture in pictures {
+        let path = project.with_file_name(picture);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, &png).unwrap();
+    }
+    project
+}
+
+/// The imported layer whose id is `id`.
+fn layer<'j>(import: &'j Import, id: &str) -> &'j serde_json::Value {
+    import.json["layers"]
+        .as_array()
+        .and_then(|layers| layers.iter().find(|l| l["id"] == id))
+        .expect("the layer")
+}
+
+#[test]
+fn still_footage_found_beside_the_project_becomes_an_image_layer() {
+    // A copy elsewhere shares less of the stored path, so it loses.
+    let project = footage_project("found", &["Images/Heart-80.png", "spare/Heart-80.png"]);
+    let scene = project
+        .parent()
+        .unwrap()
+        .with_file_name("out")
+        .join("scene.json");
+    fs::create_dir_all(scene.parent().unwrap()).unwrap();
+    let mut import = import_scene(&project, &Options::default(), Some(&scene)).expect("imports");
+    let heart = layer(&import, "heart-80-png");
+    assert_eq!(heart["image"], "../template/Images/Heart-80.png");
+    assert_eq!(heart["box"], serde_json::json!([80, 80]));
+    assert!(heart.get("pivot").is_none());
+    assert_eq!(import.mapping.counts["footage: image"].mapped, 1);
+    assert!(
+        import
+            .mapping
+            .unsupported
+            .iter()
+            .all(|finding| !finding.what.contains("footage")),
+        "{:?}",
+        import.mapping.unsupported
+    );
+    // Saved where it was meant to be, the scene draws the picture.
+    substitute_fonts(&mut import, &FontSet::builtin()).expect("substituted");
+    fs::write(&scene, motion_format::write_document(&import.json)).unwrap();
+    let session = crate::Session::open(&scene).expect("a scene");
+    let frame = session.display_list(0.0).expect("a frame");
+    let drawn = frame.nodes.iter().any(|node| {
+        matches!(node, motion_raster::Node::Layer(layer)
+            if matches!(layer.children.as_slice(), [motion_raster::Node::Image(image)]
+                if (image.picture.width(), image.picture.height()) == (80, 80)))
+    });
+    assert!(drawn, "{frame:?}");
+}
+
+#[test]
+fn still_footage_that_cannot_be_found_is_reported_with_its_file() {
+    let project = footage_project("missing", &[]);
+    let import = import_scene(&project, &Options::default(), None).expect("imports");
+    assert_eq!(layer(&import, "heart-80-png")["pivot"], true);
+    let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+    assert!(
+        what.contains(&"image footage it cannot find (drawn as nothing)"),
+        "{what:?}"
+    );
 }

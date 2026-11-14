@@ -5,7 +5,7 @@ use super::ID_RULE;
 use crate::parse_document;
 use crate::shorthand::{Coord, Position};
 use crate::units::{Color, Size, Time};
-use crate::{Content, Document};
+use crate::{Content, Document, ImageContent};
 use crate::{Diagnostic, Kind};
 
 fn doc(json: &str) -> Document {
@@ -156,6 +156,73 @@ fn a_layer_draws_exactly_one_content() {
 fn font_only_applies_to_text() {
     assert_eq!(
         fails(&scene(r#"{"id":"a","rect":"1x1","font":"Inter 9"}"#)),
+        at(Kind::Conflict, "layers[0].font")
+    );
+}
+
+#[test]
+fn an_image_layer_names_its_file_and_fills_its_box() {
+    let d = doc(&scene(
+        r#"{"id":"a","image":"photos/beach.jpg","box":[192,108]},{"id":"b","image":"/abs/b.png","box":[-8,-4,16,8]}"#,
+    ));
+    let image = |i: usize| match &d.scene().layers[i].content {
+        Content::Image(image) => image.clone(),
+        other => panic!("not an image: {other:?}"),
+    };
+    assert_eq!(
+        image(0),
+        ImageContent {
+            path: "photos/beach.jpg".into(),
+            frame: kurbo::Rect::new(0.0, 0.0, 192.0, 108.0),
+        }
+    );
+    assert_eq!(image(1).path, "/abs/b.png");
+    assert_eq!(image(1).frame, kurbo::Rect::new(-8.0, -4.0, 8.0, 4.0));
+}
+
+#[test]
+fn an_image_needs_a_path_and_a_box() {
+    let missing = err(&scene(r#"{"id":"a","image":"a.png"}"#));
+    assert_eq!(
+        (missing.kind, missing.path.as_deref()),
+        (Kind::Missing, Some("layers[0]"))
+    );
+    assert_eq!(
+        missing.expected.as_deref(),
+        Some(r#"the picture's size in px, e.g. "box":[1920,1080]"#)
+    );
+    let empty = err(&scene(r#"{"id":"a","image":" ","box":[1,1]}"#));
+    assert_eq!(
+        (empty.kind, empty.path.as_deref()),
+        (Kind::Invalid, Some("layers[0].image"))
+    );
+    assert!(empty.expected.is_some());
+    assert_eq!(
+        fails(&scene(r#"{"id":"a","image":"a.png","box":[0,1]}"#)),
+        at(Kind::Invalid, "layers[0].box")
+    );
+    assert_eq!(
+        fails(&scene(r#"{"id":"a","image":3,"box":[1,1]}"#)),
+        at(Kind::WrongType, "layers[0].image")
+    );
+}
+
+#[test]
+fn box_applies_to_text_and_images_only_and_an_image_is_its_only_content() {
+    assert_eq!(
+        fails(&scene(r#"{"id":"a","rect":"1x1","box":[1,1]}"#)),
+        at(Kind::Conflict, "layers[0].box")
+    );
+    assert_eq!(
+        fails(&scene(
+            r#"{"id":"a","rect":"1x1","image":"a.png","box":[1,1]}"#
+        )),
+        at(Kind::Conflict, "layers[0].image")
+    );
+    assert_eq!(
+        fails(&scene(
+            r#"{"id":"a","image":"a.png","box":[1,1],"font":"Inter 9"}"#
+        )),
         at(Kind::Conflict, "layers[0].font")
     );
 }

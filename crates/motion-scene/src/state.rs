@@ -6,7 +6,7 @@ use motion_format::property::Prop;
 use std::sync::Arc;
 
 use motion_format::shorthand::RectShape;
-use motion_format::{Path, Value};
+use motion_format::{ImageContent, Path, Value};
 
 use crate::animate::GlyphState;
 use crate::shape::ShapeDraw;
@@ -58,6 +58,8 @@ pub enum ContentState {
     /// The composition at this index of the graph's comps, evaluated at the
     /// node's time; `None` while the node is not shown.
     Comp(usize, Option<Box<FrameState>>),
+    /// A picture file stretched over the node's box.
+    Image(Arc<ImageContent>),
     /// Nothing.
     Pivot,
 }

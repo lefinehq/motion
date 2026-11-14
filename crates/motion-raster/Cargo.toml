@@ -19,6 +19,8 @@ vello_cpu = { version = "0.4", default-features = false, features = [
   "f32_pipeline",
 ] }
 png = "0.18"
+# JPEG pictures; PNG ones go through `png` (D37: both stay private).
+zune-jpeg = "0.5"
 # The rasteriser's SIMD layer; `force_support_fallback` gives the portable
 # scalar path that golden images are drawn with.
 fearless_simd = { version = "1.2", features = ["force_support_fallback"] }

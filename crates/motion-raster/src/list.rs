@@ -1,5 +1,5 @@
 //! The display list: one frame as plain data, a tree of [`Layer`]s whose
-//! leaves are paths and glyph runs. It knows nothing of scenes or animation;
+//! leaves are paths, glyph runs and pictures. It knows nothing of scenes or animation;
 //! whatever evaluates a scene at a time writes one of these, and
 //! [`render`](crate::render) draws it.
 
@@ -8,6 +8,7 @@ use vello_cpu::peniko::FontData;
 
 use crate::blend::BlendMode;
 use crate::effect::Effect;
+use crate::picture::Picture;
 use crate::style::{Color, DrawStyle, FillRule, Paint};
 
 /// One frame to draw.
@@ -44,6 +45,8 @@ pub enum Node {
     Path(PathDraw),
     /// A run of glyphs from one font, filled or stroked.
     Glyphs(GlyphDraw),
+    /// A picture stretched over a rectangle.
+    Image(ImageDraw),
 }
 
 /// A group of nodes drawn together.
@@ -187,6 +190,16 @@ pub struct GlyphDraw {
     pub paint: Paint,
     /// Filled or stroked.
     pub style: DrawStyle,
+}
+
+/// A picture painted in its layer's coordinates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageDraw {
+    /// The pixels.
+    pub picture: Picture,
+    /// Where they go: the picture is stretched to fill this rectangle, its
+    /// top-left pixel at the rectangle's top-left corner.
+    pub rect: Rect,
 }
 
 #[cfg(test)]

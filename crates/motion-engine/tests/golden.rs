@@ -40,6 +40,10 @@ use rstest::rstest;
 // matted itself, at the start and with the door moved across.
 #[case::mattes_start("mattes", 0)]
 #[case::mattes_moved("mattes", 12)]
+// A picture file as drawn; stretched, turned and faded under a turned
+// parent, over a bar that shows through; scaled from a box off its origin
+// inside a round alpha matte; and, hidden, as the luma matte of a rect.
+#[case::images("images", 0)]
 fn golden(#[case] scene: &str, #[case] frame: u32) {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden");
     let session = Session::open(dir.join(format!("{scene}.json"))).unwrap();

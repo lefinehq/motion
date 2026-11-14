@@ -1,0 +1,11 @@
+{"motion":1,"size":"200x130","fps":10,"dur":"2s","bg":"#FFFFFF",
+"layers":[
+{"id":"bar","rect":"200x16","fill":"#202020","position":[100,70]},
+{"id":"plain","image":"images/tiles.png","box":[48,32],"position":[34,26]},
+{"id":"rig","pivot":true,"position":[110,70],"rotate":15},
+{"id":"turned","image":"images/tiles.png","box":[48,32],"parent":"rig","position":[0,0],"scale":[1.5,1],"rotate":-35,"opacity":0.6},
+{"id":"lens","shapes":[{"ellipse":[40,40]},{"fill":"#FFFFFF"}],"position":[170,30],"hidden":true},
+{"id":"peek","image":"images/tiles.png","box":[-24,-16,48,32],"position":[170,30],"scale":2,"matte":"lens alpha"},
+{"id":"mask","image":"images/tiles.png","box":[48,32],"position":[40,105],"hidden":true},
+{"id":"shade","rect":"60x40","fill":"#3B82F6","position":[40,105],"matte":"mask luma"}
+]}

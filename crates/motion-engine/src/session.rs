@@ -20,6 +20,7 @@ use motion_scene::{FrameState, evaluate};
 use motion_scene::{SceneGraph, compile};
 use motion_text::{FontSet, Typesetter};
 
+use crate::pictures::Pictures;
 use crate::render::display_list;
 use crate::stage::{stage, stage_ok};
 
@@ -38,6 +39,9 @@ pub struct Session {
     graph: OnceLock<Result<SceneGraph>>,
     /// Where locked fonts are loaded from; this user's cache when unset.
     font_cache: Option<Cache>,
+    /// The pictures image layers draw, each decoded once, on first use, and
+    /// dropped by an edit.
+    pictures: Pictures,
 }
 
 impl Session {
@@ -113,7 +117,7 @@ impl Session {
             .collect()
     }
 
-    /// The folder the scene's `fonts` are relative to.
+    /// The folder the scene's `fonts` and pictures are relative to.
     fn base(&self) -> &Path {
         self.path
             .as_deref()
@@ -187,17 +191,26 @@ impl Session {
     }
 
     /// The display list of `frame`: what the rasteriser draws (steps
-    /// `evaluate` and `display`).
+    /// `evaluate` and `display`, and `picture` for each picture file an
+    /// image layer shows for the first time).
+    ///
+    /// Image layers' files are relative to the scene file's folder (the
+    /// working folder for a scene without a file); each is read and decoded
+    /// once per edit.
     ///
     /// # Errors
-    /// As [`Session::graph`], or an effect the rasteriser cannot draw.
+    /// As [`Session::graph`], an effect the rasteriser cannot draw, or a
+    /// picture file that cannot be read or is not a PNG or JPEG file, at
+    /// its layer's `image`.
     pub fn display_list(&self, frame: f64) -> Result<Frame> {
         let state = self.frame(frame)?;
         let graph = self.graph()?;
         let background = Value::from(self.doc.scene().background);
         let c = background.components();
+        let base = self.base();
+        let picture = |path: &str| self.pictures.get(&base.join(path));
         stage("display", || {
-            display_list(graph, [c[0], c[1], c[2], c[3]], &state)
+            display_list(graph, [c[0], c[1], c[2], c[3]], &state, &picture)
         })
     }
 
@@ -326,6 +339,7 @@ impl Session {
         self.doc = stage("edit", || apply_edit(&self.doc, &parse_edit(line)?))?;
         self.fonts = OnceLock::new();
         self.graph = OnceLock::new();
+        self.pictures = Pictures::default();
         self.check()
     }
 
@@ -365,6 +379,7 @@ impl FromStr for Session {
             fonts: OnceLock::new(),
             graph: OnceLock::new(),
             font_cache: None,
+            pictures: Pictures::default(),
         })
     }
 }
