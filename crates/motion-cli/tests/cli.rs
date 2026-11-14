@@ -17,6 +17,15 @@ fn motion(args: &[&str]) -> Output {
         .expect("run motion")
 }
 
+/// Runs `motion` with `MOTION_LOG` set to `filter`.
+fn motion_with_log(filter: &str, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_motion"))
+        .args(args)
+        .env("MOTION_LOG", filter)
+        .output()
+        .expect("run motion")
+}
+
 /// A fresh scratch directory for one test (tests run in parallel).
 fn scratch(name: &str) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
@@ -38,11 +47,6 @@ fn stdout(out: &Output) -> String {
 
 fn stderr(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).into_owned()
-}
-
-/// The last line of stderr: the `error:` line, after any log lines.
-fn error_line(out: &Output) -> String {
-    stderr(out).lines().last().unwrap_or_default().to_owned()
 }
 
 #[test]
@@ -80,8 +84,8 @@ fn at_without_ids_prints_every_node() {
 fn at_unknown_id_exits_two() {
     let out = motion(&["at", LAUNCH, "1s", "nope"]);
     assert_eq!(
-        error_line(&out),
-        "error: unknown layer id `nope`; expected one of title, card"
+        stderr(&out),
+        "error: unknown layer id `nope`; expected one of title, card\n"
     );
     assert_eq!(out.status.code(), Some(2));
 }
@@ -90,17 +94,19 @@ fn at_unknown_id_exits_two() {
 fn at_bad_time_exits_two() {
     let out = motion(&["at", LAUNCH, "soon", "title"]);
     assert_eq!(out.status.code(), Some(2));
-    assert!(error_line(&out).starts_with("error: "));
+    assert_eq!(
+        stderr(&out),
+        "error: `soon` is not a valid time; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`\n"
+    );
 }
 
 #[test]
 fn missing_file_exits_two() {
     let out = motion(&["check", "/definitely/not/here.json"]);
     assert_eq!(out.status.code(), Some(2));
-    assert!(
-        error_line(&out).starts_with("error: cannot read"),
-        "{}",
-        stderr(&out)
+    assert_eq!(
+        stderr(&out),
+        "error: cannot read `/definitely/not/here.json`: No such file or directory (os error 2)\n"
     );
 }
 
@@ -151,7 +157,10 @@ fn edit_malformed_line_leaves_file_untouched() {
     let before = fs::read(&path).expect("read");
     let out = motion(&["edit", &path, "card"]);
     assert_eq!(out.status.code(), Some(2));
-    assert!(error_line(&out).starts_with("error: "));
+    assert_eq!(
+        stderr(&out),
+        "error: no changes after `card`; expected `<key>=<value>`\n"
+    );
     assert_eq!(fs::read(&path).expect("read"), before);
 }
 
@@ -186,7 +195,7 @@ fn invalid_scene_exits_two_with_path() {
 
 #[test]
 fn a_failure_is_logged_once_before_the_error_line() {
-    let out = motion(&["at", LAUNCH, "1s", "nope"]);
+    let out = motion(&["--log", "error", "at", LAUNCH, "1s", "nope"]);
     let text = stderr(&out);
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines.len(), 2, "{text}");
@@ -198,11 +207,45 @@ fn a_failure_is_logged_once_before_the_error_line() {
 }
 
 #[test]
-fn log_off_leaves_only_the_error_line() {
-    let out = motion(&["--log", "off", "at", LAUNCH, "1s", "nope"]);
+fn a_plain_failing_run_prints_exactly_one_error_line() {
+    for args in [
+        &["at", LAUNCH, "1s", "nope"][..],
+        &["at", LAUNCH, "soon"],
+        &["check", "/definitely/not/here.json"],
+    ] {
+        let out = motion(args);
+        let text = stderr(&out);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 1, "{args:?}: {text}");
+        assert!(lines[0].starts_with("error: "), "{args:?}: {text}");
+    }
+}
+
+#[test]
+fn info_logs_one_line_per_command() {
+    let out = motion(&["--log", "info", "check", LAUNCH]);
+    let text = stderr(&out);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 1, "{text}");
+    assert!(
+        lines[0].contains(r#"command="check""#) && lines[0].contains(&format!("file={LAUNCH}")),
+        "{text}"
+    );
+}
+
+#[test]
+fn an_invalid_motion_log_is_one_warning_then_the_level() {
+    let out = motion_with_log("motion=loud", &["at", LAUNCH, "1s", "nope"]);
+    let text = stderr(&out);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 2, "{text}");
+    assert!(
+        lines[0].contains(" WARN motion_telemetry") && lines[0].contains("value=motion=loud"),
+        "{text}"
+    );
     assert_eq!(
-        stderr(&out),
-        "error: unknown layer id `nope`; expected one of title, card\n"
+        lines[1],
+        "error: unknown layer id `nope`; expected one of title, card"
     );
 }
 
@@ -250,6 +293,44 @@ fn timings_print_one_line_on_stderr() {
         .unwrap_or_else(|| panic!("no timings line: {text}"));
     for step in ["read=", "parse=", "compile=", "check="] {
         assert!(line.contains(step), "{line}");
+    }
+}
+
+#[test]
+fn json_timings_are_one_event_with_the_text_line_steps() {
+    let path = copy_to("json_timings", LAUNCH);
+    for args in [
+        &["check", LAUNCH][..],
+        &["at", LAUNCH, "1s"],
+        &["edit", &path, "card rect=500x400"],
+    ] {
+        let text = stderr(&motion(&[&["--timings"], args].concat()));
+        let mut steps: Vec<&str> = text
+            .strip_prefix("timings ")
+            .unwrap_or_else(|| panic!("{args:?}: {text}"))
+            .split_whitespace()
+            .map(|step| step.split_once('=').expect("name=time").0)
+            .collect();
+        let json = stderr(&motion(
+            &[&["--timings", "--log-format", "json"], args].concat(),
+        ));
+        let lines: Vec<&str> = json.lines().collect();
+        assert_eq!(lines.len(), 1, "{args:?}: {json}");
+        let event: serde_json::Value = serde_json::from_str(lines[0]).expect("a JSON line");
+        assert_eq!(event["level"], "INFO", "{json}");
+        assert_eq!(event["target"], "motion::timings", "{json}");
+        let fields = event["fields"].as_object().expect("fields");
+        let mut keys: Vec<&str> = fields
+            .iter()
+            .filter(|(name, _)| *name != "message")
+            .map(|(name, value)| {
+                assert!(value.is_f64(), "{json}");
+                name.as_str()
+            })
+            .collect();
+        steps.sort_unstable();
+        keys.sort_unstable();
+        assert_eq!(keys, steps, "{args:?}");
     }
 }
 

@@ -17,16 +17,19 @@
 //! only.
 //!
 //! Logs go to stderr through `motion-telemetry`: `--log <level>` (default
-//! `warn`, overridden by `MOTION_LOG`), `--log-format text|json`, and
-//! `--timings` for a `timings …` line at the end.
+//! `off`, so a plain run's stderr is only the `error:` line; overridden by
+//! `MOTION_LOG`), `--log-format text|json`, and `--timings` for the step
+//! timings at the end: a `timings …` line, or one JSON event in JSON mode.
 
 mod commands;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use motion_telemetry::timing::{REPORT_TARGET, Timings};
 use motion_telemetry::{Format, LevelFilter, Options};
+use tracing::info;
 
 /// Check, query and edit motion scenes.
 #[derive(Parser)]
@@ -37,14 +40,15 @@ struct Cli {
     #[arg(
         long = "log",
         value_name = "LEVEL",
-        default_value = "warn",
+        default_value = "off",
         global = true
     )]
     log: LevelFilter,
     /// How log lines are written to stderr.
     #[arg(long, value_enum, default_value = "text", global = true)]
     log_format: LogFormat,
-    /// Print how long each step took to stderr, at the end.
+    /// Print how long each step took to stderr, at the end: a `timings …`
+    /// line, or one event in JSON log mode.
     #[arg(long, global = true)]
     timings: bool,
     /// The command to run.
@@ -96,13 +100,39 @@ enum Command {
     },
 }
 
+impl Command {
+    /// The subcommand's name, as typed.
+    fn name(&self) -> &'static str {
+        match self {
+            Command::Check { .. } => "check",
+            Command::At { .. } => "at",
+            Command::Edit { .. } => "edit",
+        }
+    }
+
+    /// The scene file the command works on.
+    fn scene(&self) -> &Path {
+        match self {
+            Command::Check { scene } | Command::At { scene, .. } | Command::Edit { scene, .. } => {
+                scene
+            }
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let format = cli.log_format.into();
     let telemetry = motion_telemetry::init(Options {
         level: cli.log,
-        format: cli.log_format.into(),
+        format,
         timings: cli.timings,
     });
+    info!(
+        command = cli.command.name(),
+        file = %cli.command.scene().display(),
+        "running"
+    );
     let result = match cli.command {
         Command::Check { scene } => commands::check::run(&scene),
         Command::At { scene, time, ids } => commands::at::run(&scene, &time, &ids),
@@ -117,7 +147,35 @@ fn main() -> ExitCode {
         }
     };
     if let Some(timings) = telemetry.timings() {
-        eprintln!("{}", timings.report());
+        match format {
+            Format::Text => eprintln!("{}", timings.report()),
+            Format::Json => log_timings(timings),
+        }
     }
     code
+}
+
+/// The timings as one `info` event with a field per step, in milliseconds,
+/// so the JSON log stream stays one object per line.
+///
+/// `tracing` fixes an event's field names where it is written, so this
+/// lists every step the engine's `Session` runs; a step that did not run
+/// leaves its field out. The CLI test
+/// `json_timings_are_one_event_with_the_text_line_steps` fails when a new
+/// step is missing here.
+fn log_timings(timings: &Timings) {
+    let ms = |step| timings.millis(step);
+    info!(
+        target: REPORT_TARGET,
+        read = ms("read"),
+        parse = ms("parse"),
+        compile = ms("compile"),
+        evaluate = ms("evaluate"),
+        check = ms("check"),
+        time = ms("time"),
+        at = ms("at"),
+        edit = ms("edit"),
+        save = ms("save"),
+        "timings"
+    );
 }

@@ -17,6 +17,7 @@ motion-edit = { path = "../motion-edit" }
 tracing.workspace = true
 
 [dev-dependencies]
+motion-telemetry = { path = "../motion-telemetry" }
 tracing-subscriber.workspace = true
 
 [lints]

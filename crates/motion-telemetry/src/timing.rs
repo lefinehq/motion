@@ -1,11 +1,13 @@
 //! Step timings: a layer that adds up how long each engine step took.
 //!
-//! The engine runs every step in a span whose [`STAGE_FIELD`] holds the
-//! step's name (`parse`, `compile`, `check`). [`Timings::layer`] times only
-//! the spans that have that field, whatever their level and whatever the
-//! log filter, from creation to close, keyed by the field's value. The
-//! library crates' own spans have no such field, so they never add to the
-//! line. A nested step counts in its own entry and in its parent's.
+//! The engine runs every step in one kind of span: target [`STAGE_TARGET`],
+//! name [`STAGE_SPAN`], with the step's name (`parse`, `compile`, `check`)
+//! in its [`STAGE_FIELD`]. [`Timings::layer`] times only spans of that
+//! identity, whatever their level and whatever the log filter, from
+//! creation to close, keyed by the step's name. The library crates' own
+//! spans have other targets, so they never add to the line, even when one
+//! has a field called `stage`. A nested step counts in its own entry and in
+//! its parent's.
 
 use std::fmt::{self, Write as _};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -19,8 +21,20 @@ use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::registry::LookupSpan;
 
-/// The span field that names a step.
+/// The target of the engine's step spans: the module that opens them.
+pub const STAGE_TARGET: &str = "motion_engine::stage";
+
+/// The name of the engine's step spans.
+pub const STAGE_SPAN: &str = "stage";
+
+/// The field of a step span that holds the step's name.
 pub const STAGE_FIELD: &str = "stage";
+
+/// The target of the event that carries the timings in JSON log mode.
+///
+/// [`init`](crate::init) always lets this target through at `info` when
+/// timings are on, whatever the log level.
+pub const REPORT_TARGET: &str = "motion::timings";
 
 /// The total time of each step, in the order the steps were first seen.
 ///
@@ -32,8 +46,8 @@ pub struct Timings {
 }
 
 impl Timings {
-    /// A layer that records into these timings; it sees only the spans with
-    /// a [`STAGE_FIELD`].
+    /// A layer that records into these timings; it sees only the engine's
+    /// step spans.
     pub fn layer<S>(&self) -> impl Layer<S> + Send + Sync + use<S>
     where
         S: Subscriber + for<'a> LookupSpan<'a>,
@@ -42,13 +56,22 @@ impl Timings {
             timings: self.clone(),
         }
         .with_filter(filter_fn(|meta| {
-            meta.is_span() && meta.fields().field(STAGE_FIELD).is_some()
+            meta.is_span() && meta.target() == STAGE_TARGET && meta.name() == STAGE_SPAN
         }))
     }
 
     /// Each step's name and total time so far, first seen first.
     pub fn steps(&self) -> Vec<(String, Duration)> {
         self.lock().clone()
+    }
+
+    /// The total time of `step` in milliseconds, or `None` when it never
+    /// ran.
+    pub fn millis(&self, step: &str) -> Option<f64> {
+        self.lock()
+            .iter()
+            .find(|(name, _)| name == step)
+            .map(|(_, total)| total.as_secs_f64() * 1000.0)
     }
 
     /// The line the CLI prints: `timings parse=0.40ms compile=0.10ms`, in
@@ -103,10 +126,11 @@ where
     fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
         let mut stage = StageName(None);
         attrs.record(&mut stage);
-        // A stage declared without a value falls back to the span's name.
-        let name = stage
-            .0
-            .unwrap_or_else(|| attrs.metadata().name().to_owned());
+        // The engine always names its steps; a step span without a name has
+        // nothing to be keyed by, so it is not timed.
+        let Some(name) = stage.0 else {
+            return;
+        };
         let slot = self.timings.slot(name);
         if let Some(span) = ctx.span(id) {
             span.extensions_mut().insert(Started {

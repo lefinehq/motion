@@ -37,9 +37,9 @@ The path is relative to the source file's directory. There is no `tests/unit/mai
 
 Logs go to stderr, never stdout, so command output stays clean for agents.
 
-- **Enable them** with `--log <level>` (default `warn`), or with `MOTION_LOG`, which takes `EnvFilter` directives such as `MOTION_LOG=warn,motion_query=debug` and wins over `--log`. Add `--log-format json` for one JSON object per line.
-- **Time the steps** with `--timings`, which prints a line such as `timings read=0.05ms parse=0.40ms compile=0.02ms check=0.45ms` to stderr at the end.
-- **Emit them** with the `tracing` macros only. Library crates never print and never install a subscriber; `motion-telemetry` does that for binaries and tests. Every engine step runs through `motion_engine::stage`, which opens the step's span and logs its failure, so a step never logs its own errors.
+- **Enable them** with `--log <level>` (default `off`, so a plain failing run prints only its `error:` line), or with `MOTION_LOG`, which takes `EnvFilter` directives such as `MOTION_LOG=warn,motion_query=debug` and wins over `--log`. An invalid `MOTION_LOG` is ignored with one `WARN` log line. Add `--log-format json` for one JSON object per line.
+- **Time the steps** with `--timings`, which prints a line such as `timings read=0.05ms parse=0.40ms compile=0.02ms check=0.45ms` to stderr at the end. With `--log-format json` the timings are one `info` event instead (target `motion::timings`, a field per step in milliseconds).
+- **Emit them** with the `tracing` macros only. Library crates never print and never install a subscriber; `motion-telemetry` does that for binaries and tests. Every engine step runs through the engine's private `stage` wrapper (`crates/motion-engine/src/stage.rs`), which opens the step's span and logs its failure, so a step never logs its own errors. The timings recognise a step by its span's target and name, not by a field.
 - **Name fields** in `snake_case`, with counts as plain names (`layers`, `violations`) and a layer id as `id`.
 - **Pick the level** by who needs it:
   - `error`: failures shown to the user

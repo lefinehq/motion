@@ -130,6 +130,16 @@ fn or_expected_sets_a_missing_form() {
 }
 
 #[test]
+fn io_names_the_action_the_file_and_the_cause() {
+    let err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+    let d = Diagnostic::io("write", std::path::Path::new("dir/scene.json"), &err);
+    assert_eq!(d.kind, Kind::Io);
+    assert_eq!(d.path, None);
+    assert_eq!(d.expected, None);
+    assert_eq!(d.to_string(), "cannot write `dir/scene.json`: denied");
+}
+
+#[test]
 fn every_kind_exits_2() {
     let kinds = [
         Kind::Syntax,

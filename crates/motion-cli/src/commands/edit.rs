@@ -5,7 +5,6 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use motion_engine::{Result, Session};
-use tracing::info;
 
 use super::print_report;
 
@@ -17,10 +16,5 @@ pub fn run(path: &Path, line: &str) -> Result<ExitCode> {
     let mut session = Session::open(path)?;
     let report = session.edit(line)?;
     session.save()?;
-    info!(
-        violations = report.violations.len(),
-        "edited `{}`",
-        path.display()
-    );
     Ok(print_report(&report))
 }

@@ -2,12 +2,15 @@
 //!
 //! The filter comes from the [`ENV_VAR`] environment variable when it is set
 //! (`EnvFilter` syntax, such as `motion_query=debug`), and from
-//! [`Options::level`] otherwise. Everything is written to stderr.
+//! [`Options::level`] otherwise. A value that is not a valid filter is
+//! ignored with one `warn` event, written like any other log line.
+//! Everything is written to stderr.
 
+use std::env::{self, VarError};
 use std::io::IsTerminal;
 
-use tracing::Subscriber;
-use tracing_subscriber::filter::{EnvFilter, LevelFilter};
+use tracing::{Subscriber, warn};
+use tracing_subscriber::filter::{Directive, EnvFilter, LevelFilter};
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
@@ -15,7 +18,7 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{Layer, fmt};
 
-use crate::timing::Timings;
+use crate::timing::{REPORT_TARGET, Timings};
 
 /// The environment variable that overrides [`Options::level`], in
 /// `EnvFilter` syntax: `debug`, or `warn,motion_query=debug`.
@@ -43,10 +46,10 @@ pub struct Options {
 }
 
 impl Default for Options {
-    /// Warnings and errors as text, without timings.
+    /// No log lines, as text when turned on, without timings.
     fn default() -> Self {
         Self {
-            level: LevelFilter::WARN,
+            level: LevelFilter::OFF,
             format: Format::Text,
             timings: false,
         }
@@ -78,8 +81,13 @@ impl Guard {
 /// has no timings.
 pub fn init(options: Options) -> Guard {
     let timings = options.timings.then(Timings::default);
+    let (mut filter, rejected) = filter(options.level, env::var(ENV_VAR));
+    if options.timings {
+        // Asking for timings is asking for their event, whatever the level.
+        filter = filter.add_directive(directive(REPORT_TARGET, LevelFilter::INFO));
+    }
     let installed = subscriber(
-        filter(options.level),
+        filter,
         options.format,
         std::io::stderr,
         std::io::stderr().is_terminal(),
@@ -87,18 +95,76 @@ pub fn init(options: Options) -> Guard {
     )
     .try_init();
     match installed {
-        Ok(()) => Guard { timings },
+        Ok(()) => {
+            if let Some(rejected) = rejected {
+                rejected.log(options.level);
+            }
+            Guard { timings }
+        }
         Err(_) => Guard::default(),
     }
 }
 
-/// The filter from [`ENV_VAR`], or `level` when the variable is unset or
-/// holds no valid directive.
-fn filter(level: LevelFilter) -> EnvFilter {
-    EnvFilter::builder()
-        .with_default_directive(level.into())
-        .with_env_var(ENV_VAR)
-        .from_env_lossy()
+/// A value of [`ENV_VAR`] that is not a valid filter, kept until the
+/// subscriber that logs it is installed.
+#[derive(Debug)]
+pub(crate) struct Rejected {
+    /// The value as set, lossily decoded when it is not UTF-8.
+    pub(crate) value: String,
+    /// Why it was rejected.
+    pub(crate) reason: String,
+}
+
+impl Rejected {
+    /// The one `warn` event naming the ignored value.
+    pub(crate) fn log(&self, level: LevelFilter) {
+        warn!(
+            value = %self.value,
+            reason = %self.reason,
+            "ignoring {ENV_VAR}, which is not a valid filter; using the level `{level}`"
+        );
+    }
+}
+
+/// The filter from `var`, the value of [`ENV_VAR`], or just `level` when it
+/// is unset; or `level` and the rejection when it is not a valid filter.
+///
+/// The fallback lets this module's warnings through, so the rejection is
+/// shown even when `level` hides warnings.
+pub(crate) fn filter(
+    level: LevelFilter,
+    var: Result<String, VarError>,
+) -> (EnvFilter, Option<Rejected>) {
+    let builder = EnvFilter::builder().with_default_directive(level.into());
+    let rejected = match var {
+        Err(VarError::NotPresent) => None,
+        Ok(value) => match builder.parse(&value) {
+            Ok(filter) => return (filter, None),
+            Err(e) => Some(Rejected {
+                value,
+                reason: e.to_string(),
+            }),
+        },
+        Err(VarError::NotUnicode(value)) => Some(Rejected {
+            value: value.to_string_lossy().into_owned(),
+            reason: "not valid UTF-8".to_owned(),
+        }),
+    };
+    let fallback = EnvFilter::default().add_directive(level.into());
+    match rejected {
+        None => (fallback, None),
+        Some(rejected) => (
+            fallback.add_directive(directive(module_path!(), LevelFilter::WARN)),
+            Some(rejected),
+        ),
+    }
+}
+
+/// The directive `{target}={level}`.
+fn directive(target: &str, level: LevelFilter) -> Directive {
+    format!("{target}={level}")
+        .parse()
+        .expect("a module path and a level make a valid directive")
 }
 
 /// The subscriber [`init`] installs, with the writer left open so tests can

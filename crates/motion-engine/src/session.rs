@@ -3,11 +3,12 @@
 //! [`Session`] runs the pipeline end to end: read and parse (step 1),
 //! compile (step 2, cached until the next edit), evaluate (step 3), and the
 //! `check`, `at` and edit side branches. Each method runs its steps through
-//! [`stage`](crate::stage) one after another, never one inside another, so
-//! each step's timing is its own.
+//! the crate's `stage` wrapper one after another, never one inside another,
+//! so each step's timing is its own.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::OnceLock;
 
 use motion_diagnostic::{Diagnostic, Kind, Result};
@@ -21,6 +22,9 @@ use motion_scene::{ApproxTextMeasure, SceneGraph, compile};
 use crate::stage::{stage, stage_ok};
 
 /// One scene document, with the results of the steps run on it so far.
+///
+/// The engine's entry point: [`open`](Session::open) a file, or
+/// [`parse`](str::parse) scene JSON that did not come from one.
 #[derive(Debug)]
 pub struct Session {
     /// The file the scene was read from, and is saved to.
@@ -40,27 +44,11 @@ impl Session {
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
         let path = path.into();
         let text = stage("read", || {
-            fs::read_to_string(&path).map_err(|e| {
-                Diagnostic::new(Kind::Io, format!("cannot read `{}`: {e}", path.display()))
-            })
+            fs::read_to_string(&path).map_err(|e| Diagnostic::io("read", &path, &e))
         })?;
-        let mut session = Self::from_text(&text)?;
+        let mut session: Self = text.parse()?;
         session.path = Some(path);
         Ok(session)
-    }
-
-    /// Parses scene JSON that did not come from a file (step `parse`). Such a
-    /// session cannot be [saved](Session::save).
-    ///
-    /// # Errors
-    /// The diagnostic of the first problem in the scene.
-    pub fn from_text(text: &str) -> Result<Self> {
-        let doc = stage("parse", || parse_document(text))?;
-        Ok(Self {
-            path: None,
-            doc,
-            graph: OnceLock::new(),
-        })
     }
 
     /// The file this session reads from and saves to, if any.
@@ -137,16 +125,32 @@ impl Session {
                 Diagnostic::new(Kind::Missing, "the scene has no file to save to")
                     .expected("a session from `Session::open`")
             })?;
-            let fail = |e: std::io::Error| {
-                Diagnostic::new(Kind::Io, format!("cannot write `{}`: {e}", path.display()))
-            };
             let tmp = temp_path(path);
-            fs::write(&tmp, write_document(&self.doc.raw)).map_err(fail)?;
+            fs::write(&tmp, write_document(&self.doc.raw))
+                .map_err(|e| Diagnostic::io("write", path, &e))?;
             fs::rename(&tmp, path).map_err(|e| {
                 // Best effort: the rename error is the one worth reporting.
                 let _ = fs::remove_file(&tmp);
-                fail(e)
+                Diagnostic::io("write", path, &e)
             })
+        })
+    }
+}
+
+impl FromStr for Session {
+    type Err = Diagnostic;
+
+    /// Parses scene JSON that did not come from a file (step `parse`). Such a
+    /// session cannot be [saved](Session::save).
+    ///
+    /// # Errors
+    /// The diagnostic of the first problem in the scene.
+    fn from_str(text: &str) -> Result<Self> {
+        let doc = stage("parse", || parse_document(text))?;
+        Ok(Self {
+            path: None,
+            doc,
+            graph: OnceLock::new(),
         })
     }
 }

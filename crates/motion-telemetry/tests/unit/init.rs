@@ -31,15 +31,14 @@ impl Capture {
 /// Runs `body` under the subscriber `init` would install, writing to a
 /// capture, and returns what was written.
 fn captured(directives: &str, format: Format, body: impl FnOnce()) -> String {
+    captured_with(EnvFilter::new(directives), format, body)
+}
+
+/// [`captured`], with a filter built by the caller.
+fn captured_with(filter: EnvFilter, format: Format, body: impl FnOnce()) -> String {
     let capture = Capture::default();
     let writer = capture.clone();
-    let subscriber = subscriber(
-        EnvFilter::new(directives),
-        format,
-        move || writer.clone(),
-        false,
-        None,
-    );
+    let subscriber = subscriber(filter, format, move || writer.clone(), false, None);
     tracing::subscriber::with_default(subscriber, body);
     capture.text()
 }
@@ -114,8 +113,56 @@ fn timings_see_steps_the_filter_hides() {
         Some(timings.clone()),
     );
     tracing::subscriber::with_default(subscriber, || {
-        let _step = debug_span!("stage", stage = "check").entered();
+        let _step =
+            debug_span!(target: crate::timing::STAGE_TARGET, "stage", stage = "check").entered();
     });
     let names: Vec<String> = timings.steps().into_iter().map(|(name, _)| name).collect();
     assert_eq!(names, ["check"]);
+}
+
+#[test]
+fn the_default_logs_nothing() {
+    assert_eq!(Options::default().level, LevelFilter::OFF);
+    let (filter, rejected) = filter(LevelFilter::OFF, Err(VarError::NotPresent));
+    assert!(rejected.is_none());
+    let text = captured_with(filter, Format::Text, || {
+        tracing::error!("hidden");
+    });
+    assert!(text.is_empty(), "{text}");
+}
+
+#[test]
+fn a_valid_env_value_replaces_the_level() {
+    let (filter, rejected) = filter(LevelFilter::OFF, Ok("motion_telemetry=debug".into()));
+    assert!(rejected.is_none());
+    let text = captured_with(filter, Format::Text, || debug!("shown"));
+    assert!(text.contains("shown"), "{text}");
+}
+
+#[test]
+fn an_invalid_env_value_falls_back_with_one_warning() {
+    let (filter, rejected) = filter(LevelFilter::OFF, Ok("motion=loud".into()));
+    let rejected = rejected.expect("rejected");
+    assert_eq!(rejected.value, "motion=loud");
+    let text = captured_with(filter, Format::Text, || {
+        rejected.log(LevelFilter::OFF);
+        debug!("hidden");
+    });
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 1, "{text}");
+    assert!(
+        lines[0].contains(" WARN ") && lines[0].contains(r#"value=motion=loud"#),
+        "{text}"
+    );
+}
+
+#[test]
+fn an_invalid_env_value_is_a_json_line_in_json_mode() {
+    let (filter, rejected) = filter(LevelFilter::OFF, Ok("motion=loud".into()));
+    let text = captured_with(filter, Format::Json, || {
+        rejected.expect("rejected").log(LevelFilter::OFF);
+    });
+    let line: serde_json::Value = serde_json::from_str(text.trim_end()).expect("one JSON line");
+    assert_eq!(line["level"], "WARN");
+    assert_eq!(line["fields"]["value"], "motion=loud");
 }

@@ -20,8 +20,8 @@ fn names(timings: &Timings) -> Vec<String> {
 #[test]
 fn records_nested_spans_in_first_seen_order() {
     let timings = timed(|| {
-        let _outer = debug_span!("stage", stage = "edit").entered();
-        let _inner = trace_span!("stage", stage = "check").entered();
+        let _outer = debug_span!(target: STAGE_TARGET, "stage", stage = "edit").entered();
+        let _inner = trace_span!(target: STAGE_TARGET, "stage", stage = "check").entered();
     });
     let steps = timings.steps();
     assert_eq!(names(&timings), ["edit", "check"]);
@@ -30,7 +30,7 @@ fn records_nested_spans_in_first_seen_order() {
 }
 
 #[test]
-fn spans_without_a_stage_field_are_not_timed() {
+fn library_spans_are_not_timed() {
     let timings = timed(|| {
         let _span = info_span!("compile", nodes = 2).entered();
     });
@@ -38,18 +38,27 @@ fn spans_without_a_stage_field_are_not_timed() {
 }
 
 #[test]
-fn a_stage_without_a_value_is_keyed_by_the_span_name() {
+fn a_stage_field_outside_the_engine_is_not_timed() {
     let timings = timed(|| {
-        let _span = debug_span!("render", stage = field::Empty).entered();
+        let _span = debug_span!("stage", stage = "parse").entered();
+        let _other = debug_span!(target: STAGE_TARGET, "step", stage = "parse").entered();
     });
-    assert_eq!(names(&timings), ["render"]);
+    assert!(timings.steps().is_empty());
+}
+
+#[test]
+fn a_step_span_without_a_name_is_not_timed() {
+    let timings = timed(|| {
+        let _span = debug_span!(target: STAGE_TARGET, "stage", stage = field::Empty).entered();
+    });
+    assert!(timings.steps().is_empty());
 }
 
 #[test]
 fn repeated_steps_are_summed() {
     let timings = timed(|| {
         for _ in 0..3 {
-            let _span = debug_span!("stage", stage = "evaluate").entered();
+            let _span = debug_span!(target: STAGE_TARGET, "stage", stage = "evaluate").entered();
         }
     });
     assert_eq!(names(&timings), ["evaluate"]);
@@ -64,6 +73,15 @@ fn report_lists_each_step_in_milliseconds() {
     timings.add(compile, Duration::from_micros(1250));
     timings.add(parse, Duration::from_micros(100));
     assert_eq!(timings.report(), "timings parse=0.50ms compile=1.25ms");
+}
+
+#[test]
+fn millis_reads_one_step_total() {
+    let timings = Timings::default();
+    let check = timings.slot("check".into());
+    timings.add(check, Duration::from_micros(1500));
+    assert_eq!(timings.millis("check"), Some(1.5));
+    assert_eq!(timings.millis("parse"), None);
 }
 
 #[test]

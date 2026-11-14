@@ -21,7 +21,8 @@
 //! ```
 
 use std::borrow::Cow;
-use std::fmt;
+use std::path::Path;
+use std::{fmt, io};
 
 /// What sort of problem a [`Diagnostic`] reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -120,6 +121,30 @@ impl Diagnostic {
         let allowed: Vec<String> = allowed.into_iter().map(|a| a.to_string()).collect();
         Self::new(Kind::UnknownName, format!("unknown {what} `{name}`"))
             .expected(format!("one of {}", allowed.join(", ")))
+    }
+
+    /// A [`Kind::Io`] diagnostic for a file that could not be read or
+    /// written: ``cannot {action} `{path}`: {err}``, where `action` is the
+    /// verb, such as `read` or `write`.
+    ///
+    /// The file goes in the message rather than in [`path`](Diagnostic::path),
+    /// which points into a document's structure.
+    ///
+    /// ```
+    /// use std::io;
+    /// use std::path::Path;
+    /// use motion_diagnostic::{Diagnostic, Kind};
+    ///
+    /// let err = io::Error::new(io::ErrorKind::NotFound, "not found");
+    /// let d = Diagnostic::io("read", Path::new("scene.json"), &err);
+    /// assert_eq!(d.kind, Kind::Io);
+    /// assert_eq!(d.to_string(), "cannot read `scene.json`: not found");
+    /// ```
+    pub fn io(action: &str, path: &Path, err: &io::Error) -> Self {
+        Self::new(
+            Kind::Io,
+            format!("cannot {action} `{}`: {err}", path.display()),
+        )
     }
 
     /// Sets the path of the offending input, replacing any path already set.

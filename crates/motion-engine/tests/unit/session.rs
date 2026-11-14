@@ -1,5 +1,14 @@
 //! Unit tests for `src/session.rs`.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use motion_telemetry::timing::Timings;
+use tracing::Subscriber;
+use tracing::span::{Attributes, Id};
+use tracing_subscriber::Layer;
+use tracing_subscriber::layer::{Context, SubscriberExt};
+
 use super::*;
 
 const LAUNCH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/launch.json");
@@ -100,9 +109,9 @@ fn an_edit_drops_the_compiled_graph() {
 }
 
 #[test]
-fn a_session_from_text_has_nowhere_to_save() {
+fn a_parsed_session_has_nowhere_to_save() {
     let text = fs::read_to_string(LAUNCH).expect("read");
-    let session = Session::from_text(&text).expect("parse");
+    let session: Session = text.parse().expect("parse");
     assert_eq!(session.path(), None);
     assert_eq!(session.save().unwrap_err().kind, Kind::Missing);
 }
@@ -116,5 +125,58 @@ fn temp_path_is_a_sibling_with_a_suffix() {
     assert_eq!(
         temp_path(Path::new("scene.json")),
         Path::new("scene.json.tmp")
+    );
+}
+
+/// A layer that counts the `compile` spans of `motion-scene`, one per
+/// compiled graph.
+#[derive(Clone, Default)]
+struct Compiles(Arc<AtomicUsize>);
+
+impl Compiles {
+    fn count(&self) -> usize {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+impl<S: Subscriber> Layer<S> for Compiles {
+    fn on_new_span(&self, attrs: &Attributes<'_>, _: &Id, _: Context<'_, S>) {
+        let meta = attrs.metadata();
+        if meta.target() == "motion_scene::compile" && meta.name() == "compile" {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+#[test]
+fn queries_on_one_session_compile_once_until_an_edit() {
+    let compiles = Compiles::default();
+    let subscriber = tracing_subscriber::registry().with(compiles.clone());
+    tracing::subscriber::with_default(subscriber, || {
+        let mut session = Session::open(LAUNCH).expect("open");
+        assert_eq!(session.check().to_string(), "OK 4");
+        session.at("1s", &[]).expect("at");
+        session.frame(30.0);
+        assert_eq!(compiles.count(), 1);
+        // The edit's check compiles the new scene; later queries reuse it.
+        session.edit("card rect=500x400").expect("edit");
+        session.at("1s", &[]).expect("at");
+        assert_eq!(compiles.count(), 2);
+    });
+}
+
+#[test]
+fn every_step_is_timed_under_its_own_name() {
+    let timings = Timings::default();
+    let subscriber = tracing_subscriber::registry().with(timings.layer());
+    tracing::subscriber::with_default(subscriber, || {
+        let session = Session::open(LAUNCH).expect("open");
+        session.at("1s", &[]).expect("at");
+        session.frame(30.0);
+    });
+    let names: Vec<String> = timings.steps().into_iter().map(|(name, _)| name).collect();
+    assert_eq!(
+        names,
+        ["read", "parse", "time", "compile", "at", "evaluate"]
     );
 }
