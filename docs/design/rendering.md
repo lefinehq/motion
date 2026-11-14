@@ -36,7 +36,12 @@ Steps 1–3 never touch pixels. Checks and edits only need these three steps, wh
 - **No start-up cost:** there is no GPU to start up, so short clips start immediately.
 - **Runs anywhere:** it works on any machine, including servers without a GPU.
 
-The rasteriser sits behind a small interface, so it can be swapped later (see [D2](decisions.md#d2-vello-as-the-rasteriser)).
+The rasteriser sits behind a small interface, so it can be swapped later (see [D2](decisions.md#d2-vello-as-the-rasteriser)). That interface is a **display list**: one frame as plain data, a tree of layers whose leaves are filled or stroked paths and glyph runs. `motion-raster` draws it ([D34](decisions.md#d34-a-layer-tree-renderer-on-vello_cpu)):
+
+- A layer has a transform, an opacity, a blend mode, a clip and a list of effects. A layer that needs none of them only moves its children and costs nothing; any of them draws its children into a buffer of their own first, as a nested composition always is.
+- Effects are a registry: a name, typed parameters and a function that draws onto the layer's isolated content. The first is `fill`, which recolours the content and keeps its alpha by painting the colour "source-atop".
+- **Blending space.** `vello_cpu` blends gamma-encoded sRGB values only. That is what projects that do not linearise expect, so imported masters match; a frame that asks for linear-light blending ([D21](decisions.md#d21-linear-light-float-compositing)) is refused with an error until the rasteriser can blend in linear light (it would need to convert paints and layer buffers to linear before compositing and back when packing pixels).
+- **Speed** (*measured*, M4 Max, one thread, release build): a 1080x1920 frame with ten story-template layers (a plate, two rotated squares, a clipped group, three text lines, a stroked arrow, two recoloured groups) takes 16.7 ms with float compositing, 4.5 ms with the faster integer pipeline, and 26.7 ms with portable scalar code (`cargo test --release -p motion-raster --test timing -- --ignored --nocapture`).
 
 **Compositing** combines the layers: effects, masks, mattes, blend modes and 2.5D depth. In v1 it runs on the CPU, written once in Rust. That gives us one implementation, bit-identical results and the same behaviour on every server. Layers with no effects skip this step entirely.
 
@@ -76,7 +81,7 @@ motion has neither.
 
 ## Repeatability
 
-- **Frames:** on the CPU path, the same scene, motion version, operating system and CPU type always produce identical pixels. Our tests compare frames against stored golden images.
+- **Frames:** on the CPU path, the same scene, motion version, operating system and CPU type always produce identical pixels. Golden images are drawn with portable scalar code instead of the processor's SIMD instructions, so the same PNGs compare exactly on every machine CI runs on; delivered frames use the fastest instructions, which may differ from the goldens by a rounding step.
 - **Encoded files:** these are not guaranteed identical, because hardware encoders are not.
 - **The future GPU path:** it will promise frames that look the same, not frames that are bit-identical.
 

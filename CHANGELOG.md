@@ -31,6 +31,7 @@ All notable changes to this project are documented here. The format is based on 
 - Typed property values (number, point, colour) and the transform set `position` (components `x`, `y`), `anchor`, `scale` (one number or `[x, y]`), `rotate` and `opacity`; any property can rest at a value set by its name on the layer.
 - Keys ease in value space: `speed(out,out-reach,in,in-reach)` holds any ease, including a span between equal keys; a point that moves in space follows a bézier path (`"path"` on an object key) at a pace measured along it; other points can take one curve per component.
 - Layers can follow a `parent`, show only in their `span`, and run on their own time with `offset` and `stretch`.
+- `motion-raster`: draws a frame's display list (layers with transform, opacity, blend mode, clip and effects; filled and stroked paths; glyph runs) into an RGBA image with `vello_cpu`, and writes PNG files. Seventeen blend modes, caps, joins and fill rules are tables; the `fill` effect is the first row of the effect registry. Golden images are drawn with portable scalar code so they compare exactly across machines.
 
 ### Changed
 
