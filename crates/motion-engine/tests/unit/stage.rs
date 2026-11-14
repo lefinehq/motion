@@ -59,7 +59,12 @@ impl Visit for Fields {
 fn events_of<T>(body: impl FnOnce() -> T) -> (T, Vec<Captured>) {
     let events = Events::default();
     let subscriber = tracing_subscriber::registry().with(events.clone());
-    let out = tracing::subscriber::with_default(subscriber, body);
+    let out = tracing::subscriber::with_default(subscriber, || {
+        // Parallel tests install scoped subscribers that share tracing's global
+        // callsite cache; rebuild it so this subscriber sees every span.
+        tracing::callsite::rebuild_interest_cache();
+        body()
+    });
     let captured = std::mem::take(&mut *events.0.lock().expect("events lock"));
     (out, captured)
 }

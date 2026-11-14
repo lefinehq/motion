@@ -153,6 +153,9 @@ fn queries_on_one_session_compile_once_until_an_edit() {
     let compiles = Compiles::default();
     let subscriber = tracing_subscriber::registry().with(compiles.clone());
     tracing::subscriber::with_default(subscriber, || {
+        // Parallel tests install scoped subscribers that share tracing's global
+        // callsite cache; rebuild it so this subscriber sees every span.
+        tracing::callsite::rebuild_interest_cache();
         let mut session = Session::open(LAUNCH).expect("open");
         assert_eq!(session.check().to_string(), "OK 4");
         session.at("1s", &[]).expect("at");
@@ -170,6 +173,9 @@ fn every_step_is_timed_under_its_own_name() {
     let timings = Timings::default();
     let subscriber = tracing_subscriber::registry().with(timings.layer());
     tracing::subscriber::with_default(subscriber, || {
+        // Parallel tests install scoped subscribers that share tracing's global
+        // callsite cache; rebuild it so this subscriber sees every span.
+        tracing::callsite::rebuild_interest_cache();
         let session = Session::open(LAUNCH).expect("open");
         session.at("1s", &[]).expect("at");
         session.frame(30.0);

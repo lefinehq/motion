@@ -9,7 +9,12 @@ use super::*;
 fn timed(body: impl FnOnce()) -> Timings {
     let timings = Timings::default();
     let subscriber = tracing_subscriber::registry().with(timings.layer());
-    tracing::subscriber::with_default(subscriber, body);
+    tracing::subscriber::with_default(subscriber, || {
+        // Parallel tests install scoped subscribers that share tracing's global
+        // callsite cache; rebuild it so this subscriber sees every span.
+        tracing::callsite::rebuild_interest_cache();
+        body();
+    });
     timings
 }
 
