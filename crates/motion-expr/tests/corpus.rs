@@ -3,6 +3,8 @@
 //! `MOTION_EXPR_SOURCES=unique.json cargo nextest run -p motion-expr --run-ignored only`,
 //! where the file is a JSON list of `{"expr": source, "engine": name}`.
 
+#![cfg(feature = "engine")]
+
 use std::rc::Rc;
 
 use motion_expr::{

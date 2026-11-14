@@ -1,10 +1,11 @@
-//! D37 and D39. Engines stay behind our own types. No crate's public API names an
+//! D37, D38 and D39. Engines stay behind our own types. No crate's public API names an
 //! engine (the shaper, the rasteriser, the parsers): a `pub` line in any
 //! crate's source that names one fails here, with where. Vocabulary crates
 //! (`kurbo`, `peniko`, `linebender_resource_handle`) are allowed.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// The engines no public API may name.
 const ENGINES: &[&str] = &[
@@ -75,101 +76,87 @@ fn no_public_api_names_an_engine() {
     );
 }
 
-/// Network clients: only the font fetcher may use one (D39).
+/// Network clients (D39).
 const NETWORK: &[&str] = &["ureq", "reqwest", "hyper", "curl", "isahc", "attohttpc"];
 
-/// The crates that may reach the network: the CLI, which runs `motion fonts
-/// fetch`, and the font crate, whose `fetch` feature is optional.
-const MAY_FETCH: &[&str] = &["motion-cli", "motion-fonts"];
+/// The script engine (D38).
+const SCRIPT: &[&str] = &["boa_engine", "boa_parser", "boa_ast", "boa_interner"];
 
-/// The dependency lines of the manifest `text`: its `[dependencies]` and
-/// target-specific ones, not its dev-dependencies.
-fn dependency_lines(text: &str) -> Vec<&str> {
-    let mut section = "";
-    let mut lines = Vec::new();
-    for line in text.lines().map(str::trim) {
-        if line.starts_with('[') {
-            section = line;
-            continue;
-        }
-        let normal = section == "[dependencies]"
-            || (section.starts_with("[target.") && section.ends_with(".dependencies]"));
-        if normal && !line.is_empty() && !line.starts_with('#') {
-            lines.push(line);
-        }
-    }
-    lines
+/// Every crate of the workspace, by name.
+fn crates() -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(CRATES)
+        .expect("read the crates folder")
+        .map(|entry| entry.expect("a crate").path())
+        .filter(|dir| dir.join("Cargo.toml").is_file())
+        .map(|dir| dir.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
 }
 
-/// D39: a render never reaches the network. No crate but those in
-/// `MAY_FETCH` depends on a network client or on the font crate's `fetch`
-/// feature, and the font crate's own client is optional, behind `fetch`.
+/// The packages `krate` links in a build of its own with its default
+/// features, dev-dependencies left out: its resolved graph, as Cargo builds
+/// it, so a dependency reached through another crate or a feature counts.
+fn linked(krate: &str) -> Vec<String> {
+    let out = Command::new(env!("CARGO"))
+        .args(["tree", "--offline", "--quiet", "-p", krate])
+        .args(["-e", "normal", "--prefix", "none", "--format", "{p}"])
+        .current_dir(CRATES)
+        .output()
+        .expect("run cargo tree");
+    assert!(
+        out.status.success(),
+        "cargo tree -p {krate}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut names: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| line.split(' ').next())
+        .map(str::to_owned)
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// The crates of the workspace, other than `allowed`, that link one of
+/// `banned`, each with what it links.
+fn linking(banned: &[&str], allowed: &[&str]) -> Vec<String> {
+    crates()
+        .into_iter()
+        .filter(|krate| !allowed.contains(&krate.as_str()))
+        .filter_map(|krate| {
+            let found: Vec<String> = linked(&krate)
+                .into_iter()
+                .filter(|name| banned.contains(&name.as_str()))
+                .collect();
+            (!found.is_empty()).then(|| format!("{krate}: {}", found.join(", ")))
+        })
+        .collect()
+}
+
+/// D39: a render never reaches the network. Only the CLI, which runs
+/// `motion fonts fetch` and turns on the font crate's `fetch` feature, links
+/// a network client.
 #[test]
 fn nothing_that_renders_can_reach_the_network() {
-    let mut found = Vec::new();
-    for krate in fs::read_dir(CRATES).expect("read the crates folder") {
-        let dir = krate.expect("a crate").path();
-        let manifest = dir.join("Cargo.toml");
-        let Ok(text) = fs::read_to_string(&manifest) else {
-            continue;
-        };
-        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
-        for line in dependency_lines(&text) {
-            let dependency = line.split(['=', ' ', '.']).next().unwrap_or("");
-            let network = NETWORK.contains(&dependency);
-            let fetching = dependency == "motion-fonts" && line.contains("fetch");
-            // The font crate may only have its client behind a feature.
-            let optional = name != "motion-fonts" || !network || line.contains("optional = true");
-            let allowed = MAY_FETCH.contains(&name.as_str()) && optional;
-            if (network || fetching) && !allowed {
-                found.push(format!("{}: {line}", manifest.display()));
-            }
-        }
-    }
+    let found = linking(NETWORK, &["motion-cli"]);
     assert!(
         found.is_empty(),
-        "only the CLI and the font crate's `fetch` feature may reach the network (D39):\n{}",
+        "only the CLI may reach the network (D39):\n{}",
         found.join("\n")
     );
 }
 
-/// The crates that draw, and those they are made of.
-const DRAWS: &[&str] = &[
-    "motion-format",
-    "motion-scene",
-    "motion-text",
-    "motion-raster",
-    "motion-query",
-    "motion-edit",
-];
-
-/// The script engine and the crate around it (D38).
-const SCRIPT: &[&str] = &[
-    "motion-expr",
-    "boa_engine",
-    "boa_parser",
-    "boa_ast",
-    "boa_interner",
-];
-
-/// D38: a render never runs JavaScript. No crate that draws depends on the
-/// script engine; only the import bakes expressions.
+/// D38: a render never runs JavaScript. Only the script crate itself and
+/// the CLI, which turns on the import's `bake` feature, link the script
+/// engine; the engine crate renders and imports without it.
 #[test]
-fn nothing_that_draws_links_the_script_engine() {
-    let mut found = Vec::new();
-    for name in DRAWS {
-        let manifest = Path::new(CRATES).join(name).join("Cargo.toml");
-        let text = fs::read_to_string(&manifest).expect("read a manifest");
-        for line in dependency_lines(&text) {
-            let dependency = line.split(['=', ' ', '.']).next().unwrap_or("");
-            if SCRIPT.contains(&dependency) {
-                found.push(format!("{}: {line}", manifest.display()));
-            }
-        }
-    }
+fn nothing_that_renders_links_the_script_engine() {
+    let found = linking(SCRIPT, &["motion-cli", "motion-expr"]);
     assert!(
         found.is_empty(),
-        "only the import may run expressions (D38):\n{}",
+        "only the CLI's import may run expressions (D38):\n{}",
         found.join("\n")
     );
 }

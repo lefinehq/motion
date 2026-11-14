@@ -10,14 +10,34 @@
 //! - [`fit`] turns the values sampled at every frame back into a few
 //!   editable keys within a tolerance.
 //!
+//! The engine, and the rewrite it runs on, sit behind the `engine` feature
+//! (on by default). Without it the crate holds only what needs no engine:
+//! the [`Host`] vocabulary, [`Dialect`] and [`fit`].
+//!
 //! [D38]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d38-expressions-are-baked-at-import
 
+#[cfg(feature = "engine")]
 mod engine;
 pub mod fit;
 mod host;
+#[cfg(feature = "engine")]
 mod noise;
+#[cfg(feature = "engine")]
 mod rewrite;
 
+#[cfg(feature = "engine")]
 pub use engine::{Compiled, Engine, Failure, Limits, Program, Run, STACK_SIZE};
 pub use host::{Host, Missing, NodeId, NodeKind, Select, Val};
-pub use rewrite::{Dialect, Rewritten, rewrite};
+#[cfg(feature = "engine")]
+pub use rewrite::{Rewritten, rewrite};
+
+/// The engine a project evaluates its expressions with, which decides the
+/// forms a source may use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Dialect {
+    /// The modern engine: ECMAScript 2018.
+    Modern,
+    /// The legacy engine: ECMAScript 3, with `if … else` on one line, the
+    /// snake_case aliases and `this(…)` for `thisLayer(…)`.
+    Legacy,
+}

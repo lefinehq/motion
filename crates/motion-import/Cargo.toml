@@ -8,12 +8,18 @@ rust-version.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+# Evaluating expressions at import, with the JavaScript engine. Only the CLI
+# turns it on, through motion-engine: nothing that renders links the script
+# engine (D38).
+bake = ["motion-expr/engine"]
+
 [dependencies]
 strum.workspace = true
 derive_more.workspace = true
 motion-format = { path = "../motion-format" }
 motion-scene = { path = "../motion-scene" }
-motion-expr = { path = "../motion-expr" }
+motion-expr = { path = "../motion-expr", default-features = false }
 kurbo.workspace = true
 binrw.workspace = true
 serde.workspace = true
@@ -22,6 +28,8 @@ serde_path_to_error.workspace = true
 winnow.workspace = true
 
 [dev-dependencies]
+# The tests bake.
+motion-import = { path = ".", features = ["bake"] }
 rstest.workspace = true
 pretty_assertions.workspace = true
 insta.workspace = true
