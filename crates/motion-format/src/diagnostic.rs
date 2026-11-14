@@ -1,10 +1,6 @@
-//! `motion-diagnostic`: the one error type of motion.
-//!
-//! This crate is not a pipeline step. Every crate that can fail on input
-//! (format, query, edit) and the CLI report failures as a [`Diagnostic`], so
-//! a message reads the same wherever it comes from: what was wrong, where
-//! it was (`layers[1].fill`), and which forms would have been accepted, so an
-//! agent can fix its input in one try.
+//! [`Diagnostic`], the one error type of every motion crate: what was wrong,
+//! where (`layers[1].fill`) and which forms are accepted, so an agent can fix
+//! its input in one try.
 //!
 //! ```
 //! use motion_format::{Diagnostic, Kind};
@@ -29,8 +25,7 @@ use std::{fmt, io};
 pub enum Kind {
     /// A shorthand string or an edit line that cannot be parsed.
     Syntax,
-    /// A name that is not in its table: a key, preset, curve, property or
-    /// layer id.
+    /// A name that is not in its table: a key, preset, curve, property or id.
     UnknownName,
     /// A number outside the values its key accepts.
     OutOfRange,
@@ -38,11 +33,9 @@ pub enum Kind {
     Missing,
     /// Two parts of the input that cannot both hold, such as a duplicate id.
     Conflict,
-    /// A JSON value of the wrong type, such as a number where a string is
-    /// required.
+    /// A JSON value of the wrong type, such as a number for a string.
     WrongType,
-    /// A semantic rule the value breaks, such as an id that does not follow
-    /// the id rule.
+    /// A rule the value breaks, such as the id rule.
     Invalid,
     /// A file that cannot be read or written.
     Io,
@@ -51,8 +44,7 @@ pub enum Kind {
 impl Kind {
     /// The exit code of the `motion` CLI for this kind of failure.
     ///
-    /// Every kind exits 2 today. The code lives in this one method, and the
-    /// match lists every kind, so a new kind has to choose its code here.
+    /// The match names every kind, so a new kind has to choose its code here.
     pub const fn exit_code(self) -> u8 {
         match self {
             Kind::Syntax
@@ -67,19 +59,13 @@ impl Kind {
     }
 }
 
-/// A problem with the input, ready to show to people and agents.
-///
-/// Displays as `{path}: {message}; expected {expected}`, where the path and
-/// the expected part are each left out when absent. Built with
-/// [`Diagnostic::new`] (or a shorthand such as [`Diagnostic::syntax`]) and
-/// the builder methods [`at`](Diagnostic::at), [`under`](Diagnostic::under)
-/// and [`expected`](Diagnostic::expected).
+/// A problem with the input, shown as `{path}: {message}; expected {expected}`,
+/// without the parts that are absent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
     /// What sort of problem this is; decides the CLI exit code.
     pub kind: Kind,
-    /// Where the problem is, e.g. `layers[1].in`; `None` when the input has
-    /// no structure to point into (an edit line, a time argument).
+    /// Where the problem is, e.g. `layers[1].in`; `None` for input without structure.
     pub path: Option<String>,
     /// What was wrong, including the offending input.
     pub message: String,
@@ -106,13 +92,9 @@ impl Diagnostic {
         Self::new(Kind::Syntax, message)
     }
 
-    /// A [`Kind::UnknownName`] diagnostic for `name`, which is not one of
-    /// `allowed`: ``unknown {what} `{name}`; expected one of a, b, c``.
+    /// A [`Kind::UnknownName`] diagnostic: ``unknown {what} `{name}`; expected one of a, b``.
     ///
-    /// `allowed` should come from the table that holds the names, so the
-    /// message can never drift from what is accepted. Names are listed as
-    /// they are, without quotes; [`or_expected`](Diagnostic::or_expected)
-    /// adds a form that is not a name, such as a pattern.
+    /// Pass `allowed` from the table that holds the names, so the list cannot drift.
     pub fn unknown(
         what: impl fmt::Display,
         name: impl fmt::Display,
@@ -123,23 +105,9 @@ impl Diagnostic {
             .expected(format!("one of {}", allowed.join(", ")))
     }
 
-    /// A [`Kind::Io`] diagnostic for a file that could not be read or
-    /// written: ``cannot {action} `{path}`: {err}``, where `action` is the
-    /// verb, such as `read` or `write`.
+    /// A [`Kind::Io`] diagnostic: ``cannot {action} `{path}`: {err}``.
     ///
-    /// The file goes in the message rather than in [`path`](Diagnostic::path),
-    /// which points into a document's structure.
-    ///
-    /// ```
-    /// use std::io;
-    /// use std::path::Path;
-    /// use motion_format::{Diagnostic, Kind};
-    ///
-    /// let err = io::Error::new(io::ErrorKind::NotFound, "not found");
-    /// let d = Diagnostic::io("read", Path::new("scene.json"), &err);
-    /// assert_eq!(d.kind, Kind::Io);
-    /// assert_eq!(d.to_string(), "cannot read `scene.json`: not found");
-    /// ```
+    /// The file goes in the message, since [`path`](Diagnostic::path) points into a document.
     pub fn io(action: &str, path: &Path, err: &io::Error) -> Self {
         Self::new(
             Kind::Io,
@@ -154,12 +122,9 @@ impl Diagnostic {
         self
     }
 
-    /// Places the diagnostic inside `prefix`: the path becomes
-    /// `prefix.path`, or `prefix[i]…` when the path starts with an index
-    /// segment, or just `prefix` when there was no path yet.
+    /// Places the diagnostic inside `prefix`: `prefix.path`, `prefix[i]…` or `prefix`.
     ///
-    /// An empty `prefix` (the top level) leaves the path as it is, so callers
-    /// can nest without special-casing the root.
+    /// An empty `prefix` (the top level) keeps the path, so callers need no root case.
     #[must_use]
     pub fn under(mut self, prefix: impl Into<String>) -> Self {
         let mut full = prefix.into();
@@ -167,7 +132,6 @@ impl Diagnostic {
             return self;
         }
         if let Some(path) = self.path.take() {
-            // An index segment attaches directly: `layers` + `[1]` is `layers[1]`.
             if !path.starts_with('[') {
                 full.push('.');
             }
@@ -184,19 +148,7 @@ impl Diagnostic {
         self
     }
 
-    /// Adds one more accepted form after those already set, as
-    /// `{expected}, or {form}`; sets it when none is set yet.
-    ///
-    /// ```
-    /// use motion_format::Diagnostic;
-    ///
-    /// let d = Diagnostic::unknown("curve", "bounce", ["linear", "ease"])
-    ///     .or_expected("cubic(x1,y1,x2,y2)");
-    /// assert_eq!(
-    ///     d.to_string(),
-    ///     "unknown curve `bounce`; expected one of linear, ease, or cubic(x1,y1,x2,y2)"
-    /// );
-    /// ```
+    /// Adds an accepted form after those already set, as `{expected}, or {form}`.
     #[must_use]
     pub fn or_expected(mut self, form: impl fmt::Display) -> Self {
         let joined = match self.expected.take() {
@@ -208,8 +160,6 @@ impl Diagnostic {
     }
 }
 
-// The path and the expected form are each optional, so the text is
-// written by hand.
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(path) = &self.path {
@@ -223,8 +173,6 @@ impl fmt::Display for Diagnostic {
     }
 }
 
-/// A diagnostic is an error with nothing underneath: its message already
-/// says what was wrong.
 impl std::error::Error for Diagnostic {}
 
 #[cfg(test)]

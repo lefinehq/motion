@@ -1,13 +1,6 @@
-//! The rules a scene must follow beyond its JSON shape, checked in one pass.
-//!
-//! Part of step 1 (Read), after `crate::doc`. Serde has already checked the
-//! shape; [`scene`] turns the document into the typed [`Scene`], parsing each
-//! shorthand where it was written and checking every rule that types cannot
-//! express, including the keys a scene cannot do without. Each rule is a
-//! small function. Errors are built without the enclosing path and placed
-//! with [`Diagnostic::under`] by the caller, so a rule does not need to know
-//! where its value sits. Every key in a path is a constant of
-//! `crate::parse::key`.
+//! The rules a scene follows beyond its JSON shape, one small function each,
+//! turning the document into the typed [`Scene`]. A rule reports its error
+//! without the enclosing path; the caller places it with [`Diagnostic::under`].
 
 use std::collections::HashSet;
 use std::str::FromStr;
@@ -35,28 +28,23 @@ pub(crate) const ID_RULE: &str =
 
 /// The only format version.
 const VERSION: u32 = 1;
-/// Frames per second when `fps` is left out.
 const DEFAULT_FPS: f64 = 30.0;
-/// The canvas when `size` is left out.
 const DEFAULT_SIZE: Size = Size {
     width: 1920,
     height: 1080,
 };
-/// The background when `bg` is left out: opaque black.
 const DEFAULT_BACKGROUND: Color = Color {
     r: 0,
     g: 0,
     b: 0,
     a: 255,
 };
-/// A layer's fill when `fill` is left out: opaque white.
 const DEFAULT_FILL: Color = Color {
     r: 255,
     g: 255,
     b: 255,
     a: 255,
 };
-/// A layer's position when `at` is left out: the centre of the canvas.
 const DEFAULT_POSITION: Position = Position {
     x: Coord::Center,
     y: Coord::Center,
@@ -64,16 +52,12 @@ const DEFAULT_POSITION: Position = Position {
 
 /// What a layer needs from the scene around it.
 struct Context<'a> {
-    /// The scene's own presets.
     presets: &'a [(String, PresetSpec)],
-    /// Frames per second.
     fps: f64,
-    /// The canvas size.
     size: Size,
 }
 
-/// Validates a scene document and builds the typed [`Scene`], applying the
-/// defaults of the keys left out.
+/// Validates a scene document into a [`Scene`], with the defaults of the keys left out.
 pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
     version(required(*doc.motion, MOTION, &VERSION.to_string())?)?;
     let fps = doc.fps.map_or(Ok(DEFAULT_FPS), fps)?;
@@ -107,8 +91,7 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
     })
 }
 
-/// Validates the `presets` object: names to property starts, in the order
-/// written. The built-ins in `presets.json` go through the same rules.
+/// Validates a `presets` object; the built-ins in `presets.json` use it too.
 pub(crate) fn presets(doc: &PresetsDoc) -> Result<Vec<(String, PresetSpec)>> {
     doc.iter()
         .map(|(name, Object(body))| {
@@ -119,8 +102,7 @@ pub(crate) fn presets(doc: &PresetsDoc) -> Result<Vec<(String, PresetSpec)>> {
         .collect()
 }
 
-/// A key the scene cannot do without. The expected form shows it written,
-/// with `value` as an example.
+/// A required key; the expected form shows it written with `value` as an example.
 fn required<T>(written: Option<T>, key: &str, value: &str) -> Result<T> {
     written.ok_or_else(|| {
         Diagnostic::new(Kind::Missing, format!("missing `{key}`"))
@@ -128,7 +110,6 @@ fn required<T>(written: Option<T>, key: &str, value: &str) -> Result<T> {
     })
 }
 
-/// `motion` must be the one version there is.
 fn version(motion: Number) -> Result<()> {
     if motion.0 == f64::from(VERSION) {
         return Ok(());
@@ -140,7 +121,6 @@ fn version(motion: Number) -> Result<()> {
     )
 }
 
-/// `fps` must be above zero.
 fn fps(fps: Number) -> Result<f64> {
     if fps.0 > 0.0 {
         return Ok(fps.0);
@@ -181,7 +161,6 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
     Ok(layer)
 }
 
-/// The id must follow [`ID_RULE`].
 fn follows_id_rule(id: &str) -> Result<()> {
     if is_valid_id(id) {
         return Ok(());
@@ -198,9 +177,8 @@ pub(crate) fn is_valid_id(id: &str) -> bool {
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
 }
 
-/// A layer draws exactly one of `text` or `rect`. Neither is missing
-/// content and both are a contradiction, so the kinds differ; the message is
-/// the same, since the fix is the same.
+/// A layer draws exactly one of `text` or `rect`. Neither is `Missing` and
+/// both is a `Conflict`, with the same message, since the fix is the same.
 fn content(doc: &LayerDoc) -> Result<Content> {
     const ONE_OF: &str = "needs exactly one of `text` or `rect`";
     const EXAMPLE: &str = r#"e.g. "text":"Hello" or "rect":"300x100""#;
@@ -218,7 +196,6 @@ fn content(doc: &LayerDoc) -> Result<Content> {
     }
 }
 
-/// The font of a text layer when `font` is left out.
 fn default_font() -> Font {
     Font {
         family: "Inter".into(),
@@ -239,8 +216,7 @@ fn font_only_on_text(doc: &LayerDoc) -> Result<()> {
     }
 }
 
-/// Parses `in` and checks that its preset exists, among the scene's own or
-/// the built-ins.
+/// Parses `in` and checks that its preset exists.
 fn entrance(written: &Shorthand<Behaviour>, presets: &[(String, PresetSpec)]) -> Result<Behaviour> {
     let behaviour = written.parse_at(IN)?;
     match lookup(presets, &behaviour.preset) {
@@ -249,7 +225,6 @@ fn entrance(written: &Shorthand<Behaviour>, presets: &[(String, PresetSpec)]) ->
     }
 }
 
-/// Every layer has its own id.
 fn unique_ids(layers: &[Layer]) -> Result<()> {
     let mut seen = HashSet::new();
     match layers.iter().position(|layer| !seen.insert(&layer.id)) {
@@ -263,7 +238,6 @@ fn unique_ids(layers: &[Layer]) -> Result<()> {
     }
 }
 
-/// Validates the tracks of `anim`, in the order written.
 fn anim(tracks: &AnimDoc, fps: f64) -> Result<Vec<AnimTrack>> {
     tracks
         .iter()
@@ -281,7 +255,6 @@ fn track(name: &str, doc: &TrackDoc, fps: f64) -> Result<AnimTrack> {
     Ok(AnimTrack { property, keys })
 }
 
-/// Looks `name` up in the property registry.
 fn known_property(name: &str) -> Result<Prop> {
     Prop::named(name).ok_or_else(|| Diagnostic::unknown("property", name, property_names()))
 }
@@ -295,8 +268,7 @@ fn line(text: &str, spec: &PropertySpec, fps: f64) -> Result<Vec<AnimKey>> {
     Ok(line.keys())
 }
 
-/// A range starts no later than it ends. Its ends may use different units,
-/// so they are compared in frames.
+/// A range starts no later than it ends, compared in frames since units may differ.
 fn runs_forward(span: Span, fps: f64) -> Result<()> {
     if span.start.to_frames(fps) <= span.end.to_frames(fps) {
         return Ok(());
@@ -341,8 +313,7 @@ fn key(doc: &KeyDoc, spec: &PropertySpec) -> Result<AnimKey> {
     })
 }
 
-/// A bare frame count is a time only when it is not negative. (A written
-/// time cannot be negative: its grammar has no sign.)
+/// A bare frame count must not be negative; a written time has no sign to check.
 fn not_negative(frames: f64) -> Result<Time> {
     if frames >= 0.0 {
         return Ok(Time::Frames(frames));
@@ -353,8 +324,7 @@ fn not_negative(frames: f64) -> Result<Time> {
     )
 }
 
-/// No key is earlier than the one before it. Keys may mix units, so they
-/// are compared in frames.
+/// No key is earlier than the one before it, compared in frames since units may differ.
 fn in_time_order(keys: &[AnimKey], fps: f64) -> Result<()> {
     let earlier = keys
         .windows(2)
@@ -414,10 +384,8 @@ fn preset(name: &str, body: &PresetDoc) -> Result<PresetSpec> {
     Ok(PresetSpec { props })
 }
 
-/// One start of a preset: a known property, and a start it can take. An
-/// absolute start obeys the property's range, like an `anim` key; a
-/// distance in pixels means nothing for a bounded property such as opacity,
-/// and would leave its range.
+/// One start of a preset: a known property and a start in its range. A
+/// bounded property such as opacity cannot start at a distance in pixels.
 fn preset_start(name: &str, start: Start) -> Result<(Prop, Start)> {
     let prop = known_property(name)?;
     match start {
@@ -436,10 +404,9 @@ fn preset_start(name: &str, start: Start) -> Result<(Prop, Start)> {
     Ok((prop, start))
 }
 
-/// Rejects an `anim` track for a property the `in` preset already animates:
-/// two writers of one property would fight, so the author must pick one. The
-/// error gives the exact edit that moves the entrance into `anim`, keeping
-/// the other tracks as written.
+/// Rejects an `anim` track for a property the `in` preset already animates,
+/// since two writers would fight. The hint is the edit that moves the
+/// entrance into `anim`.
 fn entrance_conflict(layer: &Layer, context: &Context, written: &AnimDoc) -> Result<()> {
     let Some(behaviour) = &layer.enter else {
         return Ok(());

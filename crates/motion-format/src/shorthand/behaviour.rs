@@ -1,9 +1,5 @@
-//! The behaviour shorthand: an entrance preset with optional tuning tokens,
-//! e.g. `"fade-up 60px 12f ease-out @15f"`.
-//!
-//! Part of step 1 (Read): parses a layer's `in` string into a [`Behaviour`].
-//! The preset name is a plain string here; the scene parser resolves it.
-//! Step 2 turns it into an entrance on the compiled graph.
+//! The behaviour shorthand, a layer's `in`: an entrance preset with optional
+//! tuning, e.g. `"fade-up 60px 12f ease-out @15f"`.
 
 use std::str::FromStr;
 
@@ -22,14 +18,13 @@ use crate::validate::{ID_RULE, is_valid_id};
 
 pub(crate) const EXPECTED: &str = "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`";
 
-/// Name of the default curve, which must be in `NAMED_CURVES`.
+/// Must be in `NAMED_CURVES`.
 const DEFAULT_CURVE: &str = "ease-out";
 
 /// A parsed behaviour: a preset plus its tuning, with defaults filled in.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Behaviour {
-    /// The name of the preset to perform; checked against the scene's presets
-    /// when the scene is parsed.
+    /// The preset to perform; whether it exists depends on the scene.
     pub preset: String,
     /// Travel distance in pixels; 40 by default.
     pub distance: f64,
@@ -37,20 +32,18 @@ pub struct Behaviour {
     pub duration: Time,
     /// Easing curve; `ease-out` by default.
     pub curve: Curve,
-    /// When the motion starts, measured from the start of the scene; frame 0 by default.
+    /// When the motion starts, from the start of the scene; frame 0 by default.
     pub start: Time,
 }
 
 impl Behaviour {
-    /// The frames the motion starts and ends on, at `fps` frames per
-    /// second: `(start, start + duration)`.
+    /// The frames the motion starts and ends on at `fps` frames per second.
     pub fn frames(&self, fps: f64) -> (f64, f64) {
         let start = self.start.to_frames(fps);
         (start, start + self.duration.to_frames(fps))
     }
 
-    /// The behaviour of `preset` with each token's field set over the
-    /// defaults.
+    /// The behaviour of `preset`, each token's field set over the defaults.
     fn tuned(preset: String, tokens: Vec<Token<'_>>) -> Behaviour {
         let defaults = Behaviour {
             preset,
@@ -68,18 +61,13 @@ impl Behaviour {
 impl FromStr for Behaviour {
     type Err = Diagnostic;
 
-    /// Parses `<preset>` followed by any of `<n>px` (distance), `<n>f` or
-    /// `<n>s` (duration), a curve and `@<time>` (start).
+    /// Parses `<preset>` and any of `<n>px`, `<n>f` or `<n>s`, a curve and
+    /// `@<time>`, each at most once.
     ///
-    /// Tokens after the preset are classified by their shape, never by their
-    /// position. An agent can write them in any order and still get the same
-    /// result, and a given string has exactly one meaning, so there is no
-    /// "which number is the distance?" guess to get wrong. Each kind may
-    /// appear once.
+    /// Tokens are told apart by their shape, never their position, so any
+    /// order means the same and no number has to be guessed at.
     fn from_str(text: &str) -> Result<Behaviour> {
         parse_all(text, behaviour, |problem| {
-            // Every other failure names its problem where it happens, so a
-            // failure without one can only mean there was no word at all.
             problem.unwrap_or(Problem::NoPreset).diagnostic()
         })
     }
@@ -92,7 +80,6 @@ impl Form for Behaviour {
 /// What is wrong with a behaviour string, with the text it is wrong about.
 #[derive(Debug, Clone)]
 enum Problem<'s> {
-    /// There is no word to name the preset.
     NoPreset,
     /// The preset name is not a valid id.
     Preset(&'s str),
@@ -102,14 +89,11 @@ enum Problem<'s> {
     Unknown(&'s str),
     /// Two tokens set the same field: the first and the second.
     Twice(Field, &'s str, &'s str),
-    /// The curve token is not a curve; its own diagnostic says why.
+    /// The curve token is not a curve, with its own diagnostic.
     Curve(Diagnostic),
 }
 
 impl Problem<'_> {
-    /// The diagnostic for this problem: the one place the behaviour
-    /// grammar's failures become messages. Each problem carries the text it
-    /// is about.
     fn diagnostic(self) -> Diagnostic {
         match self {
             Problem::Curve(diagnostic) => diagnostic,
@@ -146,7 +130,7 @@ enum Field {
 }
 
 impl Field {
-    /// The field's name, as in "duration given twice".
+    /// As in "duration given twice".
     fn name(self) -> &'static str {
         match self {
             Field::Distance => "distance",
@@ -156,8 +140,7 @@ impl Field {
         }
     }
 
-    /// What a malformed token for this field failed to be, as in "`@12` is
-    /// not a valid start time".
+    /// As in "`@12` is not a valid start time".
     fn noun(self) -> &'static str {
         match self {
             Field::Start => "start time",
@@ -166,7 +149,7 @@ impl Field {
     }
 }
 
-/// A tuning token as read, with its text for messages.
+/// A tuning token and its text.
 type Token<'s> = (Tuning, &'s str);
 
 /// One tuning token after the preset.
@@ -179,7 +162,6 @@ enum Tuning {
 }
 
 impl Tuning {
-    /// The field this token sets.
     fn field(self) -> Field {
         match self {
             Tuning::Distance(_) => Field::Distance,
@@ -189,7 +171,6 @@ impl Tuning {
         }
     }
 
-    /// `behaviour` with this token's field set.
     fn apply(self, behaviour: Behaviour) -> Behaviour {
         match self {
             Tuning::Distance(distance) => Behaviour {
@@ -206,7 +187,6 @@ impl Tuning {
     }
 }
 
-/// The preset, then tuning tokens in any order, each kind at most once.
 fn behaviour<'s>(input: &mut &'s str) -> Parsed<Behaviour, Problem<'s>> {
     delimited(
         blank0,
@@ -220,8 +200,7 @@ fn behaviour<'s>(input: &mut &'s str) -> Parsed<Behaviour, Problem<'s>> {
     .parse_next(input)
 }
 
-/// The preset name. Only its shape is checked here: which presets exist
-/// depends on the scene, and the scene parser checks that.
+/// The preset name; only its shape is checked, since presets depend on the scene.
 fn preset<'s>(input: &mut &'s str) -> Parsed<&'s str, Problem<'s>> {
     word.try_map(|name| {
         is_valid_id(name)
@@ -231,16 +210,14 @@ fn preset<'s>(input: &mut &'s str) -> Parsed<&'s str, Problem<'s>> {
     .parse_next(input)
 }
 
-/// One word read as a tuning token, with its text. Once there is a word it
-/// must be a valid token, so its problem stands.
+/// One word, which must then be a valid tuning token.
 fn token<'s>(input: &mut &'s str) -> Parsed<Token<'s>, Problem<'s>> {
     word.and_then(cut_err(tuning))
         .with_taken()
         .parse_next(input)
 }
 
-/// Adds `next` to the tokens `read` so far, unless a token for the same
-/// field came before it: the one "given twice" check, for every field.
+/// Adds `next` to the tokens `read` so far, unless one set the same field before.
 fn once_per_field<'s>(
     mut read: Vec<Token<'s>>,
     (tuning, text): Token<'s>,
@@ -255,12 +232,10 @@ fn once_per_field<'s>(
     }
 }
 
-/// One tuning token, the whole of `input`, told apart by its shape: `@`
-/// starts a start time, a `px` ending makes a distance, a token without
-/// digits (or starting `cubic(`) is a curve, and an `f` or `s` ending makes
+/// One tuning token, told apart by its shape: `@` starts a start time, `px`
+/// ends a distance, no digits (or `cubic(`) make a curve and `f` or `s` ends
 /// a duration. Each shape commits, so a malformed token is reported as the
-/// kind it looks like; a misspelt curve gets the curve error that lists the
-/// names.
+/// kind it looks like, and a misspelt curve gets the curve error.
 fn tuning<'s>(input: &mut &'s str) -> Parsed<Tuning, Problem<'s>> {
     let token = *input;
     let malformed = |field| Problem::Malformed(field, token);
@@ -286,15 +261,13 @@ fn tuning<'s>(input: &mut &'s str) -> Parsed<Tuning, Problem<'s>> {
     .parse_next(input)
 }
 
-/// `value`, which must then end the token; committed, since the token's
-/// shape has already said what it is.
+/// `value`, which must end the token; committed, since the shape said what it is.
 fn whole<'s, T>(
     value: impl Parser<&'s str, T, ErrMode<Failure<Problem<'s>>>>,
 ) -> impl Parser<&'s str, T, ErrMode<Failure<Problem<'s>>>> {
     cut_err(terminated(value, eof))
 }
 
-/// A token with no digit in it.
 fn digit_free<R>(input: &mut &str) -> Parsed<(), R> {
     (take_till(0.., '0'..='9'), eof).void().parse_next(input)
 }

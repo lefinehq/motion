@@ -1,8 +1,5 @@
-//! The typed scene model.
-//!
-//! Part of step 1 (Read). These are the values the compiler consumes; they
-//! are produced by [`parse_document`](crate::parse_document) and
-//! [`Document::from_value`].
+//! The typed scene model the compiler consumes, and [`Document`], which keeps
+//! it with the JSON it was read from.
 
 use crate::Result;
 use serde_json::Value;
@@ -26,8 +23,7 @@ pub struct Scene {
     pub duration: Time,
     /// Canvas colour behind every layer.
     pub background: Color,
-    /// Presets the scene defines itself; they take precedence over the
-    /// built-ins of the same name. JSON key `presets`.
+    /// The scene's own presets, which hide built-ins of the same name.
     pub presets: Vec<(String, PresetSpec)>,
     /// Layers in paint order: the first is at the back.
     pub layers: Vec<Layer>,
@@ -58,7 +54,7 @@ pub struct Layer {
     pub at: Position,
     /// Entrance behaviour; JSON key `in`.
     pub enter: Option<Behaviour>,
-    /// Free-form animation tracks; JSON key `anim`.
+    /// Free-form animation tracks.
     pub anim: Vec<AnimTrack>,
 }
 
@@ -76,35 +72,29 @@ pub enum Content {
     Rect(RectShape),
 }
 
-/// A parsed scene file: the typed scene and the JSON it came from.
+/// A parsed scene file: the typed scene and the JSON it came from, kept so
+/// that writing it back preserves what the author wrote.
 ///
-/// The raw value is kept so that writing the document back preserves the
-/// author's keys and values exactly. The fields are private and
-/// [`Document::from_value`] is the only way to make one, so the scene is
-/// always the validated reading of the raw value: code that finds a layer in
-/// [`scene`](Document::scene) can rely on finding it at the same index of the
-/// raw `layers`.
+/// [`Document::from_value`] is the only constructor, so the scene is always
+/// the validated reading of the raw value: layer `i` of one is layer `i` of the other.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
-    /// The JSON as read.
     raw: Value,
-    /// The validated scene `raw` describes.
     scene: Scene,
 }
 
 impl Document {
-    /// Validates `raw` and keeps it with the typed [`Scene`] it describes,
-    /// applying the defaults of the keys left out.
+    /// Validates `raw` and keeps it with the [`Scene`] it describes.
     ///
     /// # Errors
-    /// Returns a [`Diagnostic`](crate::Diagnostic) for the first
-    /// part of `raw` that is not a valid scene, at its path.
+    /// A [`Diagnostic`](crate::Diagnostic) for the first part of `raw` that is
+    /// not a valid scene, at its path.
     pub fn from_value(raw: Value) -> Result<Document> {
         let scene = scene_from_value(&raw)?;
         Ok(Document { raw, scene })
     }
 
-    /// The JSON as read, which writing the document back reproduces.
+    /// The JSON as read.
     pub fn raw(&self) -> &Value {
         &self.raw
     }
@@ -114,8 +104,7 @@ impl Document {
         &self.scene
     }
 
-    /// The JSON as read, without the scene, for a caller that keeps only
-    /// the value.
+    /// The JSON as read, dropping the scene.
     pub fn into_raw(self) -> Value {
         self.raw
     }

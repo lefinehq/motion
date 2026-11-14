@@ -1,8 +1,6 @@
-//! The motion scene format: read scene JSON into a typed [`Scene`], validate
-//! it, expand shorthand strings (`"0.4s"`, `"#0B0D12"`, `"1080p"`) and write
-//! it back keeping what the author wrote. Also home to [`Diagnostic`], the one
-//! error type of every motion crate, and the [`grammar`] pieces every text
-//! grammar shares.
+//! The motion scene format: read scene JSON into a typed [`Scene`], expand its
+//! shorthand strings (`"0.4s"`, `"#0B0D12"`, `"1080p"`) and write it back as
+//! the author wrote it. Also home to [`Diagnostic`] and the shared [`grammar`].
 
 pub mod anim;
 mod curve;

@@ -1,7 +1,4 @@
-//! The `at` shorthand: where a layer's centre sits, as `"<x> <y>"`.
-//!
-//! Part of step 1 (Read): parses a layer's `at` string into a [`Position`].
-//! Step 2 resolves `center` against the canvas, with [`Coord::resolve`].
+//! The `at` shorthand, `"<x> <y>"`: where a layer's centre sits.
 
 use std::fmt;
 use std::str::FromStr;
@@ -27,8 +24,7 @@ pub enum Coord {
 }
 
 impl Coord {
-    /// The coordinate in pixels on an axis `extent` pixels long: `center`
-    /// is half of it.
+    /// The coordinate in pixels on an axis `extent` pixels long.
     pub fn resolve(self, extent: f64) -> f64 {
         match self {
             Coord::Center => extent / 2.0,
@@ -73,8 +69,7 @@ impl Position {
         }
     }
 
-    /// The coordinate on `axis` in pixels, on a canvas of `canvas` (width,
-    /// height) pixels.
+    /// The coordinate on `axis` in pixels, on a canvas of (width, height) pixels.
     pub fn resolve(&self, axis: Axis, (width, height): (f64, f64)) -> f64 {
         let extent = match axis {
             Axis::X => width,
@@ -87,8 +82,7 @@ impl Position {
 impl FromStr for Position {
     type Err = Diagnostic;
 
-    /// Parses exactly two whitespace-separated tokens, each a finite number
-    /// of pixels or `center`.
+    /// Parses two whitespace-separated tokens, each a finite number or `center`.
     fn from_str(text: &str) -> Result<Position> {
         parse_whole(text, position, "position", EXPECTED)
     }
@@ -98,14 +92,12 @@ impl Form for Position {
     const FORM: &str = EXPECTED;
 }
 
-/// `<x> <y>`, with any whitespace around and between them.
 fn position(input: &mut &str) -> Parsed<Position> {
     delimited(blank0, separated_pair(coord, blank1, coord), blank0)
         .map(|(x, y)| Position { x, y })
         .parse_next(input)
 }
 
-/// One axis: `center` or a number of pixels.
 fn coord(input: &mut &str) -> Parsed<Coord> {
     alt(("center".value(Coord::Center), number.map(Coord::Px))).parse_next(input)
 }
