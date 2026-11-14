@@ -490,6 +490,7 @@ name = "motion-query"
 version = "0.0.0"
 dependencies = [
  "insta",
+ "kurbo",
  "motion-format",
  "motion-scene",
  "tracing",
