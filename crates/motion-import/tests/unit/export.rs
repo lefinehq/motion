@@ -164,6 +164,18 @@ fn a_colour_goes_back_as_alpha_red_green_blue_out_of_255() {
 }
 
 #[test]
+fn a_value_on_a_half_step_may_read_back_one_step_away() {
+    // 0.1177975 rounds to 0.117798, and through the file, out of 255, it
+    // comes back a hair under the half step, which rounds to 0.117797.
+    let through_the_file = 0.117_797_5_f64 * 255.0 / 255.0;
+    assert!(through_the_file < 0.117_797_5);
+    assert!(close(&json!(0.117_797), &json!(0.117_798)));
+    assert!(close(&json!(1_920.000_001), &json!(1_920.000_003)));
+    assert!(!close(&json!(0.117_797), &json!(0.117_799)), "two steps");
+    assert!(!close(&json!([0.5, 0.25]), &json!([0.5, 0.2501])));
+}
+
+#[test]
 fn a_point_keeps_the_projects_depth_and_a_percent_scales_back() {
     let template = Value::Vector3([1.0, 2.0, 7.0]);
     assert_eq!(

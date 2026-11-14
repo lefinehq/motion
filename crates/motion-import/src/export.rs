@@ -25,8 +25,8 @@ use crate::map::sources::{Source, Step, Writable, at, show, step};
 use crate::model::{Color, Origin, Value};
 use crate::rifx::{self, Patch};
 
-/// How close a value read back must come to the edited one: the import
-/// writes numbers to six decimals.
+/// The step of the numbers the import writes: it rounds them to six
+/// decimals. A value read back is compared with the edited one in steps.
 const READ_BACK: f64 = 1e-6;
 
 /// One change in the edited scene.
@@ -178,10 +178,20 @@ pub fn verify(plan: &Plan, reimported: &Json) -> Vec<Change> {
 
 /// Whether two values are the same, numbers to the precision the import
 /// writes.
+/// Whether two numbers the import wrote differ by at most one of its
+/// steps (relative to their size above 1). Both are rounded from the same
+/// value, one of them after a trip through the file's encoding, so a value
+/// half a step from both neighbours can round either way.
+fn within_a_step(x: f64, y: f64) -> bool {
+    let step = READ_BACK * x.abs().max(y.abs()).max(1.0);
+    // The slack absorbs the binary noise of the subtraction, far below a step.
+    (x - y).abs() <= step * (1.0 + 1e-6)
+}
+
 fn close(a: &Json, b: &Json) -> bool {
     match (a, b) {
         (Json::Number(x), Json::Number(y)) => match (x.as_f64(), y.as_f64()) {
-            (Some(x), Some(y)) => (x - y).abs() <= READ_BACK * x.abs().max(y.abs()).max(1.0),
+            (Some(x), Some(y)) => within_a_step(x, y),
             _ => x == y,
         },
         (Json::Array(x), Json::Array(y)) => {
