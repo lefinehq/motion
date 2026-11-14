@@ -63,7 +63,7 @@ impl RemoteFile {
     }
 
     /// Its folder and extension: files that share them are one flavour of
-    /// a release, such as its OTFs or its hinted TTFs.
+    /// a release, such as its CFF fonts or its hinted TrueType fonts.
     fn flavour(&self) -> (String, String) {
         let (folder, name) = self.path.rsplit_once('/').unwrap_or(("", &self.path));
         let extension = name.rsplit_once('.').map_or("", |(_, e)| e);
