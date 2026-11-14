@@ -26,3 +26,7 @@ pub use number::fmt_num;
 pub use parse::{LAYER_KEYS, SCENE_KEYS, key, parse_document};
 pub use scene::{Content, Document, Layer, Scene};
 pub use write::write_document;
+
+#[cfg(test)]
+#[path = "../tests/unit/lib.rs"]
+mod tests;

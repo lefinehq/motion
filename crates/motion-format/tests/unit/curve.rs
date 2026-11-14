@@ -22,26 +22,47 @@ fn cubic_values_parse() {
     );
 }
 
+/// The reason the grammar gives for `token`; `None` for an unknown name.
+fn problem(token: &str) -> Option<Problem> {
+    let mut reason = None;
+    let _ = parse_all(token, curve, |given| {
+        reason = given;
+        Diagnostic::syntax("")
+    });
+    reason
+}
+
 #[test]
-fn cubic_errors_show_the_expected_form() {
-    let e = |t: &str| t.parse::<Curve>().unwrap_err().to_string();
-    assert!(e("cubic(1.2,0,0,1)").contains("x1 and x2 must be between 0 and 1"));
-    assert!(e("cubic(.2,0,1)").contains("`cubic(.2,0,1)` needs four numbers"));
-    assert!(e("cubic(.2,0,0,1").contains("missing its closing `)`"));
-    assert!(e("cubic(2,0,0,1)").contains("e.g. `cubic(.2,0,0,1)`"));
+fn cubic_errors_name_their_cause_and_show_the_form() {
+    for token in [
+        "cubic(1.2,0,0,1)",
+        "cubic(.2,0,1)",
+        "cubic(.2,0,0,1",
+        "cubic(2,0,0,1)",
+    ] {
+        let e = token.parse::<Curve>().unwrap_err();
+        assert_eq!(
+            (e.kind, e.expected.as_deref()),
+            (Kind::Syntax, Some(CUBIC_EXPECTED)),
+            "{token}"
+        );
+    }
+    assert!(matches!(problem("cubic(1.2,0,0,1)"), Some(Problem::XRange)));
+    assert!(matches!(problem("cubic(2,0,0,1)"), Some(Problem::XRange)));
+    assert!(matches!(problem("cubic(.2,0,1)"), Some(Problem::Count)));
+    assert!(matches!(problem("cubic(.2,0,0,1"), Some(Problem::Unclosed)));
 }
 
 #[test]
 fn unknown_name_lists_the_table() {
-    assert_eq!("foo".parse::<Curve>().unwrap_err().kind, Kind::UnknownName);
-    let e = "foo".parse::<Curve>().unwrap_err().to_string();
-    assert_eq!(
-        e,
-        "unknown curve `foo`; expected one of linear, hold, ease, ease-in, ease-out, ease-in-out, or cubic(x1,y1,x2,y2)"
-    );
+    let e = "foo".parse::<Curve>().unwrap_err();
+    assert_eq!(e.kind, Kind::UnknownName);
+    assert!(problem("foo").is_none());
+    let expected = e.expected.unwrap();
     for (name, _) in NAMED_CURVES {
-        assert!(e.contains(name));
+        assert!(expected.contains(name), "{name}");
     }
+    assert!(expected.ends_with(CUBIC_FORM), "{expected}");
 }
 
 #[test]
@@ -106,10 +127,9 @@ fn cubic_expected_form_says_no_spaces() {
 
 #[test]
 fn cubic_closing_paren_must_end_the_token() {
-    let message = |t: &str| t.parse::<Curve>().unwrap_err().message;
-    assert_eq!(message("cubic(1,2))"), "`cubic(1,2))` needs four numbers");
-    assert_eq!(
-        message("cubic(0,0,1,1)x"),
-        "`cubic(0,0,1,1)x` is missing its closing `)`"
-    );
+    assert!(matches!(problem("cubic(1,2))"), Some(Problem::Count)));
+    assert!(matches!(
+        problem("cubic(0,0,1,1)x"),
+        Some(Problem::Unclosed)
+    ));
 }

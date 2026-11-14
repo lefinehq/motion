@@ -52,14 +52,11 @@ fn start_forms_parse() {
 fn bad_start_value_shows_expected_form() {
     let e = presets(r#"{"a":{"x":"left"}}"#).unwrap_err();
     assert_eq!(e.path.as_deref(), Some("presets.a.x"));
-    assert!(
-        e.to_string()
-            .ends_with(r#"; expected a number, "+d" or "-d""#),
-        "{e}"
-    );
+    assert_eq!(e.expected.as_deref(), Some(r#"a number, "+d" or "-d""#));
     assert_eq!(e.kind, Kind::Invalid);
     let e = presets(r#"{"a":{"x":true}}"#).unwrap_err();
     assert_eq!(e.kind, Kind::WrongType);
+    assert_eq!(e.expected.as_deref(), Some(Start::form()));
     assert_eq!(presets(r#"{"a":3}"#).unwrap_err().kind, Kind::WrongType);
     assert_eq!(presets("[]").unwrap_err().kind, Kind::WrongType);
 }
@@ -67,24 +64,24 @@ fn bad_start_value_shows_expected_form() {
 #[test]
 fn unknown_property_lists_the_registry() {
     let e = presets(r#"{"a":{"zoom":1}}"#).unwrap_err();
-    assert_eq!(e.path.as_deref(), Some("presets.a.zoom"));
-    assert!(e.to_string().contains("unknown property `zoom`"));
-    assert!(
-        e.to_string()
-            .contains("expected one of x, y, opacity, scale, rotate")
+    assert_eq!(e.kind, Kind::UnknownName);
+    let names: Vec<&str> = crate::property::property_names().collect();
+    assert_eq!(
+        e.expected,
+        Some(format!("one of {}", names.join(", ")).into())
     );
 }
 
 #[test]
 fn bad_names_and_shapes_are_rejected() {
-    assert!(
-        presets(r#"{"Bad":{}}"#)
-            .unwrap_err()
-            .to_string()
-            .contains("invalid preset name")
+    let e = presets(r#"{"Bad":{}}"#).unwrap_err();
+    assert_eq!(
+        (e.kind, e.path.as_deref()),
+        (Kind::Invalid, Some("presets.Bad"))
     );
+    assert_eq!(e.expected.as_deref(), Some(crate::validate::ID_RULE));
     assert!(presets(r#"{"a":3}"#).is_err());
-    assert!(presets_of(Value::Null).is_err());
+    assert_eq!(presets_of(Value::Null).unwrap_err().kind, Kind::WrongType);
 }
 
 const BASE: &str = r#""motion":1,"dur":"1s""#;
@@ -109,16 +106,19 @@ fn unknown_preset_lists_resolved_names_without_duplicates() {
         r#"{{{BASE},"presets":{{"slide":{{"x":1}},"fade":{{"y":1}}}},"layers":[{{"id":"a","rect":"1x1","in":"zoom"}}]}}"#
     ))
     .unwrap_err();
-    assert_eq!(e.path.as_deref(), Some("layers[0].in"));
-    let text = e.to_string();
-    assert!(
-        text.starts_with(
-            "layers[0].in: unknown preset `zoom`; expected one of slide, fade, fade-up"
-        ),
-        "{text}"
+    assert_eq!(
+        (e.kind, e.path.as_deref()),
+        (Kind::UnknownName, Some("layers[0].in"))
     );
-    assert_eq!(text.matches("fade,").count(), 1, "{text}");
-    assert!(text.contains("spin-in"));
+    let own = presets(r#"{"slide":{"x":1},"fade":{"y":1}}"#).unwrap();
+    assert_eq!(
+        e,
+        crate::Diagnostic::unknown("preset", "zoom", names(&own)).at("layers[0].in")
+    );
+    let names = names(&own);
+    assert_eq!(names[..3], ["slide", "fade", "fade-up"]);
+    assert_eq!(names.iter().filter(|n| **n == "fade").count(), 1);
+    assert!(names.contains(&"spin-in"));
 }
 
 mod never_panics {
@@ -151,10 +151,10 @@ mod never_panics {
 
 #[test]
 fn absolute_start_obeys_the_property_range() {
-    let e = presets(r#"{"a":{"opacity":2}}"#).unwrap_err().to_string();
+    let e = presets(r#"{"a":{"opacity":2}}"#).unwrap_err();
     assert_eq!(
-        e,
-        "presets.a.opacity: value 2 is outside 0..=1; expected a number from 0 to 1"
+        (e.kind, e.path.as_deref()),
+        (Kind::OutOfRange, Some("presets.a.opacity"))
     );
     // Unbounded properties take any value.
     assert!(presets(r#"{"a":{"x":1900,"opacity":0.5}}"#).is_ok());
@@ -162,10 +162,10 @@ fn absolute_start_obeys_the_property_range() {
 
 #[test]
 fn empty_preset_is_rejected() {
-    let e = presets(r#"{"x":{}}"#).unwrap_err().to_string();
+    let e = presets(r#"{"x":{}}"#).unwrap_err();
     assert_eq!(
-        e,
-        r#"presets.x: preset `x` sets no properties; expected e.g. {"opacity":0}"#
+        (e.kind, e.path.as_deref()),
+        (Kind::Missing, Some("presets.x"))
     );
 }
 
@@ -195,12 +195,10 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
 
 #[test]
 fn a_bounded_property_cannot_start_at_a_distance() {
-    let e = presets(r#"{"dim":{"opacity":"-d"}}"#)
-        .unwrap_err()
-        .to_string();
+    let e = presets(r#"{"dim":{"opacity":"-d"}}"#).unwrap_err();
     assert_eq!(
-        e,
-        "presets.dim.opacity: `opacity` has a fixed range, so it cannot start at a distance; expected a number within its range, e.g. 0"
+        (e.kind, e.path.as_deref()),
+        (Kind::OutOfRange, Some("presets.dim.opacity"))
     );
     // Unbounded properties still may.
     assert!(presets(r#"{"rise":{"y":"+d"}}"#).is_ok());

@@ -1,9 +1,10 @@
 //! Unit tests for `src/validate.rs`: the rules beyond the JSON shape, and
 //! the defaults.
 
+use super::ID_RULE;
 use crate::parse_document;
 use crate::shorthand::{Coord, Position};
-use crate::units::{Color, Size};
+use crate::units::{Color, Size, Time};
 use crate::{Content, Document};
 use crate::{Diagnostic, Kind};
 
@@ -15,8 +16,15 @@ fn err(json: &str) -> Diagnostic {
     parse_document(json).unwrap_err()
 }
 
-fn msg(json: &str) -> String {
-    err(json).to_string()
+/// The kind and path of the error of `json`.
+fn fails(json: &str) -> (Kind, Option<String>) {
+    let e = err(json);
+    (e.kind, e.path)
+}
+
+/// `(kind, Some(path))`, to compare with [`fails`].
+fn at(kind: Kind, path: &str) -> (Kind, Option<String>) {
+    (kind, Some(path.to_owned()))
 }
 
 /// A scene whose layers are `layers`.
@@ -102,79 +110,73 @@ fn size_fps_and_bg_overrides_reach_the_scene() {
 #[test]
 fn version_must_be_one() {
     let e = err(r#"{"motion":2,"dur":"1s","layers":[]}"#);
-    assert_eq!(e.kind, Kind::Invalid);
-    assert_eq!(e.to_string(), "motion: unsupported version 2; expected `1`");
+    assert_eq!((e.kind, e.path.as_deref()), (Kind::Invalid, Some("motion")));
+    assert_eq!(e.expected.as_deref(), Some("`1`"));
 }
 
 #[test]
 fn fps_tells_a_wrong_type_from_a_bound() {
     let fps = |v: &str| {
-        err(&format!(
+        fails(&format!(
             r#"{{"motion":1,"dur":"1s","fps":{v},"layers":[]}}"#
         ))
     };
-    assert_eq!(fps(r#""x""#).kind, Kind::WrongType);
-    assert_eq!(fps("true").kind, Kind::WrongType);
-    assert_eq!(fps("0").kind, Kind::OutOfRange);
-    assert_eq!(fps("-1").kind, Kind::OutOfRange);
-    assert_eq!(
-        fps("0").to_string(),
-        "fps: must be a number above zero; expected e.g. `30`"
-    );
+    assert_eq!(fps(r#""x""#), at(Kind::WrongType, "fps"));
+    assert_eq!(fps("true"), at(Kind::WrongType, "fps"));
+    assert_eq!(fps("0"), at(Kind::OutOfRange, "fps"));
+    assert_eq!(fps("-1"), at(Kind::OutOfRange, "fps"));
 }
 
 #[test]
 fn shorthand_failures_keep_their_path_and_expected_form() {
     let e = err(r#"{"motion":1,"dur":"soon","layers":[]}"#);
-    assert_eq!(e.path.as_deref(), Some("dur"));
+    assert_eq!((e.kind, e.path.as_deref()), (Kind::Syntax, Some("dur")));
     assert_eq!(
-        e.to_string(),
-        "dur: `soon` is not a valid time; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`"
+        e.expected,
+        "soon".parse::<Time>().unwrap_err().expected,
+        "the shorthand's own form"
     );
     assert_eq!(
-        err(r#"{"motion":1,"dur":"1s","size":"huge","layers":[]}"#)
-            .path
-            .as_deref(),
-        Some("size")
+        fails(r#"{"motion":1,"dur":"1s","size":"huge","layers":[]}"#),
+        at(Kind::UnknownName, "size")
     );
-    let e = err(&scene(r#"{"id":"a","rect":"1x1","fill":"red"}"#));
-    assert_eq!(e.kind, Kind::Syntax);
-    assert_eq!(e.path.as_deref(), Some("layers[0].fill"));
+    assert_eq!(
+        fails(&scene(r#"{"id":"a","rect":"1x1","fill":"red"}"#)),
+        at(Kind::Syntax, "layers[0].fill")
+    );
 }
 
 #[test]
 fn a_layer_draws_exactly_one_of_text_or_rect() {
     let neither = err(&scene(r#"{"id":"a"}"#));
-    assert_eq!(neither.kind, Kind::Missing);
-    assert_eq!(
-        neither.to_string(),
-        r#"layers[0]: needs exactly one of `text` or `rect`; expected e.g. "text":"Hello" or "rect":"300x100""#
-    );
     let both = err(&scene(r#"{"id":"a","rect":"1x1","text":"x"}"#));
-    assert_eq!(both.kind, Kind::Conflict);
+    assert_eq!((neither.kind, both.kind), (Kind::Missing, Kind::Conflict));
+    // The fix is the same, so the message and the form are too.
     assert_eq!(both.message, neither.message);
+    assert_eq!(both.expected, neither.expected);
     assert_eq!(both.path.as_deref(), Some("layers[0]"));
+    assert_eq!(neither.path, both.path);
 }
 
 #[test]
 fn font_only_applies_to_text() {
     assert_eq!(
-        msg(&scene(r#"{"id":"a","rect":"1x1","font":"Inter 9"}"#)),
-        "layers[0].font: `font` only applies to text layers; expected `font` only next to `text`"
+        fails(&scene(r#"{"id":"a","rect":"1x1","font":"Inter 9"}"#)),
+        at(Kind::Conflict, "layers[0].font")
     );
 }
 
 #[test]
 fn ids_follow_the_id_rule_and_are_unique() {
+    let e = err(&scene(r#"{"id":"Bad Id","rect":"1x1"}"#));
     assert_eq!(
-        msg(&scene(r#"{"id":"Bad Id","rect":"1x1"}"#)),
-        "layers[0].id: invalid id `Bad Id`; expected ids use lowercase letters, digits, `-` and `_`, starting with a letter"
+        (e.kind, e.path.as_deref()),
+        (Kind::Invalid, Some("layers[0].id"))
     );
-    let e = err(&scene(r#"{"id":"a","rect":"1x1"},{"id":"a","rect":"1x1"}"#));
-    assert_eq!(e.kind, Kind::Conflict);
+    assert_eq!(e.expected.as_deref(), Some(ID_RULE));
     assert_eq!(
-        e.to_string(),
-        "layers[1].id: duplicate id `a`; expected every layer to have its own id"
+        fails(&scene(r#"{"id":"a","rect":"1x1"},{"id":"a","rect":"1x1"}"#)),
+        at(Kind::Conflict, "layers[1].id")
     );
 }
 
@@ -183,23 +185,19 @@ fn an_entrance_names_a_preset_that_exists() {
     let e = err(&scene(
         r#"{"id":"a","rect":"10x10"},{"id":"b","rect":"10x10","in":"zoom"}"#,
     ));
-    assert_eq!(e.kind, Kind::UnknownName);
-    assert_eq!(e.path.as_deref(), Some("layers[1].in"));
-    assert!(e.expected.is_some());
-    assert!(
-        e.to_string()
-            .starts_with("layers[1].in: unknown preset `zoom`")
+    assert_eq!(
+        (e.kind, e.path.as_deref()),
+        (Kind::UnknownName, Some("layers[1].in"))
     );
+    assert!(e.expected.is_some_and(|names| names.contains("fade-up")));
 }
 
 #[test]
 fn a_value_that_is_not_finite_is_out_of_range() {
-    let e = err(&scene(
-        r#"{"id":"a","rect":"1x1","anim":{"x":"inf -> 1 @0-5f"}}"#,
-    ));
-    assert_eq!(e.kind, Kind::OutOfRange);
     assert_eq!(
-        e.to_string(),
-        "layers[0].anim.x: `inf` is not a finite number; expected a finite number"
+        fails(&scene(
+            r#"{"id":"a","rect":"1x1","anim":{"x":"inf -> 1 @0-5f"}}"#,
+        )),
+        at(Kind::OutOfRange, "layers[0].anim.x")
     );
 }

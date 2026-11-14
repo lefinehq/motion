@@ -1,0 +1,152 @@
+---
+source: crates/motion-format/src/../tests/unit/lib.rs
+expression: "report.join(\"\\n\\n\")"
+---
+## document
+`nope` → invalid JSON: expected ident at line 1 column 2; expected a scene object, e.g. {"motion":1,"dur":"5s","layers":[]}
+`[]` → invalid type: sequence; expected a scene object, e.g. {"motion":1,"dur":"5s","layers":[]}
+`[1,null,null,"1s",null,{},[]]` → invalid type: sequence; expected a scene object, e.g. {"motion":1,"dur":"5s","layers":[]}
+`{"motion":1,"layers":[]}` → missing `dur`; expected e.g. "dur":"5s"
+`{"dur":"1s","layers":[]}` → missing `motion`; expected e.g. "motion":1
+`{"motion":1,"dur":"1s"}` → missing `layers`; expected e.g. "layers":[]
+`{"motion":2,"dur":"1s","layers":[]}` → motion: unsupported version 2; expected `1`
+`{"motion":"1","dur":"1s","layers":[]}` → motion: invalid type: string "1"; expected a number
+`{"motion":1,"dur":null,"layers":[]}` → dur: invalid type: null; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`
+`{"motion":1,"dur":5,"layers":[]}` → dur: invalid type: integer `5`; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`
+`{"motion":1,"dur":"soon","layers":[]}` → dur: `soon` is not a valid time; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`
+`{"motion":1,"dur":"1s","fps":null,"layers":[]}` → fps: invalid type: null; expected a number
+`{"motion":1,"dur":"1s","fps":"a, expected b","layers":[]}` → fps: invalid type: string "a, expected b"; expected a number
+`{"motion":1,"dur":"1s","fps":0,"layers":[]}` → fps: must be a number above zero; expected e.g. `30`
+`{"motion":1,"dur":"1s","size":null,"layers":[]}` → size: invalid type: null; expected a size name such as `1080p`, or `<width>x<height>`
+`{"motion":1,"dur":"1s","size":3,"layers":[]}` → size: invalid type: integer `3`; expected a size name such as `1080p`, or `<width>x<height>`
+`{"motion":1,"dur":"1s","size":"huge","layers":[]}` → size: unknown size `huge`; expected one of 720p, 1080p, 4k, square, vertical, or <width>x<height>
+`{"motion":1,"dur":"1s","bg":0,"layers":[]}` → bg: invalid type: integer `0`; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`
+`{"motion":1,"dur":"1s","colour":"x","layers":[]}` → colour: unknown field `colour`; expected one of motion, size, fps, dur, bg, presets, layers
+`{"motion":1,"dur":"1s","layers":{}}` → layers: invalid type: map; expected a list of layer objects, e.g. [{"id":"box","rect":"100x100"}]
+
+## layers
+`1` → layers[0]: invalid type: integer `1`; expected a layer object, e.g. {"id":"box","rect":"100x100"}
+`["a","hi"]` → layers[0]: invalid type: sequence; expected a layer object, e.g. {"id":"box","rect":"100x100"}
+`{"rect":"1x1"}` → layers[0]: missing `id`; expected e.g. "id":"title"
+`{"id":3,"rect":"1x1"}` → layers[0].id: invalid type: integer `3`; expected a string
+`{"id":1.5,"rect":"1x1"}` → layers[0].id: invalid type: floating point `1.5`; expected a string
+`{"id":1e300,"rect":"1x1"}` → layers[0].id: invalid type: floating point `1e300`; expected a string
+`{"id":"Bad Id","rect":"1x1"}` → layers[0].id: invalid id `Bad Id`; expected ids use lowercase letters, digits, `-` and `_`, starting with a letter
+`{"id":"a","rect":"1x1"},{"id":"a","rect":"1x1"}` → layers[1].id: duplicate id `a`; expected every layer to have its own id
+`{"id":"a"}` → layers[0]: needs exactly one of `text` or `rect`; expected e.g. "text":"Hello" or "rect":"300x100"
+`{"id":"a","rect":"1x1","text":"x"}` → layers[0]: needs exactly one of `text` or `rect`; expected e.g. "text":"Hello" or "rect":"300x100"
+`{"id":"a","text":null}` → layers[0].text: invalid type: null; expected a string
+`{"id":"a","text":3}` → layers[0].text: invalid type: integer `3`; expected a string
+`{"id":"a","rect":1}` → layers[0].rect: invalid type: integer `1`; expected `<width>x<height> [r<radius>]`, e.g. `300x400 r24`
+`{"id":"a","text":"x","font":1}` → layers[0].font: invalid type: integer `1`; expected `<family> <size> [<weight>]`, e.g. `Inter 96 700`
+`{"id":"a","rect":"1x1","font":"Inter 9"}` → layers[0].font: `font` only applies to text layers; expected `font` only next to `text`
+`{"id":"a","rect":"1x1","fill":1}` → layers[0].fill: invalid type: integer `1`; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`
+`{"id":"a","rect":"1x1","fill":"red"}` → layers[0].fill: `red` is not a valid colour; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`
+`{"id":"a","rect":"1x1","at":1}` → layers[0].at: invalid type: integer `1`; expected `<x> <y>`, each a number of pixels or `center`, e.g. `center 260`
+`{"id":"a","rect":"1x1","in":null}` → layers[0].in: invalid type: null; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`
+`{"id":"a","rect":"1x1","in":true}` → layers[0].in: invalid type: boolean `true`; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`
+`{"id":"a","rect":"1x1","in":"zoom"}` → layers[0].in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in
+`{"id":"a","rect":"1x1","anim":null}` → layers[0].anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
+`{"id":"a","rect":"1x1","anim":[]}` → layers[0].anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
+`{"id":"a","rect":"1x1","x":1}` → layers[0].x: unknown field `x`; expected one of id, text, rect, font, fill, at, in, anim
+`{"id":"a","rect":"10x10","in":"fade-up","anim":{"opacity":"0 -> 1 @0-5f"}}` → layers[0].anim.opacity: `opacity` is already animated by `in` (preset `fade-up`); expected `a in=none anim={"opacity":"0 -> 1 @0-12f ease-out","y":"580 -> 540 @0-12f ease-out"}` (the entrance as anim tracks; then adjust `opacity`), or define a scene preset without `opacity` under "presets"
+
+## anim
+`"x":3` → layers[0].anim.x: invalid type: integer `3`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of [time, value] keys
+`"glow":"0 -> 1 @0-5f"` → layers[0].anim.glow: unknown property `glow`; expected one of x, y, opacity, scale, rotate
+`"x":"0 1 @0-5f"` → layers[0].anim.x: missing `->` after the start value in `0 1 @0-5f`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
+`"x":"0 -> 1 @5-0f"` → layers[0].anim.x: `@5f-0f` starts after it ends; expected `@<start>-<end>` with a unit, e.g. `@0-30f`, `@0.5s-1s`
+`"x":"inf -> 1 @0-5f"` → layers[0].anim.x: `inf` is not a finite number; expected a finite number
+`"opacity":"0 -> 2 @0-5f"` → layers[0].anim.opacity: value 2 is outside 0..=1; expected a number from 0 to 1
+`"x":[]` → layers[0].anim.x: needs at least one key; expected a list of keys like [[0, 0], ["12f", 1, "ease-out"]]
+`"x":[5]` → layers[0].anim.x[0]: invalid type: integer `5`; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"]
+`"x":[[0]]` → layers[0].anim.x[0]: invalid length 1; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"]
+`"x":[[0, 1, "linear", 4]]` → layers[0].anim.x[0]: invalid length 4; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"]
+`"x":[[true, 0]]` → layers[0].anim.x[0][0]: invalid type: boolean `true`; expected a frame count, or a time such as `12f` or `0.4s`
+`"x":[["12", 0]]` → layers[0].anim.x[0]: `12` is not a valid time; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`
+`"x":[[-1, 0]]` → layers[0].anim.x[0]: invalid time -1; expected a frame count of 0 or more, or `<number>f` or `<number>s`, e.g. `12f` or `0.4s`
+`"x":[[0, "a"]]` → layers[0].anim.x[0][1]: invalid type: string "a"; expected a number
+`"x":[[0, 1, 3]]` → layers[0].anim.x[0][2]: invalid type: integer `3`; expected a curve name such as `ease-out`, or `cubic(x1,y1,x2,y2)`
+`"x":[[0, 1, null]]` → layers[0].anim.x[0][2]: invalid type: null; expected a curve name such as `ease-out`, or `cubic(x1,y1,x2,y2)`
+`"x":[[0, 1, "nope"]]` → layers[0].anim.x[0]: unknown curve `nope`; expected one of linear, hold, ease, ease-in, ease-out, ease-in-out, or cubic(x1,y1,x2,y2)
+`"x":[[5, 0], [2, 1]]` → layers[0].anim.x[1]: key is earlier than the one before it; expected keys in time order, earliest first
+`"opacity":[[0, 0], [5, 1], [9, 2]]` → layers[0].anim.opacity[2]: value 2 is outside 0..=1; expected a number from 0 to 1
+
+## presets
+`null` → presets: invalid type: null; expected an object of presets, e.g. {"slide":{"opacity":0,"x":"-d"}}
+`[]` → presets: invalid type: sequence; expected an object of presets, e.g. {"slide":{"opacity":0,"x":"-d"}}
+`{"a":3}` → presets.a: invalid type: integer `3`; expected an object of property starts, e.g. {"opacity":0,"y":"+d"}
+`{"Bad":{"x":1}}` → presets.Bad: invalid preset name `Bad`; expected ids use lowercase letters, digits, `-` and `_`, starting with a letter
+`{"x":{}}` → presets.x: preset `x` sets no properties; expected e.g. {"opacity":0}
+`{"a":{"zoom":1}}` → presets.a.zoom: unknown property `zoom`; expected one of x, y, opacity, scale, rotate
+`{"a":{"x":true}}` → presets.a.x: invalid type: boolean `true`; expected a number, "+d" or "-d"
+`{"a":{"x":"left"}}` → presets.a.x: invalid value: string "left"; expected a number, "+d" or "-d"
+`{"a":{"x":"l, expected q"}}` → presets.a.x: invalid value: string "l, expected q"; expected a number, "+d" or "-d"
+`{"a":{"opacity":2}}` → presets.a.opacity: value 2 is outside 0..=1; expected a number from 0 to 1
+`{"dim":{"opacity":"-d"}}` → presets.dim.opacity: `opacity` has a fixed range, so it cannot start at a distance; expected a number within its range, e.g. 0
+
+## unknown preset with scene presets
+`{"slide":{"x":1},"fade":{"y":1}}` → layers[0].in: unknown preset `zoom`; expected one of slide, fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in
+
+## time
+`12` → `12` is not a valid time; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`
+
+## colour
+`red` → `red` is not a valid colour; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`
+
+## size
+`8k` → unknown size `8k`; expected one of 720p, 1080p, 4k, square, vertical, or <width>x<height>
+`640x` → `640x` is not a valid size; expected `<width>x<height>`, each a whole number of pixels above zero, e.g. `1920x1080`
+`640x360 ` → unexpected text after the size `640x360` in `640x360 `; expected `<width>x<height>`, each a whole number of pixels above zero, e.g. `1920x1080`
+`1x2x3` → unexpected text after the size `1x2` in `1x2x3`; expected `<width>x<height>`, each a whole number of pixels above zero, e.g. `1920x1080`
+
+## curve
+`foo` → unknown curve `foo`; expected one of linear, hold, ease, ease-in, ease-out, ease-in-out, or cubic(x1,y1,x2,y2)
+`cubic(.2,0,0,1` → `cubic(.2,0,0,1` is missing its closing `)`; expected `cubic(x1,y1,x2,y2)` (no spaces) with x1 and x2 between 0 and 1, e.g. `cubic(.2,0,0,1)`
+`cubic(0,0,1,1)x` → `cubic(0,0,1,1)x` is missing its closing `)`; expected `cubic(x1,y1,x2,y2)` (no spaces) with x1 and x2 between 0 and 1, e.g. `cubic(.2,0,0,1)`
+`cubic(.2,0,1)` → `cubic(.2,0,1)` needs four numbers; expected `cubic(x1,y1,x2,y2)` (no spaces) with x1 and x2 between 0 and 1, e.g. `cubic(.2,0,0,1)`
+`cubic(1,2))` → `cubic(1,2))` needs four numbers; expected `cubic(x1,y1,x2,y2)` (no spaces) with x1 and x2 between 0 and 1, e.g. `cubic(.2,0,0,1)`
+`cubic(1.2,0,0,1)` → `cubic(1.2,0,0,1)`: x1 and x2 must be between 0 and 1; expected `cubic(x1,y1,x2,y2)` (no spaces) with x1 and x2 between 0 and 1, e.g. `cubic(.2,0,0,1)`
+
+## rect
+`300` → `300` is not a valid rectangle; expected `<width>x<height> [r<radius>]`, e.g. `300x400 r24`
+
+## position
+`260` → `260` is not a valid position; expected `<x> <y>`, each a number of pixels or `center`, e.g. `center 260`
+
+## font
+`Inter` → `Inter` has no size; expected `<family> <size> [<weight>]`, e.g. `Inter 96 700`
+`96 700` → `96 700` has no font family; expected `<family> <size> [<weight>]`, e.g. `Inter 96 700`
+`1 2 3` → `1 2 3` has no font family; expected `<family> <size> [<weight>]`, e.g. `Inter 96 700`
+`Inter 0` → `0` is not a valid size; it must be above zero; expected `<family> <size> [<weight>]`, e.g. `Inter 96 700`
+`Inter 96 700 750` → `750` is not a valid weight; the weight must be 100, 200 … 900; expected `<family> <size> [<weight>]`, e.g. `Inter 96 700`
+`Baloo 2 120` → `Baloo 2 120` is ambiguous: if the family name ends in a number, write the size and weight explicitly, e.g. `Baloo 2 120 400`; otherwise the weight must be 100, 200 … 900; expected `<family> <size> [<weight>]`, e.g. `Inter 96 700`
+
+## behaviour
+`` → a behaviour needs a preset; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`
+`Fade-Up` → `Fade-Up` is not a valid preset name; ids use lowercase letters, digits, `-` and `_`, starting with a letter; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`
+`fade 12x` → unknown token `12x`; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`
+`fade -3f` → `-3f` is not a valid duration; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`
+`fade 1pxpx` → `1pxpx` is not a valid distance; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`
+`fade @12` → `@12` is not a valid start time; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`
+`fade bounce` → unknown curve `bounce`; expected one of linear, hold, ease, ease-in, ease-out, ease-in-out, or cubic(x1,y1,x2,y2)
+`fade 12f 10f` → duration given twice: `12f` and `10f`; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`
+`fade ease-in cubic(.2,0,0,1)` → curve given twice: `ease-in` and `cubic(.2,0,0,1)`; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`
+
+## track
+`` → `` is not a valid track; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
+`0 1 @0-5f` → missing `->` after the start value in `0 1 @0-5f`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
+`0 -> 1` → missing `@<start>-<end>` after the end value in `0 -> 1`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
+`0 -> 1 2 @0-5f` → missing `@<start>-<end>` after the end value in `0 -> 1 2 @0-5f`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
+`a -> 1 @0-5f` → `a` is not a number; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
+`0 -> 1 @0-5f bouncy` → unknown curve `bouncy`; expected one of linear, hold, ease, ease-in, ease-out, ease-in-out, or cubic(x1,y1,x2,y2)
+`0 -> 1 @0-5f ease ease` → unexpected `ease` after the curve; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
+
+## range
+`@x-5f` → `@x-5f` is not a valid range; expected `@<start>-<end>` with a unit, e.g. `@0-30f`, `@0.5s-1s`
+`@05f` → `@05f` has no `-` between start and end; expected `@<start>-<end>` with a unit, e.g. `@0-30f`, `@0.5s-1s`
+`@0-5` → `@0-5` needs a unit (`f` or `s`) after the end; expected `@<start>-<end>` with a unit, e.g. `@0-30f`, `@0.5s-1s`
+
+## serde
+`{}` → missing field `key`
+`"dim"` → unknown variant `dim`; expected one of on

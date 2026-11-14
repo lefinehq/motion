@@ -391,6 +391,7 @@ name = "motion-format"
 version = "0.0.0"
 dependencies = [
  "indexmap",
+ "insta",
  "proptest",
  "serde",
  "serde_json",

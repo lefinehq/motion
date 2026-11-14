@@ -3,6 +3,28 @@
 use super::*;
 use crate::NAMED_CURVES;
 use crate::units::Time;
+
+/// The reason the grammar gives for `text`; `None` when there is no word.
+fn problem(text: &str) -> Option<Problem<'_>> {
+    let mut reason = None;
+    let _ = parse_all(text, behaviour, |given| {
+        reason = given;
+        Diagnostic::syntax("")
+    });
+    reason
+}
+
+/// Asserts that `text` fails with `kind` and the behaviour's form.
+#[track_caller]
+fn assert_fails(text: &str, kind: Kind) {
+    let e = text.parse::<Behaviour>().unwrap_err();
+    assert_eq!(
+        (e.kind, e.expected.as_deref()),
+        (kind, Some(EXPECTED)),
+        "{text:?}"
+    );
+}
+
 #[test]
 fn behaviour_uses_defaults() {
     let b = "fade-up".parse::<Behaviour>().unwrap();
@@ -17,6 +39,7 @@ fn behaviour_uses_defaults() {
         }
     );
 }
+
 #[test]
 fn behaviour_reads_every_token_in_any_order() {
     let b = "fade-up 60px 12f ease-out @15f"
@@ -34,32 +57,29 @@ fn behaviour_reads_every_token_in_any_order() {
         Time::Seconds(0.4)
     );
 }
+
 #[test]
 fn behaviour_rejects_unknown_and_repeated_tokens() {
-    let e = "Fade-Up".parse::<Behaviour>().unwrap_err().to_string();
-    assert!(e.contains("`Fade-Up` is not a valid preset name"));
-    assert!(e.contains("ids use lowercase letters"));
+    assert_fails("Fade-Up", Kind::Syntax);
+    assert!(matches!(
+        problem("Fade-Up"),
+        Some(Problem::Preset("Fade-Up"))
+    ));
     // Whether the preset exists is the scene parser's business, not this one's.
     assert!("fade-upp 12f".parse::<Behaviour>().is_ok());
-    assert!(e.contains(
-        "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`"
-    ));
-    let e = "fade 12f 10f".parse::<Behaviour>().unwrap_err();
-    assert_eq!(e.kind, Kind::Conflict);
-    assert!(e.to_string().contains("duration given twice"));
-    assert!(
-        "fade bounce"
-            .parse::<Behaviour>()
-            .unwrap_err()
-            .to_string()
-            .contains("unknown curve `bounce`; expected one of linear, hold, ease")
-    );
-    // A misspelt curve gets the curve error even when it ends like a unit.
-    let m = "fade easeout".parse::<Behaviour>().unwrap_err().message;
-    assert!(m.contains("unknown curve `easeout`"), "{m}");
-    let m = "fade ease-ins".parse::<Behaviour>().unwrap_err().message;
-    assert!(m.contains("unknown curve `ease-ins`"), "{m}");
+    assert_fails("fade 12f 10f", Kind::Conflict);
+    // A curve that is not one gets the curve's own error, which lists the names.
+    for (text, curve) in [
+        ("fade bounce", "bounce"),
+        ("fade easeout", "easeout"),
+        ("fade ease-ins", "ease-ins"),
+    ] {
+        let e = text.parse::<Behaviour>().unwrap_err();
+        assert_eq!(e, curve.parse::<Curve>().unwrap_err(), "{text}");
+        assert_eq!(e.kind, Kind::UnknownName);
+    }
 }
+
 #[test]
 fn behaviour_parses_every_preset_and_curve() {
     for name in ["fade", "fade-up", "my_preset2"] {
@@ -72,6 +92,7 @@ fn behaviour_parses_every_preset_and_curve() {
         );
     }
 }
+
 #[test]
 fn behaviour_order_does_not_matter() {
     let a = "fade-down 20px 0.3s linear @2f"
@@ -83,17 +104,23 @@ fn behaviour_order_does_not_matter() {
     assert_eq!(a, b);
     assert_eq!(a.distance, 20.0);
 }
+
 #[test]
 fn behaviour_rejects_each_repeated_kind() {
-    for (text, what) in [
-        ("fade 1px 2px", "distance"),
-        ("fade linear ease-in", "curve"),
-        ("fade @1f @2f", "start"),
+    for (text, field) in [
+        ("fade 1px 2px", Field::Distance),
+        ("fade 12f 10f", Field::Duration),
+        ("fade linear ease-in", Field::Curve),
+        ("fade @1f @2f", Field::Start),
     ] {
-        let e = text.parse::<Behaviour>().unwrap_err().to_string();
-        assert!(e.contains(&format!("{what} given twice")), "{text}: {e}");
+        assert_fails(text, Kind::Conflict);
+        assert!(
+            matches!(problem(text), Some(Problem::Twice(twice, ..)) if twice == field),
+            "{text}"
+        );
     }
 }
+
 #[test]
 fn behaviour_rejects_empty_and_malformed_values() {
     for bad in [
@@ -112,13 +139,10 @@ fn behaviour_rejects_empty_and_malformed_values() {
             "{bad:?} should be rejected"
         );
     }
-    assert!(
-        "".parse::<Behaviour>()
-            .unwrap_err()
-            .to_string()
-            .contains("needs a preset")
-    );
+    assert_fails("", Kind::Syntax);
+    assert!(problem("").is_none());
 }
+
 #[test]
 fn behaviour_allows_negative_distance() {
     assert_eq!(
@@ -126,26 +150,34 @@ fn behaviour_allows_negative_distance() {
         -10.0
     );
 }
+
 #[test]
 fn behaviour_repeat_error_shows_both_tokens() {
-    let e = "fade 12f 10f".parse::<Behaviour>().unwrap_err().to_string();
-    assert!(e.contains("duration given twice: `12f` and `10f`"), "{e}");
-    let e = "fade linear ease-in"
-        .parse::<Behaviour>()
-        .unwrap_err()
-        .to_string();
-    assert!(
-        e.contains("curve given twice: `linear` and `ease-in`"),
-        "{e}"
-    );
+    assert!(matches!(
+        problem("fade 12f 10f"),
+        Some(Problem::Twice(Field::Duration, "12f", "10f"))
+    ));
+    assert!(matches!(
+        problem("fade linear ease-in"),
+        Some(Problem::Twice(Field::Curve, "linear", "ease-in"))
+    ));
 }
+
 #[test]
 fn behaviour_value_errors_name_the_kind() {
-    let msg = |t: &str| t.parse::<Behaviour>().unwrap_err().message;
-    assert!(msg("fade 12x").contains("unknown token `12x`"));
-    assert!(msg("fade -3f").contains("`-3f` is not a valid duration"));
-    assert!(msg("fade xpx").contains("`xpx` is not a valid distance"));
-    assert!(msg("fade @12").contains("`@12` is not a valid start time"));
+    assert_fails("fade 12x", Kind::Syntax);
+    assert!(matches!(problem("fade 12x"), Some(Problem::Unknown("12x"))));
+    for (text, field, token) in [
+        ("fade -3f", Field::Duration, "-3f"),
+        ("fade xpx", Field::Distance, "xpx"),
+        ("fade @12", Field::Start, "@12"),
+    ] {
+        assert_fails(text, Kind::Syntax);
+        assert!(
+            matches!(problem(text), Some(Problem::Malformed(f, t)) if f == field && t == token),
+            "{text}"
+        );
+    }
 }
 
 #[test]
@@ -158,17 +190,21 @@ fn cubic_easing_gives_full_control() {
 }
 
 #[test]
-fn cubic_easing_errors_show_the_expected_form() {
-    let e = |t: &str| t.parse::<Behaviour>().unwrap_err().to_string();
-    assert!(e("fade cubic(1.2,0,0,1)").contains("x1 and x2 must be between 0 and 1"));
-    assert!(e("fade cubic(.2,0,1)").contains("`cubic(.2,0,1)` needs four numbers"));
-    assert!(e("fade cubic(.2,0,0,a)").contains("needs four numbers"));
-    assert!(e("fade cubic(.2,0,0,1").contains("missing its closing `)`"));
-    assert!(e("fade cubic(2,0,0,1)").contains("e.g. `cubic(.2,0,0,1)`"));
-    assert!(
-        e("fade ease-in cubic(.2,0,0,1)")
-            .contains("curve given twice: `ease-in` and `cubic(.2,0,0,1)`")
-    );
+fn cubic_easing_errors_are_the_curve_errors() {
+    for curve in [
+        "cubic(1.2,0,0,1)",
+        "cubic(.2,0,1)",
+        "cubic(.2,0,0,a)",
+        "cubic(.2,0,0,1",
+        "cubic(2,0,0,1)",
+    ] {
+        let e = format!("fade {curve}").parse::<Behaviour>().unwrap_err();
+        assert_eq!(e, curve.parse::<Curve>().unwrap_err(), "{curve}");
+    }
+    assert!(matches!(
+        problem("fade ease-in cubic(.2,0,0,1)"),
+        Some(Problem::Twice(Field::Curve, "ease-in", "cubic(.2,0,0,1)"))
+    ));
 }
 
 /// Property tests: the parsers must reject bad text with an error, never panic.
@@ -191,11 +227,17 @@ mod never_panics {
 
 #[test]
 fn behaviour_token_shape_decides_the_kind_reported() {
-    let msg = |t: &str| t.parse::<Behaviour>().unwrap_err().message;
-    assert_eq!(msg("fade 1pxpx"), "`1pxpx` is not a valid distance");
-    assert_eq!(msg("fade @12fx"), "`@12fx` is not a valid start time");
-    assert_eq!(msg("fade 1.2.3s"), "`1.2.3s` is not a valid duration");
-    assert!(msg("fade fades").starts_with("unknown curve `fades`"));
+    for (text, field) in [
+        ("fade 1pxpx", Field::Distance),
+        ("fade @12fx", Field::Start),
+        ("fade 1.2.3s", Field::Duration),
+    ] {
+        assert!(
+            matches!(problem(text), Some(Problem::Malformed(f, _)) if f == field),
+            "{text}"
+        );
+    }
+    assert!(matches!(problem("fade fades"), Some(Problem::Curve(_))));
 }
 
 #[test]

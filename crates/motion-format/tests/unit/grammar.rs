@@ -1,6 +1,7 @@
-//! Unit tests for `src/lib.rs`.
+//! Unit tests for `src/grammar.rs`.
 
 use super::*;
+use crate::Kind;
 use winnow::token::one_of;
 
 /// Parses all of `text` with `grammar`, mapping any failure to one message.
@@ -12,8 +13,8 @@ fn all<'s, T>(text: &'s str, grammar: impl Parser<&'s str, T, ErrMode<Failure>>)
 fn parse_whole_names_the_text_and_the_form() {
     let error = parse_whole("12x", number, "time", "`<n>f` or `<n>s`").unwrap_err();
     assert_eq!(
-        error.to_string(),
-        "`12x` is not a valid time; expected `<n>f` or `<n>s`"
+        (error.kind, error.path, error.expected.as_deref()),
+        (Kind::Syntax, None, Some("`<n>f` or `<n>s`"))
     );
 }
 
