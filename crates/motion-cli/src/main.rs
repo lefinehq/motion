@@ -53,7 +53,9 @@ impl From<LogFormat> for Format {
     }
 }
 
-#[derive(Subcommand)]
+/// A subcommand; it converts to its name, as typed.
+#[derive(Subcommand, strum::IntoStaticStr)]
+#[strum(serialize_all = "lowercase")]
 enum Command {
     /// Check a scene for problems such as layers leaving the frame; exits 1 on errors.
     Check {
@@ -88,16 +90,6 @@ enum Command {
 }
 
 impl Command {
-    /// The subcommand's name, as typed.
-    fn name(&self) -> &'static str {
-        match self {
-            Command::Check { .. } => "check",
-            Command::At { .. } => "at",
-            Command::Edit { .. } => "edit",
-            Command::Inspect { .. } => "inspect",
-        }
-    }
-
     /// The file the command works on.
     fn file(&self) -> &Path {
         match self {
@@ -117,8 +109,9 @@ fn main() -> ExitCode {
         format,
         timings: cli.timings,
     });
+    let command: &str = (&cli.command).into();
     info!(
-        command = cli.command.name(),
+        command,
         file = %cli.command.file().display(),
         "running"
     );

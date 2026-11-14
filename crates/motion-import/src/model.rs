@@ -10,16 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use serde::Serialize;
-
-/// The name serde gives `value`, such as `text_document` or `alpha_inverted`,
-/// so the report and the tree name things as `--json` does.
-pub(crate) fn label(value: &impl Serialize) -> String {
-    match serde_json::to_value(value) {
-        Ok(serde_json::Value::String(name)) => name,
-        Ok(other) => other.to_string(),
-        Err(error) => error.to_string(),
-    }
-}
+use strum::{Display, EnumIter};
 
 /// A whole `.aep` project.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -64,9 +55,11 @@ pub struct Item {
     pub kind: ItemKind,
 }
 
-/// What an item is, with the settings of its kind.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// What an item is, with the settings of its kind. It prints as its name,
+/// as `--json` writes it.
+#[derive(Debug, Clone, PartialEq, Serialize, Display)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum ItemKind {
     /// A folder; its contents name it as their folder.
     Folder,
@@ -74,17 +67,6 @@ pub enum ItemKind {
     Composition(Composition),
     /// Footage: a solid, a file or a placeholder.
     Footage(Footage),
-}
-
-impl ItemKind {
-    /// The kind's name, as `--json` writes it.
-    pub fn name(&self) -> &'static str {
-        match self {
-            ItemKind::Folder => "folder",
-            ItemKind::Composition(_) => "composition",
-            ItemKind::Footage(_) => "footage",
-        }
-    }
 }
 
 /// A composition's settings.
@@ -313,9 +295,12 @@ pub struct Vertex {
 }
 
 /// What sort of value an [`Value::Opaque`] holds, so the report can count
-/// how often each appears.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+/// how often each appears. It prints as its name, as `--json` writes it.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Display, EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum Reason {
     /// The colour stops of a gradient.
     Gradient,
@@ -354,6 +339,7 @@ pub struct Switches {
 
 /// Declares a unit enum read from one of the file's numeric codes: the
 /// variants are the table, and `Other` keeps a code the reader does not know.
+/// It prints as its name, as `--json` writes it.
 macro_rules! coded {
     (
         $(#[$meta:meta])*
@@ -362,11 +348,16 @@ macro_rules! coded {
         }
     ) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+        #[derive(
+            Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ::serde::Serialize,
+            ::strum::Display, ::strum::EnumIter,
+        )]
         #[serde(rename_all = "snake_case")]
+        #[strum(serialize_all = "snake_case")]
         pub enum $name {
             $($(#[$doc])* $variant,)*
             /// A code this reader does not know yet.
+            #[strum(to_string = "{{\"other\":{0}}}")]
             Other($code),
         }
 
@@ -577,3 +568,7 @@ coded! {
         Hold = 3,
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/model.rs"]
+mod tests;

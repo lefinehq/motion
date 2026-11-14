@@ -3,7 +3,7 @@
 //!
 //! # Adding a rule
 //!
-//! 1. Add a [`Code`] variant and its name in `report.rs`.
+//! 1. Add a [`Code`] variant in `report.rs`; its name is the variant's, in snake case.
 //! 2. Write `rules/<name>.rs` with a `pub(super) const RULE: Rule`.
 //! 3. Add it to [`RULES`], whose order is the report's order.
 //! 4. If it would only repeat a bigger problem, set `suppressed_by` to a rule listed earlier.
