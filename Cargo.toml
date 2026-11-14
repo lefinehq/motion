@@ -30,9 +30,21 @@ clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 # Binary records of `.aep` projects (D30).
 binrw = "0.15"
-tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "json"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+  "ansi",
+  "env-filter",
+  "fmt",
+  "json",
+] }
 strum = { version = "0.28", features = ["derive"] }
-derive_more = { version = "2", features = ["as_ref", "constructor", "deref", "display", "from", "into"] }
+derive_more = { version = "2", features = [
+  "as_ref",
+  "constructor",
+  "deref",
+  "display",
+  "from",
+  "into",
+] }
 kurbo = { version = "0.13", features = ["serde"] }
 rstest = { version = "0.28", default-features = false }
 pretty_assertions = "1"
