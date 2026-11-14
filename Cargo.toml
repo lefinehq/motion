@@ -8,6 +8,8 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.91"
 repository = "https://github.com/lefinehq/motion"
+# No crate is published yet; every crate inherits this with `publish.workspace`.
+publish = false
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -21,7 +23,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_path_to_error = "0.1"
 indexmap = { version = "2", features = ["serde"] }
-thiserror = "2"
 winnow = "1"
 proptest = "1"
 insta = "1"

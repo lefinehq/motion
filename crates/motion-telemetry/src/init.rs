@@ -83,7 +83,7 @@ pub fn init(options: Options) -> Guard {
     let timings = options.timings.then(Timings::default);
     let (mut filter, rejected) = filter(options.level, env::var(ENV_VAR));
     if options.timings {
-        // Asking for timings is asking for their event, whatever the level.
+        // Asking for timings is asking for their events, whatever the level.
         filter = filter.add_directive(directive(REPORT_TARGET, LevelFilter::INFO));
     }
     let installed = subscriber(

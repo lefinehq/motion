@@ -30,7 +30,8 @@ pub const STAGE_SPAN: &str = "stage";
 /// The field of a step span that holds the step's name.
 pub const STAGE_FIELD: &str = "stage";
 
-/// The target of the event that carries the timings in JSON log mode.
+/// The target of the events, one per step, that carry the timings in JSON
+/// log mode.
 ///
 /// [`init`](crate::init) always lets this target through at `info` when
 /// timings are on, whatever the log level.

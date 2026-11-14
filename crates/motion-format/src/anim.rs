@@ -94,19 +94,9 @@ impl FromStr for TrackLine {
     /// Parses `"<from> -> <to> @<start>-<end> [<curve>]"`.
     fn from_str(text: &str) -> Result<TrackLine> {
         parse_all(text, line, |problem| {
-            let message = match problem {
-                Some(Problem::Part(diagnostic)) => return diagnostic,
-                Some(Problem::NotNumber(word)) => format!("`{word}` is not a number"),
-                Some(Problem::NoArrow) => {
-                    format!("missing `{ARROW}` after the start value in `{text}`")
-                }
-                Some(Problem::NoRange) => {
-                    format!("missing `@<start>-<end>` after the end value in `{text}`")
-                }
-                Some(Problem::Trailing(word)) => format!("unexpected `{word}` after the curve"),
-                None => format!("`{text}` is not a valid track"),
-            };
-            Diagnostic::syntax(message).expected(STRING_EXPECTED)
+            // A part that fails names its problem; a failure without one is
+            // text with no track shape at all.
+            problem.unwrap_or(Problem::NotATrack).diagnostic(text)
         })
     }
 }
@@ -127,16 +117,7 @@ impl FromStr for Span {
     /// Parses `@<start>-<end>`, e.g. `@0-30f` or `@0.5s-1s`.
     fn from_str(token: &str) -> Result<Span> {
         parse_all(token, span, |problem| {
-            let message = match problem {
-                Some(SpanProblem::NoDash) => {
-                    format!("`{token}` has no `-` between start and end")
-                }
-                Some(SpanProblem::NoUnit) => {
-                    format!("`{token}` needs a unit (`f` or `s`) after the end")
-                }
-                None => format!("`{token}` is not a valid range"),
-            };
-            Diagnostic::syntax(message).expected(RANGE_EXPECTED)
+            problem.unwrap_or(SpanProblem::NotARange).diagnostic(token)
         })
     }
 }
@@ -155,6 +136,25 @@ enum Problem {
     /// A nested shorthand (the range or the curve) failed; its diagnostic
     /// already says how.
     Part(Diagnostic),
+    /// The text has no track shape at all.
+    NotATrack,
+}
+
+impl Problem {
+    /// The diagnostic for `text`, which has this problem: the one place the
+    /// track grammar's failures become messages.
+    fn diagnostic(self, text: &str) -> Diagnostic {
+        let message = match self {
+            // The nested shorthand's diagnostic already names its form.
+            Problem::Part(diagnostic) => return diagnostic,
+            Problem::NotNumber(word) => format!("`{word}` is not a number"),
+            Problem::NoArrow => format!("missing `{ARROW}` after the start value in `{text}`"),
+            Problem::NoRange => format!("missing `@<start>-<end>` after the end value in `{text}`"),
+            Problem::Trailing(word) => format!("unexpected `{word}` after the curve"),
+            Problem::NotATrack => format!("`{text}` is not a valid track"),
+        };
+        Diagnostic::syntax(message).expected(STRING_EXPECTED)
+    }
 }
 
 /// Why a range failed.
@@ -164,6 +164,21 @@ enum SpanProblem {
     NoDash,
     /// The end has no `f` or `s`.
     NoUnit,
+    /// The token has no range shape at all.
+    NotARange,
+}
+
+impl SpanProblem {
+    /// The diagnostic for `token`, which has this problem: the one place the
+    /// range grammar's failures become messages.
+    fn diagnostic(self, token: &str) -> Diagnostic {
+        let message = match self {
+            SpanProblem::NoDash => format!("`{token}` has no `-` between start and end"),
+            SpanProblem::NoUnit => format!("`{token}` needs a unit (`f` or `s`) after the end"),
+            SpanProblem::NotARange => format!("`{token}` is not a valid range"),
+        };
+        Diagnostic::syntax(message).expected(RANGE_EXPECTED)
+    }
 }
 
 /// The whole string form: words separated by whitespace, in a fixed order.

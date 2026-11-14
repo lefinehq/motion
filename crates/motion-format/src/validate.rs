@@ -34,7 +34,7 @@ pub(crate) const ID_RULE: &str =
     "ids use lowercase letters, digits, `-` and `_`, starting with a letter";
 
 /// The only format version.
-const VERSION: f64 = 1.0;
+const VERSION: u32 = 1;
 /// Frames per second when `fps` is left out.
 const DEFAULT_FPS: f64 = 30.0;
 /// The canvas when `size` is left out.
@@ -63,7 +63,7 @@ const DEFAULT_POSITION: Position = Position {
 };
 
 /// What a layer needs from the scene around it.
-struct Stage<'a> {
+struct Context<'a> {
     /// The scene's own presets.
     presets: &'a [(String, PresetSpec)],
     /// Frames per second.
@@ -75,7 +75,7 @@ struct Stage<'a> {
 /// Validates a scene document and builds the typed [`Scene`], applying the
 /// defaults of the keys left out.
 pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
-    version(required(doc.motion, MOTION, "1")?)?;
+    version(required(*doc.motion, MOTION, &VERSION.to_string())?)?;
     let fps = doc.fps.map_or(Ok(DEFAULT_FPS), fps)?;
     let size = optional(doc.size.as_ref(), SIZE)?.unwrap_or(DEFAULT_SIZE);
     let duration = required(doc.dur.as_ref(), DUR, r#""5s""#)?.parse_at(DUR)?;
@@ -83,7 +83,7 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
     let Object(own_presets) = &doc.presets;
     let presets = presets(own_presets).map_err(|e| e.under(PRESETS))?;
     let List(layer_docs) = required(doc.layers.as_ref(), LAYERS, "[]")?;
-    let stage = Stage {
+    let context = Context {
         presets: &presets,
         fps,
         size,
@@ -92,12 +92,12 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
         .iter()
         .enumerate()
         .map(|(i, Object(layer_doc))| {
-            layer(layer_doc, &stage).map_err(|e| e.under(format!("{LAYERS}[{i}]")))
+            layer(layer_doc, &context).map_err(|e| e.under(format!("{LAYERS}[{i}]")))
         })
         .collect::<Result<Vec<_>>>()?;
     unique_ids(&layers)?;
     Ok(Scene {
-        version: 1,
+        version: VERSION,
         size,
         fps,
         duration,
@@ -130,13 +130,13 @@ fn required<T>(written: Option<T>, key: &str, value: &str) -> Result<T> {
 
 /// `motion` must be the one version there is.
 fn version(motion: Number) -> Result<()> {
-    if motion.0 == VERSION {
+    if motion.0 == f64::from(VERSION) {
         return Ok(());
     }
     Err(
         Diagnostic::new(Kind::Invalid, format!("unsupported version {}", motion.0))
             .at(MOTION)
-            .expected("`1`"),
+            .expected(format!("`{VERSION}`")),
     )
 }
 
@@ -161,7 +161,7 @@ fn optional<T: FromStr<Err = Diagnostic>>(
 }
 
 /// Validates one layer, with paths relative to it.
-fn layer(doc: &LayerDoc, stage: &Stage) -> Result<Layer> {
+fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
     let id = required(doc.id.as_deref(), ID, r#""title""#)?;
     follows_id_rule(id)?;
     let Object(tracks) = &doc.anim;
@@ -173,11 +173,11 @@ fn layer(doc: &LayerDoc, stage: &Stage) -> Result<Layer> {
         enter: doc
             .enter
             .as_ref()
-            .map(|written| entrance(written, stage.presets))
+            .map(|written| entrance(written, context.presets))
             .transpose()?,
-        anim: anim(tracks, stage.fps).map_err(|e| e.under(ANIM))?,
+        anim: anim(tracks, context.fps).map_err(|e| e.under(ANIM))?,
     };
-    entrance_conflict(&layer, stage, tracks)?;
+    entrance_conflict(&layer, context, tracks)?;
     Ok(layer)
 }
 
@@ -204,7 +204,7 @@ pub(crate) fn is_valid_id(id: &str) -> bool {
 fn content(doc: &LayerDoc) -> Result<Content> {
     const ONE_OF: &str = "needs exactly one of `text` or `rect`";
     const EXAMPLE: &str = r#"e.g. "text":"Hello" or "rect":"300x100""#;
-    match (&doc.text, &doc.rect) {
+    match (&*doc.text, &*doc.rect) {
         (Some(text), None) => Ok(Content::Text {
             text: text.clone(),
             font: optional(doc.font.as_ref(), FONT)?.unwrap_or_else(default_font),
@@ -229,7 +229,7 @@ fn default_font() -> Font {
 
 /// `font` means nothing on a rect layer.
 fn font_only_on_text(doc: &LayerDoc) -> Result<()> {
-    match doc.font {
+    match *doc.font {
         None => Ok(()),
         Some(_) => Err(
             Diagnostic::new(Kind::Conflict, "`font` only applies to text layers")
@@ -440,11 +440,11 @@ fn preset_start(name: &str, start: Start) -> Result<(Prop, Start)> {
 /// two writers of one property would fight, so the author must pick one. The
 /// error gives the exact edit that moves the entrance into `anim`, keeping
 /// the other tracks as written.
-fn entrance_conflict(layer: &Layer, stage: &Stage, written: &AnimDoc) -> Result<()> {
+fn entrance_conflict(layer: &Layer, context: &Context, written: &AnimDoc) -> Result<()> {
     let Some(behaviour) = &layer.enter else {
         return Ok(());
     };
-    let Some(spec) = lookup(stage.presets, &behaviour.preset) else {
+    let Some(spec) = lookup(context.presets, &behaviour.preset) else {
         return Ok(());
     };
     let Some(track) = layer
@@ -455,8 +455,11 @@ fn entrance_conflict(layer: &Layer, stage: &Stage, written: &AnimDoc) -> Result<
         return Ok(());
     };
     let name = track.property.name();
-    let canvas = (f64::from(stage.size.width), f64::from(stage.size.height));
-    let expansion = expand_as_anim(spec, behaviour, &layer.at, canvas, stage.fps, written);
+    let canvas = (
+        f64::from(context.size.width),
+        f64::from(context.size.height),
+    );
+    let expansion = expand_as_anim(spec, behaviour, &layer.at, canvas, context.fps, written);
     Err(Diagnostic::new(
         Kind::Conflict,
         format!(

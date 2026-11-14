@@ -16,10 +16,11 @@
 //!
 //! Every key may be left out as far as serde is concerned, so that
 //! `crate::validate` reports a missing required key with an example of it.
-//! No key may be `null`: [`present`] reads `null` as a wrong type.
+//! No key may be `null`: [`Present`] reads `null` as a wrong type.
 
 use std::fmt;
 use std::marker::PhantomData;
+use std::ops::Deref;
 use std::str::FromStr;
 
 use indexmap::IndexMap;
@@ -49,25 +50,19 @@ pub(crate) trait Form {
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct SceneDoc {
     /// The format version; only `1` is valid. Required.
-    #[serde(deserialize_with = "present")]
-    pub(crate) motion: Option<Number>,
+    pub(crate) motion: Present<Number>,
     /// The canvas size shorthand, e.g. `1080p`.
-    #[serde(deserialize_with = "present")]
-    pub(crate) size: Option<Shorthand<Size>>,
+    pub(crate) size: Present<Shorthand<Size>>,
     /// Frames per second.
-    #[serde(deserialize_with = "present")]
-    pub(crate) fps: Option<Number>,
+    pub(crate) fps: Present<Number>,
     /// The scene's length, e.g. `5s`. Required.
-    #[serde(deserialize_with = "present")]
-    pub(crate) dur: Option<Shorthand<Time>>,
+    pub(crate) dur: Present<Shorthand<Time>>,
     /// The background colour, e.g. `#0B0D12`.
-    #[serde(deserialize_with = "present")]
-    pub(crate) bg: Option<Shorthand<Color>>,
+    pub(crate) bg: Present<Shorthand<Color>>,
     /// The scene's own presets, in the order written; none when left out.
     pub(crate) presets: Object<PresetsDoc>,
     /// The layers, back to front. Required.
-    #[serde(deserialize_with = "present")]
-    pub(crate) layers: Option<List<LayersDoc>>,
+    pub(crate) layers: Present<List<LayersDoc>>,
 }
 
 impl Form for SceneDoc {
@@ -80,26 +75,20 @@ impl Form for SceneDoc {
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct LayerDoc {
     /// The layer's id. Required.
-    #[serde(deserialize_with = "present")]
-    pub(crate) id: Option<String>,
+    pub(crate) id: Present<String>,
     /// The words of a text layer.
-    #[serde(deserialize_with = "present")]
-    pub(crate) text: Option<String>,
+    pub(crate) text: Present<String>,
     /// The rectangle shorthand of a rect layer.
-    #[serde(deserialize_with = "present")]
-    pub(crate) rect: Option<Shorthand<RectShape>>,
+    pub(crate) rect: Present<Shorthand<RectShape>>,
     /// The font shorthand of a text layer.
-    #[serde(deserialize_with = "present")]
-    pub(crate) font: Option<Shorthand<Font>>,
+    pub(crate) font: Present<Shorthand<Font>>,
     /// The fill colour shorthand.
-    #[serde(deserialize_with = "present")]
-    pub(crate) fill: Option<Shorthand<Color>>,
+    pub(crate) fill: Present<Shorthand<Color>>,
     /// The position shorthand.
-    #[serde(deserialize_with = "present")]
-    pub(crate) at: Option<Shorthand<Position>>,
+    pub(crate) at: Present<Shorthand<Position>>,
     /// The entrance behaviour shorthand.
-    #[serde(rename = "in", deserialize_with = "present")]
-    pub(crate) enter: Option<Shorthand<Behaviour>>,
+    #[serde(rename = "in")]
+    pub(crate) enter: Present<Shorthand<Behaviour>>,
     /// Tracks by property name, in the order written; none when left out.
     pub(crate) anim: Object<AnimDoc>,
 }
@@ -138,14 +127,34 @@ impl Form for AnimDoc {
     const FORM: &str = r#"an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}"#;
 }
 
-/// Reads a key that may be left out but not set to `null`. Serde's
-/// `Option` reads `null` as left out, which would widen the format; this
-/// hands `null` to `T`, which rejects it as a wrong type with its form. The
-/// struct's `#[serde(default)]` covers the key being left out.
-fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
-    deserializer: D,
-) -> Result<Option<T>, D::Error> {
-    T::deserialize(deserializer).map(Some)
+/// A key that may be left out but not set to `null`: `None` when left out.
+///
+/// Serde's `Option` reads `null` as left out, which would widen the format;
+/// this hands `null` to `T`, which rejects it as a wrong type with its form.
+/// The struct's `#[serde(default)]` covers the key being left out.
+#[derive(Debug)]
+pub(crate) struct Present<T>(Option<T>);
+
+impl<T> Default for Present<T> {
+    /// A key left out.
+    fn default() -> Self {
+        Present(None)
+    }
+}
+
+impl<T> Deref for Present<T> {
+    type Target = Option<T>;
+
+    /// The value, if the key was written.
+    fn deref(&self) -> &Option<T> {
+        &self.0
+    }
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for Present<T> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        T::deserialize(deserializer).map(|value| Present(Some(value)))
+    }
 }
 
 /// A shorthand string as written, parsed into a `T` by `crate::validate`.
@@ -159,6 +168,16 @@ pub(crate) struct Shorthand<T> {
     text: String,
     /// The type the string stands for.
     target: PhantomData<fn() -> T>,
+}
+
+impl<T> Shorthand<T> {
+    /// The shorthand written as `text`.
+    fn new(text: String) -> Self {
+        Shorthand {
+            text,
+            target: PhantomData,
+        }
+    }
 }
 
 impl<T: FromStr<Err = Diagnostic>> Shorthand<T> {
@@ -196,10 +215,7 @@ impl<T: Form> Visitor<'_> for ShorthandVisitor<T> {
     }
 
     fn visit_str<E: de::Error>(self, v: &str) -> Result<Shorthand<T>, E> {
-        Ok(Shorthand {
-            text: v.to_owned(),
-            target: PhantomData,
-        })
+        Ok(Shorthand::new(v.to_owned()))
     }
 }
 
@@ -307,7 +323,7 @@ pub(crate) enum KeyTime {
     /// A bare number, counted in frames.
     Frames(f64),
     /// A shorthand such as `12f` or `0.4s`, parsed in `crate::validate`.
-    Written(String),
+    Written(Shorthand<Time>),
 }
 
 /// A JSON number. Serde's own `f64` calls itself `f64` in a wrong-type
@@ -345,7 +361,7 @@ impl<'de> Deserialize<'de> for KeyTime {
         let visitor = ScalarVisitor("a frame count, or a time such as `12f` or `0.4s`");
         Ok(match deserializer.deserialize_any(visitor)? {
             Scalar::Number(n) => KeyTime::Frames(n),
-            Scalar::Text(text) => KeyTime::Written(text),
+            Scalar::Text(text) => KeyTime::Written(Shorthand::new(text)),
         })
     }
 }
@@ -354,7 +370,7 @@ impl Serialize for KeyTime {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             KeyTime::Frames(frames) => Number(*frames).serialize(serializer),
-            KeyTime::Written(text) => serializer.serialize_str(text),
+            KeyTime::Written(time) => time.serialize(serializer),
         }
     }
 }

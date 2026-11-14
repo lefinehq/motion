@@ -34,10 +34,10 @@ Each crate has one job and a list of things it must never do. Keeping those rule
 | `motion-scene` | Compiles a scene into a scene graph with resolved positions, sizes and entrances (step 2). | Touch pixels or read files. |
 | `motion-eval` | Works out every node's position, size and opacity at a frame (step 3). | Touch pixels or read files. |
 | `motion-query` | Side branch: `check` and `at` answer questions about a scene with numbers. | Write files or touch pixels. |
-| `motion-edit` | Side branch: parses one-line edits and applies them to the raw scene. | Write files or touch pixels. |
+| `motion-edit` | Side branch: parses one-line edits and applies them to a parsed scene's raw JSON. | Write files or touch pixels. |
 | `motion-engine` | `Session`: the only entry point for tools. It reads, parses, compiles and evaluates a scene and runs `check`, `at` and edits, each step inside a `tracing` span. | Print, read arguments, or let a tool bypass it to call a step directly. |
 | `motion-telemetry` | Starts logging and step timings (`--log`, `MOTION_LOG`, `--timings`) from the spans the engine opens. | Be started by a library: only binaries and tests install a subscriber. |
-| `motion-cli` | The `motion` command: wires the crates together. | Hold engine logic. It is the only place that prints, and it reaches scenes only through `Session`. |
+| `motion-cli` | The `motion` command: reads the arguments, runs each command through a `Session`, and prints its output. | Hold engine logic. It is the only place that prints, and it reaches scenes only through `Session`. |
 
 Crates are added task by task. This table lists only crates that exist.
 

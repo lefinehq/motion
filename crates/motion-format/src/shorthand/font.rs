@@ -51,22 +51,7 @@ impl FromStr for Font {
         parse_all(text, font, |problem| {
             // `Words::into_font` names every other problem, so a failure
             // without one means the grammar found no trailing number.
-            let message = match problem.unwrap_or(Problem::NoSize) {
-                Problem::NoSize => format!("`{text}` has no size"),
-                Problem::NoFamily => format!("`{text}` has no font family"),
-                Problem::Ambiguous { explicit } => format!(
-                    "`{text}` is ambiguous: if the family name ends in a number, \
-                     write the size and weight explicitly, e.g. `{explicit} 400`; \
-                     otherwise the {WEIGHT_RULE}"
-                ),
-                Problem::Weight(weight) => {
-                    format!("`{weight}` is not a valid weight; the {WEIGHT_RULE}")
-                }
-                Problem::Size(size) => {
-                    format!("`{size}` is not a valid size; it must be above zero")
-                }
-            };
-            Diagnostic::syntax(message).expected(EXPECTED)
+            problem.unwrap_or(Problem::NoSize).diagnostic(text)
         })
     }
 }
@@ -89,6 +74,27 @@ enum Problem<'s> {
     Weight(&'s str),
     /// The size is not above zero.
     Size(&'s str),
+}
+
+impl Problem<'_> {
+    /// The diagnostic for `text`, which has this problem: the one place the
+    /// font grammar's failures become messages.
+    fn diagnostic(self, text: &str) -> Diagnostic {
+        let message = match self {
+            Problem::NoSize => format!("`{text}` has no size"),
+            Problem::NoFamily => format!("`{text}` has no font family"),
+            Problem::Ambiguous { explicit } => format!(
+                "`{text}` is ambiguous: if the family name ends in a number, \
+                 write the size and weight explicitly, e.g. `{explicit} 400`; \
+                 otherwise the {WEIGHT_RULE}"
+            ),
+            Problem::Weight(weight) => {
+                format!("`{weight}` is not a valid weight; the {WEIGHT_RULE}")
+            }
+            Problem::Size(size) => format!("`{size}` is not a valid size; it must be above zero"),
+        };
+        Diagnostic::syntax(message).expected(EXPECTED)
+    }
 }
 
 /// A font string split by the grammar: the family words, then the numbers

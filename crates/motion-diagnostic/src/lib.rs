@@ -74,7 +74,7 @@ impl Kind {
 /// [`Diagnostic::new`] (or a shorthand such as [`Diagnostic::syntax`]) and
 /// the builder methods [`at`](Diagnostic::at), [`under`](Diagnostic::under)
 /// and [`expected`](Diagnostic::expected).
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
     /// What sort of problem this is; decides the CLI exit code.
     pub kind: Kind,
@@ -208,8 +208,8 @@ impl Diagnostic {
     }
 }
 
-// Written by hand rather than with `#[error(...)]`, because the path and
-// the expected form are each optional.
+// The path and the expected form are each optional, so the text is
+// written by hand.
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(path) = &self.path {
@@ -222,6 +222,10 @@ impl fmt::Display for Diagnostic {
         Ok(())
     }
 }
+
+/// A diagnostic is an error with nothing underneath: its message already
+/// says what was wrong.
+impl std::error::Error for Diagnostic {}
 
 #[cfg(test)]
 #[path = "../tests/unit/lib.rs"]

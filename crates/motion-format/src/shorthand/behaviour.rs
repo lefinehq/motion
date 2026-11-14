@@ -80,24 +80,7 @@ impl FromStr for Behaviour {
         parse_all(text, behaviour, |problem| {
             // Every other failure names its problem where it happens, so a
             // failure without one can only mean there was no word at all.
-            let (kind, message) = match problem.unwrap_or(Problem::NoPreset) {
-                Problem::Curve(diagnostic) => return diagnostic,
-                Problem::NoPreset => (Kind::Syntax, "a behaviour needs a preset".to_owned()),
-                Problem::Preset(name) => (
-                    Kind::Syntax,
-                    format!("`{name}` is not a valid preset name; {ID_RULE}"),
-                ),
-                Problem::Malformed(field, token) => (
-                    Kind::Syntax,
-                    format!("`{token}` is not a valid {}", field.noun()),
-                ),
-                Problem::Unknown(token) => (Kind::Syntax, format!("unknown token `{token}`")),
-                Problem::Twice(field, first, second) => (
-                    Kind::Conflict,
-                    format!("{} given twice: `{first}` and `{second}`", field.name()),
-                ),
-            };
-            Diagnostic::new(kind, message).expected(EXPECTED)
+            problem.unwrap_or(Problem::NoPreset).diagnostic()
         })
     }
 }
@@ -121,6 +104,36 @@ enum Problem<'s> {
     Twice(Field, &'s str, &'s str),
     /// The curve token is not a curve; its own diagnostic says why.
     Curve(Diagnostic),
+}
+
+impl Problem<'_> {
+    /// The diagnostic for this problem: the one place the behaviour
+    /// grammar's failures become messages. Each problem carries the text it
+    /// is about.
+    fn diagnostic(self) -> Diagnostic {
+        match self {
+            Problem::Curve(diagnostic) => diagnostic,
+            Problem::NoPreset => {
+                Diagnostic::syntax("a behaviour needs a preset").expected(EXPECTED)
+            }
+            Problem::Preset(name) => {
+                Diagnostic::syntax(format!("`{name}` is not a valid preset name; {ID_RULE}"))
+                    .expected(EXPECTED)
+            }
+            Problem::Malformed(field, token) => {
+                Diagnostic::syntax(format!("`{token}` is not a valid {}", field.noun()))
+                    .expected(EXPECTED)
+            }
+            Problem::Unknown(token) => {
+                Diagnostic::syntax(format!("unknown token `{token}`")).expected(EXPECTED)
+            }
+            Problem::Twice(field, first, second) => Diagnostic::new(
+                Kind::Conflict,
+                format!("{} given twice: `{first}` and `{second}`", field.name()),
+            )
+            .expected(EXPECTED),
+        }
+    }
 }
 
 /// The field of [`Behaviour`] a tuning token sets.
