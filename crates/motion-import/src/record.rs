@@ -3,12 +3,19 @@
 //! [`parse`] is the one place a `binrw` error becomes a [`Diagnostic`].
 
 use std::fmt;
-use std::io::Cursor;
+use std::io::{Cursor, SeekFrom};
 
 use binrw::BinRead;
+use binrw::helpers::until_eof;
 use motion_format::{Diagnostic, Kind, Result};
 
-use crate::rifx::Tag;
+use crate::rifx::{Name, Tag};
+
+/// A record that is the whole body of one kind of chunk.
+pub(crate) trait Record: for<'a> BinRead<Args<'a> = ()> {
+    /// The chunk that holds it.
+    const NAME: Name;
+}
 
 /// Reads a `T` from the start of `bytes`, big-endian unless `T` says otherwise.
 /// `what` names the record in the error.
@@ -37,6 +44,45 @@ pub(crate) fn parse<'a, T: BinRead>(
     })
 }
 
+/// Text up to its first NUL byte, as UTF-8 with bad bytes replaced: the
+/// `Utf8` strings and the fixed, NUL-padded names inside records.
+pub(crate) fn text(bytes: &[u8]) -> String {
+    let until_nul = bytes.split(|&b| b == 0).next().unwrap_or_default();
+    String::from_utf8_lossy(until_nul).into_owned()
+}
+
+/// The offset of a field, as the spec's tables give it.
+const fn at(offset: u64) -> SeekFrom {
+    SeekFrom::Start(offset)
+}
+
+/// A `fixed 16.16` number: a whole part and a fraction in 1/65536 units.
+fn fixed(raw: u32) -> f64 {
+    f64::from(raw) / 65536.0
+}
+
+/// A time or a ratio stored as a dividend and a divisor.
+#[derive(BinRead, Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Ratio<N>
+where
+    N: for<'a> BinRead<Args<'a> = ()> + 'static,
+{
+    /// The dividend.
+    pub num: N,
+    /// The divisor.
+    pub den: u32,
+}
+
+impl<N: for<'a> BinRead<Args<'a> = ()> + Into<f64> + Copy> Ratio<N> {
+    /// The ratio's value; 0 when the divisor is 0, which the file never means.
+    pub fn value(self) -> f64 {
+        match self.den {
+            0 => 0.0,
+            den => self.num.into() / f64::from(den),
+        }
+    }
+}
+
 /// The 8-byte header in front of every chunk body
 /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#chunks)).
 #[derive(BinRead, Debug)]
@@ -50,6 +96,183 @@ pub(crate) struct Header {
 impl Header {
     /// The header's length in bytes.
     pub const SIZE: usize = 8;
+}
+
+/// `head`: the file version
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#head)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Head {
+    /// The major file version.
+    pub major: u16,
+    /// The minor file version.
+    pub minor: u16,
+}
+
+impl Record for Head {
+    const NAME: Name = Name::chunk(b"head");
+}
+
+impl Head {
+    /// The first major version whose names are wrapped in a `Utf8` chunk and
+    /// whose expressions are `Utf8`, not `expr`
+    /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#expr)).
+    pub const WRAPPED_TEXT: u16 = 92;
+}
+
+/// `nhed`: project settings; motion reads the colour depth
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#nhed)).
+/// Every file version has `nhed`; older ones lack its copy, `nnhd`.
+#[derive(BinRead, Debug)]
+pub(crate) struct Nhed {
+    /// 0, 1 or 2 for 8, 16 or 32 bits per channel.
+    #[br(seek_before = at(0x0F))]
+    pub depth: u8,
+}
+
+impl Record for Nhed {
+    const NAME: Name = Name::chunk(b"nhed");
+}
+
+impl Nhed {
+    /// Bits per channel, by depth code.
+    pub const BITS: [u8; 3] = [8, 16, 32];
+}
+
+/// `idta`: an item's type and id
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#idta)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Idta {
+    /// [`Idta::FOLDER`], [`Idta::COMPOSITION`] or [`Idta::FOOTAGE`].
+    pub kind: u16,
+    /// The item id.
+    #[br(seek_before = at(0x10))]
+    pub id: u32,
+}
+
+impl Record for Idta {
+    const NAME: Name = Name::chunk(b"idta");
+}
+
+impl Idta {
+    /// The type of a folder.
+    pub const FOLDER: u16 = 1;
+    /// The type of a composition.
+    pub const COMPOSITION: u16 = 4;
+    /// The type of a footage item.
+    pub const FOOTAGE: u16 = 7;
+}
+
+/// `cdta`: a composition's settings
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#cdta)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Cdta {
+    /// Work area start, from the composition's start.
+    #[br(seek_before = at(0x1C))]
+    pub work_start: Ratio<i32>,
+    /// Work area end; a dividend of [`Cdta::TO_END`] means the composition's end.
+    pub work_end: Ratio<u32>,
+    /// Duration.
+    pub duration: Ratio<u32>,
+    /// Background red, green and blue, 0 to 255.
+    pub background: [u8; 3],
+    /// Width in pixels.
+    #[br(seek_before = at(0x8C))]
+    pub width: u16,
+    /// Height in pixels.
+    pub height: u16,
+    /// Pixel aspect ratio.
+    pub pixel_aspect: Ratio<u32>,
+    /// Frames per second.
+    #[br(seek_before = at(0x9C), map = fixed)]
+    pub frame_rate: f64,
+}
+
+impl Record for Cdta {
+    const NAME: Name = Name::chunk(b"cdta");
+}
+
+impl Cdta {
+    /// The work area end that means "the end of the composition".
+    pub const TO_END: u32 = u32::MAX;
+}
+
+/// `sspc`: a footage source's cached media settings
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#sspc)).
+/// The fields motion reads sit at the same offsets in the 222-byte form and in
+/// the 286-byte form of older files.
+#[derive(BinRead, Debug)]
+pub(crate) struct Sspc {
+    /// The importer's format code: [`Sspc::SOLID`] for a solid.
+    #[br(seek_before = at(0x16))]
+    pub code: Tag,
+    /// Width in pixels.
+    #[br(seek_before = at(0x1E))]
+    pub width: u32,
+    /// Height in pixels.
+    pub height: u32,
+    /// Duration.
+    pub duration: Ratio<u32>,
+    /// The media's own frame rate.
+    #[br(seek_before = at(0x3A), map = fixed)]
+    pub native_rate: f64,
+    /// Pixel aspect ratio.
+    #[br(seek_before = at(0x88))]
+    pub pixel_aspect: Ratio<u32>,
+    /// The frame rate the footage is interpreted at; 0 for the native rate.
+    #[br(seek_before = at(0x94), map = fixed)]
+    pub conform_rate: f64,
+}
+
+impl Record for Sspc {
+    const NAME: Name = Name::chunk(b"sspc");
+}
+
+impl Sspc {
+    /// The format code of a solid.
+    pub const SOLID: Tag = Tag(*b"Soli");
+}
+
+/// The `opti` record of a solid: its colour and name
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#solid-record-soli)).
+/// The name field is 256 bytes, or 64 in the older 90-byte record.
+#[derive(BinRead, Debug)]
+pub(crate) struct SolidOpti {
+    /// Alpha, red, green and blue, 0 to 1.
+    #[br(seek_before = at(0x0A))]
+    pub argb: [f32; 4],
+    /// The solid's name, NUL-padded.
+    #[br(parse_with = until_eof, map = |bytes: Vec<u8>| text(&bytes))]
+    pub name: String,
+}
+
+impl Record for SolidOpti {
+    const NAME: Name = Name::chunk(b"opti");
+}
+
+/// The `opti` record of a placeholder: its name
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#placeholder-record)).
+#[derive(BinRead, Debug)]
+pub(crate) struct PlaceholderOpti {
+    /// The placeholder's name, NUL-padded.
+    #[br(seek_before = at(0x0A), parse_with = until_eof, map = |bytes: Vec<u8>| text(&bytes))]
+    pub name: String,
+}
+
+impl Record for PlaceholderOpti {
+    const NAME: Name = Name::chunk(b"opti");
+}
+
+/// The JSON path record of an `alas` chunk; motion reads the full path
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#alas)).
+#[derive(serde::Deserialize, Debug)]
+pub(crate) struct Alias {
+    /// The absolute path of the file, or of an image sequence's folder.
+    pub fullpath: String,
+}
+
+impl Alias {
+    /// The chunk that holds it.
+    pub const NAME: Name = Name::chunk(b"alas");
 }
 
 #[cfg(test)]
