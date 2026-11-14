@@ -288,8 +288,7 @@ impl Session {
         let reference = Image::from_png(&bytes).map_err(|d| d.at(path.display().to_string()))?;
         let frame = time * self.scene().fps;
         let list = self.display_list(frame)?;
-        let graph = self.graph()?;
-        let (width, height) = (pixels(graph.width), pixels(graph.height));
+        let (width, height) = self.canvas()?;
         if (reference.width(), reference.height()) != (width, height) {
             return Err(Diagnostic::new(
                 Kind::Invalid,
@@ -302,32 +301,31 @@ impl Session {
             )
             .expected("reference frames of the scene's size"));
         }
-        let ours = motion_raster::render_with(&list, width, height, RenderOptions::default())?;
+        let ours = self.draw(&list, RenderOptions::default())?;
         let shown = shown
-            .map(|session| coverage(session.display_list(frame)?, width, height))
+            .map(|session| self.coverage(session.display_list(frame)?))
             .transpose()?;
         Ok(Pair {
             ours,
-            coverage: coverage(list, width, height)?,
+            coverage: self.coverage(list)?,
             shown,
             reference,
         })
     }
-}
 
-/// Whether `list` draws each pixel, before its background.
-fn coverage(list: Frame, width: u32, height: u32) -> Result<Vec<bool>> {
-    let bare = Frame {
-        background: None,
-        ..list
-    };
-    Ok(
-        motion_raster::render_with(&bare, width, height, RenderOptions::default())?
+    /// Whether `list` draws each pixel of the canvas, before its background.
+    fn coverage(&self, list: Frame) -> Result<Vec<bool>> {
+        let bare = Frame {
+            background: None,
+            ..list
+        };
+        Ok(self
+            .draw(&bare, RenderOptions::default())?
             .pixels()
             .chunks_exact(4)
             .map(|p| p[3] > 0)
-            .collect(),
-    )
+            .collect())
+    }
 }
 
 /// The content window of `pair`: where the scene draws, and where it does
@@ -350,17 +348,6 @@ fn content(pair: &Pair, tolerance: f64) -> Vec<bool> {
 /// The largest difference between the colour channels of two pixels.
 fn difference(a: &[u8], b: &[u8]) -> u8 {
     (0..3).map(|i| a[i].abs_diff(b[i])).max().unwrap_or(0)
-}
-
-/// A scene size in whole pixels, as the rasteriser takes it.
-fn pixels(size: f64) -> u32 {
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "a canvas size"
-    )]
-    let rounded = size.round().clamp(0.0, f64::from(u32::MAX)) as u32;
-    rounded
 }
 
 /// The error of `pair` over the pixels `mask` holds.
