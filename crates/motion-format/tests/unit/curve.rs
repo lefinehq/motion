@@ -62,7 +62,46 @@ fn unknown_name_lists_the_table() {
     for (name, _) in NAMED_CURVES {
         assert!(expected.contains(name), "{name}");
     }
-    assert!(expected.ends_with(CUBIC_FORM), "{expected}");
+    for form in CUSTOM_FORMS {
+        assert!(expected.contains(form), "{expected}");
+    }
+}
+
+#[test]
+fn speed_reads_four_numbers_with_reaches_in_range() {
+    assert_eq!(
+        "speed(0,.33,-120.5,1)".parse::<Curve>().unwrap(),
+        Curve::Speed {
+            out_speed: 0.0,
+            out_reach: 0.33,
+            in_speed: -120.5,
+            in_reach: 1.0
+        }
+    );
+    for (bad, message) in [
+        ("speed(0,.33,0)", "needs four numbers"),
+        ("speed(0,.33,0,.33", "needs four numbers"),
+        ("speed(0,1.5,0,.33)", "each reach must be between 0 and 1"),
+        ("speed(0,.5,0,-0.1)", "each reach must be between 0 and 1"),
+    ] {
+        let e = bad.parse::<Curve>().unwrap_err();
+        assert_eq!(e.kind, Kind::Syntax, "{bad}");
+        assert!(e.message.contains(message), "{bad}: {e}");
+        assert_eq!(e.expected.as_deref(), Some(SPEED_EXPECTED));
+    }
+}
+
+#[test]
+fn speed_displays_its_four_numbers_and_round_trips() {
+    let curve = Curve::Speed {
+        out_speed: 250.0,
+        out_reach: 0.1667,
+        in_speed: 0.0,
+        in_reach: 0.75,
+    };
+    assert_eq!(curve.to_string(), "speed(250,0.17,0,0.75)");
+    let exact = "speed(250,0.25,0,0.75)".parse::<Curve>().unwrap();
+    assert_eq!(exact.to_string().parse::<Curve>().unwrap(), exact);
 }
 
 #[test]

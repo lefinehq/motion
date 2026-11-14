@@ -1,14 +1,17 @@
 //! The `at` query: resolved numbers at one moment, so an agent never does easing
 //! or layout maths itself.
 
+use kurbo::Point;
 use motion_format::fmt_num;
-use motion_format::property::Prop;
+use motion_format::property::{Prop, Rest};
+use motion_format::shorthand::{Coord, Position};
 use motion_format::{Diagnostic, Kind, Result};
 use motion_scene::{NodeState, SceneGraph, evaluate};
 use tracing::instrument;
 
-/// One line per node in `ids` (all when empty) at `frame`: `{id} x= y= w= h=`, then each
-/// other property whose printed value differs from its default, so float dust stays hidden.
+/// One line per node in `ids` (all when empty) at `frame`: `{id} x= y= w= h=`, with `x`
+/// and `y` where its anchor lands on the canvas, then each other property whose printed
+/// value differs from its default, so float dust stays hidden.
 #[instrument(level = "debug", skip(graph, ids), fields(ids = ids.len()))]
 pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
     if frame < 0.0 {
@@ -33,22 +36,36 @@ pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
 
 /// The line [`at`] prints for `node`.
 fn describe(node: &NodeState) -> String {
-    // The properties `at` sets (x and y) are always printed, first.
+    // The property `at` sets is always printed, first, by its components.
     let changed: String = Prop::all()
-        .filter(|prop| prop.spec().rest_from_at.is_none())
+        .filter(|&prop| prop.spec().rest != Rest::At)
         .filter_map(|prop| {
-            let shown = fmt_num(node.get(prop));
-            (shown != fmt_num(prop.spec().default)).then(|| format!(" {}={shown}", prop.name()))
+            let shown = node.get(prop).to_string();
+            let rest = rest_shown(prop, node);
+            (shown != rest).then(|| format!(" {}={shown}", prop.name()))
         })
         .collect();
+    // Where the anchor lands on the canvas: the position, through any parents.
+    let [ax, ay] = node.point(Prop::ANCHOR);
+    let Point { x, y } = node.transform * Point::new(ax, ay);
     format!(
         "{} x={} y={} w={} h={}{changed}",
         node.id,
-        fmt_num(node.get(Prop::X)),
-        fmt_num(node.get(Prop::Y)),
+        fmt_num(x),
+        fmt_num(y),
         fmt_num(node.width),
         fmt_num(node.height)
     )
+}
+
+/// How the registry's resting value of `prop` prints for `node`'s box.
+fn rest_shown(prop: Prop, node: &NodeState) -> String {
+    let at = Position {
+        x: Coord::Px(0.0),
+        y: Coord::Px(0.0),
+    };
+    let rest = prop.spec().rest(&at, (0.0, 0.0), (node.width, node.height));
+    rest.to_string()
 }
 
 #[cfg(test)]

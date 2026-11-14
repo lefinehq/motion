@@ -2,6 +2,11 @@
 
 use super::*;
 
+/// Eased progress: `curve` over a span from 0 to 1 lasting one second.
+fn sample(curve: Curve, p: f64) -> f64 {
+    Ease::from_curve(curve, 1.0, 1.0).sample(0.0, 1.0, p)
+}
+
 /// A curve from the table, by name.
 fn named(name: &str) -> Curve {
     Curve::named(name).unwrap()
@@ -84,4 +89,54 @@ fn every_named_bezier_equals_its_cubic_form() {
             assert_eq!(sample(*curve, p), sample(cubic, p), "{name}");
         }
     }
+}
+
+#[test]
+fn a_normalised_curve_becomes_handles_scaled_by_the_change() {
+    assert_eq!(
+        Ease::from_curve(Curve::Bezier(0.2, 0.1, 0.6, 1.0), -50.0, 2.0),
+        Ease::Bezier {
+            out: (0.2, -5.0),
+            into: (0.4, 0.0)
+        }
+    );
+}
+
+#[test]
+fn a_speed_becomes_handles_in_value_units() {
+    let speed = Curve::Speed {
+        out_speed: 300.0,
+        out_reach: 0.25,
+        in_speed: -40.0,
+        in_reach: 0.5,
+    };
+    // Over 2 s: the out handle spans 0.5 s at 300/s, the in handle 1 s at -40/s.
+    assert_eq!(
+        Ease::from_curve(speed, 123.0, 2.0),
+        Ease::Bezier {
+            out: (0.25, 150.0),
+            into: (0.5, -40.0)
+        }
+    );
+}
+
+#[test]
+fn a_bezier_ease_passes_through_its_ends_and_is_smooth_between() {
+    // The arriving handle rises by -10, so it sits 10 above the end: a bump.
+    let ease = Ease::Bezier {
+        out: (0.5, 10.0),
+        into: (0.5, -10.0),
+    };
+    assert_eq!(ease.sample(0.0, 0.0, 0.0), 0.0);
+    assert_eq!(ease.sample(0.0, 0.0, 1.0), 0.0);
+    // Symmetric handles that rise and come back peak at the middle, at 3/4 of the rise.
+    assert!((ease.sample(0.0, 0.0, 0.5) - 7.5).abs() < 1e-9);
+}
+
+#[test]
+fn linear_and_hold_ignore_the_span_length() {
+    assert_eq!(Ease::from_curve(Curve::Linear, 5.0, 9.0), Ease::Linear);
+    assert_eq!(Ease::from_curve(Curve::Hold, 5.0, 9.0), Ease::Hold);
+    assert_eq!(Ease::Linear.sample(10.0, 20.0, 0.25), 12.5);
+    assert_eq!(Ease::Hold.sample(10.0, 20.0, 0.99), 10.0);
 }

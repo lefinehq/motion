@@ -1,6 +1,7 @@
 //! The result of evaluation: plain values, so checks and renderers never see animation.
 
-use kurbo::{Point, Rect, Vec2};
+use kurbo::{Affine, Rect};
+use motion_format::Value;
 use motion_format::property::Prop;
 
 /// One node's resolved values at a single frame.
@@ -8,33 +9,57 @@ use motion_format::property::Prop;
 pub struct NodeState {
     /// The layer id this state belongs to.
     pub id: String,
-    /// Box width in pixels, before `scale` and `rotate`.
+    /// Box width in pixels, in the node's own coordinates.
     pub width: f64,
-    /// Box height in pixels, before `scale` and `rotate`.
+    /// Box height in pixels, in the node's own coordinates.
     pub height: f64,
     /// One value per property, parallel to `motion_format::property::PROPERTIES`.
-    pub values: Vec<f64>,
+    pub values: Vec<Value>,
+    /// From the node's own coordinates to the canvas: its transform, then its parents'.
+    pub transform: Affine,
+    /// Whether the frame falls in the node's span.
+    pub shown: bool,
 }
 
 impl NodeState {
     /// The value of `prop`.
-    pub fn get(&self, prop: Prop) -> f64 {
+    pub fn get(&self, prop: Prop) -> Value {
         self.values[prop.index()]
     }
 
-    /// The axis-aligned box as drawn: scaled, then rotated by `rotate` degrees
-    /// about `(x, y)`.
+    /// The value of a number property.
+    ///
+    /// # Panics
+    /// If `prop` does not hold a number.
+    pub fn number(&self, prop: Prop) -> f64 {
+        self.get(prop).as_number().expect("a number property")
+    }
+
+    /// The value of a point property.
+    ///
+    /// # Panics
+    /// If `prop` does not hold a point.
+    pub fn point(&self, prop: Prop) -> [f64; 2] {
+        self.get(prop).as_point().expect("a point property")
+    }
+
+    /// The axis-aligned box the node covers on the canvas: its own box
+    /// through its transform.
     pub fn bounds(&self) -> Rect {
-        let centre = Point::new(self.get(Prop::X), self.get(Prop::Y));
-        // Mirroring (a negative scale) does not change the covered area.
-        let scale = self.get(Prop::SCALE).abs();
-        let (half_w, half_h) = (self.width * scale / 2.0, self.height * scale / 2.0);
-        let theta = self.get(Prop::ROTATE).to_radians();
+        let drawn =
+            self.transform
+                .transform_rect_bbox(Rect::new(0.0, 0.0, self.width, self.height));
         // Snap trig dust (cos 90° is 6e-17) so a quarter turn gives exact edges.
-        let snap = |v: f64| if v.abs() < 1e-12 { 0.0 } else { v.abs() };
-        let (cos, sin) = (snap(theta.cos()), snap(theta.sin()));
-        let half = Vec2::new(half_w * cos + half_h * sin, half_w * sin + half_h * cos);
-        Rect::from_points(centre - half, centre + half)
+        let snap = |v: f64| {
+            let near = v.round();
+            if (v - near).abs() < 1e-9 { near } else { v }
+        };
+        Rect::new(
+            snap(drawn.x0),
+            snap(drawn.y0),
+            snap(drawn.x1),
+            snap(drawn.y1),
+        )
     }
 
     /// The left edge of [`NodeState::bounds`].

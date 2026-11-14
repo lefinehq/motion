@@ -16,14 +16,53 @@ fn compile_json(json: &str) -> SceneGraph {
     compile(&scene, &ApproxTextMeasure)
 }
 
-/// The track of `node` for the property called `name`.
-fn track<'a>(node: &'a Node, name: &str) -> &'a Track {
-    &node.tracks[Prop::named(name).unwrap().index()]
+/// What drives the property or component called `name` on `node`: its
+/// track, and the component of the track's values that is `name`.
+struct Driven<'a> {
+    track: &'a Track,
+    component: usize,
 }
 
-/// The keys of a track as `(frame, value)` pairs.
-fn pairs(t: &Track) -> Vec<(f64, f64)> {
-    t.keys().iter().map(|k| (k.frame, k.value)).collect()
+impl Driven<'_> {
+    /// The value at the node's own `frame`.
+    fn sample(&self, frame: f64) -> f64 {
+        self.track.sample(frame).components()[self.component]
+    }
+
+    /// The keys as `(frame, value)` pairs.
+    fn pairs(&self) -> Vec<(f64, f64)> {
+        let i = self.component;
+        self.track
+            .keys()
+            .iter()
+            .map(|k| (k.frame, k.value.components()[i]))
+            .collect()
+    }
+
+    fn is_constant(&self) -> bool {
+        self.track.is_constant()
+    }
+}
+
+/// The track of `node` that drives the target called `name`.
+fn track<'a>(node: &'a Node, name: &str) -> Driven<'a> {
+    let target = Target::named(name).unwrap();
+    match (&node.tracks[target.prop.index()], target.component) {
+        (PropertyTrack::Whole(track), component) => Driven {
+            track,
+            component: component.unwrap_or(0),
+        },
+        (PropertyTrack::Split(tracks), Some(i)) => Driven {
+            track: &tracks[i],
+            component: 0,
+        },
+        (PropertyTrack::Split(_), None) => panic!("`{name}` is split into components"),
+    }
+}
+
+/// The keys of a target as `(frame, value)` pairs.
+fn pairs(driven: Driven) -> Vec<(f64, f64)> {
+    driven.pairs()
 }
 
 /// One layer `a` (10x10 at 100,200) with the given extra layer keys.
@@ -52,14 +91,17 @@ fn resolves_sizes_and_rest_positions() {
 #[test]
 fn every_node_has_one_track_per_property() {
     for n in &compile(&launch(), &ApproxTextMeasure).nodes {
-        assert_eq!(n.tracks.len(), PROPERTIES.len());
+        assert_eq!(n.tracks.len(), motion_format::property::PROPERTIES.len());
     }
 }
 
 #[test]
 fn untouched_properties_are_constant_at_their_default() {
     let g = one("", "");
-    for (spec, t) in PROPERTIES.iter().zip(&g.nodes[0].tracks) {
+    for (spec, t) in motion_format::property::PROPERTIES
+        .iter()
+        .zip(&g.nodes[0].tracks)
+    {
         assert!(t.is_constant(), "{}", spec.name);
     }
     assert_eq!(track(&g.nodes[0], "opacity").sample(0.0), 1.0);
@@ -101,7 +143,8 @@ fn offsets_point_away_from_the_direction_of_travel(
 #[test]
 fn pop_and_spin_in_produce_scale_and_rotate_tracks() {
     let n = &one(r#","in":"pop 10f linear""#, "").nodes[0];
-    assert_eq!(pairs(track(n, "scale")), [(0.0, 0.6), (10.0, 1.0)]);
+    assert_eq!(pairs(track(n, "scale-x")), [(0.0, 0.6), (10.0, 1.0)]);
+    assert_eq!(pairs(track(n, "scale-y")), [(0.0, 0.6), (10.0, 1.0)]);
     assert!(track(n, "rotate").is_constant());
     let n = &one(r#","in":"spin-in 10f linear""#, "").nodes[0];
     assert_eq!(pairs(track(n, "rotate")), [(0.0, -90.0), (10.0, 0.0)]);
@@ -112,7 +155,7 @@ fn pop_and_spin_in_produce_scale_and_rotate_tracks() {
 fn seconds_convert_to_frames_at_a_non_default_fps() {
     let n = &one(r#","in":"fade-up 40px 0.25s @0.5s""#, r#""fps":60,"#).nodes[0];
     // 0.5 s and 0.25 s at 60 fps.
-    let frames: Vec<f64> = track(n, "opacity").keys().iter().map(|k| k.frame).collect();
+    let frames: Vec<f64> = track(n, "opacity").pairs().iter().map(|k| k.0).collect();
     assert_eq!(frames, [30.0, 45.0]);
 }
 
@@ -134,7 +177,7 @@ fn anim_and_entrance_drive_different_properties() {
         "",
     )
     .nodes[0];
-    assert_eq!(pairs(track(n, "scale")), [(0.0, 0.2), (10.0, 0.8)]);
+    assert_eq!(pairs(track(n, "scale-y")), [(0.0, 0.2), (10.0, 0.8)]);
     // The entrance still drives opacity and y.
     assert!(!track(n, "opacity").is_constant());
     assert!(!track(n, "y").is_constant());
@@ -163,4 +206,92 @@ fn a_scene_preset_overrides_a_built_in() {
     let n = &g.nodes[0];
     assert_eq!(pairs(track(n, "y")).first(), Some(&(0.0, 230.0)));
     assert!(!track(n, "y").is_constant());
+}
+
+#[test]
+fn resting_values_set_on_the_layer_are_the_constant_tracks() {
+    let n = &one(
+        r#","rotate":45,"scale":[0.8,0.5],"anchor":[0,0],"opacity":0.5"#,
+        "",
+    )
+    .nodes[0];
+    assert_eq!(track(n, "rotate").sample(0.0), 45.0);
+    assert_eq!(track(n, "scale-y").sample(0.0), 0.5);
+    assert_eq!(track(n, "anchor-x").sample(0.0), 0.0);
+    assert_eq!(track(n, "opacity").sample(0.0), 0.5);
+    // Without it the anchor rests at the centre of the box.
+    assert_eq!(track(&one("", "").nodes[0], "anchor-y").sample(0.0), 5.0);
+}
+
+#[test]
+fn a_whole_point_track_keeps_its_path_and_speed() {
+    let n = &one(
+        r#","anim":{"position":[{"t":0,"v":[0,0],"curve":"speed(0,0.5,0,0.5)","path":[[50,0],[0,-50]]},{"t":"1s","v":[100,100]}]}"#,
+        r#""fps":10,"#,
+    )
+    .nodes[0];
+    let PropertyTrack::Whole(position) = &n.tracks[Prop::POSITION.index()] else {
+        panic!("position is animated whole");
+    };
+    assert_eq!(position.value_type(), ValueType::Point);
+    let [x, y] = position.sample(5.0).as_point().unwrap();
+    // The bent path passes above the straight diagonal.
+    assert!(x > y, "{x},{y}");
+    assert_eq!(n.follows_at, (false, false));
+}
+
+#[test]
+fn components_split_a_point_and_rest_where_nothing_drives_them() {
+    let n = &one(r#","anim":{"scale-x":"0 -> 2 @0-10f"}"#, "").nodes[0];
+    let PropertyTrack::Split(tracks) = &n.tracks[Prop::SCALE.index()] else {
+        panic!("scale is split");
+    };
+    assert_eq!(tracks.len(), 2);
+    assert_eq!(track(n, "scale-x").sample(5.0), 1.0);
+    assert!(track(n, "scale-y").is_constant());
+    assert_eq!(track(n, "scale-y").sample(5.0), 1.0);
+}
+
+#[test]
+fn parents_and_timing_are_resolved() {
+    let g = compile_json(
+        r#"{"motion":1,"fps":10,"dur":"2s","layers":[
+        {"id":"card","rect":"10x10"},
+        {"id":"label","rect":"5x5","parent":"card","span":"1s-2s","offset":"1s","stretch":2}]}"#,
+    );
+    assert_eq!(g.nodes[0].parent, None);
+    assert_eq!(g.nodes[0].timing, Timing::ALWAYS);
+    let label = &g.nodes[1];
+    assert_eq!(label.parent, Some(0));
+    assert_eq!(
+        label.timing,
+        Timing {
+            span: Some((10.0, 20.0)),
+            offset: 10.0,
+            stretch: 2.0
+        }
+    );
+}
+
+#[test]
+#[should_panic(expected = "its own ancestor")]
+fn a_code_built_parent_cycle_is_refused() {
+    let mut scene = motion_format::parse_document(
+        r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":"1x1"},{"id":"b","rect":"1x1","parent":"a"}]}"#,
+    )
+    .unwrap()
+    .scene()
+    .clone();
+    scene.layers[0].parent = Some("b".into());
+    compile(&scene, &ApproxTextMeasure);
+}
+
+#[test]
+fn at_resolves_in_the_parents_box() {
+    let g = compile_json(
+        r#"{"motion":1,"dur":"1s","layers":[{"id":"card","rect":"200x100"},
+        {"id":"kid","rect":"10x10","parent":"card","at":"center center"}]}"#,
+    );
+    assert_eq!(track(&g.nodes[1], "x").sample(0.0), 100.0);
+    assert_eq!(track(&g.nodes[1], "y").sample(0.0), 50.0);
 }

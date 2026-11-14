@@ -74,3 +74,21 @@ fn errors_say_what_kind_of_problem_they_are() {
         Diagnostic::unknown("layer id", "ghost", ["a"])
     );
 }
+
+#[test]
+fn a_child_prints_where_its_anchor_lands_on_the_canvas() {
+    let s = motion_format::parse_document(
+        r#"{"motion":1,"dur":"1s","layers":[
+        {"id":"card","rect":"200x100","at":"500 400","scale":2},
+        {"id":"kid","rect":"10x10","parent":"card","at":"center center"}]}"#,
+    )
+    .unwrap()
+    .scene()
+    .clone();
+    let g = motion_scene::compile(&s, &motion_scene::ApproxTextMeasure);
+    // `center center` is the middle of the card's box, which sits at (500, 400).
+    assert_eq!(
+        at(&g, 0.0, &["kid".into()]).unwrap(),
+        "kid x=500 y=400 w=10 h=10"
+    );
+}

@@ -13,13 +13,13 @@ use serde::de::value::{MapAccessDeserializer, SeqAccessDeserializer};
 use serde::de::{
     self, Deserialize, Deserializer, IgnoredAny, MapAccess, SeqAccess, Unexpected, Visitor,
 };
-use serde::ser::{Serialize, SerializeSeq, Serializer};
+use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
 
 use crate::Curve;
-use crate::anim::{KEY_EXPECTED, TRACK_EXPECTED};
+use crate::anim::{EASING_EXPECTED, KEY_EXPECTED, PATH_EXPECTED, TRACK_EXPECTED};
 use crate::preset::Start;
 use crate::shorthand::{Behaviour, Font, Position, RectShape};
-use crate::units::{Color, Size, Time};
+use crate::units::{Color, Size, Time, TimeSpan};
 
 /// The accepted form of a document value, told to a value of the wrong JSON
 /// type instead of serde's "a string" or "a map".
@@ -45,9 +45,11 @@ impl Form for SceneDoc {
     const FORM: &str = r#"a scene object, e.g. {"motion":1,"dur":"5s","layers":[]}"#;
 }
 
-/// One layer; its fields follow [`LAYER_KEYS`](crate::LAYER_KEYS).
+/// One layer; its fields follow [`LAYER_KEYS`](crate::LAYER_KEYS), and any
+/// other key is a property's resting value, which `crate::validate` checks
+/// against the registry (serde cannot deny unknown fields next to `flatten`).
 #[derive(Debug, Default, serde::Deserialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(default)]
 pub(crate) struct LayerDoc {
     pub(crate) id: Present<String>,
     pub(crate) text: Present<String>,
@@ -58,6 +60,14 @@ pub(crate) struct LayerDoc {
     #[serde(rename = "in")]
     pub(crate) enter: Present<Shorthand<Behaviour>>,
     pub(crate) anim: Object<AnimDoc>,
+    pub(crate) parent: Present<String>,
+    pub(crate) span: Present<Shorthand<TimeSpan>>,
+    pub(crate) offset: Present<Shorthand<Time>>,
+    pub(crate) stretch: Present<Number>,
+    /// Every other key, kept as JSON until its name is checked, so an unknown
+    /// key is reported as unknown whatever its value.
+    #[serde(flatten)]
+    pub(crate) values: IndexMap<String, serde_json::Value>,
 }
 
 impl Form for LayerDoc {
@@ -254,12 +264,61 @@ pub(crate) enum TrackDoc {
     Keys(Vec<KeyDoc>),
 }
 
-/// One key of the key-list form: `[time, value]` or `[time, value, curve]`.
-#[derive(Debug, Clone, PartialEq)]
+/// One key of the key-list form: `[time, value]`, `[time, value, curve]`,
+/// or the object form, which can also bend a spatial path.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct KeyDoc {
+    #[serde(rename = "t")]
     pub(crate) time: KeyTime,
-    pub(crate) value: f64,
-    pub(crate) curve: Option<Shorthand<Curve>>,
+    #[serde(rename = "v")]
+    pub(crate) value: ValueDoc,
+    #[serde(default)]
+    pub(crate) curve: Option<EasingDoc>,
+    #[serde(default)]
+    pub(crate) path: Option<PathDoc>,
+    /// Written as an object, so errors name its keys rather than positions.
+    #[serde(skip)]
+    pub(crate) object: bool,
+}
+
+impl KeyDoc {
+    /// Where the value sits in the key as written: `v` or `[1]`.
+    pub(crate) fn value_path(&self) -> &'static str {
+        if self.object { "v" } else { "[1]" }
+    }
+
+    /// Where the curve sits in the key as written: `curve` or `[2]`.
+    pub(crate) fn curve_path(&self) -> &'static str {
+        if self.object { "curve" } else { "[2]" }
+    }
+}
+
+/// A value as JSON writes it: a number, a list of numbers or a string. Its
+/// type comes from the property, so `crate::validate` reads it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ValueDoc {
+    /// A number, or the numbers of a list.
+    Numbers(Vec<f64>),
+    /// The string form, such as `"#FFE000"` or `"540,960"`.
+    Text(String),
+}
+
+/// A key's curve: one for the whole value, or one per component.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum EasingDoc {
+    /// One curve.
+    One(Shorthand<Curve>),
+    /// One curve per component.
+    Each(Vec<Shorthand<Curve>>),
+}
+
+/// The tangents of a spatial key, `[[out-x, out-y], [in-x, in-y]]`.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize)]
+pub(crate) struct PathDoc(pub(crate) [[f64; 2]; 2]);
+
+impl Form for PathDoc {
+    const FORM: &str = PATH_EXPECTED;
 }
 
 /// The time of a key: a bare frame count or a time shorthand.
@@ -382,22 +441,39 @@ impl<'de> Visitor<'de> for TrackVisitor {
     }
 
     fn visit_seq<A: SeqAccess<'de>>(self, seq: A) -> Result<TrackDoc, A::Error> {
-        Vec::deserialize(SeqAccessDeserializer::new(seq)).map(TrackDoc::Keys)
+        let keys: Vec<KeyForm> = Vec::deserialize(SeqAccessDeserializer::new(seq))?;
+        Ok(TrackDoc::Keys(
+            keys.into_iter().map(|KeyForm(k)| k).collect(),
+        ))
     }
 }
 
-impl<'de> Deserialize<'de> for KeyDoc {
+/// The array or object form of a key.
+pub(crate) struct KeyForm(pub(crate) KeyDoc);
+
+impl<'de> Deserialize<'de> for KeyForm {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_seq(KeyVisitor)
+        deserializer.deserialize_any(KeyVisitor).map(KeyForm)
     }
 }
 
 impl Serialize for KeyDoc {
+    /// The array form, or the object form when the key bends a path.
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if let Some(path) = &self.path {
+            let mut map = serializer.serialize_map(None)?;
+            map.serialize_entry("t", &self.time)?;
+            map.serialize_entry("v", &self.value)?;
+            if let Some(curve) = &self.curve {
+                map.serialize_entry("curve", curve)?;
+            }
+            map.serialize_entry("path", path)?;
+            return map.end();
+        }
         let len = if self.curve.is_some() { 3 } else { 2 };
         let mut seq = serializer.serialize_seq(Some(len))?;
         seq.serialize_element(&self.time)?;
-        seq.serialize_element(&Number(self.value))?;
+        seq.serialize_element(&self.value)?;
         if let Some(curve) = &self.curve {
             seq.serialize_element(curve)?;
         }
@@ -418,7 +494,7 @@ impl<'de> Visitor<'de> for KeyVisitor {
         let time = seq
             .next_element()?
             .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-        let Number(value) = seq
+        let value = seq
             .next_element()?
             .ok_or_else(|| de::Error::invalid_length(1, &self))?;
         let curve = seq.next_element()?;
@@ -430,6 +506,116 @@ impl<'de> Visitor<'de> for KeyVisitor {
         if len > 3 {
             return Err(de::Error::invalid_length(len, &self));
         }
-        Ok(KeyDoc { time, value, curve })
+        Ok(KeyDoc {
+            time,
+            value,
+            curve,
+            path: None,
+            object: false,
+        })
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<KeyDoc, A::Error> {
+        let key = KeyDoc::deserialize(MapAccessDeserializer::new(map))?;
+        Ok(KeyDoc {
+            object: true,
+            ..key
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ValueDoc {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(ValueVisitor)
+    }
+}
+
+impl Serialize for ValueDoc {
+    /// One number bare, several as a list, a string as written.
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            ValueDoc::Numbers(numbers) if numbers.len() == 1 => {
+                Number(numbers[0]).serialize(serializer)
+            }
+            ValueDoc::Numbers(numbers) => {
+                let mut seq = serializer.serialize_seq(Some(numbers.len()))?;
+                for n in numbers {
+                    seq.serialize_element(&Number(*n))?;
+                }
+                seq.end()
+            }
+            ValueDoc::Text(text) => serializer.serialize_str(text),
+        }
+    }
+}
+
+/// The accepted forms of a value whose property is not known yet.
+const VALUE_EXPECTED: &str =
+    r##"a number, a list of numbers such as [540, 960], or a string such as "#FFE000""##;
+
+struct ValueVisitor;
+
+impl<'de> Visitor<'de> for ValueVisitor {
+    type Value = ValueDoc;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(VALUE_EXPECTED)
+    }
+
+    fn visit_f64<E: de::Error>(self, v: f64) -> Result<ValueDoc, E> {
+        Ok(ValueDoc::Numbers(vec![v]))
+    }
+
+    fn visit_i64<E: de::Error>(self, v: i64) -> Result<ValueDoc, E> {
+        Ok(ValueDoc::Numbers(vec![v as f64]))
+    }
+
+    fn visit_u64<E: de::Error>(self, v: u64) -> Result<ValueDoc, E> {
+        Ok(ValueDoc::Numbers(vec![v as f64]))
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<ValueDoc, E> {
+        Ok(ValueDoc::Text(v.to_owned()))
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<ValueDoc, A::Error> {
+        let mut numbers = Vec::new();
+        while let Some(Number(n)) = seq.next_element()? {
+            numbers.push(n);
+        }
+        Ok(ValueDoc::Numbers(numbers))
+    }
+}
+
+impl<'de> Deserialize<'de> for EasingDoc {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(EasingVisitor)
+    }
+}
+
+impl Serialize for EasingDoc {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            EasingDoc::One(curve) => curve.serialize(serializer),
+            EasingDoc::Each(curves) => curves.serialize(serializer),
+        }
+    }
+}
+
+struct EasingVisitor;
+
+impl<'de> Visitor<'de> for EasingVisitor {
+    type Value = EasingDoc;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(EASING_EXPECTED)
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<EasingDoc, E> {
+        Ok(EasingDoc::One(Shorthand::new(v.to_owned())))
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, seq: A) -> Result<EasingDoc, A::Error> {
+        Vec::deserialize(SeqAccessDeserializer::new(seq)).map(EasingDoc::Each)
     }
 }

@@ -6,9 +6,9 @@ use std::str::FromStr;
 
 use serde_json::Value;
 
-use crate::anim::{Span, TrackLine};
+use crate::anim::TrackLine;
 use crate::shorthand::{Behaviour, Font, Position, RectShape};
-use crate::units::{Color, Size, Time};
+use crate::units::{Color, Size, Time, TimeSpan};
 use crate::{Curve, Diagnostic, Result, de, parse_document};
 
 /// A section of the report: each input, then the full text of its error.
@@ -120,7 +120,20 @@ fn every_error_message() {
                 r#"{"id":"a","rect":"1x1","anim":null}"#,
                 r#"{"id":"a","rect":"1x1","anim":[]}"#,
                 r#"{"id":"a","rect":"1x1","x":1}"#,
+                r#"{"id":"a","rect":"1x1","position":[1,2]}"#,
+                r#"{"id":"a","rect":"1x1","rotate":"x"}"#,
+                r#"{"id":"a","rect":"1x1","scale":[1,2,3]}"#,
+                r#"{"id":"a","rect":"1x1","opacity":2}"#,
+                r#"{"id":"a","rect":"1x1","parent":"b"}"#,
+                r#"{"id":"a","rect":"1x1","parent":"a"}"#,
+                r#"{"id":"a","rect":"1x1","parent":"b"},{"id":"b","rect":"1x1","parent":"a"}"#,
+                r#"{"id":"a","rect":"1x1","parent":3}"#,
+                r#"{"id":"a","rect":"1x1","span":"5f"}"#,
+                r#"{"id":"a","rect":"1x1","span":"5-1f"}"#,
+                r#"{"id":"a","rect":"1x1","offset":"-1f"}"#,
+                r#"{"id":"a","rect":"1x1","stretch":0}"#,
                 r#"{"id":"a","rect":"10x10","in":"fade-up","anim":{"opacity":"0 -> 1 @0-5f"}}"#,
+                r#"{"id":"a","rect":"10x10","in":"fade-up","anim":{"position":"0,0 -> 1,1 @0-5f"}}"#,
             ],
             layers,
         ),
@@ -132,6 +145,20 @@ fn every_error_message() {
                 r#""x":"0 1 @0-5f""#,
                 r#""x":"0 -> 1 @5-0f""#,
                 r#""x":"inf -> 1 @0-5f""#,
+                r#""x":"a -> 1 @0-5f""#,
+                r#""scale":"1,2,3 -> 1 @0-5f""#,
+                r#""position":"1 -> 2 @0-5f""#,
+                r#""fill":"0 -> 1 @0-5f""#,
+                r#""x":"0 -> 1 @0-5f","position":"0,0 -> 1,1 @0-5f""#,
+                r#""position":[[0,[1,2],["linear","linear"]]]"#,
+                r#""scale":[[0,[1,2],["linear"]]]"#,
+                r#""scale":[[0,[1,2],["linear","bouncy"]]]"#,
+                r#""scale":[[0,[1,2],3]]"#,
+                r#""x":[{"t":0,"v":1,"path":[[0,0],[0,0]]}]"#,
+                r#""position":[{"t":0,"v":[1,2],"path":[[0,0]]}]"#,
+                r#""position":[{"t":0,"v":[1,2],"bend":1}]"#,
+                r#""position":[{"v":[1,2]}]"#,
+                r#""x":[[0,1,"speed(0,2,0,0)"]]"#,
                 r#""opacity":"0 -> 2 @0-5f""#,
                 r#""x":[]"#,
                 r#""x":[5]"#,
@@ -223,12 +250,12 @@ fn every_error_message() {
                 "0 1 @0-5f",
                 "0 -> 1",
                 "0 -> 1 2 @0-5f",
-                "a -> 1 @0-5f",
                 "0 -> 1 @0-5f bouncy",
                 "0 -> 1 @0-5f ease ease",
             ],
         ),
-        shorthand::<Span>("range", &["@x-5f", "@05f", "@0-5"]),
+        section("range", &["@x-5f", "@05f", "@0-5"], TimeSpan::from_range),
+        shorthand::<TimeSpan>("span", &["x-5f", "05f", "0-5", "@0-5f"]),
         section("serde", &["{}", r#""dim""#], serde),
     ];
     insta::assert_snapshot!(report.join("\n\n"));

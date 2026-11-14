@@ -7,19 +7,25 @@ use std::str::FromStr;
 
 use crate::{Diagnostic, Kind, Result};
 
-use crate::anim::{AnimKey, AnimTrack, KEYS_EXPECTED, RANGE_EXPECTED, Span, TrackLine};
+use crate::anim::{
+    AnimKey, AnimTrack, EASING_EXPECTED, Easing, KEYS_EXPECTED, PATH_EXPECTED, RANGE_EXPECTED,
+    Span, TrackLine,
+};
 use crate::doc::{
-    AnimDoc, KeyDoc, KeyTime, LayerDoc, List, Number, Object, PresetDoc, PresetsDoc, SceneDoc,
-    Shorthand, StartDoc, TrackDoc,
+    AnimDoc, EasingDoc, KeyDoc, KeyTime, LayerDoc, List, Number, Object, PathDoc, PresetDoc,
+    PresetsDoc, SceneDoc, Shorthand, StartDoc, TrackDoc, ValueDoc,
 };
 use crate::edit_word::NONE;
 use crate::parse::key::{
-    ANIM, AT, BG, DUR, FILL, FONT, FPS, ID, IN, LAYERS, MOTION, PRESETS, RECT, SIZE, layer_path,
+    ANIM, AT, BG, DUR, FILL, FONT, FPS, ID, IN, LAYERS, MOTION, OFFSET, PARENT, PRESETS, RECT,
+    SIZE, SPAN, STRETCH, layer_path,
 };
+use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
-use crate::property::{Prop, PropertySpec, property_names};
+use crate::property::{Prop, PropertySpec, Rest, Target, target_names};
 use crate::shorthand::{Behaviour, Coord, Font, Position};
-use crate::units::{Color, Size, TIME_EXPECTED, Time};
+use crate::units::{Color, SPAN_EXPECTED, Size, TIME_EXPECTED, Time, TimeSpan};
+use crate::value::{Value, ValueType};
 use crate::{Content, Curve, Layer, Scene, fmt_num};
 
 /// The id rule, as an accepted form.
@@ -80,6 +86,11 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
         })
         .collect::<Result<Vec<_>>>()?;
     unique_ids(&layers)?;
+    parents(&layers)?;
+    for (i, (layer, Object(doc))) in layers.iter().zip(layer_docs).enumerate() {
+        let Object(written) = &doc.anim;
+        entrance_conflict(layer, &layers, &context, written).map_err(|e| e.under(layer_path(i)))?;
+    }
     Ok(Scene {
         version: VERSION,
         size,
@@ -142,6 +153,8 @@ fn optional<T: FromStr<Err = Diagnostic>>(
 
 /// Validates one layer, with paths relative to it.
 fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
+    // Unknown keys first, as serde reports them for documents that deny them.
+    let values = resting_values(doc)?;
     let id = required(doc.id.as_deref(), ID, r#""title""#)?;
     follows_id_rule(id)?;
     let Object(tracks) = &doc.anim;
@@ -150,15 +163,96 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
         content: content(doc)?,
         fill: optional(doc.fill.as_ref(), FILL)?.unwrap_or(DEFAULT_FILL),
         at: optional(doc.at.as_ref(), AT)?.unwrap_or(DEFAULT_POSITION),
+        values,
         enter: doc
             .enter
             .as_ref()
             .map(|written| entrance(written, context.presets))
             .transpose()?,
         anim: anim(tracks, context.fps).map_err(|e| e.under(ANIM))?,
+        parent: doc.parent.clone(),
+        span: optional(doc.span.as_ref(), SPAN)?,
+        offset: optional(doc.offset.as_ref(), OFFSET)?.unwrap_or(Time::Frames(0.0)),
+        stretch: doc.stretch.map_or(Ok(1.0), stretch)?,
     };
-    entrance_conflict(&layer, context, tracks)?;
+    if let Some(span) = layer.span {
+        span_runs_forward(span, context.fps).map_err(|e| e.under(SPAN))?;
+    }
     Ok(layer)
+}
+
+/// The layer keys that are not fixed keys: each a property, set to a value of its type.
+/// A property that rests on `at` is set with `at`, so it is not a layer key.
+fn resting_values(doc: &LayerDoc) -> Result<Vec<(Prop, Value)>> {
+    doc.values
+        .iter()
+        .map(|(name, written)| {
+            let prop = Prop::named(name).ok_or_else(|| {
+                Diagnostic::unknown("layer key", name, layer_keys()).at(name.as_str())
+            })?;
+            if prop.spec().rest == Rest::At {
+                return Err(Diagnostic::new(
+                    Kind::Conflict,
+                    format!("`{name}` rests where `{AT}` puts it"),
+                )
+                .at(name.as_str())
+                .expected(format!(
+                    r#"e.g. "{AT}":"540 960", or animate it in `{ANIM}`"#
+                )));
+            }
+            let value = crate::de::from_value::<ValueDoc>(written)
+                .and_then(|doc| typed_value(&doc, Target::whole(prop)))
+                .map_err(|e| e.under(name))?;
+            Ok((prop, value))
+        })
+        .collect()
+}
+
+/// A stretch is a finite number other than zero.
+fn stretch(stretch: Number) -> Result<f64> {
+    if stretch.0.is_finite() && stretch.0 != 0.0 {
+        return Ok(stretch.0);
+    }
+    Err(
+        Diagnostic::new(Kind::OutOfRange, "must be a number other than zero")
+            .at(STRETCH)
+            .expected("e.g. `2` for half speed, `-1` for backwards"),
+    )
+}
+
+/// Every `parent` names another layer, and following parents never comes back.
+fn parents(layers: &[Layer]) -> Result<()> {
+    let index = |id: &str| layers.iter().position(|layer| layer.id == id);
+    for (i, layer) in layers.iter().enumerate() {
+        let Some(parent) = &layer.parent else {
+            continue;
+        };
+        let place = |d: Diagnostic| d.at(PARENT).under(layer_path(i));
+        let mut next = index(parent).ok_or_else(|| {
+            place(Diagnostic::unknown(
+                "layer id",
+                parent,
+                layers.iter().map(|l| l.id.as_str()),
+            ))
+        })?;
+        // A chain without a cycle visits each layer at most once.
+        for _ in 0..layers.len() {
+            if next == i {
+                return Err(place(
+                    Diagnostic::new(
+                        Kind::Invalid,
+                        format!("`{}` would move with itself through its parents", layer.id),
+                    )
+                    .expected("parents that never lead back to the layer"),
+                ));
+            }
+            match &layers[next].parent {
+                Some(up) => next = index(up).unwrap_or(next),
+                None => break,
+            }
+        }
+    }
+    Ok(())
 }
 
 fn follows_id_rule(id: &str) -> Result<()> {
@@ -238,50 +332,105 @@ fn unique_ids(layers: &[Layer]) -> Result<()> {
     }
 }
 
+/// The tracks of `anim`, no two of which write the same numbers.
 fn anim(tracks: &AnimDoc, fps: f64) -> Result<Vec<AnimTrack>> {
-    tracks
+    let tracks = tracks
         .iter()
         .map(|(name, doc)| track(name, doc, fps).map_err(|e| e.under(name)))
-        .collect()
+        .collect::<Result<Vec<_>>>()?;
+    let targets: Vec<Target> = tracks.iter().map(|t| t.target).collect();
+    one_writer(&targets)?;
+    Ok(tracks)
 }
 
-/// One track: a known property, and keys in its range and in time order.
+/// No two of `targets` write the same numbers: a property is animated whole
+/// or one component at a time, not both. The error sits at the later one.
+fn one_writer(targets: &[Target]) -> Result<()> {
+    for (i, later) in targets.iter().enumerate() {
+        if let Some(earlier) = targets[..i].iter().find(|t| t.overlaps(*later)) {
+            let (a, b, prop) = (earlier.name(), later.name(), later.prop.name());
+            let components = later.prop.spec().components.join("`, `");
+            return Err(Diagnostic::new(
+                Kind::Conflict,
+                format!("`{a}` and `{b}` both animate `{prop}`"),
+            )
+            .at(b)
+            .expected(format!(
+                "`{prop}` animated whole, or its components `{components}` one at a time"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// One track: a known target, and keys of its type, in range and in time order.
 fn track(name: &str, doc: &TrackDoc, fps: f64) -> Result<AnimTrack> {
-    let property = known_property(name)?;
+    let target = known_target(name)?;
     let keys = match doc {
-        TrackDoc::Line(text) => line(text, property.spec(), fps)?,
-        TrackDoc::Keys(keys) => key_list(keys, property.spec(), fps)?,
+        TrackDoc::Line(text) => line(text, target, fps)?,
+        TrackDoc::Keys(keys) => key_list(keys, target, fps)?,
     };
-    Ok(AnimTrack { property, keys })
+    Ok(AnimTrack { target, keys })
 }
 
-fn known_property(name: &str) -> Result<Prop> {
-    Prop::named(name).ok_or_else(|| Diagnostic::unknown("property", name, property_names()))
+fn known_target(name: &str) -> Result<Target> {
+    Target::named(name).ok_or_else(|| Diagnostic::unknown("property", name, target_names()))
 }
 
-/// The string form: both values in range, and a range that runs forward.
-fn line(text: &str, spec: &PropertySpec, fps: f64) -> Result<Vec<AnimKey>> {
+/// The string form: both values of the target's type and in range, and a
+/// range that runs forward.
+fn line(text: &str, target: Target, fps: f64) -> Result<Vec<AnimKey>> {
     let line: TrackLine = text.parse()?;
-    in_range(line.from, spec)?;
-    in_range(line.to, spec)?;
+    let from = word_value(&line.from, target)?;
+    let to = word_value(&line.to, target)?;
     runs_forward(line.span, fps)?;
-    Ok(line.keys())
+    Ok(line.keys(from, to))
+}
+
+/// A value word of a string form, read as the target's type and range-checked.
+fn word_value(word: &str, target: Target) -> Result<Value> {
+    let value = Value::parse(word, target.value_type(), broadcasts(target))?;
+    in_range(value, target.prop.spec())
+}
+
+/// Whether a lone number sets every component of the target.
+fn broadcasts(target: Target) -> bool {
+    target.component.is_none() && target.prop.spec().broadcast
+}
+
+/// A value as JSON wrote it, read as the target's type and range-checked.
+fn typed_value(written: &ValueDoc, target: Target) -> Result<Value> {
+    let (ty, broadcast) = (target.value_type(), broadcasts(target));
+    let value = match written {
+        ValueDoc::Numbers(numbers) => Value::from_numbers(numbers, ty, broadcast)?,
+        ValueDoc::Text(text) => Value::parse(text, ty, broadcast)?,
+    };
+    in_range(value, target.prop.spec())
 }
 
 /// A range starts no later than it ends, compared in frames since units may differ.
 fn runs_forward(span: Span, fps: f64) -> Result<()> {
+    forward(span, fps, format!("@{span}"), RANGE_EXPECTED)
+}
+
+/// A layer's span starts no later than it ends.
+fn span_runs_forward(span: TimeSpan, fps: f64) -> Result<()> {
+    forward(span, fps, span.to_string(), SPAN_EXPECTED)
+}
+
+/// `span`, written as `written`, starts no later than it ends, compared in frames.
+fn forward(span: TimeSpan, fps: f64, written: String, expected: &'static str) -> Result<()> {
     if span.start.to_frames(fps) <= span.end.to_frames(fps) {
         return Ok(());
     }
-    Err(Diagnostic::new(
-        Kind::Invalid,
-        format!("`@{}-{}` starts after it ends", span.start, span.end),
+    Err(
+        Diagnostic::new(Kind::Invalid, format!("`{written}` starts after it ends"))
+            .expected(expected),
     )
-    .expected(RANGE_EXPECTED))
 }
 
 /// The key-list form: at least one key, each valid, in time order.
-fn key_list(docs: &[KeyDoc], spec: &PropertySpec, fps: f64) -> Result<Vec<AnimKey>> {
+fn key_list(docs: &[KeyDoc], target: Target, fps: f64) -> Result<Vec<AnimKey>> {
     if docs.is_empty() {
         return Err(
             Diagnostic::new(Kind::Missing, "needs at least one key").expected(KEYS_EXPECTED)
@@ -290,27 +439,79 @@ fn key_list(docs: &[KeyDoc], spec: &PropertySpec, fps: f64) -> Result<Vec<AnimKe
     let keys = docs
         .iter()
         .enumerate()
-        .map(|(i, doc)| key(doc, spec).map_err(|e| e.under(format!("[{i}]"))))
+        .map(|(i, doc)| key(doc, target).map_err(|e| e.under(format!("[{i}]"))))
         .collect::<Result<Vec<_>>>()?;
     in_time_order(&keys, fps)?;
     Ok(keys)
 }
 
-/// One key: a time that is not negative, a value in range and a curve.
-fn key(doc: &KeyDoc, spec: &PropertySpec) -> Result<AnimKey> {
+/// One key: a time that is not negative, a value of the target's type in
+/// range, its easing, and a path only where the target moves in space.
+fn key(doc: &KeyDoc, target: Target) -> Result<AnimKey> {
     let time = match &doc.time {
         KeyTime::Written(text) => text.parse()?,
         KeyTime::Frames(frames) => not_negative(*frames)?,
     };
-    let curve = doc
-        .curve
-        .as_ref()
-        .map_or(Ok(Curve::Linear), Shorthand::parse)?;
     Ok(AnimKey {
         time,
-        value: in_range(doc.value, spec)?,
-        curve,
+        value: typed_value(&doc.value, target).map_err(|e| e.under(doc.value_path()))?,
+        easing: easing(doc.curve.as_ref(), target).map_err(|e| e.under(doc.curve_path()))?,
+        path: doc.path.map(|path| bends(path, target)).transpose()?,
     })
+}
+
+/// A key's easing: one curve, or one per component of a value that is not spatial.
+fn easing(written: Option<&EasingDoc>, target: Target) -> Result<Easing> {
+    match written {
+        None => Ok(Easing::All(Curve::Linear)),
+        Some(EasingDoc::One(curve)) => Ok(Easing::All(curve.parse()?)),
+        Some(EasingDoc::Each(curves)) => {
+            let dims = target.value_type().dims();
+            if target.prop.spec().spatial && target.component.is_none() {
+                return Err(Diagnostic::new(
+                    Kind::Invalid,
+                    format!(
+                        "`{}` moves along a path, so one curve times the whole move",
+                        target.name()
+                    ),
+                )
+                .expected(format!(
+                    "one curve, or animate {} one at a time",
+                    target.prop.spec().components.join(" and ")
+                )));
+            }
+            if curves.len() != dims {
+                return Err(Diagnostic::new(
+                    Kind::Invalid,
+                    format!("{} curves for {dims} components", curves.len()),
+                )
+                .expected(EASING_EXPECTED));
+            }
+            let curves = curves
+                .iter()
+                .enumerate()
+                .map(|(i, curve)| {
+                    curve
+                        .parse()
+                        .map_err(|e: Diagnostic| e.under(format!("[{i}]")))
+                })
+                .collect::<Result<_>>()?;
+            Ok(Easing::Each(curves))
+        }
+    }
+}
+
+/// A key's path tangents, only on a spatial property animated whole.
+fn bends(PathDoc(path): PathDoc, target: Target) -> Result<[[f64; 2]; 2]> {
+    if target.prop.spec().spatial && target.component.is_none() {
+        return Ok(path);
+    }
+    Err(Diagnostic::new(
+        Kind::Invalid,
+        format!("`{}` does not move along a path", target.name()),
+    )
+    .at("path")
+    .expected(PATH_EXPECTED))
 }
 
 /// A bare frame count must not be negative; a written time has no sign to check.
@@ -339,8 +540,16 @@ fn in_time_order(keys: &[AnimKey], fps: f64) -> Result<()> {
     }
 }
 
+/// Every component of `value` is finite and inside the property's inclusive range.
+fn in_range(value: Value, spec: &PropertySpec) -> Result<Value> {
+    for &n in value.components() {
+        in_number_range(n, spec)?;
+    }
+    Ok(value)
+}
+
 /// `value` is finite and inside the property's inclusive range.
-fn in_range(value: f64, spec: &PropertySpec) -> Result<f64> {
+fn in_number_range(value: f64, spec: &PropertySpec) -> Result<f64> {
     if !value.is_finite() {
         return Err(Diagnostic::new(
             Kind::OutOfRange,
@@ -377,37 +586,48 @@ fn preset(name: &str, body: &PresetDoc) -> Result<PresetSpec> {
                 .expected(r#"e.g. {"opacity":0}"#),
         );
     }
-    let props = body
+    let props: Vec<(Target, Start)> = body
         .iter()
         .map(|(prop, StartDoc(start))| preset_start(prop, *start).map_err(|e| e.under(prop)))
         .collect::<Result<_>>()?;
+    let targets: Vec<Target> = props.iter().map(|(t, _)| *t).collect();
+    one_writer(&targets)?;
     Ok(PresetSpec { props })
 }
 
-/// One start of a preset: a known property and a start in its range. A
-/// bounded property such as opacity cannot start at a distance in pixels.
-fn preset_start(name: &str, start: Start) -> Result<(Prop, Start)> {
-    let prop = known_property(name)?;
+/// One start of a preset: a known target and a start of its type in its range.
+/// A number starts a point only where the property broadcasts (`scale`); a
+/// distance starts only an unbounded number, such as `y` (opacity has a range).
+fn preset_start(name: &str, start: Start) -> Result<(Target, Start)> {
+    let target = known_target(name)?;
     match start {
         Start::Value(v) => {
-            in_range(v, prop.spec())?;
+            typed_value(&ValueDoc::Numbers(vec![v]), target)?;
         }
-        Start::Plus | Start::Minus if prop.spec().range.is_some() => {
+        Start::Plus | Start::Minus
+            if target.prop.spec().range.is_some() || target.value_type() != ValueType::Number =>
+        {
             return Err(Diagnostic::new(
                 Kind::OutOfRange,
-                format!("`{name}` has a fixed range, so it cannot start at a distance"),
+                format!("`{name}` is not a number of pixels, so it cannot start at a distance"),
             )
-            .expected("a number within its range, e.g. 0"));
+            .expected("a value of its own, e.g. 0"));
         }
         Start::Plus | Start::Minus => {}
     }
-    Ok((prop, start))
+    Ok((target, start))
 }
 
 /// Rejects an `anim` track for a property the `in` preset already animates,
 /// since two writers would fight. The hint is the edit that moves the
-/// entrance into `anim`.
-fn entrance_conflict(layer: &Layer, context: &Context, written: &AnimDoc) -> Result<()> {
+/// entrance into `anim`, when every resting value it needs is known before
+/// compiling (a text box is measured only then).
+fn entrance_conflict(
+    layer: &Layer,
+    layers: &[Layer],
+    context: &Context,
+    written: &AnimDoc,
+) -> Result<()> {
     let Some(behaviour) = &layer.enter else {
         return Ok(());
     };
@@ -417,16 +637,42 @@ fn entrance_conflict(layer: &Layer, context: &Context, written: &AnimDoc) -> Res
     let Some(track) = layer
         .anim
         .iter()
-        .find(|track| spec.props.iter().any(|(p, _)| *p == track.property))
+        .find(|track| spec.props.iter().any(|(t, _)| t.overlaps(track.target)))
     else {
         return Ok(());
     };
-    let name = track.property.name();
+    let name = track.target.name();
     let canvas = (
         f64::from(context.size.width),
         f64::from(context.size.height),
     );
-    let expansion = expand_as_anim(spec, behaviour, &layer.at, canvas, context.fps, written);
+    // `at` resolves in the parent's box, or on the canvas without a parent.
+    let extent = match &layer.parent {
+        Some(id) => layers.iter().find(|l| &l.id == id).and_then(known_box),
+        None => Some(canvas),
+    };
+    let rest = |target: Target| {
+        let whole = match (layer.value(target.prop), &target.prop.spec().rest) {
+            (Some(value), _) => value,
+            (None, Rest::Value(value)) => *value,
+            (None, Rest::At) => target.prop.spec().rest(&layer.at, extent?, (0.0, 0.0)),
+            (None, Rest::BoxCentre) => {
+                target
+                    .prop
+                    .spec()
+                    .rest(&layer.at, canvas, known_box(layer)?)
+            }
+        };
+        Some(target.rest_of(whole))
+    };
+    let edit = expand_as_anim(spec, behaviour, rest, context.fps, written)
+        .map(|expansion| {
+            format!(
+                "`{} {IN}={NONE} {ANIM}={expansion}` (the entrance as anim tracks; then adjust `{name}`), or ",
+                layer.id
+            )
+        })
+        .unwrap_or_default();
     Err(Diagnostic::new(
         Kind::Conflict,
         format!(
@@ -437,9 +683,16 @@ fn entrance_conflict(layer: &Layer, context: &Context, written: &AnimDoc) -> Res
     .at(name)
     .under(ANIM)
     .expected(format!(
-        "`{} {IN}={NONE} {ANIM}={expansion}` (the entrance as anim tracks; then adjust `{name}`), or define a scene preset without `{name}` under \"{PRESETS}\"",
-        layer.id
+        "{edit}define a scene preset without `{name}` under \"{PRESETS}\""
     )))
+}
+
+/// A layer's box in pixels when it is known before compiling: a rect's.
+fn known_box(layer: &Layer) -> Option<(f64, f64)> {
+    match &layer.content {
+        Content::Rect(rect) => Some((rect.width, rect.height)),
+        Content::Text { .. } => None,
+    }
 }
 
 #[cfg(test)]

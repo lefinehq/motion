@@ -122,11 +122,12 @@ fn unknown_keys_list_the_allowed_keys() {
         Some("colour"),
         &one_of(&SCENE_KEYS),
     );
+    let layer_keys: Vec<&str> = crate::layer_keys().collect();
     assert_fails(
         &layer(r#""x":1"#),
         Kind::UnknownName,
         Some("layers[0].x"),
-        &one_of(&LAYER_KEYS),
+        &one_of(&layer_keys),
     );
 }
 
@@ -213,9 +214,15 @@ fn layer_keys_match_the_layer_document() {
         let e = scene_from_value(&scene(json!({ key: null }))).unwrap_err();
         assert_ne!(e.kind, Kind::UnknownName, "{key}: {e}");
     }
+    // A property name holds the property's resting value.
+    for key in crate::property::property_names() {
+        let e = scene_from_value(&scene(json!({ key: null }))).unwrap_err();
+        assert_ne!(e.kind, Kind::UnknownName, "{key}: {e}");
+    }
     let e = scene_from_value(&scene(json!({ "colour": null }))).unwrap_err();
     assert_eq!(e.kind, Kind::UnknownName);
-    assert_eq!(e.expected.as_deref(), Some(one_of(&LAYER_KEYS).as_str()));
+    let keys: Vec<&str> = crate::layer_keys().collect();
+    assert_eq!(e.expected.as_deref(), Some(one_of(&keys).as_str()));
 }
 
 /// The accepted form of an unknown key among `keys`, as

@@ -2,7 +2,7 @@
 //! and frames, then [`evaluate`] it at any frame without drawing.
 
 mod compile;
-pub mod curve;
+mod curve;
 mod evaluate;
 mod graph;
 mod state;
@@ -10,8 +10,9 @@ mod text;
 mod track;
 
 pub use compile::compile;
-pub use evaluate::evaluate;
-pub use graph::{Node, NodeKind, SceneGraph};
+pub use curve::Ease;
+pub use evaluate::{evaluate, local_transform};
+pub use graph::{Node, NodeKind, PropertyTrack, SceneGraph, Timing};
 pub use state::{FrameState, NodeState};
 pub use text::{ApproxTextMeasure, TextMeasure};
-pub use track::{Key, Track};
+pub use track::{Key, KeySpec, Track};

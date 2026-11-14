@@ -41,6 +41,14 @@ pub mod key {
     pub const IN: &str = "in";
     /// A layer's tracks.
     pub const ANIM: &str = "anim";
+    /// The layer a layer moves with.
+    pub const PARENT: &str = "parent";
+    /// When a layer shows.
+    pub const SPAN: &str = "span";
+    /// Where a layer's own time starts.
+    pub const OFFSET: &str = "offset";
+    /// How slowly a layer's own time runs.
+    pub const STRETCH: &str = "stretch";
 
     /// The path of the layer at `index`, `layers[2]`, as serde and validation write it.
     pub fn layer_path(index: usize) -> String {
@@ -58,8 +66,10 @@ pub const SCENE_KEYS: [&str; 7] = [
     key::PRESETS,
     key::LAYERS,
 ];
-/// The keys allowed on a layer, in the order of `LayerDoc`'s fields.
-pub const LAYER_KEYS: [&str; 8] = [
+/// The keys allowed on a layer besides property names, in the order of
+/// `LayerDoc`'s fields. A property in the registry is also a layer key,
+/// holding its resting value; [`layer_keys`] lists both.
+pub const LAYER_KEYS: [&str; 12] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -68,7 +78,22 @@ pub const LAYER_KEYS: [&str; 8] = [
     key::AT,
     key::IN,
     key::ANIM,
+    key::PARENT,
+    key::SPAN,
+    key::OFFSET,
+    key::STRETCH,
 ];
+
+/// Every key a layer may hold: [`LAYER_KEYS`], then the names of the
+/// properties a layer sets by name (not `position`, which `at` sets).
+pub fn layer_keys() -> impl Iterator<Item = &'static str> + Clone {
+    use crate::property::{PROPERTIES, Rest};
+    let by_name = PROPERTIES
+        .iter()
+        .filter(|spec| spec.rest != Rest::At)
+        .map(|spec| spec.name);
+    LAYER_KEYS.into_iter().chain(by_name)
+}
 
 /// Parses scene JSON text into a [`Document`].
 ///

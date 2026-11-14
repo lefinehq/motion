@@ -55,9 +55,16 @@ pub struct Position {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
     /// Horizontal, left to right.
-    X,
+    X = 0,
     /// Vertical, top to bottom.
-    Y,
+    Y = 1,
+}
+
+impl Axis {
+    /// The component of a point that lies along the axis: 0 for x, 1 for y.
+    pub const fn index(self) -> usize {
+        self as usize
+    }
 }
 
 impl Position {

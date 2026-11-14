@@ -4,9 +4,10 @@ use super::*;
 use crate::doc::AnimDoc;
 use crate::parse::scene_from_value;
 use crate::parse_document;
-use crate::property::Prop;
+use crate::property::{Prop, Target};
 use crate::validate::is_valid_id;
 use crate::{Kind, Result};
+use serde_json::Value;
 
 /// The presets of a scene whose `presets` is `value`.
 fn presets_of(value: Value) -> Result<Vec<(String, PresetSpec)>> {
@@ -30,7 +31,9 @@ fn builtin_file_parses_and_names_known_properties() {
     // Order of the file is kept.
     assert_eq!(table[0].0, "fade");
     let up = lookup(&[], "fade-up").unwrap();
-    assert!(up.props.contains(&(Prop::Y, Start::Plus)));
+    let y = Target::named("y").unwrap();
+    assert_eq!(y.prop, Prop::POSITION);
+    assert!(up.props.contains(&(y, Start::Plus)));
 }
 
 #[test]
@@ -65,7 +68,7 @@ fn bad_start_value_shows_expected_form() {
 fn unknown_property_lists_the_registry() {
     let e = presets(r#"{"a":{"zoom":1}}"#).unwrap_err();
     assert_eq!(e.kind, Kind::UnknownName);
-    let names: Vec<&str> = crate::property::property_names().collect();
+    let names: Vec<&str> = crate::property::target_names().collect();
     assert_eq!(
         e.expected,
         Some(format!("one of {}", names.join(", ")).into())
@@ -184,10 +187,13 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
     let others: AnimDoc =
         serde_json::from_str(r#"{"opacity":"x","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2.0]]}"#)
             .unwrap();
-    let json = expand_as_anim(&spec, &b, &at, (1000.0, 500.0), 30.0, &others);
+    let rest = |target: Target| {
+        Some(target.rest_of(target.prop.spec().rest(&at, (1000.0, 500.0), (10.0, 10.0))))
+    };
+    let json = expand_as_anim(&spec, &b, rest, 30.0, &others).unwrap();
     assert_eq!(
         json,
-        r#"{"opacity":"0 -> 1 @10-40f cubic(0.2,0,0,1)","x":"470 -> 500 @10-40f cubic(0.2,0,0,1)","y":"330 -> 300 @10-40f cubic(0.2,0,0,1)","scale":"0.5 -> 1 @10-40f cubic(0.2,0,0,1)","rotate":"30 -> 0 @10-40f cubic(0.2,0,0,1)","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2]]}"#
+        r#"{"opacity":"0 -> 1 @10-40f cubic(0.2,0,0,1)","x":"470 -> 500 @10-40f cubic(0.2,0,0,1)","y":"330 -> 300 @10-40f cubic(0.2,0,0,1)","scale":"0.5,0.5 -> 1,1 @10-40f cubic(0.2,0,0,1)","rotate":"30 -> 0 @10-40f cubic(0.2,0,0,1)","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2]]}"#
     );
     // The output is valid JSON.
     assert!(serde_json::from_str::<Value>(&json).is_ok());
@@ -202,4 +208,29 @@ fn a_bounded_property_cannot_start_at_a_distance() {
     );
     // Unbounded properties still may.
     assert!(presets(r#"{"rise":{"y":"+d"}}"#).is_ok());
+}
+
+#[test]
+fn an_unknown_rest_gives_no_expansion() {
+    let spec = presets(r#"{"p":{"opacity":0,"anchor-x":0}}"#)
+        .unwrap()
+        .remove(0)
+        .1;
+    let b = "p 10f".parse::<Behaviour>().unwrap();
+    let unknown_anchor =
+        |target: Target| (target.prop != Prop::ANCHOR).then_some(crate::Value::Number(1.0));
+    assert_eq!(
+        expand_as_anim(&spec, &b, unknown_anchor, 30.0, &AnimDoc::new()),
+        None
+    );
+}
+
+#[test]
+fn a_preset_may_not_set_a_property_and_its_component() {
+    let e = presets(r#"{"pp":{"scale":0,"scale-x":2}}"#).unwrap_err();
+    assert_eq!(
+        (e.kind, e.path.as_deref()),
+        (Kind::Conflict, Some("presets.pp.scale-x"))
+    );
+    assert!(presets(r#"{"pp":{"scale-x":0,"scale-y":2}}"#).is_ok());
 }

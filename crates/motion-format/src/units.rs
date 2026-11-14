@@ -91,6 +91,74 @@ pub(crate) fn unit<R>(input: &mut &str) -> Parsed<fn(f64) -> Time, R> {
     .parse_next(input)
 }
 
+/// The accepted forms of a span of time.
+pub(crate) const SPAN_EXPECTED: &str =
+    "`<start>-<end>` with a unit, e.g. `0-30f`, `0.5s-1s`; a bare start takes the end's unit";
+/// The accepted forms of a range such as `@0-30f`.
+pub(crate) const RANGE_EXPECTED: &str = "`@<start>-<end>` with a unit, e.g. `@0-30f`, `@0.5s-1s`";
+
+/// A stretch of time from `start` to `end`, written `<start>-<end>`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TimeSpan {
+    /// Where it starts.
+    pub start: Time,
+    /// Where it ends.
+    pub end: Time,
+}
+
+impl FromStr for TimeSpan {
+    type Err = Diagnostic;
+
+    /// Parses `<start>-<end>`; `0-30f` is `0f-30f`.
+    fn from_str(token: &str) -> Result<TimeSpan> {
+        parse_all(token, time_span, |problem| {
+            let diagnostic = problem.unwrap_or(SpanProblem::NotARange).diagnostic(token);
+            diagnostic.expected(SPAN_EXPECTED)
+        })
+    }
+}
+
+impl Form for TimeSpan {
+    const FORM: &str = SPAN_EXPECTED;
+}
+
+impl fmt::Display for TimeSpan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}-{}", self.start, self.end)
+    }
+}
+
+/// Why a span of time failed.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum SpanProblem {
+    NoDash,
+    NoUnit,
+    NotARange,
+}
+
+impl SpanProblem {
+    /// The diagnostic for `token`, with the range form as its expected form.
+    pub(crate) fn diagnostic(self, token: &str) -> Diagnostic {
+        let message = match self {
+            SpanProblem::NoDash => format!("`{token}` has no `-` between start and end"),
+            SpanProblem::NoUnit => format!("`{token}` needs a unit (`f` or `s`) after the end"),
+            SpanProblem::NotARange => format!("`{token}` is not a valid range"),
+        };
+        Diagnostic::syntax(message).expected(RANGE_EXPECTED)
+    }
+}
+
+/// `<start>-<end>`. A bare start takes the unit of the end.
+pub(crate) fn time_span(input: &mut &str) -> Parsed<TimeSpan, SpanProblem> {
+    let (start, start_unit) = (amount, opt(unit)).parse_next(input)?;
+    '-'.context(SpanProblem::NoDash).parse_next(input)?;
+    let (end, end_unit) = (amount, unit.context(SpanProblem::NoUnit)).parse_next(input)?;
+    Ok(TimeSpan {
+        start: start_unit.unwrap_or(end_unit)(start),
+        end: end_unit(end),
+    })
+}
+
 /// An 8-bit-per-channel RGBA colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
@@ -119,7 +187,7 @@ impl Form for Color {
 
 /// `#` and eight, six or three hex digits, longest first so `#RRGGBB` is
 /// not read as `#RGB` with digits left over.
-fn hex_color(input: &mut &str) -> Parsed<Color> {
+pub(crate) fn hex_color<R>(input: &mut &str) -> Parsed<Color, R> {
     preceded(
         '#',
         alt((
@@ -136,16 +204,16 @@ fn hex_color(input: &mut &str) -> Parsed<Color> {
     .parse_next(input)
 }
 
-fn channel(input: &mut &str) -> Parsed<u8> {
+fn channel<R>(input: &mut &str) -> Parsed<u8, R> {
     hex_digits(2).parse_next(input)
 }
 
 /// One hex digit, doubled: `F` means `FF`.
-fn short_channel(input: &mut &str) -> Parsed<u8> {
+fn short_channel<R>(input: &mut &str) -> Parsed<u8, R> {
     hex_digits(1).map(|n| n * 17).parse_next(input)
 }
 
-fn hex_digits<'s>(count: usize) -> impl Parser<&'s str, u8, ErrMode<Failure>> {
+fn hex_digits<'s, R>(count: usize) -> impl Parser<&'s str, u8, ErrMode<Failure<R>>> {
     take_while(count, AsChar::is_hex_digit).verify_map(|digits| u8::from_str_radix(digits, 16).ok())
 }
 

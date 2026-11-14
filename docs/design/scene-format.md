@@ -68,17 +68,27 @@ Every layer can also have:
 
 ## Properties
 
-Every animatable value of a layer is a **property**. They are listed once, in `crates/motion-format/src/property.rs`; this table mirrors that list, and a test checks that the names match.
+Every animatable value of a layer is a **property**. They are listed once, in `crates/motion-format/src/property.rs`; this table mirrors that list, and a test checks that the names match. Each property holds a typed value: a number, a point (`[x, y]`) or a colour ([D31](decisions.md#d31-typed-values-and-value-space-keys)).
 
-| Property | Default | Range | Meaning |
-|---|---|---|---|
-| `x` | 0 | any | Centre x in px. The resting value comes from `at`. |
-| `y` | 0 | any | Centre y in px. The resting value comes from `at`. |
-| `opacity` | 1 | 0 to 1 | How opaque the layer is, 0 (invisible) to 1 (solid). |
-| `scale` | 1 | any | Uniform size factor. Negative values mirror. |
-| `rotate` | 0 | any | Rotation in degrees, clockwise. |
+| Property | Type | Rests at | Components | Meaning |
+|---|---|---|---|---|
+| `position` | point | where `at` puts it | `x`, `y` | Where the anchor sits in the parent, in px. |
+| `anchor` | point | the centre of the layer's box | `anchor-x`, `anchor-y` | The point of the layer that sits at `position`, and that it scales and turns about, in px of its own box. |
+| `scale` | point | `[1, 1]` | `scale-x`, `scale-y` | Size factor on each axis. One number scales both; negative values mirror. |
+| `rotate` | number | 0 | | Rotation in degrees, clockwise. |
+| `opacity` | number | 1 | | How opaque the layer is, 0 (invisible) to 1 (solid). |
 
-`at` sets the resting `x` and `y`. A property that nothing animates stays at its default, or at the value `at` gives. Checks measure the transformed box: a layer's size times `scale`, turned by `rotate`.
+**Resting values.** `at` sets where `position` rests. Any other property rests where the layer sets it, by its name as a layer key, or at the value above:
+
+```json
+{"id":"diamond","rect":"500x500","at":"526 1254","rotate":45,"scale":0.8,"anchor":[242,109]}
+```
+
+**Components.** A track animates a whole property or one component of it: `"x"` moves only across, and `"scale"` animates both axes of scale. A property is animated whole or by its components, not both.
+
+**Parenting and time.** A layer can move with another (`"parent":"card"`): its position, rotation and scale apply on top of the parent's, while opacity stays its own. Its `at` is then read in the parent's box, so `"at":"center center"` is the middle of the parent, and `motion at` prints where its anchor lands on the canvas. `"span":"1s-16s"` sets when a layer shows, on the scene's timeline (parenting moves a layer, not its time). `"offset":"1s"` says where the layer's own time starts: its keys and its entrance are in its own time, so moving a layer later is one edit. `"stretch":2` plays its own time at half speed, and a negative stretch runs it backwards from `offset`. Speeds in `speed(...)` are per second of the layer's own time, so a stretch slows them too.
+
+Checks measure the transformed box: the layer's box through its anchor, scale, rotation and position, and its parents'.
 
 ## Animation, at three levels of detail
 
@@ -104,6 +114,14 @@ The range after `@` takes `f` (frames) or `s` (seconds). The curve is optional a
 "anim":{"rotate":[[0,-10],["1s",0,"cubic(.2,0,0,1)"],["2s",5]]}
 ```
 
+A value is written in its property's type: `0.5`, `[540, 960]` or `"#FFE000"`. A key can also be an object, which bends the path of a point that moves in space (`position`, `anchor`):
+
+```json
+"anim":{"position":[{"t":0,"v":[540,1800],"curve":"ease-out","path":[[0,-200],[-120,0]]},{"t":"1s","v":[540,960]}]}
+```
+
+`path` holds two offsets: the handle leaving this key, from its value, and the handle arriving at the next key, from that key's value. Without it the path is straight. A point that moves in space takes one curve, which times the whole move along the path; a point that does not (`scale`) can take one curve per component, `["ease-out","linear"]`.
+
 A bare time is frames; a string such as `"1s"` carries its unit. Keys go in time order. The curve on a key leads to the next key. The last key's curve is unused. Before its first key a property holds the first value, and after its last key the last value.
 
 We store the highest level that fits. A delay or a stagger therefore stays a single value, and changing it is a single edit.
@@ -122,6 +140,8 @@ A curve is a cubic bézier, as in CSS, or `hold`. The names are shortcuts from o
 | `ease-in-out` | Starts and ends slowly. |
 
 `cubic(x1,y1,x2,y2)` sets the curve exactly, for example `cubic(.2,0,0,1)`. The x values must be between 0 and 1, so time only moves forward. The y values may go outside 0 to 1, which makes the value overshoot (`cubic(.3,1.6,.5,1)`) or wind up first.
+
+`speed(out,out-reach,in,in-reach)` sets the speed leaving the key and arriving at the next, in the value's units per second (pixels per second along the path for a moving point), each with how far into the span its handle reaches, 0 to 1. `speed(0,.33,0,.33)` eases in and out over a third of the span on each side. Unlike `cubic`, it can hold a span whose two keys are equal, where the value leaves and comes back.
 
 ### Presets
 

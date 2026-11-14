@@ -3,10 +3,10 @@
 
 use super::*;
 use crate::Kind;
+use crate::ValueType;
 use crate::doc::{AnimDoc, Form};
 use crate::parse::scene_from_value;
 use crate::parse_document;
-use crate::property::{Prop, property_names};
 use crate::units::TIME_EXPECTED;
 use serde_json::{Value, json};
 
@@ -57,15 +57,20 @@ fn seconds_stay_seconds() {
 fn default_curve_is_linear() {
     let t = anim(json!({"x": "0 -> 1 @0-5f", "y": [[0, 0], [5, 1]]})).unwrap();
     for track in &t {
-        assert!(track.keys.iter().all(|k| k.curve == Curve::Linear));
+        assert!(
+            track
+                .keys
+                .iter()
+                .all(|k| k.easing == Easing::All(Curve::Linear))
+        );
     }
 }
 
 #[test]
 fn bare_numbers_are_frames_and_order_follows_object() {
     let t = anim(json!({"y": [[2, 1]], "x": [[0, 1], [4.5, 2]]})).unwrap();
-    assert_eq!(t[0].property, Prop::Y);
-    assert_eq!(t[1].property, Prop::X);
+    assert_eq!(t[0].target.name(), "y");
+    assert_eq!(t[1].target.name(), "x");
     assert_eq!(t[1].keys[1].time, Time::Frames(4.5));
 }
 
@@ -76,7 +81,7 @@ fn unknown_property_lists_names() {
         (e.kind, e.path.as_deref()),
         (Kind::UnknownName, Some("layers[1].anim.glow"))
     );
-    let names: Vec<&str> = property_names().collect();
+    let names: Vec<&str> = crate::property::target_names().collect();
     assert_eq!(
         e.expected,
         Some(format!("one of {}", names.join(", ")).into())
@@ -88,7 +93,7 @@ fn out_of_range_value() {
     let e = err(json!({"opacity": [[0, 0], [5, 1], [9, 2]]}));
     assert_eq!(
         (e.kind, e.path.as_deref()),
-        (Kind::OutOfRange, Some("layers[1].anim.opacity[2]"))
+        (Kind::OutOfRange, Some("layers[1].anim.opacity[2][1]"))
     );
     let e = err(json!({"opacity": "0 -> 2 @0-5f"}));
     assert_eq!(
@@ -99,12 +104,7 @@ fn out_of_range_value() {
 
 #[test]
 fn string_form_errors_give_the_form_of_the_part_that_failed() {
-    for text in [
-        "0 1 @0-5f",
-        "0 -> 1",
-        "a -> 1 @0-5f",
-        "0 -> 1 @0-5f ease ease",
-    ] {
+    for text in ["0 1 @0-5f", "0 -> 1", "0 -> 1 @0-5f ease ease"] {
         let e = line_err(text);
         assert_eq!(
             (e.kind, e.path.as_deref(), e.expected.as_deref()),
@@ -112,10 +112,16 @@ fn string_form_errors_give_the_form_of_the_part_that_failed() {
             "{text}"
         );
     }
+    // A value is read as the target's type, and says that type's form.
+    let e = line_err("a -> 1 @0-5f");
+    assert_eq!(
+        (e.kind, e.path.as_deref(), e.expected.as_deref()),
+        (Kind::Syntax, Some(X), Some(ValueType::Number.form()))
+    );
     // A failing range or curve reports its own diagnostic, placed at the track.
     for (text, part) in [
-        ("0 -> 1 @0-5", "@0-5".parse::<Span>().map(drop)),
-        ("0 -> 1 @05f", "@05f".parse::<Span>().map(drop)),
+        ("0 -> 1 @0-5", TimeSpan::from_range("@0-5").map(drop)),
+        ("0 -> 1 @05f", TimeSpan::from_range("@05f").map(drop)),
         ("0 -> 1 @0-5f bouncy", "bouncy".parse::<Curve>().map(drop)),
         (
             "0 -> 1 @0-5f cubic(1,2)",
@@ -133,13 +139,7 @@ fn string_form_errors_give_the_form_of_the_part_that_failed() {
 
 #[test]
 fn string_form_problems_are_syntax_errors_with_a_form() {
-    for text in [
-        "0 1 @0-5f",
-        "0 -> 1 2 @0-5f",
-        "a -> 1 @0-5f",
-        "0 -> 1 @0-5f ease ease",
-        "",
-    ] {
+    for text in ["0 1 @0-5f", "0 -> 1 2 @0-5f", "0 -> 1 @0-5f ease ease", ""] {
         let e = text.parse::<TrackLine>().unwrap_err();
         assert_eq!(
             (e.kind, e.path, e.expected.as_deref()),
@@ -159,7 +159,7 @@ fn string_form_problems_are_syntax_errors_with_a_form() {
 
 #[test]
 fn ranges_borrow_the_end_unit() {
-    let span = |text: &str| text.parse::<Span>().unwrap();
+    let span = |text: &str| TimeSpan::from_range(text).unwrap();
     assert_eq!(
         span("@0-30f"),
         Span {
@@ -169,7 +169,10 @@ fn ranges_borrow_the_end_unit() {
     );
     assert_eq!(span("@1-1.5s").start, Time::Seconds(1.0));
     assert_eq!(span("@0f-1s").start, Time::Frames(0.0));
-    assert!("@-1-5f".parse::<Span>().is_err());
+    assert!(TimeSpan::from_range("@-1-5f").is_err());
+    // Without `@` it is a layer's span.
+    assert_eq!("0-30f".parse::<TimeSpan>().unwrap(), span("@0-30f"));
+    assert!("@0-30f".parse::<TimeSpan>().is_err());
 }
 
 #[test]
@@ -208,28 +211,39 @@ fn array_form_errors_say_what_kind_of_problem_they_are() {
         (json!({"x": [[-1, 0]]}), Kind::OutOfRange, &x0, None),
         (
             json!({"x": [[0, "a"]]}),
-            Kind::WrongType,
+            Kind::Syntax,
             &format!("{x0}[1]"),
-            Some("a number"),
+            Some(ValueType::Number.form()),
+        ),
+        (
+            json!({"x": [{"t": 0, "v": [1, 2]}]}),
+            Kind::WrongType,
+            &format!("{x0}.v"),
+            Some(ValueType::Number.form()),
         ),
         (
             json!({"x": [[0, 1, 3]]}),
             Kind::WrongType,
             &format!("{x0}[2]"),
-            Some(Curve::FORM),
+            Some(EASING_EXPECTED),
         ),
         (
             json!({"x": [[0, 1, null]]}),
             Kind::WrongType,
             &format!("{x0}[2]"),
-            Some(Curve::FORM),
+            Some(EASING_EXPECTED),
         ),
-        (json!({"x": [[0, 1, "nope"]]}), Kind::UnknownName, &x0, None),
+        (
+            json!({"x": [[0, 1, "nope"]]}),
+            Kind::UnknownName,
+            &format!("{x0}[2]"),
+            None,
+        ),
         (json!({"x": [[5, 0], [2, 1]]}), Kind::Invalid, &x1, None),
         (
             json!({"opacity": [[0, 2]]}),
             Kind::OutOfRange,
-            "layers[1].anim.opacity[0]",
+            "layers[1].anim.opacity[0][1]",
             None,
         ),
         (

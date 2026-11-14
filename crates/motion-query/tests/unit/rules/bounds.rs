@@ -1,7 +1,9 @@
 //! Unit tests for `src/rules/bounds.rs`.
 
 use super::*;
+use motion_format::Value;
 use motion_format::property::Prop;
+use motion_scene::local_transform;
 use rstest::rstest;
 
 fn graph() -> SceneGraph {
@@ -20,21 +22,23 @@ fn node(x: f64, y: f64, w: f64, h: f64, opacity: f64) -> NodeState {
 
 /// Like `node`, with a scale and a rotation (degrees).
 fn rotated(x: f64, y: f64, w: f64, h: f64, opacity: f64, scale: f64, rotate: f64) -> NodeState {
-    let values = Prop::all()
+    let values: Vec<Value> = Prop::all()
         .map(|p| match p {
-            Prop::X => x,
-            Prop::Y => y,
-            Prop::OPACITY => opacity,
-            Prop::SCALE => scale,
-            Prop::ROTATE => rotate,
-            _ => p.spec().default,
+            Prop::POSITION => Value::Point([x, y]),
+            Prop::ANCHOR => Value::Point([w / 2.0, h / 2.0]),
+            Prop::SCALE => Value::Point([scale, scale]),
+            Prop::OPACITY => Value::Number(opacity),
+            Prop::ROTATE => Value::Number(rotate),
+            _ => unreachable!("every property is listed"),
         })
         .collect();
     NodeState {
         id: "n".into(),
         width: w,
         height: h,
+        transform: local_transform(&values),
         values,
+        shown: true,
     }
 }
 
@@ -92,4 +96,14 @@ fn a_rotated_box_leaving_the_canvas_is_caught() {
     // is 50 px from the left edge, so the box pokes out by about 27.8 px.
     let o = offscreen(&rotated(50.0, 250.0, 200.0, 20.0, 1.0, 1.0, 45.0), &graph()).unwrap();
     assert!((o.amount - 27.78).abs() < 0.01, "{}", o.amount);
+}
+
+#[test]
+fn a_node_outside_its_span_is_not_checked() {
+    let hidden = NodeState {
+        shown: false,
+        ..node(-500.0, 250.0, 100.0, 100.0, 1.0)
+    };
+    assert_eq!(offscreen(&hidden, &graph()), None);
+    assert!(offscreen(&node(-500.0, 250.0, 100.0, 100.0, 1.0), &graph()).is_some());
 }

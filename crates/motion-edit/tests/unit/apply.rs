@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::parse_edit;
+use motion_format::layer_keys;
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 use serde_json::json;
@@ -52,7 +53,7 @@ fn reports_unknown_targets_keys_and_invalid_results() {
     );
     assert_eq!(
         fail("card colour=#FFF"),
-        Diagnostic::unknown("layer key", "colour", LAYER_KEYS)
+        Diagnostic::unknown("layer key", "colour", layer_keys())
     );
     let colour = fail("card fill=blue");
     assert_eq!(colour.path.as_deref(), Some("layers[1].fill"));
@@ -94,7 +95,7 @@ fn removing_a_missing_key_or_path_is_a_no_op(#[case] line: &str) {
 )]
 // A layer key is not a scene key.
 #[case::a_layer_key_on_the_scene("scene fill=#FFF", "scene key", "fill", &SCENE_KEYS)]
-#[case::before_an_unknown_target("ghost colour=red", "layer key", "colour", &LAYER_KEYS)]
+#[case::before_an_unknown_target("ghost colour=red", "layer key", "colour", &layer_keys().collect::<Vec<_>>())]
 fn unknown_keys_are_named_with_the_targets_keys(
     #[case] line: &str,
     #[case] what: &str,
@@ -228,7 +229,7 @@ fn setting_through_a_non_object_is_an_error() {
 fn only_the_first_segment_is_checked_as_a_key() {
     assert_eq!(
         fail("card nope.x=1"),
-        Diagnostic::unknown("layer key", "nope", LAYER_KEYS)
+        Diagnostic::unknown("layer key", "nope", layer_keys())
     );
     let e = fail("card anim.nope=[[0,1]]");
     assert_eq!(e.kind, Kind::UnknownName);

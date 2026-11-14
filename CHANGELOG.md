@@ -28,6 +28,9 @@ All notable changes to this project are documented here. The format is based on 
 - `motion inspect <project.aep>` prints a project as a tree with its import report, or both as JSON with `--json`; the engine reads projects with `motion_engine::import`.
 - `motion-import` decodes text documents (text, paragraph and character runs with resolved style sheets, point or box frame, and the line layout the project stored) with a `winnow` grammar for their object syntax and serde records over it, and 3D orientation angles; neither is opaque any more.
 - `motion_format::grammar::parse_at`, which also hands the failing offset to the explanation; `parse_all` now takes any `winnow` input, bytes included.
+- Typed property values (number, point, colour) and the transform set `position` (components `x`, `y`), `anchor`, `scale` (one number or `[x, y]`), `rotate` and `opacity`; any property can rest at a value set by its name on the layer.
+- Keys ease in value space: `speed(out,out-reach,in,in-reach)` holds any ease, including a span between equal keys; a point that moves in space follows a bézier path (`"path"` on an object key) at a pace measured along it; other points can take one curve per component.
+- Layers can follow a `parent`, show only in their `span`, and run on their own time with `offset` and `stretch`.
 
 ### Changed
 
@@ -40,5 +43,6 @@ All notable changes to this project are documented here. The format is based on 
 - Quiet by default: nothing is logged unless `--log` or `MOTION_LOG` asks for it, and a failing run prints only its `error:` line.
 
 - `at` prints only the properties that differ from their default after `x y w h`.
+- The property `x` and `y` are now the components of `position`; `scale` is a point (`scale=0.8,0.8` in `at`); `at` places the layer's anchor, which rests at the centre of its box, so existing scenes draw as before.
 - `check` fix hints skip axes driven by `anim`.
 - Unit tests moved out of `src/` into `tests/unit`, mirroring the source tree.

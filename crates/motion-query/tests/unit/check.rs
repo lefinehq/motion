@@ -244,3 +244,47 @@ fn report_with_several_violations_snapshot() {
     .to_string();
     insta::assert_snapshot!(report);
 }
+
+/// The fix of the first violation of `report`.
+fn first_fix(report: &Report) -> Option<&str> {
+    report.violations.first().and_then(|v| v.fix.as_deref())
+}
+
+#[test]
+fn a_fix_under_a_scaled_parent_moves_at_in_the_parents_units() {
+    // The parent triples everything: the child spans 990..1050 on the canvas.
+    let r = check_json(
+        r#"{"motion":1,"size":"1000x1000","dur":"1s","layers":[
+        {"id":"box","rect":"100x100","at":"0 0","anchor":[0,0],"scale":3},
+        {"id":"kid","rect":"20x20","parent":"box","at":"340 50"}]}"#,
+    );
+    let kid = r.violations.iter().find(|v| v.id == "kid").unwrap();
+    assert_eq!(kid.code, Code::Offscreen);
+    // The safe area ends at 950: 100 canvas px back is 33.33 of the parent's units.
+    let fix = kid.fix.as_deref().unwrap();
+    assert!(fix.starts_with(r#"kid at="306.67 "#), "{fix}");
+}
+
+#[test]
+fn a_fix_under_a_turned_parent_follows_its_axes() {
+    // Turned a quarter: the child's own x runs down the canvas.
+    let r = check_json(
+        r#"{"motion":1,"size":"1000x1000","dur":"1s","layers":[
+        {"id":"box","rect":"100x100","at":"500 500","anchor":[0,0],"rotate":90},
+        {"id":"kid","rect":"20x20","parent":"box","at":"490 0"}]}"#,
+    );
+    // Too low on the canvas, so its own x must shrink.
+    let fix = first_fix(&r).unwrap();
+    assert!(fix.starts_with(r#"kid at="440 "#), "{fix}");
+}
+
+#[test]
+fn no_fix_while_the_parent_moves() {
+    let r = check_json(
+        r#"{"motion":1,"size":"1000x1000","fps":10,"dur":"1s","layers":[
+        {"id":"box","rect":"100x100","at":"0 0","anchor":[0,0],"anim":{"x":"0 -> 100 @0-10f"}},
+        {"id":"kid","rect":"20x20","parent":"box","at":"2000 50"}]}"#,
+    );
+    let kid = r.violations.iter().find(|v| v.id == "kid").unwrap();
+    assert_eq!(kid.fix, None);
+}
