@@ -708,6 +708,7 @@ dependencies = [
  "motion-format",
  "png",
  "proptest",
+ "rstest",
  "vello_cpu",
 ]
 

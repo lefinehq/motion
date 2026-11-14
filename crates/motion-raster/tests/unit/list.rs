@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::effect::{Effect, ParamValue};
+use rstest::rstest;
 
 #[test]
 fn a_plain_layer_only_moves_its_children() {
@@ -14,34 +15,20 @@ fn a_plain_layer_only_moves_its_children() {
     assert_eq!(layer.blend, BlendMode::Normal);
 }
 
-#[test]
-fn opacity_blending_clips_effects_and_the_flag_each_isolate() {
-    let plain = Layer::new(Vec::new());
-    let fill = Effect::new("fill", &[("color", ParamValue::Color(Color::WHITE))]).unwrap();
-    for layer in [
-        Layer {
-            opacity: 0.5,
-            ..plain.clone()
-        },
-        Layer {
-            blend: BlendMode::Screen,
-            ..plain.clone()
-        },
-        Layer {
-            clip: Some(Clip::Rect(Rect::new(0.0, 0.0, 1.0, 1.0))),
-            ..plain.clone()
-        },
-        Layer {
-            effects: vec![fill],
-            ..plain.clone()
-        },
-        Layer {
-            isolate: true,
-            ..plain.clone()
-        },
-    ] {
-        assert!(layer.is_isolated(), "{layer:?}");
-    }
+#[rstest]
+#[case::opacity(Layer { opacity: 0.5, ..Layer::new(Vec::new()) })]
+#[case::blend(Layer { blend: BlendMode::Screen, ..Layer::new(Vec::new()) })]
+#[case::clip(Layer {
+    clip: Some(Clip::Rect(Rect::new(0.0, 0.0, 1.0, 1.0))),
+    ..Layer::new(Vec::new())
+})]
+#[case::effect(Layer {
+    effects: vec![Effect::new("fill", &[("color", ParamValue::Color(Color::WHITE))]).unwrap()],
+    ..Layer::new(Vec::new())
+})]
+#[case::flag(Layer { isolate: true, ..Layer::new(Vec::new()) })]
+fn opacity_blending_clips_effects_and_the_flag_each_isolate(#[case] layer: Layer) {
+    assert!(layer.is_isolated(), "{layer:?}");
 }
 
 #[test]

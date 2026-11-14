@@ -10,13 +10,23 @@ publish.workspace = true
 
 [dependencies]
 motion-format = { path = "../motion-format" }
-vello_cpu = { version = "0.4", default-features = false, features = ["std", "text", "u8_pipeline", "f32_pipeline"] }
+vello_cpu = { version = "0.4", default-features = false, features = [
+  "std",
+  "text",
+  "u8_pipeline",
+  "f32_pipeline",
+] }
 png = "0.18"
 # The rasteriser's SIMD layer; `force_support_fallback` gives the portable
 # scalar path that golden images are drawn with.
 fearless_simd = { version = "1.2", features = ["force_support_fallback"] }
 [dev-dependencies]
 proptest.workspace = true
+rstest.workspace = true
+
+# `fearless_simd` is named only to turn on its portable fallback.
+[package.metadata.cargo-machete]
+ignored = ["fearless_simd"]
 
 [lints]
 workspace = true

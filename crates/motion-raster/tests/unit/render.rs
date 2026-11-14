@@ -6,6 +6,7 @@ use crate::blend::BlendMode;
 use crate::effect::{Effect, ParamValue};
 use crate::list::Clip;
 use crate::style::{FillRule, Paint};
+use rstest::rstest;
 use vello_cpu::kurbo::{Rect, Shape};
 
 /// A square covering the whole of a `side`-pixel frame in `color`.
@@ -30,13 +31,14 @@ fn near(a: [u8; 4], b: [u8; 4]) -> bool {
     a.iter().zip(b).all(|(x, y)| x.abs_diff(y) <= 1)
 }
 
-#[test]
-fn sizes_must_fit_sixteen_bits_and_not_be_zero() {
-    for (w, h) in [(0, 8), (8, 0), (70_000, 8)] {
-        let e = render(&Frame::default(), w, h).unwrap_err();
-        assert_eq!(e.kind, Kind::OutOfRange, "{w}x{h}");
-        assert_eq!(e.expected.as_deref(), Some("1 to 65535 pixels"));
-    }
+#[rstest]
+#[case::zero_width(0, 8)]
+#[case::zero_height(8, 0)]
+#[case::beyond_sixteen_bits(70_000, 8)]
+fn sizes_must_fit_sixteen_bits_and_not_be_zero(#[case] w: u32, #[case] h: u32) {
+    let e = render(&Frame::default(), w, h).unwrap_err();
+    assert_eq!(e.kind, Kind::OutOfRange, "{w}x{h}");
+    assert_eq!(e.expected.as_deref(), Some("1 to 65535 pixels"));
 }
 
 #[test]
@@ -164,8 +166,11 @@ fn a_clip_hides_what_lies_outside_it() {
     assert_eq!(image.pixel(6, 4), Some([0, 0, 0, 0]));
 }
 
-#[test]
-fn every_quality_and_instruction_set_draws_the_same_picture() {
+#[rstest]
+fn every_quality_and_instruction_set_draws_the_same_picture(
+    #[values(Quality::Precise, Quality::Fast)] quality: Quality,
+    #[values(Simd::Native, Simd::Portable)] simd: Simd,
+) {
     let frame = Frame {
         background: Some(Color::WHITE),
         nodes: vec![Node::Layer(Layer {
@@ -176,20 +181,28 @@ fn every_quality_and_instruction_set_draws_the_same_picture() {
         ..Frame::default()
     };
     let golden = render_with(&frame, 8, 8, RenderOptions::GOLDEN).unwrap();
-    for quality in [Quality::Precise, Quality::Fast] {
-        for simd in [Simd::Native, Simd::Portable] {
-            let image = render_with(&frame, 8, 8, RenderOptions { quality, simd }).unwrap();
-            // Integer and float pipelines may round a step apart, never more.
-            let worst = image
-                .pixels()
-                .iter()
-                .zip(golden.pixels())
-                .map(|(a, b)| a.abs_diff(*b))
-                .max();
-            assert!(worst <= Some(2), "{quality:?} {simd:?}: {worst:?}");
-        }
-    }
-    assert_eq!(render(&frame, 8, 8).unwrap().width(), 8);
+    let image = render_with(&frame, 8, 8, RenderOptions { quality, simd }).unwrap();
+    // Integer and float pipelines may round a step apart, never more.
+    let worst = image
+        .pixels()
+        .iter()
+        .zip(golden.pixels())
+        .map(|(a, b)| a.abs_diff(*b))
+        .max();
+    assert!(worst <= Some(2), "{quality:?} {simd:?}: {worst:?}");
+    assert_eq!(image.width(), 8);
+}
+
+#[test]
+fn render_draws_with_the_default_options() {
+    let frame = Frame {
+        nodes: vec![cover(8.0, Color::BLACK)],
+        ..Frame::default()
+    };
+    assert_eq!(
+        render(&frame, 8, 8).unwrap(),
+        render_with(&frame, 8, 8, RenderOptions::default()).unwrap()
+    );
 }
 
 #[test]
