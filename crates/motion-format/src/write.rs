@@ -1,6 +1,6 @@
 //! The canonical writer for scene documents: small diffs, one layer per line.
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::key::LAYERS;
 
@@ -14,27 +14,24 @@ pub fn write_document(doc: &Value) -> String {
         return format!("{doc}\n");
     };
     // The other keys as one object without its closing brace, so `layers` can follow.
-    let rest: serde_json::Map<String, Value> = obj
+    let rest: Map<String, Value> = obj
         .iter()
-        .filter(|(k, _)| k.as_str() != LAYERS)
+        .filter(|(k, _)| *k != LAYERS)
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    let mut out = String::new();
-    if !rest.is_empty() {
-        let head = Value::Object(rest).to_string();
-        out.push_str(&head[..head.len() - 1]);
-        out.push_str(",\n");
-    } else {
-        out.push_str("{\n");
+    let head = match Value::Object(rest).to_string() {
+        empty if empty == "{}" => "{".to_owned(),
+        head => format!("{},", &head[..head.len() - 1]),
+    };
+    let mut body = layers
+        .iter()
+        .map(Value::to_string)
+        .collect::<Vec<_>>()
+        .join(",\n");
+    if !body.is_empty() {
+        body.push('\n');
     }
-    out.push_str(&format!("\"{LAYERS}\":[\n"));
-    let lines: Vec<String> = layers.iter().map(Value::to_string).collect();
-    out.push_str(&lines.join(",\n"));
-    if !lines.is_empty() {
-        out.push('\n');
-    }
-    out.push_str("]}\n");
-    out
+    format!("{head}\n\"{LAYERS}\":[\n{body}]}}\n")
 }
 
 #[cfg(test)]

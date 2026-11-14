@@ -1,6 +1,7 @@
 //! Entrance presets as data: named start values for properties. The built-ins
 //! are in `presets.json`; a scene's `presets` key adds or overrides them.
 
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use serde_json::{Map, Value};
@@ -90,20 +91,23 @@ pub(crate) fn expand_as_anim(
     others: &AnimDoc,
 ) -> String {
     let (start, end) = behaviour.frames(fps);
-    let mut tracks = Map::new();
-    for &(prop, from) in &spec.props {
-        let rest = prop.spec().rest(at, canvas);
-        let from = from.resolve(rest, behaviour.distance);
-        let track = format!(
-            "{} -> {} @{}-{}f {}",
-            fmt_num(from),
-            fmt_num(rest),
-            fmt_num(start),
-            fmt_num(end),
-            behaviour.curve
-        );
-        tracks.insert(prop.name().to_owned(), Value::String(track));
-    }
+    let mut tracks: Map<String, Value> = spec
+        .props
+        .iter()
+        .map(|&(prop, from)| {
+            let rest = prop.spec().rest(at, canvas);
+            let from = from.resolve(rest, behaviour.distance);
+            let track = format!(
+                "{} -> {} @{}-{}f {}",
+                fmt_num(from),
+                fmt_num(rest),
+                fmt_num(start),
+                fmt_num(end),
+                behaviour.curve
+            );
+            (prop.name().to_owned(), Value::String(track))
+        })
+        .collect();
     for (name, track) in others {
         tracks.entry(name.as_str()).or_insert_with(|| {
             // A track holds only strings and finite numbers, which always convert.
@@ -120,13 +124,10 @@ pub(crate) fn lookup<'a>(own: &'a [(String, PresetSpec)], name: &str) -> Option<
 
 /// The usable preset names, a scene's own first, without duplicates.
 pub(crate) fn names(own: &[(String, PresetSpec)]) -> Vec<&str> {
-    let mut out: Vec<&str> = Vec::new();
-    for name in table::names(own.iter().chain(builtin_presets())) {
-        if !out.contains(&name) {
-            out.push(name);
-        }
-    }
-    out
+    let mut seen = HashSet::new();
+    table::names(own.iter().chain(builtin_presets()))
+        .filter(|name| seen.insert(*name))
+        .collect()
 }
 
 #[cfg(test)]

@@ -95,28 +95,24 @@ enum Problem<'s> {
 
 impl Problem<'_> {
     fn diagnostic(self) -> Diagnostic {
-        match self {
-            Problem::Curve(diagnostic) => diagnostic,
-            Problem::NoPreset => {
-                Diagnostic::syntax("a behaviour needs a preset").expected(EXPECTED)
-            }
-            Problem::Preset(name) => {
-                Diagnostic::syntax(format!("`{name}` is not a valid preset name; {ID_RULE}"))
-                    .expected(EXPECTED)
-            }
-            Problem::Malformed(field, token) => {
-                Diagnostic::syntax(format!("`{token}` is not a valid {}", field.noun()))
-                    .expected(EXPECTED)
-            }
-            Problem::Unknown(token) => {
-                Diagnostic::syntax(format!("unknown token `{token}`")).expected(EXPECTED)
-            }
-            Problem::Twice(field, first, second) => Diagnostic::new(
+        let (kind, message) = match self {
+            Problem::Curve(diagnostic) => return diagnostic,
+            Problem::NoPreset => (Kind::Syntax, "a behaviour needs a preset".to_owned()),
+            Problem::Preset(name) => (
+                Kind::Syntax,
+                format!("`{name}` is not a valid preset name; {ID_RULE}"),
+            ),
+            Problem::Malformed(field, token) => (
+                Kind::Syntax,
+                format!("`{token}` is not a valid {}", field.noun()),
+            ),
+            Problem::Unknown(token) => (Kind::Syntax, format!("unknown token `{token}`")),
+            Problem::Twice(field, first, second) => (
                 Kind::Conflict,
                 format!("{} given twice: `{first}` and `{second}`", field.name()),
-            )
-            .expected(EXPECTED),
-        }
+            ),
+        };
+        Diagnostic::new(kind, message).expected(EXPECTED)
     }
 }
 

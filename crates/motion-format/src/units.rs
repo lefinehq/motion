@@ -204,20 +204,18 @@ enum SizeProblem<'s> {
 
 impl SizeProblem<'_> {
     fn diagnostic(self, text: &str) -> Diagnostic {
-        match self {
+        let message = match self {
             SizeProblem::Unknown => {
-                Diagnostic::unknown("size", text, table::names(SIZES)).or_expected(EXPLICIT_FORM)
+                return Diagnostic::unknown("size", text, table::names(SIZES))
+                    .or_expected(EXPLICIT_FORM);
             }
-            SizeProblem::Explicit => Diagnostic::syntax(format!("`{text}` is not a valid size"))
-                .expected(EXPLICIT_EXPECTED),
+            SizeProblem::Explicit => format!("`{text}` is not a valid size"),
             SizeProblem::Trailing(after) => {
                 let size = &text[..text.len() - after.len()];
-                Diagnostic::syntax(format!(
-                    "unexpected text after the size `{size}` in `{text}`"
-                ))
-                .expected(EXPLICIT_EXPECTED)
+                format!("unexpected text after the size `{size}` in `{text}`")
             }
-        }
+        };
+        Diagnostic::syntax(message).expected(EXPLICIT_EXPECTED)
     }
 }
 

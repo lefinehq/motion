@@ -79,21 +79,16 @@ enum Problem {
 
 impl Problem {
     fn diagnostic(self, token: &str) -> Diagnostic {
-        match self {
-            Problem::Unknown => Diagnostic::unknown("curve", token, table::names(NAMED_CURVES))
-                .or_expected(CUBIC_FORM),
-            Problem::Unclosed => {
-                Diagnostic::syntax(format!("`{token}` is missing its closing `)`"))
-                    .expected(CUBIC_EXPECTED)
+        let message = match self {
+            Problem::Unknown => {
+                return Diagnostic::unknown("curve", token, table::names(NAMED_CURVES))
+                    .or_expected(CUBIC_FORM);
             }
-            Problem::Count => {
-                Diagnostic::syntax(format!("`{token}` needs four numbers")).expected(CUBIC_EXPECTED)
-            }
-            Problem::XRange => {
-                Diagnostic::syntax(format!("`{token}`: x1 and x2 must be between 0 and 1"))
-                    .expected(CUBIC_EXPECTED)
-            }
-        }
+            Problem::Unclosed => format!("`{token}` is missing its closing `)`"),
+            Problem::Count => format!("`{token}` needs four numbers"),
+            Problem::XRange => format!("`{token}`: x1 and x2 must be between 0 and 1"),
+        };
+        Diagnostic::syntax(message).expected(CUBIC_EXPECTED)
     }
 }
 

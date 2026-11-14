@@ -5,15 +5,10 @@
 /// that round to negative zero print as `0`.
 pub fn fmt_num(value: f64) -> String {
     let text = format!("{value:.2}");
-    let trimmed = if text.contains('.') {
-        text.trim_end_matches('0').trim_end_matches('.')
-    } else {
-        text.as_str()
-    };
-    if trimmed == "-0" {
-        "0".to_string()
-    } else {
-        trimmed.to_string()
+    // A finite number always gets a `.`, so trimming never reaches its integer digits.
+    match text.trim_end_matches('0').trim_end_matches('.') {
+        "-0" => "0".to_owned(),
+        trimmed => trimmed.to_owned(),
     }
 }
 
