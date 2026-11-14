@@ -1,5 +1,6 @@
 ---
 source: crates/motion-import/src/../tests/unit/tree.rs
+assertion_line: 8
 expression: sample_project().to_string()
 ---
 project 94.9, 8 bits per channel
@@ -7,7 +8,8 @@ folder 1 "Scenes"
   composition 2 "Main" 1920x1080, 29.97 fps, 4s, work area 0s-4s
     layer 10 "Title" text, 0s-4s, parent 11, 3d
       ADBE Text Properties
-        ADBE Text Document = opaque text_document
+        ADBE Text Document = text "Hello\nworld" (0 lines), box 220x140, Inter-Bold 44, fill [1, 1, 1, 1], stroke [1, 0, 0, 1], center
+        ADBE Marker = opaque markers
       ADBE Effect Parade
         ADBE Slider Control "Speed" (off)
           ADBE Slider Control-0001 = 2

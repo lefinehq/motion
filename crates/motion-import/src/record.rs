@@ -549,6 +549,19 @@ impl Record for Points {
     const NAME: Name = Name::chunk(b"ldat");
 }
 
+/// `otda`: one orientation value, X, Y and Z angles in degrees, big-endian
+/// unlike their little-endian copies in the stream
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#otda)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Otda {
+    /// The angles.
+    pub angles: [f64; 3],
+}
+
+impl Record for Otda {
+    const NAME: Name = Name::chunk(b"otda");
+}
+
 /// `sspc`: a footage source's cached media settings
 /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#sspc)).
 /// The fields motion reads sit at the same offsets in the 222-byte form and in

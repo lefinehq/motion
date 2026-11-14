@@ -33,7 +33,7 @@ Each crate has one job and a list of things it must never do. Keeping those rule
 | `motion-query` | Side branch: `check` and `at` answer questions about a scene with numbers. | Write files or touch pixels. |
 | `motion-edit` | Side branch: parses one-line edits and applies them to a parsed scene's raw JSON. | Write files or touch pixels. |
 | `motion-engine` | `Session`: the only entry point for tools. It reads, parses, compiles and evaluates a scene and runs `check`, `at` and edits, and `import` reads an `.aep` project, each step inside a `tracing` span. Its `telemetry` module installs the stderr subscriber for logs and step timings. | Print, read arguments, let a tool bypass it to call a step directly, or install a subscriber itself (only binaries and tests call `telemetry::init`). |
-| `motion-import` | Reads `.aep` projects: the RIFX chunk tree, then items, compositions, layers, the property tree, keyframes and paths, into a typed model that keeps whatever it cannot decode yet as an opaque value with its reason, and counts it in the import report ([D30](docs/design/decisions.md#d30-read-aep-projects-directly), [design](docs/design/aep-import.md)). | Read files, panic or index out of bounds on any input, or drop a chunk silently: every chunk it passes over is counted. |
+| `motion-import` | Reads `.aep` projects: the RIFX chunk tree, then items, compositions, layers, the property tree, keyframes and paths, (text documents through a `winnow` grammar for their object syntax) into a typed model that keeps whatever it cannot decode yet as an opaque value with its reason, and counts it in the import report ([D30](docs/design/decisions.md#d30-read-aep-projects-directly), [design](docs/design/aep-import.md)). | Read files, panic or index out of bounds on any input, or drop a chunk silently: every chunk it passes over is counted. |
 | `motion-cli` | The `motion` command: reads the arguments, runs each command through a `Session`, and prints its output. | Hold engine logic. It is the only place that prints, and it reaches scenes only through `Session` and `.aep` projects only through `motion_engine::import`. |
 
 Crates are added task by task, and only when a piece has its own dependencies or its own users. This table lists only crates that exist.
@@ -60,6 +60,7 @@ Libraries never print: they return a `Diagnostic` or log with `tracing`, and onl
 | Validation: every rule beyond the shape | `crates/motion-format/src/validate.rs` |
 | The edit line grammar and path edits | `crates/motion-edit/src/parse.rs`, `apply.rs` |
 | `.aep` chunks, binary records and the one binrw-to-`Diagnostic` mapping | `crates/motion-import/src/rifx.rs`, `record.rs` |
+| The object syntax of `.aep` text documents, and serde records over it | `crates/motion-import/src/cos.rs`, `cos/de.rs`, `decode/text.rs` |
 | The `.aep` model, and the table of property bodies | `crates/motion-import/src/model.rs`, `decode/property.rs` |
 | The entry point and its step spans | `crates/motion-engine/src/session.rs`, `stage.rs` |
 

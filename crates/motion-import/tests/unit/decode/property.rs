@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use super::*;
 use crate::model::Interpolation;
-use crate::test_support::{chunk, list, record};
+use crate::test_support::{chunk, list, record, text_body, text_document};
 
 /// A `tdmn` holding `match_name`, NUL-padded to 40 bytes.
 fn tdmn(match_name: &str) -> Vec<u8> {
@@ -61,6 +61,27 @@ fn read(body: &[u8], wrapped: bool) -> (Result<Group>, BTreeMap<String, usize>) 
         .and_then(|chunks| Scan::new(&decoder, chunks, "LIST:tdgp".into(), 1))
         .and_then(|scan| decoder.group(scan, String::new(), TIMING));
     (group, decoder.skipped.take())
+}
+
+/// A `LIST:btdk` whose documents hold `texts`, each as stored.
+fn btdk(texts: &[&str]) -> Vec<u8> {
+    let documents: Vec<String> = texts
+        .iter()
+        .map(|text| {
+            let count = text.encode_utf16().count();
+            text_document(text, &[(count, "")], &[(count, "")], "")
+        })
+        .collect();
+    let body = text_body(&["Inter-Bold"], &[], &documents);
+    chunk(b"LIST", &[b"btdk".as_slice(), body.as_bytes()].concat())
+}
+
+/// The text of a static text document, or of nothing else.
+fn text_of(stream: &Stream) -> Vec<String> {
+    match stream {
+        Stream::Static(Value::Text(document)) => vec![document.text.clone()],
+        other => panic!("a text document, not {other:?}"),
+    }
 }
 
 /// The property at `index` of `group`.
@@ -213,7 +234,10 @@ fn reads_effects_masks_and_wrapped_values_by_their_body() {
     let mask = list(b"tdgp", &[group_body(1, "Mask 1", &[])]);
     let text = list(
         b"btds",
-        &[tdbs(&[tdb4(1, 0x01, true, false), cdat(&[0.0])])],
+        &[
+            tdbs(&[tdb4(1, 0x01, true, false), cdat(&[0.0])]),
+            btdk(&["Hi\r"]),
+        ],
     );
     let body = group_body(
         1,
@@ -240,7 +264,7 @@ fn reads_effects_masks_and_wrapped_values_by_their_body() {
     );
     assert_eq!(subgroup(&group, 1).name.as_deref(), Some("Mask 1"));
     let opaque = |reason| Stream::Static(Value::Opaque { reason });
-    assert_eq!(property(&group, 2).value, opaque(Reason::TextDocument));
+    assert_eq!(text_of(&property(&group, 2).value), ["Hi"]);
     assert_eq!(property(&group, 3).value, opaque(Reason::OtherBody));
     let skipped: Vec<&str> = skipped.keys().map(String::as_str).collect();
     assert_eq!(skipped, ["LIST:parT", "blsv", "fnam", "mkif"]);
@@ -457,23 +481,24 @@ fn reads_colour_and_valueless_keyframes() {
     );
     let text = list(
         b"btds",
-        &[tdbs(&[
-            tdb4(1, 0x00, true, false),
-            keys(16, &[key_item(0, 3, 0, &[0.0])]),
-        ])],
+        &[
+            tdbs(&[
+                tdb4(1, 0x00, true, false),
+                keys(
+                    16,
+                    &[key_item(0, 3, 0, &[0.0]), key_item(600, 3, 0, &[0.0])],
+                ),
+            ]),
+            btdk(&["One\r", "Two\r"]),
+        ],
     );
-    let [key] = &animated("ADBE Text Document", text)[..] else {
-        panic!("one keyframe")
-    };
-    assert_eq!(
-        (key.value.clone(), key.in_ease.len()),
-        (
-            Value::Opaque {
-                reason: Reason::TextDocument
-            },
-            0
-        )
-    );
+    let documents = animated("ADBE Text Document", text);
+    let texts: Vec<Vec<String>> = documents
+        .iter()
+        .map(|key| text_of(&Stream::Static(key.value.clone())))
+        .collect();
+    assert_eq!(texts, [["One"], ["Two"]]);
+    assert_eq!(documents[0].in_ease.len(), 0);
     let gradient = list(
         b"GCst",
         &[tdbs(&[
@@ -638,4 +663,108 @@ fn refuses_a_path_keyframe_without_its_path() {
             Some("LIST:tdgp/ADBE Mask Shape/LIST:tdbs/LIST:list")
         )
     );
+}
+
+/// An `otst` wrapper: the orientation `stream`, then one `otda` per angle
+/// triple in `angles`.
+fn otst(stream: Vec<u8>, angles: &[[f64; 3]]) -> Vec<u8> {
+    let otdas: Vec<Vec<u8>> = angles
+        .iter()
+        .map(|angles| {
+            let bytes: Vec<u8> = angles.iter().flat_map(|a| a.to_be_bytes()).collect();
+            chunk(b"otda", &bytes)
+        })
+        .collect();
+    list(b"otst", &[stream, list(b"otky", &otdas)])
+}
+
+#[test]
+fn reads_static_orientation_angles() {
+    // The stream's own little-endian copy is not read; `otda` is.
+    let stream = tdbs(&[tdb4(1, 0x06, true, false), cdat(&[0.0; 3])]);
+    let body = group_body(
+        1,
+        "",
+        &[
+            tdmn("ADBE Orientation"),
+            otst(stream, &[[10.0, 20.0, 30.0]]),
+        ],
+    );
+    let group = read(&body, true).0.unwrap();
+    assert_eq!(
+        property(&group, 0).value,
+        Stream::Static(Value::Vector3([10.0, 20.0, 30.0]))
+    );
+}
+
+#[test]
+fn reads_one_orientation_per_keyframe() {
+    let stream = tdbs(&[
+        tdb4(1, 0x06, true, false),
+        keys(
+            80,
+            &[key_item(0, 2, 0, &[0.0; 9]), key_item(600, 2, 0, &[0.0; 9])],
+        ),
+    ]);
+    let keyframes = animated(
+        "ADBE Orientation",
+        otst(stream, &[[0.0, 0.0, 0.0], [0.0, 90.0, 0.0]]),
+    );
+    let values: Vec<Value> = keyframes.into_iter().map(|key| key.value).collect();
+    assert_eq!(
+        values,
+        [Value::Vector3([0.0; 3]), Value::Vector3([0.0, 90.0, 0.0])]
+    );
+}
+
+#[test]
+fn refuses_an_orientation_without_its_angles() {
+    let stream = tdbs(&[tdb4(1, 0x06, true, false), cdat(&[0.0; 3])]);
+    let wrapper = list(b"otst", &[stream]);
+    let body = group_body(1, "", &[tdmn("ADBE Orientation"), wrapper]);
+    let error = read(&body, true).0.unwrap_err();
+    assert_eq!(
+        (error.kind, error.path.as_deref()),
+        (Kind::Missing, Some("LIST:tdgp/ADBE Orientation"))
+    );
+    let stream = tdbs(&[
+        tdb4(1, 0x06, true, false),
+        keys(80, &[key_item(0, 2, 0, &[0.0; 9])]),
+    ]);
+    let body = group_body(1, "", &[tdmn("ADBE Orientation"), otst(stream, &[])]);
+    let error = read(&body, true).0.unwrap_err();
+    assert_eq!(error.kind, Kind::Missing);
+    assert!(
+        error
+            .expected
+            .as_deref()
+            .unwrap_or_default()
+            .contains("otda"),
+        "{error}"
+    );
+}
+
+#[test]
+fn text_document_errors_name_the_key_path_inside_the_body() {
+    let text = list(
+        b"btds",
+        &[
+            tdbs(&[tdb4(1, 0x01, true, false), cdat(&[0.0])]),
+            chunk(b"LIST", b"btdk /0 << /1 ( >>"),
+        ],
+    );
+    let body = group_body(1, "", &[tdmn("ADBE Text Document"), text]);
+    let error = read(&body, true).0.unwrap_err();
+    assert_eq!(error.kind, Kind::Syntax);
+    assert_eq!(
+        error.path.as_deref(),
+        Some("LIST:tdgp/ADBE Text Document/LIST:btdk")
+    );
+    let missing = list(
+        b"btds",
+        &[tdbs(&[tdb4(1, 0x01, true, false), cdat(&[0.0])])],
+    );
+    let body = group_body(1, "", &[tdmn("ADBE Text Document"), missing]);
+    let error = read(&body, true).0.unwrap_err();
+    assert_eq!(error.kind, Kind::Missing);
 }

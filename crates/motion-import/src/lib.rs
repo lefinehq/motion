@@ -7,6 +7,7 @@
 //! The layout follows the open format notes in `aep_parser`'s
 //! [`file_format.md`](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md).
 
+mod cos;
 mod decode;
 mod model;
 mod record;
@@ -20,8 +21,10 @@ mod test_support;
 
 pub use decode::decode;
 pub use model::{
-    BlendMode, Child, Color, Composition, Ease, Expression, Footage, Group, Interpolation, Item,
-    ItemKind, Keyframe, Layer, LayerKind, Path, Project, Property, Reason, Source, Span, Spatial,
-    Stream, Switches, TrackMatte, Value, Version, Vertex,
+    BaselineOption, BlendMode, Caps, CharacterStyle, Child, Color, ComposedLine, ComposedSegment,
+    Composition, Ease, Expression, Footage, Group, Interpolation, Item, ItemKind, Justification,
+    Kerning, Keyframe, Layer, LayerKind, LeadingType, LineJoin, ParagraphStyle, Path, Project,
+    Property, Reason, Run, Source, Span, Spatial, Stream, Switches, TextDocument, TextFrame,
+    TrackMatte, Value, Version, Vertex,
 };
 pub use report::Report;

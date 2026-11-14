@@ -19,6 +19,7 @@ use crate::record::{
 use crate::rifx::{self, Chunk, Name};
 
 mod property;
+mod text;
 
 /// The root folder of the project's items.
 const FOLD: Name = Name::list(b"Fold");
