@@ -145,6 +145,28 @@ enum Command {
         #[arg(long, value_name = "ID")]
         ignore: Vec<String>,
     },
+    /// Measure every sample of a local manifest against its reference, and
+    /// compare the numbers with a ledger.
+    Fidelity {
+        /// The manifest: a JSON file listing the samples, with paths
+        /// relative to it.
+        manifest: PathBuf,
+        /// The ledger to compare with.
+        #[arg(long, value_name = "FILE")]
+        ledger: Option<PathBuf>,
+        /// Write the new numbers into the ledger.
+        #[arg(long, requires = "ledger")]
+        write: bool,
+        /// Where each sample's scene and error images go.
+        #[arg(long, value_name = "DIR", default_value = "target/fidelity")]
+        work: PathBuf,
+        /// Write one error image per frame.
+        #[arg(long)]
+        images: bool,
+        /// Only this sample, by id; repeat for more.
+        #[arg(long, value_name = "ID")]
+        only: Vec<String>,
+    },
     /// Import an `.aep` project as a scene, and print what the import mapped,
     /// defaulted, ignored or could not support yet.
     Import {
@@ -186,6 +208,7 @@ impl Command {
             | Command::Render { scene, .. }
             | Command::Diff { scene, .. } => scene,
             Command::Import { project, .. } | Command::Inspect { project, .. } => project,
+            Command::Fidelity { manifest, .. } => manifest,
         }
     }
 }
@@ -241,6 +264,21 @@ fn main() -> ExitCode {
                 ignore: &ignore,
             },
         ),
+        Command::Fidelity {
+            manifest,
+            ledger,
+            write,
+            work,
+            images,
+            only,
+        } => commands::fidelity::run(&commands::fidelity::Args {
+            manifest: &manifest,
+            ledger: ledger.as_deref(),
+            write,
+            work: &work,
+            images,
+            only: &only,
+        }),
         Command::Import {
             project,
             out,
