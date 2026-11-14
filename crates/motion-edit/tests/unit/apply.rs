@@ -4,6 +4,8 @@
 use super::*;
 use crate::parse_edit;
 use motion_format::layer_keys;
+use pretty_assertions::assert_eq;
+use rstest::rstest;
 use serde_json::json;
 
 fn doc() -> Document {
@@ -76,93 +78,85 @@ fn new_key_is_appended() {
     assert_eq!(k.len(), keys(&raw()["layers"][0]).len() + 1);
 }
 
-#[test]
-fn removing_a_missing_key_is_a_no_op() {
-    assert_eq!(run("title fill=none"), raw());
+#[rstest]
+#[case::missing_key("title fill=none")]
+#[case::missing_nested_key("card anim.opacity=none")]
+#[case::path_through_a_string("card in.x=none")]
+fn removing_a_missing_key_or_path_is_a_no_op(#[case] line: &str) {
+    assert_eq!(run(line), raw());
 }
 
-#[test]
-fn scene_keys_are_validated_against_scene_keys() {
-    assert_eq!(
-        fail("scene colour=red"),
-        Diagnostic::unknown("scene key", "colour", SCENE_KEYS)
-    );
-    // A layer key is not a scene key.
-    assert_eq!(
-        fail("scene fill=#FFF"),
-        Diagnostic::unknown("scene key", "fill", SCENE_KEYS)
-    );
+#[rstest]
+#[case::scene_keys_are_validated_against_scene_keys(
+    "scene colour=red",
+    "scene key",
+    "colour",
+    &SCENE_KEYS
+)]
+// A layer key is not a scene key.
+#[case::a_layer_key_on_the_scene("scene fill=#FFF", "scene key", "fill", &SCENE_KEYS)]
+#[case::before_an_unknown_target("ghost colour=red", "layer key", "colour", &layer_keys().collect::<Vec<_>>())]
+fn unknown_keys_are_named_with_the_targets_keys(
+    #[case] line: &str,
+    #[case] what: &str,
+    #[case] key: &str,
+    #[case] allowed: &[&str],
+) {
+    assert_eq!(fail(line), Diagnostic::unknown(what, key, allowed));
 }
 
-#[test]
-fn unknown_keys_are_reported_before_unknown_targets() {
-    assert_eq!(
-        fail("ghost colour=red"),
-        Diagnostic::unknown("layer key", "colour", layer_keys())
-    );
+#[rstest]
+#[case::an_invalid_scene_result("scene fps=\"fast\"", Kind::WrongType, "fps")]
+#[case::an_invalid_layer_result("card fill=blue", Kind::Syntax, "layers[1].fill")]
+// Quoting it would leave an unknown property at the same path.
+#[case::a_number_for_an_unknown_property_gets_the_track_form(
+    "card anim.nope=1",
+    Kind::WrongType,
+    "layers[1].anim.nope"
+)]
+fn invalid_result_is_the_validation_diagnostic(
+    #[case] line: &str,
+    #[case] kind: Kind,
+    #[case] path: &str,
+) {
+    let e = fail(line);
+    assert_eq!(e.kind, kind);
+    assert_eq!(e.path.as_deref(), Some(path));
+    assert_eq!(e, invalid(line));
 }
 
-#[test]
-fn invalid_scene_result_is_reported() {
-    let e = fail("scene fps=\"fast\"");
+#[rstest]
+#[case::number("title text=2024", r#"`text="2024"`"#)]
+#[case::boolean("title text=true", r#"`text="true"`"#)]
+fn number_or_bool_for_a_string_key_gets_a_quote_hint(#[case] line: &str, #[case] quoted: &str) {
+    let e = fail(line);
+    let plain = invalid(line);
     assert_eq!(e.kind, Kind::WrongType);
-    assert_eq!(e.path.as_deref(), Some("fps"));
-    assert_eq!(e, invalid("scene fps=\"fast\""));
+    assert_eq!(e.path.as_deref(), Some("layers[0].text"));
+    assert_eq!(e.message, plain.message);
+    let expected = e.expected.as_deref().unwrap_or_default();
+    assert!(expected.ends_with(quoted), "{expected}");
 }
 
-#[test]
-fn invalid_result_is_the_validation_diagnostic() {
-    let e = fail("card fill=blue");
-    assert_eq!(e.kind, Kind::Syntax);
-    assert_eq!(e.path.as_deref(), Some("layers[1].fill"));
-    assert_eq!(e, invalid("card fill=blue"));
+#[rstest]
+// Other errors, and strings that are simply wrong, get no hint.
+#[case::another_error("card fill=blue")]
+#[case::a_wrong_string("scene fps=\"fast\"")]
+fn other_errors_get_no_quote_hint(#[case] line: &str) {
+    assert_eq!(fail(line), invalid(line));
 }
 
-#[test]
-fn number_or_bool_for_a_string_key_gets_a_quote_hint() {
-    for (line, quoted) in [
-        ("title text=2024", r#"`text="2024"`"#),
-        ("title text=true", r#"`text="true"`"#),
-    ] {
-        let e = fail(line);
-        let plain = invalid(line);
-        assert_eq!(e.kind, Kind::WrongType, "{line}");
-        assert_eq!(e.path.as_deref(), Some("layers[0].text"), "{line}");
-        assert_eq!(e.message, plain.message, "{line}");
-        let expected = e.expected.as_deref().unwrap_or_default();
-        assert!(expected.ends_with(quoted), "{line}: {expected}");
-    }
-    // Other errors, and strings that are simply wrong, get no hint.
-    assert_eq!(fail("card fill=blue"), invalid("card fill=blue"));
-    assert_eq!(fail("scene fps=\"fast\""), invalid("scene fps=\"fast\""));
-}
-
-#[test]
-fn a_quote_that_would_still_fail_there_gets_the_form_instead() {
-    // Quoted, `5` is a time without a unit and `1.5` is not a colour: the
-    // key's own form helps more than a quote.
-    for line in ["scene dur=5", "scene bg=1.5"] {
-        let e = fail(line);
-        assert_eq!(e.kind, Kind::WrongType, "{line}");
-        assert_eq!(e, invalid(line), "{line}");
-    }
-}
-
-#[test]
-fn a_number_for_an_unknown_property_gets_the_track_form() {
-    // Quoting it would leave an unknown property at the same path.
-    let e = fail("card anim.nope=1");
+#[rstest]
+// Quoted, `5` is a time without a unit and `1.5` is not a colour: the
+// key's own form helps more than a quote.
+#[case::a_time_without_a_unit("scene dur=5")]
+#[case::a_number_for_a_colour("scene bg=1.5")]
+// Quoting `true` would leave `fps` just as wrong.
+#[case::a_wrong_type_on_a_number_key_gets_no_quote_hint("scene fps=true")]
+fn a_quote_that_would_still_fail_there_gets_the_form_instead(#[case] line: &str) {
+    let e = fail(line);
     assert_eq!(e.kind, Kind::WrongType);
-    assert_eq!(e.path.as_deref(), Some("layers[1].anim.nope"));
-    assert_eq!(e, invalid("card anim.nope=1"));
-}
-
-#[test]
-fn a_wrong_type_on_a_number_key_gets_no_quote_hint() {
-    // Quoting `true` would leave `fps` just as wrong.
-    let e = fail("scene fps=true");
-    assert_eq!(e.kind, Kind::WrongType);
-    assert_eq!(e, invalid("scene fps=true"));
+    assert_eq!(e, invalid(line));
 }
 
 #[test]
@@ -224,12 +218,6 @@ fn removing_nested_keys_cleans_up_empty_objects() {
 }
 
 #[test]
-fn removing_a_missing_path_is_a_no_op() {
-    assert_eq!(run("card anim.opacity=none"), raw());
-    assert_eq!(run("card in.x=none"), raw());
-}
-
-#[test]
 fn setting_through_a_non_object_is_an_error() {
     let e = fail("card in.opacity=1");
     assert_eq!(e.kind, Kind::WrongType);
@@ -248,13 +236,13 @@ fn only_the_first_segment_is_checked_as_a_key() {
     assert_eq!(e.path.as_deref(), Some("layers[1].anim.nope"));
 }
 
-#[test]
-fn errors_say_what_kind_of_problem_they_are() {
-    let kind = |l: &str| fail(l).kind;
-    assert_eq!(kind("ghost fill=red"), Kind::UnknownName);
-    assert_eq!(kind("card colour=red"), Kind::UnknownName);
-    // A validation failure keeps the kind it had in the format.
-    assert_eq!(kind("card fill=blue"), Kind::Syntax);
-    assert_eq!(kind("title text=2024"), Kind::WrongType);
-    assert_eq!(kind("card in.opacity=1"), Kind::WrongType);
+#[rstest]
+#[case("ghost fill=red", Kind::UnknownName)]
+#[case("card colour=red", Kind::UnknownName)]
+// A validation failure keeps the kind it had in the format.
+#[case("card fill=blue", Kind::Syntax)]
+#[case("title text=2024", Kind::WrongType)]
+#[case("card in.opacity=1", Kind::WrongType)]
+fn errors_say_what_kind_of_problem_they_are(#[case] line: &str, #[case] kind: Kind) {
+    assert_eq!(fail(line).kind, kind);
 }

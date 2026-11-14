@@ -15,14 +15,14 @@ use crate::units::{SpanProblem, Time, TimeSpan, time_span};
 use crate::value::Value;
 
 /// The accepted forms of a track.
-pub(crate) const TRACK_EXPECTED: &str = r#""<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of keys, each [time, value, curve] or {"t":time,"v":value,"curve":curve,"path":[[ox,oy],[ix,iy]]}"#;
+pub(crate) const TRACK_EXPECTED: &str = r#""<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of keys, each [time, value, curve] or {"t":time,"v":value,"curve":curve,"path":[[out-x,out-y],[in-x,in-y]]}"#;
 /// The string form only, for errors about its pieces.
 const STRING_EXPECTED: &str =
     r#""<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out""#;
 /// The accepted forms of a key list.
 pub(crate) const KEYS_EXPECTED: &str = r#"a list of keys like [[0, 0], ["12f", 1, "ease-out"]]"#;
 /// The accepted forms of one key of a key list.
-pub(crate) const KEY_EXPECTED: &str = r#"[time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"], or {"t":time,"v":value,"curve":curve,"path":[[ox,oy],[ix,iy]]}"#;
+pub(crate) const KEY_EXPECTED: &str = r#"[time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"], or {"t":time,"v":value,"curve":curve,"path":[[out-x,out-y],[in-x,in-y]]}"#;
 /// The accepted forms of a key's curve.
 pub(crate) const EASING_EXPECTED: &str = r#"a curve such as "ease-out", or a list of curves, one per component, e.g. ["ease-out","linear"]"#;
 /// The accepted form of a key's path tangents.

@@ -2,8 +2,8 @@
 //! merged into one [`Violation`] so the report stays short.
 
 use crate::report::{Code, Report, Violation};
-use crate::rules::{Area, EPSILON, Overshoot, RULES, Rule, shift, visible};
-use kurbo::{Affine, Point};
+use crate::rules::{EPSILON, Overshoot, RULES, Rule, shift, visible};
+use kurbo::{Affine, Point, Rect, Vec2};
 use motion_format::key::AT;
 use motion_format::shorthand::{Coord, Position};
 use motion_format::{Layer, Scene};
@@ -56,7 +56,7 @@ struct LayerScan {
     runs: Vec<Runs>,
     /// The box the layer covers over its visible frames. Fix hints clamp this whole
     /// sweep, since moving `at` moves every frame, so they settle in one edit.
-    sweep: Option<Area>,
+    sweep: Option<Rect>,
     /// Where its `at` lives: the transform from its parent's coordinates to the
     /// canvas over its visible frames.
     frame: Frame,
@@ -113,10 +113,7 @@ impl LayerScan {
             let parent = node.transform * local_transform(&node.values).inverse();
             self.frame = self.frame.and(parent);
             let b = node.bounds();
-            self.sweep = Some(match self.sweep {
-                None => b,
-                Some(a) => (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)),
-            });
+            self.sweep = Some(self.sweep.map_or(b, |a| a.union(b)));
         }
     }
 
@@ -201,7 +198,7 @@ impl Run {
 /// it goes back through the parents' transform, which must hold still.
 fn fix_hint(
     rule: &Rule,
-    sweep: Area,
+    sweep: Rect,
     frame: Frame,
     layer: &Layer,
     node: &Node,
@@ -211,7 +208,7 @@ fn fix_hint(
         return None;
     };
     let (area, aim) = (rule.areas)(graph);
-    let (dx, dy) = shift(sweep, area, aim);
+    let Vec2 { x: dx, y: dy } = shift(sweep, area, aim);
     let inverse = parent.inverse();
     let local = inverse * Point::new(dx, dy) - inverse * Point::ORIGIN;
     if !(local.x.is_finite() && local.y.is_finite()) {
@@ -232,7 +229,7 @@ fn fix_hint(
     fix(
         &layer.id,
         layer.at,
-        (
+        Vec2::new(
             only_followed(snap(local.x), follows_x),
             only_followed(snap(local.y), follows_y),
         ),
@@ -251,7 +248,7 @@ fn snap(v: f64) -> f64 {
 fn fix(
     id: &str,
     at: Position,
-    (dx, dy): (f64, f64),
+    Vec2 { x: dx, y: dy }: Vec2,
     (width, height): (f64, f64),
 ) -> Option<String> {
     if dx == 0.0 && dy == 0.0 {

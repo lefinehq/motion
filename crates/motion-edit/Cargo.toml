@@ -9,12 +9,15 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+derive_more.workspace = true
 motion-format = { path = "../motion-format" }
 serde_json = { workspace = true }
 winnow.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+rstest.workspace = true
+pretty_assertions.workspace = true
 insta.workspace = true
 proptest.workspace = true
 

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::text::ApproxTextMeasure;
+use rstest::rstest;
 
 fn launch() -> motion_format::Scene {
     motion_format::parse_document(include_str!("../../../../examples/launch.json"))
@@ -118,24 +119,25 @@ fn fade_up_compiles_to_an_opacity_and_a_y_track() {
     assert!(track(c, "x").is_constant());
 }
 
-#[test]
-fn offsets_point_away_from_the_direction_of_travel() {
-    // y grows downwards: fade-up starts below (+y), fade-down above (-y),
-    // fade-left right of (+x), fade-right left of (-x).
-    for (preset, from_x, from_y) in [
-        ("fade-up", 100.0, 240.0),
-        ("fade-down", 100.0, 160.0),
-        ("fade-left", 140.0, 200.0),
-        ("fade-right", 60.0, 200.0),
-        ("fade", 100.0, 200.0),
-    ] {
-        let n = &one(&format!(r#","in":"{preset}""#), "").nodes[0];
-        assert_eq!(track(n, "x").sample(0.0), from_x, "{preset} x");
-        assert_eq!(track(n, "y").sample(0.0), from_y, "{preset} y");
-        assert_eq!(track(n, "x").sample(1e6), 100.0, "{preset} x end");
-        assert_eq!(track(n, "y").sample(1e6), 200.0, "{preset} y end");
-        assert_eq!(track(n, "opacity").sample(0.0), 0.0, "{preset}");
-    }
+/// y grows downwards: fade-up starts below (+y), fade-down above (-y),
+/// fade-left right of (+x), fade-right left of (-x).
+#[rstest]
+#[case("fade-up", 100.0, 240.0)]
+#[case("fade-down", 100.0, 160.0)]
+#[case("fade-left", 140.0, 200.0)]
+#[case("fade-right", 60.0, 200.0)]
+#[case("fade", 100.0, 200.0)]
+fn offsets_point_away_from_the_direction_of_travel(
+    #[case] preset: &str,
+    #[case] from_x: f64,
+    #[case] from_y: f64,
+) {
+    let n = &one(&format!(r#","in":"{preset}""#), "").nodes[0];
+    assert_eq!(track(n, "x").sample(0.0), from_x, "x");
+    assert_eq!(track(n, "y").sample(0.0), from_y, "y");
+    assert_eq!(track(n, "x").sample(1e6), 100.0, "x end");
+    assert_eq!(track(n, "y").sample(1e6), 200.0, "y end");
+    assert_eq!(track(n, "opacity").sample(0.0), 0.0);
 }
 
 #[test]
@@ -181,14 +183,17 @@ fn anim_and_entrance_drive_different_properties() {
     assert!(!track(n, "y").is_constant());
 }
 
-#[test]
-fn follows_at_is_false_for_an_axis_that_anim_drives() {
-    let n = &one(r#","anim":{"x":"0 -> 50 @0-10f"}"#, "").nodes[0];
-    assert_eq!(n.follows_at, (false, true));
-    let n = &one(r#","anim":{"y":"0 -> 50 @0-10f"}"#, "").nodes[0];
-    assert_eq!(n.follows_at, (true, false));
-    let n = &one(r#","anim":{"opacity":"0 -> 1 @0-10f"}"#, "").nodes[0];
-    assert_eq!(n.follows_at, (true, true));
+/// Moving `at` moves the motion on an axis unless `anim` drives it or the
+/// entrance starts it at an absolute value; a relative start moves with `at`.
+#[rstest]
+#[case::anim_x(r#","anim":{"x":"0 -> 50 @0-10f"}"#, (false, true))]
+#[case::anim_y(r#","anim":{"y":"0 -> 50 @0-10f"}"#, (true, false))]
+#[case::anim_off_the_axes(r#","anim":{"opacity":"0 -> 1 @0-10f"}"#, (true, true))]
+#[case::absolute_start(r#","in":"swoop""#, (false, true))]
+#[case::relative_start(r#","in":"drop""#, (true, true))]
+fn follows_at_per_axis(#[case] extra: &str, #[case] follows: (bool, bool)) {
+    let top = r#""presets":{"swoop":{"x":1900},"drop":{"y":"-d"}},"#;
+    assert_eq!(one(extra, top).nodes[0].follows_at, follows);
 }
 
 #[test]
@@ -201,16 +206,6 @@ fn a_scene_preset_overrides_a_built_in() {
     let n = &g.nodes[0];
     assert_eq!(pairs(track(n, "y")).first(), Some(&(0.0, 230.0)));
     assert!(!track(n, "y").is_constant());
-}
-
-#[test]
-fn follows_at_is_false_for_an_axis_with_an_absolute_preset_start() {
-    let top = r#""presets":{"swoop":{"x":1900},"drop":{"y":"-d"}},"#;
-    let n = &one(r#","in":"swoop""#, top).nodes[0];
-    assert_eq!(n.follows_at, (false, true));
-    // A relative start moves with `at`.
-    let n = &one(r#","in":"drop""#, top).nodes[0];
-    assert_eq!(n.follows_at, (true, true));
 }
 
 #[test]

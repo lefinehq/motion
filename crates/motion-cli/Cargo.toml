@@ -17,9 +17,12 @@ motion-engine = { path = "../motion-engine" }
 clap = { workspace = true }
 serde.workspace = true
 serde_json.workspace = true
+strum.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+rstest.workspace = true
+pretty_assertions.workspace = true
 motion-format = { path = "../motion-format" }
 
 [lints]

@@ -1,6 +1,8 @@
 //! Unit tests for `src/path.rs`.
 
 use super::*;
+use pretty_assertions::assert_eq;
+use rstest::rstest;
 use serde_json::json;
 
 /// A dotted path, as the edit grammar reads it.
@@ -28,15 +30,15 @@ fn set_keeps_an_existing_key_in_place_and_appends_a_new_one() {
     assert_eq!(v["a"], 3);
 }
 
-#[test]
-fn set_through_a_non_object_names_it() {
+#[rstest]
+#[case("in.opacity", "`in`")]
+#[case("a.b.c", "`a.b`")]
+fn set_through_a_non_object_names_it(#[case] key: &str, #[case] parent: &str) {
     let mut v = json!({"in": "fade", "a": {"b": 1}});
-    for (key, parent) in [("in.opacity", "`in`"), ("a.b.c", "`a.b`")] {
-        let e = set(&mut v, &at(key), json!(1)).unwrap_err();
-        assert_eq!(e.kind, Kind::WrongType, "{key}");
-        assert_eq!(e.path, None, "{key}");
-        assert!(e.message.contains(parent), "{key}: {e}");
-    }
+    let e = set(&mut v, &at(key), json!(1)).unwrap_err();
+    assert_eq!(e.kind, Kind::WrongType);
+    assert_eq!(e.path, None);
+    assert!(e.message.contains(parent), "{e}");
 }
 
 #[test]
@@ -47,18 +49,20 @@ fn set_on_a_root_that_is_not_an_object_names_no_key() {
     assert!(!e.message.contains("``"), "{e}");
 }
 
-#[test]
-fn remove_cleans_up_the_objects_it_empties_but_not_the_root() {
-    let mut v = json!({"a": {"b": {"c": 1}}});
-    assert!(remove(&mut v, &at("a.b.c")));
-    assert_eq!(v, json!({}));
-}
-
-#[test]
-fn remove_keeps_parents_with_other_keys() {
-    let mut v = json!({"anim": {"opacity": 1, "scale": 2}});
-    assert!(remove(&mut v, &at("anim.opacity")));
-    assert_eq!(v, json!({"anim": {"scale": 2}}));
+#[rstest]
+#[case::cleans_up_the_objects_it_empties_but_not_the_root(
+    json!({"a": {"b": {"c": 1}}}),
+    "a.b.c",
+    json!({})
+)]
+#[case::keeps_parents_with_other_keys(
+    json!({"anim": {"opacity": 1, "scale": 2}}),
+    "anim.opacity",
+    json!({"anim": {"scale": 2}})
+)]
+fn remove_drops_the_key(#[case] mut v: Value, #[case] key: &str, #[case] after: Value) {
+    assert!(remove(&mut v, &at(key)));
+    assert_eq!(v, after);
 }
 
 #[test]

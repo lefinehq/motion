@@ -6,7 +6,7 @@ use std::fmt;
 
 use serde::Serialize;
 
-use crate::model::{Child, Group, ItemKind, Project, Property, Stream, Value, label};
+use crate::model::{Child, Group, ItemKind, Project, Property, Stream, Value};
 
 /// The match name of a layer's effects group.
 const EFFECTS: &str = "ADBE Effect Parade";
@@ -45,12 +45,12 @@ impl Project {
             .flat_map(|layer| layer.properties.properties())
             .filter_map(opaque_reason);
         Report {
-            items: counts(self.items.iter().map(|item| item.kind.name().to_owned())),
+            items: counts(self.items.iter().map(|item| item.kind.to_string())),
             layers: counts(layers.iter().map(|layer| {
                 match (layer.switches.null, layer.switches.adjustment) {
                     (true, _) => "null".to_owned(),
                     (_, true) => "adjustment".to_owned(),
-                    _ => label(&layer.kind),
+                    _ => layer.kind.to_string(),
                 }
             })),
             effects: counts(effects),
@@ -75,7 +75,7 @@ fn opaque_reason(property: &Property) -> Option<String> {
         Stream::Animated(keyframes) => keyframes.first().map(|key| &key.value),
     };
     match value {
-        Some(Value::Opaque { reason }) => Some(label(reason)),
+        Some(Value::Opaque { reason }) => Some(reason.to_string()),
         _ => None,
     }
 }

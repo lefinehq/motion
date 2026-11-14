@@ -1,6 +1,5 @@
 //! The key of a change: a dotted path such as `anim.opacity`.
 
-use std::fmt;
 use std::str::FromStr;
 
 use motion_format::grammar::parse_all;
@@ -10,8 +9,9 @@ use crate::parse::path;
 use crate::problem::Problem;
 
 /// The key of a change, such as `anim.opacity`, kept both as written and as
-/// its segments, so neither has to be rebuilt from the other.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// its segments, so neither has to be rebuilt from the other. It prints as written.
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+#[display("{text}")]
 pub struct KeyPath {
     /// The key as written.
     text: String,
@@ -58,12 +58,6 @@ impl KeyPath {
     /// `anim` and `anim.x`, but not `anim` and `animal`.
     pub(crate) fn overlaps(&self, other: &KeyPath) -> bool {
         self.segments.starts_with(&other.segments) || other.segments.starts_with(&self.segments)
-    }
-}
-
-impl fmt::Display for KeyPath {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.text)
     }
 }
 

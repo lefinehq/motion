@@ -3,6 +3,7 @@
 use super::*;
 use motion_format::Curve;
 use proptest::prelude::*;
+use rstest::rstest;
 
 fn n(v: f64) -> Value {
     Value::Number(v)
@@ -28,17 +29,19 @@ fn close(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-6
 }
 
-#[test]
-fn holds_the_first_value_before_and_the_last_after() {
+/// Holds the first value before the keys and the last after them, and eases between.
+#[rstest]
+#[case::before(0.0, 2.0)]
+#[case::on_the_first(10.0, 2.0)]
+#[case::between(15.0, 3.0)]
+#[case::on_the_last(20.0, 4.0)]
+#[case::after(99.0, 4.0)]
+fn samples_a_two_key_track(#[case] frame: f64, #[case] value: f64) {
     let t = numbers(vec![
         KeySpec::linear(10.0, n(2.0)),
         KeySpec::linear(20.0, n(4.0)),
     ]);
-    assert_eq!(t.sample(0.0), n(2.0));
-    assert_eq!(t.sample(10.0), n(2.0));
-    assert_eq!(t.sample(20.0), n(4.0));
-    assert_eq!(t.sample(99.0), n(4.0));
-    assert_eq!(t.sample(15.0), n(3.0));
+    assert_eq!(t.sample(frame), n(value));
 }
 
 #[test]

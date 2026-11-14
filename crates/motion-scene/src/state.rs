@@ -43,9 +43,9 @@ impl NodeState {
         self.get(prop).as_point().expect("a point property")
     }
 
-    /// The axis-aligned box `(left, top, right, bottom)` the node covers on
-    /// the canvas: its own box through its transform.
-    pub fn bounds(&self) -> (f64, f64, f64, f64) {
+    /// The axis-aligned box the node covers on the canvas: its own box
+    /// through its transform.
+    pub fn bounds(&self) -> Rect {
         let drawn =
             self.transform
                 .transform_rect_bbox(Rect::new(0.0, 0.0, self.width, self.height));
@@ -54,7 +54,7 @@ impl NodeState {
             let near = v.round();
             if (v - near).abs() < 1e-9 { near } else { v }
         };
-        (
+        Rect::new(
             snap(drawn.x0),
             snap(drawn.y0),
             snap(drawn.x1),
@@ -64,22 +64,22 @@ impl NodeState {
 
     /// The left edge of [`NodeState::bounds`].
     pub fn left(&self) -> f64 {
-        self.bounds().0
+        self.bounds().x0
     }
 
     /// The right edge of [`NodeState::bounds`].
     pub fn right(&self) -> f64 {
-        self.bounds().2
+        self.bounds().x1
     }
 
     /// The top edge of [`NodeState::bounds`].
     pub fn top(&self) -> f64 {
-        self.bounds().1
+        self.bounds().y0
     }
 
     /// The bottom edge of [`NodeState::bounds`].
     pub fn bottom(&self) -> f64 {
-        self.bounds().3
+        self.bounds().y1
     }
 }
 

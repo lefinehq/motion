@@ -1,6 +1,7 @@
 //! Unit tests for `src/rifx.rs`.
 
 use proptest::prelude::*;
+use rstest::rstest;
 
 use super::*;
 use crate::test_support::{chunk, file, list};
@@ -59,22 +60,19 @@ fn names_show_the_list_type_without_trailing_spaces() {
     assert_eq!(format!("{:?}", Tag(*b"a\0b ")), "`a\\x00b`");
 }
 
-#[test]
-fn refuses_a_file_that_is_not_rifx() {
-    for bytes in [
-        b"RIFF\0\0\0\x04Egg!".to_vec(),
-        chunk(b"RIFX", b"Egg"),
-        chunk(b"RIFX", b"WAVE"),
-    ] {
-        let error = read(&bytes).unwrap_err();
-        assert_eq!(
-            (error.kind, error.expected.as_deref()),
-            (
-                Kind::Invalid,
-                Some("a file that starts with `RIFX` and `Egg!`")
-            )
-        );
-    }
+#[rstest]
+#[case::riff(b"RIFF\0\0\0\x04Egg!".to_vec())]
+#[case::short_form_type(chunk(b"RIFX", b"Egg"))]
+#[case::other_form_type(chunk(b"RIFX", b"WAVE"))]
+fn refuses_a_file_that_is_not_rifx(#[case] bytes: Vec<u8>) {
+    let error = read(&bytes).unwrap_err();
+    assert_eq!(
+        (error.kind, error.expected.as_deref()),
+        (
+            Kind::Invalid,
+            Some("a file that starts with `RIFX` and `Egg!`")
+        )
+    );
 }
 
 #[test]

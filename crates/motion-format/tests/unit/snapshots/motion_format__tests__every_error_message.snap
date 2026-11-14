@@ -65,7 +65,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"10x10","in":"fade-up","anim":{"position":"0,0 -> 1,1 @0-5f"}}` → layers[0].anim.position: `position` is already animated by `in` (preset `fade-up`); expected `a in=none anim={"opacity":"0 -> 1 @0-12f ease-out","y":"580 -> 540 @0-12f ease-out","position":"0,0 -> 1,1 @0-5f"}` (the entrance as anim tracks; then adjust `position`), or define a scene preset without `position` under "presets"
 
 ## anim
-`"x":3` → layers[0].anim.x: invalid type: integer `3`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of keys, each [time, value, curve] or {"t":time,"v":value,"curve":curve,"path":[[ox,oy],[ix,iy]]}
+`"x":3` → layers[0].anim.x: invalid type: integer `3`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of keys, each [time, value, curve] or {"t":time,"v":value,"curve":curve,"path":[[out-x,out-y],[in-x,in-y]]}
 `"glow":"0 -> 1 @0-5f"` → layers[0].anim.glow: unknown property `glow`; expected one of position, anchor, scale, rotate, opacity, x, y, anchor-x, anchor-y, scale-x, scale-y
 `"x":"0 1 @0-5f"` → layers[0].anim.x: missing `->` after the start value in `0 1 @0-5f`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
 `"x":"0 -> 1 @5-0f"` → layers[0].anim.x: `@5f-0f` starts after it ends; expected `@<start>-<end>` with a unit, e.g. `@0-30f`, `@0.5s-1s`
@@ -86,9 +86,9 @@ expression: "report.join(\"\\n\\n\")"
 `"x":[[0,1,"speed(0,2,0,0)"]]` → layers[0].anim.x[0][2]: `speed(0,2,0,0)`: each reach must be between 0 and 1; expected `speed(out,out-reach,in,in-reach)` (no spaces): the speed leaving the key and arriving at the next, in value units per second, each with how far into the span it reaches, 0 to 1, e.g. `speed(0,.33,0,.33)`
 `"opacity":"0 -> 2 @0-5f"` → layers[0].anim.opacity: value 2 is outside 0..=1; expected a number from 0 to 1
 `"x":[]` → layers[0].anim.x: needs at least one key; expected a list of keys like [[0, 0], ["12f", 1, "ease-out"]]
-`"x":[5]` → layers[0].anim.x[0]: invalid type: integer `5`; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"], or {"t":time,"v":value,"curve":curve,"path":[[ox,oy],[ix,iy]]}
-`"x":[[0]]` → layers[0].anim.x[0]: invalid length 1; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"], or {"t":time,"v":value,"curve":curve,"path":[[ox,oy],[ix,iy]]}
-`"x":[[0, 1, "linear", 4]]` → layers[0].anim.x[0]: invalid length 4; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"], or {"t":time,"v":value,"curve":curve,"path":[[ox,oy],[ix,iy]]}
+`"x":[5]` → layers[0].anim.x[0]: invalid type: integer `5`; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"], or {"t":time,"v":value,"curve":curve,"path":[[out-x,out-y],[in-x,in-y]]}
+`"x":[[0]]` → layers[0].anim.x[0]: invalid length 1; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"], or {"t":time,"v":value,"curve":curve,"path":[[out-x,out-y],[in-x,in-y]]}
+`"x":[[0, 1, "linear", 4]]` → layers[0].anim.x[0]: invalid length 4; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"], or {"t":time,"v":value,"curve":curve,"path":[[out-x,out-y],[in-x,in-y]]}
 `"x":[[true, 0]]` → layers[0].anim.x[0][0]: invalid type: boolean `true`; expected a frame count, or a time such as `12f` or `0.4s`
 `"x":[["12", 0]]` → layers[0].anim.x[0]: `12` is not a valid time; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`
 `"x":[[-1, 0]]` → layers[0].anim.x[0]: invalid time -1; expected a frame count of 0 or more, or `<number>f` or `<number>s`, e.g. `12f` or `0.4s`
