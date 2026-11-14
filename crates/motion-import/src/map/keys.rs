@@ -4,7 +4,9 @@
 
 use serde_json::{Value as Json, json};
 
-use crate::model::{Color, Interpolation, Keyframe, Path, Stream, Value};
+use motion_format::Curve;
+
+use crate::model::{Color, Keyframe, Path, Stream, Value};
 
 /// How a project value becomes a scene value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,42 +202,64 @@ pub(super) fn written(
     }
 }
 
-/// The curve from `key` to `next`: `hold`, `linear`, or the eases on both
-/// sides as `speed(…)`, one per component where the project keeps one per
-/// dimension. A linear side reaches nowhere into the span, as in the project.
+/// The curve from `key` to `next` ([`crate::eval::curve`]), one per component
+/// where the project keeps one per dimension, with speeds per second of the
+/// layer's own time, which a stretch slows.
 fn curve(key: &Keyframe, next: &Keyframe, convert: Convert, spatial: bool, clock: Clock) -> Json {
-    if key.out_interpolation == Interpolation::Hold {
-        return Json::String("hold".into());
-    }
-    let linear = |i: Interpolation| i == Interpolation::Linear;
-    if linear(key.out_interpolation) && linear(next.in_interpolation) {
-        return Json::String("linear".into());
-    }
-    // Speeds are per second of the layer's own time, which a stretch slows.
     let factor = convert.factor() * clock.stretch.abs();
-    let side = |eases: &[crate::model::Ease], dim: usize, interpolation: Interpolation| match (
-        linear(interpolation),
-        eases.get(dim).or_else(|| eases.first()),
-    ) {
-        (false, Some(ease)) => (ease.speed * factor, ease.influence.clamp(0.0, 1.0)),
-        _ => (0.0, 0.0),
-    };
-    let speed = |dim: usize| {
-        let (out_speed, out_reach) = side(&key.out_ease, dim, key.out_interpolation);
-        let (in_speed, in_reach) = side(&next.in_ease, dim, next.in_interpolation);
-        format!(
+    let dims = if spatial { 1 } else { convert.dims() };
+    curves((0..dims).map(|dim| scaled(crate::eval::curve(key, next, dim), factor)))
+}
+
+/// `curve` with its speeds times `factor`.
+fn scaled(curve: Curve, factor: f64) -> Curve {
+    match curve {
+        Curve::Speed {
+            out_speed,
+            out_reach,
+            in_speed,
+            in_reach,
+        } => Curve::Speed {
+            out_speed: out_speed * factor,
+            out_reach,
+            in_speed: in_speed * factor,
+            in_reach,
+        },
+        other => other,
+    }
+}
+
+/// A key's `curve`: one curve when every component shares it, else one per
+/// component.
+fn curves(each: impl Iterator<Item = Curve>) -> Json {
+    let texts: Vec<String> = each.map(curve_text).collect();
+    match texts.iter().all(|c| *c == texts[0]) {
+        true => Json::String(texts[0].clone()),
+        false => json!(texts),
+    }
+}
+
+/// A curve as the scene spells it, its numbers at the import's precision.
+/// (The format's own printer rounds for people to read.)
+fn curve_text(curve: Curve) -> String {
+    match curve {
+        Curve::Linear => "linear".into(),
+        Curve::Hold => "hold".into(),
+        Curve::Speed {
+            out_speed,
+            out_reach,
+            in_speed,
+            in_reach,
+        } => format!(
             "speed({},{},{},{})",
             text(out_speed),
             text(out_reach),
             text(in_speed),
             text(in_reach)
-        )
-    };
-    let dims = if spatial { 1 } else { convert.dims() };
-    let curves: Vec<String> = (0..dims).map(speed).collect();
-    match curves.iter().all(|c| *c == curves[0]) {
-        true => Json::String(curves[0].clone()),
-        false => json!(curves),
+        ),
+        Curve::Bezier(x1, y1, x2, y2) => {
+            format!("cubic({},{},{},{})", text(x1), text(y1), text(x2), text(y2))
+        }
     }
 }
 
@@ -292,26 +316,13 @@ pub(super) fn fitted(
         object.insert("v".into(), value);
         if k + 1 < count {
             let curve = match channels[0].keys[k].hold {
-                true => Json::String("hold".into()),
-                false => {
-                    let curves: Vec<String> = channels
-                        .iter()
-                        .take(scene_dims)
-                        .map(|c| {
-                            format!(
-                                "speed({},{},{},{})",
-                                text(c.keys[k].slope_out * factor),
-                                text(FITTED_REACH),
-                                text(c.keys[k + 1].slope_in * factor),
-                                text(FITTED_REACH)
-                            )
-                        })
-                        .collect();
-                    match curves.iter().all(|c| *c == curves[0]) {
-                        true => Json::String(curves[0].clone()),
-                        false => json!(curves),
-                    }
-                }
+                true => curve_text(Curve::Hold).into(),
+                false => curves(channels.iter().take(scene_dims).map(|c| Curve::Speed {
+                    out_speed: c.keys[k].slope_out * factor,
+                    out_reach: FITTED_REACH,
+                    in_speed: c.keys[k + 1].slope_in * factor,
+                    in_reach: FITTED_REACH,
+                })),
             };
             object.insert("curve".into(), curve);
         }

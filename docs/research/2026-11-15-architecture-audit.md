@@ -274,9 +274,9 @@ What PR #34 brings that D44 can build on:
 - **Each expression has a report:** its engine, its frames and its outcome. Its source and its place still need to become data (workstreams 1 and 5).
 
 Where PR #34 diverges from this audit:
-- **A second keyframe evaluator,** `motion-import/src/eval.rs` (workstream 3).
+- **A second keyframe evaluator,** `motion-import/src/eval.rs` (workstream 3). *Resolved in PR #36:* the bake now eases with motion-scene's `Ease` and `PathSpan`.
 - **The script engine is now in the render crate's dependencies,** and the guard misses it (workstream 9).
-- **`speed(…)` is printed by hand in a second place** (workstream 3).
+- **`speed(…)` is printed by hand in a second place** (workstream 3). *Resolved in PR #36:* the map and the bake share one curve per span, printed in one place.
 
 ## What comes next
 

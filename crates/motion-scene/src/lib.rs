@@ -19,4 +19,4 @@ pub use graph::{CompGraph, ItemNode, Node, NodeContent, PropertyTrack, SceneGrap
 pub use shape::{ShapeDraw, outline};
 pub use state::{ContentState, FrameState, ItemState, NodeState};
 pub use text::{TextNode, set as set_text};
-pub use track::{Key, KeySpec, Track};
+pub use track::{Key, KeySpec, PathSpan, Track};

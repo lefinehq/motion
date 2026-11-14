@@ -65,7 +65,7 @@ Libraries never print: they return a `Diagnostic` or log with `tracing`, and onl
 | `.aep` chunks, binary records and the one binrw-to-`Diagnostic` mapping | `crates/motion-import/src/rifx.rs`, `record.rs` |
 | The object syntax of `.aep` text documents, and serde records over it | `crates/motion-import/src/cos.rs`, `cos/de.rs`, `decode/text.rs` |
 | The `.aep` model, and the table of property bodies | `crates/motion-import/src/model.rs`, `decode/property.rs` |
-| A property's value from its keys, as an expression reads it | `crates/motion-import/src/eval.rs` |
+| A property's value from its keys, as an expression reads it, eased by the scene's own curves and paths | `crates/motion-import/src/eval.rs` |
 | Expressions baked at import: the project as the expression host, the evaluation order, then samples fitted into scene keys | `crates/motion-import/src/bake/`, `map/expressions.rs` |
 | Fonts: faces and their names, the font set, the fallback for a missing font, and text layout | `crates/motion-text/src/font.rs`, `set.rs`, `fallback.rs`, `typeset.rs` |
 | The entry point and its step spans | `crates/motion-engine/src/session.rs`, `stage.rs` |
@@ -84,7 +84,7 @@ Every animatable value is a registered property with a keyframe track (see [D27]
 | Curves: the named table, `cubic(...)`, `speed(...)` and `hold` | `crates/motion-format/src/curve.rs` |
 | Presets, as data (a scene can add its own) | `crates/motion-format/src/presets.json`, read by `preset.rs` |
 | `anim` tracks and keyframes, as written | `crates/motion-format/src/anim.rs` |
-| Tracks: one property's keys, compiled and sampled; spatial spans move along a bézier path by arc length | `crates/motion-scene/src/track.rs` |
+| Tracks: one property's keys, compiled and sampled; spatial spans (`PathSpan`, which the import's bake reads too) move along a bézier path by arc length | `crates/motion-scene/src/track.rs` |
 | Easing in value space: the handles every curve compiles to | `crates/motion-scene/src/curve.rs` |
 | Transforms: anchor, scale, rotation, position, and the parent chain | `crates/motion-scene/src/evaluate.rs` |
 
