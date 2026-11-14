@@ -1,0 +1,12 @@
+---
+source: crates/motion-engine/tests/import_frames.rs
+expression: meaning
+---
+frame 0: 51dfe569aacf49cd
+  shape-layer-1 [1 0 0 1 200 200] 200,200 | 0,0 | 1,1 | 0 | 1
+
+frame 90: 5235357507cccfa5
+  shape-layer-1 [1 0 0 1 200 200] 200,200 | 0,0 | 1,1 | 0 | 1
+
+frame 180.000014849373: 3515750be1d3806d
+  shape-layer-1 [1 0 0 1 200 200] 200,200 | 0,0 | 1,1 | 0 | 1

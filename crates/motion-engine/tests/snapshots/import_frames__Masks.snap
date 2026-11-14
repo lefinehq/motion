@@ -1,0 +1,12 @@
+---
+source: crates/motion-engine/tests/import_frames.rs
+expression: meaning
+---
+frame 0: ef4eb62e3b4e3696
+  a [1 0 0 1 91 90.5] 91,90.5 | 0,0 | 1,1 | 0 | 1
+
+frame 30: ef4eb62e3b4e3696
+  a [1 0 0 1 91 90.5] 91,90.5 | 0,0 | 1,1 | 0 | 1
+
+frame 60.00001096536901: ef4eb62e3b4e3696
+  a [1 0 0 1 91 90.5] 91,90.5 | 0,0 | 1,1 | 0 | 1

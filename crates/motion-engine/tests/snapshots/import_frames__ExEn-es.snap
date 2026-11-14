@@ -1,0 +1,5 @@
+---
+source: crates/motion-engine/tests/import_frames.rs
+expression: meaning
+---
+not imported: the project holds no composition to import; expected a project with at least one composition

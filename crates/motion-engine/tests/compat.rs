@@ -17,12 +17,14 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use motion_engine::{RenderOptions, Session};
+use motion_engine::Session;
 use motion_format::item::{ANIMATORS, EFFECTS, ItemKind, Primary, SELECTORS, SHAPES};
 use motion_format::property::PROPERTIES;
 use motion_format::text::STYLE_KEYS;
-use motion_format::{COMP_KEYS, LAYER_KEYS, NAMED_CURVES, SCENE_KEYS, Value, fmt_num};
+use motion_format::{COMP_KEYS, LAYER_KEYS, NAMED_CURVES, SCENE_KEYS};
 use serde_json::{Map, Value as Json};
+
+mod common;
 
 /// The corpus folder.
 const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../motion-format/tests/compat");
@@ -55,61 +57,12 @@ fn label(version: &Path, path: &Path) -> String {
     format!("{}/{}", name(version), name(path))
 }
 
-/// FNV-1a over `bytes`: stable across platforms and Rust versions, unlike
-/// the standard hasher.
-fn fnv(bytes: &[u8]) -> u64 {
-    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
-        (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
-    })
-}
-
 #[test]
 fn every_scene_reads_and_draws_as_it_did() {
     for (label, path) in scenes() {
         let session = Session::open(&path).unwrap_or_else(|d| panic!("{label}: {d}"));
-        let last = (session.graph().expect("compile").duration_frames - 1.0).max(0.0);
-        let frames: Vec<String> = [0.0, (last / 2.0).floor(), last]
-            .iter()
-            .map(|&frame| meaning(&session, frame).unwrap_or_else(|d| panic!("{label}: {d}")))
-            .collect();
-        insta::assert_snapshot!(label.replace('/', "__"), frames.join("\n"));
-    }
-}
-
-/// What `session` means at `frame`, compactly: a hash of the frame as drawn,
-/// then each layer's state, so a change shows which layer it moved.
-fn meaning(session: &Session, frame: f64) -> motion_engine::Result<String> {
-    let image = session.render_with(frame, RenderOptions::GOLDEN)?;
-    let mut out = format!("frame {frame}: {:016x}\n", fnv(image.pixels()));
-    for node in session.frame(frame)?.nodes {
-        let [a, b, c, d, e, f] = node.transform.as_coeffs();
-        let values: Vec<String> = node.values.iter().map(value).collect();
-        out.push_str(&format!(
-            "  {}{}{} [{}] {}\n",
-            node.id,
-            if node.shown { "" } else { " (not shown)" },
-            if node.hidden { " (hidden)" } else { "" },
-            [a, b, c, d, e, f].map(fmt_num).join(" "),
-            values.join(" | "),
-        ));
-    }
-    Ok(out)
-}
-
-/// A property value, to two decimals.
-fn value(value: &Value) -> String {
-    let list = |numbers: &[f64]| {
-        numbers
-            .iter()
-            .map(|n| fmt_num(*n))
-            .collect::<Vec<_>>()
-            .join(",")
-    };
-    match value {
-        Value::Number(n) => fmt_num(*n),
-        Value::Point(p) => list(p),
-        Value::Color(c) => list(c),
-        Value::Path(path) => path.to_string(),
+        let meaning = common::meaning(&session).unwrap_or_else(|d| panic!("{label}: {d}"));
+        insta::assert_snapshot!(label.replace('/', "__"), meaning);
     }
 }
 
