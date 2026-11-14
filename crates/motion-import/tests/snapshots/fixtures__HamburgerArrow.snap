@@ -26,7 +26,7 @@ composition 40 "HamburgerArrow" 400x300, 30 fps, 6s, work area 0s-6s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 45 "A1" shape, 0s-6s, parent 46
+  layer 45 "A1" shape, 0s-6s, parent 46, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Shape 1"
         ADBE Vectors Group
@@ -58,7 +58,7 @@ composition 40 "HamburgerArrow" 400x300, 30 fps, 6s, work area 0s-6s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 44 "A2" shape, 0s-6s, parent 46
+  layer 44 "A2" shape, 0s-6s, parent 46, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Shape 1"
         ADBE Vectors Group
@@ -86,7 +86,7 @@ composition 40 "HamburgerArrow" 400x300, 30 fps, 6s, work area 0s-6s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 43 "A3" shape, 0s-6s, parent 46
+  layer 43 "A3" shape, 0s-6s, parent 46, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Shape 1"
         ADBE Vectors Group

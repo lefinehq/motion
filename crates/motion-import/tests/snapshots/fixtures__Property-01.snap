@@ -41,7 +41,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Index of Refraction = 1
     ADBE Source Options Group
       ADBE Layer Source Alternate = opaque other_body
-  layer 15 "Text Layer" text, 0s-60s
+  layer 15 "Text Layer" text, 0s-60s, collapse
     ADBE Text Properties
       ADBE Text Document = text "Text Layer" (1 line), BritannicBold 185, fill [1, 1, 1, 1], center
     ADBE Transform Group

@@ -263,6 +263,9 @@ impl Ldta {
     pub const MOTION_BLUR: (usize, u8) = (2, 0x08);
     /// Shy, in flags C.
     pub const SHY: (usize, u8) = (2, 0x40);
+    /// Collapse transformations on a composition layer, continuously
+    /// rasterize on a vector one, in flags C.
+    pub const COLLAPSE: (usize, u8) = (2, 0x80);
 
     /// Whether the switch at `(byte, mask)` is on.
     pub fn is_on(&self, (byte, mask): (usize, u8)) -> bool {

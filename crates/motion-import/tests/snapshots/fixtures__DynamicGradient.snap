@@ -4,7 +4,7 @@ expression: "format!(\"{project}{}\", project.report())"
 ---
 project 93.4, 8 bits per channel, expressions in javascript-1.0
 composition 1 "DyanamicGradient" 800x400, 30 fps, 10s, work area 0s-10s
-  layer 14 "Radial" shape, 0s-10s
+  layer 14 "Radial" shape, 0s-10s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle"
         ADBE Vectors Group
@@ -43,7 +43,7 @@ composition 1 "DyanamicGradient" 800x400, 30 fps, 10s, work area 0s-10s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 12 "Linear" shape, 0s-10s
+  layer 12 "Linear" shape, 0s-10s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle"
         ADBE Vectors Group

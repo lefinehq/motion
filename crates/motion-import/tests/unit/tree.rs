@@ -1,6 +1,6 @@
 //! Unit tests for `src/tree.rs`.
 
-use crate::model::{Path, Value, Vertex};
+use crate::model::{Path, Switches, Value, Vertex};
 use crate::test_support::sample_project;
 
 #[test]
@@ -20,4 +20,11 @@ fn prints_paths_by_their_shape() {
         vertices: vec![vertex; 3],
     });
     assert_eq!(path.to_string(), "path open, 3 vertices");
+}
+
+#[test]
+fn prints_every_switch() {
+    let fields = serde_json::to_value(Switches::default()).unwrap();
+    let printed = super::printed(&Switches::default());
+    assert_eq!(printed.len(), fields.as_object().unwrap().len());
 }
