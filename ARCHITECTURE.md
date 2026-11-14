@@ -34,6 +34,7 @@ Each crate has one job and a list of things it must never do. Keeping those rule
 | `motion-edit` | Side branch: parses one-line edits and applies them to a parsed scene's raw JSON. | Write files or touch pixels. |
 | `motion-engine` | `Session`: the only entry point for tools. It reads, parses, compiles and evaluates a scene and runs `check`, `at` and edits, and `import` reads an `.aep` project, each step inside a `tracing` span. Its `telemetry` module installs the stderr subscriber for logs and step timings. | Print, read arguments, let a tool bypass it to call a step directly, or install a subscriber itself (only binaries and tests call `telemetry::init`). |
 | `motion-import` | Reads `.aep` projects: the RIFX chunk tree, then items, compositions, layers, the property tree, keyframes and paths, (text documents through a `winnow` grammar for their object syntax) into a typed model that keeps whatever it cannot decode yet as an opaque value with its reason, and counts it in the import report ([D30](docs/design/decisions.md#d30-read-aep-projects-directly), [design](docs/design/aep-import.md)). | Read files, panic or index out of bounds on any input, or drop a chunk silently: every chunk it passes over is counted. |
+| `motion-raster` | Draws one frame's display list (a tree of layers with paths and glyph runs as leaves) into an RGBA image with `vello_cpu`, and encodes PNG files (step 4). Layers carry a transform, opacity, blend mode, clip and effects; effects, blend modes, caps, joins and fill rules are tables ([D34](docs/design/decisions.md#d34-a-layer-tree-renderer-on-vello_cpu)). | Know about scenes, time or animation, read files, or keep state between frames. |
 | `motion-cli` | The `motion` command: reads the arguments, runs each command through a `Session`, and prints its output. | Hold engine logic. It is the only place that prints, and it reaches scenes only through `Session` and `.aep` projects only through `motion_engine::import`. |
 
 Crates are added task by task, and only when a piece has its own dependencies or its own users. This table lists only crates that exist.
@@ -42,8 +43,7 @@ Crates are added task by task, and only when a piece has its own dependencies or
 
 | Crate | What it will do |
 |---|---|
-| `motion-raster` | Rasterise shapes and text into pixels (step 4). |
-| `motion-composite` | Combine layers: effects, masks, mattes, blend modes (step 4). |
+| `motion-composite` | Effects that need more than `vello_cpu` layers give, such as large blurs and procedural noise, on a `wgpu` compositor (step 4). |
 | `motion-encode` | Write video and audio files (step 5). |
 | `motion-variants` | Turn one designed project into many variants. |
 
