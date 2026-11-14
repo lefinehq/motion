@@ -4,14 +4,15 @@
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-use serde_json::{Map, Value};
+use serde_json::{Map, Value as Json};
 
 use crate::doc::{AnimDoc, PresetsDoc};
 use crate::fmt_num;
-use crate::property::Prop;
-use crate::shorthand::{Behaviour, Position};
+use crate::property::Target;
+use crate::shorthand::Behaviour;
 use crate::table;
 use crate::validate;
+use crate::value::Value;
 
 const BUILTIN_JSON: &str = include_str!("presets.json");
 
@@ -46,22 +47,24 @@ impl Start {
         })
     }
 
-    /// The start value of a property resting at `rest`, for a behaviour that
-    /// travels `distance` pixels.
-    pub fn resolve(self, rest: f64, distance: f64) -> f64 {
+    /// The start value of a target resting at `rest`, for a behaviour that
+    /// travels `distance` pixels. A number starts every component of a point;
+    /// validation allows that only where the property broadcasts.
+    pub fn resolve(self, rest: Value, distance: f64) -> Value {
+        let offset = |d: f64| Value::Number(rest.components()[0] + d);
         match self {
-            Start::Value(v) => v,
-            Start::Plus => rest + distance,
-            Start::Minus => rest - distance,
+            Start::Value(v) => Value::splat(rest.value_type(), v),
+            Start::Plus => offset(distance),
+            Start::Minus => offset(-distance),
         }
     }
 }
 
-/// A preset: the properties it animates and where each starts.
+/// A preset: the properties or components it animates and where each starts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PresetSpec {
-    /// Each property and its start, in the order written.
-    pub props: Vec<(Prop, Start)>,
+    /// Each target and its start, in the order written.
+    pub props: Vec<(Target, Start)>,
 }
 
 /// The built-in presets in file order, parsed once.
@@ -80,32 +83,30 @@ pub fn builtin_presets() -> &'static [(String, PresetSpec)] {
 /// A layer's entrance written as an `anim` object in JSON text, one string
 /// track per property of `spec`, as the compiler builds it from `in`.
 ///
-/// `others`, the layer's tracks as written, are appended unless the preset
-/// animates them, so the result can replace the whole `anim`.
+/// `rest` gives each property's resting value on the layer. `others`, the
+/// layer's tracks as written, are appended unless the preset animates them,
+/// so the result can replace the whole `anim`.
 pub(crate) fn expand_as_anim(
     spec: &PresetSpec,
     behaviour: &Behaviour,
-    at: &Position,
-    canvas: (f64, f64),
+    rest: impl Fn(Target) -> Value,
     fps: f64,
     others: &AnimDoc,
 ) -> String {
     let (start, end) = behaviour.frames(fps);
-    let mut tracks: Map<String, Value> = spec
+    let mut tracks: Map<String, Json> = spec
         .props
         .iter()
-        .map(|&(prop, from)| {
-            let rest = prop.spec().rest(at, canvas);
+        .map(|&(target, from)| {
+            let rest = rest(target);
             let from = from.resolve(rest, behaviour.distance);
             let track = format!(
-                "{} -> {} @{}-{}f {}",
-                fmt_num(from),
-                fmt_num(rest),
+                "{from} -> {rest} @{}-{}f {}",
                 fmt_num(start),
                 fmt_num(end),
                 behaviour.curve
             );
-            (prop.name().to_owned(), Value::String(track))
+            (target.name().to_owned(), Json::String(track))
         })
         .collect();
     for (name, track) in others {
@@ -114,7 +115,7 @@ pub(crate) fn expand_as_anim(
             serde_json::to_value(track).expect("a track converts to JSON")
         });
     }
-    Value::Object(tracks).to_string()
+    Json::Object(tracks).to_string()
 }
 
 /// Finds `name` among a scene's own presets first, then the built-ins.

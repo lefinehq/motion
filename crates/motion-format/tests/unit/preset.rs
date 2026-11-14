@@ -4,9 +4,10 @@ use super::*;
 use crate::doc::AnimDoc;
 use crate::parse::scene_from_value;
 use crate::parse_document;
-use crate::property::Prop;
+use crate::property::{Prop, Target};
 use crate::validate::is_valid_id;
 use crate::{Kind, Result};
+use serde_json::Value;
 
 /// The presets of a scene whose `presets` is `value`.
 fn presets_of(value: Value) -> Result<Vec<(String, PresetSpec)>> {
@@ -30,7 +31,9 @@ fn builtin_file_parses_and_names_known_properties() {
     // Order of the file is kept.
     assert_eq!(table[0].0, "fade");
     let up = lookup(&[], "fade-up").unwrap();
-    assert!(up.props.contains(&(Prop::Y, Start::Plus)));
+    let y = Target::named("y").unwrap();
+    assert_eq!(y.prop, Prop::POSITION);
+    assert!(up.props.contains(&(y, Start::Plus)));
 }
 
 #[test]
@@ -65,7 +68,7 @@ fn bad_start_value_shows_expected_form() {
 fn unknown_property_lists_the_registry() {
     let e = presets(r#"{"a":{"zoom":1}}"#).unwrap_err();
     assert_eq!(e.kind, Kind::UnknownName);
-    let names: Vec<&str> = crate::property::property_names().collect();
+    let names: Vec<&str> = crate::property::target_names().collect();
     assert_eq!(
         e.expected,
         Some(format!("one of {}", names.join(", ")).into())
@@ -184,10 +187,13 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
     let others: AnimDoc =
         serde_json::from_str(r#"{"opacity":"x","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2.0]]}"#)
             .unwrap();
-    let json = expand_as_anim(&spec, &b, &at, (1000.0, 500.0), 30.0, &others);
+    let rest = |target: Target| {
+        target.rest_of(target.prop.spec().rest(&at, (1000.0, 500.0), (10.0, 10.0)))
+    };
+    let json = expand_as_anim(&spec, &b, rest, 30.0, &others);
     assert_eq!(
         json,
-        r#"{"opacity":"0 -> 1 @10-40f cubic(0.2,0,0,1)","x":"470 -> 500 @10-40f cubic(0.2,0,0,1)","y":"330 -> 300 @10-40f cubic(0.2,0,0,1)","scale":"0.5 -> 1 @10-40f cubic(0.2,0,0,1)","rotate":"30 -> 0 @10-40f cubic(0.2,0,0,1)","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2]]}"#
+        r#"{"opacity":"0 -> 1 @10-40f cubic(0.2,0,0,1)","x":"470 -> 500 @10-40f cubic(0.2,0,0,1)","y":"330 -> 300 @10-40f cubic(0.2,0,0,1)","scale":"0.5,0.5 -> 1,1 @10-40f cubic(0.2,0,0,1)","rotate":"30 -> 0 @10-40f cubic(0.2,0,0,1)","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2]]}"#
     );
     // The output is valid JSON.
     assert!(serde_json::from_str::<Value>(&json).is_ok());

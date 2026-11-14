@@ -193,11 +193,119 @@ fn an_entrance_names_a_preset_that_exists() {
 }
 
 #[test]
-fn a_value_that_is_not_finite_is_out_of_range() {
+fn a_value_that_is_not_finite_is_not_a_number() {
     assert_eq!(
         fails(&scene(
             r#"{"id":"a","rect":"1x1","anim":{"x":"inf -> 1 @0-5f"}}"#,
         )),
-        at(Kind::OutOfRange, "layers[0].anim.x")
+        at(Kind::Syntax, "layers[0].anim.x")
     );
+}
+
+#[test]
+fn property_keys_set_resting_values_of_their_type() {
+    let d = doc(&scene(
+        r#"{"id":"a","rect":"10x10","rotate":45,"scale":0.8,"anchor":[0,0],"opacity":"0.5"}"#,
+    ));
+    let layer = &d.scene().layers[0];
+    use crate::Value;
+    use crate::property::Prop;
+    assert_eq!(layer.value(Prop::ROTATE), Some(Value::Number(45.0)));
+    // One number scales both axes.
+    assert_eq!(layer.value(Prop::SCALE), Some(Value::Point([0.8, 0.8])));
+    assert_eq!(layer.value(Prop::OPACITY), Some(Value::Number(0.5)));
+    assert_eq!(layer.value(Prop::POSITION), None);
+    assert_eq!(
+        layer.rest(Prop::ANCHOR, (100.0, 100.0), (10.0, 10.0)),
+        Value::Point([0.0, 0.0])
+    );
+    assert_eq!(
+        layer.rest(Prop::POSITION, (100.0, 100.0), (10.0, 10.0)),
+        Value::Point([50.0, 50.0])
+    );
+}
+
+#[test]
+fn a_mixed_list_is_not_a_point() {
+    // A list holds numbers only; a string inside it is a wrong type.
+    assert_eq!(
+        fails(&scene(r#"{"id":"a","rect":"10x10","anchor":[0,"x"]}"#)).0,
+        Kind::WrongType
+    );
+}
+
+#[test]
+fn timing_and_parent_default_and_parse() {
+    let d = doc(&scene(
+        r#"{"id":"a","rect":"10x10"},{"id":"b","rect":"5x5","parent":"a","span":"0.5s-2s","offset":"12f","stretch":-1}"#,
+    ));
+    let [a, b] = &d.scene().layers[..] else {
+        panic!("two layers");
+    };
+    assert_eq!(
+        (a.parent.as_deref(), a.span, a.offset, a.stretch),
+        (None, None, Time::Frames(0.0), 1.0)
+    );
+    assert_eq!(b.parent.as_deref(), Some("a"));
+    let span = b.span.unwrap();
+    assert_eq!(
+        (span.start, span.end),
+        (Time::Seconds(0.5), Time::Seconds(2.0))
+    );
+    assert_eq!((b.offset, b.stretch), (Time::Frames(12.0), -1.0));
+}
+
+#[test]
+fn a_parent_chain_that_ends_is_fine_and_a_loop_is_not() {
+    assert!(parse_document(&scene(
+        r#"{"id":"a","rect":"1x1","parent":"b"},{"id":"b","rect":"1x1","parent":"c"},{"id":"c","rect":"1x1"}"#
+    ))
+    .is_ok());
+    assert_eq!(
+        fails(&scene(
+            r#"{"id":"a","rect":"1x1","parent":"b"},{"id":"b","rect":"1x1","parent":"c"},{"id":"c","rect":"1x1","parent":"b"}"#
+        )),
+        at(Kind::Invalid, "layers[1].parent")
+    );
+}
+
+#[test]
+fn object_keys_carry_a_path_and_curves_per_component() {
+    use crate::anim::Easing;
+    use crate::{Curve, Value};
+    let d = doc(&scene(
+        r#"{"id":"a","rect":"10x10","anim":{
+        "position":[{"t":0,"v":[0,0],"curve":"speed(0,0.5,0,0.5)","path":[[10,0],[0,-10]]},{"t":"1s","v":"100,100"}],
+        "scale":[[0,1,["ease-in","hold"]],[10,[2,3]]]}}"#,
+    ));
+    let anim = &d.scene().layers[0].anim;
+    let position = &anim[0].keys;
+    assert_eq!(position[0].path, Some([[10.0, 0.0], [0.0, -10.0]]));
+    assert_eq!(position[1].value, Value::Point([100.0, 100.0]));
+    assert!(matches!(
+        position[0].easing,
+        Easing::All(Curve::Speed { .. })
+    ));
+    let scale = &anim[1].keys;
+    assert_eq!(scale[0].value, Value::Point([1.0, 1.0]));
+    assert_eq!(
+        scale[0].easing,
+        Easing::Each(vec![Curve::named("ease-in").unwrap(), Curve::Hold])
+    );
+    assert_eq!(scale[0].easing.of(1), Curve::Hold);
+}
+
+#[test]
+fn a_preset_may_scale_but_not_place_with_one_number() {
+    assert!(
+        parse_document(r#"{"motion":1,"dur":"1s","presets":{"grow":{"scale":0.2}},"layers":[]}"#)
+            .is_ok()
+    );
+    let e = err(r#"{"motion":1,"dur":"1s","presets":{"jump":{"position":5}},"layers":[]}"#);
+    assert_eq!(
+        (e.kind, e.path.as_deref()),
+        (Kind::WrongType, Some("presets.jump.position"))
+    );
+    let e = err(r#"{"motion":1,"dur":"1s","presets":{"far":{"scale":"+d"}},"layers":[]}"#);
+    assert_eq!(e.kind, Kind::OutOfRange);
 }

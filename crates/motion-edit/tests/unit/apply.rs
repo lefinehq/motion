@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::parse_edit;
+use motion_format::layer_keys;
 use serde_json::json;
 
 fn doc() -> Document {
@@ -50,7 +51,7 @@ fn reports_unknown_targets_keys_and_invalid_results() {
     );
     assert_eq!(
         fail("card colour=#FFF"),
-        Diagnostic::unknown("layer key", "colour", LAYER_KEYS)
+        Diagnostic::unknown("layer key", "colour", layer_keys())
     );
     let colour = fail("card fill=blue");
     assert_eq!(colour.path.as_deref(), Some("layers[1].fill"));
@@ -97,7 +98,7 @@ fn scene_keys_are_validated_against_scene_keys() {
 fn unknown_keys_are_reported_before_unknown_targets() {
     assert_eq!(
         fail("ghost colour=red"),
-        Diagnostic::unknown("layer key", "colour", LAYER_KEYS)
+        Diagnostic::unknown("layer key", "colour", layer_keys())
     );
 }
 
@@ -240,7 +241,7 @@ fn setting_through_a_non_object_is_an_error() {
 fn only_the_first_segment_is_checked_as_a_key() {
     assert_eq!(
         fail("card nope.x=1"),
-        Diagnostic::unknown("layer key", "nope", LAYER_KEYS)
+        Diagnostic::unknown("layer key", "nope", layer_keys())
     );
     let e = fail("card anim.nope=[[0,1]]");
     assert_eq!(e.kind, Kind::UnknownName);

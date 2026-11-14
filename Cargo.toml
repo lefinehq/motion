@@ -27,6 +27,8 @@ winnow = "1"
 proptest = "1"
 insta = "1"
 clap = { version = "4", features = ["derive"] }
+# 2D geometry: affine transforms, bézier paths and arc lengths (D31, D34).
+kurbo = "0.13"
 tracing = "0.1"
 # Binary records of `.aep` projects (D30).
 binrw = "0.15"

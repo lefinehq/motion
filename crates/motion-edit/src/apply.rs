@@ -3,7 +3,7 @@
 
 use motion_format::key::{LAYERS, layer_path};
 use motion_format::{Diagnostic, Kind, Result};
-use motion_format::{Document, LAYER_KEYS, SCENE_KEYS};
+use motion_format::{Document, SCENE_KEYS, layer_keys};
 use serde_json::Value;
 use tracing::{Span, field, instrument};
 
@@ -145,10 +145,10 @@ fn quote_hint(doc: &Document, edit: &Edit, target: Target, error: &Diagnostic) -
 /// Rejects a key whose first segment is not a key of the target's kind;
 /// deeper segments are left to validation.
 fn check_keys(edit: &Edit) -> Result<()> {
-    let (allowed, what): (&[&str], &str) = if edit.target == SCENE_TARGET {
-        (&SCENE_KEYS, "scene key")
+    let (allowed, what): (Vec<&str>, &str) = if edit.target == SCENE_TARGET {
+        (SCENE_KEYS.to_vec(), "scene key")
     } else {
-        (&LAYER_KEYS, "layer key")
+        (layer_keys().collect(), "layer key")
     };
     match edit
         .changes

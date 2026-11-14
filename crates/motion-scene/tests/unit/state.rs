@@ -2,22 +2,28 @@
 
 use super::*;
 
-/// A 100x50 box at (500, 300) with the given scale and rotation.
+use motion_format::shorthand::{Coord, Position};
+
+/// A 100x50 box centred at (500, 300) with the given scale and rotation.
 fn state(scale: f64, rotate: f64) -> NodeState {
-    let values = Prop::all()
+    let at = Position {
+        x: Coord::Px(500.0),
+        y: Coord::Px(300.0),
+    };
+    let values: Vec<Value> = Prop::all()
         .map(|p| match p {
-            Prop::X => 500.0,
-            Prop::Y => 300.0,
-            Prop::SCALE => scale,
-            Prop::ROTATE => rotate,
-            _ => p.spec().default,
+            Prop::SCALE => Value::Point([scale, scale]),
+            Prop::ROTATE => Value::Number(rotate),
+            _ => p.spec().rest(&at, (1920.0, 1080.0), (100.0, 50.0)),
         })
         .collect();
     NodeState {
         id: "n".into(),
         width: 100.0,
         height: 50.0,
+        transform: crate::local_transform(&values),
         values,
+        shown: true,
     }
 }
 
@@ -66,8 +72,24 @@ fn the_edge_getters_read_from_bounds() {
 }
 
 #[test]
-fn get_reads_the_value_of_a_property() {
+fn getters_read_the_value_of_a_property() {
     let s = state(2.0, 45.0);
-    assert_eq!((s.get(Prop::SCALE), s.get(Prop::ROTATE)), (2.0, 45.0));
-    assert_eq!(s.get(Prop::OPACITY), 1.0);
+    assert_eq!(s.get(Prop::SCALE), Value::Point([2.0, 2.0]));
+    assert_eq!(
+        (s.point(Prop::SCALE), s.number(Prop::ROTATE)),
+        ([2.0, 2.0], 45.0)
+    );
+    assert_eq!(s.number(Prop::OPACITY), 1.0);
+}
+
+#[test]
+#[should_panic(expected = "a number property")]
+fn number_rejects_a_point() {
+    state(1.0, 0.0).number(Prop::SCALE);
+}
+
+#[test]
+#[should_panic(expected = "a point property")]
+fn point_rejects_a_number() {
+    state(1.0, 0.0).point(Prop::ROTATE);
 }

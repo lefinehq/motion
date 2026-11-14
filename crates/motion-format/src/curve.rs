@@ -1,5 +1,9 @@
 //! Easing curves as data: a cubic bézier from (0,0) to (1,1), as in CSS
-//! timing functions, or `hold`. Names are shortcuts listed in [`NAMED_CURVES`].
+//! timing functions, `hold`, or the speed and influence on each side of a key
+//! (`speed(...)`), which holds any ease in the value's own units ([D31]).
+//! Names are shortcuts listed in [`NAMED_CURVES`].
+//!
+//! [D31]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d31-typed-values-and-value-space-keys
 
 use std::fmt;
 use std::str::FromStr;
@@ -15,12 +19,15 @@ use crate::fmt_num;
 use crate::table;
 
 /// The accepted forms of a curve, for a value that is not a string.
-const EXPECTED: &str = "a curve name such as `ease-out`, or `cubic(x1,y1,x2,y2)`";
+const EXPECTED: &str =
+    "a curve name such as `ease-out`, `cubic(x1,y1,x2,y2)` or `speed(out,out-reach,in,in-reach)`";
 const CUBIC_EXPECTED: &str =
     "`cubic(x1,y1,x2,y2)` (no spaces) with x1 and x2 between 0 and 1, e.g. `cubic(.2,0,0,1)`";
-/// The custom form, as listed after the curve names.
-const CUBIC_FORM: &str = "cubic(x1,y1,x2,y2)";
+const SPEED_EXPECTED: &str = "`speed(out,out-reach,in,in-reach)` (no spaces): the speed leaving the key and arriving at the next, in value units per second, each with how far into the span it reaches, 0 to 1, e.g. `speed(0,.33,0,.33)`";
+/// The custom forms, as listed after the curve names.
+const CUSTOM_FORMS: [&str; 2] = ["cubic(x1,y1,x2,y2)", "speed(out,out-reach,in,in-reach)"];
 pub(crate) const CUBIC_PREFIX: &str = "cubic(";
+const SPEED_PREFIX: &str = "speed(";
 
 /// How progress is eased over a duration.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -32,6 +39,19 @@ pub enum Curve {
     /// A cubic bézier with control points `(x1, y1)` and `(x2, y2)`; `x1` and
     /// `x2` lie in 0..=1 so time only moves forward, `y` may overshoot.
     Bezier(f64, f64, f64, f64),
+    /// The speed on each side of a span, in value units per second, and how
+    /// far into the span each side's handle reaches (0 to 1). Unlike a bézier,
+    /// it holds a span that leaves a value and returns to it.
+    Speed {
+        /// The speed leaving the first key.
+        out_speed: f64,
+        /// How far the first key's handle reaches into the span.
+        out_reach: f64,
+        /// The speed arriving at the second key.
+        in_speed: f64,
+        /// How far the second key's handle reaches back into the span.
+        in_reach: f64,
+    },
 }
 
 /// The curves that have a name, the one list parsing, printing and errors read.
@@ -75,6 +95,10 @@ enum Problem {
     Count,
     /// `x1` or `x2` is outside 0..=1.
     XRange,
+    /// `speed(…)` is not closed or does not hold four numbers.
+    SpeedForm,
+    /// A reach of `speed(…)` is outside 0..=1.
+    ReachRange,
 }
 
 impl Problem {
@@ -82,7 +106,19 @@ impl Problem {
         let message = match self {
             Problem::Unknown => {
                 return Diagnostic::unknown("curve", token, table::names(NAMED_CURVES))
-                    .or_expected(CUBIC_FORM);
+                    .or_expected(CUSTOM_FORMS.join(" or "));
+            }
+            Problem::SpeedForm => {
+                return Diagnostic::syntax(format!(
+                    "`{token}` needs four numbers and a closing `)`"
+                ))
+                .expected(SPEED_EXPECTED);
+            }
+            Problem::ReachRange => {
+                return Diagnostic::syntax(format!(
+                    "`{token}`: each reach must be between 0 and 1"
+                ))
+                .expected(SPEED_EXPECTED);
             }
             Problem::Unclosed => format!("`{token}` is missing its closing `)`"),
             Problem::Count => format!("`{token}` needs four numbers"),
@@ -92,9 +128,33 @@ impl Problem {
     }
 }
 
-/// A name or `cubic(…)`; once `cubic(` is read, errors are about the arguments.
+/// A name, `cubic(…)` or `speed(…)`; once a prefix is read, errors are about its arguments.
 fn curve(input: &mut &str) -> Parsed<Curve, Problem> {
-    alt((preceded(CUBIC_PREFIX, cut_err(cubic_arguments)), named)).parse_next(input)
+    alt((
+        preceded(CUBIC_PREFIX, cut_err(cubic_arguments)),
+        preceded(SPEED_PREFIX, cut_err(speed_arguments)),
+        named,
+    ))
+    .parse_next(input)
+}
+
+/// `out,out-reach,in,in-reach)`, each reach in 0..=1.
+fn speed_arguments(input: &mut &str) -> Parsed<Curve, Problem> {
+    terminated(separated_pair(point, ',', point), (')', eof))
+        .context(Problem::SpeedForm)
+        .verify(|((_, out_reach), (_, in_reach)): &(Point, Point)| {
+            (0.0..=1.0).contains(out_reach) && (0.0..=1.0).contains(in_reach)
+        })
+        .context(Problem::ReachRange)
+        .map(
+            |((out_speed, out_reach), (in_speed, in_reach))| Curve::Speed {
+                out_speed,
+                out_reach,
+                in_speed,
+                in_reach,
+            },
+        )
+        .parse_next(input)
 }
 
 /// The whole token looked up in [`NAMED_CURVES`]; the grammar knows no names.
@@ -153,6 +213,19 @@ impl fmt::Display for Curve {
                 fmt_num(*y1),
                 fmt_num(*x2),
                 fmt_num(*y2)
+            ),
+            Curve::Speed {
+                out_speed,
+                out_reach,
+                in_speed,
+                in_reach,
+            } => write!(
+                f,
+                "speed({},{},{},{})",
+                fmt_num(*out_speed),
+                fmt_num(*out_reach),
+                fmt_num(*in_speed),
+                fmt_num(*in_reach)
             ),
             Curve::Linear | Curve::Hold => {
                 unreachable!("every non-bézier curve has a NAMED_CURVES entry")

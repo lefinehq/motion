@@ -2,13 +2,15 @@
 //! it with the JSON it was read from.
 
 use crate::Result;
-use serde_json::Value;
+use serde_json::Value as Json;
 
 use crate::anim::AnimTrack;
 use crate::parse::scene_from_value;
 use crate::preset::{PresetSpec, lookup, names};
+use crate::property::Prop;
 use crate::shorthand::{Behaviour, Font, Position, RectShape};
-use crate::units::{Color, Size, Time};
+use crate::units::{Color, Size, Time, TimeSpan};
+use crate::value::Value;
 
 /// A whole scene: a canvas, a length and the layers drawn on it.
 #[derive(Debug, Clone, PartialEq)]
@@ -50,12 +52,41 @@ pub struct Layer {
     pub content: Content,
     /// Fill colour (the text colour for text layers).
     pub fill: Color,
-    /// Where the layer's centre sits.
+    /// Where the layer's anchor sits: its centre, unless `anchor` moves it.
     pub at: Position,
+    /// Resting values set on the layer, by property, in the order written.
+    pub values: Vec<(Prop, Value)>,
     /// Entrance behaviour; JSON key `in`.
     pub enter: Option<Behaviour>,
     /// Free-form animation tracks.
     pub anim: Vec<AnimTrack>,
+    /// The layer it moves with: its position, rotation and scale apply on top
+    /// of the parent's.
+    pub parent: Option<String>,
+    /// When it shows, on its parent's timeline; always when `None`.
+    pub span: Option<TimeSpan>,
+    /// Where its own time 0 falls on its parent's timeline. Its keys and its
+    /// entrance are in its own time, so moving it is one edit.
+    pub offset: Time,
+    /// How slowly its own time runs: 2 plays at half speed, a negative value backwards.
+    pub stretch: f64,
+}
+
+impl Layer {
+    /// The resting value it sets for `prop`, if any.
+    pub fn value(&self, prop: Prop) -> Option<Value> {
+        self.values
+            .iter()
+            .find(|(p, _)| *p == prop)
+            .map(|(_, v)| *v)
+    }
+
+    /// Where `prop` rests on this layer: the value it sets, else the
+    /// registry's rest, on a canvas of `canvas` pixels for a box of `size`.
+    pub fn rest(&self, prop: Prop, canvas: (f64, f64), size: (f64, f64)) -> Value {
+        self.value(prop)
+            .unwrap_or_else(|| prop.spec().rest(&self.at, canvas, size))
+    }
 }
 
 /// What a layer draws.
@@ -79,7 +110,7 @@ pub enum Content {
 /// the validated reading of the raw value: layer `i` of one is layer `i` of the other.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
-    raw: Value,
+    raw: Json,
     scene: Scene,
 }
 
@@ -89,13 +120,13 @@ impl Document {
     /// # Errors
     /// A [`Diagnostic`](crate::Diagnostic) for the first part of `raw` that is
     /// not a valid scene, at its path.
-    pub fn from_value(raw: Value) -> Result<Document> {
+    pub fn from_value(raw: Json) -> Result<Document> {
         let scene = scene_from_value(&raw)?;
         Ok(Document { raw, scene })
     }
 
     /// The JSON as read.
-    pub fn raw(&self) -> &Value {
+    pub fn raw(&self) -> &Json {
         &self.raw
     }
 
@@ -105,7 +136,7 @@ impl Document {
     }
 
     /// The JSON as read, dropping the scene.
-    pub fn into_raw(self) -> Value {
+    pub fn into_raw(self) -> Json {
         self.raw
     }
 }

@@ -18,13 +18,15 @@ pub mod shorthand;
 mod table;
 pub mod units;
 mod validate;
+pub mod value;
 mod write;
 
 pub use curve::{Curve, NAMED_CURVES};
 pub use diagnostic::{Diagnostic, Kind, Result};
 pub use number::fmt_num;
-pub use parse::{LAYER_KEYS, SCENE_KEYS, key, parse_document};
+pub use parse::{LAYER_KEYS, SCENE_KEYS, key, layer_keys, parse_document};
 pub use scene::{Content, Document, Layer, Scene};
+pub use value::{Value, ValueType};
 pub use write::write_document;
 
 #[cfg(test)]
