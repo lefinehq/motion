@@ -61,6 +61,11 @@ fn fixed(raw: u32) -> f64 {
     f64::from(raw) / 65536.0
 }
 
+/// A signed `fixed 16.16` number, as the effect parameter records store them.
+fn signed_fixed(raw: i32) -> f64 {
+    f64::from(raw) / 65536.0
+}
+
 /// A time or a ratio stored as a dividend and a divisor.
 #[derive(BinRead, Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Ratio<N>
@@ -281,6 +286,19 @@ impl Tdsb {
     /// Whether the group or stream applies.
     pub fn enabled(&self) -> bool {
         self.flags & 0x01 != 0
+    }
+
+    /// Whether the property is hidden in the timeline because it does not
+    /// apply to the layer as it is: a 3D-only property on a 2D layer, the
+    /// unused half of a separable position.
+    pub fn hidden(&self) -> bool {
+        self.flags & 0x02 != 0
+    }
+
+    /// Whether a separable property, `ADBE Position`, has its dimensions
+    /// separated into streams of their own.
+    pub fn separated(&self) -> bool {
+        self.flags & 0x800 != 0
     }
 }
 
@@ -644,3 +662,159 @@ impl Alias {
 #[cfg(test)]
 #[path = "../tests/unit/record.rs"]
 mod tests;
+
+/// `EfDC`: how many effect definitions a `LIST:EfdG` holds
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#efdc)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Efdc {
+    /// The number of `LIST:EfDf` definitions; little-endian, unlike the
+    /// records around it.
+    #[br(little)]
+    pub count: u32,
+}
+
+impl Record for Efdc {
+    const NAME: Name = Name::chunk(b"EfDC");
+}
+
+/// `parn`: how many parameters a `LIST:parT` defines
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#parn)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Parn {
+    /// The number of `tdmn` and `pard` pairs.
+    pub count: u32,
+}
+
+impl Record for Parn {
+    const NAME: Name = Name::chunk(b"parn");
+}
+
+/// `pard`: one effect parameter's definition, the SDK's parameter record: a
+/// common header, then a body laid out by the control type
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#pard)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Pard {
+    /// UI flags: [`Pard::INVISIBLE`] and others.
+    #[br(seek_before = at(0x04))]
+    pub ui_flags: u32,
+    /// The control type's code.
+    #[br(seek_before = at(0x0C))]
+    pub control: u32,
+    /// The parameter's name.
+    #[br(map = |bytes: [u8; 32]| text(&bytes))]
+    pub name: String,
+    /// Parameter flags: [`Pard::CANNOT_TIME_VARY`] and others.
+    pub flags: u32,
+    /// The body of the control type.
+    #[br(seek_before = at(0x38), args(control))]
+    pub body: PardBody,
+}
+
+impl Record for Pard {
+    const NAME: Name = Name::chunk(b"pard");
+}
+
+impl Pard {
+    /// UI flag: the parameter is hidden from the panels and the timeline.
+    pub const INVISIBLE: u32 = 0x200;
+    /// Parameter flag: the parameter cannot be animated.
+    pub const CANNOT_TIME_VARY: u32 = 0x02;
+}
+
+/// The body of a [`Pard`], one variant per control type the reader knows.
+/// Only the defaults and bounds are read: the cached value is not the
+/// instance's.
+#[derive(BinRead, Debug)]
+#[br(import(control: u32))]
+pub(crate) enum PardBody {
+    /// A layer.
+    #[br(pre_assert(control == 0))]
+    Layer,
+    /// An integer slider.
+    #[br(pre_assert(control == 1))]
+    IntegerSlider {
+        /// The smallest valid value.
+        #[br(seek_before = at(0x7C))]
+        min: i32,
+        /// The largest valid value.
+        max: i32,
+        /// The default.
+        #[br(seek_before = at(0x8C))]
+        default: i32,
+    },
+    /// A fixed-point slider.
+    #[br(pre_assert(control == 2))]
+    FixedSlider {
+        /// The smallest valid value.
+        #[br(seek_before = at(0x7C), map = signed_fixed)]
+        min: f64,
+        /// The largest valid value.
+        #[br(map = signed_fixed)]
+        max: f64,
+        /// The default.
+        #[br(seek_before = at(0x8C), map = signed_fixed)]
+        default: f64,
+    },
+    /// An angle, in degrees.
+    #[br(pre_assert(control == 3))]
+    Angle {
+        /// The default.
+        #[br(seek_before = at(0x3C), map = signed_fixed)]
+        default: f64,
+    },
+    /// A checkbox.
+    #[br(pre_assert(control == 4))]
+    Checkbox {
+        /// The default: 0 or 1.
+        #[br(seek_before = at(0x3C))]
+        default: u8,
+    },
+    /// A colour.
+    #[br(pre_assert(control == 5))]
+    Color {
+        /// The default: alpha, red, green, blue, 0 to 255.
+        #[br(seek_before = at(0x3C))]
+        default: [u8; 4],
+    },
+    /// A 2D point.
+    #[br(pre_assert(control == 6))]
+    Point {
+        /// The default, in percent of the layer's width and height.
+        #[br(seek_before = at(0x44), map = |raw: [i32; 2]| raw.map(signed_fixed))]
+        default: [f64; 2],
+    },
+    /// A popup menu.
+    #[br(pre_assert(control == 7))]
+    Popup {
+        /// How many choices it has.
+        #[br(seek_before = at(0x3C))]
+        count: i16,
+        /// The default, a 1-based choice.
+        default: i16,
+    },
+    /// A floating-point slider.
+    #[br(pre_assert(control == 10))]
+    FloatSlider {
+        /// The smallest valid value; not finite when there is no bound.
+        #[br(seek_before = at(0x68))]
+        min: f32,
+        /// The largest valid value; not finite when there is no bound.
+        max: f32,
+        /// The default.
+        #[br(seek_before = at(0x78))]
+        default: f32,
+        /// Display flags: bit 0 shows the value in percent.
+        #[br(seek_before = at(0x7E))]
+        display: u16,
+    },
+    /// A 3D point.
+    #[br(pre_assert(control == 18))]
+    Point3d {
+        /// The default, in percent of the layer's width, height and height.
+        #[br(seek_before = at(0x50))]
+        default: [f64; 3],
+    },
+    /// A control type whose body the reader does not need: no data, a group's
+    /// start or end, a button, a path, arbitrary data, or one it does not know.
+    Other,
+}

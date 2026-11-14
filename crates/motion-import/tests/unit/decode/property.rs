@@ -178,6 +178,48 @@ fn reads_names_flags_and_expressions() {
 }
 
 #[test]
+fn reads_hidden_and_separated_flags() {
+    let stream = |flags: u32| {
+        let head = [chunk(b"tdsb", &flags.to_be_bytes()), tdsn("-_0_/-")];
+        list(
+            b"tdbs",
+            &[&head[..], &[tdb4(1, 0x01, false, false), cdat(&[0.0])]].concat(),
+        )
+    };
+    let inner = list(b"tdgp", &[group_body(0x03, "", &[])]);
+    let body = group_body(
+        1,
+        "",
+        &[
+            tdmn("ADBE Position"),
+            stream(0x803),
+            tdmn("ADBE Position_0"),
+            stream(0x01),
+            tdmn("ADBE Rotate X"),
+            stream(0x03),
+            tdmn("ADBE Plane Options Group"),
+            inner,
+        ],
+    );
+    let group = read(&body, true).0.unwrap();
+    let flags: Vec<(bool, bool, bool)> = (0..3)
+        .map(|i| property(&group, i))
+        .map(|p| (p.enabled, p.hidden, p.separated))
+        .collect();
+    assert_eq!(
+        flags,
+        [
+            (true, true, true),
+            (true, false, false),
+            (true, true, false)
+        ]
+    );
+    let plane = subgroup(&group, 3);
+    assert_eq!((plane.enabled, plane.hidden), (true, true));
+    assert!(!group.hidden);
+}
+
+#[test]
 fn reads_legacy_names_and_expressions() {
     let stream = list(
         b"tdbs",
@@ -269,7 +311,7 @@ fn reads_effects_masks_and_wrapped_values_by_their_body() {
     assert_eq!(text_of(&property(&group, 2).value), ["Hi"]);
     assert_eq!(property(&group, 3).value, opaque(Reason::OtherBody));
     let skipped: Vec<&str> = skipped.keys().map(String::as_str).collect();
-    assert_eq!(skipped, ["LIST:parT", "blsv", "fnam", "mkif"]);
+    assert_eq!(skipped, ["blsv", "mkif"]);
 }
 
 #[test]

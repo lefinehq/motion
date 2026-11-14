@@ -22,9 +22,9 @@ mod test_support;
 pub use decode::decode;
 pub use model::{
     BaselineOption, BlendMode, Caps, CharacterStyle, Child, Color, ComposedLine, ComposedSegment,
-    Composition, Ease, Expression, Footage, Group, Interpolation, Item, ItemKind, Justification,
-    Kerning, Keyframe, Layer, LayerKind, LeadingType, LineJoin, ParagraphStyle, Path, Project,
-    Property, Reason, Run, Source, Span, Spatial, Stream, Switches, TextDocument, TextFrame,
-    TrackMatte, Value, Version, Vertex,
+    Composition, Control, Ease, EffectDefinition, Expression, Footage, Group, Interpolation, Item,
+    ItemKind, Justification, Kerning, Keyframe, Layer, LayerKind, LeadingType, LineJoin,
+    ParagraphStyle, Parameter, Path, Project, Property, Reason, Run, Source, Span, Spatial, Stream,
+    Switches, TextDocument, TextFrame, TrackMatte, Value, Version, Vertex,
 };
 pub use report::Report;
