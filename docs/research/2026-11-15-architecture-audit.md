@@ -275,12 +275,12 @@ What PR #34 brings that D44 can build on:
 
 Where PR #34 diverges from this audit:
 - **A second keyframe evaluator,** `motion-import/src/eval.rs` (workstream 3). *Resolved in PR #36:* the bake now eases with motion-scene's `Ease` and `PathSpan`.
-- **The script engine is now in the render crate's dependencies,** and the guard misses it (workstream 9).
+- **The script engine is now in the render crate's dependencies,** and the guard misses it (workstream 9). *Resolved in PR #37:* baking sits behind a `bake` feature only the CLI turns on, and the D38 and D39 guards check each crate's resolved graph.
 - **`speed(…)` is printed by hand in a second place** (workstream 3). *Resolved in PR #36:* the map and the bake share one curve per span, printed in one place.
 
 ## What comes next
 
-1. **Fix the bugs above,** one small PR each, and put baking behind a `bake` feature (workstream 9).
+1. **Fix the bugs above,** one small PR each. (Baking is behind a `bake` feature since PR #37.)
 2. **Decision D43: the layer address.** Then workstreams 1 and 2. This is the first item on the variant list: editing text inside nested comps.
 3. **Workstreams 3 and 4.** Typed writing and the import session remove the JSON patching that the slot work would otherwise build on.
 4. **Decision D44: live control links, refining D38.** Then workstream 5, and workstream 7 for text swaps.
