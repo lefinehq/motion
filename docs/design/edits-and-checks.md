@@ -96,7 +96,7 @@ Analytic checks are computed directly from the scene, for every frame. Nothing i
 - **Position:** `above`, `left-of`, `aligned`, `inside`.
 - **Measurement:** `gap(cards)=40±2`, `dir(card3.in)=up`, `visible(card3, 1s..5s)`.
 
-`at` prints `id x=… y=… w=… h=…` for each element, then only the other properties that differ from their default, such as `opacity=0.68` or `rotate=-8`. An element at rest shows nothing extra, so the line stays short.
+`at` prints `id x=… y=… w=… h=…` for each element, then only the other properties that differ from where they rest by default, in registry order, such as `rotate=-8`, `scale=0.8,0.8` or `opacity=0.68`. An element at rest shows nothing extra, so the line stays short.
 
 ### What `check` looks for
 

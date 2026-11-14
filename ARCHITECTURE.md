@@ -68,15 +68,18 @@ See [Contributing](CONTRIBUTING.md#how-errors-work) for how to add a shorthand o
 
 ## One property model
 
-Every animatable value is a registered property with a keyframe track (see [D27](docs/design/decisions.md#d27-one-generic-property-model)). The pieces live here:
+Every animatable value is a registered property with a keyframe track (see [D27](docs/design/decisions.md#d27-one-generic-property-model)). Values are typed, a number, a point or a colour, and keys ease in value space, so any ease and any motion path survives import ([D31](docs/design/decisions.md#d31-typed-values-and-value-space-keys)). The pieces live here:
 
 | What | Where |
 |---|---|
-| The property registry: name, default, range, meaning | `crates/motion-format/src/property.rs` |
-| Curves: the named table, `cubic(...)` and `hold` | `crates/motion-format/src/curve.rs` |
+| The property registry: name, type, resting value, components, range, meaning; and targets (a property or one component) | `crates/motion-format/src/property.rs` |
+| Typed values and their string forms | `crates/motion-format/src/value.rs` |
+| Curves: the named table, `cubic(...)`, `speed(...)` and `hold` | `crates/motion-format/src/curve.rs` |
 | Presets, as data (a scene can add its own) | `crates/motion-format/src/presets.json`, read by `preset.rs` |
 | `anim` tracks and keyframes, as written | `crates/motion-format/src/anim.rs` |
-| Tracks: one property's keys, compiled and sampled | `crates/motion-scene/src/track.rs` |
+| Tracks: one property's keys, compiled and sampled; spatial spans move along a bézier path by arc length | `crates/motion-scene/src/track.rs` |
+| Easing in value space: the handles every curve compiles to | `crates/motion-scene/src/curve.rs` |
+| Transforms: anchor, scale, rotation, position, and the parent chain | `crates/motion-scene/src/evaluate.rs` |
 
 The rule: **names are data; add a row, not a branch.** A new property is a row in the registry, which covers parsing, `anim`, presets, edits, `at` output and clamping (a property with a geometric or visual effect also needs code in `NodeState::bounds()` and the renderer), a new preset is an entry in `presets.json`, a new curve name is a row in the curve table. Code reads these tables and never lists the names itself, and errors about an unknown name list the allowed ones from the same table.
 
