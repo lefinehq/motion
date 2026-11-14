@@ -28,4 +28,6 @@ proptest = "1"
 insta = "1"
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
+# Binary records of `.aep` projects (D30).
+binrw = "0.15"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "json"] }
