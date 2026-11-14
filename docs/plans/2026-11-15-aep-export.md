@@ -24,7 +24,15 @@
 
 ## Work, in order
 
-1. **Static values** (this pull request): the chunk writer, origins of static values, the map's record, the export, `motion export`. Numbers, points, scales, opacities, colours, effect parameters.
+1. **Static values** (#38): the chunk writer, origins of static values, the map's record, the export, `motion export`. Numbers, points, scales, opacities, colours, effect parameters.
 2. **Text:** a text document's text and its runs, rewritten inside the document's object syntax, which changes the chunk's size.
 3. **Keys:** a keyed property's key times, values and eases, written back as the decoder reads them.
 4. **Controls:** with live control links (D44, audit workstream 5), an edit to a value a control drives goes to the control.
+
+## Step 1, as built
+
+Measured on every local sample project (the ignored test `every_sample_project_writes_back`, 36 s once expressions that never change run once):
+
+- **Unedited:** 238 of 238 projects export byte for byte the same.
+- **Every static value edited:** in the 232 projects that import, each of the 15,312 static values the export can write is nudged, written, and read back as edited.
+- **Read back in steps.** The import writes numbers to six decimals. A value half a step from both neighbours, such as a colour channel of 0.1177975, rounds up as edited and down after its trip through the file, out of 255. The check allows one step: it failed 10 values of one project before.
