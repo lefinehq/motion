@@ -12,13 +12,14 @@
 //!   the speed its one ease gives along the path's length.
 //!
 //! Before the first key the value is the first key's, after the last the last's.
+//! The eases and the paths are the scene's own ([`motion_scene::Ease`],
+//! [`PathSpan`]), so the two cannot drift apart.
 
-use kurbo::{CubicBez, ParamCurve, ParamCurveArclen, Point, Vec2};
+use kurbo::{Point, Vec2};
+use motion_format::Curve;
+use motion_scene::PathSpan;
 
 use crate::model::{Color, Ease, Interpolation, Keyframe, Stream, Value};
-
-/// How close an arc length must come, in pixels, as the scene measures it.
-const ARC_ACCURACY: f64 = 1e-6;
 
 impl Stream {
     /// The value at `time`, in composition seconds.
@@ -97,7 +98,9 @@ fn keyed(keys: &[Keyframe], time: f64) -> Value {
         .iter()
         .zip(&to)
         .enumerate()
-        .map(|(dim, (&a, &b))| ease(key, next, dim, seconds).sample(a, b, p))
+        .map(|(dim, (&a, &b))| {
+            motion_scene::Ease::from_curve(curve(key, next, dim), b - a, seconds).sample(a, b, p)
+        })
         .collect();
     key.value.with_numbers(&numbers)
 }
@@ -112,43 +115,46 @@ fn spatial(
     seconds: f64,
     p: f64,
 ) -> Vec<f64> {
-    let tangent = |t: Option<&Vec<f64>>| {
+    let handle = |t: Option<&Vec<f64>>| {
         let t = t.map(Vec::as_slice).unwrap_or_default();
         Vec2::new(
             t.first().copied().unwrap_or(0.0),
             t.get(1).copied().unwrap_or(0.0),
         )
     };
-    let (p0, p3) = (Point::new(from[0], from[1]), Point::new(to[0], to[1]));
-    let path = CubicBez::new(
-        p0,
-        p0 + tangent(key.spatial.as_ref().map(|s| &s.out_tangent)),
-        p3 + tangent(next.spatial.as_ref().map(|s| &s.in_tangent)),
-        p3,
+    let span = PathSpan::new(
+        Point::new(from[0], from[1]),
+        Point::new(to[0], to[1]),
+        [
+            handle(key.spatial.as_ref().map(|s| &s.out_tangent)),
+            handle(next.spatial.as_ref().map(|s| &s.in_tangent)),
+        ],
+        curve(key, next, 0),
+        seconds,
     );
-    let length = path.arclen(ARC_ACCURACY);
-    let along = ease(key, next, 0, seconds).sample(0.0, length, p);
-    let point = match length {
-        0.0 => path.p0,
-        l if along <= 0.0 || along >= l => extend(&path, along, l),
-        _ => path.eval(path.inv_arclen(along, ARC_ACCURACY)),
-    };
-    let fraction = if length > 0.0 { along / length } else { p };
+    let (point, covered) = span.sample(p);
     let mut out = vec![point.x, point.y];
     out.extend(
         from.iter()
             .zip(to)
             .skip(2)
-            .map(|(a, b)| a + (b - a) * fraction),
+            .map(|(a, b)| a + (b - a) * covered),
     );
     out
 }
 
-/// The ease of dimension `dim` from `key` to `next`, `seconds` apart.
-fn ease(key: &Keyframe, next: &Keyframe, dim: usize, seconds: f64) -> Bezier {
+/// The curve of dimension `dim` from `key` to `next`, in the project's units
+/// a second: `hold`, `linear`, or the eases on both sides as speeds, the
+/// first ease for every dimension where the project keeps one. A linear side
+/// reaches nowhere into the span. The map writes the same curve, so a baked
+/// expression reads what the scene draws.
+pub(crate) fn curve(key: &Keyframe, next: &Keyframe, dim: usize) -> Curve {
     let linear = |i: Interpolation| i == Interpolation::Linear;
+    if key.out_interpolation == Interpolation::Hold {
+        return Curve::Hold;
+    }
     if linear(key.out_interpolation) && linear(next.in_interpolation) {
-        return Bezier::Linear;
+        return Curve::Linear;
     }
     let side = |eases: &[Ease], interpolation: Interpolation| match (
         linear(interpolation),
@@ -159,88 +165,12 @@ fn ease(key: &Keyframe, next: &Keyframe, dim: usize, seconds: f64) -> Bezier {
     };
     let (out_speed, out_reach) = side(&key.out_ease, key.out_interpolation);
     let (in_speed, in_reach) = side(&next.in_ease, next.in_interpolation);
-    Bezier::Handles {
-        out: (out_reach, out_speed * out_reach * seconds),
-        into: (in_reach, in_speed * in_reach * seconds),
+    Curve::Speed {
+        out_speed,
+        out_reach,
+        in_speed,
+        in_reach,
     }
-}
-
-/// One dimension's span: straight, or a cubic in time whose handles reach
-/// a fraction of the span in time and rise in value units.
-#[derive(Debug, Clone, Copy)]
-enum Bezier {
-    Linear,
-    Handles { out: (f64, f64), into: (f64, f64) },
-}
-
-impl Bezier {
-    /// The value at progress `p` (clamped) from `v0` to `v1`.
-    fn sample(self, v0: f64, v1: f64, p: f64) -> f64 {
-        let p = p.clamp(0.0, 1.0);
-        if p == 0.0 {
-            return v0;
-        }
-        if p == 1.0 {
-            return v1;
-        }
-        match self {
-            Bezier::Linear => v0 + (v1 - v0) * p,
-            Bezier::Handles { out, into } => {
-                let t = solve(out.0, 1.0 - into.0, p);
-                cubic(v0, v0 + out.1, v1 - into.1, v1, t)
-            }
-        }
-    }
-}
-
-/// One coordinate at `t` of a cubic bézier with control values `p0`..`p3`.
-fn cubic(p0: f64, p1: f64, p2: f64, p3: f64, t: f64) -> f64 {
-    let u = 1.0 - t;
-    u * u * u * p0 + 3.0 * u * u * t * p1 + 3.0 * u * t * t * p2 + t * t * t * p3
-}
-
-/// The `t` where a bézier in time from 0 to 1, with control times `x1` and
-/// `x2` in 0..=1, reaches `p`.
-fn solve(x1: f64, x2: f64, p: f64) -> f64 {
-    let (mut lo, mut hi) = (0.0, 1.0);
-    for _ in 0..48 {
-        let mid = (lo + hi) / 2.0;
-        if cubic(0.0, x1, x2, 1.0, mid) < p {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
-    }
-    (lo + hi) / 2.0
-}
-
-/// A point `along` from the start of `path`, before its start or past its
-/// end: the end tangent carried on in a straight line.
-fn extend(path: &CubicBez, along: f64, length: f64) -> Point {
-    let (end, toward, beyond) = if along <= 0.0 {
-        (path.p0, path.p0 - tangent_at(path, true), -along)
-    } else {
-        (path.p3, path.p3 + tangent_at(path, false), along - length)
-    };
-    let direction = toward - end;
-    match direction.hypot() {
-        0.0 => end,
-        n => end + direction * (beyond / n),
-    }
-}
-
-/// The direction of travel at the start or the end; with a zero handle,
-/// toward the next control point that differs.
-fn tangent_at(path: &CubicBez, start: bool) -> Vec2 {
-    let candidates = if start {
-        [path.p1 - path.p0, path.p2 - path.p0, path.p3 - path.p0]
-    } else {
-        [path.p3 - path.p2, path.p3 - path.p1, path.p3 - path.p0]
-    };
-    candidates
-        .into_iter()
-        .find(|v| v.hypot() > 0.0)
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

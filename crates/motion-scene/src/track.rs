@@ -3,9 +3,9 @@
 //! ([`Ease`]), the numbers of a path's vertices too; a spatial span instead moves along a bézier path at a speed its
 //! one ease gives along the path's length.
 
-use kurbo::{CubicBez, ParamCurve, ParamCurveArclen, Point};
+use kurbo::{CubicBez, ParamCurve, ParamCurveArclen, Point, Vec2};
 use motion_format::anim::Easing;
-use motion_format::{Value, ValueType};
+use motion_format::{Curve, Value, ValueType};
 
 use crate::curve::Ease;
 
@@ -53,12 +53,55 @@ pub struct Key {
 enum Segment {
     /// Each component eases on its own.
     Components(Vec<Ease>),
-    /// The value moves along `path`, whose length is `length`, eased along that length.
-    Path {
-        path: CubicBez,
-        length: f64,
-        ease: Ease,
-    },
+    /// The value moves along a path.
+    Path(PathSpan),
+}
+
+/// A move along a bézier path from one point to another, eased along the
+/// path's length: a spatial span of a track.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PathSpan {
+    path: CubicBez,
+    length: f64,
+    ease: Ease,
+}
+
+impl PathSpan {
+    /// The move from `from` to `to`, leaving along the handle `out` and
+    /// arriving along `into` (each an offset from its own end), timed along
+    /// the path's length by `curve` over `seconds`.
+    pub fn new(
+        from: Point,
+        to: Point,
+        [out, into]: [Vec2; 2],
+        curve: Curve,
+        seconds: f64,
+    ) -> PathSpan {
+        let path = CubicBez::new(from, from + out, to + into, to);
+        let length = path.arclen(ARC_ACCURACY);
+        PathSpan {
+            path,
+            length,
+            ease: Ease::from_curve(curve, length, seconds),
+        }
+    }
+
+    /// The point at progress `p`, and the share of the path's length it has
+    /// covered (`p` itself on a path of no length).
+    pub fn sample(&self, p: f64) -> (Point, f64) {
+        let along = self.ease.sample(0.0, self.length, p);
+        let point = match self.length {
+            0.0 => self.path.p0,
+            // Beyond either end (an overshooting ease) the path carries on straight.
+            l if along <= 0.0 || along >= l => extend(&self.path, along, l),
+            _ => self.path.eval(self.path.inv_arclen(along, ARC_ACCURACY)),
+        };
+        let covered = match self.length {
+            0.0 => p,
+            l => along / l,
+        };
+        (point, covered)
+    }
 }
 
 /// The keys of one value: never empty, sorted by frame.
@@ -163,14 +206,8 @@ impl Segment {
                     .collect();
                 from.with_components(&components)
             }
-            Segment::Path { path, length, ease } => {
-                let along = ease.sample(0.0, *length, p);
-                let point = match *length {
-                    0.0 => path.p0,
-                    // Beyond either end (an overshooting ease) the path carries on straight.
-                    l if along <= 0.0 || along >= l => extend(path, along, l),
-                    _ => path.eval(path.inv_arclen(along, ARC_ACCURACY)),
-                };
+            Segment::Path(span) => {
+                let (point, _) = span.sample(p);
                 Value::Point([point.x, point.y])
             }
         }
@@ -183,7 +220,7 @@ impl Segment {
                 Ease::Bezier { out, into } => out.1 == 0.0 && into.1 == 0.0,
                 Ease::Linear | Ease::Hold => true,
             }),
-            Segment::Path { length, .. } => *length == 0.0,
+            Segment::Path(span) => span.length == 0.0,
         }
     }
 }
@@ -192,20 +229,15 @@ impl Segment {
 fn segment(a: &KeySpec, b: &KeySpec, fps: f64, spatial: bool) -> Segment {
     let seconds = (b.frame - a.frame) / fps;
     if spatial {
-        let (p0, p3) = (point(&a.value), point(&b.value));
         let [out, into] = a.path.unwrap_or([[0.0; 2]; 2]);
-        let path = CubicBez::new(
-            p0,
-            p0 + kurbo::Vec2::new(out[0], out[1]),
-            p3 + kurbo::Vec2::new(into[0], into[1]),
-            p3,
-        );
-        let length = path.arclen(ARC_ACCURACY);
-        return Segment::Path {
-            path,
-            length,
-            ease: Ease::from_curve(a.easing.of(0), length, seconds),
-        };
+        let handles = [Vec2::new(out[0], out[1]), Vec2::new(into[0], into[1])];
+        return Segment::Path(PathSpan::new(
+            point(&a.value),
+            point(&b.value),
+            handles,
+            a.easing.of(0),
+            seconds,
+        ));
     }
     let deltas = a
         .value
@@ -242,7 +274,7 @@ fn extend(path: &CubicBez, along: f64, length: f64) -> Point {
 }
 
 /// The direction of travel at `t`; at an end with a zero handle, toward the other handle.
-fn tangent_at(path: &CubicBez, t: f64) -> kurbo::Vec2 {
+fn tangent_at(path: &CubicBez, t: f64) -> Vec2 {
     let candidates = if t == 0.0 {
         [path.p1 - path.p0, path.p2 - path.p0, path.p3 - path.p0]
     } else {

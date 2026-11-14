@@ -12,6 +12,7 @@ publish.workspace = true
 strum.workspace = true
 derive_more.workspace = true
 motion-format = { path = "../motion-format" }
+motion-scene = { path = "../motion-scene" }
 motion-expr = { path = "../motion-expr" }
 kurbo.workspace = true
 binrw.workspace = true

@@ -291,3 +291,29 @@ proptest! {
         prop_assert!(x.is_finite() && y.is_finite());
     }
 }
+
+#[test]
+fn a_path_span_reports_how_much_of_its_length_it_has_covered() {
+    let straight = PathSpan::new(
+        Point::new(0.0, 0.0),
+        Point::new(100.0, 0.0),
+        [Vec2::ZERO; 2],
+        Curve::Linear,
+        1.0,
+    );
+    let (point, covered) = straight.sample(0.25);
+    assert!(close(point.x, 25.0) && close(point.y, 0.0));
+    assert!(close(covered, 0.25));
+}
+
+#[test]
+fn a_path_span_of_no_length_stays_put_and_covers_its_progress() {
+    let still = PathSpan::new(
+        Point::new(5.0, 5.0),
+        Point::new(5.0, 5.0),
+        [Vec2::ZERO; 2],
+        Curve::Linear,
+        1.0,
+    );
+    assert_eq!(still.sample(0.4), (Point::new(5.0, 5.0), 0.4));
+}

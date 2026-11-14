@@ -4,6 +4,7 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 
 use super::*;
+use crate::model::Interpolation;
 use crate::model::{Ease, Spatial, Vertex};
 
 /// A clock at the composition's own time.
