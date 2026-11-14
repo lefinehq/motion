@@ -50,7 +50,7 @@ const INVISIBLE: f64 = 0.0;
 
 /// Whether rules look at `node` on this frame: it shows, and is not see-through.
 pub(crate) fn visible(node: &NodeState) -> bool {
-    node.shown && node.number(Prop::OPACITY) > INVISIBLE
+    node.visible() && node.number(Prop::OPACITY) > INVISIBLE
 }
 
 /// How far `node`'s drawn box leaves `area`. An axis on which the box is larger is

@@ -113,7 +113,10 @@ fn rest_of_picks_the_component() {
         Target::named("y").unwrap().rest_of(rest.clone()),
         Value::Number(4.0)
     );
-    assert_eq!(Target::named("position").unwrap().rest_of(rest.clone()), rest);
+    assert_eq!(
+        Target::named("position").unwrap().rest_of(rest.clone()),
+        rest
+    );
 }
 
 #[test]

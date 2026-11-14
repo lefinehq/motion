@@ -30,7 +30,8 @@ pub struct PropertySpec {
     /// The names of its components, which tracks can animate one at a time;
     /// empty for a number.
     pub components: &'static [&'static str],
-    /// The allowed values of each component, inclusive, or `None` when unbounded.
+    /// The allowed values of each component, inclusive, or `None` when
+    /// unbounded; an infinite end leaves that side open.
     pub range: Option<(f64, f64)>,
     /// A lone number sets every component (a uniform `scale`).
     pub broadcast: bool,
@@ -239,10 +240,13 @@ impl Prop {
     pub const OPACITY: Prop = Prop::layer(4);
 
     const fn layer(index: usize) -> Prop {
-        Prop {
-            registry: &LAYER,
-            index,
-        }
+        Prop::of(&LAYER, index)
+    }
+
+    /// Row `index` of `registry`, for the constants of other registries.
+    pub(crate) const fn of(registry: &'static Registry, index: usize) -> Prop {
+        assert!(index < registry.rows.len(), "a row of the registry");
+        Prop { registry, index }
     }
 
     /// The layer property called `name`, if there is one.

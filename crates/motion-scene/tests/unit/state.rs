@@ -18,14 +18,7 @@ fn state(scale: f64, rotate: f64) -> NodeState {
             _ => p.spec().rest(&at, (1920.0, 1080.0), (100.0, 50.0)),
         })
         .collect();
-    NodeState {
-        id: "n".into(),
-        width: 100.0,
-        height: 50.0,
-        transform: crate::local_transform(&values),
-        values,
-        shown: true,
-    }
+    NodeState::of_box("n", 100.0, 50.0, values)
 }
 
 fn close(a: Rect, b: Rect) {

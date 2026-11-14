@@ -23,6 +23,8 @@ pub mod key {
     pub const BG: &str = "bg";
     /// The scene's own presets.
     pub const PRESETS: &str = "presets";
+    /// The scene's compositions.
+    pub const COMPS: &str = "comps";
     /// The layers.
     pub const LAYERS: &str = "layers";
     /// A layer's id.
@@ -31,6 +33,12 @@ pub mod key {
     pub const TEXT: &str = "text";
     /// The shape of a rect layer.
     pub const RECT: &str = "rect";
+    /// The items of a shape layer.
+    pub const SHAPES: &str = "shapes";
+    /// The composition a layer draws.
+    pub const COMP: &str = "comp";
+    /// A layer that draws nothing, for others to move with.
+    pub const PIVOT: &str = "pivot";
     /// The font of a text layer.
     pub const FONT: &str = "font";
     /// A layer's fill colour.
@@ -49,6 +57,15 @@ pub mod key {
     pub const OFFSET: &str = "offset";
     /// How slowly a layer's own time runs.
     pub const STRETCH: &str = "stretch";
+    /// A layer's effects.
+    pub const FX: &str = "fx";
+    /// Left out of the frame, yet kept in the scene.
+    pub const HIDDEN: &str = "hidden";
+
+    /// The path of composition `id`, `comps.card`.
+    pub fn comp_path(id: &str) -> String {
+        format!("{COMPS}.{id}")
+    }
 
     /// The path of the layer at `index`, `layers[2]`, as serde and validation write it.
     pub fn layer_path(index: usize) -> String {
@@ -57,22 +74,28 @@ pub mod key {
 }
 
 /// The keys allowed at the top level, in the order of `SceneDoc`'s fields.
-pub const SCENE_KEYS: [&str; 7] = [
+pub const SCENE_KEYS: [&str; 8] = [
     key::MOTION,
     key::SIZE,
     key::FPS,
     key::DUR,
     key::BG,
     key::PRESETS,
+    key::COMPS,
     key::LAYERS,
 ];
+/// The keys allowed on a composition, in the order of `CompDoc`'s fields.
+pub const COMP_KEYS: [&str; 5] = [key::SIZE, key::FPS, key::DUR, key::BG, key::LAYERS];
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 12] = [
+pub const LAYER_KEYS: [&str; 17] = [
     key::ID,
     key::TEXT,
     key::RECT,
+    key::SHAPES,
+    key::COMP,
+    key::PIVOT,
     key::FONT,
     key::FILL,
     key::AT,
@@ -82,6 +105,8 @@ pub const LAYER_KEYS: [&str; 12] = [
     key::SPAN,
     key::OFFSET,
     key::STRETCH,
+    key::FX,
+    key::HIDDEN,
 ];
 
 /// Every key a layer may hold: [`LAYER_KEYS`], then the names of the

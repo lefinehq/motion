@@ -38,6 +38,7 @@ pub(crate) struct SceneDoc {
     pub(crate) dur: Present<Shorthand<Time>>,
     pub(crate) bg: Present<Shorthand<Color>>,
     pub(crate) presets: Object<PresetsDoc>,
+    pub(crate) comps: Object<CompsDoc>,
     pub(crate) layers: Present<List<LayersDoc>>,
 }
 
@@ -54,6 +55,9 @@ pub(crate) struct LayerDoc {
     pub(crate) id: Present<String>,
     pub(crate) text: Present<String>,
     pub(crate) rect: Present<Shorthand<RectShape>>,
+    pub(crate) shapes: Present<List<ItemsDoc>>,
+    pub(crate) comp: Present<String>,
+    pub(crate) pivot: Present<bool>,
     pub(crate) font: Present<Shorthand<Font>>,
     pub(crate) fill: Present<Shorthand<Color>>,
     pub(crate) at: Present<Shorthand<Position>>,
@@ -64,6 +68,8 @@ pub(crate) struct LayerDoc {
     pub(crate) span: Present<Shorthand<TimeSpan>>,
     pub(crate) offset: Present<Shorthand<Time>>,
     pub(crate) stretch: Present<Number>,
+    pub(crate) fx: Present<List<ItemsDoc>>,
+    pub(crate) hidden: Present<bool>,
     /// Every other key, kept as JSON until its name is checked, so an unknown
     /// key is reported as unknown whatever its value.
     #[serde(flatten)]
@@ -72,6 +78,54 @@ pub(crate) struct LayerDoc {
 
 impl Form for LayerDoc {
     const FORM: &str = r#"a layer object, e.g. {"id":"box","rect":"100x100"}"#;
+}
+
+/// One shape item or effect. Its kind's name is one of the flattened keys,
+/// holding the primary value; the others are settings and resting values,
+/// which `crate::validate` checks against the kind.
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(default)]
+pub(crate) struct ItemDoc {
+    pub(crate) id: Present<String>,
+    pub(crate) hidden: Present<bool>,
+    pub(crate) anim: Object<AnimDoc>,
+    #[serde(flatten)]
+    pub(crate) values: IndexMap<String, serde_json::Value>,
+}
+
+impl Form for ItemDoc {
+    const FORM: &str = r##"an item object keyed by its kind, e.g. {"rect":[300,100],"round":12} or {"fill":"#FFE000"}"##;
+}
+
+/// A list of items: a layer's `shapes` or `fx`, or a group's items.
+pub(crate) type ItemsDoc = Vec<Object<ItemDoc>>;
+
+impl Form for ItemsDoc {
+    const FORM: &str = r##"a list of item objects, e.g. [{"rect":[300,100]},{"fill":"#FFE000"}]"##;
+}
+
+/// The `comps` object: compositions by id.
+pub(crate) type CompsDoc = IndexMap<String, Object<CompDoc>>;
+
+impl Form for CompsDoc {
+    const FORM: &str =
+        r#"an object of compositions, e.g. {"card":{"size":"600x400","dur":"5s","layers":[]}}"#;
+}
+
+/// One composition: a canvas of its own with its own layers, which a
+/// `comp` layer draws.
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct CompDoc {
+    pub(crate) size: Present<Shorthand<Size>>,
+    pub(crate) fps: Present<Number>,
+    pub(crate) dur: Present<Shorthand<Time>>,
+    pub(crate) bg: Present<Shorthand<Color>>,
+    pub(crate) layers: Present<List<LayersDoc>>,
+}
+
+impl Form for CompDoc {
+    const FORM: &str = r#"a composition object, e.g. {"size":"600x400","dur":"5s","layers":[]}"#;
 }
 
 /// The `layers` list.

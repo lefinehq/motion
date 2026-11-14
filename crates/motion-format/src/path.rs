@@ -15,8 +15,7 @@ use winnow::combinator::{alt, cut_err, eof, opt, preceded, repeat, separated_pai
 use winnow::prelude::*;
 
 /// The accepted form of a path.
-pub const PATH_FORM: &str =
-    "SVG path data with absolute commands, e.g. `M0,0 C10,0 20,10 20,20 L0,20 Z`: `M` once, \
+pub const PATH_FORM: &str = "SVG path data with absolute commands, e.g. `M0,0 C10,0 20,10 20,20 L0,20 Z`: `M` once, \
      then `L x,y` or `C x1,y1 x2,y2 x,y`, and `Z` to close";
 
 /// Numbers per vertex: point, arriving handle, leaving handle.
@@ -42,6 +41,12 @@ pub struct Vertex {
 }
 
 impl Path {
+    /// The path with no vertex.
+    pub const EMPTY: Path = Path {
+        closed: false,
+        numbers: Vec::new(),
+    };
+
     /// A path through `vertices`, closed or open.
     pub fn new(closed: bool, vertices: impl IntoIterator<Item = Vertex>) -> Path {
         let numbers = vertices
@@ -115,7 +120,9 @@ impl FromStr for Path {
         parse_all(text, path, |problem| {
             let message = match problem {
                 Some(Problem::NoMove) => format!("`{text}` must start with `M x,y`"),
-                Some(Problem::Command) => format!("`{text}` has a command other than `L`, `C` or `Z`"),
+                Some(Problem::Command) => {
+                    format!("`{text}` has a command other than `L`, `C` or `Z`")
+                }
                 Some(Problem::Points) => format!("`{text}` has a command without its points"),
                 None => format!("`{text}` is not a valid path"),
             };
@@ -166,9 +173,13 @@ fn segment(input: &mut &str) -> Parsed<Segment, Problem> {
 
 /// `x,y` or `x y`.
 fn point(input: &mut &str) -> Parsed<[f64; 2], Problem> {
-    separated_pair(number, alt(((blank0, ',', blank0).void(), blank1.void())), number)
-        .map(|(x, y)| [x, y])
-        .parse_next(input)
+    separated_pair(
+        number,
+        alt(((blank0, ',', blank0).void(), blank1.void())),
+        number,
+    )
+    .map(|(x, y)| [x, y])
+    .parse_next(input)
 }
 
 /// The vertices the commands draw. A closed path whose last segment ends

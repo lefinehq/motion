@@ -147,15 +147,16 @@ fn shorthand_failures_keep_their_path_and_expected_form() {
 }
 
 #[test]
-fn a_layer_draws_exactly_one_of_text_or_rect() {
+fn a_layer_draws_exactly_one_content() {
     let neither = err(&scene(r#"{"id":"a"}"#));
     let both = err(&scene(r#"{"id":"a","rect":"1x1","text":"x"}"#));
     assert_eq!((neither.kind, both.kind), (Kind::Missing, Kind::Conflict));
     // The fix is the same, so the message and the form are too.
     assert_eq!(both.message, neither.message);
     assert_eq!(both.expected, neither.expected);
-    assert_eq!(both.path.as_deref(), Some("layers[0]"));
-    assert_eq!(neither.path, both.path);
+    // The second content key is the one to remove.
+    assert_eq!(both.path.as_deref(), Some("layers[0].rect"));
+    assert_eq!(neither.path.as_deref(), Some("layers[0]"));
 }
 
 #[test]

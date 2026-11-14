@@ -9,6 +9,7 @@ mod diagnostic;
 mod doc;
 pub mod edit_word;
 pub mod grammar;
+pub mod item;
 mod number;
 mod parse;
 pub mod path;
@@ -24,10 +25,11 @@ mod write;
 
 pub use curve::{Curve, NAMED_CURVES};
 pub use diagnostic::{Diagnostic, Kind, Result};
+pub use item::{Item, ItemKind, Role};
 pub use number::fmt_num;
+pub use parse::{COMP_KEYS, LAYER_KEYS, SCENE_KEYS, key, layer_keys, parse_document};
 pub use path::{Path, Vertex};
-pub use parse::{LAYER_KEYS, SCENE_KEYS, key, layer_keys, parse_document};
-pub use scene::{Content, Document, Layer, Scene};
+pub use scene::{Comp, Content, Document, Layer, Scene};
 pub use value::{Value, ValueType};
 pub use write::write_document;
 

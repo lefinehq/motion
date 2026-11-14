@@ -2,6 +2,8 @@
 //! turning the document into the typed [`Scene`]. A rule reports its error
 //! without the enclosing path; the caller places it with [`Diagnostic::under`].
 
+mod item;
+
 use std::collections::HashSet;
 use std::str::FromStr;
 
@@ -12,21 +14,22 @@ use crate::anim::{
     Span, TrackLine,
 };
 use crate::doc::{
-    AnimDoc, EasingDoc, KeyDoc, KeyTime, LayerDoc, List, Number, Object, PathDoc, PresetDoc,
-    PresetsDoc, SceneDoc, Shorthand, StartDoc, TrackDoc, ValueDoc,
+    AnimDoc, CompDoc, CompsDoc, EasingDoc, KeyDoc, KeyTime, LayerDoc, LayersDoc, List, Number,
+    Object, PathDoc, PresetDoc, PresetsDoc, SceneDoc, Shorthand, StartDoc, TrackDoc, ValueDoc,
 };
 use crate::edit_word::NONE;
+use crate::item::{EFFECTS, SHAPES};
 use crate::parse::key::{
-    ANIM, AT, BG, DUR, FILL, FONT, FPS, ID, IN, LAYERS, MOTION, OFFSET, PARENT, PRESETS, RECT,
-    SIZE, SPAN, STRETCH, layer_path,
+    ANIM, AT, BG, COMP, DUR, FILL, FONT, FPS, FX, ID, IN, LAYERS, MOTION, OFFSET, PARENT, PIVOT,
+    PRESETS, RECT, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, TEXT, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
-use crate::property::{Prop, PropertySpec, Rest, Target, target_names};
+use crate::property::{LAYER, Prop, PropertySpec, Registry, Rest, Target};
 use crate::shorthand::{Behaviour, Coord, Font, Position};
 use crate::units::{Color, SPAN_EXPECTED, Size, TIME_EXPECTED, Time, TimeSpan};
 use crate::value::{Value, ValueType};
-use crate::{Content, Curve, Layer, Scene, fmt_num};
+use crate::{Comp, Content, Curve, Layer, Scene, fmt_num};
 
 /// The id rule, as an accepted form.
 pub(crate) const ID_RULE: &str =
@@ -45,6 +48,12 @@ const DEFAULT_BACKGROUND: Color = Color {
     b: 0,
     a: 255,
 };
+const CLEAR: Color = Color {
+    r: 0,
+    g: 0,
+    b: 0,
+    a: 0,
+};
 const DEFAULT_FILL: Color = Color {
     r: 255,
     g: 255,
@@ -59,7 +68,11 @@ const DEFAULT_POSITION: Position = Position {
 /// What a layer needs from the scene around it.
 struct Context<'a> {
     presets: &'a [(String, PresetSpec)],
+    /// Every composition's id and size, read before any layer.
+    comps: &'a [(String, Size)],
+    /// The frames per second of the layer's composition.
     fps: f64,
+    /// The canvas of the layer's composition.
     size: Size,
 }
 
@@ -72,25 +85,23 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
     let background = optional(doc.bg.as_ref(), BG)?.unwrap_or(DEFAULT_BACKGROUND);
     let Object(own_presets) = &doc.presets;
     let presets = presets(own_presets).map_err(|e| e.under(PRESETS))?;
+    let Object(comp_docs) = &doc.comps;
+    let comp_sizes = comp_sizes(comp_docs)?;
     let List(layer_docs) = required(doc.layers.as_ref(), LAYERS, "[]")?;
     let context = Context {
         presets: &presets,
+        comps: &comp_sizes,
         fps,
         size,
     };
-    let layers = layer_docs
+    let comps = comp_docs
         .iter()
-        .enumerate()
-        .map(|(i, Object(layer_doc))| {
-            layer(layer_doc, &context).map_err(|e| e.under(layer_path(i)))
+        .map(|(id, Object(comp_doc))| {
+            comp(id, comp_doc, &context).map_err(|e| e.under(comp_path(id)))
         })
         .collect::<Result<Vec<_>>>()?;
-    unique_ids(&layers)?;
-    parents(&layers)?;
-    for (i, (layer, Object(doc))) in layers.iter().zip(layer_docs).enumerate() {
-        let Object(written) = &doc.anim;
-        entrance_conflict(layer, &layers, &context, written).map_err(|e| e.under(layer_path(i)))?;
-    }
+    let layers = layers(layer_docs, &context)?;
+    no_comp_draws_itself(&comps)?;
     Ok(Scene {
         version: VERSION,
         size,
@@ -98,8 +109,115 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
         duration,
         background,
         presets,
+        comps,
         layers,
     })
+}
+
+/// A list of layers on one canvas, with paths relative to the list's owner:
+/// each layer valid, ids unique, parents that exist and never loop, and no
+/// track fighting an entrance.
+fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
+    let layers = docs
+        .iter()
+        .enumerate()
+        .map(|(i, Object(layer_doc))| layer(layer_doc, context).map_err(|e| e.under(layer_path(i))))
+        .collect::<Result<Vec<_>>>()?;
+    unique_ids(&layers)?;
+    parents(&layers)?;
+    for (i, (layer, Object(doc))) in layers.iter().zip(docs).enumerate() {
+        let Object(written) = &doc.anim;
+        entrance_conflict(layer, &layers, context, written).map_err(|e| e.under(layer_path(i)))?;
+    }
+    Ok(layers)
+}
+
+/// Every composition's id, which follows the id rule, and size, which it must set.
+fn comp_sizes(docs: &CompsDoc) -> Result<Vec<(String, Size)>> {
+    docs.iter()
+        .map(|(id, Object(doc))| {
+            let place = |e: Diagnostic| e.under(comp_path(id));
+            if !is_valid_id(id) {
+                return Err(Diagnostic::new(
+                    Kind::Invalid,
+                    format!("invalid composition id `{id}`"),
+                )
+                .at(comp_path(id))
+                .expected(ID_RULE));
+            }
+            let size = required(doc.size.as_ref(), SIZE, r#""1080x1920""#)
+                .and_then(|s| s.parse_at(SIZE))
+                .map_err(place)?;
+            Ok((id.clone(), size))
+        })
+        .collect()
+}
+
+/// One composition, with paths relative to it: its clock defaults to the
+/// scene's, its background to clear.
+fn comp(id: &str, doc: &CompDoc, scene: &Context) -> Result<Comp> {
+    let size = scene
+        .comps
+        .iter()
+        .find(|(c, _)| c == id)
+        .map(|(_, size)| *size)
+        .expect("comp sizes are read first");
+    let fps = doc.fps.map_or(Ok(scene.fps), fps)?;
+    let duration = required(doc.dur.as_ref(), DUR, r#""5s""#)?.parse_at(DUR)?;
+    let background = optional(doc.bg.as_ref(), BG)?.unwrap_or(CLEAR);
+    let List(layer_docs) = required(doc.layers.as_ref(), LAYERS, "[]")?;
+    let context = Context {
+        presets: scene.presets,
+        comps: scene.comps,
+        fps,
+        size,
+    };
+    Ok(Comp {
+        id: id.to_owned(),
+        size,
+        fps,
+        duration,
+        background,
+        layers: layers(layer_docs, &context)?,
+    })
+}
+
+/// No composition draws itself, directly or through the compositions it draws.
+fn no_comp_draws_itself(comps: &[Comp]) -> Result<()> {
+    /// The compositions `comp`'s layers draw, with each layer's index.
+    fn drawn(comp: &Comp) -> impl Iterator<Item = (usize, &str)> {
+        comp.layers
+            .iter()
+            .enumerate()
+            .filter_map(|(i, layer)| match &layer.content {
+                Content::Comp(id) => Some((i, id.as_str())),
+                _ => None,
+            })
+    }
+    for start in comps {
+        // Depth-first over what `start` draws, remembering the first layer of each step.
+        let mut stack: Vec<(&str, usize)> = drawn(start).map(|(i, id)| (id, i)).collect();
+        let mut seen = HashSet::new();
+        while let Some((id, first)) = stack.pop() {
+            if id == start.id {
+                return Err(Diagnostic::new(
+                    Kind::Invalid,
+                    format!("composition `{id}` would draw itself through its layers"),
+                )
+                .at(COMP)
+                .under(layer_path(first))
+                .under(comp_path(&start.id))
+                .expected("compositions that never lead back to themselves"));
+            }
+            if !seen.insert(id) {
+                continue;
+            }
+            if let Some(next) = comps.iter().find(|c| c.id == id) {
+                stack.extend(drawn(next).map(|(_, inner)| (inner, first)));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Validates a `presets` object; the built-ins in `presets.json` use it too.
@@ -160,7 +278,7 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
     let Object(tracks) = &doc.anim;
     let layer = Layer {
         id: id.to_owned(),
-        content: content(doc)?,
+        content: content(doc, context)?,
         fill: optional(doc.fill.as_ref(), FILL)?.unwrap_or(DEFAULT_FILL),
         at: optional(doc.at.as_ref(), AT)?.unwrap_or(DEFAULT_POSITION),
         values,
@@ -169,11 +287,18 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
             .as_ref()
             .map(|written| entrance(written, context.presets))
             .transpose()?,
-        anim: anim(tracks, context.fps).map_err(|e| e.under(ANIM))?,
+        anim: anim(tracks, &LAYER, context.fps).map_err(|e| e.under(ANIM))?,
         parent: doc.parent.clone(),
         span: optional(doc.span.as_ref(), SPAN)?,
         offset: optional(doc.offset.as_ref(), OFFSET)?.unwrap_or(Time::Frames(0.0)),
         stretch: doc.stretch.map_or(Ok(1.0), stretch)?,
+        fx: match &*doc.fx {
+            Some(List(docs)) => item::items(docs, &EFFECTS, context.fps)
+                .and_then(|fx| item::unique_ids(&fx, "").map(|()| fx))
+                .map_err(|e| e.under(FX))?,
+            None => Vec::new(),
+        },
+        hidden: doc.hidden.unwrap_or(false),
     };
     if let Some(span) = layer.span {
         span_runs_forward(span, context.fps).map_err(|e| e.under(SPAN))?;
@@ -271,22 +396,82 @@ pub(crate) fn is_valid_id(id: &str) -> bool {
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
 }
 
-/// A layer draws exactly one of `text` or `rect`. Neither is `Missing` and
-/// both is a `Conflict`, with the same message, since the fix is the same.
-fn content(doc: &LayerDoc) -> Result<Content> {
-    const ONE_OF: &str = "needs exactly one of `text` or `rect`";
-    const EXAMPLE: &str = r#"e.g. "text":"Hello" or "rect":"300x100""#;
-    match (&*doc.text, &*doc.rect) {
-        (Some(text), None) => Ok(Content::Text {
-            text: text.clone(),
+/// The keys that say what a layer draws, of which it has exactly one.
+const CONTENT_KEYS: [&str; 5] = [TEXT, RECT, SHAPES_KEY, COMP, PIVOT];
+
+/// A layer draws exactly one of [`CONTENT_KEYS`]. None is `Missing` and two
+/// is a `Conflict`, at the second, with the same message since the fix is the same.
+fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
+    let written = [
+        doc.text.is_some(),
+        doc.rect.is_some(),
+        doc.shapes.is_some(),
+        doc.comp.is_some(),
+        doc.pivot.is_some(),
+    ];
+    let mut keys = CONTENT_KEYS
+        .iter()
+        .zip(written)
+        .filter(|(_, w)| *w)
+        .map(|(k, _)| *k);
+    let one_of = || {
+        let quoted: Vec<String> = CONTENT_KEYS.iter().map(|k| format!("`{k}`")).collect();
+        let (last, rest) = quoted.split_last().expect("content keys");
+        format!("needs exactly one of {} or {last}", rest.join(", "))
+    };
+    const EXAMPLE: &str =
+        r#"e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card" or "pivot":true"#;
+    let key = match (keys.next(), keys.next()) {
+        (Some(key), None) => key,
+        (None, _) => return Err(Diagnostic::new(Kind::Missing, one_of()).expected(EXAMPLE)),
+        (Some(_), Some(second)) => {
+            return Err(Diagnostic::new(Kind::Conflict, one_of())
+                .at(second)
+                .expected(EXAMPLE));
+        }
+    };
+    only_on(doc.font.is_some(), FONT, key, &[TEXT])?;
+    only_on(doc.fill.is_some(), FILL, key, &[TEXT, RECT])?;
+    match key {
+        TEXT => Ok(Content::Text {
+            text: doc.text.clone().expect("written"),
             font: optional(doc.font.as_ref(), FONT)?.unwrap_or_else(default_font),
         }),
-        (None, Some(rect)) => {
-            font_only_on_text(doc)?;
-            Ok(Content::Rect(rect.parse_at(RECT)?))
+        RECT => Ok(Content::Rect(
+            doc.rect.as_ref().expect("written").parse_at(RECT)?,
+        )),
+        SHAPES_KEY => {
+            let List(docs) = doc.shapes.as_ref().expect("written");
+            let items = item::items(docs, &SHAPES, context.fps).map_err(|e| e.under(SHAPES_KEY))?;
+            item::unique_ids(&items, SHAPES_KEY)?;
+            Ok(Content::Shapes(items))
         }
-        (None, None) => Err(Diagnostic::new(Kind::Missing, ONE_OF).expected(EXAMPLE)),
-        (Some(_), Some(_)) => Err(Diagnostic::new(Kind::Conflict, ONE_OF).expected(EXAMPLE)),
+        COMP => {
+            let id = doc.comp.clone().expect("written");
+            match context.comps.iter().any(|(c, _)| *c == id) {
+                true => Ok(Content::Comp(id)),
+                false if context.comps.is_empty() => Err(Diagnostic::new(
+                    Kind::UnknownName,
+                    format!("unknown composition `{id}`: the scene has none"),
+                )
+                .at(COMP)
+                .expected(r#"a composition under "comps", e.g. "comps":{"card":{"size":"600x400","dur":"5s","layers":[]}}"#)),
+                false => Err(Diagnostic::unknown(
+                    "composition",
+                    &id,
+                    context.comps.iter().map(|(c, _)| c.as_str()),
+                )
+                .at(COMP)),
+            }
+        }
+        _ => match *doc.pivot {
+            Some(true) => Ok(Content::Pivot),
+            _ => Err(
+                Diagnostic::new(Kind::Invalid, "`pivot` is `true` or left out")
+                    .at(PIVOT)
+                    .expected(r#""pivot":true"#),
+            ),
+        },
     }
 }
 
@@ -298,16 +483,19 @@ fn default_font() -> Font {
     }
 }
 
-/// `font` means nothing on a rect layer.
-fn font_only_on_text(doc: &LayerDoc) -> Result<()> {
-    match *doc.font {
-        None => Ok(()),
-        Some(_) => Err(
-            Diagnostic::new(Kind::Conflict, "`font` only applies to text layers")
-                .at(FONT)
-                .expected("`font` only next to `text`"),
-        ),
+/// `key`, when written, needs a layer that draws one of `contents`.
+fn only_on(written: bool, key: &str, content: &str, contents: &[&str]) -> Result<()> {
+    if !written || contents.contains(&content) {
+        return Ok(());
     }
+    let layers: Vec<String> = contents.iter().map(|c| format!("`{c}`")).collect();
+    let layers = layers.join(" or ");
+    Err(Diagnostic::new(
+        Kind::Conflict,
+        format!("`{key}` only applies to {layers} layers"),
+    )
+    .at(key)
+    .expected(format!("`{key}` only next to {layers}")))
 }
 
 /// Parses `in` and checks that its preset exists.
@@ -332,11 +520,12 @@ fn unique_ids(layers: &[Layer]) -> Result<()> {
     }
 }
 
-/// The tracks of `anim`, no two of which write the same numbers.
-fn anim(tracks: &AnimDoc, fps: f64) -> Result<Vec<AnimTrack>> {
+/// The tracks of `anim` on an object with `registry`'s properties, no two of
+/// which write the same numbers.
+fn anim(tracks: &AnimDoc, registry: &'static Registry, fps: f64) -> Result<Vec<AnimTrack>> {
     let tracks = tracks
         .iter()
-        .map(|(name, doc)| track(name, doc, fps).map_err(|e| e.under(name)))
+        .map(|(name, doc)| track(name, doc, registry, fps).map_err(|e| e.under(name)))
         .collect::<Result<Vec<_>>>()?;
     let targets: Vec<Target> = tracks.iter().map(|t| t.target).collect();
     one_writer(&targets)?;
@@ -363,18 +552,51 @@ fn one_writer(targets: &[Target]) -> Result<()> {
     Ok(())
 }
 
-/// One track: a known target, and keys of its type, in range and in time order.
-fn track(name: &str, doc: &TrackDoc, fps: f64) -> Result<AnimTrack> {
-    let target = known_target(name)?;
+/// One track: a known target, and keys of its type, in range, in time order
+/// and, for a path, of one shape.
+fn track(name: &str, doc: &TrackDoc, registry: &'static Registry, fps: f64) -> Result<AnimTrack> {
+    let target = known_target(name, registry)?;
     let keys = match doc {
+        TrackDoc::Line(_) if target.value_type() == ValueType::Path => {
+            return Err(Diagnostic::new(
+                Kind::Invalid,
+                format!("`{name}` is a path, which a key list animates"),
+            )
+            .expected(KEYS_EXPECTED));
+        }
         TrackDoc::Line(text) => line(text, target, fps)?,
         TrackDoc::Keys(keys) => key_list(keys, target, fps)?,
     };
+    one_shape(&keys)?;
     Ok(AnimTrack { target, keys })
 }
 
-fn known_target(name: &str) -> Result<Target> {
-    Target::named(name).ok_or_else(|| Diagnostic::unknown("property", name, target_names()))
+/// The target called `name` among `registry`'s properties and components.
+fn known_target(name: &str, registry: &'static Registry) -> Result<Target> {
+    registry.target(name).ok_or_else(|| {
+        Diagnostic::unknown(
+            format!("{} property", registry.kind),
+            name,
+            registry.target_names(),
+        )
+    })
+}
+
+/// Every key of a track has the first key's shape, so a path can move
+/// between them vertex by vertex.
+fn one_shape(keys: &[AnimKey]) -> Result<()> {
+    let Some(first) = keys.first() else {
+        return Ok(());
+    };
+    match keys.iter().position(|k| !k.value.same_shape(&first.value)) {
+        None => Ok(()),
+        Some(i) => Err(Diagnostic::new(
+            Kind::Invalid,
+            "a path key differs in vertex count or closure from the first key",
+        )
+        .under(format!("[{i}]"))
+        .expected("keys whose paths have the same vertices, all open or all closed")),
+    }
 }
 
 /// The string form: both values of the target's type and in range, and a
@@ -567,16 +789,23 @@ fn in_number_range(value: f64, spec: &PropertySpec) -> Result<f64> {
         .expected("a finite number"));
     }
     match spec.range {
-        Some((lo, hi)) if value < lo || value > hi => Err(Diagnostic::new(
-            Kind::OutOfRange,
-            format!(
-                "value {} is outside {}..={}",
-                fmt_num(value),
-                fmt_num(lo),
-                fmt_num(hi)
-            ),
-        )
-        .expected(format!("a number from {} to {}", fmt_num(lo), fmt_num(hi)))),
+        Some((lo, hi)) if value < lo || value > hi => {
+            let (allowed, expected) = match hi {
+                f64::INFINITY => (
+                    format!("{}..", fmt_num(lo)),
+                    format!("a number of at least {}", fmt_num(lo)),
+                ),
+                _ => (
+                    format!("{}..={}", fmt_num(lo), fmt_num(hi)),
+                    format!("a number from {} to {}", fmt_num(lo), fmt_num(hi)),
+                ),
+            };
+            Err(Diagnostic::new(
+                Kind::OutOfRange,
+                format!("value {} is outside {allowed}", fmt_num(value)),
+            )
+            .expected(expected))
+        }
         _ => Ok(value),
     }
 }
@@ -608,7 +837,7 @@ fn preset(name: &str, body: &PresetDoc) -> Result<PresetSpec> {
 /// A number starts a point only where the property broadcasts (`scale`); a
 /// distance starts only an unbounded number, such as `y` (opacity has a range).
 fn preset_start(name: &str, start: Start) -> Result<(Target, Start)> {
-    let target = known_target(name)?;
+    let target = known_target(name, &LAYER)?;
     match start {
         Start::Value(v) => {
             typed_value(&ValueDoc::Numbers(vec![v]), target)?;
@@ -657,7 +886,10 @@ fn entrance_conflict(
     );
     // `at` resolves in the parent's box, or on the canvas without a parent.
     let extent = match &layer.parent {
-        Some(id) => layers.iter().find(|l| &l.id == id).and_then(known_box),
+        Some(id) => layers
+            .iter()
+            .find(|l| &l.id == id)
+            .and_then(|parent| known_box(parent, context)),
         None => Some(canvas),
     };
     let rest = |target: Target| {
@@ -669,7 +901,7 @@ fn entrance_conflict(
                 target
                     .prop
                     .spec()
-                    .rest(&layer.at, canvas, known_box(layer)?)
+                    .rest(&layer.at, canvas, known_box(layer, context)?)
             }
         };
         Some(target.rest_of(whole))
@@ -696,10 +928,18 @@ fn entrance_conflict(
     )))
 }
 
-/// A layer's box in pixels when it is known before compiling: a rect's.
-fn known_box(layer: &Layer) -> Option<(f64, f64)> {
+/// A layer's box in pixels when it is known before compiling: a rect's, a
+/// composition's canvas, and none for shapes and pivots, whose own
+/// coordinates start at their anchor.
+fn known_box(layer: &Layer, context: &Context) -> Option<(f64, f64)> {
     match &layer.content {
         Content::Rect(rect) => Some((rect.width, rect.height)),
+        Content::Comp(id) => context
+            .comps
+            .iter()
+            .find(|(c, _)| c == id)
+            .map(|(_, size)| (f64::from(size.width), f64::from(size.height))),
+        Content::Shapes(_) | Content::Pivot => Some((0.0, 0.0)),
         Content::Text { .. } => None,
     }
 }

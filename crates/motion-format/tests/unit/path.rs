@@ -71,7 +71,11 @@ fn writing_gives_cubics_that_read_back_the_same() {
     ] {
         let path: Path = text.parse().unwrap();
         let written = path.to_string();
-        assert_eq!(written.parse::<Path>().unwrap(), path, "{text} -> {written}");
+        assert_eq!(
+            written.parse::<Path>().unwrap(),
+            path,
+            "{text} -> {written}"
+        );
     }
     let square: Path = "M0,0 L10,0 L10,10 Z".parse().unwrap();
     assert_eq!(
@@ -135,9 +139,8 @@ fn coordinate() -> impl Strategy<Value = f64> {
 }
 
 fn any_vertex() -> impl Strategy<Value = Vertex> {
-    prop::array::uniform6(coordinate()).prop_map(|n| {
-        vertex([n[0], n[1]], [n[2], n[3]], [n[4], n[5]])
-    })
+    prop::array::uniform6(coordinate())
+        .prop_map(|n| vertex([n[0], n[1]], [n[2], n[3]], [n[4], n[5]]))
 }
 
 proptest! {
