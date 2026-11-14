@@ -1,0 +1,22 @@
+[package]
+name = "motion-raster"
+description = "Draws a frame's display list into pixels with vello_cpu: layers, paths, glyphs, blend modes and effects."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+motion-format = { path = "../motion-format" }
+vello_cpu = { version = "0.4", default-features = false, features = ["std", "text", "u8_pipeline", "f32_pipeline"] }
+png = "0.18"
+# The rasteriser's SIMD layer; `force_support_fallback` gives the portable
+# scalar path that golden images are drawn with.
+fearless_simd = { version = "1.2", features = ["force_support_fallback"] }
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
