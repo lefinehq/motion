@@ -292,6 +292,22 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - A coverage test makes the corpus grow with the format: a new key cannot land without a scene that uses it.
   - Early, a breaking change costs one snapshot update; later it costs a migration. The rule is the same, so nothing changes at 1.0 but how often we pay.
 
+### D37. Engines stay behind our own types
+
+- **Decision:** a crate's public API may use vocabulary crates built to be shared between libraries (`kurbo` for geometry, `peniko` for paint). Engines stay private: the shaper (`parley`), the rasteriser (`vello_cpu`), the binary and text parsers (`binrw`, `winnow`), and later the JavaScript engine. Where an engine's type reaches a public API today, it becomes our own type the next time that code changes; `GlyphRun.font` (a `parley::FontData`) is the first.
+- **Why:**
+  - Young engines change their APIs often. Behind our types, an upgrade or a replacement touches one crate.
+  - Vocabulary crates exist to be shared, and wrapping them would only add conversions.
+
+### D38. Expressions are baked at import
+
+- **Decision:** an expression is evaluated when the project is imported, by an embedded JavaScript engine, at every frame of its layer's span. Its values are written into the scene as keys, fitted to curves within a tolerance. The import report keeps each expression's source and says what it became. An expression that reads something the import cannot know, such as a value the user sets later, is reported, not guessed. A render never runs JavaScript.
+- **Why:**
+  - Renders stay deterministic, fast and safe on untrusted scenes ([D10](#d10-modifiers-instead-of-scripts)).
+  - An imported scene stays an ordinary scene ([D32](#d32-one-format-for-authored-and-imported-scenes)): its motion is keys that people and agents can read and edit.
+  - Most template expressions are easing and wiggle scripts over fixed keys. Baked, they lose nothing.
+- **Not now:** live expressions in the format. They would be a separate decision, made only if a real template needs a value to follow an edit.
+
 ## Open questions
 
 ### Q1. Name and packages (deferred)
