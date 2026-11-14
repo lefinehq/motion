@@ -1,19 +1,54 @@
 //! `motion import`: import an `.aep` project as a scene, write it, and print
-//! what the import mapped, defaulted, ignored or could not support.
+//! what the import mapped, defaulted, ignored or could not support, and how
+//! far the scene's text lies from the layout the project stored.
 
 use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
-use motion_engine::{Diagnostic, ImportOptions, Kind, Result, write_document};
+use motion_engine::{
+    Diagnostic, ImportOptions, Kind, LineCheck, Mapping, Result, Session, TextGeometry,
+    write_document,
+};
+use serde::Serialize;
 
-/// Imports `project` with `options`, writes the scene to `out`, and prints
-/// the mapping report, as JSON when `json` is set.
+/// The text check's outcome: the geometry, or why the scene's text could
+/// not be laid out, such as fonts the import was not given.
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+enum TextOutcome {
+    /// Every text layer's lines against the stored ones.
+    Checked(TextGeometry),
+    /// Why the text was not checked.
+    NotChecked(String),
+}
+
+/// What `--json` prints.
+#[derive(Serialize)]
+struct Report<'a> {
+    /// What the import mapped.
+    mapping: &'a Mapping,
+    /// The text check.
+    text: TextOutcome,
+}
+
+/// Imports `project` with `options`, writes the scene to `out`, checks its
+/// text against the stored layout, and prints the report, as JSON when
+/// `json` is set.
 pub fn run(project: &Path, options: &ImportOptions, out: &Path, json: bool) -> Result<ExitCode> {
     let import = motion_engine::import_scene(project, options)?;
     fs::write(out, write_document(&import.json)).map_err(|e| Diagnostic::io("write", out, &e))?;
+    // Opened from where it was written, so `fonts` resolve as they will.
+    let text = match Session::open(out).and_then(|s| s.text_geometry(&import.texts)) {
+        Ok(geometry) => TextOutcome::Checked(geometry),
+        Err(error) => TextOutcome::NotChecked(error.to_string()),
+    };
     if json {
-        let text = serde_json::to_string_pretty(&import.mapping).map_err(|e| {
+        let report = Report {
+            mapping: &import.mapping,
+            text,
+        };
+        let text = serde_json::to_string_pretty(&report).map_err(|e| {
             Diagnostic::new(
                 Kind::Invalid,
                 format!("cannot write the report as JSON: {e}"),
@@ -22,7 +57,70 @@ pub fn run(project: &Path, options: &ImportOptions, out: &Path, json: bool) -> R
         println!("{text}");
     } else {
         print!("{}", import.mapping);
+        print_text(&text);
         println!("  wrote {}", out.display());
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// Prints the text check, one line per text layer.
+fn print_text(text: &TextOutcome) {
+    let geometry = match text {
+        TextOutcome::Checked(geometry) if geometry.texts.is_empty() => return,
+        TextOutcome::Checked(geometry) => geometry,
+        TextOutcome::NotChecked(why) => return println!("  text not checked: {why}"),
+    };
+    let failing = geometry.failing().count();
+    println!(
+        "  text against the stored layout: {} of {} within {} px",
+        geometry.texts.len() - failing,
+        geometry.texts.len(),
+        geometry.tolerance
+    );
+    for check in &geometry.texts {
+        let place = match &check.comp {
+            Some(comp) => format!("{comp}/{}", check.layer),
+            None => check.layer.clone(),
+        };
+        let lines = check.lines.len();
+        let plural = if lines == 1 { "" } else { "s" };
+        let worst = check
+            .worst_line()
+            .filter(|_| check.off() > geometry.tolerance)
+            .map(|i| format!(", line {}: {}", i + 1, describe(&check.lines[i])))
+            .unwrap_or_default();
+        println!(
+            "    {place}: {lines} line{plural}, off {}{worst}",
+            px(check.off())
+        );
+    }
+}
+
+/// How one line differs, stored first.
+fn describe(line: &LineCheck) -> String {
+    match (&line.stored, &line.ours) {
+        (Some(stored), Some(ours)) if stored.characters != ours.characters => format!(
+            "breaks after {} characters, stored after {}",
+            ours.characters, stored.characters
+        ),
+        (Some(stored), Some(ours)) => format!(
+            "start {} vs stored {}, width {} vs {}, baseline {} vs {}",
+            px(ours.start),
+            px(stored.start),
+            px(ours.width),
+            px(stored.width),
+            px(ours.baseline),
+            px(stored.baseline)
+        ),
+        (Some(_), None) => "stored, but the scene has no such line".into(),
+        (None, _) => "the scene's, but not stored".into(),
+    }
+}
+
+/// `value` pixels to two decimals.
+fn px(value: f64) -> String {
+    match value.is_finite() {
+        true => format!("{value:.2}"),
+        false => "a whole line".into(),
+    }
 }

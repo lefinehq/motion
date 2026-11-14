@@ -73,6 +73,7 @@ impl Walk<'_> {
     /// Writes `document` into `out`.
     fn write_document(&mut self, document: &TextDocument, out: &mut Out, place: &Place<'_>) {
         out.keys.insert("text".into(), json!(document.text));
+        out.lines = Some(document.lines.clone());
         let Some(base) = document.characters.first().map(|run| &run.style) else {
             return;
         };

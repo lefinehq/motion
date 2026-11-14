@@ -13,6 +13,7 @@
 //! ```
 
 mod diff;
+mod geometry;
 mod import;
 mod render;
 mod session;
@@ -24,11 +25,12 @@ pub mod telemetry;
 mod test_support;
 
 pub use diff::{Diff, DiffOptions, Error as DiffError, FrameDiff, Pooled};
+pub use geometry::{LineCheck, LineGeometry, TEXT_TOLERANCE, TextCheck, TextGeometry};
 pub use import::{import, import_scene};
 pub use session::Session;
 
 pub use motion_format::{Diagnostic, Document, Kind, Result, Scene, write_document};
-pub use motion_import::map::{Import, Mapping, Options as ImportOptions};
+pub use motion_import::map::{Import, Mapping, Options as ImportOptions, StoredText};
 pub use motion_import::{Project, Report as ImportReport};
 pub use motion_query::Report;
 pub use motion_raster::{Frame, Image, Quality, RenderOptions, Simd};

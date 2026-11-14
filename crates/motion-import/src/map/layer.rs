@@ -7,11 +7,11 @@ use std::collections::HashMap;
 use motion_format::property::LAYER;
 use serde_json::{Value as Json, json};
 
-use super::Walk;
 use super::items::{Out, Place, Sink};
 use super::keys::{Clock, num};
 use super::report::Fate;
 use super::rows::{LAYER_ROOT, TRANSFORM};
+use super::{StoredText, Walk};
 use crate::model::{
     BlendMode, Child, Composition, Footage, Group, Item, ItemKind, Layer, LayerKind, Property,
     Source, TrackMatte,
@@ -107,6 +107,13 @@ impl<'p> Walk<'p> {
         self.rows(&root, &LAYER_ROOT, sink, &mut out, &place);
         self.switches(layer, ids, &mut out, &place);
         self.timing(layer, composition, &mut out);
+        if let Some(lines) = out.lines.take() {
+            self.texts.push(StoredText {
+                comp: self.scope.clone(),
+                layer: ids[&layer.id].clone(),
+                lines,
+            });
+        }
         Json::Object(out.finish())
     }
 

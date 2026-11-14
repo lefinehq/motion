@@ -26,8 +26,22 @@ Pooled over the 302 frames, where drawn: mean 0.026, 99th percentile 0.085. Over
 ## What the numbers show
 
 - **Motion in the first two seconds.** Over all drawn, most pixels fail until 2 s: the reference's elements arrive much sooner. Every move in the project runs through an `outExpo` expression from a common easing script, which the import reports and leaves out, playing the linear keys under it. This is the largest gap and the reason expressions come next.
-- **The settled layout.** From 3 s on, 4.3% of the drawn pixels fail. The error images put them on two things: a one-pixel fringe along the diagonal edges of the squares (anti-aliasing against the reference's chroma subsampling and compression), and a fringe on one side of every glyph of the title, which sits a few pixels off. The project's stored line widths are 5 to 15 px wider than ours, so the title's layout is the next measure (the text geometry check).
+- **The settled layout.** From 3 s on, 4.3% of the drawn pixels fail. The error images put them on two things: a one-pixel fringe along the diagonal edges of the squares (anti-aliasing against the reference's chroma subsampling and compression), and a fringe on one side of every glyph of the title, which sits a few pixels off. The text geometry check below finds the cause.
 - **The hashtag reveal.** The hashtag shows from its first frame, where the reference reveals it through an inverted alpha matte; mattes are not supported yet.
+
+## Text geometry
+
+`motion import` now holds every imported text layer, laid out by the scene, against the lines the project stored for it: each line's start, baseline, width and character count, within 0.25 px.
+
+| Text | Font | Style | Off by | Our width / stored |
+|---|---|---|---|---|
+| `#mixkit` | Lato Bold 44 | | 0.00 px | 147.57 / 147.57 |
+| `Learn More` | Lato Bold 44 | | 0.00 px | 224.90 / 224.90 |
+| `Keep` / `your life` / `simple` | Lato Black 55 | faux bold, all caps | 7.48 px | 135.85 / 141.26, 276.24 / 291.19, 194.07 / 204.65 |
+
+Two texts match the stored layout exactly, kerning included; the title is 4 to 5.5% narrower on every line, so each centred line starts 2.7 to 7.5 px too far right. The reference agrees with the stored layout, not with ours: measured on frame 150, the title's ink is 138, 290 and 202 px wide there against our 133, 277 and 193. Its stems are also about 1 px thicker (10 against 9 px on the `I`).
+
+What makes the difference is faux bold. The glyph ids and the font version (Lato 2.015) are the same on both sides, the style has no tracking or scaling, and all caps alone does not widen a line: a second sample sets Lato Black in all caps without faux bold, and its 80 px line matches within 0.02 px (its 300 and 722 px lines are 0.5 to 0.6% narrow, a smaller gap still to explain). The scene carries `faux-bold`, but the typesetter and the renderer ignore it: no glyph is emboldened and no advance grows. In the reference, faux bold adds 1.35 to 1.9 px to each glyph's advance at 55 px (2.5 to 3.4% of the em) and about 1 px to each stem. One sample does not pin down the rule, so faux bold is the next fix, measured by this check.
 
 ## Reading a reference correctly
 

@@ -12,7 +12,9 @@ use std::collections::{BTreeMap, HashMap};
 use motion_format::{Diagnostic, Document, Kind, Result, parse_document};
 use serde_json::{Map, Value as Json, json};
 
-use crate::model::{Composition, Item, ItemKind, Project};
+use serde::Serialize;
+
+use crate::model::{ComposedLine, Composition, Item, ItemKind, Project};
 
 mod ids;
 mod items;
@@ -47,6 +49,20 @@ pub struct Import {
     pub document: Document,
     /// What was mapped, defaulted, ignored or not supported.
     pub mapping: Mapping,
+    /// The layout the project stored for each text layer it wrote, to hold
+    /// the scene's own layout against.
+    pub texts: Vec<StoredText>,
+}
+
+/// The lines a project laid one text layer out in, at its first text.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct StoredText {
+    /// The scene composition holding the layer, or none for the scene's own.
+    pub comp: Option<String>,
+    /// The layer's id in the scene.
+    pub layer: String,
+    /// Its lines, in the layer's coordinates.
+    pub lines: Vec<ComposedLine>,
 }
 
 /// Imports `project` as a scene.
@@ -69,6 +85,7 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
         json,
         document,
         mapping: walk.mapping,
+        texts: walk.texts,
     })
 }
 
@@ -134,6 +151,11 @@ struct Walk<'p> {
     pending: Vec<u32>,
     /// The report.
     mapping: Mapping,
+    /// The scene composition whose layers are being written, or none for
+    /// the scene's own.
+    scope: Option<String>,
+    /// The stored layout of each text layer written so far.
+    texts: Vec<StoredText>,
 }
 
 impl<'p> Walk<'p> {
@@ -146,6 +168,8 @@ impl<'p> Walk<'p> {
             taken: Ids::default(),
             pending: Vec::new(),
             mapping: Mapping::default(),
+            scope: None,
+            texts: Vec::new(),
         }
     }
 
@@ -193,6 +217,7 @@ impl<'p> Walk<'p> {
             if composition.frame_rate != root.frame_rate {
                 comp.insert("fps".into(), num(composition.frame_rate));
             }
+            self.scope = Some(self.comp_ids[&id].clone());
             comp.insert("layers".into(), Json::Array(self.layers(composition, name)));
             comps.insert(self.comp_ids[&id].clone(), Json::Object(comp));
         }

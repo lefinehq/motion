@@ -84,3 +84,31 @@ fn every_fixture_imports_as_its_snapshot() {
         insta::assert_snapshot!(name, format!("{scene}\n{}", import.mapping));
     }
 }
+
+#[test]
+fn every_stored_text_names_a_text_layer_of_its_scope() {
+    let mut texts = 0;
+    for (name, project) in fixtures() {
+        for comp in compositions(&project) {
+            let options = Options {
+                comp: Some(comp.clone()),
+                fonts: Vec::new(),
+            };
+            let import = import(&project, &options).expect("the composition imports");
+            for text in &import.texts {
+                let layers = match &text.comp {
+                    None => &import.json["layers"],
+                    Some(id) => &import.json["comps"][id]["layers"],
+                };
+                let layer = layers
+                    .as_array()
+                    .and_then(|layers| layers.iter().find(|l| l["id"] == text.layer.as_str()))
+                    .unwrap_or_else(|| panic!("{name}/{comp}: no layer for {text:?}"));
+                assert!(layer["text"].is_string(), "{name}/{comp}: {}", text.layer);
+                assert!(!text.lines.is_empty(), "{name}/{comp}: {}", text.layer);
+                texts += 1;
+            }
+        }
+    }
+    assert!(texts >= 2, "only {texts} texts stored");
+}
