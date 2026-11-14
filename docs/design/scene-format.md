@@ -271,6 +271,28 @@ The layer's box is the box its lines cover, which for point text starts above an
 | `space-after` | paragraph | a number of px |
 | `auto-leading` | paragraph | a number, at least 0 |
 
+### Text animators
+
+`animate` on a text layer lists animators. An animator's key holds its selectors, and its other keys are what it applies: each part of the text takes those values scaled by how much the selectors choose it. An animator applies only the properties it sets or animates.
+
+```json
+"animate":[{"animator":[{"range":"line","anim":{"offset":[{"t":"0.48s","v":0},{"t":"2.76s","v":1,"curve":"ease-out"}]}}],"position":[0,75],"opacity":0}]
+```
+
+Above, every line starts 75 px low and invisible. As `offset` moves the range off the lines, from the first line to the last, each line rises and fades in.
+
+- **Selectors.** `range` counts characters (`char`), characters other than spaces (`char-no-space`), `word`s or `line`s; its key holds which. `start`, `end` and `offset` are fractions of the parts, from 0 (before the first) to 1 (after the last). `amount` scales the choice, and a negative amount reverses the animator. With the `square` shape, a part is chosen by how much of it the range covers, and `smooth` 0 makes that all or nothing, decided by the part's middle. The other shapes are read at each part's middle: `ramp-up` rises across the range and stays chosen after it, `ramp-down` is the reverse, and `triangle`, `round` and `smooth` rise and fall inside it. `mode` combines a selector with the ones before it.
+- **What applies.** `position` and `rotate` add. `scale` and `opacity` move from 1 toward the animator's value. `fill`, `stroke` and `stroke-width` move from the part's own toward the animator's. `tracking` adds space after each chosen part, and the parts after it on its line move along, keeping the line's alignment.
+- **Each part's anchor** is the middle of its baseline, moved by the animator's `anchor`; parts scale and turn about it.
+
+| Animator | Key holds | Properties | Settings |
+|---|---|---|---|
+| `animator` | its items | `position`, `anchor`, `scale`, `rotate`, `opacity`, `fill`, `stroke`, `stroke-width`, `tracking` | |
+
+| Selector | Key holds | Properties | Settings |
+|---|---|---|---|
+| `range` | `by` | `start`, `end`, `offset`, `amount`, `smooth` | `shape`: `square`, `ramp-up`, `ramp-down`, `triangle`, `round`, `smooth`; `mode`: `add`, `subtract`, `intersect`, `min`, `max`, `difference` |
+
 ## Text motion
 
 Text can be animated one character, one word or one line at a time:

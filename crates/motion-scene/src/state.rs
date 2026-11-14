@@ -8,6 +8,7 @@ use std::sync::Arc;
 use motion_format::shorthand::RectShape;
 use motion_format::{Path, Value};
 
+use crate::animate::GlyphState;
 use crate::shape::ShapeDraw;
 use crate::text::TextNode;
 
@@ -41,8 +42,15 @@ pub struct NodeState {
 /// What a node draws at one frame.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ContentState {
-    /// Text, set; it does not change from frame to frame.
-    Text(Arc<TextNode>),
+    /// Text: its layout, which does not change from frame to frame, and
+    /// each glyph's state in the layout's run order, empty when no animator
+    /// moves it.
+    Text {
+        /// The words, their style and their layout.
+        text: Arc<TextNode>,
+        /// One per glyph under the animators, or none without them.
+        glyphs: Vec<GlyphState>,
+    },
     /// A rectangle the size of the node's box.
     Rect(RectShape),
     /// Paints and the outlines they cover, back to front.

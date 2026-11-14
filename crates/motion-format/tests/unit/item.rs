@@ -5,7 +5,7 @@ use crate::table::names;
 
 #[test]
 fn kind_names_are_unique_in_each_table() {
-    for kinds in [&SHAPES[..], &EFFECTS[..]] {
+    for kinds in [&SHAPES[..], &EFFECTS[..], &ANIMATORS[..], &SELECTORS[..]] {
         let mut all: Vec<&str> = names(kinds).collect();
         let count = all.len();
         all.sort_unstable();
@@ -14,18 +14,30 @@ fn kind_names_are_unique_in_each_table() {
     }
 }
 
+/// Every kind of every table.
+fn all_kinds() -> impl Iterator<Item = &'static ItemKind> {
+    SHAPES
+        .iter()
+        .chain(&EFFECTS)
+        .chain(&ANIMATORS)
+        .chain(&SELECTORS)
+}
+
 #[test]
 fn every_kind_has_its_primary_settings_and_docs() {
-    for kind in SHAPES.iter().chain(&EFFECTS) {
+    for kind in all_kinds() {
         assert!(!kind.doc.is_empty(), "{}", kind.name);
         assert_eq!(
-            kind.primary.is_none(),
-            kind.role == Role::Group,
-            "only a group's key holds items: {}",
+            kind.items().is_some(),
+            matches!(kind.role, Role::Group | Role::Animator),
+            "only groups and animators hold items: {}",
             kind.name
         );
-        if let Some(prop) = kind.primary() {
+        if let Some(prop) = kind.primary_prop() {
             assert!(std::ptr::eq(prop.registry(), kind.registry));
+        }
+        if let Some(at) = kind.primary_setting() {
+            assert_eq!(Some(kind.settings[at].name), kind.primary_name());
         }
         for setting in kind.settings {
             assert!(
@@ -51,7 +63,7 @@ fn every_kind_has_its_primary_settings_and_docs() {
 
 #[test]
 fn every_registry_names_its_rows_once_and_rests_at_its_type() {
-    for kind in SHAPES.iter().chain(&EFFECTS) {
+    for kind in all_kinds() {
         let all: Vec<&str> = kind.registry.target_names().collect();
         let mut unique = all.clone();
         unique.sort_unstable();
@@ -85,6 +97,20 @@ fn the_constants_name_the_rows_code_reads() {
         (STROKE_MITER, "stroke", "miter"),
         (FILL_EFFECT_COLOR, "fill effect", "color"),
         (FILL_EFFECT_OPACITY, "fill effect", "opacity"),
+        (ANIMATOR_POSITION, "animator", "position"),
+        (ANIMATOR_ANCHOR, "animator", "anchor"),
+        (ANIMATOR_SCALE, "animator", "scale"),
+        (ANIMATOR_ROTATE, "animator", "rotate"),
+        (ANIMATOR_OPACITY, "animator", "opacity"),
+        (ANIMATOR_FILL, "animator", "fill"),
+        (ANIMATOR_STROKE, "animator", "stroke"),
+        (ANIMATOR_STROKE_WIDTH, "animator", "stroke-width"),
+        (ANIMATOR_TRACKING, "animator", "tracking"),
+        (RANGE_START, "range", "start"),
+        (RANGE_END, "range", "end"),
+        (RANGE_OFFSET, "range", "offset"),
+        (RANGE_AMOUNT, "range", "amount"),
+        (RANGE_SMOOTH, "range", "smooth"),
     ];
     for (prop, kind, name) in expected {
         assert_eq!((prop.registry().kind, prop.name()), (kind, name));
@@ -138,19 +164,25 @@ fn quoted(names: impl Iterator<Item = &'static str>) -> String {
 
 #[test]
 fn scene_format_doc_lists_every_kind_with_its_properties_and_settings() {
-    for (header, kinds) in [("| Item |", &SHAPES[..]), ("| Effect |", &EFFECTS[..])] {
+    for (header, kinds) in [
+        ("| Item |", &SHAPES[..]),
+        ("| Effect |", &EFFECTS[..]),
+        ("| Animator |", &ANIMATORS[..]),
+        ("| Selector |", &SELECTORS[..]),
+    ] {
         let rows = documented(header);
         assert_eq!(rows.len(), kinds.len(), "{header}");
         for (row, kind) in rows.iter().zip(kinds) {
             assert_eq!(row[0], format!("`{}`", kind.name));
             let holds = kind
-                .primary
+                .primary_name()
                 .map_or("its items".to_owned(), |p| format!("`{p}`"));
             assert_eq!(row[1], holds, "{}", kind.name);
             assert_eq!(row[2], quoted(kind.registry.names()), "{}", kind.name);
             let settings: Vec<String> = kind
                 .settings
                 .iter()
+                .filter(|s| Some(s.name) != kind.primary_name())
                 .map(|s| format!("`{}`: {}", s.name, quoted(s.choices.iter().copied())))
                 .collect();
             assert_eq!(row[3], settings.join("; "), "{}", kind.name);

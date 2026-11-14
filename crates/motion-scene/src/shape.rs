@@ -96,7 +96,7 @@ fn group_draws(items: &[ItemState], transform: Affine, opacity: f64, out: &mut V
                 transform,
                 opacity,
             }),
-            Role::Paint | Role::Effect => {}
+            Role::Paint | Role::Effect | Role::Animator | Role::Selector => {}
         }
     }
 }
@@ -108,7 +108,7 @@ fn geometry(items: &[ItemState]) -> BezPath {
         match item.kind.role {
             Role::Geometry => all.extend(outline(item).expect("a geometry item")),
             Role::Group => all.extend(group_transform(item).0 * geometry(&item.items)),
-            Role::Paint | Role::Effect => {}
+            Role::Paint | Role::Effect | Role::Animator | Role::Selector => {}
         }
     }
     all

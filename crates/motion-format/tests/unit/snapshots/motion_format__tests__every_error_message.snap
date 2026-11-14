@@ -48,7 +48,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","in":"zoom"}` → layers[0].in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in
 `{"id":"a","rect":"1x1","anim":null}` → layers[0].anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
 `{"id":"a","rect":"1x1","anim":[]}` → layers[0].anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
-`{"id":"a","rect":"1x1","x":1}` → layers[0].x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, pivot, font, fill, style, runs, paragraphs, box, at, in, anim, parent, span, offset, stretch, fx, hidden, anchor, scale, rotate, opacity
+`{"id":"a","rect":"1x1","x":1}` → layers[0].x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, anchor, scale, rotate, opacity
 `{"id":"a","rect":"1x1","position":[1,2]}` → layers[0].position: `position` rests where `at` puts it; expected e.g. "at":"540 960", or animate it in `anim`
 `{"id":"a","rect":"1x1","rotate":"x"}` → layers[0].rotate: `x` is not a number; expected a number, e.g. `0.5`
 `{"id":"a","rect":"1x1","scale":[1,2,3]}` → layers[0].scale: 3 numbers do not make a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
@@ -181,7 +181,7 @@ expression: "report.join(\"\\n\\n\")"
 `{}` → layers[0].shapes[0]: needs the key of its kind; expected one kind key: `group`, `rect`, `ellipse`, `path`, `fill`, `stroke`
 `{"round":3}` → layers[0].shapes[0]: needs the key of its kind; expected one kind key: `group`, `rect`, `ellipse`, `path`, `fill`, `stroke`
 `{"rect":[1,1],"fill":"#fff"}` → layers[0].shapes[0].fill: `rect` and `fill` are both kinds; an item has one; expected one kind key: `group`, `rect`, `ellipse`, `path`, `fill`, `stroke`
-`{"rect":[1,1],"size":[2,2]}` → layers[0].shapes[0].size: `size` is the value `rect` holds; expected the size only as the value of `rect`
+`{"rect":[1,1],"size":[2,2]}` → layers[0].shapes[0].size: `size` is the value `rect` holds; expected `size` written as the value of `rect`
 `{"rect":[1,1],"colour":1}` → layers[0].shapes[0].colour: unknown rect key `colour`; expected one of rect, id, hidden, anim, position, round
 `{"rect":[-1,1]}` → layers[0].shapes[0].rect: value -1 is outside 0..; expected a number of at least 0
 `{"rect":"wide"}` → layers[0].shapes[0].rect: `wide` is not a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
@@ -227,6 +227,19 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","text":"x","paragraphs":[{"align":"middle"}]}` → layers[0].paragraphs[0].align: unknown alignment `middle`; expected one of left, right, center, justify-left, justify-right, justify-center, justify-all
 `{"id":"a","text":"x","box":[0,10]}` → layers[0].box: a box is a width and a height above zero; expected `[width, height]` in px, both above zero, e.g. `[600, 300]`
 `{"id":"a","text":"x","box":"wide"}` → layers[0].box: a box is a width and a height above zero; expected `[width, height]` in px, both above zero, e.g. `[600, 300]`
+
+## animators
+`{"id":"a","rect":"1x1","animate":[]}` → layers[0].animate: `animate` only applies to `text` layers; expected `animate` only next to `text`
+`{"id":"a","text":"x","animate":[{"range":"char"}]}` → layers[0].animate[0]: needs the key of its kind; expected one kind key: `animator`
+`{"id":"a","text":"x","animate":[{"animator":{}}]}` → layers[0].animate[0].animator: invalid type: map; expected a list of item objects, e.g. [{"rect":[300,100]},{"fill":"#FFE000"}]
+`{"id":"a","text":"x","animate":[{"animator":[{"rect":[1,1]}]}]}` → layers[0].animate[0].animator[0]: needs the key of its kind; expected one kind key: `range`
+`{"id":"a","text":"x","animate":[{"animator":[{"range":"sentence"}]}]}` → layers[0].animate[0].animator[0].range: unknown range by `sentence`; expected one of char, char-no-space, word, line
+`{"id":"a","text":"x","animate":[{"animator":[{"range":"char","by":"word"}]}]}` → layers[0].animate[0].animator[0].by: `by` is the value `range` holds; expected `by` written as the value of `range`
+`{"id":"a","text":"x","animate":[{"animator":[{"range":"char","offset":2}]}]}` → layers[0].animate[0].animator[0].offset: value 2 is outside -1..=1; expected a number from -1 to 1
+`{"id":"a","text":"x","animate":[{"animator":[{"range":"char","shape":"wave"}]}]}` → layers[0].animate[0].animator[0].shape: unknown range shape `wave`; expected one of square, ramp-up, ramp-down, triangle, round, smooth
+`{"id":"a","text":"x","animate":[{"animator":[],"y":3}]}` → layers[0].animate[0].y: unknown animator key `y`; expected one of animator, id, hidden, anim, position, anchor, scale, rotate, opacity, fill, stroke, stroke-width, tracking
+`{"id":"a","text":"x","animate":[{"animator":[],"opacity":2}]}` → layers[0].animate[0].opacity: value 2 is outside 0..=1; expected a number from 0 to 1
+`{"id":"a","text":"x","animate":[{"animator":[],"anim":{"glow":"0 -> 1 @0-5f"}}]}` → layers[0].animate[0].anim.glow: unknown animator property `glow`; expected one of position, anchor, scale, rotate, opacity, fill, stroke, stroke-width, tracking, x, y, anchor-x, anchor-y, scale-x, scale-y
 
 ## fonts
 `{"motion":1,"dur":"1s","fonts":"fonts","layers":[]}` → fonts: invalid type: string "fonts"; expected a list of font files and folders, e.g. ["fonts/lato"]

@@ -7,6 +7,7 @@ use std::ops::Range;
 use serde_json::Value as Json;
 
 use crate::doc::{Number, Shorthand, ValueDoc};
+use crate::item::Item;
 use crate::shorthand::Font;
 use crate::table::{self, Named};
 use crate::value::{Value, ValueType};
@@ -25,6 +26,8 @@ pub struct TextContent {
     pub paragraphs: Vec<ParagraphStyle>,
     /// Box text's `[width, height]`, or `None` for point text.
     pub frame: Option<[f64; 2]>,
+    /// Its animators, applied in order.
+    pub animators: Vec<Item>,
 }
 
 impl TextContent {

@@ -1,6 +1,7 @@
 //! Steps 2 and 3: [`compile`] a [`motion_format::Scene`] into a [`SceneGraph`] in pixels
 //! and frames, then [`evaluate`] it at any frame without drawing.
 
+mod animate;
 mod compile;
 mod curve;
 mod evaluate;
@@ -10,6 +11,7 @@ mod state;
 mod text;
 mod track;
 
+pub use animate::{GlyphParts, GlyphState, Parts};
 pub use compile::compile;
 pub use curve::Ease;
 pub use evaluate::{evaluate, evaluate_comp, local_transform};
