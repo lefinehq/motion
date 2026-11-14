@@ -14,6 +14,8 @@
       "all": {
         "from": 0.0,
         "frames": 302,
+        "content_error": 0.3449,
+        "content_failing": 0.956004,
         "drawn_error": 0.3449,
         "drawn_failing": 0.956004,
         "union_error": 0.391816,
@@ -22,6 +24,8 @@
       "settled": {
         "from": 3.0,
         "frames": 122,
+        "content_error": 0.338053,
+        "content_failing": 0.934282,
         "drawn_error": 0.338053,
         "drawn_failing": 0.934282,
         "union_error": 0.380514,
@@ -42,6 +46,8 @@
       "all": {
         "from": 0.0,
         "frames": 900,
+        "content_error": 0.43035,
+        "content_failing": 1.0,
         "drawn_error": 0.43035,
         "drawn_failing": 1.0,
         "union_error": 0.43035,
@@ -50,6 +56,8 @@
       "settled": {
         "from": 3.0,
         "frames": 720,
+        "content_error": 0.430411,
+        "content_failing": 1.0,
         "drawn_error": 0.430411,
         "drawn_failing": 1.0,
         "union_error": 0.430411,
@@ -66,6 +74,8 @@
       "all": {
         "from": 0.0,
         "frames": 299,
+        "content_error": 0.562379,
+        "content_failing": 0.892001,
         "drawn_error": 0.562379,
         "drawn_failing": 0.892001,
         "union_error": 0.753563,
@@ -74,6 +84,8 @@
       "settled": {
         "from": 3.0,
         "frames": 119,
+        "content_error": 0.830724,
+        "content_failing": 0.976091,
         "drawn_error": 0.830724,
         "drawn_failing": 0.976091,
         "union_error": 0.703031,
@@ -90,6 +102,8 @@
       "all": {
         "from": 0.0,
         "frames": 302,
+        "content_error": 0.018747,
+        "content_failing": 0.047634,
         "drawn_error": 0.018747,
         "drawn_failing": 0.047634,
         "union_error": 0.174344,
@@ -98,6 +112,8 @@
       "settled": {
         "from": 3.0,
         "frames": 122,
+        "content_error": 0.009655,
+        "content_failing": 0.035966,
         "drawn_error": 0.009655,
         "drawn_failing": 0.035966,
         "union_error": 0.009655,
