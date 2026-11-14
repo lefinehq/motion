@@ -12,7 +12,7 @@ use motion_engine::telemetry::timing::{REPORT_TARGET, Timings, millis};
 use motion_engine::telemetry::{Format, LevelFilter, Options};
 use tracing::info;
 
-/// Check, query and edit motion scenes.
+/// Check, query and edit motion scenes, and inspect `.aep` projects.
 #[derive(Parser)]
 #[command(name = "motion", version)]
 struct Cli {
@@ -76,6 +76,15 @@ enum Command {
         /// A layer id (or `scene`) followed by `key=value` pairs.
         line: String,
     },
+    /// Print an `.aep` project: its items, layers and properties, then what
+    /// the reader could not decode yet.
+    Inspect {
+        /// Path to the `.aep` file.
+        project: PathBuf,
+        /// Print the model and the report as JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 impl Command {
@@ -85,15 +94,17 @@ impl Command {
             Command::Check { .. } => "check",
             Command::At { .. } => "at",
             Command::Edit { .. } => "edit",
+            Command::Inspect { .. } => "inspect",
         }
     }
 
-    /// The scene file the command works on.
-    fn scene(&self) -> &Path {
+    /// The file the command works on.
+    fn file(&self) -> &Path {
         match self {
             Command::Check { scene } | Command::At { scene, .. } | Command::Edit { scene, .. } => {
                 scene
             }
+            Command::Inspect { project, .. } => project,
         }
     }
 }
@@ -108,13 +119,14 @@ fn main() -> ExitCode {
     });
     info!(
         command = cli.command.name(),
-        file = %cli.command.scene().display(),
+        file = %cli.command.file().display(),
         "running"
     );
     let result = match cli.command {
         Command::Check { scene } => commands::check::run(&scene),
         Command::At { scene, time, ids } => commands::at::run(&scene, &time, &ids),
         Command::Edit { scene, line } => commands::edit::run(&scene, &line),
+        Command::Inspect { project, json } => commands::inspect::run(&project, json),
     };
     let code = match result {
         Ok(code) => code,

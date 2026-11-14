@@ -1,5 +1,6 @@
 //! The one entry point to the motion pipeline. A [`Session`] reads, compiles,
-//! queries and edits a scene, running every step in a `tracing` span.
+//! queries and edits a scene, and [`import`] reads an `.aep` project, running
+//! every step in a `tracing` span.
 //!
 //! ```
 //! use motion_engine::Session;
@@ -11,6 +12,7 @@
 //! assert!(report.has_errors());
 //! ```
 
+mod import;
 mod session;
 mod stage;
 pub mod telemetry;
@@ -19,8 +21,10 @@ pub mod telemetry;
 #[path = "../tests/unit/support.rs"]
 mod test_support;
 
+pub use import::import;
 pub use session::Session;
 
 pub use motion_format::{Diagnostic, Document, Kind, Result, Scene};
+pub use motion_import::{Project, Report as ImportReport};
 pub use motion_query::Report;
 pub use motion_scene::{FrameState, SceneGraph};

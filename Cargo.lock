@@ -399,6 +399,7 @@ dependencies = [
  "clap",
  "motion-engine",
  "motion-format",
+ "serde",
  "serde_json",
  "tracing",
 ]
@@ -421,6 +422,7 @@ version = "0.0.0"
 dependencies = [
  "motion-edit",
  "motion-format",
+ "motion-import",
  "motion-query",
  "motion-scene",
  "serde_json",

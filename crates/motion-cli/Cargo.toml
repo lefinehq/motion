@@ -1,6 +1,6 @@
 [package]
 name = "motion-cli"
-description = "The `motion` command-line tool: check, query and edit motion scenes."
+description = "The `motion` command-line tool: check, query and edit motion scenes, and inspect `.aep` projects."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,11 +15,12 @@ path = "src/main.rs"
 [dependencies]
 motion-engine = { path = "../motion-engine" }
 clap = { workspace = true }
+serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
 motion-format = { path = "../motion-format" }
-serde_json = { workspace = true }
 
 [lints]
 workspace = true
