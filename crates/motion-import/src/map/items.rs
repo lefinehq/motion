@@ -143,9 +143,12 @@ impl Walk<'_> {
         if property.hidden {
             return self.mapping.ignore(name, NOT_APPLYING);
         }
-        if property.expression.as_ref().is_some_and(|e| e.enabled) {
-            self.mapping
-                .unsupported(&place.at, "expressions (the keys under them are kept)");
+        let baked = self.evaluated(property, place);
+        if baked.is_some() && !matches!(row.to, To::Prop(_)) {
+            self.mapping.unsupported(
+                &place.at,
+                "an expression on a property the scene does not animate (its value is kept)",
+            );
         }
         match row.to {
             To::Ignore(why) => self.mapping.ignore(name, why),
@@ -165,23 +168,19 @@ impl Walk<'_> {
                     .registry
                     .target(target)
                     .filter(|t| t.component.is_some());
-                match written(&property.value, row.convert, spatial, place.clock) {
-                    Some(Written::Value(value)) => match component {
-                        Some(component) => out.set_component(component, value),
-                        None => {
-                            out.keys.insert(target.into(), value);
+                if let Some(bake) = baked {
+                    let found = sink.registry.target(target);
+                    if let Some(tracks) =
+                        self.baked_tracks(bake, property, (target, found), row.convert, place)
+                    {
+                        for track in tracks {
+                            insert(out, sink, &track.name, track.component, track.written);
                         }
-                    },
-                    Some(Written::Track { keys, first }) => {
-                        out.anim.insert(target.into(), keys);
-                        match component {
-                            Some(component) => out.set_component(component, first),
-                            None if primary_property(sink.kind) == Some(target) => {
-                                out.keys.insert(target.into(), first);
-                            }
-                            None => {}
-                        }
+                        return self.mapping.count(name, Fate::Mapped);
                     }
+                }
+                match written(&property.value, row.convert, spatial, place.clock) {
+                    Some(written) => insert(out, sink, target, component, written),
                     None => {
                         self.mapping.count(name, Fate::Unsupported);
                         return self
@@ -402,6 +401,30 @@ impl Walk<'_> {
             Some(Policy::Through) | None => {
                 self.mapping.count(name, Fate::Unsupported);
                 self.mapping.unsupported(&place.at, format!("`{name}`"));
+            }
+        }
+    }
+}
+
+/// Puts a track for `name` into `out`, with the resting value its first key
+/// gives where the scene needs one: a component's, or a kind's primary
+/// property's.
+fn insert(out: &mut Out, sink: Sink, name: &str, component: Option<Target>, written: Written) {
+    match written {
+        Written::Value(value) => match component {
+            Some(component) => out.set_component(component, value),
+            None => {
+                out.keys.insert(name.into(), value);
+            }
+        },
+        Written::Track { keys, first } => {
+            out.anim.insert(name.into(), keys);
+            match component {
+                Some(component) => out.set_component(component, first),
+                None if primary_property(sink.kind) == Some(name) => {
+                    out.keys.insert(name.into(), first);
+                }
+                None => {}
             }
         }
     }

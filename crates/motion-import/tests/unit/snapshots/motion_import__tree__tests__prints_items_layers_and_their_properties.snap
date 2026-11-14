@@ -2,7 +2,7 @@
 source: crates/motion-import/src/../tests/unit/tree.rs
 expression: sample_project().to_string()
 ---
-project 94.9, 8 bits per channel
+project 94.9, 8 bits per channel, expressions in javascript-1.0
 folder 1 "Scenes"
   composition 2 "Main" 1920x1080, 29.97 fps, 4s, work area 0s-4s
     layer 10 "Title" text, 0s-4s, parent 11, 3d

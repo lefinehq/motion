@@ -42,10 +42,11 @@ impl Walk<'_> {
 
     /// The document of a Source Text property.
     fn document(&mut self, property: &Property, out: &mut Out, place: &Place<'_>) {
+        let baked = self.evaluated(property, place);
         let document = match &property.value {
             Stream::Static(Value::Text(document)) => Some(document),
             Stream::Animated(keys) => {
-                if keys.len() > 1 {
+                if keys.len() > 1 && baked.is_none() {
                     self.mapping
                         .unsupported(&place.at, "keyframed source text (its first text is kept)");
                 }
@@ -56,10 +57,6 @@ impl Walk<'_> {
             }
             Stream::Static(_) => None,
         };
-        if property.expression.as_ref().is_some_and(|e| e.enabled) {
-            self.mapping
-                .unsupported(&place.at, "expressions (the keys under them are kept)");
-        }
         let Some(document) = document else {
             self.mapping.count(DOCUMENT, Fate::Unsupported);
             return self
@@ -67,7 +64,8 @@ impl Walk<'_> {
                 .unsupported(&place.at, "a text document it could not read");
         };
         self.mapping.count(DOCUMENT, Fate::Mapped);
-        self.write_document(document, out, place);
+        let set = baked.and_then(|bake| self.baked_document(bake, document, property, place));
+        self.write_document(set.as_ref().unwrap_or(document), out, place);
     }
 
     /// Writes `document` into `out`.

@@ -114,3 +114,30 @@ It evaluates expressions and fits samples, and knows nothing about `.aep` files.
   | A steep exponential ease-out, 31 frames, within 0.05 / 0.1 / 0.25 / 0.5 px | 16 / 14 / 11 / 8 |
 
   Exponential starts are the hard case for cubics whose ends sit on samples. Letting key values move off the samples is the known improvement, if the key counts matter.
+
+## Step 2, as built
+
+- **The project as the host.** Every comp, layer, group and property is a node. An effect lists its parameters as its definition does, so those the project leaves at their default are there by index and by name. A layer's scale and opacity read in percent, as the file keeps fractions. Nodes own their data: the engine keeps its host for as long as it lives.
+- **Keys as the project means them** (`eval.rs`): holds, linear sides, speeds and influences per dimension, and spatial keys along their path at the speed of the one ease. It reads keys as the map writes them, so a baked expression sees what the scene draws.
+- **Order.** A read of a property with an expression waits. The bake evaluates that one at the time asked, remembers it, and runs the first again. Cycles, and chains deeper than 64, are reported.
+- **Frames.** A property is evaluated at the frames its layer shows, within the span of its comp the scene shows. A precomp an hour long that the scene shows for 30 seconds is evaluated for those 30, through each precomp layer's start and stretch. A layer that remaps time shows any of its comp.
+- **Keys.** A value's components share their key times; a position that moves along a path is written one component at a time. A constant becomes a still value. Tolerance: a hundredth of the unit the expression sees, a thousandth for colours.
+- **Not baked yet:** reversed layers, paths, and source text that changes over time (its first frame's text is kept). Each is reported with its reason.
+
+| Sample | Expressions | Keys before → after | Import |
+|---|---|---|---|
+| s740 | 10 of 10 baked | 11 → 88 | under 1 s |
+| s737 | 15 of 15 baked | 19 → 185 | under 1 s |
+| s611 | 6 of 6 baked (was: none, the precomps are an hour long) | 0 → 2 | under 1 s |
+
+The ledger, before → after:
+
+| Sample | Frames | Content error | Failing |
+|---|---|---|---|
+| s737 | settled | 0.8307 → 0.0262 | 97.6% → 11.3% |
+| s737 | all | 0.5624 → 0.2138 | 89.2% → 36.3% |
+| s740 | all, over all drawn | 0.1743 → 0.0518 | 29.5% → 11.9% |
+| s553 | all | 0.3449 → 0.3312 | 95.6% → 94.2% |
+| s611 | all | 0.4304 → 0.7037 | 100% → 99.6% |
+
+s611 is worse for a reason outside expressions: its colours now come from its settings layer, as in the reference (near white), and the audio spectrum effect, which is not supported, draws its whole solid in that colour. Before, the solid drew in the fill's own red.

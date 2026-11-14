@@ -53,6 +53,7 @@ All notable changes to this project are documented here. The format is based on 
 - The import draws still footage: it looks for each footage file where the project stored it, then by name under the project's folder, and writes the pictures it finds as image layers. Footage it cannot find, video, image sequences and audio are reported with why. `motion_engine::import_scene` takes where the scene will be saved, so footage paths are relative to it.
 
 - `motion-expr`: expressions compile once and run at any time over a host (comps, layers, properties, keys), with the language's array arithmetic, interpolation, loops, vector and colour functions, the legacy engine's forms, deterministic maths and randomness, and a fitter that turns per-frame samples into a few keys within a tolerance. Every distinct expression of the local corpus compiles (D38).
+- `motion import` bakes expressions (D38): each one switched on is evaluated at every frame its layer shows, where the scene shows its comp, over the project read as the language sees it (comps, layers, groups, properties, effect parameters at their default, a layer's scale and opacity in percent), with the expressions it reads evaluated first. The samples are fitted into keys that replace those under it; a constant becomes a still value, source text sets the text. The report says, per expression, its engine, frames, keys before and after and largest error, or why it was not baked. Projects now record their expression engine (`ExEn`).
 
 ### Changed
 

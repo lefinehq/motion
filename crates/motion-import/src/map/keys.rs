@@ -32,6 +32,15 @@ impl Convert {
         }
     }
 
+    /// How one component of a value of this kind becomes a scene number.
+    pub(super) fn component(self) -> Convert {
+        match self {
+            Convert::Point => Convert::Number,
+            Convert::PointPercent => Convert::Percent,
+            other => other,
+        }
+    }
+
     /// How many components the scene value has, for eases per component.
     fn dims(self) -> usize {
         match self {
@@ -246,6 +255,72 @@ fn bend(key: &Keyframe, next: &Keyframe) -> Option<Json> {
     let zero = |[x, y]: [f64; 2]| round(x) == 0.0 && round(y) == 0.0;
     (!zero(out) || !zero(arrive))
         .then(|| json!([[num(out[0]), num(out[1])], [num(arrive[0]), num(arrive[1])]]))
+}
+
+/// How far a fitted key's handles reach into its span, which makes the
+/// scene's cubic in time the fitter's Hermite curve.
+const FITTED_REACH: f64 = 1.0 / 3.0;
+
+/// Channels fitted with shared key times as a scene track. `template` is a
+/// value of the property's kind, which each key's numbers fill; slopes are
+/// per composition second and become speeds per second of the layer's own
+/// time. Each scene component gets the curve of its channel: a point's
+/// first two, a colour's four, a number's one.
+pub(super) fn fitted(
+    channels: &[motion_expr::fit::Fitted],
+    template: &Value,
+    convert: Convert,
+    clock: Clock,
+) -> Option<Written> {
+    let count = channels.first()?.keys.len();
+    let factor = convert.factor() * clock.stretch;
+    let scene_dims = match template {
+        Value::Color(_) => 4,
+        _ => convert.dims(),
+    };
+    let mut written = Vec::with_capacity(count);
+    let mut first = None;
+    for k in 0..count {
+        let numbers: Vec<f64> = channels.iter().map(|c| c.keys[k].value).collect();
+        let value = convert.value(&template.with_numbers(&numbers))?;
+        first.get_or_insert_with(|| value.clone());
+        let mut object = serde_json::Map::new();
+        object.insert(
+            "t".into(),
+            Json::String(clock.time(channels[0].keys[k].time)),
+        );
+        object.insert("v".into(), value);
+        if k + 1 < count {
+            let curve = match channels[0].keys[k].hold {
+                true => Json::String("hold".into()),
+                false => {
+                    let curves: Vec<String> = channels
+                        .iter()
+                        .take(scene_dims)
+                        .map(|c| {
+                            format!(
+                                "speed({},{},{},{})",
+                                text(c.keys[k].slope_out * factor),
+                                text(FITTED_REACH),
+                                text(c.keys[k + 1].slope_in * factor),
+                                text(FITTED_REACH)
+                            )
+                        })
+                        .collect();
+                    match curves.iter().all(|c| *c == curves[0]) {
+                        true => Json::String(curves[0].clone()),
+                        false => json!(curves),
+                    }
+                }
+            };
+            object.insert("curve".into(), curve);
+        }
+        written.push(Json::Object(object));
+    }
+    Some(Written::Track {
+        keys: Json::Array(written),
+        first: first?,
+    })
 }
 
 #[cfg(test)]

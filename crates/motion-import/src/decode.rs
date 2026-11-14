@@ -10,8 +10,8 @@ use std::collections::{BTreeMap, HashMap};
 use motion_format::{Diagnostic, Kind, Result};
 
 use crate::model::{
-    Color, Composition, EffectDefinition, Footage, Item, ItemKind, Layer, Project, Source, Span,
-    Switches, Version,
+    Color, Composition, EffectDefinition, ExpressionEngine, Footage, Item, ItemKind, Layer,
+    Project, Source, Span, Switches, Version,
 };
 use crate::record::{
     self, Alias, Cdta, Head, Idta, Ldta, Nhed, PlaceholderOpti, Ratio, Record, SolidOpti, Sspc,
@@ -39,6 +39,8 @@ const ALS2: Name = Name::list(b"Als2");
 const UTF8: Name = Name::chunk(b"Utf8");
 /// An importer's record, read as [`SolidOpti`] or [`PlaceholderOpti`].
 const OPTI: Name = Name::chunk(b"opti");
+/// The expression engine's name, in a `Utf8` child.
+const EXEN: Name = Name::list(b"ExEn");
 
 /// The path of the root list in diagnostics; the paths below it leave it out.
 const ROOT: &str = "RIFX";
@@ -65,6 +67,13 @@ pub fn decode(file: &[u8]) -> Result<Project> {
     let head: Head = scan.record()?;
     decoder.wrapped_text.set(head.major >= Head::WRAPPED_TEXT);
     let depth = scan.optional::<Nhed>()?.map(|nhed| nhed.depth);
+    // Files from before the choice of engine have no `ExEn` and use the legacy one.
+    let expression_engine = match scan.list(EXEN)? {
+        Some(mut exen) => exen.find(UTF8).map_or(ExpressionEngine::ExtendScript, |c| {
+            ExpressionEngine::named(&text(c.body))
+        }),
+        None => ExpressionEngine::ExtendScript,
+    };
     if let Some(efdg) = scan.list(effect::EFDG)? {
         decoder.effect_table(efdg)?;
     }
@@ -80,6 +89,7 @@ pub fn decode(file: &[u8]) -> Result<Project> {
         bits_per_channel: depth.and_then(|d| Nhed::BITS.get(usize::from(d)).copied()),
         items,
         effects: decoder.effects.into_inner(),
+        expression_engine,
         skipped: decoder.skipped.into_inner(),
     })
 }

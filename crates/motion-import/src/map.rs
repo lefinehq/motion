@@ -16,6 +16,7 @@ use serde::Serialize;
 
 use crate::model::{ComposedLine, Composition, Item, ItemKind, Project};
 
+mod expressions;
 mod fonts;
 mod footage;
 mod ids;
@@ -27,7 +28,7 @@ mod rows;
 mod text;
 
 pub use footage::{STILL_EXTENSIONS, file_name};
-pub use report::{Counts, Finding, Mapping, Named};
+pub use report::{Counts, ExpressionReport, Finding, Mapping, Named, Outcome};
 
 use ids::Ids;
 use keys::num;
@@ -83,7 +84,8 @@ pub struct StoredText {
 /// the import, when the scene it wrote is not a valid scene.
 pub fn import(project: &Project, options: &Options) -> Result<Import> {
     let root = root(project, options.comp.as_deref())?;
-    let mut walk = Walk::new(project, &options.footage);
+    let bakes = crate::bake::bake(project, Some(root.0.id));
+    let mut walk = Walk::new(project, &options.footage, &bakes);
     let json = walk.scene(root, options);
     let document = read_back(&json)?;
     Ok(Import {
@@ -185,11 +187,18 @@ struct Walk<'p> {
     fonts: BTreeMap<String, Vec<String>>,
     /// The footage files found, by the path the project stores.
     found: &'p BTreeMap<String, String>,
+    /// The project's expressions, evaluated.
+    bakes: &'p crate::bake::Bakes,
 }
 
 impl<'p> Walk<'p> {
-    /// A walk over `project`, with the footage files `found` for it.
-    fn new(project: &'p Project, found: &'p BTreeMap<String, String>) -> Walk<'p> {
+    /// A walk over `project`, with the footage files `found` for it and its
+    /// expressions evaluated.
+    fn new(
+        project: &'p Project,
+        found: &'p BTreeMap<String, String>,
+        bakes: &'p crate::bake::Bakes,
+    ) -> Walk<'p> {
         Walk {
             project,
             items: project.items.iter().map(|item| (item.id, item)).collect(),
@@ -201,6 +210,7 @@ impl<'p> Walk<'p> {
             texts: Vec::new(),
             fonts: BTreeMap::new(),
             found,
+            bakes,
         }
     }
 

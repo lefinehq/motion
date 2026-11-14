@@ -101,3 +101,31 @@ fn noise_stays_within_the_tolerance() {
         .collect();
     check(&t, &v, 0.2);
 }
+
+#[test]
+fn channels_share_their_key_times_and_keep_their_own_tolerance() {
+    let t = frames(2.0);
+    let x: Vec<f64> = t.iter().map(|t| 400.0 * (3.0 * t).sin()).collect();
+    let alpha: Vec<f64> = t.iter().map(|t| (t / 2.0).powi(3)).collect();
+    let still = vec![7.0; t.len()];
+    let fitted = fit_together(&t, &[&x, &alpha, &still], &[0.05, 0.001, 0.01]);
+    assert_eq!(fitted.len(), 3);
+    let times = |f: &Fitted| f.keys.iter().map(|k| k.time).collect::<Vec<_>>();
+    assert_eq!(times(&fitted[0]), times(&fitted[1]));
+    assert_eq!(times(&fitted[0]), times(&fitted[2]));
+    for (f, (values, tolerance)) in fitted
+        .iter()
+        .zip([(&x, 0.05), (&alpha, 0.001), (&still, 0.01)])
+    {
+        for (time, v) in t.iter().zip(values.iter()) {
+            assert!((value_at(&f.keys, *time) - v).abs() <= tolerance + 1e-9);
+        }
+        assert!(f.max_error <= tolerance + 1e-9);
+    }
+    assert!(
+        fitted[2]
+            .keys
+            .iter()
+            .all(|k| k.value == 7.0 && k.slope_out == 0.0)
+    );
+}
