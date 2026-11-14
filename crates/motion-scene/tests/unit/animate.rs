@@ -228,7 +228,10 @@ mod any_selector {
         ItemState {
             kind: &SELECTORS[0],
             id: None,
-            values: values.iter().map(|&v| motion_format::Value::Number(v)).collect(),
+            values: values
+                .iter()
+                .map(|&v| motion_format::Value::Number(v))
+                .collect(),
             settings: settings.to_vec(),
             items: Vec::new(),
         }
