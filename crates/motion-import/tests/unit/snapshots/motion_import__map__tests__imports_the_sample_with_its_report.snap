@@ -1,0 +1,18 @@
+---
+source: crates/motion-import/src/../tests/unit/map.rs
+expression: "format!(\"{scene}\\n{}\", import.mapping)"
+---
+{"motion":1,"size":"1920x1080","fps":29.97,"dur":"4s","bg":"#000000","fonts":["fonts"],
+"layers":[
+{"id":"ctrl","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"title","text":"Hello\nworld","position":[960,540.5],"anchor":[0,0],"font":"Inter-Bold 44","fill":[1,1,1,1],"style":{"stroke":[1,0,0,1],"stroke-width":2,"caps":"all","align":"center"},"box":[-110,-70,220,140],"parent":"ctrl","anim":{"opacity":[{"t":"0.5s","v":0,"curve":"speed(0,0.166667,0,0)"},{"t":"1.25s","v":1}]}}
+]}
+
+imported `Main`
+  7 mapped, 8 defaulted, 3 ignored, 1 unsupported, over 13 match names
+  ignored, drawing nothing:
+    an expression control, which draws nothing (1)
+    layer styles, all switched off (1)
+  unsupported:
+    3D layers (drawn flat) (1): Main/Title
+    `ADBE Marker` (1): Main/Title/ADBE Text Properties/ADBE Marker

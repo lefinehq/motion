@@ -245,7 +245,7 @@ A text layer sets its words (`text`, where `\n` ends a paragraph) from font asse
 - **`style`** sets character and paragraph keys for the whole text. `font` and `fill` stay layer keys.
 - **`runs`** override character keys over `range`, `[start, end]` in characters; a later run wins where runs overlap.
 - **`paragraphs`** holds one object of paragraph keys per paragraph, in order.
-- **`box`** (`[w, h]`) makes box text, which wraps inside the box from the layer's origin. Without it the text is point text: each paragraph is one line, aligned about the origin, and the origin is where the first line's baseline starts.
+- **`box`** makes box text, which wraps inside the box: `[w, h]` from the layer's origin, or `[x, y, w, h]` from the box's top-left corner in the layer's own coordinates, as imported box text keeps it. Without it the text is point text: each paragraph is one line, aligned about the origin, and the origin is where the first line's baseline starts.
 
 The layer's box is the box its lines cover, which for point text starts above and maybe left of the origin; `anchor` rests at its centre, so `at` centres the text. The keys are listed once, in `crates/motion-format/src/text.rs`; this table mirrors that list, and a test checks it.
 

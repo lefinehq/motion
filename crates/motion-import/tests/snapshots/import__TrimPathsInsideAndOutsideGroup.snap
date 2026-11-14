@@ -1,0 +1,17 @@
+---
+source: crates/motion-import/tests/import.rs
+expression: "format!(\"{scene}\\n{}\", import.mapping)"
+---
+{"motion":1,"size":"80x80","fps":29.970001,"dur":"2.035369s","bg":"#000000",
+"layers":[
+{"id":"shapes","shapes":[{"group":[{"ellipse":[20,20]},{"stroke":[0.894118,0.278431,0.27451,1],"join":"round","width":1,"cap":"round"}]},{"group":[{"rect":[60,60]},{"stroke":[0.894118,0.278431,0.27451,1],"join":"round","width":1,"cap":"round"}],"position":[0,-0.0625]},{"group":[{"stroke":[0.894118,0.278431,0.27451,1],"join":"round","width":1,"cap":"round"}],"position":[0,-0.0625]},{"group":[{"path":"M35,-35 C35,-35 35,35 35,35 C35,35 -35,35 -35,35 C-35,35 -35,-35 -35,-35 C-35,-35 35,-35 35,-35 Z"},{"stroke":[0.162837,0.110633,0.730025,1],"join":"round","width":1,"cap":"round"}],"position":[0,-0.0625]}],"anchor":[0,0],"position":[40,40],"span":"0s-2.002002s","offset":"-1.001001s"}
+]}
+
+imported `Shapes`
+  35 mapped, 21 defaulted, 23 ignored, 6 unsupported, over 40 match names
+  ignored, drawing nothing:
+    empty (4)
+    it does not apply to the layer as it is (3D-only, or the unused half of a position) (19)
+  unsupported:
+    `ADBE Vector Filter - Trim` (5): Shapes/shapes/ADBE Root Vectors Group/ADBE Vector Group/ADBE Vectors Group/ADBE Vector Filter - Trim; Shapes/shapes/ADBE Root Vectors Group/ADBE Vector Group/ADBE Vectors Group/ADBE Vector Filter - Trim; Shapes/shapes/ADBE Root Vectors Group/ADBE Vector Group/ADBE Vectors Group/ADBE Vector Filter - Trim, and 2 more
+    `ADBE Vector Shape - Star` (1): Shapes/shapes/ADBE Root Vectors Group/ADBE Vector Group/ADBE Vectors Group/ADBE Vector Shape - Star

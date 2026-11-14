@@ -225,8 +225,8 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","text":"x","paragraphs":[{"tracking":3}]}` → layers[0].paragraphs[0].tracking: `tracking` cannot be set on a paragraph; expected `tracking` in `style` or `runs`
 `{"id":"a","text":"x","paragraphs":[{},{}]}` → layers[0].paragraphs: 2 paragraph styles for 1 paragraphs; expected at most one style per paragraph; `\n` ends a paragraph
 `{"id":"a","text":"x","paragraphs":[{"align":"middle"}]}` → layers[0].paragraphs[0].align: unknown alignment `middle`; expected one of left, right, center, justify-left, justify-right, justify-center, justify-all
-`{"id":"a","text":"x","box":[0,10]}` → layers[0].box: a box is a width and a height above zero; expected `[width, height]` in px, both above zero, e.g. `[600, 300]`
-`{"id":"a","text":"x","box":"wide"}` → layers[0].box: a box is a width and a height above zero; expected `[width, height]` in px, both above zero, e.g. `[600, 300]`
+`{"id":"a","text":"x","box":[0,10]}` → layers[0].box: a box's width and height are above zero; expected `[width, height]` from the layer's origin, or `[x, y, width, height]` from the box's top-left corner, in px, the sizes above zero, e.g. `[600, 300]` or `[-300, -150, 600, 300]`
+`{"id":"a","text":"x","box":"wide"}` → layers[0].box: a box is two or four numbers; expected `[width, height]` from the layer's origin, or `[x, y, width, height]` from the box's top-left corner, in px, the sizes above zero, e.g. `[600, 300]` or `[-300, -150, 600, 300]`
 
 ## animators
 `{"id":"a","rect":"1x1","animate":[]}` → layers[0].animate: `animate` only applies to `text` layers; expected `animate` only next to `text`

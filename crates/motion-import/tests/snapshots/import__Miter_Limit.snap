@@ -1,0 +1,16 @@
+---
+source: crates/motion-import/tests/import.rs
+expression: "format!(\"{scene}\\n{}\", import.mapping)"
+---
+{"motion":1,"size":"300x300","fps":60,"dur":"3s","bg":"#FFFFFF",
+"layers":[
+{"id":"shape-layer-1","shapes":[{"group":[{"path":"M80,153 "},{"stroke":[1,1,1,1],"width":13,"hidden":true},{"fill":[0.928263,0,0,1]}]},{"group":[{"path":"M105,78 "},{"stroke":[1,0,0,1],"width":13},{"fill":[0.928263,0,0,1]}]},{"group":[{"path":"M-63.431641,-124.568359 C-63.431641,-124.568359 37.568359,62.568359 37.568359,62.568359 C37.568359,62.568359 -61.568359,61.568361 -61.568359,61.568361 C-61.568359,61.568361 -63.431641,-124.568359 -63.431641,-124.568359 Z"},{"stroke":[1,0,0,1],"width":13}],"position":[3.568359,12.568359]}],"anchor":[0,0],"position":[150,150]}
+]}
+
+imported `miter`
+  24 mapped, 23 defaulted, 17 ignored, 1 unsupported, over 36 match names
+  ignored, drawing nothing:
+    empty (3)
+    it does not apply to the layer as it is (3D-only, or the unused half of a position) (14)
+  unsupported:
+    `ADBE Vector Graphic - G-Stroke` (1): miter/Shape Layer 1/ADBE Root Vectors Group/ADBE Vector Group/ADBE Vectors Group/ADBE Vector Graphic - G-Stroke

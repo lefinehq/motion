@@ -104,11 +104,11 @@ fn styled(content: &TextContent, fonts: &FontSet) -> StyledText {
             })
             .collect(),
         frame: match content.frame {
-            Some([width, height]) => TextFrame::Box {
-                left: 0.0,
-                top: 0.0,
-                width,
-                height,
+            Some(frame) => TextFrame::Box {
+                left: frame.x0,
+                top: frame.y0,
+                width: frame.width(),
+                height: frame.height(),
             },
             None => TextFrame::Point,
         },

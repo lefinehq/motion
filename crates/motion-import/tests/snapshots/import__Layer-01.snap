@@ -1,0 +1,36 @@
+---
+source: crates/motion-import/tests/import.rs
+expression: "format!(\"{scene}\\n{}\", import.mapping)"
+---
+{"motion":1,"size":"1920x1080","fps":60,"dur":"60s","bg":"#000000",
+"layers":[
+{"id":"default","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"bicubic-sampling","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"bilinear-sampling","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"best-quality","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"draft-quality","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"wireframe-quality","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"frame-mix","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"pixel-motion","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"guide","pivot":true,"anchor":[50,50],"position":[960,540],"hidden":true},
+{"id":"solo","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"layer-3d","pivot":true,"rotate":0,"anchor":[50,50],"position":[960,540]},
+{"id":"adjustment","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"shy","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"locked","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"motion-blur","pivot":true,"anchor":[50,50],"position":[960,540]},
+{"id":"effects-enabled","pivot":true,"anchor":[50,50],"position":[960,540],"fx":[{"fill":[1,0,0,1]}]},
+{"id":"transformations-collapsed","shapes":[],"anchor":[0,0],"position":[960,540]}
+]}
+
+imported `Comp 01`
+  20 mapped, 86 defaulted, 250 ignored, 1 unsupported, over 28 match names
+  ignored, drawing nothing:
+    empty (1)
+    it does not apply to the layer as it is (3D-only, or the unused half of a position) (248)
+    materials of 3D layers (1)
+  unsupported:
+    3D layers (drawn flat) (1): Comp 01/3D
+    adjustment layers (drawn as nothing) (1): Comp 01/Adjustment
+    motion blur (1): Comp 01/Motion Blur
+    solo layers (2): Comp 01/Solo; Comp 01/Transformations Collapsed

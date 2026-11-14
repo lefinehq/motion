@@ -13,8 +13,8 @@ It ships in two pull requests: 7a reads what the mapping needs from the file, 7b
 
 Measured on the first sample (`motion inspect`):
 
-- Layer transforms: AE leaves out a transform property at its default. Checked against the Lottie exports of the fixtures (30 layers): position defaults to the composition's centre, anchor to the source's centre (0 for layers without a source), scale to 1, rotation to 0, opacity to 1.
-- Every keyed move (the title, the squares, the hashtag, the button) runs through an "Ease and Wizz" `outExpo` expression over linear keys. Until expressions are evaluated, the import keeps the keys and reports each expression; the motion then has the right timing but not the right ease.
+- Layer transforms: a project leaves out a transform property at its default. Checked against the Lottie exports of the fixtures (30 layers): position defaults to the composition's centre, anchor to the source's centre (0 for layers without a source), scale to 1, rotation to 0, opacity to 1.
+- Every keyed move (the title, the squares, the hashtag, the button) runs through an `outExpo` expression from a common easing script, over linear keys. Until expressions are evaluated, the import keeps the keys and reports each expression; the motion then has the right timing but not the right ease.
 - The hashtag is revealed by an inverted alpha track matte, which is reported as unsupported until mattes come with the compositor.
 
 ## Shape of the mapping
@@ -42,12 +42,19 @@ The mapping report lists every match name it met, with how many times it was map
 
 `motion import` prints the report, and `--json` writes it as JSON with the scene.
 
+## 7b. What changed in the format
+
+- A layer may set `position` itself, an exact point in its parent's own coordinates, instead of `at`, which reads the parent's box. A parent's box does not start at its origin for shapes and text, while the project's child positions do.
+- `offset` and key times may be negative: projects often start a layer before its own zero (the first sample's title starts at -2.52 s).
+- `box` takes `[x, y, w, h]` too, since box text in a project rarely starts at the layer's origin.
+
 ## Ids
 
 Layer and composition names become ids: lower case, `-` for runs of other characters, and a number added when two names collide. The report lists every name with its id.
 
 ## Measures
 
-- The first sample imports with no unknown property in a group that draws, and its report lists exactly the expressions and the 3D-only groups.
-- Imported, then written and read again, the scene is unchanged (a round-trip test over every sample in the local sweep).
-- Step 8 compares its frames with the reference render.
+- The first sample imports with nothing unsupported but its 10 expressions and its one track matte (100 properties mapped, 67 defaulted, 182 ignored). From 2 s on, its frames match the reference render's layout by eye; before, the reference moves faster, since its moves run through `outExpo` expressions over the linear keys.
+- Every composition of every fixture imports, and reads back unchanged once written (`tests/import.rs`), with its scene and report as snapshots.
+- The local sweep imports all 114 compositions of the samples: 16,116 properties mapped, 10,451 defaulted, 12,647 ignored, 353 unsupported. What is not supported, by how often it is met: expressions (2,125), trim paths (190), 3D layers (81), masks (34), track mattes (39), stars (15), layer styles (16), cameras (8), dashes (7), time remapping (7), gradients (6), and effects without a row.
+- Step 8 compares its frames with the reference render, in numbers.

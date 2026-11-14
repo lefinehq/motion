@@ -80,6 +80,15 @@ A property whose value the reader keeps but cannot read yet is `opaque` with one
 
 Chunks outside the property tree that the reader does not need yet (views, render settings, guides, caches) are passed over and listed under `skipped`. Across the 37 local sample projects, 674 properties are keyframed, 11,371 are static, and 28 are opaque (17 markers, 5 gradients, 6 other bodies), down from 613 before orientations (538) and the 47 text documents were decoded.
 
+## Importing as a scene
+
+`motion import project.aep --out scene.json` maps the decoded project to an ordinary scene ([plan](../plans/2026-11-14-import-mapping.md)) and prints what it mapped, left at its default, ignored and could not support, with where. The tables in `crates/motion-import/src/map/rows.rs` say, for every group that becomes a scene item, where each property goes, how its value converts and what it is when the project leaves it out; supporting a property is adding a row. The scene is read back with `parse_document` before it is written, so an import never yields a scene the format rejects.
+
+- Transform defaults follow the project's: position at the composition's centre, anchor at the source's centre (0 without a source), scale 1, rotation 0, opacity 1. An effect parameter's default comes from the project's own effect definitions.
+- Keys are written in the layer's own seconds, eases as `speed(…)` with the project's speeds and influences, a linear side reaching nowhere into its span, and spatial tangents as the key's `path`.
+- Properties marked hidden (3D-only on a 2D layer, the unused half of a separable position) are ignored. Expressions are reported and the keys under them kept, until they are evaluated.
+- A layer the scene cannot draw yet (footage files, cameras, lights, adjustment layers) becomes a `pivot`, so its children keep their parent.
+
 ## How to add a decoder
 
 1. Write the record as a `binrw` struct in `crates/motion-import/src/record.rs`, with each field at its offset (`#[br(seek_before = at(0x..))]`) and a doc comment linking the section of the format notes it comes from. Read it with `parse`, which is the only place a `binrw` error becomes a `Diagnostic`.

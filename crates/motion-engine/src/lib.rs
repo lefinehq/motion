@@ -22,10 +22,11 @@ pub mod telemetry;
 #[path = "../tests/unit/support.rs"]
 mod test_support;
 
-pub use import::import;
+pub use import::{import, import_scene};
 pub use session::Session;
 
-pub use motion_format::{Diagnostic, Document, Kind, Result, Scene};
+pub use motion_format::{Diagnostic, Document, Kind, Result, Scene, write_document};
+pub use motion_import::map::{Import, Mapping, Options as ImportOptions};
 pub use motion_import::{Project, Report as ImportReport};
 pub use motion_query::Report;
 pub use motion_raster::{Frame, Image, Quality, RenderOptions, Simd};
