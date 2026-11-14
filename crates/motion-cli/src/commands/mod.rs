@@ -5,6 +5,7 @@ pub mod at;
 pub mod check;
 pub mod diff;
 pub mod edit;
+pub mod export;
 pub mod fidelity;
 pub mod fonts;
 pub mod import;

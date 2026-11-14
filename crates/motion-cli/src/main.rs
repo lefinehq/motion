@@ -192,6 +192,25 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Write an edited scene back into the `.aep` project it was imported
+    /// from: each changed value the project stores is patched in, every
+    /// other byte is kept, and what cannot go back is listed with why.
+    Export {
+        /// Path to the edited scene file.
+        scene: PathBuf,
+        /// The `.aep` project the scene was imported from.
+        #[arg(long, value_name = "FILE")]
+        project: PathBuf,
+        /// Where to save the patched project; may be the project itself.
+        #[arg(long, short, value_name = "FILE")]
+        out: PathBuf,
+        /// The composition the scene was imported from, when one was named.
+        #[arg(long, value_name = "NAME")]
+        comp: Option<String>,
+        /// Print the report as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Fonts: find the ones a scene uses and lock them.
     Fonts {
         #[command(subcommand)]
@@ -234,7 +253,8 @@ impl Command {
             | Command::At { scene, .. }
             | Command::Edit { scene, .. }
             | Command::Render { scene, .. }
-            | Command::Diff { scene, .. } => scene,
+            | Command::Diff { scene, .. }
+            | Command::Export { scene, .. } => scene,
             Command::Import { project, .. } | Command::Inspect { project, .. } => project,
             Command::Fidelity { manifest, .. } => manifest,
             Command::Fonts {
@@ -327,6 +347,19 @@ fn main() -> ExitCode {
             &out,
             &commands::import::Args { fetch_fonts, json },
         ),
+        Command::Export {
+            scene,
+            project,
+            out,
+            comp,
+            json,
+        } => commands::export::run(commands::export::Args {
+            scene: &scene,
+            project: &project,
+            out: &out,
+            comp,
+            json,
+        }),
         Command::Fonts {
             command:
                 FontsCommand::Fetch {

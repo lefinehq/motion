@@ -10,7 +10,7 @@ use crate::model::{Color, Keyframe, Path, Stream, Value};
 
 /// How a project value becomes a scene value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Convert {
+pub(crate) enum Convert {
     /// A number, as it is.
     Number,
     /// A number in percent, to a fraction.
@@ -27,7 +27,7 @@ pub(super) enum Convert {
 
 impl Convert {
     /// The factor from the project's units to the scene's, which speeds take too.
-    fn factor(self) -> f64 {
+    pub(crate) fn factor(self) -> f64 {
         match self {
             Convert::Percent | Convert::PointPercent => 0.01,
             _ => 1.0,
@@ -52,7 +52,7 @@ impl Convert {
     }
 
     /// The scene value of `value`, or `None` when it is not of this kind.
-    pub(super) fn value(self, value: &Value) -> Option<Json> {
+    pub(crate) fn value(self, value: &Value) -> Option<Json> {
         let factor = self.factor();
         match (self, value) {
             (Convert::Number | Convert::Percent, Value::Number(n)) => Some(num(n * factor)),

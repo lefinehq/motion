@@ -13,6 +13,7 @@
 //! ```
 
 mod diff;
+mod export;
 mod fidelity;
 mod fonts;
 mod footage;
@@ -29,12 +30,14 @@ pub mod telemetry;
 mod test_support;
 
 pub use diff::{Diff, DiffOptions, Error as DiffError, FrameDiff, Pooled};
+pub use export::export_project;
 pub use fidelity::{Change, Ledger, Manifest, Measure, NOISE, Sample, Window, compare, measure};
 pub use fonts::{
     LOCK_EXTENSION, LayoutJudge, add_fonts_entry, font_names, lock_path, missing_fonts,
 };
 pub use geometry::{LineCheck, LineGeometry, TEXT_TOLERANCE, TextCheck, TextGeometry, check_text};
 pub use import::{import, import_scene, substitute_fonts};
+pub use motion_import::export::{Change as ExportChange, Plan as ExportPlan};
 pub use session::Session;
 
 pub use motion_format::{Diagnostic, Document, Kind, Result, Scene, write_document};

@@ -214,6 +214,26 @@ pub struct Property {
     pub min: Option<f64>,
     /// The largest value it takes, where the file stores one.
     pub max: Option<f64>,
+    /// Where its value is in the file it was decoded from, when it is a
+    /// static value the export can write back ([D45]).
+    ///
+    /// [D45]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d45-export-patches-the-project-it-came-from
+    #[serde(skip)]
+    pub origin: Option<Origin>,
+}
+
+/// Where a static value is in a file: its `cdat` numbers, as offsets into
+/// the file it was decoded from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Origin {
+    /// The bytes of the numbers the value is read from: `dims` big-endian
+    /// doubles.
+    pub numbers: std::ops::Range<usize>,
+    /// How many numbers the value has.
+    pub dims: usize,
+    /// Whether they are a colour, stored as alpha, red, green and blue from
+    /// 0 to 255.
+    pub color: bool,
 }
 
 /// A property's value over time.

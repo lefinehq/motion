@@ -355,6 +355,15 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - `drawn` and `union` still tell layout error (drawn in the wrong place or colour) apart from missing content (absent from `drawn`, present in `content`).
   - An ignored layer stands for content the reference has and the scene does not, such as a photo in a placeholder, so measuring the reference there would count a gap the manifest declared.
 
+### D45. Export patches the project it came from
+
+- **Decision:** a scene imported from an `.aep` goes back by patching that same file. `motion export` imports the original again, compares the edited scene with it, and writes each changed value into the bytes it was read from; every other byte stays as it was. A value is written back only where the import knows its source. Anything else that changed is reported, with why, and not guessed. The export checks itself: it reads the patched file again, imports it, and compares the result with the edited scene.
+- **Why:**
+  - The format is undocumented. We read it by its structure, and pass over what we do not understand (some 20 kinds of chunk per project). Writing a project from nothing would need all of them right; patching needs only the values we change, so what we do not understand is never at risk.
+  - The check needs no other tool: our own reader verifies what our writer wrote, in CI.
+  - A generated script for the original tool was the alternative. It needs that tool to run it and to test it, and adds a step for the user. It remains the way to export a scene that was not imported, if that is ever needed.
+- **Not now:** scenes that did not come from a project, new layers and items, and values the project leaves at their default (they have no bytes to patch). Text and keys come in later steps of the [plan](../plans/2026-11-15-aep-export.md).
+
 ## Open questions
 
 ### Q1. Name and packages (deferred)

@@ -11,6 +11,7 @@ pub mod bake;
 mod cos;
 mod decode;
 mod eval;
+pub mod export;
 pub mod map;
 mod model;
 mod record;
