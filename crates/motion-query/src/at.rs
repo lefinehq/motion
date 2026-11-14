@@ -1,6 +1,7 @@
 //! The `at` query: resolved numbers at one moment, so an agent never does easing
 //! or layout maths itself.
 
+use kurbo::Point;
 use motion_format::fmt_num;
 use motion_format::property::{Prop, Rest};
 use motion_format::shorthand::{Coord, Position};
@@ -8,8 +9,9 @@ use motion_format::{Diagnostic, Kind, Result};
 use motion_scene::{NodeState, SceneGraph, evaluate};
 use tracing::instrument;
 
-/// One line per node in `ids` (all when empty) at `frame`: `{id} x= y= w= h=`, then each
-/// other property whose printed value differs from its default, so float dust stays hidden.
+/// One line per node in `ids` (all when empty) at `frame`: `{id} x= y= w= h=`, with `x`
+/// and `y` where its anchor lands on the canvas, then each other property whose printed
+/// value differs from its default, so float dust stays hidden.
 #[instrument(level = "debug", skip(graph, ids), fields(ids = ids.len()))]
 pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
     if frame < 0.0 {
@@ -43,7 +45,9 @@ fn describe(node: &NodeState) -> String {
             (shown != rest).then(|| format!(" {}={shown}", prop.name()))
         })
         .collect();
-    let [x, y] = node.point(Prop::POSITION);
+    // Where the anchor lands on the canvas: the position, through any parents.
+    let [ax, ay] = node.point(Prop::ANCHOR);
+    let Point { x, y } = node.transform * Point::new(ax, ay);
     format!(
         "{} x={} y={} w={} h={}{changed}",
         node.id,

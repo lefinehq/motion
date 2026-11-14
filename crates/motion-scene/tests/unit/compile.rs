@@ -277,3 +277,26 @@ fn parents_and_timing_are_resolved() {
         }
     );
 }
+
+#[test]
+#[should_panic(expected = "its own ancestor")]
+fn a_code_built_parent_cycle_is_refused() {
+    let mut scene = motion_format::parse_document(
+        r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":"1x1"},{"id":"b","rect":"1x1","parent":"a"}]}"#,
+    )
+    .unwrap()
+    .scene()
+    .clone();
+    scene.layers[0].parent = Some("b".into());
+    compile(&scene, &ApproxTextMeasure);
+}
+
+#[test]
+fn at_resolves_in_the_parents_box() {
+    let g = compile_json(
+        r#"{"motion":1,"dur":"1s","layers":[{"id":"card","rect":"200x100"},
+        {"id":"kid","rect":"10x10","parent":"card","at":"center center"}]}"#,
+    );
+    assert_eq!(track(&g.nodes[1], "x").sample(0.0), 100.0);
+    assert_eq!(track(&g.nodes[1], "y").sample(0.0), 50.0);
+}

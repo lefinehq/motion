@@ -83,22 +83,23 @@ pub fn builtin_presets() -> &'static [(String, PresetSpec)] {
 /// A layer's entrance written as an `anim` object in JSON text, one string
 /// track per property of `spec`, as the compiler builds it from `in`.
 ///
-/// `rest` gives each property's resting value on the layer. `others`, the
-/// layer's tracks as written, are appended unless the preset animates them,
-/// so the result can replace the whole `anim`.
+/// `rest` gives each target's resting value on the layer, or `None` when it
+/// is not known yet; then there is no expansion. `others`, the layer's tracks
+/// as written, are appended unless the preset animates them, so the result
+/// can replace the whole `anim`.
 pub(crate) fn expand_as_anim(
     spec: &PresetSpec,
     behaviour: &Behaviour,
-    rest: impl Fn(Target) -> Value,
+    rest: impl Fn(Target) -> Option<Value>,
     fps: f64,
     others: &AnimDoc,
-) -> String {
+) -> Option<String> {
     let (start, end) = behaviour.frames(fps);
     let mut tracks: Map<String, Json> = spec
         .props
         .iter()
         .map(|&(target, from)| {
-            let rest = rest(target);
+            let rest = rest(target)?;
             let from = from.resolve(rest, behaviour.distance);
             let track = format!(
                 "{from} -> {rest} @{}-{}f {}",
@@ -106,16 +107,16 @@ pub(crate) fn expand_as_anim(
                 fmt_num(end),
                 behaviour.curve
             );
-            (target.name().to_owned(), Json::String(track))
+            Some((target.name().to_owned(), Json::String(track)))
         })
-        .collect();
+        .collect::<Option<_>>()?;
     for (name, track) in others {
         tracks.entry(name.as_str()).or_insert_with(|| {
             // A track holds only strings and finite numbers, which always convert.
             serde_json::to_value(track).expect("a track converts to JSON")
         });
     }
-    Json::Object(tracks).to_string()
+    Some(Json::Object(tracks).to_string())
 }
 
 /// Finds `name` among a scene's own presets first, then the built-ins.

@@ -86,7 +86,7 @@ Every animatable value of a layer is a **property**. They are listed once, in `c
 
 **Components.** A track animates a whole property or one component of it: `"x"` moves only across, and `"scale"` animates both axes of scale. A property is animated whole or by its components, not both.
 
-**Parenting and time.** A layer can move with another (`"parent":"card"`): its position, rotation and scale apply on top of the parent's, while opacity stays its own. `"span":"1s-16s"` sets when a layer shows, on the scene's timeline. `"offset":"1s"` says where the layer's own time starts: its keys and its entrance are in its own time, so moving a layer later is one edit. `"stretch":2` plays its own time at half speed.
+**Parenting and time.** A layer can move with another (`"parent":"card"`): its position, rotation and scale apply on top of the parent's, while opacity stays its own. Its `at` is then read in the parent's box, so `"at":"center center"` is the middle of the parent, and `motion at` prints where its anchor lands on the canvas. `"span":"1s-16s"` sets when a layer shows, on the scene's timeline (parenting moves a layer, not its time). `"offset":"1s"` says where the layer's own time starts: its keys and its entrance are in its own time, so moving a layer later is one edit. `"stretch":2` plays its own time at half speed, and a negative stretch runs it backwards from `offset`. Speeds in `speed(...)` are per second of the layer's own time, so a stretch slows them too.
 
 Checks measure the transformed box: the layer's box through its anchor, scale, rotation and position, and its parents'.
 

@@ -67,7 +67,7 @@ pub const SCENE_KEYS: [&str; 7] = [
     key::LAYERS,
 ];
 /// The keys allowed on a layer besides property names, in the order of
-/// `LayerDoc`'s fields. Any property in the registry is also a layer key,
+/// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
 pub const LAYER_KEYS: [&str; 12] = [
     key::ID,
@@ -84,11 +84,15 @@ pub const LAYER_KEYS: [&str; 12] = [
     key::STRETCH,
 ];
 
-/// Every key a layer may hold: [`LAYER_KEYS`], then the property names.
+/// Every key a layer may hold: [`LAYER_KEYS`], then the names of the
+/// properties a layer sets by name (not `position`, which `at` sets).
 pub fn layer_keys() -> impl Iterator<Item = &'static str> + Clone {
-    LAYER_KEYS
-        .into_iter()
-        .chain(crate::property::property_names())
+    use crate::property::{PROPERTIES, Rest};
+    let by_name = PROPERTIES
+        .iter()
+        .filter(|spec| spec.rest != Rest::At)
+        .map(|spec| spec.name);
+    LAYER_KEYS.into_iter().chain(by_name)
 }
 
 /// Parses scene JSON text into a [`Document`].

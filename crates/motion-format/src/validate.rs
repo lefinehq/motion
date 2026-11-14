@@ -87,6 +87,10 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
         .collect::<Result<Vec<_>>>()?;
     unique_ids(&layers)?;
     parents(&layers)?;
+    for (i, (layer, Object(doc))) in layers.iter().zip(layer_docs).enumerate() {
+        let Object(written) = &doc.anim;
+        entrance_conflict(layer, &layers, &context, written).map_err(|e| e.under(layer_path(i)))?;
+    }
     Ok(Scene {
         version: VERSION,
         size,
@@ -174,7 +178,6 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
     if let Some(span) = layer.span {
         span_runs_forward(span, context.fps).map_err(|e| e.under(SPAN))?;
     }
-    entrance_conflict(&layer, context, tracks)?;
     Ok(layer)
 }
 
@@ -335,24 +338,26 @@ fn anim(tracks: &AnimDoc, fps: f64) -> Result<Vec<AnimTrack>> {
         .iter()
         .map(|(name, doc)| track(name, doc, fps).map_err(|e| e.under(name)))
         .collect::<Result<Vec<_>>>()?;
-    one_writer(&tracks)?;
+    let targets: Vec<Target> = tracks.iter().map(|t| t.target).collect();
+    one_writer(&targets)?;
     Ok(tracks)
 }
 
-/// A property animated whole may not also be animated one component at a time.
-fn one_writer(tracks: &[AnimTrack]) -> Result<()> {
-    for (i, later) in tracks.iter().enumerate() {
-        if let Some(earlier) = tracks[..i].iter().find(|t| t.target.overlaps(later.target)) {
-            let (a, b) = (earlier.target.name(), later.target.name());
+/// No two of `targets` write the same numbers: a property is animated whole
+/// or one component at a time, not both. The error sits at the later one.
+fn one_writer(targets: &[Target]) -> Result<()> {
+    for (i, later) in targets.iter().enumerate() {
+        if let Some(earlier) = targets[..i].iter().find(|t| t.overlaps(*later)) {
+            let (a, b, prop) = (earlier.name(), later.name(), later.prop.name());
+            let components = later.prop.spec().components.join("`, `");
             return Err(Diagnostic::new(
                 Kind::Conflict,
-                format!(
-                    "`{a}` and `{b}` both animate `{}`",
-                    later.target.prop.name()
-                ),
+                format!("`{a}` and `{b}` both animate `{prop}`"),
             )
             .at(b)
-            .expected(format!("one track for `{a}`, or one per component")));
+            .expected(format!(
+                "`{prop}` animated whole, or its components `{components}` one at a time"
+            )));
         }
     }
     Ok(())
@@ -450,7 +455,7 @@ fn key(doc: &KeyDoc, target: Target) -> Result<AnimKey> {
     Ok(AnimKey {
         time,
         value: typed_value(&doc.value, target).map_err(|e| e.under(doc.value_path()))?,
-        easing: easing(doc.curve.as_ref(), target)?,
+        easing: easing(doc.curve.as_ref(), target).map_err(|e| e.under(doc.curve_path()))?,
         path: doc.path.map(|path| bends(path, target)).transpose()?,
     })
 }
@@ -581,10 +586,12 @@ fn preset(name: &str, body: &PresetDoc) -> Result<PresetSpec> {
                 .expected(r#"e.g. {"opacity":0}"#),
         );
     }
-    let props = body
+    let props: Vec<(Target, Start)> = body
         .iter()
         .map(|(prop, StartDoc(start))| preset_start(prop, *start).map_err(|e| e.under(prop)))
         .collect::<Result<_>>()?;
+    let targets: Vec<Target> = props.iter().map(|(t, _)| *t).collect();
+    one_writer(&targets)?;
     Ok(PresetSpec { props })
 }
 
@@ -613,8 +620,14 @@ fn preset_start(name: &str, start: Start) -> Result<(Target, Start)> {
 
 /// Rejects an `anim` track for a property the `in` preset already animates,
 /// since two writers would fight. The hint is the edit that moves the
-/// entrance into `anim`.
-fn entrance_conflict(layer: &Layer, context: &Context, written: &AnimDoc) -> Result<()> {
+/// entrance into `anim`, when every resting value it needs is known before
+/// compiling (a text box is measured only then).
+fn entrance_conflict(
+    layer: &Layer,
+    layers: &[Layer],
+    context: &Context,
+    written: &AnimDoc,
+) -> Result<()> {
     let Some(behaviour) = &layer.enter else {
         return Ok(());
     };
@@ -633,14 +646,33 @@ fn entrance_conflict(layer: &Layer, context: &Context, written: &AnimDoc) -> Res
         f64::from(context.size.width),
         f64::from(context.size.height),
     );
-    // A text box is measured only when compiling; a resting value that depends
-    // on it (the anchor) is shown for an empty box.
-    let size = match &layer.content {
-        Content::Rect(rect) => (rect.width, rect.height),
-        Content::Text { .. } => (0.0, 0.0),
+    // `at` resolves in the parent's box, or on the canvas without a parent.
+    let extent = match &layer.parent {
+        Some(id) => layers.iter().find(|l| &l.id == id).and_then(known_box),
+        None => Some(canvas),
     };
-    let rest = |target: Target| target.rest_of(layer.rest(target.prop, canvas, size));
-    let expansion = expand_as_anim(spec, behaviour, rest, context.fps, written);
+    let rest = |target: Target| {
+        let whole = match (layer.value(target.prop), &target.prop.spec().rest) {
+            (Some(value), _) => value,
+            (None, Rest::Value(value)) => *value,
+            (None, Rest::At) => target.prop.spec().rest(&layer.at, extent?, (0.0, 0.0)),
+            (None, Rest::BoxCentre) => {
+                target
+                    .prop
+                    .spec()
+                    .rest(&layer.at, canvas, known_box(layer)?)
+            }
+        };
+        Some(target.rest_of(whole))
+    };
+    let edit = expand_as_anim(spec, behaviour, rest, context.fps, written)
+        .map(|expansion| {
+            format!(
+                "`{} {IN}={NONE} {ANIM}={expansion}` (the entrance as anim tracks; then adjust `{name}`), or ",
+                layer.id
+            )
+        })
+        .unwrap_or_default();
     Err(Diagnostic::new(
         Kind::Conflict,
         format!(
@@ -651,9 +683,16 @@ fn entrance_conflict(layer: &Layer, context: &Context, written: &AnimDoc) -> Res
     .at(name)
     .under(ANIM)
     .expected(format!(
-        "`{} {IN}={NONE} {ANIM}={expansion}` (the entrance as anim tracks; then adjust `{name}`), or define a scene preset without `{name}` under \"{PRESETS}\"",
-        layer.id
+        "{edit}define a scene preset without `{name}` under \"{PRESETS}\""
     )))
+}
+
+/// A layer's box in pixels when it is known before compiling: a rect's.
+fn known_box(layer: &Layer) -> Option<(f64, f64)> {
+    match &layer.content {
+        Content::Rect(rect) => Some((rect.width, rect.height)),
+        Content::Text { .. } => None,
+    }
 }
 
 #[cfg(test)]

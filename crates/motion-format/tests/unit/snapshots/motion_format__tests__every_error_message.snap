@@ -48,7 +48,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","in":"zoom"}` → layers[0].in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in
 `{"id":"a","rect":"1x1","anim":null}` → layers[0].anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
 `{"id":"a","rect":"1x1","anim":[]}` → layers[0].anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
-`{"id":"a","rect":"1x1","x":1}` → layers[0].x: unknown layer key `x`; expected one of id, text, rect, font, fill, at, in, anim, parent, span, offset, stretch, position, anchor, scale, rotate, opacity
+`{"id":"a","rect":"1x1","x":1}` → layers[0].x: unknown layer key `x`; expected one of id, text, rect, font, fill, at, in, anim, parent, span, offset, stretch, anchor, scale, rotate, opacity
 `{"id":"a","rect":"1x1","position":[1,2]}` → layers[0].position: `position` rests where `at` puts it; expected e.g. "at":"540 960", or animate it in `anim`
 `{"id":"a","rect":"1x1","rotate":"x"}` → layers[0].rotate: `x` is not a number; expected a number, e.g. `0.5`
 `{"id":"a","rect":"1x1","scale":[1,2,3]}` → layers[0].scale: 3 numbers do not make a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
@@ -74,16 +74,16 @@ expression: "report.join(\"\\n\\n\")"
 `"scale":"1,2,3 -> 1 @0-5f"` → layers[0].anim.scale: `1,2,3` is not a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
 `"position":"1 -> 2 @0-5f"` → layers[0].anim.position: `1` is not a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
 `"fill":"0 -> 1 @0-5f"` → layers[0].anim.fill: unknown property `fill`; expected one of position, anchor, scale, rotate, opacity, x, y, anchor-x, anchor-y, scale-x, scale-y
-`"x":"0 -> 1 @0-5f","position":"0,0 -> 1,1 @0-5f"` → layers[0].anim.position: `x` and `position` both animate `position`; expected one track for `x`, or one per component
-`"position":[[0,[1,2],["linear","linear"]]]` → layers[0].anim.position[0]: `position` moves along a path, so one curve times the whole move; expected one curve, or animate x and y one at a time
-`"scale":[[0,[1,2],["linear"]]]` → layers[0].anim.scale[0]: 1 curves for 2 components; expected a curve such as "ease-out", or a list of curves, one per component, e.g. ["ease-out","linear"]
-`"scale":[[0,[1,2],["linear","bouncy"]]]` → layers[0].anim.scale[0][1]: unknown curve `bouncy`; expected one of linear, hold, ease, ease-in, ease-out, ease-in-out, or cubic(x1,y1,x2,y2) or speed(out,out-reach,in,in-reach)
+`"x":"0 -> 1 @0-5f","position":"0,0 -> 1,1 @0-5f"` → layers[0].anim.position: `x` and `position` both animate `position`; expected `position` animated whole, or its components `x`, `y` one at a time
+`"position":[[0,[1,2],["linear","linear"]]]` → layers[0].anim.position[0][2]: `position` moves along a path, so one curve times the whole move; expected one curve, or animate x and y one at a time
+`"scale":[[0,[1,2],["linear"]]]` → layers[0].anim.scale[0][2]: 1 curves for 2 components; expected a curve such as "ease-out", or a list of curves, one per component, e.g. ["ease-out","linear"]
+`"scale":[[0,[1,2],["linear","bouncy"]]]` → layers[0].anim.scale[0][2][1]: unknown curve `bouncy`; expected one of linear, hold, ease, ease-in, ease-out, ease-in-out, or cubic(x1,y1,x2,y2) or speed(out,out-reach,in,in-reach)
 `"scale":[[0,[1,2],3]]` → layers[0].anim.scale[0][2]: invalid type: integer `3`; expected a curve such as "ease-out", or a list of curves, one per component, e.g. ["ease-out","linear"]
 `"x":[{"t":0,"v":1,"path":[[0,0],[0,0]]}]` → layers[0].anim.x[0].path: `x` does not move along a path; expected [[out-x, out-y], [in-x, in-y]]: the bend leaving this key, as an offset from its value, and the bend arriving at the next key, as an offset from that key's value
 `"position":[{"t":0,"v":[1,2],"path":[[0,0]]}]` → layers[0].anim.position[0].path: invalid length 1; expected an array of length 2
 `"position":[{"t":0,"v":[1,2],"bend":1}]` → layers[0].anim.position[0].bend: unknown field `bend`; expected one of t, v, curve, path
 `"position":[{"v":[1,2]}]` → layers[0].anim.position[0]: missing field `t`
-`"x":[[0,1,"speed(0,2,0,0)"]]` → layers[0].anim.x[0]: `speed(0,2,0,0)`: each reach must be between 0 and 1; expected `speed(out,out-reach,in,in-reach)` (no spaces): the speed leaving the key and arriving at the next, in value units per second, each with how far into the span it reaches, 0 to 1, e.g. `speed(0,.33,0,.33)`
+`"x":[[0,1,"speed(0,2,0,0)"]]` → layers[0].anim.x[0][2]: `speed(0,2,0,0)`: each reach must be between 0 and 1; expected `speed(out,out-reach,in,in-reach)` (no spaces): the speed leaving the key and arriving at the next, in value units per second, each with how far into the span it reaches, 0 to 1, e.g. `speed(0,.33,0,.33)`
 `"opacity":"0 -> 2 @0-5f"` → layers[0].anim.opacity: value 2 is outside 0..=1; expected a number from 0 to 1
 `"x":[]` → layers[0].anim.x: needs at least one key; expected a list of keys like [[0, 0], ["12f", 1, "ease-out"]]
 `"x":[5]` → layers[0].anim.x[0]: invalid type: integer `5`; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"], or {"t":time,"v":value,"curve":curve,"path":[[ox,oy],[ix,iy]]}
@@ -95,7 +95,7 @@ expression: "report.join(\"\\n\\n\")"
 `"x":[[0, "a"]]` → layers[0].anim.x[0][1]: `a` is not a number; expected a number, e.g. `0.5`
 `"x":[[0, 1, 3]]` → layers[0].anim.x[0][2]: invalid type: integer `3`; expected a curve such as "ease-out", or a list of curves, one per component, e.g. ["ease-out","linear"]
 `"x":[[0, 1, null]]` → layers[0].anim.x[0][2]: invalid type: null; expected a curve such as "ease-out", or a list of curves, one per component, e.g. ["ease-out","linear"]
-`"x":[[0, 1, "nope"]]` → layers[0].anim.x[0]: unknown curve `nope`; expected one of linear, hold, ease, ease-in, ease-out, ease-in-out, or cubic(x1,y1,x2,y2) or speed(out,out-reach,in,in-reach)
+`"x":[[0, 1, "nope"]]` → layers[0].anim.x[0][2]: unknown curve `nope`; expected one of linear, hold, ease, ease-in, ease-out, ease-in-out, or cubic(x1,y1,x2,y2) or speed(out,out-reach,in,in-reach)
 `"x":[[5, 0], [2, 1]]` → layers[0].anim.x[1]: key is earlier than the one before it; expected keys in time order, earliest first
 `"opacity":[[0, 0], [5, 1], [9, 2]]` → layers[0].anim.opacity[2][1]: value 2 is outside 0..=1; expected a number from 0 to 1
 

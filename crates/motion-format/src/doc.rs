@@ -287,6 +287,11 @@ impl KeyDoc {
     pub(crate) fn value_path(&self) -> &'static str {
         if self.object { "v" } else { "[1]" }
     }
+
+    /// Where the curve sits in the key as written: `curve` or `[2]`.
+    pub(crate) fn curve_path(&self) -> &'static str {
+        if self.object { "curve" } else { "[2]" }
+    }
 }
 
 /// A value as JSON writes it: a number, a list of numbers or a string. Its

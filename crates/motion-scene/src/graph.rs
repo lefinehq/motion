@@ -28,14 +28,15 @@ pub enum NodeKind {
     Rect,
 }
 
-/// When a node shows and how its own time runs, in frames of its parent's timeline.
+/// When a node shows and how its own time runs, in frames of its composition's
+/// timeline (parenting moves a layer, not its time).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Timing {
     /// The frames it shows in, `[start, end)`; always when `None`.
     pub span: Option<(f64, f64)>,
     /// Where its own frame 0 falls.
     pub offset: f64,
-    /// How slowly its own time runs.
+    /// How slowly its own time runs; negative runs backwards from `offset`.
     pub stretch: f64,
 }
 
@@ -47,12 +48,12 @@ impl Timing {
         stretch: 1.0,
     };
 
-    /// The node's own frame at the parent's `frame`.
+    /// The node's own frame at the composition's `frame`.
     pub fn local(&self, frame: f64) -> f64 {
         (frame - self.offset) / self.stretch
     }
 
-    /// Whether it shows at the parent's `frame`.
+    /// Whether it shows at the composition's `frame`.
     pub fn shows_at(&self, frame: f64) -> bool {
         self.span
             .is_none_or(|(start, end)| frame >= start && frame < end)
@@ -113,3 +114,7 @@ pub struct Node {
     /// Whether moving the layer's `at` moves the whole motion on `(x, y)`.
     pub follows_at: (bool, bool),
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/graph.rs"]
+mod tests;

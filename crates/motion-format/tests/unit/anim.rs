@@ -233,7 +233,12 @@ fn array_form_errors_say_what_kind_of_problem_they_are() {
             &format!("{x0}[2]"),
             Some(EASING_EXPECTED),
         ),
-        (json!({"x": [[0, 1, "nope"]]}), Kind::UnknownName, &x0, None),
+        (
+            json!({"x": [[0, 1, "nope"]]}),
+            Kind::UnknownName,
+            &format!("{x0}[2]"),
+            None,
+        ),
         (json!({"x": [[5, 0], [2, 1]]}), Kind::Invalid, &x1, None),
         (
             json!({"opacity": [[0, 2]]}),

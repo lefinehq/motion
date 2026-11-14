@@ -52,7 +52,8 @@ pub struct Layer {
     pub content: Content,
     /// Fill colour (the text colour for text layers).
     pub fill: Color,
-    /// Where the layer's anchor sits: its centre, unless `anchor` moves it.
+    /// Where the layer's anchor sits, in its parent's box or on the canvas:
+    /// its centre, unless `anchor` moves it.
     pub at: Position,
     /// Resting values set on the layer, by property, in the order written.
     pub values: Vec<(Prop, Value)>,
@@ -63,12 +64,13 @@ pub struct Layer {
     /// The layer it moves with: its position, rotation and scale apply on top
     /// of the parent's.
     pub parent: Option<String>,
-    /// When it shows, on its parent's timeline; always when `None`.
+    /// When it shows, on its composition's timeline; always when `None`.
     pub span: Option<TimeSpan>,
-    /// Where its own time 0 falls on its parent's timeline. Its keys and its
-    /// entrance are in its own time, so moving it is one edit.
+    /// Where its own time 0 falls on its composition's timeline. Its keys and
+    /// its entrance are in its own time, so moving it is one edit.
     pub offset: Time,
-    /// How slowly its own time runs: 2 plays at half speed, a negative value backwards.
+    /// How slowly its own time runs: 2 plays at half speed; a negative value
+    /// runs backwards from `offset`, so its keys play before `offset`.
     pub stretch: f64,
 }
 

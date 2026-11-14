@@ -188,9 +188,9 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
         serde_json::from_str(r#"{"opacity":"x","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2.0]]}"#)
             .unwrap();
     let rest = |target: Target| {
-        target.rest_of(target.prop.spec().rest(&at, (1000.0, 500.0), (10.0, 10.0)))
+        Some(target.rest_of(target.prop.spec().rest(&at, (1000.0, 500.0), (10.0, 10.0))))
     };
-    let json = expand_as_anim(&spec, &b, rest, 30.0, &others);
+    let json = expand_as_anim(&spec, &b, rest, 30.0, &others).unwrap();
     assert_eq!(
         json,
         r#"{"opacity":"0 -> 1 @10-40f cubic(0.2,0,0,1)","x":"470 -> 500 @10-40f cubic(0.2,0,0,1)","y":"330 -> 300 @10-40f cubic(0.2,0,0,1)","scale":"0.5,0.5 -> 1,1 @10-40f cubic(0.2,0,0,1)","rotate":"30 -> 0 @10-40f cubic(0.2,0,0,1)","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2]]}"#
@@ -208,4 +208,29 @@ fn a_bounded_property_cannot_start_at_a_distance() {
     );
     // Unbounded properties still may.
     assert!(presets(r#"{"rise":{"y":"+d"}}"#).is_ok());
+}
+
+#[test]
+fn an_unknown_rest_gives_no_expansion() {
+    let spec = presets(r#"{"p":{"opacity":0,"anchor-x":0}}"#)
+        .unwrap()
+        .remove(0)
+        .1;
+    let b = "p 10f".parse::<Behaviour>().unwrap();
+    let unknown_anchor =
+        |target: Target| (target.prop != Prop::ANCHOR).then_some(crate::Value::Number(1.0));
+    assert_eq!(
+        expand_as_anim(&spec, &b, unknown_anchor, 30.0, &AnimDoc::new()),
+        None
+    );
+}
+
+#[test]
+fn a_preset_may_not_set_a_property_and_its_component() {
+    let e = presets(r#"{"pp":{"scale":0,"scale-x":2}}"#).unwrap_err();
+    assert_eq!(
+        (e.kind, e.path.as_deref()),
+        (Kind::Conflict, Some("presets.pp.scale-x"))
+    );
+    assert!(presets(r#"{"pp":{"scale-x":0,"scale-y":2}}"#).is_ok());
 }

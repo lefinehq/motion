@@ -21,25 +21,52 @@ pub enum ValueType {
     Color,
 }
 
+/// What each [`ValueType`] is, one row per variant in declaration order.
+struct TypeSpec {
+    /// How many numbers a value holds.
+    dims: usize,
+    /// The accepted forms, with an example.
+    form: &'static str,
+    /// The type with its article, for messages.
+    noun: &'static str,
+}
+
+const TYPES: [TypeSpec; 3] = [
+    TypeSpec {
+        dims: 1,
+        form: "a number, e.g. `0.5`",
+        noun: "a number",
+    },
+    TypeSpec {
+        dims: 2,
+        form: "a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`",
+        noun: "a point",
+    },
+    TypeSpec {
+        dims: 4,
+        form: "a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1",
+        noun: "a colour",
+    },
+];
+
 impl ValueType {
+    const fn spec(self) -> &'static TypeSpec {
+        &TYPES[self as usize]
+    }
+
     /// How many numbers a value of this type holds.
     pub const fn dims(self) -> usize {
-        match self {
-            ValueType::Number => 1,
-            ValueType::Point => 2,
-            ValueType::Color => 4,
-        }
+        self.spec().dims
     }
 
     /// The accepted forms of a value of this type, with an example.
     pub const fn form(self) -> &'static str {
-        match self {
-            ValueType::Number => "a number, e.g. `0.5`",
-            ValueType::Point => "a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`",
-            ValueType::Color => {
-                "a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1"
-            }
-        }
+        self.spec().form
+    }
+
+    /// The type with its article, for messages: "a point".
+    pub const fn noun(self) -> &'static str {
+        self.spec().noun
     }
 }
 
@@ -122,7 +149,7 @@ impl Value {
     pub fn parse(text: &str, ty: ValueType, broadcast: bool) -> Result<Value> {
         let grammar = |input: &mut &str| value(input, ty, broadcast);
         parse_all(text, grammar, |_: Option<()>| {
-            Diagnostic::syntax(format!("`{text}` is not {}", article(ty))).expected(ty.form())
+            Diagnostic::syntax(format!("`{text}` is not {}", ty.noun())).expected(ty.form())
         })
     }
 
@@ -139,7 +166,7 @@ impl Value {
             _ if numbers.len() == ty.dims() => Ok(Value::from_components(ty, numbers)),
             _ => Err(Diagnostic::new(
                 crate::Kind::WrongType,
-                format!("{} numbers do not make {}", numbers.len(), article(ty)),
+                format!("{} numbers do not make {}", numbers.len(), ty.noun()),
             )
             .expected(ty.form())),
         }
@@ -150,15 +177,6 @@ impl From<Color> for Value {
     fn from(c: Color) -> Value {
         let channel = |v: u8| f64::from(v) / 255.0;
         Value::Color([channel(c.r), channel(c.g), channel(c.b), channel(c.a)])
-    }
-}
-
-/// "a number", "a point", "a colour", for messages.
-fn article(ty: ValueType) -> &'static str {
-    match ty {
-        ValueType::Number => "a number",
-        ValueType::Point => "a point",
-        ValueType::Color => "a colour",
     }
 }
 
