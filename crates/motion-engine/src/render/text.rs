@@ -17,8 +17,9 @@
 //! # Faux bold and faux italic
 //!
 //! The scene format describes both as drawing effects on a face that lacks
-//! the weight or the slant, so layout leaves advances alone and the renderer
-//! draws them:
+//! the weight or the slant. Layout gives faux bold room
+//! ([`FAUX_BOLD_TRACKING`](motion_text::FAUX_BOLD_TRACKING) after each
+//! character, measured against stored layouts); the renderer draws both:
 //!
 //! - **Faux bold** strokes every glyph in its own fill colour, centred on the
 //!   outline and with mitred corners, so the glyph grows by half the stroke

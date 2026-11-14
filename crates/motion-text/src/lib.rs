@@ -30,10 +30,14 @@ pub use font::{Face, Slant};
 pub use layout::{Glyph, GlyphRun, Line, TextLayout};
 pub use set::{FontQuery, FontSet};
 pub use style::{
-    AUTO_LEADING, Caps, CharacterStyle, Justification, Leading, ParagraphStyle, SMALL_CAPS_SCALE,
-    StyledRun, StyledText, TextFrame,
+    AUTO_LEADING, Caps, CharacterStyle, FAUX_BOLD_TRACKING, Justification, Leading, ParagraphStyle,
+    SMALL_CAPS_SCALE, StyledRun, StyledText, TextFrame,
 };
 pub use typeset::Typesetter;
 
-/// Re-exported so callers can name the font data in [`GlyphRun::font`].
-pub use parley::FontData;
+/// The font bytes in [`GlyphRun::font`]: the type the shaper and the
+/// rasteriser share, from its own vocabulary crate, so the shaper stays
+/// private ([D37]).
+///
+/// [D37]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d37-engines-stay-behind-our-own-types
+pub use linebender_resource_handle::FontData;

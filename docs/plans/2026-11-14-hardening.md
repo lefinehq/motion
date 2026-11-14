@@ -61,7 +61,7 @@ Decision D37:
 - Public APIs may use vocabulary crates that are built to be shared: `kurbo` and `peniko`.
 - Engines stay behind our own types: `parley`, `vello_cpu`, `binrw`, `winnow`, and later the JavaScript engine.
 
-Today `motion-text` exports `parley::FontData` through `GlyphRun.font`. That becomes our own font handle when 8c touches the layout.
+`GlyphRun.font` was the one case: the shared font bytes type, re-exported through the shaper. It is now named from its vocabulary crate, and a test fails when a public line names an engine.
 
 ## H6. Expressions are baked at import
 

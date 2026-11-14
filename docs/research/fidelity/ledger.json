@@ -33,22 +33,22 @@
       },
       "texts": 3,
       "texts_within": 2,
-      "text_worst": 7.477102,
+      "text_worst": 0.592682,
       "all": {
         "from": 0.0,
         "frames": 302,
-        "drawn_error": 0.02545,
-        "drawn_failing": 0.054613,
-        "union_error": 0.18037,
-        "union_failing": 0.300857
+        "drawn_error": 0.01961,
+        "drawn_failing": 0.049325,
+        "union_error": 0.174846,
+        "union_failing": 0.29578
       },
       "settled": {
         "from": 3.0,
         "frames": 122,
-        "drawn_error": 0.017629,
-        "drawn_failing": 0.043286,
-        "union_error": 0.017629,
-        "union_failing": 0.043286
+        "drawn_error": 0.009655,
+        "drawn_failing": 0.035966,
+        "union_error": 0.009655,
+        "union_failing": 0.035966
       }
     }
   }

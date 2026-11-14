@@ -294,7 +294,7 @@ motion's value lies in the parts the agent touches: the format, the edits and th
 
 ### D37. Engines stay behind our own types
 
-- **Decision:** a crate's public API may use vocabulary crates built to be shared between libraries (`kurbo` for geometry, `peniko` for paint). Engines stay private: the shaper (`parley`), the rasteriser (`vello_cpu`), the binary and text parsers (`binrw`, `winnow`), and later the JavaScript engine. Where an engine's type reaches a public API today, it becomes our own type the next time that code changes; `GlyphRun.font` (a `parley::FontData`) is the first.
+- **Decision:** a crate's public API may use vocabulary crates built to be shared between libraries (`kurbo` for geometry, `peniko` for paint, `linebender_resource_handle` for font bytes), named from those crates. Engines stay private: the shaper (`parley`), the rasteriser (`vello_cpu`), the binary and text parsers (`binrw`, `winnow`), and later the JavaScript engine. An engine's own type that reaches a public API becomes our own type. The one case found, `GlyphRun.font`, was the shared font bytes type re-exported through the shaper; it is now named from its vocabulary crate, so the shaper no longer appears in any public API.
 - **Why:**
   - Young engines change their APIs often. Behind our types, an upgrade or a replacement touches one crate.
   - Vocabulary crates exist to be shared, and wrapping them would only add conversions.

@@ -28,7 +28,7 @@ The manifest is a JSON file, with paths relative to it:
 
 | Sample | Unsupported | Text within | Settled, failing where drawn | Biggest gap |
 |---|---|---|---|---|
-| s740 | 10 expressions, 1 matte | 2 of 3 | 4.3% | expressions (the first 2 s), then faux bold |
+| s740 | 10 expressions, 1 matte | 2 of 3 (worst 0.59 px) | 3.6% | expressions (the first 2 s) |
 | s737 | 15 expressions, 4 mattes | 2 of 5 | 97.7% | track mattes: the layers used as mattes draw as plain white over the frame, and the title they reveal is hidden |
 
 s737 shows what one missing feature costs: until track mattes are supported, its numbers say little about anything else.

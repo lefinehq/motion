@@ -26,7 +26,10 @@ use crate::caps::{self, Cased};
 use crate::font::{Face, Slant};
 use crate::layout::{Glyph, GlyphRun, Line, TextLayout};
 use crate::set::FontSet;
-use crate::style::{Justification, Leading, ParagraphStyle, StyledText, TextFrame};
+use crate::style::{
+    CharacterStyle, FAUX_BOLD_TRACKING, Justification, Leading, ParagraphStyle, StyledText,
+    TextFrame,
+};
 
 /// How one justification lays out: Parley's alignment in a box, the last
 /// line's, and for point text where the line sits on the origin (0 starts
@@ -366,10 +369,19 @@ impl<'a> Styler<'a> {
                 &self.variations[face_index],
             ))),
             StyleProperty::FontSize(size as f32),
-            // Tracking follows every character, in thousandths of the run's em.
-            StyleProperty::LetterSpacing((style.tracking / 1000.0 * style.size) as f32),
+            // Tracking follows every character, in thousandths of the run's em;
+            // faux bold adds its own.
+            StyleProperty::LetterSpacing((tracking(style) / 1000.0 * style.size) as f32),
             StyleProperty::LineHeight(leading),
         ]
+    }
+}
+
+/// The space after each character of `style`, in thousandths of an em.
+fn tracking(style: &CharacterStyle) -> f64 {
+    match style.faux_bold {
+        true => style.tracking + FAUX_BOLD_TRACKING,
+        false => style.tracking,
     }
 }
 

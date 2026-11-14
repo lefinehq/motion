@@ -143,3 +143,119 @@ fn every_sample_composition_imports() {
         .for_each(|(what, count)| println!("  {count:5} {what}"));
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// Every text document in `group` and below: a static one, and each key's.
+fn documents<'p>(group: &'p motion_import::Group, out: &mut Vec<&'p motion_import::TextDocument>) {
+    for child in &group.children {
+        match child {
+            motion_import::Child::Group(group) => documents(group, out),
+            motion_import::Child::Property(property) => match &property.value {
+                Stream::Static(motion_import::Value::Text(document)) => out.push(document),
+                Stream::Animated(keys) => {
+                    out.extend(keys.iter().filter_map(|key| match &key.value {
+                        motion_import::Value::Text(document) => Some(&**document),
+                        _ => None,
+                    }))
+                }
+                Stream::Static(_) => {}
+            },
+        }
+    }
+}
+
+/// The beliefs about the composed-line cache that the text check rests on
+/// (`docs/design/aep-evidence.md`), each held over every stored layout.
+#[test]
+#[ignore = "needs $MOTION_AEP_SAMPLES"]
+fn the_composed_line_cache_holds_what_we_believe() {
+    use motion_import::{Justification, TextFrame};
+    let dir = PathBuf::from(std::env::var("MOTION_AEP_SAMPLES").expect("set $MOTION_AEP_SAMPLES"));
+    // Per belief: how many held, and where one did not.
+    let mut held: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut broken: Vec<String> = Vec::new();
+    let mut check = |belief: &'static str, holds: bool, at: &dyn Fn() -> String| match holds {
+        true => *held.entry(belief).or_default() += 1,
+        false => broken.push(format!("{belief}: {}", at())),
+    };
+    let mut seen = 0;
+    for path in projects(&dir) {
+        let Ok(project) = motion_import::decode(&fs::read(&path).expect("read a sample")) else {
+            continue;
+        };
+        let mut docs = Vec::new();
+        for item in &project.items {
+            if let ItemKind::Composition(comp) = &item.kind {
+                comp.layers
+                    .iter()
+                    .for_each(|layer| documents(&layer.properties, &mut docs));
+            }
+        }
+        for doc in docs.into_iter().filter(|doc| !doc.lines.is_empty()) {
+            seen += 1;
+            let at = || format!("{} {:?}", path.display(), doc.text);
+            // B1: a line's origin is on its baseline.
+            for line in &doc.lines {
+                check(
+                    "B1 line origin y is its baseline",
+                    (line.origin[1] - line.baseline).abs() < 1e-3,
+                    &at,
+                );
+            }
+            // B2: the lines count every character, each paragraph's end as one.
+            let counted: usize = doc
+                .lines
+                .iter()
+                .flat_map(|l| &l.segments)
+                .map(|s| s.characters)
+                .sum();
+            let units = doc.text.encode_utf16().count();
+            check(
+                "B2 lines count the text and one closing character",
+                counted == units + 1,
+                &|| format!("{} ({counted} counted, {units} in the text)", at()),
+            );
+            // B3: point text's segments start where their alignment puts
+            // them, aligned without the tracking after the last character,
+            // which the stored width includes.
+            let one_rule = doc
+                .paragraphs
+                .iter()
+                .map(|p| p.style.justification)
+                .reduce(|a, b| if a == b { a } else { Justification::JustifyAll });
+            if let (TextFrame::Point, Some(rule)) = (doc.frame, one_rule) {
+                let share = match rule {
+                    Justification::Left => Some(0.0),
+                    Justification::Center => Some(0.5),
+                    Justification::Right => Some(1.0),
+                    _ => None,
+                };
+                let trailing = doc
+                    .characters
+                    .last()
+                    .map_or(0.0, |run| run.style.tracking / 1000.0 * run.style.size);
+                for (line, share) in doc.lines.iter().zip(std::iter::repeat(share).flatten()) {
+                    let (Some(first), width) = (
+                        line.segments.first(),
+                        line.segments.iter().map(|s| s.width).sum::<f64>(),
+                    ) else {
+                        continue;
+                    };
+                    check(
+                        "B3 point text segments start at their alignment",
+                        (first.origin[0] + share * (width - trailing)).abs() < 0.01,
+                        &|| format!("{} (starts {}, width {width})", at(), first.origin[0]),
+                    );
+                }
+            }
+        }
+    }
+    println!("{seen} stored layouts");
+    for (belief, count) in &held {
+        println!("  {belief}: held {count} times");
+    }
+    assert!(
+        broken.is_empty(),
+        "beliefs that did not hold:\n{}",
+        broken.join("\n")
+    );
+}
