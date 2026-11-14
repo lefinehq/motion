@@ -20,6 +20,8 @@ serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+rstest.workspace = true
+pretty_assertions.workspace = true
 motion-format = { path = "../motion-format" }
 
 [lints]
