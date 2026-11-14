@@ -199,6 +199,10 @@ impl Decoder {
         }
         .value();
         let start_time = ldta.start.value();
+        let timing = property::Timing {
+            start: start_time,
+            stretch,
+        };
         let id = |id: u32| (id != 0 && id != u32::MAX).then_some(id);
         Ok(Layer {
             id: ldta.id,
@@ -223,7 +227,7 @@ impl Decoder {
             blend_mode: ldta.blend_mode.into(),
             track_matte: ldta.track_matte.into(),
             matte_layer: ldta.matte_layer.and_then(id),
-            properties: self.group(scan.require_list(property::TDGP)?, String::new())?,
+            properties: self.group(scan.require_list(property::TDGP)?, String::new(), timing)?,
         })
     }
 

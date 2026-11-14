@@ -291,8 +291,11 @@ pub(crate) struct Tdb4 {
     /// Values per keyframe: 1 to 3, or 4 for a colour.
     #[br(seek_before = at(0x02))]
     pub dims: u16,
-    /// Stream flags, such as [`Tdb4::SINGLE_EASE`].
+    /// Stream flags: [`Tdb4::SINGLE_EASE`] and [`Tdb4::SPATIAL`].
     pub flags: u16,
+    /// Keyframe time units per second of the layer's time.
+    #[br(seek_before = at(0x0C))]
+    pub time_base: u32,
     /// Bit 0: the value lives in a container next to the stream.
     #[br(seek_before = at(0x38))]
     pub value_flags: u16,
@@ -310,6 +313,8 @@ impl Record for Tdb4 {
 impl Tdb4 {
     /// Stream flag: one ease for the whole value, and tangents per dimension.
     pub const SINGLE_EASE: u16 = 0x02;
+    /// Stream flag: the values form a motion path.
+    pub const SPATIAL: u16 = 0x08;
 
     /// How the stream's values and keyframes are laid out.
     pub fn layout(&self) -> Layout {
@@ -329,10 +334,130 @@ impl Tdb4 {
         self.type_flags & 0x01 != 0
     }
 
+    /// Whether the values form a motion path, with spatial tangents.
+    pub fn is_spatial(&self) -> bool {
+        self.flags & Self::SPATIAL != 0
+    }
+
     /// Whether the stream's expression, if any, is switched on.
     pub fn expression_enabled(&self) -> bool {
         self.expression_flags & 0x01 == 0
     }
+}
+
+/// `lhd3`: the header of a `LIST:list`
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#lhd3)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Lhd3 {
+    /// How many items the `ldat` holds.
+    #[br(seek_before = at(0x08))]
+    pub count: u32,
+    /// The size of one item in bytes.
+    #[br(seek_before = at(0x10))]
+    pub item_size: u32,
+}
+
+impl Record for Lhd3 {
+    const NAME: Name = Name::chunk(b"lhd3");
+}
+
+/// One keyframe item of an `ldat`: its time, interpolation and flags, then a
+/// body laid out by the stream's [`Layout`]
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#keyframe-items)).
+#[derive(BinRead, Debug)]
+#[br(import(dims: usize, layout: Layout))]
+pub(crate) struct KeyItem {
+    /// The time in the stream's time base, from the layer's start.
+    pub time: i32,
+    /// The in interpolation's code.
+    pub in_interpolation: u8,
+    /// The out interpolation's code.
+    pub out_interpolation: u8,
+    /// Key flags: [`KeyItem::CONTINUOUS`] and the others.
+    pub flags: u16,
+    /// The ease and the value.
+    #[br(args(dims, layout))]
+    pub body: KeyBody,
+}
+
+impl KeyItem {
+    /// Key flag: the out ease follows the in ease.
+    pub const CONTINUOUS: u16 = 0x08;
+    /// Key flag: the ease is computed from the neighbours.
+    pub const AUTO_BEZIER: u16 = 0x10;
+    /// Key flag: the time is derived from the motion path.
+    pub const ROVING: u16 = 0x20;
+    /// Spatial flag: the path runs smoothly through the keyframe.
+    pub const SPATIAL_CONTINUOUS: u32 = 0x01;
+    /// Spatial flag: the tangents are computed from the neighbours.
+    pub const SPATIAL_AUTO_BEZIER: u32 = 0x02;
+}
+
+/// The part of a keyframe item after its first 8 bytes, one variant per
+/// [`Layout`].
+#[derive(BinRead, Debug)]
+#[br(import(dims: usize, layout: Layout))]
+pub(crate) enum KeyBody {
+    /// The value, then each ease part for every dimension in turn.
+    #[br(pre_assert(layout == Layout::PerDimension))]
+    PerDimension {
+        /// The value.
+        #[br(count = dims)]
+        value: Vec<f64>,
+        /// In speed per dimension.
+        #[br(count = dims)]
+        in_speed: Vec<f64>,
+        /// In influence per dimension.
+        #[br(count = dims)]
+        in_influence: Vec<f64>,
+        /// Out speed per dimension.
+        #[br(count = dims)]
+        out_speed: Vec<f64>,
+        /// Out influence per dimension.
+        #[br(count = dims)]
+        out_influence: Vec<f64>,
+    },
+    /// One ease, then the value and its spatial tangents.
+    #[br(pre_assert(layout == Layout::SingleEase))]
+    SingleEase {
+        /// Spatial flags: [`KeyItem::SPATIAL_CONTINUOUS`] and the other.
+        spatial_flags: u32,
+        /// The ease, after a reserved word and the segment's length.
+        #[br(pad_before = 12)]
+        ease: OneEase,
+        /// The value.
+        #[br(count = dims)]
+        value: Vec<f64>,
+        /// The tangent into the keyframe.
+        #[br(count = dims)]
+        in_tangent: Vec<f64>,
+        /// The tangent out of the keyframe.
+        #[br(count = dims)]
+        out_tangent: Vec<f64>,
+    },
+    /// One ease; the value lives in a container next to the stream.
+    #[br(pre_assert(layout == Layout::SingleEaseValueless))]
+    SingleEaseValueless {
+        /// The ease, after the spatial flags, a reserved word and the length.
+        #[br(pad_before = 16)]
+        ease: OneEase,
+    },
+    /// Timing only; the value lives in a container next to the stream.
+    #[br(pre_assert(layout == Layout::Valueless))]
+    Valueless,
+}
+
+/// The one temporal ease of a single-ease keyframe item.
+#[derive(BinRead, Debug)]
+pub(crate) struct OneEase {
+    /// In speed.
+    pub in_speed: f64,
+    /// In influence, from 0 to 1.
+    pub in_influence: f64,
+    /// Out speed.
+    pub out_speed: f64,
+    /// Out influence, from 0 to 1.
+    pub out_influence: f64,
 }
 
 /// How a stream lays out its values, from [`Tdb4::layout`]

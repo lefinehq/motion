@@ -172,6 +172,57 @@ pub struct Property {
 pub enum Stream {
     /// One value at all times.
     Static(Value),
+    /// Keyframes, sorted by time.
+    Animated(Vec<Keyframe>),
+}
+
+/// One keyframe of a property
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#interpreting-keyframes)).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Keyframe {
+    /// When it is, in composition seconds.
+    pub time: f64,
+    /// Its value.
+    pub value: Value,
+    /// How the segment that ends here moves.
+    pub in_interpolation: Interpolation,
+    /// How the segment that starts here moves.
+    pub out_interpolation: Interpolation,
+    /// The temporal ease into the keyframe: one per dimension for numbers,
+    /// one for the whole value for spatial values and colours.
+    pub in_ease: Vec<Ease>,
+    /// The temporal ease out of the keyframe, laid out as `in_ease`.
+    pub out_ease: Vec<Ease>,
+    /// The motion path's tangents, on spatial properties.
+    pub spatial: Option<Spatial>,
+    /// The out ease follows the in ease.
+    pub continuous: bool,
+    /// The ease is computed from the neighbouring keyframes.
+    pub auto_bezier: bool,
+    /// The time is derived from the path, between the keyframes around it.
+    pub roving: bool,
+}
+
+/// A temporal ease on one side of a keyframe.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Ease {
+    /// Speed, in the value's units per second.
+    pub speed: f64,
+    /// How far the ease reaches into the segment, from 0 to 1.
+    pub influence: f64,
+}
+
+/// A spatial keyframe's motion-path tangents, as offsets from its value.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Spatial {
+    /// The tangent into the keyframe.
+    pub in_tangent: Vec<f64>,
+    /// The tangent out of the keyframe.
+    pub out_tangent: Vec<f64>,
+    /// The path runs smoothly through the keyframe.
+    pub continuous: bool,
+    /// The tangents are computed from the neighbouring keyframes.
+    pub auto_bezier: bool,
 }
 
 /// An expression attached to a property.
@@ -217,8 +268,6 @@ pub enum Reason {
     Orientation,
     /// A mask or shape path.
     Path,
-    /// Keyframes, not read yet.
-    Keyframes,
     /// A stream whose value lives in a record of its own, such as an
     /// effect's arbitrary data.
     Valueless,
@@ -454,4 +503,17 @@ pub struct Color {
     pub b: f64,
     /// Alpha.
     pub a: f64,
+}
+
+coded! {
+    /// How a keyframe's side of a segment moves
+    /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#keyframe-items)).
+    pub enum Interpolation: u8 {
+        /// A straight line.
+        Linear = 1,
+        /// A curve shaped by the eases.
+        Bezier = 2,
+        /// The value holds until the next keyframe.
+        Hold = 3,
+    }
 }

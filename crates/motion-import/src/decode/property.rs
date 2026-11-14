@@ -3,11 +3,17 @@
 //! keyframes
 //! ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#listtdgp)).
 
+use std::num::NonZeroU32;
+
 use motion_format::{Diagnostic, Kind, Result};
 
 use super::{Decoder, Scan, UTF8};
-use crate::model::{Child, Color, Expression, Group, Property, Reason, Stream, Value};
-use crate::record::{Bound, Cdat, Layout, Record, Tdb4, Tdsb, text};
+use crate::model::{
+    Child, Color, Ease, Expression, Group, Keyframe, Property, Reason, Spatial, Stream, Value,
+};
+use crate::record::{
+    Bound, Cdat, KeyBody, KeyItem, Layout, Lhd3, OneEase, Record, Tdb4, Tdsb, text,
+};
 use crate::rifx::{Chunk, Name, Tag};
 
 /// A property group.
@@ -18,8 +24,10 @@ const TDBS: Name = Name::list(b"tdbs");
 const TDMN: Name = Name::chunk(b"tdmn");
 /// A display name.
 const TDSN: Name = Name::chunk(b"tdsn");
-/// A keyframe list.
+/// A keyframe list: an `lhd3` and an `ldat`.
 const KEYFRAMES: Name = Name::list(b"list");
+/// The items of a keyframe list.
+const LDAT: Name = Name::chunk(b"ldat");
 /// An expression, in files older than [`crate::record::Head::WRAPPED_TEXT`].
 const EXPR: Name = Name::chunk(b"expr");
 
@@ -55,9 +63,34 @@ const BODIES: [(Tag, Body); 8] = [
     (Tag(*b"GCst"), Body::Wrapped(Reason::Gradient)),
 ];
 
+/// How a layer's keyframe times map to composition seconds
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#interpreting-keyframes)).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct Timing {
+    /// Where the layer's time 0 falls, in composition seconds.
+    pub start: f64,
+    /// The layer's stretch: 2 runs its time at half speed.
+    pub stretch: f64,
+}
+
+impl Timing {
+    /// The composition time of a keyframe stored at `time` units of
+    /// `time_base` a second. A reversed layer's time 0 sits a 3000th of its
+    /// stretch before its start.
+    fn seconds(self, time: i32, time_base: NonZeroU32) -> f64 {
+        let layer_seconds = f64::from(time) / f64::from(time_base.get());
+        self.start + layer_seconds * self.stretch + self.stretch.min(0.0) / 3000.0
+    }
+}
+
 impl Decoder {
     /// A group: its flags, its name and its children, up to `ADBE Group End`.
-    pub(super) fn group(&self, mut scan: Scan<'_, '_>, match_name: String) -> Result<Group> {
+    pub(super) fn group(
+        &self,
+        mut scan: Scan<'_, '_>,
+        match_name: String,
+        timing: Timing,
+    ) -> Result<Group> {
         let enabled = scan.optional::<Tdsb>()?.is_none_or(|tdsb| tdsb.enabled());
         let name = self.display_name(&mut scan)?;
         let children = scan
@@ -67,7 +100,7 @@ impl Decoder {
                 let match_name = text(tdmn.body);
                 (match_name != GROUP_END).then_some((match_name, body))
             })
-            .map(|(match_name, body)| self.child(&scan, match_name, &body))
+            .map(|(match_name, body)| self.child(&scan, match_name, &body, timing))
             .collect::<Result<_>>()?;
         Ok(Group {
             match_name,
@@ -83,6 +116,7 @@ impl Decoder {
         parent: &Scan<'_, '_>,
         match_name: String,
         body: &[Chunk<'_>],
+        timing: Timing,
     ) -> Result<Child> {
         let main = body.iter().enumerate().find_map(|(index, chunk)| {
             let list = chunk.name.list?;
@@ -99,40 +133,39 @@ impl Decoder {
         };
         let mut scan = parent.open(chunk, parent.child_path(&match_name))?;
         Ok(match kind {
-            Body::Group => Child::Group(self.group(scan, match_name)?),
-            Body::Effect => Child::Group(self.group(scan.require_list(TDGP)?, match_name)?),
-            Body::Stream => Child::Property(self.stream(scan, match_name, Reason::Valueless)?),
+            Body::Group => Child::Group(self.group(scan, match_name, timing)?),
+            Body::Effect => {
+                Child::Group(self.group(scan.require_list(TDGP)?, match_name, timing)?)
+            }
+            Body::Stream => {
+                Child::Property(self.stream(scan, match_name, Reason::Valueless, timing)?)
+            }
             Body::Wrapped(reason) => {
-                Child::Property(self.stream(scan.require_list(TDBS)?, match_name, reason)?)
+                let stream = scan.require_list(TDBS)?;
+                Child::Property(self.stream(stream, match_name, reason, timing)?)
             }
         })
     }
 
-    /// A stream: its flags, name, metadata, value, expression and bounds
+    /// A stream: its flags, name, metadata, value or keyframes, expression
+    /// and bounds
     /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#listtdbs)).
-    /// `reason` says what a valueless stream's value is.
+    /// `reason` says what a valueless stream's values are.
     fn stream(
         &self,
         mut scan: Scan<'_, '_>,
         match_name: String,
         reason: Reason,
+        timing: Timing,
     ) -> Result<Property> {
         let enabled = scan.optional::<Tdsb>()?.is_none_or(|tdsb| tdsb.enabled());
         let name = self.display_name(&mut scan)?;
         let tdb4: Tdb4 = scan.record()?;
         let value = match scan.find(Cdat::NAME) {
-            Some(cdat) => match tdb4.layout() {
-                Layout::PerDimension | Layout::SingleEase => {
-                    let cdat: Cdat = scan.parse(cdat, ())?;
-                    value_of(&scan, &cdat.numbers, &tdb4)?
-                }
-                Layout::SingleEaseValueless | Layout::Valueless => Value::Opaque { reason },
-            },
+            Some(cdat) => Stream::Static(static_value(&scan, cdat, &tdb4, reason)?),
             None => {
-                scan.require(KEYFRAMES)?;
-                Value::Opaque {
-                    reason: Reason::Keyframes,
-                }
+                let list = scan.require_list(KEYFRAMES)?;
+                Stream::Animated(keyframes(list, &tdb4, reason, timing)?)
             }
         };
         let expression = scan
@@ -152,7 +185,7 @@ impl Decoder {
             match_name,
             name,
             enabled,
-            value: Stream::Static(value),
+            value,
             expression,
             min,
             max,
@@ -177,24 +210,143 @@ impl Decoder {
     }
 }
 
-/// The value made of the first `tdb4.dims` of `numbers`.
+/// A stream's static value, from its `cdat`
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#cdat)).
 ///
 /// # Errors
-/// A diagnostic when there are fewer numbers than dimensions.
-fn value_of(scan: &Scan<'_, '_>, numbers: &[f64], tdb4: &Tdb4) -> Result<Value> {
+/// A diagnostic when the `cdat` holds fewer numbers than the dimensions.
+fn static_value(
+    scan: &Scan<'_, '_>,
+    cdat: Chunk<'_>,
+    tdb4: &Tdb4,
+    reason: Reason,
+) -> Result<Value> {
+    if matches!(
+        tdb4.layout(),
+        Layout::SingleEaseValueless | Layout::Valueless
+    ) {
+        return Ok(Value::Opaque { reason });
+    }
     let dims = usize::from(tdb4.dims);
-    let value = numbers.get(..dims).ok_or_else(|| {
+    let cdat: Cdat = scan.parse(cdat, ())?;
+    let numbers = cdat.numbers.get(..dims).ok_or_else(|| {
         Diagnostic::new(
             Kind::Invalid,
             format!(
                 "a value of {dims} dimensions holds only {} numbers",
-                numbers.len()
+                cdat.numbers.len()
             ),
         )
         .at(scan.child_path(Cdat::NAME))
         .expected(format!("{dims} numbers"))
     })?;
-    Ok(match (value, tdb4.is_color()) {
+    Ok(value_of(numbers, tdb4.is_color()))
+}
+
+/// A stream's keyframes, from the items of its `LIST:list`
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#ldat)).
+///
+/// # Errors
+/// A diagnostic when the `ldat` holds fewer items than `lhd3` counts, an item
+/// is too short for the stream's layout, or the time base is 0.
+fn keyframes(
+    mut list: Scan<'_, '_>,
+    tdb4: &Tdb4,
+    reason: Reason,
+    timing: Timing,
+) -> Result<Vec<Keyframe>> {
+    let lhd3: Lhd3 = list.record()?;
+    let ldat = list.find(LDAT).map(|chunk| chunk.body).unwrap_or_default();
+    let count = usize::try_from(lhd3.count).unwrap_or(usize::MAX);
+    let size = usize::try_from(lhd3.item_size).unwrap_or(usize::MAX);
+    let items: Vec<&[u8]> = match size {
+        0 => Vec::new(),
+        size => ldat.chunks_exact(size).take(count).collect(),
+    };
+    if items.len() < count {
+        return Err(Diagnostic::new(
+            Kind::Invalid,
+            format!(
+                "`lhd3` counts {count} keyframes of {size} bytes, but `ldat` holds {} bytes",
+                ldat.len()
+            ),
+        )
+        .at(list.child_path(LDAT))
+        .expected("an `ldat` of count x item size bytes"));
+    }
+    let time_base = NonZeroU32::new(tdb4.time_base).ok_or_else(|| {
+        Diagnostic::new(Kind::Invalid, "the keyframes have a time base of 0")
+            .at(list.path.clone())
+            .expected("a `tdb4` time base of at least 1")
+    })?;
+    let args = (usize::from(tdb4.dims), tdb4.layout());
+    items
+        .into_iter()
+        .map(|body| {
+            let item: KeyItem = list.parse(Chunk { name: LDAT, body }, args)?;
+            let time = timing.seconds(item.time, time_base);
+            Ok(keyframe(item, time, tdb4, reason))
+        })
+        .collect()
+}
+
+/// The keyframe at `time` that `item` describes; a valueless stream's value
+/// is opaque, for `reason`.
+fn keyframe(item: KeyItem, time: f64, tdb4: &Tdb4, reason: Reason) -> Keyframe {
+    let opaque = Value::Opaque { reason };
+    let (value, in_ease, out_ease, spatial) = match item.body {
+        KeyBody::PerDimension {
+            value,
+            in_speed,
+            in_influence,
+            out_speed,
+            out_influence,
+        } => (
+            value_of(&value, tdb4.is_color()),
+            eases(&in_speed, &in_influence),
+            eases(&out_speed, &out_influence),
+            None,
+        ),
+        KeyBody::SingleEase {
+            spatial_flags,
+            ease,
+            value,
+            in_tangent,
+            out_tangent,
+        } => {
+            let spatial = tdb4.is_spatial().then_some(Spatial {
+                in_tangent,
+                out_tangent,
+                continuous: spatial_flags & KeyItem::SPATIAL_CONTINUOUS != 0,
+                auto_bezier: spatial_flags & KeyItem::SPATIAL_AUTO_BEZIER != 0,
+            });
+            let (in_ease, out_ease) = sides(&ease);
+            let color = tdb4.is_color();
+            (value_of(&value, color), in_ease, out_ease, spatial)
+        }
+        KeyBody::SingleEaseValueless { ease } => {
+            let (in_ease, out_ease) = sides(&ease);
+            (opaque, in_ease, out_ease, None)
+        }
+        KeyBody::Valueless => (opaque, Vec::new(), Vec::new(), None),
+    };
+    Keyframe {
+        time,
+        value,
+        in_interpolation: item.in_interpolation.into(),
+        out_interpolation: item.out_interpolation.into(),
+        in_ease,
+        out_ease,
+        spatial,
+        continuous: item.flags & KeyItem::CONTINUOUS != 0,
+        auto_bezier: item.flags & KeyItem::AUTO_BEZIER != 0,
+        roving: item.flags & KeyItem::ROVING != 0,
+    }
+}
+
+/// The value that `numbers`, one per dimension, make; a colour when `color`.
+fn value_of(numbers: &[f64], color: bool) -> Value {
+    match (numbers, color) {
         (&[a, r, g, b], true) => Value::Color(Color {
             r: r / 255.0,
             g: g / 255.0,
@@ -207,7 +359,24 @@ fn value_of(scan: &Scan<'_, '_>, numbers: &[f64], tdb4: &Tdb4) -> Result<Value> 
         _ => Value::Opaque {
             reason: Reason::Dimensions,
         },
-    })
+    }
+}
+
+/// One ease per dimension, from the speeds and influences of each.
+fn eases(speeds: &[f64], influences: &[f64]) -> Vec<Ease> {
+    speeds
+        .iter()
+        .zip(influences)
+        .map(|(&speed, &influence)| Ease { speed, influence })
+        .collect()
+}
+
+/// The in and out side of a single-ease item's ease, as one-element lists.
+fn sides(ease: &OneEase) -> (Vec<Ease>, Vec<Ease>) {
+    (
+        eases(&[ease.in_speed], &[ease.in_influence]),
+        eases(&[ease.out_speed], &[ease.out_influence]),
+    )
 }
 
 /// A property whose value the reader does not decode, for `reason`.
