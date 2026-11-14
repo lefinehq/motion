@@ -6,6 +6,7 @@
 
 pub mod anim;
 mod curve;
+mod de;
 mod diagnostic;
 mod doc;
 pub mod edit_word;

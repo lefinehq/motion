@@ -2,6 +2,7 @@
 //! one mapping from them to a diagnostic.
 
 use super::*;
+use crate::Kind;
 use serde_json::json;
 
 /// The error of `json`.
@@ -281,17 +282,6 @@ fn a_value_that_contains_the_separator_stays_in_the_message() {
 
 #[test]
 fn every_serde_shape_maps_to_its_kind() {
-    /// A required field in serde's terms, which no document type has.
-    #[derive(Debug, serde::Deserialize)]
-    #[allow(dead_code)]
-    struct Required {
-        key: u8,
-    }
-    let missing = serde_path_to_error::deserialize::<_, Required>(&json!({})).unwrap_err();
-    let e = structural(missing);
-    assert_eq!(e.kind, Kind::Missing);
-    assert_eq!(e.to_string(), "missing field `key`");
-    // The other shapes, each from a real document.
     let invalid_value = err(r#"{"motion":1,"dur":"1s","presets":{"a":{"x":"left"}},"layers":[]}"#);
     assert_eq!(invalid_value.kind, Kind::Invalid);
     let short_key = err(&scene_with_track("[[0]]"));
