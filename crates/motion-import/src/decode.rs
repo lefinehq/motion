@@ -257,6 +257,7 @@ impl Decoder {
                 motion_blur: ldta.is_on(Ldta::MOTION_BLUR),
                 null: ldta.is_on(Ldta::NULL),
                 adjustment: ldta.is_on(Ldta::ADJUSTMENT),
+                collapse: ldta.is_on(Ldta::COLLAPSE),
             },
             blend_mode: ldta.blend_mode.into(),
             track_matte: ldta.track_matte.into(),

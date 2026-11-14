@@ -4,7 +4,7 @@ expression: "format!(\"{project}{}\", project.report())"
 ---
 project 92.14, 8 bits per channel, expressions in extendscript
 composition 68 "Add" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
-  layer 70 "A" shape, 0s-2.04s
+  layer 70 "A" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -35,7 +35,7 @@ composition 68 "Add" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
 composition 212 "Add Add" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
-  layer 214 "A" shape, 0s-2.04s
+  layer 214 "A" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -68,7 +68,7 @@ composition 212 "Add Add" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
 composition 284 "Add Inverted" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
-  layer 286 "A" shape, 0s-2.04s
+  layer 286 "A" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -99,7 +99,7 @@ composition 284 "Add Inverted" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
 composition 188 "Add_Subtract" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
-  layer 190 "Shape Layer 2" shape, 0s-2.04s
+  layer 190 "Shape Layer 2" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -132,7 +132,7 @@ composition 188 "Add_Subtract" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
 composition 1 "Comp 1" 200x200, 29.97 fps, 2.04s, work area 0s-2.04s
-  layer 14 "Shape Layer 2" shape, 0s-2.04s
+  layer 14 "Shape Layer 2" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -161,7 +161,7 @@ composition 1 "Comp 1" 200x200, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 12 "Shape Layer 1" shape, -2s-0.03s
+  layer 12 "Shape Layer 1" shape, -2s-0.03s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -190,7 +190,7 @@ composition 1 "Comp 1" 200x200, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
 composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
-  layer 36 "Shape Layer 5" shape, 0s-2.04s
+  layer 36 "Shape Layer 5" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -222,7 +222,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 34 "Shape Layer 4" shape, 0s-2.04s
+  layer 34 "Shape Layer 4" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -254,7 +254,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 32 "Shape Layer 3" shape, 0s-2.04s
+  layer 32 "Shape Layer 3" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -286,7 +286,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 42 "Shape Layer 8" shape, 0s-2.04s
+  layer 42 "Shape Layer 8" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -318,7 +318,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 40 "Shape Layer 7" shape, 0s-2.04s
+  layer 40 "Shape Layer 7" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -350,7 +350,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 38 "Shape Layer 6" shape, 0s-2.04s
+  layer 38 "Shape Layer 6" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -382,7 +382,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 30 "Shape Layer 2" shape, 0s-2.04s
+  layer 30 "Shape Layer 2" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -414,7 +414,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 28 "Shape Layer 1" shape, 0s-2.04s
+  layer 28 "Shape Layer 1" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -568,7 +568,7 @@ composition 344 "MaskNonInv" 100x150, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
 composition 236 "Subtract" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
-  layer 238 "Shape Layer 2" shape, 0s-2.04s
+  layer 238 "Shape Layer 2" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -599,7 +599,7 @@ composition 236 "Subtract" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
 composition 308 "Subtract Inverted" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
-  layer 310 "Shape Layer 2" shape, 0s-2.04s
+  layer 310 "Shape Layer 2" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -630,7 +630,7 @@ composition 308 "Subtract Inverted" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
 composition 332 "Subtract Inverted Add Inverted" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
-  layer 334 "Shape Layer 2" shape, 0s-2.04s
+  layer 334 "Shape Layer 2" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -663,7 +663,7 @@ composition 332 "Subtract Inverted Add Inverted" 50x50, 29.97 fps, 2.04s, work a
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
 composition 164 "Subtract Subtrct" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
-  layer 166 "Shape Layer 2" shape, 0s-2.04s
+  layer 166 "Shape Layer 2" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -696,7 +696,7 @@ composition 164 "Subtract Subtrct" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
 composition 92 "Subtract_Add" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
-  layer 94 "Shape Layer 2" shape, 0s-2.04s
+  layer 94 "Shape Layer 2" shape, 0s-2.04s, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group

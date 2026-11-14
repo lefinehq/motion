@@ -24,7 +24,7 @@ folder 46 "Folder 01"
         ADBE Transparency Coefficient = 0
         ADBE Transp Rolloff = 0
         ADBE Index of Refraction = 1
-    layer 76 "Shape Layer 1" shape, 0s-31s
+    layer 76 "Shape Layer 1" shape, 0s-31s, collapse
       ADBE Transform Group
         ADBE Position_0 = 0
         ADBE Position_1 = 0

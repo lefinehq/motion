@@ -7,7 +7,9 @@ use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use motion_import::{Child, Composition, Group, ItemKind, Layer, Project, Stream, Value, decode};
+use motion_import::{
+    Child, Composition, Group, ItemKind, Layer, Project, Stream, Switches, Value, decode,
+};
 use proptest::prelude::*;
 use serde_json::Value as Json;
 
@@ -324,4 +326,38 @@ proptest! {
         });
         let _ = decode(&bytes);
     }
+}
+
+/// Each switch of the `Layer-01` fixture, whose layers are named after the
+/// switch each one has on, read from the layer of that name. The layer
+/// `Transformations Collapsed` is also soloed in the file.
+#[rstest::rstest]
+#[case::solo("Solo", |s: &Switches| s.solo)]
+#[case::shy("Shy", |s: &Switches| s.shy)]
+#[case::motion_blur("Motion Blur", |s: &Switches| s.motion_blur)]
+#[case::three_d("3D", |s: &Switches| s.three_d)]
+#[case::adjustment("Adjustment", |s: &Switches| s.adjustment)]
+#[case::guide("Guide", |s: &Switches| s.guide)]
+#[case::collapse("Transformations Collapsed", |s: &Switches| s.collapse)]
+fn each_switch_reads_from_the_layer_named_after_it(
+    #[case] name: &str,
+    #[case] switch: fn(&Switches) -> bool,
+) {
+    let project = project(&Path::new(FIXTURES).join("Layer-01.aep"));
+    let layers: Vec<&Layer> = project
+        .items
+        .iter()
+        .filter_map(|item| match &item.kind {
+            ItemKind::Composition(comp) => Some(comp),
+            _ => None,
+        })
+        .flat_map(|comp| &comp.layers)
+        .collect();
+    let named = layers.iter().find(|l| l.name == name).expect("the layer");
+    assert!(switch(&named.switches), "{name} is on");
+    let default = layers
+        .iter()
+        .find(|l| l.name == "Default")
+        .expect("Default");
+    assert!(!switch(&default.switches), "{name} is off on `Default`");
 }

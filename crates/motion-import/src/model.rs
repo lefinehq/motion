@@ -372,6 +372,10 @@ pub struct Switches {
     pub null: bool,
     /// It is an adjustment layer, applying its effects to the layers below.
     pub adjustment: bool,
+    /// On a composition layer, its layers are composited straight into the
+    /// one it sits in, unclipped; on a text or shape layer it is drawn at
+    /// every scale, which a vector renderer always does.
+    pub collapse: bool,
 }
 
 /// Declares a unit enum read from one of the file's numeric codes: the

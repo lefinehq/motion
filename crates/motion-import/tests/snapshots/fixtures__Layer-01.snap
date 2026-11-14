@@ -4,7 +4,7 @@ expression: "format!(\"{project}{}\", project.report())"
 ---
 project 93.4, 8 bits per channel, expressions in javascript-1.0
 composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
-  layer 53 "Transformations Collapsed" shape, 0s-60s, solo
+  layer 53 "Transformations Collapsed" shape, 0s-60s, solo, collapse
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0

@@ -168,6 +168,13 @@ impl<'p> Walk<'p> {
                 Some((id, ItemKind::Composition(_))) => match self.comp_id(id) {
                     Some(comp) => {
                         out.keys.insert("comp".into(), json!(comp));
+                        // On a vector layer the switch changes nothing we draw.
+                        if layer.switches.collapse {
+                            self.mapping.unsupported(
+                                &place.at,
+                                "collapsed transformations (drawn as a clipped composition)",
+                            );
+                        }
                     }
                     None => pivot(self, out, Some("compositions it cannot find")),
                 },

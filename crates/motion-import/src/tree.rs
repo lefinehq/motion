@@ -12,7 +12,7 @@ use motion_format::fmt_num;
 
 use crate::model::{
     Child, Composition, Footage, Group, ItemKind, Layer, Project, Property, Source, Stream,
-    TextDocument, TextFrame, Value,
+    Switches, TextDocument, TextFrame, Value,
 };
 
 /// The width of one level of indentation.
@@ -130,22 +130,27 @@ impl fmt::Display for Layer {
             .iter()
             .filter_map(|(name, id)| id.map(|id| (name, id)))
             .try_for_each(|(name, id)| write!(f, ", {name} {id}"))?;
-        let s = self.switches;
-        let switches = [
-            ("off", !s.enabled),
-            ("3d", s.three_d),
-            ("solo", s.solo),
-            ("shy", s.shy),
-            ("guide", s.guide),
-            ("motion blur", s.motion_blur),
-            ("null", s.null),
-            ("adjustment", s.adjustment),
-        ];
-        switches
+        printed(&self.switches)
             .iter()
             .filter(|(_, on)| *on)
             .try_for_each(|(name, _)| write!(f, ", {name}"))
     }
+}
+
+/// Each switch of `s` as `inspect` prints it, with whether it shows: one
+/// entry per field of [`Switches`], `enabled` printed as `off`.
+fn printed(s: &Switches) -> [(&'static str, bool); 9] {
+    [
+        ("off", !s.enabled),
+        ("3d", s.three_d),
+        ("solo", s.solo),
+        ("shy", s.shy),
+        ("guide", s.guide),
+        ("motion blur", s.motion_blur),
+        ("null", s.null),
+        ("adjustment", s.adjustment),
+        ("collapse", s.collapse),
+    ]
 }
 
 /// A property's match name, its value or keyframes, then its expression.
