@@ -1,5 +1,8 @@
 //! Unit tests for `src/text.rs`.
 
+use rstest::rstest;
+use serde_json::json;
+
 use super::*;
 
 #[test]
@@ -48,4 +51,31 @@ fn key_names_are_unique_and_documented() {
         format!("{:?}", style_key("caps").unwrap()),
         "StyleKey { name: \"caps\", level: Character, .. }"
     );
+}
+
+#[rstest]
+#[case::default_width("stroke-width", json!(1), true)]
+#[case::zero_width("stroke-width", json!(0), false)]
+#[case::clear_stroke("stroke", json!([0, 0, 0, 0]), true)]
+#[case::auto_leading("leading", json!("auto"), true)]
+#[case::left("align", json!("left"), true)]
+#[case::rejected("tracking", json!("wide"), false)]
+#[case::layer_font("font", json!("Inter 40"), false)]
+#[case::layer_fill("fill", json!([0, 0, 0, 0]), false)]
+fn a_key_is_at_its_default_only_when_setting_it_changes_nothing(
+    #[case] name: &str,
+    #[case] value: Json,
+    #[case] default: bool,
+) {
+    assert_eq!(style_key(name).unwrap().is_default(&value), default);
+}
+
+#[test]
+fn only_font_and_fill_are_set_on_the_layer() {
+    let on_layer: Vec<&str> = STYLE_KEYS
+        .iter()
+        .filter(|k| k.on_layer)
+        .map(|k| k.name)
+        .collect();
+    assert_eq!(on_layer, ["font", "fill"]);
 }

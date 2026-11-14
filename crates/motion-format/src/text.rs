@@ -232,11 +232,40 @@ pub struct StyleKey {
     pub form: &'static str,
     /// What it means, for people and agents.
     pub doc: &'static str,
+    /// Whether the layer itself sets it, never a style: the base font and
+    /// fill every text writes. Runs may still change it.
+    pub on_layer: bool,
     /// What it sets.
     pub set: Setter,
 }
 
 impl StyleKey {
+    /// Whether `value` changes nothing on a style that leaves this key out,
+    /// so a writer may leave it out too. A key the layer sets has no
+    /// default; a value the key rejects is not one.
+    pub fn is_default(&self, value: &Json) -> bool {
+        if self.on_layer {
+            return false;
+        }
+        match self.set {
+            Setter::Character(set) => {
+                // The font and fill are the layer's, never compared here.
+                let font = Font {
+                    family: String::new(),
+                    size: 1.0,
+                    weight: 400,
+                };
+                let unset = CharacterStyle::new(font, [0.0; 4]);
+                let mut style = unset.clone();
+                set(&mut style, value).is_ok() && style == unset
+            }
+            Setter::Paragraph(set) => {
+                let mut style = ParagraphStyle::default();
+                set(&mut style, value).is_ok() && style == ParagraphStyle::default()
+            }
+        }
+    }
+
     /// Whether it styles characters or paragraphs.
     pub fn level(&self) -> Level {
         match self.set {
@@ -315,6 +344,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "font",
         form: "`<family or PostScript name> <size> [<weight>]`, e.g. `Lato-Black 55`",
         doc: "the font, by family and weight or by PostScript name, and its size in px",
+        on_layer: true,
         set: Setter::Character(|s, j| {
             s.font = crate::de::from_value::<Shorthand<Font>>(j)?.parse()?;
             Ok(())
@@ -324,6 +354,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "italic",
         form: "`true` or `false`",
         doc: "the family's italic face rather than its upright one",
+        on_layer: false,
         set: Setter::Character(|s, j| {
             s.italic = flag(j)?;
             Ok(())
@@ -333,6 +364,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "fill",
         form: "a colour, e.g. `#FFFFFF` or `[1, 1, 1, 1]`",
         doc: "the colour inside the glyphs",
+        on_layer: true,
         set: Setter::Character(|s, j| {
             s.fill = color(j)?;
             Ok(())
@@ -342,6 +374,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "stroke",
         form: "a colour, e.g. `#8F8F8F`",
         doc: "the colour along the glyphs' outlines; none unless set",
+        on_layer: false,
         set: Setter::Character(|s, j| {
             s.stroke = color(j)?;
             Ok(())
@@ -351,6 +384,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "stroke-width",
         form: "a number of px, at least 0",
         doc: "the stroke's width, centred on the outline; 1 by default",
+        on_layer: false,
         set: Setter::Character(|s, j| {
             s.stroke_width = at_least(j, 0.0)?;
             Ok(())
@@ -360,6 +394,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "paint",
         form: "`fill-over` or `stroke-over`",
         doc: "which of fill and stroke is drawn on top; the fill by default",
+        on_layer: false,
         set: Setter::Character(|s, j| {
             s.paint = choice(j, "paint order", &PAINT_ORDERS)?;
             Ok(())
@@ -369,6 +404,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "tracking",
         form: "a number, in thousandths of an em",
         doc: "extra space after each character",
+        on_layer: false,
         set: Setter::Character(|s, j| {
             s.tracking = finite(j)?;
             Ok(())
@@ -378,6 +414,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "leading",
         form: "`auto` or a number of px",
         doc: "the distance from the previous baseline; the paragraph's automatic leading by default",
+        on_layer: false,
         set: Setter::Character(|s, j| {
             s.leading = match j.as_str() {
                 Some("auto") => Leading::Auto,
@@ -392,6 +429,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "baseline",
         form: "a number of px",
         doc: "how far the baseline is raised",
+        on_layer: false,
         set: Setter::Character(|s, j| {
             s.baseline = finite(j)?;
             Ok(())
@@ -401,6 +439,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "caps",
         form: "`normal`, `small`, `all` or `all-small`",
         doc: "capitals: small capitals for lower case, every letter a capital, or every letter a small capital",
+        on_layer: false,
         set: Setter::Character(|s, j| {
             s.caps = choice(j, "caps", &CAPS)?;
             Ok(())
@@ -410,6 +449,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "faux-bold",
         form: "`true` or `false`",
         doc: "thickens the glyphs, for a face without a bold",
+        on_layer: false,
         set: Setter::Character(|s, j| {
             s.faux_bold = flag(j)?;
             Ok(())
@@ -419,6 +459,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "faux-italic",
         form: "`true` or `false`",
         doc: "slants the glyphs, for a face without an italic",
+        on_layer: false,
         set: Setter::Character(|s, j| {
             s.faux_italic = flag(j)?;
             Ok(())
@@ -428,6 +469,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "align",
         form: "`left`, `right`, `center`, `justify-left`, `justify-right`, `justify-center` or `justify-all`",
         doc: "how the lines align; point text aligns about its origin",
+        on_layer: false,
         set: Setter::Paragraph(|s, j| {
             s.align = choice(j, "alignment", &ALIGNS)?;
             Ok(())
@@ -437,6 +479,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "indent-first",
         form: "a number of px",
         doc: "the first line's extra indent",
+        on_layer: false,
         set: Setter::Paragraph(|s, j| {
             s.indent_first = finite(j)?;
             Ok(())
@@ -446,6 +489,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "indent-start",
         form: "a number of px",
         doc: "the indent at the start of every line",
+        on_layer: false,
         set: Setter::Paragraph(|s, j| {
             s.indent_start = finite(j)?;
             Ok(())
@@ -455,6 +499,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "indent-end",
         form: "a number of px",
         doc: "the indent at the end of every line of box text",
+        on_layer: false,
         set: Setter::Paragraph(|s, j| {
             s.indent_end = finite(j)?;
             Ok(())
@@ -464,6 +509,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "space-before",
         form: "a number of px",
         doc: "space above the paragraph, after the first",
+        on_layer: false,
         set: Setter::Paragraph(|s, j| {
             s.space_before = finite(j)?;
             Ok(())
@@ -473,6 +519,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "space-after",
         form: "a number of px",
         doc: "space below the paragraph, before the next",
+        on_layer: false,
         set: Setter::Paragraph(|s, j| {
             s.space_after = finite(j)?;
             Ok(())
@@ -482,6 +529,7 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         name: "auto-leading",
         form: "a number, at least 0",
         doc: "automatic leading as a multiple of the size; 1.2 by default",
+        on_layer: false,
         set: Setter::Paragraph(|s, j| {
             s.auto_leading = at_least(j, 0.0)?;
             Ok(())
