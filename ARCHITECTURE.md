@@ -28,18 +28,14 @@ Each crate has one job and a list of things it must never do. Keeping those rule
 
 | Crate | What it does | What it must never do |
 |---|---|---|
-| `motion-diagnostic` | The one error type, `Diagnostic`, with a `Kind` and an exit code. | Depend on any other motion crate, or format an error anywhere else. |
-| `motion-grammar` | The shared `winnow` pieces every text grammar uses, and the one mapping from a grammar's failure to a `Diagnostic`. | Expose `winnow` types in other crates' public APIs. |
-| `motion-format` | Reads the scene format: a serde document for the JSON shape, `winnow` grammars for the shorthands, then validation and writing (step 1). | Touch pixels. |
-| `motion-scene` | Compiles a scene into a scene graph with resolved positions, sizes and entrances (step 2). | Touch pixels or read files. |
-| `motion-eval` | Works out every node's position, size and opacity at a frame (step 3). | Touch pixels or read files. |
+| `motion-format` | Reads the scene format: a serde document for the JSON shape, `winnow` grammars for the shorthands, then validation and writing (step 1). Also holds the one error type, `Diagnostic`, and the shared grammar pieces. | Touch pixels, read files, or format an error outside `Diagnostic`. |
+| `motion-scene` | Compiles a scene into a scene graph with resolved sizes and tracks (step 2), and works out every node's position, size and opacity at a frame (step 3). | Touch pixels or read files. |
 | `motion-query` | Side branch: `check` and `at` answer questions about a scene with numbers. | Write files or touch pixels. |
 | `motion-edit` | Side branch: parses one-line edits and applies them to a parsed scene's raw JSON. | Write files or touch pixels. |
-| `motion-engine` | `Session`: the only entry point for tools. It reads, parses, compiles and evaluates a scene and runs `check`, `at` and edits, each step inside a `tracing` span. | Print, read arguments, or let a tool bypass it to call a step directly. |
-| `motion-telemetry` | Starts logging and step timings (`--log`, `MOTION_LOG`, `--timings`) from the spans the engine opens. | Be started by a library: only binaries and tests install a subscriber. |
+| `motion-engine` | `Session`: the only entry point for tools. It reads, parses, compiles and evaluates a scene and runs `check`, `at` and edits, each step inside a `tracing` span. Its `telemetry` module installs the stderr subscriber for logs and step timings. | Print, read arguments, let a tool bypass it to call a step directly, or install a subscriber itself (only binaries and tests call `telemetry::init`). |
 | `motion-cli` | The `motion` command: reads the arguments, runs each command through a `Session`, and prints its output. | Hold engine logic. It is the only place that prints, and it reaches scenes only through `Session`. |
 
-Crates are added task by task. This table lists only crates that exist.
+Crates are added task by task, and only when a piece has its own dependencies or its own users. This table lists only crates that exist.
 
 ### Planned crates (not yet created)
 
@@ -57,8 +53,8 @@ Libraries never print: they return a `Diagnostic` or log with `tracing`, and onl
 
 | What | Where |
 |---|---|
-| The error type, its kinds and exit codes | `crates/motion-diagnostic/src/lib.rs` |
-| Shared grammar pieces and the failure-to-`Diagnostic` mapping | `crates/motion-grammar/src/lib.rs` |
+| The error type, its kinds and exit codes | `crates/motion-format/src/diagnostic.rs` |
+| Shared grammar pieces and the failure-to-`Diagnostic` mapping | `crates/motion-format/src/grammar.rs` |
 | The scene's JSON shape, as serde types (`SceneDoc`, `LayerDoc`) | `crates/motion-format/src/doc.rs` |
 | Shorthand grammars: units, rect, font, position, behaviour, tracks | `crates/motion-format/src/units.rs`, `shorthand/`, `anim.rs`, `curve.rs` |
 | Validation: every rule beyond the shape | `crates/motion-format/src/validate.rs` |
@@ -84,4 +80,4 @@ The rule: **names are data; add a row, not a branch.** A new property is a row i
 ## Where to start reading
 
 1. `crates/motion-format/src/lib.rs`: the scene format and its units.
-2. `crates/motion-eval/src/evaluate.rs`: how a frame's values are worked out.
+2. `crates/motion-scene/src/evaluate.rs`: how a frame's values are worked out.
