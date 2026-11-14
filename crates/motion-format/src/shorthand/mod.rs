@@ -1,11 +1,5 @@
-//! Shorthand strings for layer properties: position, rectangle, font and
-//! behaviour.
-//!
-//! Part of step 1 (Read). Each type implements `FromStr` with a `winnow`
-//! grammar that turns one compact string from a scene into a typed value, or
-//! a [`Diagnostic`](motion_diagnostic::Diagnostic) that lists the accepted
-//! forms. The pieces the grammars share with the units and curves live in
-//! `motion_grammar`.
+//! Shorthand strings for layer properties, each a `winnow` grammar behind
+//! `FromStr`: position, rectangle, font and behaviour.
 
 mod behaviour;
 mod font;

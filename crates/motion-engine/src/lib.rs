@@ -1,13 +1,5 @@
-//! `motion-engine`: the one entry point to the motion pipeline.
-//!
-//! [`Session`] is the entry point, and the only way in: callers (the CLI
-//! today; the MCP server and the Node binding later) open or parse a session
-//! and call its methods. A session reads and parses a scene (step 1),
-//! compiles it once on demand (step 2), evaluates frames (step 3) and runs
-//! the `check`, `at` and edit side branches on it. Every step runs through
-//! one private wrapper, so each one has a `tracing` span for logs and
-//! timings, and every failure is logged once, in one place, before it
-//! reaches the caller unchanged.
+//! The one entry point to the motion pipeline. A [`Session`] reads, compiles,
+//! queries and edits a scene, running every step in a `tracing` span.
 //!
 //! ```
 //! use motion_engine::Session;
@@ -21,11 +13,14 @@
 
 mod session;
 mod stage;
+pub mod telemetry;
+
+#[cfg(test)]
+#[path = "../tests/unit/support.rs"]
+mod test_support;
 
 pub use session::Session;
 
-pub use motion_diagnostic::{Diagnostic, Kind, Result};
-pub use motion_eval::FrameState;
-pub use motion_format::{Document, Scene};
+pub use motion_format::{Diagnostic, Document, Kind, Result, Scene};
 pub use motion_query::Report;
-pub use motion_scene::SceneGraph;
+pub use motion_scene::{FrameState, SceneGraph};

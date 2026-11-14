@@ -1,7 +1,4 @@
-//! Keyframe tracks: one property's value over time.
-//!
-//! Part of step 2 (Compile). Compiling gives every property of every node a
-//! [`Track`]; evaluating (step 3) samples them. Times are frames.
+//! Keyframe tracks: one property's value over time, in frames.
 
 use motion_format::Curve;
 
@@ -21,18 +18,13 @@ pub struct Key {
 /// The keys of one property: never empty, sorted by frame.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Track {
-    /// Keys in non-decreasing frame order; same-frame keys keep their order.
     keys: Vec<Key>,
 }
 
 impl Track {
-    /// Builds a track from `keys`, sorting them stably by frame.
-    ///
-    /// Panics if `keys` is empty: a track always has a value, and callers
-    /// build keys from validated input that is never empty.
+    /// Builds a track from `keys`, sorted stably by frame. Panics if `keys` is empty.
     pub fn new(mut keys: Vec<Key>) -> Track {
         assert!(!keys.is_empty(), "a track needs at least one key");
-        // Stable, so two keys on one frame keep the order they were given.
         keys.sort_by(|a, b| a.frame.total_cmp(&b.frame));
         Track { keys }
     }
@@ -56,14 +48,10 @@ impl Track {
         self.keys.iter().all(|k| k.value == self.keys[0].value)
     }
 
-    /// The value at `frame`.
-    ///
-    /// Before the first key it is the first value, after the last key the last
-    /// value. Between two keys it eases with the left key's curve. When
-    /// several keys share a frame, the last of them applies from that frame on.
+    /// The value at `frame`, eased with the left key's curve and held past the ends.
+    /// Of several keys on one frame, the last applies from that frame on.
     pub fn sample(&self, frame: f64) -> f64 {
-        // Number of keys at or before `frame`; this lands after every key of
-        // a shared frame, so the last of them is the one we pick.
+        // Lands after every key of a shared frame, so the last of them wins.
         let after = self.keys.partition_point(|k| k.frame <= frame);
         let Some(left) = after.checked_sub(1).map(|i| &self.keys[i]) else {
             return self.keys[0].value;

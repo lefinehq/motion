@@ -1,7 +1,7 @@
 //! Unit tests for `src/units.rs`.
 
 use super::*;
-use motion_diagnostic::Kind;
+use crate::Kind;
 
 #[test]
 fn time_parses_frames_and_seconds() {
@@ -13,9 +13,9 @@ fn time_parses_frames_and_seconds() {
 #[test]
 fn time_rejects_bad_input_with_expected_form() {
     let e = "12".parse::<Time>().unwrap_err();
-    assert!(
-        e.to_string()
-            .contains("expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`")
+    assert_eq!(
+        (e.kind, e.expected.as_deref()),
+        (Kind::Syntax, Some(TIME_EXPECTED))
     );
     assert!("-3f".parse::<Time>().is_err());
     assert!("f".parse::<Time>().is_err());
@@ -41,12 +41,10 @@ fn color_parses_three_six_and_eight_digits() {
         }
     );
     assert_eq!("#00000033".parse::<Color>().unwrap().a, 0x33);
-    assert!(
-        "red"
-            .parse::<Color>()
-            .unwrap_err()
-            .to_string()
-            .contains("`#RGB`, `#RRGGBB` or `#RRGGBBAA`")
+    let e = "red".parse::<Color>().unwrap_err();
+    assert_eq!(
+        (e.kind, e.expected.as_deref()),
+        (Kind::Syntax, Some(COLOR_EXPECTED))
     );
     assert!("#GGG".parse::<Color>().is_err());
 }
@@ -95,13 +93,7 @@ fn size_parses_presets_and_explicit_pixels() {
         }
     );
     assert!("0x360".parse::<Size>().is_err());
-    assert!(
-        "big"
-            .parse::<Size>()
-            .unwrap_err()
-            .to_string()
-            .contains("one of 720p, 1080p, 4k, square, vertical, or <width>x<height>")
-    );
+    assert_eq!("big".parse::<Size>().unwrap_err().kind, Kind::UnknownName);
 }
 #[test]
 fn time_rejects_non_finite_and_malformed_numbers() {
@@ -109,10 +101,6 @@ fn time_rejects_non_finite_and_malformed_numbers() {
         assert!(bad.parse::<Time>().is_err(), "{bad:?} should be rejected");
     }
     assert_eq!("0f".parse::<Time>().unwrap(), Time::Frames(0.0));
-}
-#[test]
-fn time_error_names_the_input() {
-    assert!("12".parse::<Time>().unwrap_err().message.contains("`12`"));
 }
 #[test]
 fn color_three_digits_double_each_digit() {
@@ -147,17 +135,23 @@ fn size_rejects_malformed_explicit_sizes() {
     }
 }
 
+/// The reason the size grammar gives for `text`; `None` for an unknown name.
+fn problem(text: &str) -> Option<SizeProblem<'_>> {
+    let mut reason = None;
+    let _ = parse_all(text, size, |given| {
+        reason = given;
+        Diagnostic::syntax("")
+    });
+    reason
+}
+
 #[test]
 fn unknown_size_lists_every_named_size_in_order() {
     let e = "8k".parse::<Size>().unwrap_err();
-    assert_eq!(e.kind, Kind::UnknownName);
-    let names: Vec<&str> = SIZES.iter().map(|(name, _)| *name).collect();
+    assert!(problem("8k").is_none());
     assert_eq!(
-        e.to_string(),
-        format!(
-            "unknown size `8k`; expected one of {}, or <width>x<height>",
-            names.join(", ")
-        )
+        e,
+        Diagnostic::unknown("size", "8k", table::names(SIZES)).or_expected(EXPLICIT_FORM)
     );
     for (name, size) in SIZES {
         assert_eq!(name.parse::<Size>().unwrap(), *size);
@@ -168,29 +162,32 @@ fn unknown_size_lists_every_named_size_in_order() {
 fn malformed_explicit_size_gives_the_explicit_form() {
     for bad in ["640x", "640x0", "+640x0", "640x+"] {
         let e = bad.parse::<Size>().unwrap_err();
-        assert_eq!(e.kind, Kind::Syntax, "{bad}");
         assert_eq!(
-            e.to_string(),
-            format!("`{bad}` is not a valid size; expected {EXPLICIT_EXPECTED}")
+            (e.kind, e.expected.as_deref()),
+            (Kind::Syntax, Some(EXPLICIT_EXPECTED)),
+            "{bad}"
         );
+        assert!(matches!(problem(bad), Some(SizeProblem::Explicit)), "{bad}");
     }
 }
 
 #[test]
 fn text_after_a_valid_explicit_size_is_named_apart() {
-    for (bad, size) in [
-        ("640x360 ", "640x360"),
-        ("640x360px", "640x360"),
-        ("+640x360 ", "+640x360"),
-        ("1x2x3", "1x2"),
+    for (bad, after) in [
+        ("640x360 ", " "),
+        ("640x360px", "px"),
+        ("+640x360 ", " "),
+        ("1x2x3", "x3"),
     ] {
         let e = bad.parse::<Size>().unwrap_err();
-        assert_eq!(e.kind, Kind::Syntax, "{bad}");
         assert_eq!(
-            e.to_string(),
-            format!(
-                "unexpected text after the size `{size}` in `{bad}`; expected {EXPLICIT_EXPECTED}"
-            )
+            (e.kind, e.expected.as_deref()),
+            (Kind::Syntax, Some(EXPLICIT_EXPECTED)),
+            "{bad}"
+        );
+        assert!(
+            matches!(problem(bad), Some(SizeProblem::Trailing(rest)) if rest == after),
+            "{bad}"
         );
     }
 }

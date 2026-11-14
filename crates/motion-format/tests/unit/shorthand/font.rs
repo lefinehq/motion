@@ -1,6 +1,18 @@
 //! Unit tests for `src/shorthand/font.rs`.
 
 use super::*;
+use crate::Kind;
+
+/// The reason the grammar gives for `text`; `None` when nothing ends in a number.
+fn problem(text: &str) -> Option<Problem<'_>> {
+    let mut reason = None;
+    let _ = parse_all(text, font, |given| {
+        reason = given;
+        Diagnostic::syntax("")
+    });
+    reason
+}
+
 #[test]
 fn font_parses_family_with_spaces_size_and_weight() {
     assert_eq!(
@@ -19,12 +31,10 @@ fn font_parses_family_with_spaces_size_and_weight() {
             weight: 400
         }
     );
-    assert!(
-        "Inter"
-            .parse::<Font>()
-            .unwrap_err()
-            .to_string()
-            .contains("`<family> <size> [<weight>]`, e.g. `Inter 96 700`")
+    let e = "Inter".parse::<Font>().unwrap_err();
+    assert_eq!(
+        (e.kind, e.expected.as_deref()),
+        (Kind::Syntax, Some(EXPECTED))
     );
     assert!("Inter 96 950".parse::<Font>().is_err());
 }
@@ -63,9 +73,10 @@ fn font_family_ending_in_a_number_needs_explicit_size_and_weight() {
 }
 #[test]
 fn font_ambiguous_trailing_numbers_are_rejected_with_the_explicit_form() {
-    let e = "Baloo 2 120".parse::<Font>().unwrap_err().to_string();
-    assert!(e.contains("`Baloo 2 120` is ambiguous"), "{e}");
-    assert!(e.contains("e.g. `Baloo 2 120 400`"), "{e}");
+    assert!(matches!(
+        problem("Baloo 2 120"),
+        Some(Problem::Ambiguous { explicit }) if explicit == "Baloo 2 120"
+    ));
     assert!("Inter 96 950".parse::<Font>().is_err());
     assert!("Inter 96 750".parse::<Font>().is_err());
 }
@@ -76,12 +87,26 @@ fn font_two_trailing_numbers_with_valid_weight_are_size_and_weight() {
 }
 #[test]
 fn font_errors_name_their_cause() {
-    let msg = |t: &str| t.parse::<Font>().unwrap_err().message;
-    assert!(msg("Inter").contains("has no size"));
-    assert!(msg("96 700").contains("has no font family"));
-    assert!(msg("Inter 0").contains("`0` is not a valid size"));
-    assert!(msg("Inter 96 700 750").contains("weight must be 100, 200"));
-    assert!(msg("Inter 96 700 750").contains("`750` is not a valid weight"));
+    assert!(problem("Inter").is_none(), "no size");
+    assert!(matches!(problem("96 700"), Some(Problem::NoFamily)));
+    assert!(matches!(problem("Inter 0"), Some(Problem::Size("0"))));
+    assert!(matches!(
+        problem("Inter 96 700 750"),
+        Some(Problem::Weight("750"))
+    ));
+    for text in [
+        "Inter",
+        "96 700",
+        "Inter 0",
+        "Inter 96 700 750",
+        "Baloo 2 120",
+    ] {
+        let e = text.parse::<Font>().unwrap_err();
+        assert_eq!(
+            (e.kind, e.expected.as_deref()),
+            (Kind::Syntax, Some(EXPECTED))
+        );
+    }
 }
 
 /// Property tests: the parsers must reject bad text with an error, never panic.
@@ -106,6 +131,5 @@ mod never_panics {
 fn font_ignores_surrounding_whitespace_and_checks_the_family_first() {
     let f = "  Inter   96  ".parse::<Font>().unwrap();
     assert_eq!((f.family.as_str(), f.size, f.weight), ("Inter", 96.0, 400));
-    let message = "1 2 3".parse::<Font>().unwrap_err().message;
-    assert_eq!(message, "`1 2 3` has no font family");
+    assert!(matches!(problem("1 2 3"), Some(Problem::NoFamily)));
 }

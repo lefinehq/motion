@@ -1,9 +1,5 @@
-//! The commands behind the `motion` binary, plus the report printing they
-//! share.
-//!
-//! The command layer of the CLI: each command opens a
-//! [`Session`](motion_engine::Session), which runs the pipeline, and prints
-//! what it returns. No command calls a pipeline crate directly.
+//! The commands behind the `motion` binary; each one opens a
+//! [`Session`](motion_engine::Session) and prints what it returns.
 
 pub mod at;
 pub mod check;
@@ -13,8 +9,7 @@ use std::process::ExitCode;
 
 use motion_engine::Report;
 
-/// Prints a check report and maps it to an exit code: 1 when it has an
-/// error line.
+/// Prints a check report; exits 1 when it has an error line.
 pub fn print_report(report: &Report) -> ExitCode {
     println!("{report}");
     if report.has_errors() {

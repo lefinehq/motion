@@ -1,20 +1,6 @@
-//! `motion-edit`: change a scene with one short line.
-//!
-//! This crate is a side branch of the pipeline, not a numbered rendering
-//! step: it works on the same scene the earlier steps read (format, scene,
-//! eval), next to `motion-query`. Where `motion-query` asks a
-//! scene questions, this crate changes it: [`parse_edit`] turns a line into
-//! an [`Edit`], and [`apply_edit`] applies it to the raw scene JSON and
-//! re-validates the result with `motion-format`, so an edit can never leave
-//! a broken scene behind. Between them, `path` sets and removes a dotted
-//! key such as `anim.opacity` in the raw JSON.
-//!
-//! An edit line is `<target> <key>=<value> ...`:
-//!
-//! ```text
-//! card fill=#FF0000 in=none
-//! scene fps=60 bg="#0B0D12"
-//! ```
+//! Changes a scene with one short line, `<target> <key>=<value> ...`.
+//! [`parse_edit`] reads the line and [`apply_edit`] applies it, then
+//! re-validates the scene, so an edit never leaves a broken scene behind.
 //!
 //! ```
 //! let edit = motion_edit::parse_edit("title text=\"Hello\" in=none").unwrap();

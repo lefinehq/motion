@@ -1,30 +1,14 @@
-//! The scene document as JSON writes it, read with serde.
-//!
-//! Part of step 1 (Read), between the JSON text and `crate::validate`. These
-//! types mirror the JSON: each key has a field, and unknown keys are
-//! rejected. Serde reports only structural errors here (a wrong JSON type or
-//! an unknown key); shorthand strings are kept as written in a
-//! [`Shorthand`] and parsed, with every rule that needs more than one value,
-//! in `crate::validate`.
-//!
-//! Every value that can have the wrong JSON type carries its accepted form
-//! ([`Form`]) in its type, so serde's wrong-type error names the form the
-//! author has to write rather than "a string" or "a map". The track and key
-//! forms have hand-written visitors rather than `#[serde(untagged)]` for the
-//! same reason: a wrong value names the forms it could have been instead of
-//! "did not match any variant".
-//!
-//! Every key may be left out as far as serde is concerned, so that
-//! `crate::validate` reports a missing required key with an example of it.
-//! No key may be `null`: [`Present`] reads `null` as a wrong type.
+//! The scene document as JSON writes it, read with serde. Shorthand strings
+//! stay unparsed here; `crate::validate` parses them and checks the rules,
+//! including the keys a scene requires, so every key may be left out here.
 
 use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::str::FromStr;
 
+use crate::Diagnostic;
 use indexmap::IndexMap;
-use motion_diagnostic::Diagnostic;
 use serde::de::value::{MapAccessDeserializer, SeqAccessDeserializer};
 use serde::de::{
     self, Deserialize, Deserializer, IgnoredAny, MapAccess, SeqAccess, Unexpected, Visitor,
@@ -37,31 +21,23 @@ use crate::preset::Start;
 use crate::shorthand::{Behaviour, Font, Position, RectShape};
 use crate::units::{Color, Size, Time};
 
-/// The accepted form of a document value, for an error about a value of
-/// the wrong JSON type: written for people, with an example.
+/// The accepted form of a document value, told to a value of the wrong JSON
+/// type instead of serde's "a string" or "a map".
 pub(crate) trait Form {
-    /// The form.
+    /// The form, written for people, with an example.
     const FORM: &str;
 }
 
-/// The top level of a scene. Its fields are, in order, the keys of
-/// [`SCENE_KEYS`](crate::SCENE_KEYS); a unit test keeps the two in step.
+/// The top level of a scene; its fields follow [`SCENE_KEYS`](crate::SCENE_KEYS).
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct SceneDoc {
-    /// The format version; only `1` is valid. Required.
     pub(crate) motion: Present<Number>,
-    /// The canvas size shorthand, e.g. `1080p`.
     pub(crate) size: Present<Shorthand<Size>>,
-    /// Frames per second.
     pub(crate) fps: Present<Number>,
-    /// The scene's length, e.g. `5s`. Required.
     pub(crate) dur: Present<Shorthand<Time>>,
-    /// The background colour, e.g. `#0B0D12`.
     pub(crate) bg: Present<Shorthand<Color>>,
-    /// The scene's own presets, in the order written; none when left out.
     pub(crate) presets: Object<PresetsDoc>,
-    /// The layers, back to front. Required.
     pub(crate) layers: Present<List<LayersDoc>>,
 }
 
@@ -69,27 +45,18 @@ impl Form for SceneDoc {
     const FORM: &str = r#"a scene object, e.g. {"motion":1,"dur":"5s","layers":[]}"#;
 }
 
-/// One layer. Its fields are, in order, the keys of
-/// [`LAYER_KEYS`](crate::LAYER_KEYS); a unit test keeps the two in step.
+/// One layer; its fields follow [`LAYER_KEYS`](crate::LAYER_KEYS).
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct LayerDoc {
-    /// The layer's id. Required.
     pub(crate) id: Present<String>,
-    /// The words of a text layer.
     pub(crate) text: Present<String>,
-    /// The rectangle shorthand of a rect layer.
     pub(crate) rect: Present<Shorthand<RectShape>>,
-    /// The font shorthand of a text layer.
     pub(crate) font: Present<Shorthand<Font>>,
-    /// The fill colour shorthand.
     pub(crate) fill: Present<Shorthand<Color>>,
-    /// The position shorthand.
     pub(crate) at: Present<Shorthand<Position>>,
-    /// The entrance behaviour shorthand.
     #[serde(rename = "in")]
     pub(crate) enter: Present<Shorthand<Behaviour>>,
-    /// Tracks by property name, in the order written; none when left out.
     pub(crate) anim: Object<AnimDoc>,
 }
 
@@ -104,39 +71,36 @@ impl Form for LayersDoc {
     const FORM: &str = r#"a list of layer objects, e.g. [{"id":"box","rect":"100x100"}]"#;
 }
 
-/// The `presets` object: preset bodies by name, in the order written.
+/// The `presets` object: preset bodies by name.
 pub(crate) type PresetsDoc = IndexMap<String, Object<PresetDoc>>;
 
 impl Form for PresetsDoc {
     const FORM: &str = r#"an object of presets, e.g. {"slide":{"opacity":0,"x":"-d"}}"#;
 }
 
-/// A preset body: where each property starts, by property name, in the order
-/// written. A map rather than a struct, because property names are data:
-/// `crate::validate` checks them against the registry and lists its names.
+/// A preset body: starts by property name. A map, because property names are
+/// data that `crate::validate` checks against the registry.
 pub(crate) type PresetDoc = IndexMap<String, StartDoc>;
 
 impl Form for PresetDoc {
     const FORM: &str = r#"an object of property starts, e.g. {"opacity":0,"y":"+d"}"#;
 }
 
-/// A layer's `anim` object: tracks by property name, in the order written.
+/// A layer's `anim` object: tracks by property name.
 pub(crate) type AnimDoc = IndexMap<String, TrackDoc>;
 
 impl Form for AnimDoc {
     const FORM: &str = r#"an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}"#;
 }
 
-/// A key that may be left out but not set to `null`: `None` when left out.
+/// A key that may be left out but not set to `null`.
 ///
-/// Serde's `Option` reads `null` as left out, which would widen the format;
-/// this hands `null` to `T`, which rejects it as a wrong type with its form.
-/// The struct's `#[serde(default)]` covers the key being left out.
+/// `Option` would read `null` as left out; this hands `null` to `T`, which
+/// rejects it with its form. `#[serde(default)]` covers a key left out.
 #[derive(Debug)]
 pub(crate) struct Present<T>(Option<T>);
 
 impl<T> Default for Present<T> {
-    /// A key left out.
     fn default() -> Self {
         Present(None)
     }
@@ -145,7 +109,6 @@ impl<T> Default for Present<T> {
 impl<T> Deref for Present<T> {
     type Target = Option<T>;
 
-    /// The value, if the key was written.
     fn deref(&self) -> &Option<T> {
         &self.0
     }
@@ -159,19 +122,14 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for Present<T> {
 
 /// A shorthand string as written, parsed into a `T` by `crate::validate`.
 ///
-/// Holding the target type lets a value that is not a string be told the
-/// shorthand's own form (`T::FORM`), and lets the parse happen where the
-/// rules that need the rest of the scene run.
+/// The type parameter gives a value that is not a string `T::FORM`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Shorthand<T> {
-    /// The string as written.
     text: String,
-    /// The type the string stands for.
     target: PhantomData<fn() -> T>,
 }
 
 impl<T> Shorthand<T> {
-    /// The shorthand written as `text`.
     fn new(text: String) -> Self {
         Shorthand {
             text,
@@ -204,7 +162,6 @@ impl<T> Serialize for Shorthand<T> {
     }
 }
 
-/// Reads a [`Shorthand`]: any string; any other JSON type is told `T::FORM`.
 struct ShorthandVisitor<T>(PhantomData<fn() -> T>);
 
 impl<T: Form> Visitor<'_> for ShorthandVisitor<T> {
@@ -219,13 +176,10 @@ impl<T: Form> Visitor<'_> for ShorthandVisitor<T> {
     }
 }
 
-/// A `T` read from a JSON object only.
+/// A `T` read from a JSON object only, told `T::FORM` otherwise.
 ///
-/// Serde's derived structs also accept an array of their field values in
-/// order (`[1, null, null, "5s", …]`), which is not part of the scene
-/// format; this wrapper offers them nothing but an object. Any other JSON
-/// type is told `T::FORM`, which is also why the scene's maps are read
-/// through it.
+/// Derived structs also accept an array of their fields in order, which is
+/// not part of the format.
 #[derive(Debug, Default)]
 pub(crate) struct Object<T>(pub(crate) T);
 
@@ -235,7 +189,6 @@ impl<'de, T: Deserialize<'de> + Form> Deserialize<'de> for Object<T> {
     }
 }
 
-/// Reads an [`Object`]: hands the map to `T`'s own reader.
 struct ObjectVisitor<T>(PhantomData<T>);
 
 impl<'de, T: Deserialize<'de> + Form> Visitor<'de> for ObjectVisitor<T> {
@@ -250,7 +203,7 @@ impl<'de, T: Deserialize<'de> + Form> Visitor<'de> for ObjectVisitor<T> {
     }
 }
 
-/// A `T` read from a JSON array only; any other JSON type is told `T::FORM`.
+/// A `T` read from a JSON array only, told `T::FORM` otherwise.
 #[derive(Debug)]
 pub(crate) struct List<T>(pub(crate) T);
 
@@ -260,7 +213,6 @@ impl<'de, T: Deserialize<'de> + Form> Deserialize<'de> for List<T> {
     }
 }
 
-/// Reads a [`List`]: hands the array to `T`'s own reader.
 struct ListVisitor<T>(PhantomData<T>);
 
 impl<'de, T: Deserialize<'de> + Form> Visitor<'de> for ListVisitor<T> {
@@ -275,16 +227,13 @@ impl<'de, T: Deserialize<'de> + Form> Visitor<'de> for ListVisitor<T> {
     }
 }
 
-/// Where one property of a preset starts.
-///
-/// A newtype of the crate, so that reading a start from JSON stays an
-/// implementation detail rather than a public `Deserialize` on [`Start`].
+/// Where one property of a preset starts; a newtype so that [`Start`] has no
+/// public `Deserialize`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct StartDoc(pub(crate) Start);
 
 impl<'de> Deserialize<'de> for StartDoc {
-    /// A number, `"+d"` or `"-d"`. Any other string is the right type with
-    /// the wrong content, so it is an invalid value, not a wrong type.
+    /// A number, `"+d"` or `"-d"`; another string is an invalid value, not a wrong type.
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let expected = Start::form();
         match deserializer.deserialize_any(ScalarVisitor(expected))? {
@@ -299,8 +248,7 @@ impl<'de> Deserialize<'de> for StartDoc {
 /// One `anim` track as written.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TrackDoc {
-    /// The string form, `"0 -> 1 @0-12f ease-out"`, parsed by
-    /// `crate::anim::TrackLine`.
+    /// The string form, `"0 -> 1 @0-12f ease-out"`.
     Line(String),
     /// The key-list form.
     Keys(Vec<KeyDoc>),
@@ -309,11 +257,8 @@ pub(crate) enum TrackDoc {
 /// One key of the key-list form: `[time, value]` or `[time, value, curve]`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct KeyDoc {
-    /// When the key sits.
     pub(crate) time: KeyTime,
-    /// The value at that time.
     pub(crate) value: f64,
-    /// The curve towards the next key, if written.
     pub(crate) curve: Option<Shorthand<Curve>>,
 }
 
@@ -322,12 +267,11 @@ pub(crate) struct KeyDoc {
 pub(crate) enum KeyTime {
     /// A bare number, counted in frames.
     Frames(f64),
-    /// A shorthand such as `12f` or `0.4s`, parsed in `crate::validate`.
+    /// A shorthand such as `12f` or `0.4s`.
     Written(Shorthand<Time>),
 }
 
-/// A JSON number. Serde's own `f64` calls itself `f64` in a wrong-type
-/// error; this says "a number", which is what the author has to write.
+/// A JSON number, which a wrong type is told is "a number" rather than `f64`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Number(pub(crate) f64);
 
@@ -342,8 +286,7 @@ impl<'de> Deserialize<'de> for Number {
 }
 
 impl Serialize for Number {
-    /// Writes a whole number as an integer (`12`, not `12.0`), as an author
-    /// writes it, so a track quoted back in a hint reads as it was written.
+    /// Writes a whole number as an integer (`12`, not `12.0`), as an author writes it.
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         // Below 2^53 every whole `f64` is exactly an `i64`.
         const EXACT: f64 = 9_007_199_254_740_992.0;
@@ -375,16 +318,13 @@ impl Serialize for KeyTime {
     }
 }
 
-/// A number or a string: where a scene may write either.
+/// A number or a string, where a scene may write either.
 enum Scalar {
-    /// A JSON number.
     Number(f64),
-    /// A JSON string.
     Text(String),
 }
 
-/// Reads a [`Scalar`]; any other JSON type is a wrong type, told the
-/// accepted form held here.
+/// Reads a [`Scalar`]; any other JSON type is told the form it holds.
 struct ScalarVisitor(&'static str);
 
 impl Visitor<'_> for ScalarVisitor {
@@ -398,7 +338,6 @@ impl Visitor<'_> for ScalarVisitor {
         Ok(Scalar::Number(v))
     }
 
-    // JSON integers arrive as `i64` or `u64`; the scene works in `f64`.
     fn visit_i64<E: de::Error>(self, v: i64) -> Result<Scalar, E> {
         Ok(Scalar::Number(v as f64))
     }
@@ -413,6 +352,8 @@ impl Visitor<'_> for ScalarVisitor {
 }
 
 impl<'de> Deserialize<'de> for TrackDoc {
+    // A visitor rather than `#[serde(untagged)]`, so a wrong value is told
+    // both forms instead of "did not match any variant".
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_any(TrackVisitor)
     }
@@ -427,7 +368,6 @@ impl Serialize for TrackDoc {
     }
 }
 
-/// Reads a track: a string or a list of keys.
 struct TrackVisitor;
 
 impl<'de> Visitor<'de> for TrackVisitor {
@@ -453,7 +393,6 @@ impl<'de> Deserialize<'de> for KeyDoc {
 }
 
 impl Serialize for KeyDoc {
-    /// `[time, value]`, or `[time, value, curve]` when a curve is written.
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let len = if self.curve.is_some() { 3 } else { 2 };
         let mut seq = serializer.serialize_seq(Some(len))?;
@@ -466,7 +405,6 @@ impl Serialize for KeyDoc {
     }
 }
 
-/// Reads one key: a list of two or three items.
 struct KeyVisitor;
 
 impl<'de> Visitor<'de> for KeyVisitor {

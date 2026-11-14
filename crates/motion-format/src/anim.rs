@@ -1,16 +1,10 @@
-//! Free-form animation tracks: the `anim` key of a layer.
-//!
-//! Part of step 1 (Read). `anim` maps a property name to either a one-line
-//! string (`"0 -> 200 @0-30f ease-out"`) or a list of keyframes. Both forms
-//! produce the same [`AnimTrack`]. This module holds the typed tracks and the
-//! `winnow` grammar of the string form; the JSON shapes are read in
-//! `crate::doc`, and the rules that need the property registry or the frame
-//! rate (ranges, key order) are checked in `crate::validate`.
+//! Free-form animation tracks, a layer's `anim`: the typed [`AnimTrack`] and
+//! the grammar of the string form `"0 -> 200 @0-30f ease-out"`.
 
 use std::str::FromStr;
 
-use motion_diagnostic::{Diagnostic, Result};
-use motion_grammar::{Parsed, blank0, blank1, parse_all, word};
+use crate::grammar::{Parsed, blank0, blank1, parse_all, word};
+use crate::{Diagnostic, Result};
 use winnow::combinator::{opt, peek, preceded};
 use winnow::prelude::*;
 
@@ -18,9 +12,9 @@ use crate::Curve;
 use crate::property::Prop;
 use crate::units::{Time, amount, unit};
 
-/// The accepted forms of a track, for error messages.
+/// The accepted forms of a track.
 pub(crate) const TRACK_EXPECTED: &str = r#""<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of [time, value] keys"#;
-/// The string form only, for errors that are about its pieces.
+/// The string form only, for errors about its pieces.
 const STRING_EXPECTED: &str =
     r#""<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out""#;
 /// The accepted forms of a key list.
@@ -30,9 +24,7 @@ pub(crate) const KEY_EXPECTED: &str =
     r#"[time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"]"#;
 /// The accepted forms of a range such as `@0-30f`.
 pub(crate) const RANGE_EXPECTED: &str = "`@<start>-<end>` with a unit, e.g. `@0-30f`, `@0.5s-1s`";
-/// The arrow between the two values of the string form.
 const ARROW: &str = "->";
-/// The marker that starts the range token.
 const RANGE_MARK: char = '@';
 
 /// One keyframe of a track.
@@ -42,7 +34,7 @@ pub struct AnimKey {
     pub time: Time,
     /// The property's value at that time.
     pub value: f64,
-    /// How the value eases from this key to the next; `linear` by default.
+    /// How the value eases from this key to the next.
     pub curve: Curve,
 }
 
@@ -55,18 +47,13 @@ pub struct AnimTrack {
     pub keys: Vec<AnimKey>,
 }
 
-/// The string form of a track, `"<from> -> <to> @<start>-<end> [<curve>]"`,
-/// as written. Whether the values fit the property and the range runs
-/// forward is checked in `crate::validate`, which knows both.
+/// The string form of a track as written; `crate::validate` checks its
+/// values against the property and its range against the frame rate.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TrackLine {
-    /// The value at the start of the range.
     pub(crate) from: f64,
-    /// The value at the end of the range.
     pub(crate) to: f64,
-    /// When the change starts and ends.
     pub(crate) span: Span,
-    /// How the value eases from `from` to `to`; `linear` when left out.
     pub(crate) curve: Curve,
 }
 
@@ -91,30 +78,23 @@ impl TrackLine {
 impl FromStr for TrackLine {
     type Err = Diagnostic;
 
-    /// Parses `"<from> -> <to> @<start>-<end> [<curve>]"`.
     fn from_str(text: &str) -> Result<TrackLine> {
         parse_all(text, line, |problem| {
-            // A part that fails names its problem; a failure without one is
-            // text with no track shape at all.
             problem.unwrap_or(Problem::NotATrack).diagnostic(text)
         })
     }
 }
 
-/// `@<start>-<end>`: when a track's change starts and ends. A bare start
-/// takes the unit of the end, so `@0-30f` is `@0f-30f`.
+/// `@<start>-<end>`. A bare start takes the unit of the end: `@0-30f` is `@0f-30f`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Span {
-    /// When the change starts.
     pub(crate) start: Time,
-    /// When the change ends.
     pub(crate) end: Time,
 }
 
 impl FromStr for Span {
     type Err = Diagnostic;
 
-    /// Parses `@<start>-<end>`, e.g. `@0-30f` or `@0.5s-1s`.
     fn from_str(token: &str) -> Result<Span> {
         parse_all(token, span, |problem| {
             problem.unwrap_or(SpanProblem::NotARange).diagnostic(token)
@@ -122,30 +102,22 @@ impl FromStr for Span {
     }
 }
 
-/// Why the string form failed, when a part of the grammar says so.
+/// Why the string form failed.
 #[derive(Debug, Clone)]
 enum Problem {
-    /// A value word that is not a number.
     NotNumber(String),
-    /// No `->` after the start value.
     NoArrow,
-    /// No `@<start>-<end>` word after the end value.
     NoRange,
     /// A word after the curve.
     Trailing(String),
-    /// A nested shorthand (the range or the curve) failed; its diagnostic
-    /// already says how.
+    /// The range or the curve failed, with its own diagnostic.
     Part(Diagnostic),
-    /// The text has no track shape at all.
     NotATrack,
 }
 
 impl Problem {
-    /// The diagnostic for `text`, which has this problem: the one place the
-    /// track grammar's failures become messages.
     fn diagnostic(self, text: &str) -> Diagnostic {
         let message = match self {
-            // The nested shorthand's diagnostic already names its form.
             Problem::Part(diagnostic) => return diagnostic,
             Problem::NotNumber(word) => format!("`{word}` is not a number"),
             Problem::NoArrow => format!("missing `{ARROW}` after the start value in `{text}`"),
@@ -160,17 +132,12 @@ impl Problem {
 /// Why a range failed.
 #[derive(Debug, Clone, Copy)]
 enum SpanProblem {
-    /// No `-` after the start.
     NoDash,
-    /// The end has no `f` or `s`.
     NoUnit,
-    /// The token has no range shape at all.
     NotARange,
 }
 
 impl SpanProblem {
-    /// The diagnostic for `token`, which has this problem: the one place the
-    /// range grammar's failures become messages.
     fn diagnostic(self, token: &str) -> Diagnostic {
         let message = match self {
             SpanProblem::NoDash => format!("`{token}` has no `-` between start and end"),
@@ -181,7 +148,7 @@ impl SpanProblem {
     }
 }
 
-/// The whole string form: words separated by whitespace, in a fixed order.
+/// The whole string form: whitespace-separated words in a fixed order.
 fn line(input: &mut &str) -> Parsed<TrackLine, Problem> {
     let (from, (), to, span, curve, ()) = (
         preceded(blank0, value),
@@ -200,8 +167,7 @@ fn line(input: &mut &str) -> Parsed<TrackLine, Problem> {
     })
 }
 
-/// A value word, read as `f64` reads it. Its range is checked later, so a
-/// non-finite value gets the range error rather than this one.
+/// A value word, read as `f64` reads it, so a non-finite value gets the range error later.
 fn value(input: &mut &str) -> Parsed<f64, Problem> {
     word.try_map(|word: &str| {
         word.parse::<f64>()
@@ -218,9 +184,8 @@ fn range(input: &mut &str) -> Parsed<Span, Problem> {
         .parse_next(input)
 }
 
-/// The optional curve word; `linear` when left out. The word is read before
-/// it is parsed, so a bad curve reports the curve's error instead of
-/// backtracking to "unexpected word".
+/// The optional curve word, read whole before it is parsed so that a bad
+/// curve reports the curve's error rather than "unexpected word".
 fn curve(input: &mut &str) -> Parsed<Curve, Problem> {
     opt(preceded(blank1, word))
         .try_map(|word: Option<&str>| {
@@ -242,7 +207,6 @@ fn nothing_after(input: &mut &str) -> Parsed<(), Problem> {
         .parse_next(input)
 }
 
-/// `@<start>-<end>`, where the start may leave out its unit.
 fn span(input: &mut &str) -> Parsed<Span, SpanProblem> {
     let (start, start_unit) = preceded(RANGE_MARK, (amount, opt(unit))).parse_next(input)?;
     '-'.context(SpanProblem::NoDash).parse_next(input)?;

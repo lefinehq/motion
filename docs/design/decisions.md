@@ -219,6 +219,18 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - One entry point means the command line, an agent server and a Node binding behave the same and are timed the same.
   - Logs are off by default, so command output stays clean.
 
+### D29. Few crates, short comments
+
+- **Decision:** a piece of the pipeline gets its own crate only when it has its own dependencies or its own users.
+  - The error type and the shared grammar pieces live in `motion-format`, which every other crate already depends on.
+  - Evaluation lives in `motion-scene`, next to the graph it reads.
+  - The logging subscriber lives in `motion-engine`, next to the step spans it times.
+  - Comments say what an item is and why it exists, in a line or two; they do not narrate the code.
+- **Why:**
+  - Ten crates for a reader, a checker and an editor was more structure than code: every change crossed several manifests.
+  - Long comments repeated the code and went stale with it.
+  - The renderer, encoder and importer will be crates of their own, because they bring heavy dependencies.
+
 ## Open questions
 
 ### Q1. Name and packages (deferred)

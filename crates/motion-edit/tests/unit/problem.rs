@@ -1,7 +1,7 @@
 //! Unit tests for `src/problem.rs`.
 
 use super::*;
-use motion_diagnostic::Kind;
+use motion_format::Kind;
 
 #[test]
 fn every_problem_is_a_syntax_error_with_an_expected_form() {

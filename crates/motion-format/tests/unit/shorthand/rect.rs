@@ -12,12 +12,10 @@ fn rect_parses_size_and_optional_radius() {
         }
     );
     assert_eq!("240x8".parse::<RectShape>().unwrap().radius, 0.0);
-    assert!(
-        "300"
-            .parse::<RectShape>()
-            .unwrap_err()
-            .to_string()
-            .contains("`<width>x<height> [r<radius>]`, e.g. `300x400 r24`")
+    let e = "300".parse::<RectShape>().unwrap_err();
+    assert_eq!(
+        (e.kind, e.expected.as_deref()),
+        (crate::Kind::Syntax, Some(EXPECTED))
     );
     assert!("0x10".parse::<RectShape>().is_err());
 }

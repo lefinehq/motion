@@ -1,20 +1,15 @@
-//! Unit tests for `src/timing.rs`.
+//! Unit tests for `src/telemetry/timing.rs`.
 
 use tracing::{debug_span, field, info_span, trace_span};
 use tracing_subscriber::layer::SubscriberExt;
 
 use super::*;
+use crate::test_support::with_subscriber;
 
 /// Runs `body` with only the timings layer installed.
 fn timed(body: impl FnOnce()) -> Timings {
     let timings = Timings::default();
-    let subscriber = tracing_subscriber::registry().with(timings.layer());
-    tracing::subscriber::with_default(subscriber, || {
-        // Parallel tests install scoped subscribers that share tracing's global
-        // callsite cache; rebuild it so this subscriber sees every span.
-        tracing::callsite::rebuild_interest_cache();
-        body();
-    });
+    with_subscriber(tracing_subscriber::registry().with(timings.layer()), body);
     timings
 }
 

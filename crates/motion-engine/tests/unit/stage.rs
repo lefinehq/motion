@@ -3,13 +3,14 @@
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-use motion_diagnostic::Kind;
+use motion_format::Kind;
 use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::{Context, SubscriberExt};
 
 use super::*;
+use crate::test_support::with_subscriber;
 
 /// One captured event: its level and its fields, as `name=value` text.
 #[derive(Debug)]
@@ -59,19 +60,16 @@ impl Visit for Fields {
 fn events_of<T>(body: impl FnOnce() -> T) -> (T, Vec<Captured>) {
     let events = Events::default();
     let subscriber = tracing_subscriber::registry().with(events.clone());
-    let out = tracing::subscriber::with_default(subscriber, || {
-        // Parallel tests install scoped subscribers that share tracing's global
-        // callsite cache; rebuild it so this subscriber sees every span.
-        tracing::callsite::rebuild_interest_cache();
-        body()
-    });
+    let out = with_subscriber(subscriber, body);
     let captured = std::mem::take(&mut *events.0.lock().expect("events lock"));
     (out, captured)
 }
 
 #[test]
 fn a_failing_step_logs_one_error_with_kind_and_path() {
-    let failure = Diagnostic::new(Kind::OutOfRange, "too far").at("layers[0].at");
+    let failure = Diagnostic::new(Kind::OutOfRange, "too far")
+        .at("layers[0].at")
+        .expected("a place on the canvas");
     let (result, events) = events_of(|| stage("check", || Err::<(), _>(failure.clone())));
     assert_eq!(result, Err(failure));
     assert_eq!(events.len(), 1, "{events:?}");
@@ -79,6 +77,7 @@ fn a_failing_step_logs_one_error_with_kind_and_path() {
     assert_eq!(event.level, Level::ERROR);
     assert_eq!(event.field("kind"), Some("OutOfRange"));
     assert_eq!(event.field("path"), Some("layers[0].at"));
+    assert_eq!(event.field("expected"), Some("a place on the canvas"));
     assert_eq!(event.field("message"), Some("too far"));
 }
 

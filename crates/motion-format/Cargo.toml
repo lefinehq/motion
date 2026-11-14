@@ -1,6 +1,6 @@
 [package]
 name = "motion-format"
-description = "The motion scene format: shorthand units, parsing and validation."
+description = "The motion scene format: parsing, validation, shorthand units and the one diagnostic type."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,11 +14,10 @@ serde.workspace = true
 serde_json.workspace = true
 serde_path_to_error.workspace = true
 winnow.workspace = true
-motion-diagnostic = { path = "../motion-diagnostic" }
-motion-grammar = { path = "../motion-grammar" }
 tracing.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
 proptest.workspace = true
 
 [lints]

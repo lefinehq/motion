@@ -1,4 +1,4 @@
-//! Unit tests for `src/lib.rs`.
+//! Unit tests for `src/diagnostic.rs`.
 
 use super::*;
 use proptest::prelude::*;

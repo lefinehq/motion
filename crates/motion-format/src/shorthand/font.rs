@@ -1,11 +1,9 @@
-//! The `font` shorthand: family, size and weight in one string.
-//!
-//! Part of step 1 (Read): parses a text layer's `font` string into a [`Font`].
+//! The `font` shorthand, `"Inter 96 700"`: family, size and weight.
 
 use std::str::FromStr;
 
-use motion_diagnostic::{Diagnostic, Result};
-use motion_grammar::{Parsed, blank0, blank1, parse_all, word};
+use crate::grammar::{Parsed, blank0, blank1, parse_all, word};
+use crate::{Diagnostic, Result};
 use winnow::ascii::float;
 use winnow::combinator::{alt, eof, peek, preceded, repeat_till, terminated};
 use winnow::prelude::*;
@@ -26,31 +24,20 @@ pub struct Font {
 }
 
 const WEIGHT_RULE: &str = "weight must be 100, 200 \u{2026} 900";
-
-/// The weight of a font that does not give one.
 const DEFAULT_WEIGHT: u16 = 400;
 
 impl FromStr for Font {
     type Err = Diagnostic;
 
-    /// Parses `<family> <size> [<weight>]`.
+    /// Parses `<family> <size> [<weight>]`, reading numbers from the end since
+    /// a family may itself end in a number:
     ///
-    /// The family may contain spaces and may even end in a number, so the
-    /// numbers are read from the end of the string:
-    ///
-    /// - one trailing number is the size, and the weight is 400:
-    ///   `Noto Sans Arabic 40`;
-    /// - two trailing numbers are `<size> <weight>` when the last is a valid
-    ///   weight (a multiple of 100 from 100 to 900): `Inter 96 700`;
-    /// - two trailing numbers whose last is not a valid weight are rejected
-    ///   as ambiguous, because `Baloo 2 120` could be family `Baloo`, size 2,
-    ///   weight 120, or family `Baloo 2` with size 120;
-    /// - three trailing numbers are a family ending in a number, then the
-    ///   size and weight: `Baloo 2 120 400`.
+    /// - one trailing number is the size: `Noto Sans Arabic 40`;
+    /// - two are `<size> <weight>` when the last is a weight: `Inter 96 700`,
+    ///   and ambiguous otherwise: `Baloo 2 120`;
+    /// - three end the family with a number: `Baloo 2 120 400`.
     fn from_str(text: &str) -> Result<Font> {
         parse_all(text, font, |problem| {
-            // `Words::into_font` names every other problem, so a failure
-            // without one means the grammar found no trailing number.
             problem.unwrap_or(Problem::NoSize).diagnostic(text)
         })
     }
@@ -60,16 +47,16 @@ impl Form for Font {
     const FORM: &str = EXPECTED;
 }
 
-/// What is wrong with a font string, with the text it is wrong about.
+/// What is wrong with a font string.
 #[derive(Debug)]
 enum Problem<'s> {
-    /// The string does not end in a number.
     NoSize,
-    /// The string has numbers only.
     NoFamily,
     /// Two trailing numbers whose last is not a weight; `explicit` is the
-    /// string with the family ending in the first number.
-    Ambiguous { explicit: String },
+    /// string with the family ending in the first.
+    Ambiguous {
+        explicit: String,
+    },
     /// The last of three or more trailing numbers is not a weight.
     Weight(&'s str),
     /// The size is not above zero.
@@ -77,8 +64,6 @@ enum Problem<'s> {
 }
 
 impl Problem<'_> {
-    /// The diagnostic for `text`, which has this problem: the one place the
-    /// font grammar's failures become messages.
     fn diagnostic(self, text: &str) -> Diagnostic {
         let message = match self {
             Problem::NoSize => format!("`{text}` has no size"),
@@ -97,18 +82,16 @@ impl Problem<'_> {
     }
 }
 
-/// A font string split by the grammar: the family words, then the numbers
-/// that end the string, the last kept apart because there is always one.
+/// A font string split by the grammar: the family words, then the trailing numbers.
 struct Words<'s> {
-    /// The words before the trailing numbers; the last one is not a number.
+    /// The words before the trailing numbers; the last is not a number.
     family: Vec<&'s str>,
-    /// The trailing numbers before the last, as written.
+    /// The trailing numbers before the last.
     numbers: Vec<Number<'s>>,
-    /// The last number of the string.
     last: Number<'s>,
 }
 
-/// A number word: its text, for messages and the weight, and its value.
+/// A number word: its text and its value.
 type Number<'s> = (&'s str, f64);
 
 impl<'s> Words<'s> {
@@ -119,8 +102,6 @@ impl<'s> Words<'s> {
             numbers,
             last,
         } = self;
-        // The family words end in a word that is not a number, so an empty
-        // list means the family would be numbers alone, as in `96 700`.
         if family.is_empty() {
             return Err(Problem::NoFamily);
         }
@@ -146,22 +127,19 @@ impl<'s> Words<'s> {
     }
 }
 
-/// The weight `word` stands for, if it is one: a multiple of 100 from 100
-/// to 900.
+/// The weight `word` stands for: a multiple of 100 from 100 to 900.
 fn weight(word: &str) -> Option<u16> {
     word.parse::<u16>()
         .ok()
         .filter(|w| (100..=900).contains(w) && w % 100 == 0)
 }
 
-/// A font string, checked against the rules of [`Font::from_str`].
 fn font<'s>(input: &mut &'s str) -> Parsed<Font, Problem<'s>> {
     words.try_map(Words::into_font).parse_next(input)
 }
 
-/// Family words, then the numbers that end the string. `repeat_till` tries
-/// the trailing numbers before each word, so the family stops at the last
-/// word that is not a number.
+/// Family words, then the numbers that end the string; `repeat_till` tries
+/// the numbers before each word, so the family stops at its last non-number.
 fn words<'s, R>(input: &mut &'s str) -> Parsed<Words<'s>, R> {
     preceded(
         blank0,
@@ -175,8 +153,6 @@ fn words<'s, R>(input: &mut &'s str) -> Parsed<Words<'s>, R> {
     .parse_next(input)
 }
 
-/// The numbers that end a font string: numbers until the last one, which
-/// ends the text.
 fn trailing_numbers<'s, R>(input: &mut &'s str) -> Parsed<(Vec<Number<'s>>, Number<'s>), R> {
     repeat_till(
         0..,
@@ -186,8 +162,8 @@ fn trailing_numbers<'s, R>(input: &mut &'s str) -> Parsed<(Vec<Number<'s>>, Numb
     .parse_next(input)
 }
 
-/// A whole word that is a number, with its text. Any number counts, even
-/// `inf`: it still ends the family, and the size check then rejects it.
+/// A whole word that is a number. Even `inf` counts: it ends the family, and
+/// the size check rejects it.
 fn number_word<'s, R>(input: &mut &'s str) -> Parsed<Number<'s>, R> {
     terminated(float, peek(alt((blank1, eof))))
         .with_taken()

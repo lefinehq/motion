@@ -1,13 +1,11 @@
-//! Typed units parsed from shorthand strings: time, colour and size.
-//!
-//! Part of step 1 (Read). Scenes write `"0.4s"`, `"#0B0D12"` or `"1080p"`;
-//! these types are what the rest of the pipeline works with.
+//! Typed units parsed from shorthand strings: time (`"0.4s"`), colour
+//! (`"#0B0D12"`) and size (`"1080p"`).
 
 use std::fmt;
 use std::str::FromStr;
 
-use motion_diagnostic::{Diagnostic, Result};
-use motion_grammar::{Failure, Parsed, number, parse_all, parse_whole};
+use crate::grammar::{Failure, Parsed, number, parse_all, parse_whole};
+use crate::{Diagnostic, Result};
 use winnow::ascii::digit1;
 use winnow::combinator::{alt, cut_err, opt, peek, preceded, separated_pair};
 use winnow::error::ErrMode;
@@ -21,19 +19,15 @@ use crate::table;
 
 pub(crate) const TIME_EXPECTED: &str = "`<number>f` or `<number>s`, e.g. `12f` or `0.4s`";
 pub(crate) const COLOR_EXPECTED: &str = "`#RGB`, `#RRGGBB` or `#RRGGBBAA`";
-/// The accepted forms of a size, for a value that is not a string. The
-/// names are listed by the unknown-size error, which reads [`SIZES`].
+/// The accepted forms of a size, for a value that is not a string.
 const SIZE_EXPECTED: &str = "a size name such as `1080p`, or `<width>x<height>`";
-/// The form of an explicit size, as listed after the size names.
+/// The explicit form, as listed after the size names.
 const EXPLICIT_FORM: &str = "<width>x<height>";
-/// The expected form of an explicit size.
 const EXPLICIT_EXPECTED: &str =
     "`<width>x<height>`, each a whole number of pixels above zero, e.g. `1920x1080`";
 
-/// A point or length in time, in the unit the author wrote it in.
-///
-/// Time is kept as written until the frame rate is known; call
-/// [`Time::to_frames`] to get the frames the pipeline works in.
+/// A point or length in time, kept in the unit the author wrote until the
+/// frame rate is known.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Time {
     /// A number of frames, written `12f`.
@@ -43,8 +37,7 @@ pub enum Time {
 }
 
 impl Time {
-    /// Converts to frames at `fps` frames per second. Frame counts are
-    /// returned unchanged; seconds are multiplied by `fps`.
+    /// The time in frames at `fps` frames per second.
     pub fn to_frames(self, fps: f64) -> f64 {
         match self {
             Time::Frames(f) => f,
@@ -56,8 +49,7 @@ impl Time {
 impl FromStr for Time {
     type Err = Diagnostic;
 
-    /// Parses `<number>f` or `<number>s`. The number must be finite and not
-    /// negative, and the unit suffix is required.
+    /// Parses `<number>f` or `<number>s`, with a finite number of 0 or more.
     fn from_str(text: &str) -> Result<Time> {
         parse_whole(text, time, "time", TIME_EXPECTED)
     }
@@ -77,8 +69,7 @@ impl fmt::Display for Time {
     }
 }
 
-/// `<number>f` or `<number>s`: a time in frames or seconds, not negative.
-/// Also a part of the behaviour and anim grammars.
+/// `<number>f` or `<number>s`, also a piece of the behaviour and anim grammars.
 pub(crate) fn time<R>(input: &mut &str) -> Parsed<Time, R> {
     (amount, unit)
         .map(|(value, unit)| unit(value))
@@ -90,8 +81,8 @@ pub(crate) fn amount<R>(input: &mut &str) -> Parsed<f64, R> {
     number.verify(|v: &f64| *v >= 0.0).parse_next(input)
 }
 
-/// The unit of a time, `f` or `s`, as the variant it builds. The anim range
-/// reads it apart from the number, because a bare start borrows the end's.
+/// The unit of a time, as the variant it builds; separate from the number
+/// because a range's bare start borrows the end's unit.
 pub(crate) fn unit<R>(input: &mut &str) -> Parsed<fn(f64) -> Time, R> {
     alt((
         'f'.value(Time::Frames as fn(f64) -> Time),
@@ -103,11 +94,11 @@ pub(crate) fn unit<R>(input: &mut &str) -> Parsed<fn(f64) -> Time, R> {
 /// An 8-bit-per-channel RGBA colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
-    /// Red, 0 to 255.
+    /// Red.
     pub r: u8,
-    /// Green, 0 to 255.
+    /// Green.
     pub g: u8,
-    /// Blue, 0 to 255.
+    /// Blue.
     pub b: u8,
     /// Alpha, 0 (transparent) to 255 (opaque).
     pub a: u8,
@@ -116,8 +107,7 @@ pub struct Color {
 impl FromStr for Color {
     type Err = Diagnostic;
 
-    /// Parses `#RGB`, `#RRGGBB` or `#RRGGBBAA`. Without an alpha digit pair
-    /// the colour is opaque; `#RGB` doubles each digit (`#F80` is `#FF8800`).
+    /// Parses `#RGB`, `#RRGGBB` or `#RRGGBBAA`; `#F80` is `#FF8800`, opaque.
     fn from_str(text: &str) -> Result<Color> {
         parse_whole(text, hex_color, "colour", COLOR_EXPECTED)
     }
@@ -127,8 +117,8 @@ impl Form for Color {
     const FORM: &str = COLOR_EXPECTED;
 }
 
-/// `#` and three, six or eight hex digits. The longest form is tried first,
-/// so `#RRGGBB` is not read as `#RGB` with digits left over.
+/// `#` and eight, six or three hex digits, longest first so `#RRGGBB` is
+/// not read as `#RGB` with digits left over.
 fn hex_color(input: &mut &str) -> Parsed<Color> {
     preceded(
         '#',
@@ -146,17 +136,15 @@ fn hex_color(input: &mut &str) -> Parsed<Color> {
     .parse_next(input)
 }
 
-/// Two hex digits: one channel of `#RRGGBB`.
 fn channel(input: &mut &str) -> Parsed<u8> {
     hex_digits(2).parse_next(input)
 }
 
-/// One hex digit, doubled: one channel of `#RGB`, where `F` means `FF`.
+/// One hex digit, doubled: `F` means `FF`.
 fn short_channel(input: &mut &str) -> Parsed<u8> {
     hex_digits(1).map(|n| n * 17).parse_next(input)
 }
 
-/// Exactly `count` hex digits, read as one byte.
 fn hex_digits<'s>(count: usize) -> impl Parser<&'s str, u8, ErrMode<Failure>> {
     take_while(count, AsChar::is_hex_digit).verify_map(|digits| u8::from_str_radix(digits, 16).ok())
 }
@@ -164,13 +152,13 @@ fn hex_digits<'s>(count: usize) -> impl Parser<&'s str, u8, ErrMode<Failure>> {
 /// A frame size in whole pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Size {
-    /// Width in pixels, always above zero.
+    /// Width in pixels, above zero.
     pub width: u32,
-    /// Height in pixels, always above zero.
+    /// Height in pixels, above zero.
     pub height: u32,
 }
 
-/// The sizes that have a name, the only place size names are listed.
+/// The sizes that have a name.
 const SIZES: &[(&str, Size)] = &[
     ("720p", Size::new(1280, 720)),
     ("1080p", Size::new(1920, 1080)),
@@ -180,12 +168,10 @@ const SIZES: &[(&str, Size)] = &[
 ];
 
 impl Size {
-    /// A size of `width` by `height` pixels.
     const fn new(width: u32, height: u32) -> Size {
         Size { width, height }
     }
 
-    /// Looks a size up in [`SIZES`] by name.
     fn named(name: &str) -> Option<Size> {
         table::lookup(SIZES, name).map(|(_, size)| *size)
     }
@@ -194,12 +180,9 @@ impl Size {
 impl FromStr for Size {
     type Err = Diagnostic;
 
-    /// Parses a size name (`1080p`, `4k`, `square`, …) or an explicit
-    /// `<width>x<height>` where both sides are above zero.
+    /// Parses a name from the size table or `<width>x<height>`, both above zero.
     fn from_str(text: &str) -> Result<Size> {
         parse_all(text, size, |problem| {
-            // An explicit size names its problem once `<digits>x` is read,
-            // so a failure without one is a name that is not in the table.
             problem.unwrap_or(SizeProblem::Unknown).diagnostic(text)
         })
     }
@@ -212,44 +195,32 @@ impl Form for Size {
 /// What is wrong with a size string.
 #[derive(Debug, Clone, Copy)]
 enum SizeProblem<'s> {
-    /// The text is not a name in [`SIZES`], nor shaped like an explicit
-    /// size.
     Unknown,
-    /// The text starts like `<width>x`, but is not two whole numbers above
-    /// zero.
+    /// Starts like `<width>x` but is not two whole numbers above zero.
     Explicit,
-    /// The text starts with a valid `<width>x<height>`, then goes on; this
-    /// is the text after the size.
+    /// A valid `<width>x<height>`, then this text.
     Trailing(&'s str),
 }
 
 impl SizeProblem<'_> {
-    /// The diagnostic for `text`, which has this problem: the one place the
-    /// size grammar's failures become messages.
     fn diagnostic(self, text: &str) -> Diagnostic {
-        match self {
+        let message = match self {
             SizeProblem::Unknown => {
-                Diagnostic::unknown("size", text, table::names(SIZES)).or_expected(EXPLICIT_FORM)
+                return Diagnostic::unknown("size", text, table::names(SIZES))
+                    .or_expected(EXPLICIT_FORM);
             }
-            SizeProblem::Explicit => Diagnostic::syntax(format!("`{text}` is not a valid size"))
-                .expected(EXPLICIT_EXPECTED),
+            SizeProblem::Explicit => format!("`{text}` is not a valid size"),
             SizeProblem::Trailing(after) => {
-                // `after` is the end of `text`, so what comes before it is
-                // the size as the author wrote it.
                 let size = &text[..text.len() - after.len()];
-                Diagnostic::syntax(format!(
-                    "unexpected text after the size `{size}` in `{text}`"
-                ))
-                .expected(EXPLICIT_EXPECTED)
+                format!("unexpected text after the size `{size}` in `{text}`")
             }
-        }
+        };
+        Diagnostic::syntax(message).expected(EXPLICIT_EXPECTED)
     }
 }
 
-/// A name from [`SIZES`] or `<width>x<height>`. Once `<digits>x` is read
-/// the text is an explicit size, so its error gives that form instead of
-/// listing the names; text after a valid size is named apart, since the
-/// size itself is right (`640x360 `).
+/// A size name or `<width>x<height>`. Once `<digits>x` is read the text is
+/// explicit, so its error gives that form rather than the names.
 fn size<'s>(input: &mut &'s str) -> Parsed<Size, SizeProblem<'s>> {
     alt((
         rest.verify_map(Size::named),
@@ -268,8 +239,7 @@ fn size<'s>(input: &mut &'s str) -> Parsed<Size, SizeProblem<'s>> {
     .parse_next(input)
 }
 
-/// A whole number of pixels above zero, as `u32` reads it: an optional `+`,
-/// then digits.
+/// A whole number of pixels above zero, as `u32` reads it (an optional `+`).
 fn pixels<R>(input: &mut &str) -> Parsed<u32, R> {
     preceded(opt('+'), digit1)
         .parse_to()

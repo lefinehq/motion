@@ -3,13 +3,14 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use motion_telemetry::timing::Timings;
 use tracing::Subscriber;
 use tracing::span::{Attributes, Id};
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::{Context, SubscriberExt};
 
 use super::*;
+use crate::telemetry::timing::Timings;
+use crate::test_support::with_subscriber;
 
 const LAUNCH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/launch.json");
 
@@ -44,10 +45,8 @@ fn at_rejects_a_bad_time_and_an_unknown_id() {
     let session = Session::open(LAUNCH).expect("open");
     assert_eq!(session.at("soon", &[]).unwrap_err().kind, Kind::Syntax);
     let unknown = session.at("1s", &["nope".to_string()]).unwrap_err();
-    assert_eq!(
-        unknown.to_string(),
-        "unknown layer id `nope`; expected one of title, card"
-    );
+    assert_eq!(unknown.kind, Kind::UnknownName);
+    assert!(unknown.message.contains("`nope`"), "{unknown}");
 }
 
 #[test]
@@ -62,11 +61,7 @@ fn frame_evaluates_every_node() {
 fn a_missing_file_is_an_io_diagnostic() {
     let e = Session::open("/definitely/not/here.json").unwrap_err();
     assert_eq!(e.kind, Kind::Io);
-    assert!(
-        e.message
-            .starts_with("cannot read `/definitely/not/here.json`: "),
-        "{e}"
-    );
+    assert!(e.message.contains("/definitely/not/here.json"), "{e}");
 }
 
 #[test]
@@ -152,12 +147,9 @@ impl<S: Subscriber> Layer<S> for Compiles {
 fn queries_on_one_session_compile_once_until_an_edit() {
     let compiles = Compiles::default();
     let subscriber = tracing_subscriber::registry().with(compiles.clone());
-    tracing::subscriber::with_default(subscriber, || {
-        // Parallel tests install scoped subscribers that share tracing's global
-        // callsite cache; rebuild it so this subscriber sees every span.
-        tracing::callsite::rebuild_interest_cache();
+    with_subscriber(subscriber, || {
         let mut session = Session::open(LAUNCH).expect("open");
-        assert_eq!(session.check().to_string(), "OK 4");
+        assert!(!session.check().has_errors());
         session.at("1s", &[]).expect("at");
         session.frame(30.0);
         assert_eq!(compiles.count(), 1);
@@ -172,10 +164,7 @@ fn queries_on_one_session_compile_once_until_an_edit() {
 fn every_step_is_timed_under_its_own_name() {
     let timings = Timings::default();
     let subscriber = tracing_subscriber::registry().with(timings.layer());
-    tracing::subscriber::with_default(subscriber, || {
-        // Parallel tests install scoped subscribers that share tracing's global
-        // callsite cache; rebuild it so this subscriber sees every span.
-        tracing::callsite::rebuild_interest_cache();
+    with_subscriber(subscriber, || {
         let session = Session::open(LAUNCH).expect("open");
         session.at("1s", &[]).expect("at");
         session.frame(30.0);

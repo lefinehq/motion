@@ -21,12 +21,10 @@ fn position_parses_center_and_pixels() {
         "center 260".parse::<Position>().unwrap().to_string(),
         "center 260"
     );
-    assert!(
-        "260"
-            .parse::<Position>()
-            .unwrap_err()
-            .to_string()
-            .contains("`<x> <y>`, each a number of pixels or `center`, e.g. `center 260`")
+    let e = "260".parse::<Position>().unwrap_err();
+    assert_eq!(
+        (e.kind, e.expected.as_deref()),
+        (crate::Kind::Syntax, Some(EXPECTED))
     );
     assert!("left 3".parse::<Position>().is_err());
 }

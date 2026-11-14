@@ -37,12 +37,12 @@ fn keys_overlap_segment_by_segment() {
 #[test]
 fn a_malformed_key_is_the_edit_grammar_error() {
     assert_eq!(
-        "a..b".parse::<KeyPath>().unwrap_err().to_string(),
-        "invalid key `a..b`: each dot-separated part must be non-empty letters, digits, `-` or `_`; expected `<key>[.<key>…]=<value>`"
+        "a..b".parse::<KeyPath>(),
+        Err(Problem::InvalidKey("a..b").diagnostic())
     );
     assert_eq!(
-        "delay+".parse::<KeyPath>().unwrap_err().to_string(),
-        "operator `+=` is not supported yet; expected `<key>=<value>`"
+        "delay+".parse::<KeyPath>(),
+        Err(Problem::Operator('+').diagnostic())
     );
 }
 

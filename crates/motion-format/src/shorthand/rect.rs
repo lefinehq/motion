@@ -1,11 +1,9 @@
-//! The `rect` shorthand: a rectangle's size and corner radius.
-//!
-//! Part of step 1 (Read): parses a layer's `rect` string into a [`RectShape`].
+//! The `rect` shorthand, `"300x400 r24"`: a rectangle's size and corner radius.
 
 use std::str::FromStr;
 
-use motion_diagnostic::{Diagnostic, Result};
-use motion_grammar::{Parsed, blank0, blank1, number, parse_whole};
+use crate::grammar::{Parsed, blank0, blank1, number, parse_whole};
+use crate::{Diagnostic, Result};
 use winnow::combinator::{delimited, opt, preceded, separated_pair};
 use winnow::prelude::*;
 
@@ -27,8 +25,7 @@ pub struct RectShape {
 impl FromStr for RectShape {
     type Err = Diagnostic;
 
-    /// Parses `<width>x<height>` with an optional `r<radius>` token. Width
-    /// and height must be above zero; the radius defaults to 0.
+    /// Parses `<width>x<height> [r<radius>]`; the radius defaults to 0.
     fn from_str(text: &str) -> Result<RectShape> {
         parse_whole(text, rect, "rectangle", EXPECTED)
     }
@@ -38,7 +35,6 @@ impl Form for RectShape {
     const FORM: &str = EXPECTED;
 }
 
-/// `<width>x<height> [r<radius>]`, with any whitespace around and between.
 fn rect(input: &mut &str) -> Parsed<RectShape> {
     delimited(
         blank0,
@@ -56,12 +52,10 @@ fn rect(input: &mut &str) -> Parsed<RectShape> {
     .parse_next(input)
 }
 
-/// A width or height: a number above zero.
 fn side(input: &mut &str) -> Parsed<f64> {
     number.verify(|v: &f64| *v > 0.0).parse_next(input)
 }
 
-/// `r<radius>`: a corner radius of zero or more.
 fn radius(input: &mut &str) -> Parsed<f64> {
     preceded('r', number.verify(|v: &f64| *v >= 0.0)).parse_next(input)
 }

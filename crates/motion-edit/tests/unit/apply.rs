@@ -1,4 +1,5 @@
-//! Unit tests for `src/apply.rs`.
+//! Unit tests for `src/apply.rs`. The wording of the errors is pinned in the
+//! `every_error_message` snapshot of `parse.rs`.
 
 use super::*;
 use crate::parse_edit;
@@ -16,10 +17,13 @@ fn edited(l: &str) -> Document {
 fn run(l: &str) -> Value {
     edited(l).into_raw()
 }
-fn err(l: &str) -> String {
-    apply_edit(&doc(), &parse_edit(l).unwrap())
-        .unwrap_err()
-        .to_string()
+fn fail(l: &str) -> Diagnostic {
+    apply_edit(&doc(), &parse_edit(l).unwrap()).unwrap_err()
+}
+/// What validation alone says about the edited scene, before any hint.
+fn invalid(l: &str) -> Diagnostic {
+    let (raw, _) = apply_changes(&doc(), &parse_edit(l).unwrap()).unwrap();
+    Document::from_value(raw).unwrap_err()
 }
 fn keys(v: &Value) -> Vec<&str> {
     v.as_object().unwrap().keys().map(String::as_str).collect()
@@ -27,9 +31,7 @@ fn keys(v: &Value) -> Vec<&str> {
 
 #[test]
 fn sets_and_removes_layer_keys() {
-    let out = apply_edit(&doc(), &parse_edit(r#"card fill=#FF0000 in=none"#).unwrap())
-        .unwrap()
-        .into_raw();
+    let out = run("card fill=#FF0000 in=none");
     assert_eq!(out["layers"][1]["fill"], "#FF0000");
     assert!(out["layers"][1].get("in").is_none());
     assert_eq!(out["layers"][0], raw()["layers"][0]); // untouched layers stay byte-identical
@@ -37,34 +39,25 @@ fn sets_and_removes_layer_keys() {
 
 #[test]
 fn edits_the_scene_itself() {
-    assert_eq!(
-        apply_edit(&doc(), &parse_edit("scene bg=#000000 fps=60").unwrap())
-            .unwrap()
-            .raw()["fps"],
-        60
-    );
+    assert_eq!(run("scene bg=#000000 fps=60")["fps"], 60);
 }
 
 #[test]
 fn reports_unknown_targets_keys_and_invalid_results() {
-    let err = |l: &str| {
-        apply_edit(&doc(), &parse_edit(l).unwrap())
-            .unwrap_err()
-            .to_string()
-    };
     assert_eq!(
-        err("ghost fill=#FFF"),
-        "unknown layer id `ghost`; expected one of title, card"
+        fail("ghost fill=#FFF"),
+        Diagnostic::unknown("layer id", "ghost", ["title", "card"])
     );
     assert_eq!(
-        err("card colour=#FFF"),
-        "unknown layer key `colour`; expected one of id, text, rect, font, fill, at, in, anim"
+        fail("card colour=#FFF"),
+        Diagnostic::unknown("layer key", "colour", LAYER_KEYS)
     );
-    assert_eq!(
-        err("card fill=blue"),
-        "layers[1].fill: `blue` is not a valid colour; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`"
-    );
-    assert!(err("card id=title").contains("duplicate id `title`"));
+    let colour = fail("card fill=blue");
+    assert_eq!(colour.path.as_deref(), Some("layers[1].fill"));
+    assert_eq!(colour, invalid("card fill=blue"));
+    let duplicate = fail("card id=title");
+    assert_eq!(duplicate.kind, Kind::Conflict);
+    assert_eq!(duplicate, invalid("card id=title"));
 }
 
 #[test]
@@ -90,87 +83,85 @@ fn removing_a_missing_key_is_a_no_op() {
 #[test]
 fn scene_keys_are_validated_against_scene_keys() {
     assert_eq!(
-        err("scene colour=red"),
-        "unknown scene key `colour`; expected one of motion, size, fps, dur, bg, presets, layers"
+        fail("scene colour=red"),
+        Diagnostic::unknown("scene key", "colour", SCENE_KEYS)
     );
     // A layer key is not a scene key.
-    assert!(err("scene fill=#FFF").starts_with("unknown scene key `fill`"));
+    assert_eq!(
+        fail("scene fill=#FFF"),
+        Diagnostic::unknown("scene key", "fill", SCENE_KEYS)
+    );
 }
 
 #[test]
 fn unknown_keys_are_reported_before_unknown_targets() {
-    assert!(err("ghost colour=red").starts_with("unknown layer key `colour`"));
+    assert_eq!(
+        fail("ghost colour=red"),
+        Diagnostic::unknown("layer key", "colour", LAYER_KEYS)
+    );
 }
 
 #[test]
 fn invalid_scene_result_is_reported() {
-    assert_eq!(
-        err("scene fps=\"fast\""),
-        r#"fps: invalid type: string "fast"; expected a number"#
-    );
+    let e = fail("scene fps=\"fast\"");
+    assert_eq!(e.kind, Kind::WrongType);
+    assert_eq!(e.path.as_deref(), Some("fps"));
+    assert_eq!(e, invalid("scene fps=\"fast\""));
 }
 
 #[test]
 fn invalid_result_is_the_validation_diagnostic() {
-    let e = apply_edit(&doc(), &parse_edit("card fill=blue").unwrap()).unwrap_err();
+    let e = fail("card fill=blue");
     assert_eq!(e.kind, Kind::Syntax);
     assert_eq!(e.path.as_deref(), Some("layers[1].fill"));
-    assert_eq!(e.message, "`blue` is not a valid colour");
-    assert_eq!(
-        e.expected.as_deref(),
-        Some("`#RGB`, `#RRGGBB` or `#RRGGBBAA`")
-    );
+    assert_eq!(e, invalid("card fill=blue"));
 }
 
 #[test]
 fn number_or_bool_for_a_string_key_gets_a_quote_hint() {
-    assert_eq!(
-        err("title text=2024"),
-        "layers[0].text: invalid type: integer `2024`; expected a quoted value: `text=\"2024\"`"
-    );
-    let e = apply_edit(&doc(), &parse_edit("title text=2024").unwrap()).unwrap_err();
-    assert_eq!(e.kind, Kind::WrongType);
-    assert!(err("title text=true").ends_with("; expected a quoted value: `text=\"true\"`"));
+    for (line, quoted) in [
+        ("title text=2024", r#"`text="2024"`"#),
+        ("title text=true", r#"`text="true"`"#),
+    ] {
+        let e = fail(line);
+        let plain = invalid(line);
+        assert_eq!(e.kind, Kind::WrongType, "{line}");
+        assert_eq!(e.path.as_deref(), Some("layers[0].text"), "{line}");
+        assert_eq!(e.message, plain.message, "{line}");
+        let expected = e.expected.as_deref().unwrap_or_default();
+        assert!(expected.ends_with(quoted), "{line}: {expected}");
+    }
     // Other errors, and strings that are simply wrong, get no hint.
-    assert!(!err("card fill=blue").contains("quoted"));
-    assert!(!err("scene fps=\"fast\"").contains("quoted"));
+    assert_eq!(fail("card fill=blue"), invalid("card fill=blue"));
+    assert_eq!(fail("scene fps=\"fast\""), invalid("scene fps=\"fast\""));
 }
 
 #[test]
 fn a_quote_that_would_still_fail_there_gets_the_form_instead() {
     // Quoted, `5` is a time without a unit and `1.5` is not a colour: the
     // key's own form helps more than a quote.
-    assert_eq!(
-        err("scene dur=5"),
-        "dur: invalid type: integer `5`; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`"
-    );
-    assert_eq!(
-        err("scene bg=1.5"),
-        "bg: invalid type: floating point `1.5`; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`"
-    );
+    for line in ["scene dur=5", "scene bg=1.5"] {
+        let e = fail(line);
+        assert_eq!(e.kind, Kind::WrongType, "{line}");
+        assert_eq!(e, invalid(line), "{line}");
+    }
 }
 
 #[test]
 fn a_number_for_an_unknown_property_gets_the_track_form() {
-    // `anim.nope=1` is a wrong type first; quoting it would leave an unknown
-    // property at the same path, so there is no quote hint.
-    let e = apply_edit(&doc(), &parse_edit("card anim.nope=1").unwrap()).unwrap_err();
+    // Quoting it would leave an unknown property at the same path.
+    let e = fail("card anim.nope=1");
     assert_eq!(e.kind, Kind::WrongType);
-    assert_eq!(
-        e.to_string(),
-        r#"layers[1].anim.nope: invalid type: integer `1`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of [time, value] keys"#
-    );
+    assert_eq!(e.path.as_deref(), Some("layers[1].anim.nope"));
+    assert_eq!(e, invalid("card anim.nope=1"));
 }
 
 #[test]
 fn a_wrong_type_on_a_number_key_gets_no_quote_hint() {
-    // Quoting `true` would leave `fps` just as wrong, so no hint is given.
-    let e = apply_edit(&doc(), &parse_edit("scene fps=true").unwrap()).unwrap_err();
+    // Quoting `true` would leave `fps` just as wrong.
+    let e = fail("scene fps=true");
     assert_eq!(e.kind, Kind::WrongType);
-    assert_eq!(
-        e.to_string(),
-        "fps: invalid type: boolean `true`; expected a number"
-    );
+    assert_eq!(e, invalid("scene fps=true"));
 }
 
 #[test]
@@ -239,29 +230,26 @@ fn removing_a_missing_path_is_a_no_op() {
 
 #[test]
 fn setting_through_a_non_object_is_an_error() {
-    assert_eq!(
-        err("card in.opacity=1"),
-        "cannot set `in.opacity`: `in` is not an object"
-    );
+    let e = fail("card in.opacity=1");
+    assert_eq!(e.kind, Kind::WrongType);
+    assert_eq!(e.path, None);
+    assert!(e.message.contains("`in`"), "{e}");
 }
 
 #[test]
 fn only_the_first_segment_is_checked_as_a_key() {
-    assert!(err("card nope.x=1").starts_with("unknown layer key `nope`; expected one of "));
-    let m = err("card anim.nope=[[0,1]]");
-    assert!(
-        m.starts_with("layers[1].anim.nope: unknown property `nope`"),
-        "{m}"
+    assert_eq!(
+        fail("card nope.x=1"),
+        Diagnostic::unknown("layer key", "nope", LAYER_KEYS)
     );
+    let e = fail("card anim.nope=[[0,1]]");
+    assert_eq!(e.kind, Kind::UnknownName);
+    assert_eq!(e.path.as_deref(), Some("layers[1].anim.nope"));
 }
 
 #[test]
 fn errors_say_what_kind_of_problem_they_are() {
-    let kind = |l: &str| {
-        apply_edit(&doc(), &parse_edit(l).unwrap())
-            .unwrap_err()
-            .kind
-    };
+    let kind = |l: &str| fail(l).kind;
     assert_eq!(kind("ghost fill=red"), Kind::UnknownName);
     assert_eq!(kind("card colour=red"), Kind::UnknownName);
     // A validation failure keeps the kind it had in the format.

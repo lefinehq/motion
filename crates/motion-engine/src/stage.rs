@@ -1,43 +1,29 @@
-//! The wrapper every pipeline step runs through.
-//!
-//! [`stage`] opens a `debug` span named `stage`, with the step's name in its
-//! `stage` field. The span is what times the step: `motion-telemetry`'s
-//! timings layer measures every span with this identity (target
-//! `motion_engine::stage`, name `stage`) from creation to close, whatever
-//! the log level, and keys it by the `stage` field. (A span's name is fixed
-//! where it is written, so the step's name goes in a field.) The level is
-//! `debug` because a step is a debug-level detail; `info` is one line per
-//! command. A failing step is logged here, once, as an `error` event with
-//! the diagnostic's kind, path and expected form; no step logs or maps its
-//! own errors.
-//!
-//! Only [`Session`](crate::Session) runs steps, so both wrappers are
-//! private to the crate.
+//! The wrapper every step of a [`Session`](crate::Session) runs through: the
+//! span that times the step, and the one log of its failure.
 
-use motion_diagnostic::{Diagnostic, Result};
+use motion_format::{Diagnostic, Result};
 use tracing::{debug_span, error};
 
-/// Runs the step `name`, logging its diagnostic, if any, before returning it
-/// unchanged.
-///
-/// # Errors
-/// Returns the step's own diagnostic.
+use crate::telemetry::timing::{STAGE_SPAN, STAGE_TARGET};
+
+/// Runs the step `name`, logging its diagnostic, if any, before returning it.
 pub(crate) fn stage<T>(name: &'static str, step: impl FnOnce() -> Result<T>) -> Result<T> {
     in_span(name, || step().inspect_err(log))
 }
 
-/// Runs the step `name`, which cannot fail, in the same span as [`stage`].
+/// Runs the step `name`, which cannot fail.
 pub(crate) fn stage_ok<T>(name: &'static str, step: impl FnOnce() -> T) -> T {
     in_span(name, step)
 }
 
-/// Runs `step` inside the step span of `name`.
+/// Runs `step` in the span the timings recognise. The step's name is a field
+/// because a span's own name is fixed where it is written.
 fn in_span<T>(name: &'static str, step: impl FnOnce() -> T) -> T {
-    let _span = debug_span!("stage", stage = name).entered();
+    let _span = debug_span!(target: STAGE_TARGET, STAGE_SPAN, stage = name).entered();
     step()
 }
 
-/// The one `error` event of a failed step, inside the step's span.
+/// The one `error` event of a failed step.
 fn log(d: &Diagnostic) {
     error!(
         kind = ?d.kind,

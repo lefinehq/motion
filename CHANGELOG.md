@@ -10,7 +10,7 @@ All notable changes to this project are documented here. The format is based on 
 - `motion-format`: time, colour and size shorthand parsing, and `fmt_num`.
 - First slice: scene format, check, at, edit.
 - `motion-scene`: compile a scene into a graph of laid-out layers.
-- `motion-eval`: evaluate a scene graph at any frame.
+- Evaluate a scene graph at any frame.
 - `motion-query`: `check` and `at` over a scene graph.
 - `motion-edit`: a one-line edit language for scenes.
 - `motion-cli`: the `motion` tool with `check`, `at` and `edit` commands.
@@ -20,14 +20,15 @@ All notable changes to this project are documented here. The format is based on 
 - `anim` tracks, as a one-line string or a keyframe list, with a curve per key; `anim` and `in` may not animate the same property.
 - `scale` and `rotate` are evaluated, and `check` measures the transformed bounding box.
 - Nested edit paths (`card anim.opacity=...`), JSON values in edits, and removal of objects left empty by `none`.
-- Tooling: `thiserror` errors, `proptest` parser tests, `insta` snapshots, coverage and `cargo-deny`.
-
+- Tooling: `proptest` parser tests, `insta` snapshots, coverage and `cargo-deny`.
 - One error type, `Diagnostic`, with a kind (syntax, unknown name, out of range, missing, conflict, wrong type, invalid, io) that sets the exit code.
 - `motion-engine`: a `Session` that is the one entry point for tools, and `motion-cli` now goes through it.
 - Logs with `--log <level>`, `--log-format json` and `MOTION_LOG`, and step timings with `--timings`.
 
 ### Changed
 
+- Six crates instead of ten: the error type and shared grammar pieces live in `motion-format`, evaluation in `motion-scene`, and logging setup in `motion-engine`.
+- `check` evaluates one frame at a time instead of keeping every frame in memory.
 - Error messages name the path and the accepted form, with an example, for every syntax and unknown-name error.
 - Shorthands (size, time, colour, rect, font, position, curves, `in`, `anim` tracks) are read by `winnow` grammars.
 - The scene is read with a serde document, so errors in its shape carry the path of the value.

@@ -2,10 +2,12 @@
 //! through a whole scene.
 
 use super::*;
+use crate::Kind;
+use crate::doc::{AnimDoc, Form};
 use crate::parse::scene_from_value;
 use crate::parse_document;
-use crate::property::Prop;
-use motion_diagnostic::Kind;
+use crate::property::{Prop, property_names};
+use crate::units::TIME_EXPECTED;
 use serde_json::{Value, json};
 
 /// The tracks of `v` as the `anim` of the second layer of a scene.
@@ -18,9 +20,17 @@ fn anim(v: Value) -> Result<Vec<AnimTrack>> {
     scene_from_value(&scene).map(|mut s| s.layers.remove(1).anim)
 }
 
-fn err(v: Value) -> String {
-    anim(v).unwrap_err().to_string()
+fn err(v: Value) -> Diagnostic {
+    anim(v).unwrap_err()
 }
+
+/// The error of `text` written as the track `x`.
+fn line_err(text: &str) -> Diagnostic {
+    err(json!({ "x": text }))
+}
+
+/// Where the track `x` of [`anim`] sits.
+const X: &str = "layers[1].anim.x";
 
 #[test]
 fn string_and_array_forms_give_identical_keys() {
@@ -62,91 +72,89 @@ fn bare_numbers_are_frames_and_order_follows_object() {
 #[test]
 fn unknown_property_lists_names() {
     let e = err(json!({"glow": "0 -> 1 @0-5f"}));
-    assert!(
-        e.starts_with("layers[1].anim.glow: unknown property `glow`"),
-        "{e}"
+    assert_eq!(
+        (e.kind, e.path.as_deref()),
+        (Kind::UnknownName, Some("layers[1].anim.glow"))
     );
-    assert!(e.contains("one of x, y, opacity, scale, rotate"), "{e}");
+    let names: Vec<&str> = property_names().collect();
+    assert_eq!(
+        e.expected,
+        Some(format!("one of {}", names.join(", ")).into())
+    );
 }
 
 #[test]
 fn out_of_range_value() {
     let e = err(json!({"opacity": [[0, 0], [5, 1], [9, 2]]}));
     assert_eq!(
-        e,
-        "layers[1].anim.opacity[2]: value 2 is outside 0..=1; expected a number from 0 to 1"
+        (e.kind, e.path.as_deref()),
+        (Kind::OutOfRange, Some("layers[1].anim.opacity[2]"))
     );
     let e = err(json!({"opacity": "0 -> 2 @0-5f"}));
-    assert!(
-        e.starts_with("layers[1].anim.opacity: value 2 is outside 0..=1"),
-        "{e}"
+    assert_eq!(
+        (e.kind, e.path.as_deref()),
+        (Kind::OutOfRange, Some("layers[1].anim.opacity"))
     );
 }
 
 #[test]
-fn string_form_errors() {
-    for (text, needle) in [
-        ("0 1 @0-5f", "missing `->`"),
-        ("0 -> 1", "missing `@<start>-<end>`"),
-        ("0 -> 1 @0-5", "needs a unit"),
-        ("0 -> 1 @5f-0f", "starts after it ends"),
-        (
-            "0 -> 1 @0-5f bouncy",
-            "unknown curve `bouncy`; expected one of linear, hold, ease",
-        ),
-        ("a -> 1 @0-5f", "`a` is not a number"),
-        ("0 -> 1 @0-5f ease ease", "unexpected"),
-        ("0 -> 1 @0-5f cubic(1,2)", "four numbers"),
-        ("0 -> 1 @05f", "no `-`"),
+fn string_form_errors_give_the_form_of_the_part_that_failed() {
+    for text in [
+        "0 1 @0-5f",
+        "0 -> 1",
+        "a -> 1 @0-5f",
+        "0 -> 1 @0-5f ease ease",
     ] {
-        let e = err(json!({"x": text}));
-        assert!(e.starts_with("layers[1].anim.x: "), "{e}");
-        assert!(e.contains(needle), "{text}: {e}");
-        assert!(e.contains("expected"), "{e}");
+        let e = line_err(text);
+        assert_eq!(
+            (e.kind, e.path.as_deref(), e.expected.as_deref()),
+            (Kind::Syntax, Some(X), Some(STRING_EXPECTED)),
+            "{text}"
+        );
     }
-    let e = err(json!({"x": "0 1 @0-5f"}));
-    assert!(
-        e.contains("\"<from> -> <to> @<start>-<end> [<curve>]\", e.g. \"0 -> 1 @0-12f ease-out\""),
-        "{e}"
+    // A failing range or curve reports its own diagnostic, placed at the track.
+    for (text, part) in [
+        ("0 -> 1 @0-5", "@0-5".parse::<Span>().map(drop)),
+        ("0 -> 1 @05f", "@05f".parse::<Span>().map(drop)),
+        ("0 -> 1 @0-5f bouncy", "bouncy".parse::<Curve>().map(drop)),
+        (
+            "0 -> 1 @0-5f cubic(1,2)",
+            "cubic(1,2)".parse::<Curve>().map(drop),
+        ),
+    ] {
+        assert_eq!(line_err(text), part.unwrap_err().at(X), "{text}");
+    }
+    let e = line_err("0 -> 1 @5f-0f");
+    assert_eq!(
+        (e.kind, e.path.as_deref(), e.expected.as_deref()),
+        (Kind::Invalid, Some(X), Some(RANGE_EXPECTED))
     );
 }
 
 #[test]
-fn string_form_messages() {
-    let line = |text: &str| text.parse::<TrackLine>().unwrap_err().to_string();
-    let form =
-        r#"expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out""#;
-    assert_eq!(
-        line("0 1 @0-5f"),
-        format!("missing `->` after the start value in `0 1 @0-5f`; {form}")
-    );
-    assert_eq!(
-        line("0 -> 1 2 @0-5f"),
-        format!("missing `@<start>-<end>` after the end value in `0 -> 1 2 @0-5f`; {form}")
-    );
-    assert_eq!(line("a -> 1 @0-5f"), format!("`a` is not a number; {form}"));
-    assert_eq!(
-        line("0 -> 1 @0-5f ease ease"),
-        format!("unexpected `ease` after the curve; {form}")
-    );
-    assert_eq!(line(""), format!("`` is not a valid track; {form}"));
-    let range = "expected `@<start>-<end>` with a unit, e.g. `@0-30f`, `@0.5s-1s`";
-    assert_eq!(
-        line("0 -> 1 @05f"),
-        format!("`@05f` has no `-` between start and end; {range}")
-    );
-    assert_eq!(
-        line("0 -> 1 @0-5"),
-        format!("`@0-5` needs a unit (`f` or `s`) after the end; {range}")
-    );
-    assert_eq!(
-        line("0 -> 1 @x-5f"),
-        format!("`@x-5f` is not a valid range; {range}")
-    );
-    assert_eq!(
-        err(json!({"x": "0 -> 1 @5-0f"})),
-        format!("layers[1].anim.x: `@5f-0f` starts after it ends; {range}")
-    );
+fn string_form_problems_are_syntax_errors_with_a_form() {
+    for text in [
+        "0 1 @0-5f",
+        "0 -> 1 2 @0-5f",
+        "a -> 1 @0-5f",
+        "0 -> 1 @0-5f ease ease",
+        "",
+    ] {
+        let e = text.parse::<TrackLine>().unwrap_err();
+        assert_eq!(
+            (e.kind, e.path, e.expected.as_deref()),
+            (Kind::Syntax, None, Some(STRING_EXPECTED)),
+            "{text:?}"
+        );
+    }
+    for text in ["0 -> 1 @05f", "0 -> 1 @0-5", "0 -> 1 @x-5f"] {
+        let e = text.parse::<TrackLine>().unwrap_err();
+        assert_eq!(
+            (e.kind, e.expected.as_deref()),
+            (Kind::Syntax, Some(RANGE_EXPECTED)),
+            "{text}"
+        );
+    }
 }
 
 #[test]
@@ -165,61 +173,78 @@ fn ranges_borrow_the_end_unit() {
 }
 
 #[test]
-fn array_form_errors() {
-    assert!(err(json!({"x": []})).contains("anim.x: needs at least one key"));
-    assert!(err(json!({"x": [[5, 0], [2, 1]]})).starts_with("layers[1].anim.x[1]: key is earlier"));
-    assert_eq!(
-        err(json!({"x": [[0]]})),
-        r#"layers[1].anim.x[0]: invalid length 1; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"]"#
-    );
-    assert_eq!(
-        err(json!({"x": [[0, 1, "linear", 4]]})),
-        r#"layers[1].anim.x[0]: invalid length 4; expected [time, value] or [time, value, curve], e.g. ["12f", 1, "ease-out"]"#
-    );
-    assert!(err(json!({"x": [[-1, 0]]})).starts_with("layers[1].anim.x[0]: invalid time -1"));
-    assert!(err(json!({"x": [["12", 0]]})).starts_with("layers[1].anim.x[0]: "));
-    assert_eq!(
-        err(json!({"x": [[true, 0]]})),
-        "layers[1].anim.x[0][0]: invalid type: boolean `true`; expected a frame count, or a time such as `12f` or `0.4s`"
-    );
-    assert_eq!(
-        err(json!({"x": [[0, "a"]]})),
-        r#"layers[1].anim.x[0][1]: invalid type: string "a"; expected a number"#
-    );
-    assert!(err(json!({"x": [[0, 1, "nope"]]})).contains("unknown curve"));
-    assert_eq!(
-        err(json!({"x": [[0, 1, 3]]})),
-        "layers[1].anim.x[0][2]: invalid type: integer `3`; expected a curve name such as `ease-out`, or `cubic(x1,y1,x2,y2)`"
-    );
-    assert_eq!(
-        err(json!({"x": [[0, 1, null]]})),
-        "layers[1].anim.x[0][2]: invalid type: null; expected a curve name such as `ease-out`, or `cubic(x1,y1,x2,y2)`"
-    );
-    assert_eq!(
-        err(json!({"x": 3})),
-        r#"layers[1].anim.x: invalid type: integer `3`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of [time, value] keys"#
-    );
-    assert_eq!(
-        err(json!([1])),
-        r#"layers[1].anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}"#
-    );
-}
-
-#[test]
 fn array_form_errors_say_what_kind_of_problem_they_are() {
-    let kind = |v: Value| anim(v).unwrap_err().kind;
-    assert_eq!(kind(json!([1])), Kind::WrongType);
-    assert_eq!(kind(json!({"x": 3})), Kind::WrongType);
-    assert_eq!(kind(json!({"x": [5]})), Kind::WrongType);
-    assert_eq!(kind(json!({"x": [[true, 0]]})), Kind::WrongType);
-    assert_eq!(kind(json!({"x": [[0, "a"]]})), Kind::WrongType);
-    assert_eq!(kind(json!({"x": [[0, 1, 3]]})), Kind::WrongType);
-    assert_eq!(kind(json!({"x": [[0]]})), Kind::Invalid);
-    assert_eq!(kind(json!({"x": [[5, 0], [2, 1]]})), Kind::Invalid);
-    assert_eq!(kind(json!({"x": [[-1, 0]]})), Kind::OutOfRange);
-    assert_eq!(kind(json!({"opacity": [[0, 2]]})), Kind::OutOfRange);
-    assert_eq!(kind(json!({"x": []})), Kind::Missing);
-    assert_eq!(kind(json!({"zoom": []})), Kind::UnknownName);
+    let x0 = format!("{X}[0]");
+    let x1 = format!("{X}[1]");
+    for (value, kind, path, form) in [
+        (
+            json!([1]),
+            Kind::WrongType,
+            "layers[1].anim",
+            Some(AnimDoc::FORM),
+        ),
+        (json!({"x": 3}), Kind::WrongType, X, Some(TRACK_EXPECTED)),
+        (json!({"x": []}), Kind::Missing, X, Some(KEYS_EXPECTED)),
+        (json!({"x": [5]}), Kind::WrongType, &x0, Some(KEY_EXPECTED)),
+        (json!({"x": [[0]]}), Kind::Invalid, &x0, Some(KEY_EXPECTED)),
+        (
+            json!({"x": [[0, 1, "linear", 4]]}),
+            Kind::Invalid,
+            &x0,
+            Some(KEY_EXPECTED),
+        ),
+        (
+            json!({"x": [[true, 0]]}),
+            Kind::WrongType,
+            &format!("{x0}[0]"),
+            None,
+        ),
+        (
+            json!({"x": [["12", 0]]}),
+            Kind::Syntax,
+            &x0,
+            Some(TIME_EXPECTED),
+        ),
+        (json!({"x": [[-1, 0]]}), Kind::OutOfRange, &x0, None),
+        (
+            json!({"x": [[0, "a"]]}),
+            Kind::WrongType,
+            &format!("{x0}[1]"),
+            Some("a number"),
+        ),
+        (
+            json!({"x": [[0, 1, 3]]}),
+            Kind::WrongType,
+            &format!("{x0}[2]"),
+            Some(Curve::FORM),
+        ),
+        (
+            json!({"x": [[0, 1, null]]}),
+            Kind::WrongType,
+            &format!("{x0}[2]"),
+            Some(Curve::FORM),
+        ),
+        (json!({"x": [[0, 1, "nope"]]}), Kind::UnknownName, &x0, None),
+        (json!({"x": [[5, 0], [2, 1]]}), Kind::Invalid, &x1, None),
+        (
+            json!({"opacity": [[0, 2]]}),
+            Kind::OutOfRange,
+            "layers[1].anim.opacity[0]",
+            None,
+        ),
+        (
+            json!({"zoom": []}),
+            Kind::UnknownName,
+            "layers[1].anim.zoom",
+            None,
+        ),
+    ] {
+        let e = err(value.clone());
+        assert_eq!((e.kind, e.path.as_deref()), (kind, Some(path)), "{value}");
+        if let Some(form) = form {
+            assert_eq!(e.expected.as_deref(), Some(form), "{value}");
+        }
+    }
 }
 
 #[test]
@@ -244,12 +269,16 @@ fn layer_carries_anim() {
 
 #[test]
 fn conflict_with_in_preset() {
-    let e = scene(r#""in":"fade-up","anim":{"opacity":"0 -> 1 @0-5f"}"#)
-        .unwrap_err()
-        .to_string();
+    let e = scene(r#""in":"fade-up","anim":{"opacity":"0 -> 1 @0-5f"}"#).unwrap_err();
     assert_eq!(
-        e,
-        r#"layers[0].anim.opacity: `opacity` is already animated by `in` (preset `fade-up`); expected `a in=none anim={"opacity":"0 -> 1 @0-12f ease-out","y":"580 -> 540 @0-12f ease-out"}` (the entrance as anim tracks; then adjust `opacity`), or define a scene preset without `opacity` under "presets""#
+        (e.kind, e.path.as_deref()),
+        (Kind::Conflict, Some("layers[0].anim.opacity"))
+    );
+    // The hint starts with the edit line that moves the entrance into `anim`.
+    let hint = e.expected.unwrap();
+    assert!(
+        hint.starts_with(r#"`a in=none anim={"opacity":"0 -> 1 @0-12f ease-out","y":"580 -> 540 @0-12f ease-out"}`"#),
+        "{hint}"
     );
 }
 
@@ -258,11 +287,11 @@ fn conflict_hint_uses_at_tuning_and_keeps_other_tracks() {
     let e = scene(
         r#""at":"100 760","in":"fade-up 60px 0.5s linear @15f","anim":{"opacity":"0 -> 1 @0-5f","rotate":"0 -> 5 @0-5f"}"#,
     )
-    .unwrap_err()
-    .to_string();
+    .unwrap_err();
+    let hint = e.expected.unwrap();
     assert!(
-        e.contains(r#"`a in=none anim={"opacity":"0 -> 1 @15-30f linear","y":"820 -> 760 @15-30f linear","rotate":"0 -> 5 @0-5f"}`"#),
-        "{e}"
+        hint.starts_with(r#"`a in=none anim={"opacity":"0 -> 1 @15-30f linear","y":"820 -> 760 @15-30f linear","rotate":"0 -> 5 @0-5f"}`"#),
+        "{hint}"
     );
     // The hint parses back and no longer conflicts.
     let fixed = scene(

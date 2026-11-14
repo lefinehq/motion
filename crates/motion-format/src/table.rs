@@ -1,9 +1,5 @@
-//! Name tables: the one way a name is looked up among named rows.
-//!
-//! Part of step 1 (Read). Names are data: sizes, curves, preset starts,
-//! properties and presets each live in one table of named rows. These
-//! functions are the only code that searches such a table, so a lookup and
-//! the names an unknown-name error lists always read the same rows.
+//! Name tables: the one way a name is looked up among named rows, so a lookup
+//! and the names an unknown-name error lists always read the same rows.
 
 /// A row of a name table.
 pub(crate) trait Named {

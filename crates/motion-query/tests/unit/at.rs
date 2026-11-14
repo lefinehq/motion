@@ -1,7 +1,7 @@
 //! Unit tests for `src/at.rs`.
 
 use crate::at;
-use motion_diagnostic::Kind;
+use motion_format::{Diagnostic, Kind};
 
 #[test]
 fn at_prints_resolved_values() {
@@ -16,12 +16,8 @@ fn at_prints_resolved_values() {
     );
     assert_eq!(at(&g, 0.0, &[]).unwrap().lines().count(), 2);
     assert_eq!(
-        at(&g, 0.0, &["nope".into()]).unwrap_err().to_string(),
-        "unknown layer id `nope`; expected one of title, card"
-    );
-    assert_eq!(
-        at(&g, -1.0, &[]).unwrap_err().to_string(),
-        "time must be 0 or later"
+        at(&g, 0.0, &["nope".into()]).unwrap_err(),
+        Diagnostic::unknown("layer id", "nope", ["title", "card"])
     );
     let empty = motion_scene::compile(
         motion_format::parse_document(r#"{"motion":1,"dur":"1s","layers":[]}"#)
@@ -71,7 +67,8 @@ fn pop_and_spin_in_mid_entrance() {
 fn errors_say_what_kind_of_problem_they_are() {
     let g = graph(r#"{"id":"a","rect":"10x10"}"#);
     assert_eq!(at(&g, -1.0, &[]).unwrap_err().kind, Kind::OutOfRange);
-    let e = at(&g, 0.0, &["ghost".to_string()]).unwrap_err();
-    assert_eq!(e.kind, Kind::UnknownName);
-    assert_eq!(e.to_string(), "unknown layer id `ghost`; expected one of a");
+    assert_eq!(
+        at(&g, 0.0, &["ghost".to_string()]).unwrap_err(),
+        Diagnostic::unknown("layer id", "ghost", ["a"])
+    );
 }

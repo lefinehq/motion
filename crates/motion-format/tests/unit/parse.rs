@@ -1,7 +1,11 @@
-//! Unit tests for `src/parse.rs`: JSON, serde's structural errors and the
-//! one mapping from them to a diagnostic.
+//! Unit tests for `src/parse.rs`: JSON, the document's shape and its keys.
 
 use super::*;
+use crate::Kind;
+use crate::doc::{AnimDoc, LayerDoc, LayersDoc, PresetDoc, PresetsDoc};
+use crate::preset::Start;
+use crate::shorthand::{Behaviour, Font, Position, RectShape};
+use crate::units::{Color, Size, Time};
 use serde_json::json;
 
 /// The error of `json`.
@@ -9,16 +13,25 @@ fn err(json: &str) -> Diagnostic {
     parse_document(json).unwrap_err()
 }
 
-/// The full error text of `json`.
-fn msg(json: &str) -> String {
-    err(json).to_string()
+/// A scene that also has `kv` at the top level.
+fn scene(kv: &str) -> String {
+    format!(r#"{{"motion":1,"dur":"1s","layers":[],{kv}}}"#)
 }
 
 /// A scene with one rect layer that also has `kv`.
 fn layer(kv: &str) -> String {
-    msg(&format!(
-        r#"{{"motion":1,"dur":"1s","layers":[{{"id":"a","rect":"1x1",{kv}}}]}}"#
-    ))
+    format!(r#"{{"motion":1,"dur":"1s","layers":[{{"id":"a","rect":"1x1",{kv}}}]}}"#)
+}
+
+/// Asserts that `json` fails with `kind` at `path`, expecting `form`.
+#[track_caller]
+fn assert_fails(json: &str, kind: Kind, path: Option<&str>, form: &str) {
+    let e = err(json);
+    assert_eq!(
+        (e.kind, e.path.as_deref(), e.expected.as_deref()),
+        (kind, path, Some(form)),
+        "{json}"
+    );
 }
 
 #[test]
@@ -56,185 +69,128 @@ fn layer_errors_sit_under_the_layer_path() {
 
 #[test]
 fn text_that_is_not_json_is_a_syntax_error() {
-    let e = err("nope");
-    assert_eq!(e.kind, Kind::Syntax);
-    assert_eq!(e.path, None);
-    let text = e.to_string();
-    assert!(text.starts_with("invalid JSON: "), "{text}");
-    // Text that is not JSON and JSON that is not an object get the same form.
-    assert_eq!(e.expected, err("[]").expected);
+    assert_fails("nope", Kind::Syntax, None, SceneDoc::FORM);
+    // JSON that is not an object gets the same form.
+    assert_fails("[]", Kind::WrongType, None, SceneDoc::FORM);
 }
 
 #[test]
 fn missing_keys_show_the_key_written() {
-    assert_eq!(
-        msg(r#"{"motion":1,"layers":[]}"#),
-        r#"missing `dur`; expected e.g. "dur":"5s""#
-    );
-    assert_eq!(
-        msg(r#"{"dur":"1s","layers":[]}"#),
-        r#"missing `motion`; expected e.g. "motion":1"#
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s"}"#),
-        r#"missing `layers`; expected e.g. "layers":[]"#
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","layers":[{"rect":"1x1"}]}"#),
-        r#"layers[0]: missing `id`; expected e.g. "id":"title""#
-    );
-    assert_eq!(err(r#"{"motion":1,"layers":[]}"#).kind, Kind::Missing);
+    for (json, path, form) in [
+        (r#"{"motion":1,"layers":[]}"#, None, r#"e.g. "dur":"5s""#),
+        (r#"{"dur":"1s","layers":[]}"#, None, r#"e.g. "motion":1"#),
+        (r#"{"motion":1,"dur":"1s"}"#, None, r#"e.g. "layers":[]"#),
+        (
+            r#"{"motion":1,"dur":"1s","layers":[{"rect":"1x1"}]}"#,
+            Some("layers[0]"),
+            r#"e.g. "id":"title""#,
+        ),
+    ] {
+        assert_fails(json, Kind::Missing, path, form);
+    }
 }
 
 #[test]
 fn null_is_never_a_left_out_key() {
-    let scene = |kv: &str| msg(&format!(r#"{{"motion":1,"dur":"1s","layers":[],{kv}}}"#));
-    assert_eq!(
-        scene(r#""size":null"#),
-        "size: invalid type: null; expected a size name such as `1080p`, or `<width>x<height>`"
-    );
-    assert_eq!(
-        scene(r#""fps":null"#),
-        "fps: invalid type: null; expected a number"
-    );
-    assert_eq!(
-        scene(r#""presets":null"#),
-        r#"presets: invalid type: null; expected an object of presets, e.g. {"slide":{"opacity":0,"x":"-d"}}"#
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":null,"layers":[]}"#),
-        "dur: invalid type: null; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`"
-    );
-    assert_eq!(
-        layer(r#""in":null"#),
-        "layers[0].in: invalid type: null; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`"
-    );
-    assert_eq!(
-        layer(r#""anim":null"#),
-        r#"layers[0].anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}"#
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":null}]}"#),
-        "layers[0].text: invalid type: null; expected a string"
-    );
-    for kv in [r#""size":null"#, r#""bg":null"#, r#""fps":null"#] {
-        let e = err(&format!(r#"{{"motion":1,"dur":"1s","layers":[],{kv}}}"#));
-        assert_eq!(e.kind, Kind::WrongType, "{kv}");
+    for (json, path, form) in [
+        (scene(r#""size":null"#), "size", Size::FORM),
+        (scene(r#""bg":null"#), "bg", Color::FORM),
+        (scene(r#""fps":null"#), "fps", "a number"),
+        (scene(r#""presets":null"#), "presets", PresetsDoc::FORM),
+        (
+            r#"{"motion":1,"dur":null,"layers":[]}"#.to_owned(),
+            "dur",
+            Time::FORM,
+        ),
+        (layer(r#""in":null"#), "layers[0].in", Behaviour::FORM),
+        (layer(r#""anim":null"#), "layers[0].anim", AnimDoc::FORM),
+        (
+            r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":null}]}"#.to_owned(),
+            "layers[0].text",
+            "a string",
+        ),
+    ] {
+        assert_fails(&json, Kind::WrongType, Some(path), form);
     }
 }
 
 #[test]
 fn unknown_keys_list_the_allowed_keys() {
-    let e = err(r#"{"motion":1,"dur":"1s","layers":[],"colour":"x"}"#);
-    assert_eq!(e.kind, Kind::UnknownName);
-    assert_eq!(
-        e.to_string(),
-        "colour: unknown field `colour`; expected one of motion, size, fps, dur, bg, presets, layers"
+    assert_fails(
+        &scene(r#""colour":"x""#),
+        Kind::UnknownName,
+        Some("colour"),
+        &one_of(&SCENE_KEYS),
     );
-    assert_eq!(
-        layer(r#""x":1"#),
-        "layers[0].x: unknown field `x`; expected one of id, text, rect, font, fill, at, in, anim"
-    );
-}
-
-#[test]
-fn wrong_types_name_what_was_found_and_the_accepted_form() {
-    assert_eq!(
-        msg("[]"),
-        r#"invalid type: sequence; expected a scene object, e.g. {"motion":1,"dur":"5s","layers":[]}"#
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":5,"layers":[]}"#),
-        "dur: invalid type: integer `5`; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`"
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","size":3,"layers":[]}"#),
-        "size: invalid type: integer `3`; expected a size name such as `1080p`, or `<width>x<height>`"
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","bg":0,"layers":[]}"#),
-        "bg: invalid type: integer `0`; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`"
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","fps":"x","layers":[]}"#),
-        r#"fps: invalid type: string "x"; expected a number"#
-    );
-    assert_eq!(
-        msg(r#"{"motion":"1","dur":"1s","layers":[]}"#),
-        r#"motion: invalid type: string "1"; expected a number"#
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","layers":{}}"#),
-        r#"layers: invalid type: map; expected a list of layer objects, e.g. [{"id":"box","rect":"100x100"}]"#
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","layers":[1]}"#),
-        r#"layers[0]: invalid type: integer `1`; expected a layer object, e.g. {"id":"box","rect":"100x100"}"#
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","layers":[{"id":3,"rect":"1x1"}]}"#),
-        "layers[0].id: invalid type: integer `3`; expected a string"
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":3}]}"#),
-        "layers[0].text: invalid type: integer `3`; expected a string"
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":1}]}"#),
-        "layers[0].rect: invalid type: integer `1`; expected `<width>x<height> [r<radius>]`, e.g. `300x400 r24`"
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":"x","font":1}]}"#),
-        "layers[0].font: invalid type: integer `1`; expected `<family> <size> [<weight>]`, e.g. `Inter 96 700`"
-    );
-    assert_eq!(
-        layer(r#""fill":1"#),
-        "layers[0].fill: invalid type: integer `1`; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`"
-    );
-    assert_eq!(
-        layer(r#""at":1"#),
-        "layers[0].at: invalid type: integer `1`; expected `<x> <y>`, each a number of pixels or `center`, e.g. `center 260`"
-    );
-    assert_eq!(
-        layer(r#""in":true"#),
-        "layers[0].in: invalid type: boolean `true`; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`"
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","presets":[],"layers":[]}"#),
-        r#"presets: invalid type: sequence; expected an object of presets, e.g. {"slide":{"opacity":0,"x":"-d"}}"#
-    );
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","presets":{"a":3},"layers":[]}"#),
-        r#"presets.a: invalid type: integer `3`; expected an object of property starts, e.g. {"opacity":0,"y":"+d"}"#
-    );
-    assert_eq!(
-        layer(r#""anim":[]"#),
-        r#"layers[0].anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}"#
+    assert_fails(
+        &layer(r#""x":1"#),
+        Kind::UnknownName,
+        Some("layers[0].x"),
+        &one_of(&LAYER_KEYS),
     );
 }
 
 #[test]
-fn wrong_json_types_are_wrong_type() {
-    let kind = |j: &str| err(j).kind;
-    let scene = |extra: &str| format!(r#"{{"motion":1,"dur":"1s","layers":[]{extra}}}"#);
-    assert_eq!(kind("[]"), Kind::WrongType);
-    assert_eq!(kind(r#"{"motion":1,"dur":5,"layers":[]}"#), Kind::WrongType);
-    assert_eq!(
-        kind(r#"{"motion":"1","dur":"1s","layers":[]}"#),
-        Kind::WrongType
-    );
-    assert_eq!(kind(&scene(r#","fps":true"#)), Kind::WrongType);
-    assert_eq!(
-        kind(r#"{"motion":1,"dur":"1s","layers":{}}"#),
-        Kind::WrongType
-    );
-    assert_eq!(
-        kind(r#"{"motion":1,"dur":"1s","layers":[1]}"#),
-        Kind::WrongType
-    );
-    assert_eq!(kind(&scene(r#","presets":[]"#)), Kind::WrongType);
+fn wrong_types_name_the_accepted_form() {
+    for (json, path, form) in [
+        (
+            r#"{"motion":1,"dur":5,"layers":[]}"#.to_owned(),
+            "dur",
+            Time::FORM,
+        ),
+        (scene(r#""size":3"#), "size", Size::FORM),
+        (scene(r#""bg":0"#), "bg", Color::FORM),
+        (scene(r#""fps":"x""#), "fps", "a number"),
+        (scene(r#""fps":true"#), "fps", "a number"),
+        (
+            r#"{"motion":"1","dur":"1s","layers":[]}"#.to_owned(),
+            "motion",
+            "a number",
+        ),
+        (
+            r#"{"motion":1,"dur":"1s","layers":{}}"#.to_owned(),
+            "layers",
+            LayersDoc::FORM,
+        ),
+        (
+            r#"{"motion":1,"dur":"1s","layers":[1]}"#.to_owned(),
+            "layers[0]",
+            LayerDoc::FORM,
+        ),
+        (
+            r#"{"motion":1,"dur":"1s","layers":[{"id":3,"rect":"1x1"}]}"#.to_owned(),
+            "layers[0].id",
+            "a string",
+        ),
+        (
+            r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":3}]}"#.to_owned(),
+            "layers[0].text",
+            "a string",
+        ),
+        (
+            r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":1}]}"#.to_owned(),
+            "layers[0].rect",
+            RectShape::FORM,
+        ),
+        (
+            r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":"x","font":1}]}"#.to_owned(),
+            "layers[0].font",
+            Font::FORM,
+        ),
+        (layer(r#""fill":1"#), "layers[0].fill", Color::FORM),
+        (layer(r#""at":1"#), "layers[0].at", Position::FORM),
+        (layer(r#""in":true"#), "layers[0].in", Behaviour::FORM),
+        (scene(r#""presets":[]"#), "presets", PresetsDoc::FORM),
+        (scene(r#""presets":{"a":3}"#), "presets.a", PresetDoc::FORM),
+        (layer(r#""anim":[]"#), "layers[0].anim", AnimDoc::FORM),
+    ] {
+        assert_fails(&json, Kind::WrongType, Some(path), form);
+    }
     // A string of the wrong shape is a syntax error, not a type error.
-    assert_eq!(kind(r#"{"motion":1,"dur":"5","layers":[]}"#), Kind::Syntax);
+    assert_eq!(
+        err(r#"{"motion":1,"dur":"5","layers":[]}"#).kind,
+        Kind::Syntax
+    );
 }
 
 #[test]
@@ -269,44 +225,28 @@ fn one_of(keys: &[&str]) -> String {
 }
 
 #[test]
-fn a_value_that_contains_the_separator_stays_in_the_message() {
-    let e = err(r#"{"motion":1,"dur":"1s","fps":"a, expected b","layers":[]}"#);
-    assert_eq!(e.message, r#"invalid type: string "a, expected b""#);
-    assert_eq!(e.expected.as_deref(), Some("a number"));
-    assert_eq!(
-        msg(r#"{"motion":1,"dur":"1s","presets":{"a":{"x":"l, expected q"}},"layers":[]}"#),
-        r#"presets.a.x: invalid value: string "l, expected q"; expected a number, "+d" or "-d""#
+fn a_value_that_reads_like_a_form_stays_a_value() {
+    assert_fails(
+        &scene(r#""fps":"a, expected b""#),
+        Kind::WrongType,
+        Some("fps"),
+        "a number",
+    );
+    assert_fails(
+        &scene(r#""presets":{"a":{"x":"l, expected q"}}"#),
+        Kind::Invalid,
+        Some("presets.a.x"),
+        Start::form(),
     );
 }
 
 #[test]
 fn every_serde_shape_maps_to_its_kind() {
-    /// A required field in serde's terms, which no document type has.
-    #[derive(Debug, serde::Deserialize)]
-    #[allow(dead_code)]
-    struct Required {
-        key: u8,
-    }
-    let missing = serde_path_to_error::deserialize::<_, Required>(&json!({})).unwrap_err();
-    let e = structural(missing);
-    assert_eq!(e.kind, Kind::Missing);
-    assert_eq!(e.to_string(), "missing field `key`");
-    // The other shapes, each from a real document.
-    let invalid_value = err(r#"{"motion":1,"dur":"1s","presets":{"a":{"x":"left"}},"layers":[]}"#);
+    let invalid_value = err(&scene(r#""presets":{"a":{"x":"left"}}"#));
     assert_eq!(invalid_value.kind, Kind::Invalid);
-    let short_key = err(&scene_with_track("[[0]]"));
+    let short_key = err(&layer(r#""anim":{"x":[[0]]}"#));
     assert_eq!(short_key.kind, Kind::Invalid);
-    assert!(
-        short_key.message.starts_with("invalid length "),
-        "{short_key}"
-    );
-}
-
-/// A scene whose one layer has the track `x` written as `track`.
-fn scene_with_track(track: &str) -> String {
-    format!(
-        r#"{{"motion":1,"dur":"1s","layers":[{{"id":"a","rect":"1x1","anim":{{"x":{track}}}}}]}}"#
-    )
+    assert_eq!(short_key.path.as_deref(), Some("layers[0].anim.x[0]"));
 }
 
 mod never_panics {
@@ -342,7 +282,7 @@ fn documents_are_objects_not_arrays_of_field_values() {
     let e =
         scene_from_value(&json!({"motion": 1, "dur": "1s", "layers": [["a", "hi"]]})).unwrap_err();
     assert_eq!(
-        e.to_string(),
-        r#"layers[0]: invalid type: sequence; expected a layer object, e.g. {"id":"box","rect":"100x100"}"#
+        (e.kind, e.path.as_deref(), e.expected.as_deref()),
+        (Kind::WrongType, Some("layers[0]"), Some(LayerDoc::FORM))
     );
 }

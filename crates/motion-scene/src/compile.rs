@@ -1,8 +1,5 @@
-//! The compiler: scene in, scene graph out.
-//!
-//! Part of step 2 (Compile). It resolves `center` coordinates, measures text,
-//! and turns each layer's entrance and `anim` keys into one keyframe track per
-//! property, with times in frames.
+//! Step 2 (Compile): resolves positions, measures text and turns each layer's
+//! entrance and `anim` into one keyframe track per property.
 
 use motion_format::anim::AnimTrack;
 use motion_format::preset::{PresetSpec, Start};
@@ -18,8 +15,7 @@ use crate::track::{Key, Track};
 
 /// Compiles `scene` into a [`SceneGraph`], using `measure` to size text.
 pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
-    // `tracks` counts the animated tracks: every node has one per property,
-    // so the total would say nothing.
+    // Only animated tracks count: every node has one track per property.
     let span = debug_span!("compile", nodes = scene.layers.len(), tracks = field::Empty);
     let _entered = span.enter();
     let width = f64::from(scene.size.width);
@@ -29,7 +25,7 @@ pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
         .iter()
         .map(|layer| node(layer, scene, (width, height), measure))
         .collect();
-    // Counting walks every track, so it is done only when someone listens.
+    // Counting walks every track, so skip it when nobody listens.
     if !span.is_disabled() {
         let animated = nodes
             .iter()
@@ -47,7 +43,7 @@ pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
     }
 }
 
-/// Compiles one layer: its box, measured for text, and its tracks.
+/// Compiles one layer into a node.
 fn node(layer: &Layer, scene: &Scene, canvas: (f64, f64), measure: &dyn TextMeasure) -> Node {
     let (kind, width, height) = match &layer.content {
         Content::Text { text, font } => {
@@ -70,8 +66,7 @@ fn node(layer: &Layer, scene: &Scene, canvas: (f64, f64), measure: &dyn TextMeas
     }
 }
 
-/// The layer's entrance with the preset it performs. A missing preset is
-/// impossible after parsing, which checks the name.
+/// The layer's entrance and its preset, which parsing has checked exists.
 fn entrance<'s>(layer: &'s Layer, scene: &'s Scene) -> Option<(&'s Behaviour, &'s PresetSpec)> {
     let behaviour = layer.enter.as_ref()?;
     scene
@@ -79,9 +74,7 @@ fn entrance<'s>(layer: &'s Layer, scene: &'s Scene) -> Option<(&'s Behaviour, &'
         .map(|spec| (behaviour, spec))
 }
 
-/// Builds the tracks of `layer`, parallel to [`PROPERTIES`]: each property
-/// rests at its resting value, the entrance moves the properties its preset
-/// names, and `anim` sets its own.
+/// The tracks of `layer`, parallel to [`PROPERTIES`]: rest, then entrance, then `anim`.
 fn tracks(
     layer: &Layer,
     entrance: Option<(&Behaviour, &PresetSpec)>,
@@ -98,16 +91,14 @@ fn tracks(
             tracks[prop.index()] = entrance_track(behaviour, from, rest[prop.index()], fps);
         }
     }
-    // The parser rejects an `anim` track for a property the entrance also
-    // animates, so this override only matters for scenes built in code.
+    // Parsing forbids `anim` on an entrance property; this wins only in code-built scenes.
     for track in &layer.anim {
         tracks[track.property.index()] = anim_track(track, fps);
     }
     tracks
 }
 
-/// One property of an entrance: from its start to `rest`, over the
-/// behaviour's frames and with its curve.
+/// One entrance property: from its start to `rest` over the behaviour's frames.
 fn entrance_track(behaviour: &Behaviour, from: Start, rest: f64, fps: f64) -> Track {
     let (start, end) = behaviour.frames(fps);
     Track::new(vec![
@@ -138,11 +129,8 @@ fn anim_track(track: &AnimTrack, fps: f64) -> Track {
     Track::new(keys)
 }
 
-/// Whether `axis` still follows `at`. It stops when `anim` drives it, or
-/// when the entrance starts it at an absolute value: only the end of that
-/// track moves with `at`, so shifting `at` cannot bring the start into view.
-/// The properties on `axis` are those the registry rests on it
-/// ([`rest_from_at`](motion_format::property::PropertySpec::rest_from_at)).
+/// Whether moving `at` moves the whole motion on `axis`: not when `anim` drives
+/// it, nor when the entrance starts it at an absolute value.
 fn follows_at(layer: &Layer, entrance: Option<(&Behaviour, &PresetSpec)>, axis: Axis) -> bool {
     let on_axis = |prop: Prop| prop.spec().rest_from_at == Some(axis);
     let by_anim = layer.anim.iter().any(|track| on_axis(track.property));

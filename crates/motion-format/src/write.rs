@@ -1,17 +1,11 @@
-//! The canonical writer for scene documents.
-//!
-//! Part of step 1 (Read), in reverse: it prints a document the way motion
-//! wants it stored, so diffs stay small and a layer is one line.
+//! The canonical writer for scene documents: small diffs, one layer per line.
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::key::LAYERS;
 
-/// Writes a document in canonical form.
-///
-/// Every key except `layers` is minified on the first line; `layers` always
-/// comes last, one layer per line. A value that is not an object with a
-/// `layers` array has no such shape, so it is just minified.
+/// Writes a document in canonical form: every other key minified on the
+/// first line, then `layers`, one layer per line. Any other value is minified.
 pub fn write_document(doc: &Value) -> String {
     let Some((obj, layers)) = doc
         .as_object()
@@ -19,29 +13,25 @@ pub fn write_document(doc: &Value) -> String {
     else {
         return format!("{doc}\n");
     };
-    // Re-serialise the other keys as one object, then drop its closing brace
-    // so the `layers` part can follow on the next line.
-    let rest: serde_json::Map<String, Value> = obj
+    // The other keys as one object without its closing brace, so `layers` can follow.
+    let rest: Map<String, Value> = obj
         .iter()
-        .filter(|(k, _)| k.as_str() != LAYERS)
+        .filter(|(k, _)| *k != LAYERS)
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    let mut out = String::new();
-    if !rest.is_empty() {
-        let head = Value::Object(rest).to_string();
-        out.push_str(&head[..head.len() - 1]);
-        out.push_str(",\n");
-    } else {
-        out.push_str("{\n");
+    let head = match Value::Object(rest).to_string() {
+        empty if empty == "{}" => "{".to_owned(),
+        head => format!("{},", &head[..head.len() - 1]),
+    };
+    let mut body = layers
+        .iter()
+        .map(Value::to_string)
+        .collect::<Vec<_>>()
+        .join(",\n");
+    if !body.is_empty() {
+        body.push('\n');
     }
-    out.push_str(&format!("\"{LAYERS}\":[\n"));
-    let lines: Vec<String> = layers.iter().map(Value::to_string).collect();
-    out.push_str(&lines.join(",\n"));
-    if !lines.is_empty() {
-        out.push('\n');
-    }
-    out.push_str("]}\n");
-    out
+    format!("{head}\n\"{LAYERS}\":[\n{body}]}}\n")
 }
 
 #[cfg(test)]

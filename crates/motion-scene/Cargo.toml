@@ -1,6 +1,6 @@
 [package]
 name = "motion-scene"
-description = "Compiles a motion scene into a scene graph: resolved sizes and one frame-based keyframe track per property."
+description = "Compiles a motion scene into a scene graph and evaluates it at any frame, without rendering."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

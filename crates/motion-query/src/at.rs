@@ -1,23 +1,14 @@
-//! The `at` query: where things are at one moment.
-//!
-//! A side branch working on the output of step 3 (not a numbered rendering
-//! step). Prints resolved numbers, so the agent never has to
-//! do easing or layout maths itself.
+//! The `at` query: resolved numbers at one moment, so an agent never does easing
+//! or layout maths itself.
 
-use motion_diagnostic::{Diagnostic, Kind, Result};
-use motion_eval::evaluate;
 use motion_format::fmt_num;
 use motion_format::property::Prop;
-use motion_scene::SceneGraph;
+use motion_format::{Diagnostic, Kind, Result};
+use motion_scene::{NodeState, SceneGraph, evaluate};
 use tracing::instrument;
 
-/// Describes the requested nodes at `frame`, one line each.
-///
-/// An empty `ids` means every node. Lines follow scene order, and
-/// the format is `{id} x={x} y={y} w={w} h={h}` followed by every other
-/// registered property, in registry order, whose value differs from its
-/// default, as `name={value}`. Values are compared as printed, so float dust
-/// such as a scale of 1.0000000000000002 does not show up.
+/// One line per node in `ids` (all when empty) at `frame`: `{id} x= y= w= h=`, then each
+/// other property whose printed value differs from its default, so float dust stays hidden.
 #[instrument(level = "debug", skip(graph, ids), fields(ids = ids.len()))]
 pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
     if frame < 0.0 {
@@ -35,26 +26,29 @@ pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
         .nodes
         .iter()
         .filter(|n| ids.is_empty() || ids.contains(&n.id))
-        .map(|n| {
-            let mut line = format!(
-                "{} x={} y={} w={} h={}",
-                n.id,
-                fmt_num(n.get(Prop::X)),
-                fmt_num(n.get(Prop::Y)),
-                fmt_num(n.width),
-                fmt_num(n.height)
-            );
-            // The properties `at` sets (x and y) are always printed above.
-            for prop in Prop::all().filter(|p| p.spec().rest_from_at.is_none()) {
-                let shown = fmt_num(n.get(prop));
-                if shown != fmt_num(prop.spec().default) {
-                    line.push_str(&format!(" {}={shown}", prop.name()));
-                }
-            }
-            line
-        })
+        .map(describe)
         .collect();
     Ok(lines.join("\n"))
+}
+
+/// The line [`at`] prints for `node`.
+fn describe(node: &NodeState) -> String {
+    // The properties `at` sets (x and y) are always printed, first.
+    let changed: String = Prop::all()
+        .filter(|prop| prop.spec().rest_from_at.is_none())
+        .filter_map(|prop| {
+            let shown = fmt_num(node.get(prop));
+            (shown != fmt_num(prop.spec().default)).then(|| format!(" {}={shown}", prop.name()))
+        })
+        .collect();
+    format!(
+        "{} x={} y={} w={} h={}{changed}",
+        node.id,
+        fmt_num(node.get(Prop::X)),
+        fmt_num(node.get(Prop::Y)),
+        fmt_num(node.width),
+        fmt_num(node.height)
+    )
 }
 
 #[cfg(test)]

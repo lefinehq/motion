@@ -1,9 +1,5 @@
-//! The registry of animatable properties.
-//!
-//! Part of step 1 (Read). Property names live only in [`PROPERTIES`]; code
-//! refers to a property by its typed identity, a [`Prop`], and every error
-//! that lists names reads the table. Later steps use the defaults and ranges
-//! to evaluate and check values.
+//! The registry of animatable properties. Names live only in [`PROPERTIES`];
+//! code refers to a property by its row, a [`Prop`].
 
 use crate::shorthand::{Axis, Position};
 use crate::table::{self, Named};
@@ -17,16 +13,14 @@ pub struct PropertySpec {
     pub default: f64,
     /// The allowed values, inclusive, or `None` when unbounded.
     pub range: Option<(f64, f64)>,
-    /// The axis of the layer's `at` that gives the resting value, instead of
-    /// `default`; `None` for a property `at` does not set.
+    /// The axis of the layer's `at` that gives the resting value instead of `default`.
     pub rest_from_at: Option<Axis>,
     /// What the property means, for people and agents.
     pub doc: &'static str,
 }
 
 impl PropertySpec {
-    /// The resting value of this property on a layer at `at`, on a canvas of
-    /// `canvas` pixels: the resolved `at` axis, or the default.
+    /// The resting value on a layer at `at`, on a canvas of `canvas` pixels.
     pub fn rest(&self, at: &Position, canvas: (f64, f64)) -> f64 {
         match self.rest_from_at {
             Some(axis) => at.resolve(axis, canvas),
@@ -41,8 +35,7 @@ impl Named for PropertySpec {
     }
 }
 
-/// Every property, in registry order. A property's row here is its
-/// identity: [`Prop`] is the index of the row.
+/// Every property, in registry order.
 pub const PROPERTIES: &[PropertySpec] = &[
     PropertySpec {
         name: "x",
@@ -81,13 +74,10 @@ pub const PROPERTIES: &[PropertySpec] = &[
     },
 ];
 
-/// A property: the index of its row in [`PROPERTIES`].
+/// A property: the index of its row in [`PROPERTIES`], so every `Prop` names a row.
 ///
-/// Only the constants, [`Prop::named`] and [`Prop::all`] make one, so every
-/// `Prop` names a row. The constants are the properties whose meaning code
-/// depends on (geometry and visibility are computed from them); a unit test
-/// checks each against its row's name. They are not a list of options: the
-/// registry stays the source of truth for which properties exist.
+/// The constants are the properties whose meaning code depends on, such as
+/// geometry; the registry stays the source of truth for which exist.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Prop(usize);
 
@@ -113,8 +103,7 @@ impl Prop {
         (0..PROPERTIES.len()).map(Prop)
     }
 
-    /// The property's position in [`PROPERTIES`], and in every list kept
-    /// parallel to it.
+    /// The property's position in [`PROPERTIES`], and in every list kept parallel to it.
     pub fn index(self) -> usize {
         self.0
     }
@@ -130,7 +119,7 @@ impl Prop {
     }
 }
 
-/// The property names in registry order, for error messages.
+/// The property names in registry order.
 pub fn property_names() -> impl Iterator<Item = &'static str> {
     table::names(PROPERTIES)
 }

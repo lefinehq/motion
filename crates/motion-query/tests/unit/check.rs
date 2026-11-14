@@ -1,62 +1,148 @@
 //! Unit tests for `src/check.rs`.
 
 use crate::check;
-fn run(json: &str) -> String {
-    let s = motion_format::parse_document(json).unwrap().scene().clone();
-    let g = motion_scene::compile(&s, &motion_scene::ApproxTextMeasure);
-    check(&s, &g).to_string()
+use crate::report::{Code, Report, Severity, Violation};
+use std::ops::RangeInclusive;
+
+/// Checks the scene in `json`.
+fn check_json(json: &str) -> Report {
+    let scene = motion_format::parse_document(json).unwrap().scene().clone();
+    let graph = motion_scene::compile(&scene, &motion_scene::ApproxTextMeasure);
+    check(&scene, &graph)
 }
+
+/// Checks a one-second scene with one layer.
+fn one(layer: &str) -> Report {
+    check_json(&format!(r#"{{"motion":1,"dur":"1s","layers":[{layer}]}}"#))
+}
+
+fn report(violations: Vec<Violation>, passed: usize) -> Report {
+    Report { violations, passed }
+}
+
+fn offscreen(
+    id: &str,
+    frames: RangeInclusive<u32>,
+    amount_px: f64,
+    fix: Option<&str>,
+) -> Violation {
+    violation(Severity::Error, Code::Offscreen, id, frames, amount_px, fix)
+}
+
+fn unsafe_area(
+    id: &str,
+    frames: RangeInclusive<u32>,
+    amount_px: f64,
+    fix: Option<&str>,
+) -> Violation {
+    violation(Severity::Warning, Code::Unsafe, id, frames, amount_px, fix)
+}
+
+fn violation(
+    severity: Severity,
+    code: Code,
+    id: &str,
+    frames: RangeInclusive<u32>,
+    amount_px: f64,
+    fix: Option<&str>,
+) -> Violation {
+    Violation {
+        severity,
+        code,
+        id: id.into(),
+        first_frame: *frames.start(),
+        last_frame: *frames.end(),
+        amount_px,
+        fix: fix.map(String::from),
+    }
+}
+
+/// The `at` value of the first fix hint in `report`.
+fn fixed_at(report: &Report) -> &str {
+    let fix = report
+        .violations
+        .iter()
+        .find_map(|v| v.fix.as_deref())
+        .expect("a fix hint");
+    let (_, at) = fix.split_once("at=").expect("an `at` edit");
+    at.trim_matches('"')
+}
+
+fn has_hint(report: &Report) -> bool {
+    report.violations.iter().any(|v| v.fix.is_some())
+}
+
 #[test]
 fn clean_scene_reports_ok_count() {
     assert_eq!(
-        run(include_str!("../../../../examples/launch.json")),
-        "OK 4"
+        check_json(include_str!("../../../../examples/launch.json")),
+        report(vec![], 4)
     );
 }
+
 #[test]
 fn offscreen_reports_range_amount_and_fix() {
     assert_eq!(
-        run(
+        check_json(
             r#"{"motion":1,"dur":"5s","layers":[{"id":"card","rect":"300x400","at":"center 1000"}]}"#
         ),
-        "E offscreen card 0-149f +120px; fix: card at=\"center 826\"\nOK 0"
+        report(
+            vec![offscreen(
+                "card",
+                0..=149,
+                120.0,
+                Some(r#"card at="center 826""#)
+            )],
+            0
+        )
     );
 }
+
 #[test]
 fn unsafe_area_is_a_warning() {
     assert_eq!(
-        run(
+        check_json(
             r#"{"motion":1,"dur":"5s","layers":[{"id":"card","rect":"300x100","at":"center 1010"}]}"#
         ),
-        "W unsafe card 0-149f +34px; fix: card at=\"center 976\"\nOK 1"
+        report(
+            vec![unsafe_area(
+                "card",
+                0..=149,
+                34.0,
+                Some(r#"card at="center 976""#)
+            )],
+            1
+        )
     );
 }
+
 #[test]
 fn entrance_overshoot_is_caught_only_while_visible() {
     assert_eq!(
-        run(
-            r#"{"motion":1,"dur":"1s","layers":[{"id":"card","rect":"300x100","at":"center 1000","in":"fade-up 60px 12f linear @0f"}]}"#
+        one(
+            r#"{"id":"card","rect":"300x100","at":"center 1000","in":"fade-up 60px 12f linear @0f"}"#
         ),
-        "E offscreen card 1-5f +25px; fix: card at=\"center 921\"\nOK 0"
+        report(
+            vec![offscreen(
+                "card",
+                1..=5,
+                25.0,
+                Some(r#"card at="center 921""#)
+            )],
+            0
+        )
     );
 }
+
 #[test]
 fn left_edge_fix_adds_and_resolves_only_the_moving_axis() {
     assert_eq!(
-        run(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":"200x100","at":"50 center"}]}"#),
-        "E offscreen a 0-29f +50px; fix: a at=\"196 center\"\nOK 0"
+        one(r#"{"id":"a","rect":"200x100","at":"50 center"}"#),
+        report(
+            vec![offscreen("a", 0..=29, 50.0, Some(r#"a at="196 center""#))],
+            0
+        )
     );
-}
-/// A one-second scene with one layer.
-fn one(layer: &str) -> String {
-    run(&format!(r#"{{"motion":1,"dur":"1s","layers":[{layer}]}}"#))
-}
-
-/// Takes the `at` out of the first fix hint in `report`.
-fn fixed_at(report: &str) -> String {
-    let start = report.find("at=\"").expect("a fix hint") + 4;
-    let rest = &report[start..];
-    rest[..rest.find('"').unwrap()].to_string()
 }
 
 #[test]
@@ -64,7 +150,10 @@ fn corner_overshoot_fixes_both_axes_in_one_hint() {
     // Right edge 130 px out, bottom edge 20 px out.
     assert_eq!(
         one(r#"{"id":"c","rect":"300x200","at":"1900 1000"}"#),
-        "E offscreen c 0-29f +130px; fix: c at=\"1674 926\"\nOK 0"
+        report(
+            vec![offscreen("c", 0..=29, 130.0, Some(r#"c at="1674 926""#))],
+            0
+        )
     );
 }
 
@@ -72,7 +161,10 @@ fn corner_overshoot_fixes_both_axes_in_one_hint() {
 fn right_edge_fix_subtracts() {
     assert_eq!(
         one(r#"{"id":"r","rect":"200x100","at":"1900 center"}"#),
-        "E offscreen r 0-29f +80px; fix: r at=\"1724 center\"\nOK 0"
+        report(
+            vec![offscreen("r", 0..=29, 80.0, Some(r#"r at="1724 center""#))],
+            0
+        )
     );
 }
 
@@ -80,21 +172,26 @@ fn right_edge_fix_subtracts() {
 fn top_edge_fix_adds() {
     assert_eq!(
         one(r#"{"id":"t","rect":"200x100","at":"center 20"}"#),
-        "E offscreen t 0-29f +30px; fix: t at=\"center 104\"\nOK 0"
+        report(
+            vec![offscreen("t", 0..=29, 30.0, Some(r#"t at="center 104""#))],
+            0
+        )
     );
 }
 
 #[test]
 fn oversize_axis_is_not_measured_and_the_other_still_is() {
-    // 2000 wide on a 1920 canvas is bleed; nothing to report when centred.
+    // 2000 wide on a 1920 canvas is bleed.
     assert_eq!(
         one(r#"{"id":"w","rect":"2000x100","at":"center center"}"#),
-        "OK 2"
+        report(vec![], 2)
     );
-    // The vertical overshoot is still found, and the fix leaves x alone.
     assert_eq!(
         one(r#"{"id":"w","rect":"2000x100","at":"center 1070"}"#),
-        "E offscreen w 0-29f +40px; fix: w at=\"center 976\"\nOK 0"
+        report(
+            vec![offscreen("w", 0..=29, 40.0, Some(r#"w at="center 976""#))],
+            0
+        )
     );
 }
 
@@ -102,13 +199,12 @@ fn oversize_axis_is_not_measured_and_the_other_still_is() {
 fn full_bleed_background_has_no_violations() {
     assert_eq!(
         one(r#"{"id":"bg","rect":"1920x1080","at":"center center"}"#),
-        "OK 2"
+        report(vec![], 2)
     );
 }
 
 #[test]
 fn applying_a_fix_makes_the_rules_pass() {
-    // Each layer is placed, checked, moved to the hinted position and checked again.
     for (rect, at) in [
         ("300x200", "1900 1000"),
         ("300x400", "center 1000"),
@@ -118,18 +214,16 @@ fn applying_a_fix_makes_the_rules_pass() {
         ("1700x100", "1000 center"),
     ] {
         let before = one(&format!(r#"{{"id":"n","rect":"{rect}","at":"{at}"}}"#));
-        assert!(before.contains("fix:"), "{rect} at {at}: {before}");
         let moved = fixed_at(&before);
         let after = one(&format!(r#"{{"id":"n","rect":"{rect}","at":"{moved}"}}"#));
-        assert_eq!(after, "OK 2", "{rect} at {at} -> {moved}: {after}");
+        assert_eq!(after, report(vec![], 2), "{rect} at {at} -> {moved}");
     }
 }
 
 #[test]
 fn hints_for_animated_layers_settle_in_one_edit() {
-    // Each entrance sweeps a larger box than any single frame. The hint is
-    // applied once; after that there must be no error and no further hint
-    // (a warning without a hint is fine: the sweep cannot fit the safe area).
+    // An entrance sweeps a larger box than any one frame. After one edit there
+    // is no error and no hint (a warning is fine when the sweep cannot fit).
     for (rect, at, enter) in [
         ("300x950", "center 560", "fade-up 60px 12f linear"),
         ("1700x100", "center center", "fade-left 60px 12f linear"),
@@ -141,31 +235,33 @@ fn hints_for_animated_layers_settle_in_one_edit() {
                 r#"{{"id":"n","rect":"{rect}","at":"{at}","in":"{enter}"}}"#
             ))
         };
-        let mut report = layer(at);
-        if report.contains("fix:") {
-            report = layer(&fixed_at(&report));
+        let mut found = layer(at);
+        if has_hint(&found) {
+            found = layer(fixed_at(&found));
         }
         assert!(
-            !report.contains("fix:") && !report.contains("E "),
-            "{rect} at {at} {enter}: {report}"
+            !has_hint(&found) && !found.has_errors(),
+            "{rect} at {at} {enter}: {found:?}"
         );
     }
 }
 
 #[test]
 fn a_hint_also_clears_the_safe_area_on_the_other_axis() {
-    // Off the canvas on the right, only outside the safe area at the bottom:
-    // the offscreen hint fixes both, so no unsafe warning follows.
+    // Off the canvas on the right, only outside the safe area at the bottom.
     let before = one(r#"{"id":"c","rect":"300x200","at":"1900 980"}"#);
     assert_eq!(
         before,
-        "E offscreen c 0-29f +130px; fix: c at=\"1674 926\"\nOK 0"
+        report(
+            vec![offscreen("c", 0..=29, 130.0, Some(r#"c at="1674 926""#))],
+            0
+        )
     );
     let after = one(&format!(
         r#"{{"id":"c","rect":"300x200","at":"{}"}}"#,
         fixed_at(&before)
     ));
-    assert_eq!(after, "OK 2");
+    assert_eq!(after, report(vec![], 2));
 }
 
 #[test]
@@ -174,79 +270,94 @@ fn fractional_duration_evaluates_frames_up_to_the_last_partial_one() {
     let json =
         r#"{"motion":1,"dur":"10.5f","layers":[{"id":"a","rect":"100x100","at":"30 center"}]}"#;
     assert_eq!(
-        run(json),
-        "E offscreen a 0-10f +20px; fix: a at=\"146 center\"\nOK 0"
+        check_json(json),
+        report(
+            vec![offscreen("a", 0..=10, 20.0, Some(r#"a at="146 center""#))],
+            0
+        )
     );
 }
 
 #[test]
 fn run_shows_the_worst_overshoot_not_the_first() {
-    // Rest position is 20 px past the bottom; the entrance starts above and
-    // slides down, so the overshoot grows frame by frame.
-    let report = one(
+    // At rest 20 px past the bottom; the entrance slides down towards it, so
+    // the overshoot grows frame by frame.
+    let found = one(
         r#"{"id":"card","rect":"300x100","at":"center 1050","in":"fade-down 60px 12f linear @0f"}"#,
     );
-    assert!(
-        report.starts_with("E offscreen card ")
-            && report.contains("-29f +20px; fix: card at=\"center 976\""),
-        "{report}"
+    let [run] = &found.violations[..] else {
+        panic!("one run: {found:?}");
+    };
+    assert_eq!(
+        (run.code, run.last_frame, run.amount_px, run.fix.as_deref()),
+        (Code::Offscreen, 29, 20.0, Some(r#"card at="center 976""#))
     );
 }
 
 #[test]
 fn empty_scene_is_ok_zero() {
-    assert_eq!(run(r#"{"motion":1,"dur":"1s","layers":[]}"#), "OK 0");
+    assert_eq!(
+        check_json(r#"{"motion":1,"dur":"1s","layers":[]}"#),
+        report(vec![], 0)
+    );
 }
 
-/// Snapshot of a whole report with several violations, so a change to the
-/// text format shows up as one reviewable diff (`cargo insta review`).
+/// The one test that pins the report's text format (`cargo insta review`).
 #[test]
 fn report_with_several_violations_snapshot() {
-    let report = run(concat!(
+    let report = check_json(concat!(
         r#"{"motion":1,"dur":"1s","layers":["#,
         r#"{"id":"a","rect":"300x400","at":"center 1000"},"#,
         r#"{"id":"b","rect":"300x100","at":"center 1010"},"#,
         r#"{"id":"c","rect":"200x100","at":"50 center"}"#,
         r#"]}"#
-    ));
+    ))
+    .to_string();
     insta::assert_snapshot!(report);
 }
 
 #[test]
 fn a_rotated_box_leaving_the_canvas_is_caught() {
-    // 400x40 upright fits at x=150, but turned 90 degrees it is 40 wide and
-    // 400 tall: 200 px from y=100 reaches 100 px above the canvas (the fix aims at the safe area, 54 px in).
+    // 400x40 turned 90 degrees is 400 tall: from y=100 it reaches 100 px above
+    // the canvas, and the fix aims at the safe area, 54 px in.
     assert_eq!(
         one(r#"{"id":"r","rect":"400x40","at":"150 100","anim":{"rotate":"90 -> 90 @0-10f"}}"#),
-        "E offscreen r 0-29f +100px; fix: r at=\"150 254\"\nOK 0"
+        report(
+            vec![offscreen("r", 0..=29, 100.0, Some(r#"r at="150 254""#))],
+            0
+        )
     );
 }
 
 #[test]
 fn an_anim_driven_axis_gets_no_fix_shift() {
-    // x is driven by anim, so only y can move: y is 10 px out at the top and the fix aims at the safe area.
-    let report =
-        one(r#"{"id":"a","rect":"100x100","at":"500 40","anim":{"x":"-20 -> -20 @0-10f"}}"#);
-    assert!(report.contains("E offscreen a"), "{report}");
-    assert_eq!(fixed_at(&report), "500 104");
+    // x is driven by anim, so only y moves: from 10 px out at the top into the safe area.
+    assert_eq!(
+        one(r#"{"id":"a","rect":"100x100","at":"500 40","anim":{"x":"-20 -> -20 @0-10f"}}"#),
+        report(
+            vec![offscreen("a", 0..=29, 70.0, Some(r#"a at="500 104""#))],
+            0
+        )
+    );
 }
 
 #[test]
 fn no_hint_when_no_axis_can_move() {
     // x is anim-driven and off the left edge; y is fine.
-    let report =
-        one(r#"{"id":"a","rect":"100x100","at":"500 250","anim":{"x":"-20 -> -20 @0-10f"}}"#);
-    assert!(report.starts_with("E offscreen a "), "{report}");
-    assert!(!report.contains("fix:"), "{report}");
+    assert_eq!(
+        one(r#"{"id":"a","rect":"100x100","at":"500 250","anim":{"x":"-20 -> -20 @0-10f"}}"#),
+        report(vec![offscreen("a", 0..=29, 70.0, None)], 0)
+    );
 }
 
 #[test]
 fn absolute_preset_start_gets_no_hint_on_that_axis() {
-    // The entrance starts x at 1900, offscreen. Moving `at` only moves the
-    // end of the track, so a hint on x would never converge: give none.
-    let report = run(
-        r#"{"motion":1,"dur":"1s","presets":{"swoop":{"x":1900}},"layers":[{"id":"a","rect":"300x100","at":"center center","in":"swoop 12f linear"}]}"#,
+    // Moving `at` only moves the end of a track that starts at x=1900, so a
+    // hint on x would never converge.
+    assert_eq!(
+        check_json(
+            r#"{"motion":1,"dur":"1s","presets":{"swoop":{"x":1900}},"layers":[{"id":"a","rect":"300x100","at":"center center","in":"swoop 12f linear"}]}"#,
+        ),
+        report(vec![offscreen("a", 0..=1, 130.0, None)], 0)
     );
-    assert!(report.contains("E offscreen a"), "{report}");
-    assert!(!report.contains("fix:"), "{report}");
 }
