@@ -1,7 +1,9 @@
 //! Step 4 (Draw): turns a frame's display list into pixels with `vello_cpu`
 //! ([D2], [D34]).
 //!
-//! A [`Frame`] is a tree of [`Layer`]s with paths and glyph runs as leaves.
+//! A [`Frame`] is a tree of [`Layer`]s with paths, glyph runs and pictures
+//! as leaves; a [`Picture`] is an image file decoded once, for every frame
+//! that draws it.
 //! [`render`] draws it into an [`Image`], which [`Image::to_png`] encodes.
 //! Effects are rows of [`EFFECTS`]; blend modes, caps, joins and fill rules
 //! are tables too, so callers map names to them without branching.
@@ -16,13 +18,17 @@ mod blend;
 mod effect;
 mod image;
 mod list;
+mod picture;
 mod render;
 mod style;
 
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use effect::{EFFECTS, Effect, EffectContext, EffectSpec, ParamSpec, ParamType, ParamValue};
 pub use image::Image;
-pub use list::{Blending, Clip, Frame, Glyph, GlyphDraw, Layer, Matte, MatteMode, Node, PathDraw};
+pub use list::{
+    Blending, Clip, Frame, Glyph, GlyphDraw, ImageDraw, Layer, Matte, MatteMode, Node, PathDraw,
+};
+pub use picture::Picture;
 pub use render::{Quality, RenderOptions, Simd, render, render_with};
 pub use style::{
     CAPS, Cap, Color, Dashes, DrawStyle, FILL_RULES, FillRule, JOINS, Join, Paint, StrokeStyle,

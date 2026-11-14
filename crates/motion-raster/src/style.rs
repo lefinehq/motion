@@ -47,8 +47,9 @@ impl Color {
 
 /// What a leaf is painted with.
 ///
-/// Only flat colour exists today; gradients and images become variants here,
-/// and the renderer maps each variant to a vello paint in one place.
+/// Only flat colour exists today; gradients become variants here, and the
+/// renderer maps each variant to a vello paint in one place. A picture is a
+/// leaf of its own, [`ImageDraw`](crate::ImageDraw), placed by its rectangle.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Paint {
     /// One colour everywhere.

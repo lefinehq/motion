@@ -68,7 +68,7 @@ ureq = { version = "3", default-features = false, features = ["rustls"] }
 # The CPU rasteriser (D2, D34); here only to check that font data types agree.
 vello_cpu = "0.4"
 
-# Tests draw real frames: the rasteriser, the shaper and the PNG codec are
+# Tests draw real frames: the rasteriser, the shaper and the picture codecs are
 # compiled optimised even in debug builds, so a 1080x1920 golden frame takes
 # milliseconds rather than minutes. Our own crates stay unoptimised for
 # debugging.
@@ -87,4 +87,6 @@ opt-level = 3
 [profile.dev.package.parley]
 opt-level = 3
 [profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
 opt-level = 3

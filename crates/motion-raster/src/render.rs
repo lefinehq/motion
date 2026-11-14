@@ -12,7 +12,7 @@ use vello_cpu::{
 
 use crate::effect::EffectContext;
 use crate::image::Image;
-use crate::list::{Blending, Frame, GlyphDraw, Layer, Matte, MatteMode, Node, PathDraw};
+use crate::list::{Blending, Frame, GlyphDraw, ImageDraw, Layer, Matte, MatteMode, Node, PathDraw};
 use crate::style::{Color, DrawStyle};
 
 /// How the rasteriser computes colours.
@@ -208,6 +208,10 @@ impl Painter {
                 Ok(())
             }
             Node::Glyphs(glyphs) => self.glyphs(glyphs, transform),
+            Node::Image(image) => {
+                self.image(image, transform);
+                Ok(())
+            }
         })
     }
 
@@ -268,6 +272,25 @@ impl Painter {
                 self.ctx.stroke_path(&draw.path);
             }
         }
+    }
+
+    /// Fills the draw's rectangle with its picture, whose pixels the paint
+    /// transform stretches over it.
+    fn image(&mut self, draw: &ImageDraw, transform: Affine) {
+        let rect = draw.rect;
+        let (width, height) = (
+            f64::from(draw.picture.width()),
+            f64::from(draw.picture.height()),
+        );
+        self.ctx.set_transform(transform);
+        self.ctx.set_paint_transform(
+            Affine::translate((rect.x0, rect.y0))
+                * Affine::scale_non_uniform(rect.width() / width, rect.height() / height),
+        );
+        self.ctx.set_paint(draw.picture.to_vello());
+        self.ctx.fill_rect(&rect);
+        // Later paints are placed by their geometry alone.
+        self.ctx.reset_paint_transform();
     }
 
     fn glyphs(&mut self, draw: &GlyphDraw, transform: Affine) -> Result<()> {
