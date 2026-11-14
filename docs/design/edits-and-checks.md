@@ -14,7 +14,7 @@ title.in.dur=18f
 card anim.opacity="0 -> 1 @0-20f"
 card anim={"scale":[[0,1],["1s",1.2,"ease-out"]]}
 cards.* shadow=none
-add after title {"id":"sub","text":"Now in beta","font":"Inter 40 400","in":"fade 8f"}
+add after title {"id":"sub","text":"Now in beta","font":"Inter Variable 40 400","in":"fade 8f"}
 rm accent
 mv bloom top
 ```

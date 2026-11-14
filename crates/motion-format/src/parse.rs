@@ -25,6 +25,8 @@ pub mod key {
     pub const PRESETS: &str = "presets";
     /// The scene's compositions.
     pub const COMPS: &str = "comps";
+    /// The font files and folders a scene uses.
+    pub const FONTS: &str = "fonts";
     /// The layers.
     pub const LAYERS: &str = "layers";
     /// A layer's id.
@@ -43,6 +45,14 @@ pub mod key {
     pub const FONT: &str = "font";
     /// A layer's fill colour.
     pub const FILL: &str = "fill";
+    /// A text layer's style.
+    pub const STYLE: &str = "style";
+    /// A text layer's styled character ranges.
+    pub const RUNS: &str = "runs";
+    /// A text layer's paragraph styles.
+    pub const PARAGRAPHS: &str = "paragraphs";
+    /// A text layer's box, for box text.
+    pub const BOX: &str = "box";
     /// A layer's position.
     pub const AT: &str = "at";
     /// A layer's entrance.
@@ -74,13 +84,14 @@ pub mod key {
 }
 
 /// The keys allowed at the top level, in the order of `SceneDoc`'s fields.
-pub const SCENE_KEYS: [&str; 8] = [
+pub const SCENE_KEYS: [&str; 9] = [
     key::MOTION,
     key::SIZE,
     key::FPS,
     key::DUR,
     key::BG,
     key::PRESETS,
+    key::FONTS,
     key::COMPS,
     key::LAYERS,
 ];
@@ -89,7 +100,7 @@ pub const COMP_KEYS: [&str; 5] = [key::SIZE, key::FPS, key::DUR, key::BG, key::L
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 17] = [
+pub const LAYER_KEYS: [&str; 21] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -98,6 +109,10 @@ pub const LAYER_KEYS: [&str; 17] = [
     key::PIVOT,
     key::FONT,
     key::FILL,
+    key::STYLE,
+    key::RUNS,
+    key::PARAGRAPHS,
+    key::BOX,
     key::AT,
     key::IN,
     key::ANIM,

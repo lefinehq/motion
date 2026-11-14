@@ -15,7 +15,11 @@ fn state(scale: f64, rotate: f64) -> NodeState {
         .map(|p| match p.name() {
             "scale" => Value::Point([scale, scale]),
             "rotate" => Value::Number(rotate),
-            _ => p.spec().rest(&at, (1920.0, 1080.0), (100.0, 50.0)),
+            _ => p.spec().rest(
+                &at,
+                kurbo::Rect::new(0.0, 0.0, 1920.0, 1080.0),
+                kurbo::Rect::new(0.0, 0.0, 100.0, 50.0),
+            ),
         })
         .collect();
     NodeState::of_box("n", 100.0, 50.0, values)

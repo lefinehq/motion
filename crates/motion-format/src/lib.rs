@@ -18,6 +18,7 @@ pub mod property;
 mod scene;
 pub mod shorthand;
 mod table;
+pub mod text;
 pub mod units;
 mod validate;
 pub mod value;

@@ -52,15 +52,7 @@ fn parses_minimal_scene_with_defaults() {
             a: 255
         }
     );
-    assert_eq!(
-        d.scene().layers[0].fill,
-        Color {
-            r: 255,
-            g: 255,
-            b: 255,
-            a: 255
-        }
-    );
+    assert_eq!(d.scene().layers[0].fill, [1.0; 4]);
     assert_eq!(
         d.scene().layers[0].at,
         Position {
@@ -75,9 +67,10 @@ fn parses_minimal_scene_with_defaults() {
 fn text_layer_gets_the_default_font() {
     let d = doc(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":"Hi"}]}"#);
     match &d.scene().layers[0].content {
-        Content::Text { text, font } => {
-            assert_eq!(text, "Hi");
-            assert_eq!(font.family, "Inter");
+        Content::Text(text) => {
+            assert_eq!(text.text, "Hi");
+            let font = &text.first_style().font;
+            assert_eq!(font.family, "Inter Variable");
             assert_eq!(font.size, 48.0);
             assert_eq!(font.weight, 400);
         }
@@ -217,11 +210,19 @@ fn property_keys_set_resting_values_of_their_type() {
     assert_eq!(layer.value(Prop::OPACITY), Some(Value::Number(0.5)));
     assert_eq!(layer.value(Prop::POSITION), None);
     assert_eq!(
-        layer.rest(Prop::ANCHOR, (100.0, 100.0), (10.0, 10.0)),
+        layer.rest(
+            Prop::ANCHOR,
+            kurbo::Rect::new(0.0, 0.0, 100.0, 100.0),
+            kurbo::Rect::new(0.0, 0.0, 10.0, 10.0)
+        ),
         Value::Point([0.0, 0.0])
     );
     assert_eq!(
-        layer.rest(Prop::POSITION, (100.0, 100.0), (10.0, 10.0)),
+        layer.rest(
+            Prop::POSITION,
+            kurbo::Rect::new(0.0, 0.0, 100.0, 100.0),
+            kurbo::Rect::new(0.0, 0.0, 10.0, 10.0)
+        ),
         Value::Point([50.0, 50.0])
     );
 }

@@ -10,7 +10,7 @@ A motion scene is a small JSON file that describes a video: its size, length and
 {"motion":1,"size":"1080p","fps":30,"dur":"5s","bg":"#0B0D12",
 "assets":{"inter":"font:Inter","logo":"./logo.svg"},
 "layers":[
-{"id":"title","text":"Launch Week","font":"Inter 96 700","at":"center 260","in":"fade-up 12f"},
+{"id":"title","text":"Launch Week","font":"Inter Variable 96 700","at":"center 260","in":"fade-up 12f"},
 {"id":"accent","rect":"240x8 r4","at":"center 340","fill":"#3B82F6 -> #8B5CF6 0-5s"},
 {"id":"cards","repeat":5,"layout":"row gap 40","at":"center 700","data":{"label":["Speed","Scale","Search","Sync","Secure"]},"item":{"rect":"300x400 r24","fill":"#fff","shadow":"0 12 32 #0003","text":"{label}"},"in":"fade-up 60px 12f ease-out @15f stagger 6f"},
 {"id":"bloom","fx":["glow 20 0.6"]}
@@ -230,6 +230,46 @@ The copies get numbered ids starting at 1: `cards.1` to `cards.5`, also reachabl
 A layer or group can lay out its children in rows, columns or grids, for example `row gap 40`, `col`, `grid 3 gap 24` or `align center`.
 
 Layout is resolved before anything moves. Every animation is therefore relative to where its element sits in the layout.
+
+## Text
+
+A text layer sets its words (`text`, where `\n` ends a paragraph) from font assets ([D33](decisions.md#d33-text-is-shaped-from-font-assets)). `fonts` at the top of the scene lists font files and folders, relative to the scene file; Inter ships built in as the family `Inter Variable`. `font` names a family or a PostScript name, a size and a weight: `"Inter Variable 96 700"` or `"Lato-Black 55"`. A font the scene does not have is an error that lists the faces there are, never a silent fallback.
+
+```json
+"fonts":["fonts/lato"],
+"layers":[{"id":"title","text":"Keep\nyour life\nsimple","font":"Lato-Black 55","fill":"#FFFFFF",
+  "style":{"caps":"all","align":"center","stroke":"#8F8F8F","stroke-width":2,"leading":66},
+  "runs":[{"range":[0,4],"fill":"#FFE000"}]}]
+```
+
+- **`style`** sets character and paragraph keys for the whole text. `font` and `fill` stay layer keys.
+- **`runs`** override character keys over `range`, `[start, end]` in characters; a later run wins where runs overlap.
+- **`paragraphs`** holds one object of paragraph keys per paragraph, in order.
+- **`box`** (`[w, h]`) makes box text, which wraps inside the box from the layer's origin. Without it the text is point text: each paragraph is one line, aligned about the origin, and the origin is where the first line's baseline starts.
+
+The layer's box is the box its lines cover, which for point text starts above and maybe left of the origin; `anchor` rests at its centre, so `at` centres the text. The keys are listed once, in `crates/motion-format/src/text.rs`; this table mirrors that list, and a test checks it.
+
+| Style key | Level | Accepts |
+|---|---|---|
+| `font` | character | `<family or PostScript name> <size> [<weight>]`, e.g. `Lato-Black 55` |
+| `italic` | character | `true` or `false` |
+| `fill` | character | a colour, e.g. `#FFFFFF` or `[1, 1, 1, 1]` |
+| `stroke` | character | a colour, e.g. `#8F8F8F` |
+| `stroke-width` | character | a number of px, at least 0 |
+| `paint` | character | `fill-over` or `stroke-over` |
+| `tracking` | character | a number, in thousandths of an em |
+| `leading` | character | `auto` or a number of px |
+| `baseline` | character | a number of px |
+| `caps` | character | `normal`, `small`, `all` or `all-small` |
+| `faux-bold` | character | `true` or `false` |
+| `faux-italic` | character | `true` or `false` |
+| `align` | paragraph | `left`, `right`, `center`, `justify-left`, `justify-right`, `justify-center` or `justify-all` |
+| `indent-first` | paragraph | a number of px |
+| `indent-start` | paragraph | a number of px |
+| `indent-end` | paragraph | a number of px |
+| `space-before` | paragraph | a number of px |
+| `space-after` | paragraph | a number of px |
+| `auto-leading` | paragraph | a number, at least 0 |
 
 ## Text motion
 

@@ -29,7 +29,7 @@ Each crate has one job and a list of things it must never do. Keeping those rule
 | Crate | What it does | What it must never do |
 |---|---|---|
 | `motion-format` | Reads the scene format: a serde document for the JSON shape, `winnow` grammars for the shorthands, then validation and writing (step 1). Also holds the one error type, `Diagnostic`, and the shared grammar pieces. | Touch pixels, read files, or format an error outside `Diagnostic`. |
-| `motion-scene` | Compiles a scene into a scene graph with resolved sizes and tracks (step 2), and works out every node's position, size and opacity at a frame (step 3). | Touch pixels or read files. |
+| `motion-scene` | Compiles a scene into a scene graph with resolved sizes and tracks, setting text with `motion-text` (step 2), and works out every node's position, size, opacity and content at a frame (step 3). | Touch pixels or read files. |
 | `motion-query` | Side branch: `check` and `at` answer questions about a scene with numbers. | Write files or touch pixels. |
 | `motion-edit` | Side branch: parses one-line edits and applies them to a parsed scene's raw JSON. | Write files or touch pixels. |
 | `motion-engine` | `Session`: the only entry point for tools. It reads, parses, compiles and evaluates a scene and runs `check`, `at` and edits, and `import` reads an `.aep` project, each step inside a `tracing` span. Its `telemetry` module installs the stderr subscriber for logs and step timings. | Print, read arguments, let a tool bypass it to call a step directly, or install a subscriber itself (only binaries and tests call `telemetry::init`). |

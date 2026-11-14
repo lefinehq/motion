@@ -829,6 +829,7 @@ dependencies = [
  "motion-import",
  "motion-query",
  "motion-scene",
+ "motion-text",
  "pretty_assertions",
  "rstest",
  "serde_json",
@@ -842,6 +843,7 @@ version = "0.0.0"
 dependencies = [
  "indexmap",
  "insta",
+ "kurbo",
  "proptest",
  "serde",
  "serde_json",
@@ -876,6 +878,7 @@ dependencies = [
  "kurbo",
  "motion-format",
  "motion-scene",
+ "motion-text",
  "pretty_assertions",
  "rstest",
  "strum",
@@ -900,6 +903,7 @@ version = "0.0.0"
 dependencies = [
  "kurbo",
  "motion-format",
+ "motion-text",
  "pretty_assertions",
  "proptest",
  "rstest",

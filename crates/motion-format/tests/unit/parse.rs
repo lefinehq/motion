@@ -6,6 +6,7 @@ use crate::doc::{AnimDoc, LayerDoc, LayersDoc, PresetDoc, PresetsDoc};
 use crate::preset::Start;
 use crate::shorthand::{Behaviour, Font, Position, RectShape};
 use crate::units::{Color, Size, Time};
+use crate::value::ValueType;
 use serde_json::json;
 
 /// The error of `json`.
@@ -178,7 +179,11 @@ fn wrong_types_name_the_accepted_form() {
             "layers[0].font",
             Font::FORM,
         ),
-        (layer(r#""fill":1"#), "layers[0].fill", Color::FORM),
+        (
+            layer(r#""fill":1"#),
+            "layers[0].fill",
+            ValueType::Color.form(),
+        ),
         (layer(r#""at":1"#), "layers[0].at", Position::FORM),
         (layer(r#""in":true"#), "layers[0].in", Behaviour::FORM),
         (scene(r#""presets":[]"#), "presets", PresetsDoc::FORM),

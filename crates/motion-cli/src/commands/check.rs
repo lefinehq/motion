@@ -9,5 +9,5 @@ use super::print_report;
 
 /// Checks the scene file; exits 1 when the report has an error line.
 pub fn run(path: &Path) -> Result<ExitCode> {
-    Ok(print_report(&Session::open(path)?.check()))
+    Ok(print_report(&Session::open(path)?.check()?))
 }

@@ -3,20 +3,19 @@
 use kurbo::{Affine, Rect};
 use motion_format::item::ItemKind;
 use motion_format::property::Prop;
-use motion_format::shorthand::{Font, RectShape};
+use std::sync::Arc;
+
+use motion_format::shorthand::RectShape;
 use motion_format::{Path, Value};
 
 use crate::shape::ShapeDraw;
+use crate::text::TextNode;
 
 /// One node's resolved values at a single frame.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeState {
     /// The layer id this state belongs to.
     pub id: String,
-    /// Box width in pixels, in the node's own coordinates.
-    pub width: f64,
-    /// Box height in pixels, in the node's own coordinates.
-    pub height: f64,
     /// One value per property, parallel to `motion_format::property::PROPERTIES`.
     pub values: Vec<Value>,
     /// From the node's own coordinates to the canvas: its transform, then its parents'.
@@ -28,9 +27,12 @@ pub struct NodeState {
     pub hidden: bool,
     /// What it draws at this frame.
     pub content: ContentState,
-    /// The box its content covers, in its own coordinates.
+    /// Its box in its own coordinates, which `anchor` rests at the centre of.
+    pub own_box: Rect,
+    /// The box its content covers, in its own coordinates: its box, or for
+    /// shapes what they draw.
     pub local_bounds: Rect,
-    /// The colour of a text or rect node, straight RGBA from 0 to 1.
+    /// The colour of a rect node, straight RGBA from 0 to 1.
     pub fill: [f64; 4],
     /// Its effects at this frame, in order.
     pub fx: Vec<ItemState>,
@@ -39,13 +41,8 @@ pub struct NodeState {
 /// What a node draws at one frame.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ContentState {
-    /// A line of text.
-    Text {
-        /// The words.
-        text: String,
-        /// Family, size and weight.
-        font: Font,
-    },
+    /// Text, set; it does not change from frame to frame.
+    Text(Arc<TextNode>),
     /// A rectangle the size of the node's box.
     Rect(RectShape),
     /// Paints and the outlines they cover, back to front.
@@ -135,13 +132,12 @@ impl NodeState {
     pub fn of_box(id: impl Into<String>, width: f64, height: f64, values: Vec<Value>) -> NodeState {
         NodeState {
             id: id.into(),
-            width,
-            height,
             transform: crate::local_transform(&values),
             values,
             shown: true,
             hidden: false,
             content: ContentState::Pivot,
+            own_box: Rect::new(0.0, 0.0, width, height),
             local_bounds: Rect::new(0.0, 0.0, width, height),
             fill: [1.0; 4],
             fx: Vec::new(),

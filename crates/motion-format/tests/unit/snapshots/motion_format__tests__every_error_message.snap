@@ -21,7 +21,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"motion":1,"dur":"1s","size":3,"layers":[]}` → size: invalid type: integer `3`; expected a size name such as `1080p`, or `<width>x<height>`
 `{"motion":1,"dur":"1s","size":"huge","layers":[]}` → size: unknown size `huge`; expected one of 720p, 1080p, 4k, square, vertical, or <width>x<height>
 `{"motion":1,"dur":"1s","bg":0,"layers":[]}` → bg: invalid type: integer `0`; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`
-`{"motion":1,"dur":"1s","colour":"x","layers":[]}` → colour: unknown field `colour`; expected one of motion, size, fps, dur, bg, presets, comps, layers
+`{"motion":1,"dur":"1s","colour":"x","layers":[]}` → colour: unknown field `colour`; expected one of motion, size, fps, dur, bg, presets, fonts, comps, layers
 `{"motion":1,"dur":"1s","layers":{}}` → layers: invalid type: map; expected a list of layer objects, e.g. [{"id":"box","rect":"100x100"}]
 
 ## layers
@@ -40,15 +40,15 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":1}` → layers[0].rect: invalid type: integer `1`; expected `<width>x<height> [r<radius>]`, e.g. `300x400 r24`
 `{"id":"a","text":"x","font":1}` → layers[0].font: invalid type: integer `1`; expected `<family> <size> [<weight>]`, e.g. `Inter 96 700`
 `{"id":"a","rect":"1x1","font":"Inter 9"}` → layers[0].font: `font` only applies to `text` layers; expected `font` only next to `text`
-`{"id":"a","rect":"1x1","fill":1}` → layers[0].fill: invalid type: integer `1`; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`
-`{"id":"a","rect":"1x1","fill":"red"}` → layers[0].fill: `red` is not a valid colour; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`
+`{"id":"a","rect":"1x1","fill":1}` → layers[0].fill: 1 numbers do not make a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
+`{"id":"a","rect":"1x1","fill":"red"}` → layers[0].fill: `red` is not a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
 `{"id":"a","rect":"1x1","at":1}` → layers[0].at: invalid type: integer `1`; expected `<x> <y>`, each a number of pixels or `center`, e.g. `center 260`
 `{"id":"a","rect":"1x1","in":null}` → layers[0].in: invalid type: null; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`
 `{"id":"a","rect":"1x1","in":true}` → layers[0].in: invalid type: boolean `true`; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`
 `{"id":"a","rect":"1x1","in":"zoom"}` → layers[0].in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in
 `{"id":"a","rect":"1x1","anim":null}` → layers[0].anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
 `{"id":"a","rect":"1x1","anim":[]}` → layers[0].anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
-`{"id":"a","rect":"1x1","x":1}` → layers[0].x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, pivot, font, fill, at, in, anim, parent, span, offset, stretch, fx, hidden, anchor, scale, rotate, opacity
+`{"id":"a","rect":"1x1","x":1}` → layers[0].x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, pivot, font, fill, style, runs, paragraphs, box, at, in, anim, parent, span, offset, stretch, fx, hidden, anchor, scale, rotate, opacity
 `{"id":"a","rect":"1x1","position":[1,2]}` → layers[0].position: `position` rests where `at` puts it; expected e.g. "at":"540 960", or animate it in `anim`
 `{"id":"a","rect":"1x1","rotate":"x"}` → layers[0].rotate: `x` is not a number; expected a number, e.g. `0.5`
 `{"id":"a","rect":"1x1","scale":[1,2,3]}` → layers[0].scale: 3 numbers do not make a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
@@ -201,6 +201,36 @@ expression: "report.join(\"\\n\\n\")"
 `{"rect":[1,1],"anim":{"opacity":"0 -> 1 @0-5f"}}` → layers[0].shapes[0].anim.opacity: unknown rect property `opacity`; expected one of size, position, round, width, height, x, y
 `{"rect":[1,1],"anim":{"width":"0 -> 1 @0-5f","size":"0,0 -> 1,1 @0-5f"}}` → layers[0].shapes[0].anim.size: `width` and `size` both animate `size`; expected `size` animated whole, or its components `width`, `height` one at a time
 `{"fill":"#fff","anim":{"color":"#000 -> 2,0,0 @0-5f"}}` → layers[0].shapes[0].anim.color: value 2 is outside 0..=1; expected a number from 0 to 1
+
+## text
+`{"id":"a","rect":"1x1","style":{"tracking":1}}` → layers[0].style: `style` only applies to `text` layers; expected `style` only next to `text`
+`{"id":"a","rect":"1x1","box":[1,1]}` → layers[0].box: `box` only applies to `text` layers; expected `box` only next to `text`
+`{"id":"a","text":"x","style":[]}` → layers[0].style: invalid type: sequence; expected an object of text style keys, e.g. {"tracking":20,"align":"center"}
+`{"id":"a","text":"x","style":{"font":"Inter 9"}}` → layers[0].style.font: `font` is set on the layer, not in `style`; expected `font` as a layer key
+`{"id":"a","text":"x","style":{"kerning":1}}` → layers[0].style.kerning: unknown style key `kerning`; expected one of font, italic, fill, stroke, stroke-width, paint, tracking, leading, baseline, caps, faux-bold, faux-italic, align, indent-first, indent-start, indent-end, space-before, space-after, auto-leading
+`{"id":"a","text":"x","style":{"tracking":"wide"}}` → layers[0].style.tracking: invalid type: string "wide"; expected a number
+`{"id":"a","text":"x","style":{"caps":"loud"}}` → layers[0].style.caps: unknown caps `loud`; expected one of normal, small, all, all-small
+`{"id":"a","text":"x","style":{"leading":"tall"}}` → layers[0].style.leading: invalid type: string "tall"; expected `auto` or a number of px
+`{"id":"a","text":"x","style":{"stroke":[2,0,0]}}` → layers[0].style.stroke: a colour channel is outside 0 to 1; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
+`{"id":"a","text":"x","style":{"stroke-width":-1}}` → layers[0].style.stroke-width: -1 is below 0; expected a number of at least 0
+`{"id":"a","text":"x","style":{"faux-bold":"yes"}}` → layers[0].style.faux-bold: invalid type: string "yes"; expected a boolean
+`{"id":"a","text":"x","fill":[1,0]}` → layers[0].fill: 2 numbers do not make a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
+`{"id":"a","text":"x","runs":{}}` → layers[0].runs: invalid type: map; expected a list of style objects, e.g. [{"range":[0,4],"fill":"#FF0000"}]
+`{"id":"a","text":"x","runs":[{"fill":"#FFF"}]}` → layers[0].runs[0]: missing `range`; expected `[start, end]`, character indices with start before end, e.g. `[0, 4]`
+`{"id":"a","text":"x","runs":[{"range":[1,1]}]}` → layers[0].runs[0].range: the range must run forward over whole indices; expected `[start, end]`, character indices with start before end, e.g. `[0, 4]`
+`{"id":"a","text":"x","runs":[{"range":[0,2]}]}` → layers[0].runs[0].range: the range ends at 2, past the text's 1 characters; expected `[start, end]`, character indices with start before end, e.g. `[0, 4]`
+`{"id":"a","text":"x","runs":[{"range":[0,0.5]}]}` → layers[0].runs[0].range: the range must run forward over whole indices; expected `[start, end]`, character indices with start before end, e.g. `[0, 4]`
+`{"id":"a","text":"x","runs":[{"range":"0-1"}]}` → layers[0].runs[0].range: invalid type: string "0-1"; expected `[start, end]`, character indices with start before end, e.g. `[0, 4]`
+`{"id":"a","text":"x","runs":[{"range":[0,1],"align":"center"}]}` → layers[0].runs[0].align: `align` cannot be set on a run; expected `align` in `style` or `paragraphs`
+`{"id":"a","text":"x","paragraphs":[{"tracking":3}]}` → layers[0].paragraphs[0].tracking: `tracking` cannot be set on a paragraph; expected `tracking` in `style` or `runs`
+`{"id":"a","text":"x","paragraphs":[{},{}]}` → layers[0].paragraphs: 2 paragraph styles for 1 paragraphs; expected at most one style per paragraph; `\n` ends a paragraph
+`{"id":"a","text":"x","paragraphs":[{"align":"middle"}]}` → layers[0].paragraphs[0].align: unknown alignment `middle`; expected one of left, right, center, justify-left, justify-right, justify-center, justify-all
+`{"id":"a","text":"x","box":[0,10]}` → layers[0].box: a box is a width and a height above zero; expected `[width, height]` in px, both above zero, e.g. `[600, 300]`
+`{"id":"a","text":"x","box":"wide"}` → layers[0].box: a box is a width and a height above zero; expected `[width, height]` in px, both above zero, e.g. `[600, 300]`
+
+## fonts
+`{"motion":1,"dur":"1s","fonts":"fonts","layers":[]}` → fonts: invalid type: string "fonts"; expected a list of font files and folders, e.g. ["fonts/lato"]
+`{"motion":1,"dur":"1s","fonts":[3],"layers":[]}` → fonts[0]: invalid type: integer `3`; expected a string
 
 ## effects
 `{"rect":[1,1]}` → layers[0].fx[0]: needs the key of its kind; expected one kind key: `fill`

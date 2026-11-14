@@ -1,7 +1,12 @@
 //! The scene graph: the compiler's output, plain data in pixels and frames.
 
 use motion_format::item::ItemKind;
-use motion_format::shorthand::{Font, RectShape};
+use std::sync::Arc;
+
+use kurbo::Rect;
+use motion_format::shorthand::RectShape;
+
+use crate::text::TextNode;
 use motion_format::{Value, ValueType};
 
 use crate::track::Track;
@@ -46,13 +51,8 @@ pub struct CompGraph {
 /// What a node draws.
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeContent {
-    /// A line of text.
-    Text {
-        /// The words.
-        text: String,
-        /// Family, size and weight.
-        font: Font,
-    },
+    /// Text, set.
+    Text(Arc<TextNode>),
     /// A rectangle the size of the node's box.
     Rect(RectShape),
     /// Shape items; the first draws on top.
@@ -151,12 +151,11 @@ pub struct Node {
     pub id: String,
     /// What the node draws.
     pub content: NodeContent,
-    /// The colour of a text or rect node, straight RGBA from 0 to 1.
+    /// The colour of a rect node, straight RGBA from 0 to 1.
     pub fill: [f64; 4],
-    /// Box width in pixels, in the node's own coordinates.
-    pub width: f64,
-    /// Box height in pixels, in the node's own coordinates.
-    pub height: f64,
+    /// Its box in its own coordinates: a rect's or a composition's from the
+    /// origin, a text layout's bounds, or empty at the origin for shapes and pivots.
+    pub bounds: Rect,
     /// The index of the node it moves with, if any.
     pub parent: Option<usize>,
     /// When it shows and how its own time runs.

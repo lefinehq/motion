@@ -36,6 +36,7 @@ All notable changes to this project are documented here. The format is based on 
 - Effects: an `fx` list on any layer, in the same item form; `fill` is the first effect.
 - Compositions: a scene `comps` map with its own size, clock, length and background, drawn by `comp` layers at the layer's own time; cycles are rejected. `pivot` layers draw nothing and carry a transform for children. Layers can be `hidden`.
 - The canonical writer puts each composition's layers one per line too.
+- Text style: a scene `fonts` list; on text layers `style` (fill, stroke, stroke width and paint order, tracking, leading, baseline shift, caps, faux bold and italic, italic faces; alignment, indents and paragraph spacing), `runs` over character ranges, `paragraphs`, and `box` for box text. The keys are one table in `motion_format::text`.
 - `motion-raster`: draws a frame's display list (layers with transform, opacity, blend mode, clip and effects; filled and stroked paths; glyph runs) into an RGBA image with `vello_cpu`, and writes PNG files. Seventeen blend modes, caps, joins and fill rules are tables; the `fill` effect is the first row of the effect registry. Golden images are drawn with portable scalar code so they compare exactly across machines.
 - `motion-text`: a font set read from given files and folders (by PostScript name, or family, weight and slant; every named instance of a variable font; Inter built in), and text layout with Parley and HarfRust: paragraphs, character runs, point and box text, every justification, indents, paragraph spacing, leading, tracking, baseline shift and capitals, into lines with cumulative character advances and glyph runs ready for `vello_cpu`. A missing font or glyph is an error.
 
@@ -54,5 +55,8 @@ All notable changes to this project are documented here. The format is based on 
 - `check` fix hints skip axes driven by `anim`.
 - Properties live in one registry per kind of object (`LAYER`, `GROUP`, and one per shape item and effect); unknown-property errors name the kind (`unknown layer property`).
 - A layer with two content keys reports the conflict at the second key.
+- Text is set with `motion-text` at compile time, so boxes, `at` and `check` measure real glyphs; `compile` takes a `Typesetter` and returns a `Result`, and `ApproxTextMeasure` is gone. A text layer's own coordinates start at its first baseline, and its box is the layout's bounds. The built-in font's family is `Inter Variable`.
+- Layer boxes are rectangles (`kurbo::Rect`): rests and `at` resolve in them. `Session::graph`, `frame` and `check` return a `Result`, and the session has a `fonts` step.
+- Layer `fill` takes any colour form, including `[r, g, b, a]` from 0 to 1.
 - `NodeState` carries what a node draws (`content`, `local_bounds`, `fill`, `fx`, `hidden`); `check` ignores hidden layers.
 - Unit tests moved out of `src/` into `tests/unit`, mirroring the source tree.

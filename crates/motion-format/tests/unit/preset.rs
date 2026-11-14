@@ -188,7 +188,11 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
         serde_json::from_str(r#"{"opacity":"x","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2.0]]}"#)
             .unwrap();
     let rest = |target: Target| {
-        Some(target.rest_of(target.prop.spec().rest(&at, (1000.0, 500.0), (10.0, 10.0))))
+        Some(target.rest_of(target.prop.spec().rest(
+            &at,
+            kurbo::Rect::new(0.0, 0.0, 1000.0, 500.0),
+            kurbo::Rect::new(0.0, 0.0, 10.0, 10.0),
+        )))
     };
     let json = expand_as_anim(&spec, &b, rest, 30.0, &others).unwrap();
     assert_eq!(

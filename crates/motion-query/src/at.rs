@@ -53,8 +53,8 @@ fn describe(node: &NodeState) -> String {
         node.id,
         fmt_num(x),
         fmt_num(y),
-        fmt_num(node.width),
-        fmt_num(node.height)
+        fmt_num(node.own_box.width()),
+        fmt_num(node.own_box.height())
     )
 }
 
@@ -64,7 +64,7 @@ fn rest_shown(prop: Prop, node: &NodeState) -> String {
         x: Coord::Px(0.0),
         y: Coord::Px(0.0),
     };
-    let rest = prop.spec().rest(&at, (0.0, 0.0), (node.width, node.height));
+    let rest = prop.spec().rest(&at, kurbo::Rect::ZERO, node.own_box);
     rest.to_string()
 }
 

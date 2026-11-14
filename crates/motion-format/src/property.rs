@@ -3,6 +3,8 @@
 //! properties. Names live only in the registries; code refers to a property by
 //! its row, a [`Prop`], and to a property or one of its components by a [`Target`].
 
+use kurbo::Rect;
+
 use crate::shorthand::{Axis, Position};
 use crate::table::{self, Named};
 use crate::value::{Value, ValueType};
@@ -14,7 +16,8 @@ pub enum Rest {
     Value(Value),
     /// The point the layer's `at` names on the canvas.
     At,
-    /// The centre of the layer's box, in the layer's own coordinates.
+    /// The centre of the layer's box, in the layer's own coordinates (a text
+    /// layer's box may start left of or above its origin).
     BoxCentre,
 }
 
@@ -43,13 +46,19 @@ pub struct PropertySpec {
 }
 
 impl PropertySpec {
-    /// The resting value on a layer at `at`, on a canvas of `canvas` pixels,
-    /// whose box is `size` pixels.
-    pub fn rest(&self, at: &Position, canvas: (f64, f64), size: (f64, f64)) -> Value {
+    /// The resting value on a layer at `at`, which resolves in `extent` (its
+    /// parent's box, or the canvas), whose own box is `own`.
+    pub fn rest(&self, at: &Position, extent: Rect, own: Rect) -> Value {
         match &self.rest {
             Rest::Value(value) => value.clone(),
-            Rest::At => Value::Point([at.resolve(Axis::X, canvas), at.resolve(Axis::Y, canvas)]),
-            Rest::BoxCentre => Value::Point([size.0 / 2.0, size.1 / 2.0]),
+            Rest::At => {
+                let size = (extent.width(), extent.height());
+                Value::Point([
+                    extent.x0 + at.resolve(Axis::X, size),
+                    extent.y0 + at.resolve(Axis::Y, size),
+                ])
+            }
+            Rest::BoxCentre => Value::Point([own.center().x, own.center().y]),
         }
     }
 }
