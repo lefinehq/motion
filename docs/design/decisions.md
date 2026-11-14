@@ -207,6 +207,18 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Adding a preset is a data change, not a code change. Adding a property is a registry row for parsing, `anim`, presets, edits, `at` output and clamping. A property with a geometric or visual effect also needs code in `NodeState::bounds()` and the renderer.
   - Evaluation, checks and the future renderer see one model.
 
+### D28. Standard parsing tools and one diagnostic type
+
+- **Decision:** parsing uses standard tools, and every failure is one error type.
+  - The scene's shape is read with serde. Text shorthands and the edit line are `winnow` grammars built from shared pieces.
+  - Every crate returns `Diagnostic` (a kind, a path, a message and an accepted form). No other public error type exists, and no code formats an error by hand.
+  - Tools reach the pipeline only through one entry point, the engine's `Session`. Each step runs in a `tracing` span, so logs and timings come from one place, and libraries never print.
+- **Why:**
+  - Hand-written tokenizers and `Value` walking grew, and each one phrased its errors differently.
+  - An agent fixes a scene from the error text alone, so every error needs a path and the accepted form.
+  - One entry point means the command line, an agent server and a Node binding behave the same and are timed the same.
+  - Logs are off by default, so command output stays clean.
+
 ## Open questions
 
 ### Q1. Name and packages (deferred)

@@ -22,7 +22,17 @@ All notable changes to this project are documented here. The format is based on 
 - Nested edit paths (`card anim.opacity=...`), JSON values in edits, and removal of objects left empty by `none`.
 - Tooling: `thiserror` errors, `proptest` parser tests, `insta` snapshots, coverage and `cargo-deny`.
 
+- One error type, `Diagnostic`, with a kind (syntax, unknown name, out of range, missing, conflict, wrong type, invalid, io) that sets the exit code.
+- `motion-engine`: a `Session` that is the one entry point for tools, and `motion-cli` now goes through it.
+- Logs with `--log <level>`, `--log-format json` and `MOTION_LOG`, and step timings with `--timings`.
+
 ### Changed
+
+- Error messages name the path and the accepted form, with an example, for every syntax and unknown-name error.
+- Shorthands (size, time, colour, rect, font, position, curves, `in`, `anim` tracks) are read by `winnow` grammars.
+- The scene is read with a serde document, so errors in its shape carry the path of the value.
+- Edit paths use a real grammar, so `card anim.opacity="0 -> 1 @0-12f"` and JSON values (`anim={...}`) are read by `serde_json`.
+- Quiet by default: nothing is logged unless `--log` or `MOTION_LOG` asks for it, and a failing run prints only its `error:` line.
 
 - `at` prints only the properties that differ from their default after `x y w h`.
 - `check` fix hints skip axes driven by `anim`.
