@@ -1,6 +1,7 @@
 //! `motion import`: import an `.aep` project as a scene, write it, and print
-//! what the import mapped, defaulted, ignored or could not support, and how
-//! far the scene's text lies from the layout the project stored.
+//! what the import mapped, defaulted, ignored, substituted or could not
+//! support, and how far the scene's text lies from the layout the project
+//! stored.
 
 use std::fs;
 use std::path::Path;
@@ -46,15 +47,21 @@ pub struct Args {
 }
 
 /// Imports `project` with `options`, writes the scene to `out`, fetches its
-/// fonts when asked, checks its text against the stored layout, and prints
-/// the report, as JSON when asked.
+/// fonts when asked, sets the text of fonts it still lacks in the closest
+/// faces it has, checks its text against the stored layout, and prints the
+/// report, as JSON when asked.
 pub fn run(project: &Path, options: &ImportOptions, out: &Path, args: &Args) -> Result<ExitCode> {
     let mut import = motion_engine::import_scene(project, options)?;
-    fs::write(out, write_document(&import.json)).map_err(|e| Diagnostic::io("write", out, &e))?;
+    write(out, &import.json)?;
     let fonts = match args.fetch_fonts {
         true => Some(fonts::for_import(out, &mut import.json, &import.texts)?),
         false => None,
     };
+    // Only what neither the given fonts nor the fetch have is substituted,
+    // from the fonts the scene has where it was written.
+    let available = Session::open(out)?;
+    motion_engine::substitute_fonts(&mut import, available.fonts()?)?;
+    write(out, &import.json)?;
     let json = args.json;
     // Opened from where it was written, so `fonts` resolve as they will.
     let text = match Session::open(out).and_then(|s| s.text_geometry(&import.texts)) {
@@ -83,6 +90,11 @@ pub fn run(project: &Path, options: &ImportOptions, out: &Path, args: &Args) -> 
         println!("  wrote {}", out.display());
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// Writes the scene `json` to `out`.
+fn write(out: &Path, json: &serde_json::Value) -> Result<()> {
+    fs::write(out, write_document(json)).map_err(|e| Diagnostic::io("write", out, &e))
 }
 
 /// Prints the text check, one line per text layer.

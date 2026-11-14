@@ -1,6 +1,7 @@
 //! The mapping report: every match name the import met, with how often it
 //! was mapped, left at its default, ignored or not supported, each reason
-//! not supported with where it was met, and the id every name became.
+//! not supported with where it was met (fonts set in a substitute among
+//! them), and the id every name became.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -33,12 +34,14 @@ pub struct Counts {
     pub unsupported: usize,
 }
 
-/// One thing the scene cannot hold yet, and where.
+/// One thing the scene cannot hold yet, such as a feature or a font the
+/// import had no face for, and where.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Finding {
     /// Where it is: composition, layer and the match names down to it.
     pub at: String,
-    /// What is not supported, such as `expressions` or `track mattes`.
+    /// What is not supported, such as `expressions`, `track mattes` or
+    /// ``missing fonts, substituted (`Brand-Bold → InterVariable-Bold`)``.
     pub what: String,
 }
 

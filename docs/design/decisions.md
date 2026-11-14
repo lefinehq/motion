@@ -322,6 +322,19 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Hashes make the cache safe to share, and the lock makes a scene portable without carrying font files.
 - **Not now:** substitutes for licensed fonts, such as a metric-compatible face standing in for Arial. That needs a face to answer to another name, and is a separate decision.
 
+### D40. Missing fonts are substituted at import
+
+- **Decision:** when an imported project names a font the import does not have (the fonts it was given, any it fetched, and the built-in Inter), the import writes the closest face it has into the scene, and reports every use.
+  - The closest face is one of the same family if any is available, else the built-in Inter. Of those, it is the one with the same slant if any has it, then the nearest weight, the lighter on a tie.
+  - An available face's weight and slant are read from the face itself. A missing font's are read from its PostScript name's style suffix (`-Bold`, `-SemiBoldItalic`, `-Black`) through one table in `motion-text` (`fallback.rs`). A name without a known suffix is regular and upright.
+  - Each use is listed under unsupported as `missing fonts, substituted (`<font> → <face>`)`, with where. The ledger and the corpus ranking count it like any other gap.
+  - The scene format does not change ([D36](#d36-the-format-only-changes-in-the-open)): the scene names the substitute by its own name. A scene written by hand that names a font the scene lacks is still an error ([D33](#d33-text-is-shaped-from-font-assets)).
+- **Why:**
+  - Commercial fonts cannot be fetched ([D39](#d39-fonts-are-resolved-before-a-render)). Without a substitute, one missing font made a whole project unusable: 56 of the 198 local templates failed on it.
+  - The import knows which fonts it has; a render does not guess. The substitute is written down, so the scene renders the same everywhere and can be edited to another font.
+  - Reporting each substitute keeps the gap measurable, as the rest of the mapping report does ([D32](#d32-one-format-for-authored-and-imported-scenes)).
+- **Not now:** metric-compatible substitutes chosen by measured widths, and faces that answer to another font's name (see D39).
+
 ## Open questions
 
 ### Q1. Name and packages (deferred)

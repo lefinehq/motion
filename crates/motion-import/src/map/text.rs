@@ -78,8 +78,10 @@ impl Walk<'_> {
             return;
         };
         out.keys.insert("font".into(), json!(font(base)));
+        self.uses_font(&base.font, &place.at);
         out.keys.insert("fill".into(), fill(base));
         let base_keys = character(base);
+        let mut uses = Vec::new();
         let mut style: Map<String, Json> = base_keys
             .iter()
             .filter(|(name, value)| character_default(name).as_ref() != Some(value))
@@ -97,6 +99,7 @@ impl Walk<'_> {
                     .collect();
                 if run.style.font != base.font || run.style.size != base.size {
                     differs.insert("font".into(), json!(font(&run.style)));
+                    uses.push(&run.style.font);
                 }
                 if fill(&run.style) != fill(base) {
                     differs.insert("fill".into(), fill(&run.style));
@@ -113,6 +116,8 @@ impl Walk<'_> {
                 Some(Json::Object(differs))
             })
             .collect();
+        uses.into_iter()
+            .for_each(|font| self.uses_font(font, &place.at));
         if !runs.is_empty() {
             out.keys.insert("runs".into(), Json::Array(runs));
         }
@@ -181,6 +186,16 @@ impl Walk<'_> {
         found
             .into_iter()
             .for_each(|what| self.mapping.unsupported(&place.at, what));
+    }
+}
+
+impl Walk<'_> {
+    /// Notes that the text at `at` is set in `font`, a PostScript name.
+    fn uses_font(&mut self, font: &str, at: &str) {
+        let places = self.fonts.entry(font.to_owned()).or_default();
+        if !places.iter().any(|place| place == at) {
+            places.push(at.to_owned());
+        }
     }
 }
 

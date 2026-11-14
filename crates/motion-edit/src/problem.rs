@@ -5,12 +5,13 @@ use std::borrow::Cow;
 
 use motion_format::Diagnostic;
 
-// The accepted forms of a line, a change, a key, a JSON value and an escape.
+use crate::parse::ESCAPES;
+
+// The accepted forms of a line, a change, a key and a JSON value.
 const LINE_FORM: &str = "`<target> <key>=<value>`";
 const CHANGE_FORM: &str = "`<key>=<value>`";
 const PATH_FORM: &str = "`<key>[.<key>…]=<value>`";
 const JSON_FORM: &str = "`<key>=[…]` or `<key>={…}`, valid JSON";
-const ESCAPES: &str = "`\\\"` or `\\\\`";
 
 /// A syntax problem the edit grammar names where it fails, with its text.
 #[derive(Debug, Clone)]
@@ -119,11 +120,11 @@ impl Problem<'_> {
             ),
             Problem::Escape(other) => (
                 format!("unknown escape `\\{other}` in a quoted value"),
-                ESCAPES.into(),
+                escapes().into(),
             ),
             Problem::DanglingEscape => (
                 "dangling `\\` at the end of a quoted value".into(),
-                ESCAPES.into(),
+                escapes().into(),
             ),
             Problem::UnclosedJson { key, open, rest } => (
                 format!("unclosed `{open}` in `{key}={rest}`"),
@@ -139,6 +140,17 @@ impl Problem<'_> {
             ),
         };
         Diagnostic::syntax(message).expected(expected)
+    }
+}
+
+/// The accepted form of an escape: every one in [`ESCAPES`], such as
+/// `` `\"`, `\\`, `\n` or `\t` ``.
+fn escapes() -> String {
+    let forms: Vec<String> = ESCAPES.iter().map(|(c, _)| format!("`\\{c}`")).collect();
+    match forms.split_last() {
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+        None => String::new(),
     }
 }
 

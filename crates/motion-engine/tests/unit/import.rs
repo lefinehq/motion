@@ -61,3 +61,76 @@ fn reports_a_missing_file_and_a_file_that_is_not_a_project() {
         )
     );
 }
+
+/// A committed fixture whose one text layer is set in `BritannicBold`, a
+/// font the tests are not given.
+const TEXT_FIXTURE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../motion-import/tests/fixtures/Property-01.aep"
+);
+
+/// The fixture's first composition imported, without substitutes.
+fn imported_text() -> Import {
+    let project = import(TEXT_FIXTURE).expect("the fixture decodes");
+    let comp = project.items.iter().find_map(|item| match item.kind {
+        motion_import::ItemKind::Composition(_) => Some(item.name.clone()),
+        _ => None,
+    });
+    let options = Options {
+        comp,
+        fonts: Vec::new(),
+    };
+    import_scene(TEXT_FIXTURE, &options).expect("the fixture imports")
+}
+
+#[test]
+fn a_missing_font_is_substituted_reported_and_drawn() {
+    let mut import = imported_text();
+    let unset = motion_format::write_document(&import.json)
+        .parse::<crate::Session>()
+        .expect("a scene")
+        .check()
+        .unwrap_err();
+    assert_eq!(unset.kind, Kind::UnknownName);
+    substitute_fonts(&mut import, &FontSet::builtin()).expect("substituted");
+    let layer = import.json["layers"]
+        .as_array()
+        .and_then(|layers| layers.iter().find(|l| l["text"].is_string()))
+        .expect("a text layer");
+    assert_eq!(layer["font"], "InterVariable-Bold 185");
+    let what: Vec<&str> = import
+        .mapping
+        .unsupported
+        .iter()
+        .map(|finding| finding.what.as_str())
+        .collect();
+    assert_eq!(
+        what,
+        ["missing fonts, substituted (`BritannicBold → InterVariable-Bold`)"]
+    );
+    let session: crate::Session = motion_format::write_document(&import.json)
+        .parse()
+        .expect("a scene");
+    session.check().expect("the text is set");
+}
+
+#[test]
+fn a_font_the_set_has_is_kept() {
+    let mut import = imported_text();
+    let mut fonts = FontSet::builtin();
+    fonts
+        .add_bytes(
+            include_bytes!("../../../motion-raster/tests/fixtures/FixtureSans-Black.ttf").to_vec(),
+            "fixture",
+        )
+        .expect("a font");
+    import
+        .substitute_fonts(&BTreeMap::from([(
+            "BritannicBold".to_owned(),
+            "FixtureSans-Black".to_owned(),
+        )]))
+        .expect("substituted");
+    let before = import.json.clone();
+    substitute_fonts(&mut import, &fonts).expect("nothing to do");
+    assert_eq!(import.json, before);
+}

@@ -6,7 +6,8 @@
 //! change  = path "=" value
 //! path    = segment ("." segment)*      a segment is letters, digits, `-` and `_`
 //! value   = quoted | json | bare
-//! quoted  = '"' (char | '\"' | '\\')* '"'
+//! quoted  = '"' (char | escape)* '"'
+//! escape  = '\"' | '\\' | '\n' (newline) | '\t' (tab)
 //! json    = a JSON array or object, read by serde_json up to its closing bracket
 //! bare    = text up to the next space: `none`, `true`, `false`, a number, or a string
 //! ```
@@ -215,18 +216,24 @@ fn closed<'s, T>(
         })
 }
 
-/// A quoted string, with `\"` and `\\` decoded.
+/// A quoted string, with its [`ESCAPES`] decoded.
 fn quoted<'s>(input: &mut &'s str) -> Parsed<String, Problem<'s>> {
     delimited('"', repeat(0.., alt((none_of(['"', '\\']), escape))), '"').parse_next(input)
 }
 
-/// An escape in a quoted value: a `\` and the character it stands for.
+/// The escapes of a quoted value, as the character written after its `\`
+/// and the character it stands for.
+pub(crate) const ESCAPES: &[(char, char)] = &[('"', '"'), ('\\', '\\'), ('n', '\n'), ('t', '\t')];
+
+/// An escape in a quoted value: a `\` and a character from [`ESCAPES`].
 fn escape<'s>(input: &mut &'s str) -> Parsed<char, Problem<'s>> {
     preceded(
         '\\',
-        cut_err(any.context(Problem::DanglingEscape).try_map(|c| match c {
-            '"' | '\\' => Ok(c),
-            other => Err(Problem::Escape(other)),
+        cut_err(any.context(Problem::DanglingEscape).try_map(|c| {
+            ESCAPES
+                .iter()
+                .find_map(|&(written, meant)| (written == c).then_some(meant))
+                .ok_or(Problem::Escape(c))
         })),
     )
     .parse_next(input)

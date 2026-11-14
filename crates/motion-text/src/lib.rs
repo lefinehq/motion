@@ -16,10 +16,13 @@
 //!
 //! A font the set does not have, or a character its font has no glyph for,
 //! is a [`Diagnostic`](motion_format::Diagnostic); nothing falls back silently.
+//! An import that was not given a font asks [`FontSet::fallback`] for the
+//! face to write in its place, and reports it.
 //!
 //! [D33]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d33-text-is-shaped-from-font-assets
 
 mod caps;
+mod fallback;
 mod font;
 mod layout;
 mod set;

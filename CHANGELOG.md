@@ -47,6 +47,8 @@ All notable changes to this project are documented here. The format is based on 
 
 - `motion-fonts`, `motion fonts fetch` and `motion import --fetch-fonts`: the fonts a scene lacks are found in open-licensed sources (each family's repository and Google Fonts), pinned in a lock beside the scene and kept in a content-addressed cache. For an import, each family takes the release whose glyph ids and widths match the project's stored text. A lock in a scene's `fonts` loads its faces from the cache and checks their hashes; a render never fetches (D39).
 - The text check compares glyph ids with those the project stored, and the import report says when they differ.
+- Font fallback at import: a font the import does not have is replaced by the closest available face (the same family, else the built-in Inter, at the same slant and nearest weight; a missing font's style is read from its PostScript name's suffix), and each use is reported as `missing fonts, substituted (`<font> → <face>`)`. `motion import` and `motion fidelity` substitute; scenes written by hand still fail on an unknown font ([D40](docs/design/decisions.md#d40-missing-fonts-are-substituted-at-import)).
+- Quoted edit values take `\n` (new line) and `\t` (tab) escapes besides `\"` and `\\`, so `title text="Make\nit move"` sets two lines.
 
 ### Changed
 

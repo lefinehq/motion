@@ -324,7 +324,7 @@ motion never goes to the network while rendering. A render depends only on the s
 - **`motion fonts fetch <scene>`** finds every face the scene's text uses and its `fonts` lack, in open-licensed sources, and pins each to an exact file in a lock beside the scene (`story.fonts.lock` for `story.json`). It adds the lock to `fonts` and downloads the files into the font cache (`$MOTION_CACHE`, or the platform's cache folder). It is a separate, explicit step; `motion import --fetch-fonts` runs it for an imported project ([D39](decisions.md#d39-fonts-are-resolved-before-a-render)).
 - **A lock in `fonts`** loads each face it pins from the cache and checks the file's hash. A face the cache lacks is an error that names `motion fonts fetch`.
 - **System fonts** work, but the checker warns about them, because the result then depends on the machine.
-- **A missing font or glyph** is an error, never a silent fallback.
+- **A missing font or glyph** is an error, never a silent fallback. Only an import substitutes a font it does not have, by writing another face's name into the scene and reporting it ([D40](decisions.md#d40-missing-fonts-are-substituted-at-import)).
 
 ## Validation
 

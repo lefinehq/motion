@@ -16,6 +16,7 @@ use serde::Serialize;
 
 use crate::model::{ComposedLine, Composition, Item, ItemKind, Project};
 
+mod fonts;
 mod ids;
 mod items;
 mod keys;
@@ -52,6 +53,9 @@ pub struct Import {
     /// The layout the project stored for each text layer it wrote, to hold
     /// the scene's own layout against.
     pub texts: Vec<StoredText>,
+    /// Every font the scene's text is set in, by PostScript name, with where
+    /// each is used: what [`Import::substitute_fonts`] may replace.
+    pub fonts: BTreeMap<String, Vec<String>>,
 }
 
 /// The lines a project laid one text layer out in, at its first text.
@@ -75,17 +79,26 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
     let root = root(project, options.comp.as_deref())?;
     let mut walk = Walk::new(project);
     let json = walk.scene(root, options);
-    let document = parse_document(&json.to_string()).map_err(|error| {
-        Diagnostic::new(
-            Kind::Invalid,
-            format!("the import wrote a scene the format rejects: {error}"),
-        )
-    })?;
+    let document = read_back(&json)?;
     Ok(Import {
         json,
         document,
         mapping: walk.mapping,
         texts: walk.texts,
+        fonts: walk.fonts,
+    })
+}
+
+/// The scene the import wrote, read back.
+///
+/// # Errors
+/// An invalid diagnostic, as a bug in the import, when the format rejects it.
+fn read_back(json: &Json) -> Result<Document> {
+    parse_document(&json.to_string()).map_err(|error| {
+        Diagnostic::new(
+            Kind::Invalid,
+            format!("the import wrote a scene the format rejects: {error}"),
+        )
     })
 }
 
@@ -162,6 +175,8 @@ struct Walk<'p> {
     scope: Option<String>,
     /// The stored layout of each text layer written so far.
     texts: Vec<StoredText>,
+    /// The fonts the text written so far is set in, with where.
+    fonts: BTreeMap<String, Vec<String>>,
 }
 
 impl<'p> Walk<'p> {
@@ -176,6 +191,7 @@ impl<'p> Walk<'p> {
             mapping: Mapping::default(),
             scope: None,
             texts: Vec::new(),
+            fonts: BTreeMap::new(),
         }
     }
 

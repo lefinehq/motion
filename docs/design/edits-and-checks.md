@@ -41,7 +41,7 @@ There are also four structural commands: `add`, `rm` (remove), `mv` (move) and `
 
 ### Nested paths and JSON values
 
-A key can be a dotted path, such as `anim.opacity`. The edit sets that one leaf and creates the objects on the way, so `card anim.opacity="0 -> 1 @0-20f"` adds an `anim` object if the layer has none. A value that starts with `[` or `{` is read as JSON, up to its balanced end, and may contain spaces. Any other value is a number, `true`, `false`, `none` or a string; quote a string that would otherwise look like one of those.
+A key can be a dotted path, such as `anim.opacity`. The edit sets that one leaf and creates the objects on the way, so `card anim.opacity="0 -> 1 @0-20f"` adds an `anim` object if the layer has none. A value that starts with `[` or `{` is read as JSON, up to its balanced end, and may contain spaces. Any other value is a number, `true`, `false`, `none` or a string; quote a string that would otherwise look like one of those. A quoted value may contain spaces and four escapes: `\"` for a quote, `\\` for a backslash, `\n` for a new line and `\t` for a tab, so `title text="Make\nit move"` sets two lines.
 
 `none` removes the key. If that leaves its parent object empty, the parent is removed too, up the path, so `card anim.opacity=none` on a layer whose only animation is opacity also removes `anim`.
 

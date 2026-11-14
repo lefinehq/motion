@@ -18,7 +18,7 @@ use motion_import::map::Options;
 use serde::{Deserialize, Serialize};
 
 use crate::diff::FrameDiff;
-use crate::{DiffOptions, Session, import_scene, write_document};
+use crate::{DiffOptions, Session, import_scene, substitute_fonts, write_document};
 
 /// The samples to measure, as a manifest file lists them.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -170,10 +170,14 @@ fn round(value: &mut serde_json::Value) {
 /// Imports `sample`, writes its scene and error images under `work`, and
 /// measures it.
 ///
+/// A font the sample does not give is set in the closest face it has
+/// ([`substitute_fonts`]), and every use counts as unsupported, so the
+/// sample is measured without its gap being hidden.
+///
 /// # Errors
 /// The import's, the session's or the diff's diagnostics, under the
-/// sample's id; text that cannot be laid out (a missing font) is an error
-/// too, since a measure without it would flatter the sample.
+/// sample's id; text that cannot be laid out (a glyph no face has) is an
+/// error too, since a measure without it would flatter the sample.
 pub fn measure(sample: &Sample, work: &Path, images: bool) -> Result<Measure> {
     let under = |d: Diagnostic| {
         let message = format!("sample `{}`: {}", sample.id, d.message);
@@ -190,7 +194,10 @@ pub fn measure(sample: &Sample, work: &Path, images: bool) -> Result<Measure> {
         comp: sample.comp.clone(),
         fonts,
     };
-    let import = import_scene(&sample.project, &options).map_err(under)?;
+    let mut import = import_scene(&sample.project, &options).map_err(under)?;
+    // The sample's fonts are absolute, so the scene finds them from anywhere.
+    let unset: Session = write_document(&import.json).parse().map_err(under)?;
+    substitute_fonts(&mut import, unset.fonts().map_err(under)?).map_err(under)?;
     let scene = dir.join("scene.json");
     fs::write(&scene, write_document(&import.json))
         .map_err(|e| under(Diagnostic::io("write", &scene, &e)))?;
