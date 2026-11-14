@@ -824,6 +824,7 @@ dependencies = [
 name = "motion-engine"
 version = "0.0.0"
 dependencies = [
+ "insta",
  "motion-edit",
  "motion-format",
  "motion-import",

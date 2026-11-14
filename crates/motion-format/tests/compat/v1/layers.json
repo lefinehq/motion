@@ -1,0 +1,13 @@
+{"motion":1,"size":"640x360","fps":24,"dur":"2s","bg":"#101418",
+"presets":{"drop":{"opacity":0,"y":"-d","scale":0.8}},
+"layers":[
+{"id":"rig","pivot":true,"position":[320,180],"anchor":[0,0],"scale":[1,1],"rotate":0,"opacity":1,
+ "anim":{"rotate":[[0,-10,"hold"],[12,-10,"cubic(.2,0,0,1)"],["1s",0,"ease"],["1.5s",5]],"anchor":[[0,[0,0],"ease-in"],[24,[10,0]]]}},
+{"id":"card","rect":"200x120 r16","fill":"#3B82F6","parent":"rig","at":"center center","scale":0.9,
+ "anim":{"scale":[{"t":0,"v":[0.9,0.9],"curve":["ease-in-out","linear"]},{"t":"1s","v":[1,1.1]}],"opacity":"0 -> 1 @0-12f ease-in"}},
+{"id":"mover","rect":"40x40","fill":"#FFE000","position":[100,300],"span":"0.25s-1.75s","offset":"-0.25s","stretch":2,
+ "anim":{"position":[{"t":0,"v":[100,300],"curve":"speed(0,.33,0,.33)","path":[[0,-80],[-60,0]]},{"t":"1s","v":[540,300]}]}},
+{"id":"ghost","rect":"10x10","fill":"#FFFFFF","at":"20 20","hidden":true},
+{"id":"drop","text":"Hi","font":"Inter Variable 40","fill":"#FFFFFF","at":"520 80","in":"drop 40px 10f ease-out"},
+{"id":"slide","rect":"20x20","fill":"#E4572E","at":"600 340","anim":{"x":"600 -> 560 @0-1s linear"}}
+]}

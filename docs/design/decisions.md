@@ -283,6 +283,15 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Measuring over the union of what we draw catches elements that are missing or late, not only ones drawn wrongly.
   - Stored text layout is exact, so text can be held to a stricter limit than video allows.
 
+### D36. The format only changes in the open
+
+- **Decision:** `"motion": 1` holds while changes are additive: a new key, a new value form, a looser limit. A change that alters what an existing scene means, or rejects one that was valid, bumps the version and adds a migration from the previous version to `motion-format`, so every older version stays readable through the chain. A compatibility corpus (`crates/motion-format/tests/compat/<version>/`) holds scenes whose parsed document and frame hashes are snapshots, and which together use every name the format knows: every scene, composition and layer key, every property at rest and animated, every item kind with its properties and each choice of its settings, every style key and every curve form. Until 1.0 a breaking change is allowed, but only with a changed snapshot in the same pull request.
+- **Why:**
+  - Scenes outlive the code that wrote them: templates, agent prompts and user projects all hold them, and their number only grows.
+  - A snapshot makes a change of meaning visible in review, where a silent one would surface months later in someone's render.
+  - A coverage test makes the corpus grow with the format: a new key cannot land without a scene that uses it.
+  - Early, a breaking change costs one snapshot update; later it costs a migration. The rule is the same, so nothing changes at 1.0 but how often we pay.
+
 ## Open questions
 
 ### Q1. Name and packages (deferred)
