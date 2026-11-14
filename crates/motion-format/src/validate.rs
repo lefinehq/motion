@@ -31,7 +31,7 @@ use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
 use crate::property::{LAYER, Prop, PropertySpec, Registry, Rest, Target};
 use crate::shorthand::{Behaviour, Coord, Font, Position};
-use crate::units::{Color, SPAN_EXPECTED, Size, TIME_EXPECTED, Time, TimeSpan};
+use crate::units::{Color, SPAN_EXPECTED, SignedTime, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
 use crate::{Comp, Content, Curve, Layer, Scene, fmt_num};
 
@@ -298,7 +298,8 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
         anim: anim(tracks, &LAYER, context.fps).map_err(|e| e.under(ANIM))?,
         parent: doc.parent.clone(),
         span: optional(doc.span.as_ref(), SPAN)?,
-        offset: optional(doc.offset.as_ref(), OFFSET)?.unwrap_or(Time::Frames(0.0)),
+        offset: optional(doc.offset.as_ref(), OFFSET)?
+            .map_or(Time::Frames(0.0), |SignedTime(time)| time),
         stretch: doc.stretch.map_or(Ok(1.0), stretch)?,
         fx: match &*doc.fx {
             Some(List(docs)) => item::items(docs, &EFFECTS, context.fps)
@@ -315,7 +316,8 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
 }
 
 /// The layer keys that are not fixed keys: each a property, set to a value of its type.
-/// A property that rests on `at` is set with `at`, so it is not a layer key.
+/// A property that rests on `at` may be set by name instead, as an exact point
+/// in the parent's own coordinates, but not with `at` as well.
 fn resting_values(doc: &LayerDoc) -> Result<Vec<(Prop, Value)>> {
     doc.values
         .iter()
@@ -323,14 +325,14 @@ fn resting_values(doc: &LayerDoc) -> Result<Vec<(Prop, Value)>> {
             let prop = Prop::named(name).ok_or_else(|| {
                 Diagnostic::unknown("layer key", name, layer_keys()).at(name.as_str())
             })?;
-            if prop.spec().rest == Rest::At {
+            if prop.spec().rest == Rest::At && doc.at.is_some() {
                 return Err(Diagnostic::new(
                     Kind::Conflict,
-                    format!("`{name}` rests where `{AT}` puts it"),
+                    format!("`{name}` and `{AT}` both place the layer"),
                 )
                 .at(name.as_str())
                 .expected(format!(
-                    r#"e.g. "{AT}":"540 960", or animate it in `{ANIM}`"#
+                    r#"one of them: "{AT}":"540 960" places it in the parent's box, "{name}":[540,960] at an exact point in the parent's own coordinates"#
                 )));
             }
             let value = crate::de::from_value::<ValueDoc>(written)
@@ -689,12 +691,13 @@ fn key_list(docs: &[KeyDoc], target: Target, fps: f64) -> Result<Vec<AnimKey>> {
     Ok(keys)
 }
 
-/// One key: a time that is not negative, a value of the target's type in
-/// range, its easing, and a path only where the target moves in space.
+/// One key: a time, which may fall before the layer's own zero, a value of
+/// the target's type in range, its easing, and a path only where the target
+/// moves in space.
 fn key(doc: &KeyDoc, target: Target) -> Result<AnimKey> {
     let time = match &doc.time {
-        KeyTime::Written(text) => text.parse()?,
-        KeyTime::Frames(frames) => not_negative(*frames)?,
+        KeyTime::Written(text) => text.parse()?.0,
+        KeyTime::Frames(frames) => Time::Frames(*frames),
     };
     Ok(AnimKey {
         time,
@@ -765,17 +768,6 @@ fn bends(PathDoc(path): PathDoc, target: Target) -> Result<[[f64; 2]; 2]> {
     )
     .at("path")
     .expected(PATH_EXPECTED))
-}
-
-/// A bare frame count must not be negative; a written time has no sign to check.
-fn not_negative(frames: f64) -> Result<Time> {
-    if frames >= 0.0 {
-        return Ok(Time::Frames(frames));
-    }
-    Err(
-        Diagnostic::new(Kind::OutOfRange, format!("invalid time {frames}"))
-            .expected(format!("a frame count of 0 or more, or {TIME_EXPECTED}")),
-    )
 }
 
 /// No key is earlier than the one before it, compared in frames since units may differ.

@@ -24,8 +24,9 @@ pub struct TextContent {
     pub runs: Vec<TextRun>,
     /// One style per paragraph, in order.
     pub paragraphs: Vec<ParagraphStyle>,
-    /// Box text's `[width, height]`, or `None` for point text.
-    pub frame: Option<[f64; 2]>,
+    /// Box text's box in the layer's own coordinates, or `None` for point
+    /// text.
+    pub frame: Option<kurbo::Rect>,
     /// Its animators, applied in order.
     pub animators: Vec<Item>,
 }

@@ -1,0 +1,15 @@
+---
+source: crates/motion-import/tests/import.rs
+expression: "format!(\"{scene}\\n{}\", import.mapping)"
+---
+{"motion":1,"size":"351x856","fps":21,"dur":"31s","bg":"#0F4B52",
+"layers":[
+{"id":"shape-layer-1","shapes":[],"anchor":[0,0],"position":[175.5,428]},
+{"id":"null-1","pivot":true,"anchor":[50,50],"position":[175.5,428]}
+]}
+
+imported `Comp 01`
+  2 mapped, 10 defaulted, 26 ignored, 0 unsupported, over 21 match names
+  ignored, drawing nothing:
+    it does not apply to the layer as it is (3D-only, or the unused half of a position) (26)
+  unsupported: none

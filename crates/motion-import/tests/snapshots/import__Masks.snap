@@ -1,0 +1,15 @@
+---
+source: crates/motion-import/tests/import.rs
+expression: "format!(\"{scene}\\n{}\", import.mapping)"
+---
+{"motion":1,"size":"50x50","fps":29.970001,"dur":"2.035369s","bg":"#000000",
+"layers":[
+{"id":"a","shapes":[{"group":[{"rect":[50,50],"position":[-83,-72]},{"fill":[1,0,0,1]}],"position":[15.658203,5.658203]}],"position":[91,90.5],"anchor":[0,0]}
+]}
+
+imported `Add`
+  9 mapped, 9 defaulted, 11 ignored, 1 unsupported, over 30 match names
+  ignored, drawing nothing:
+    it does not apply to the layer as it is (3D-only, or the unused half of a position) (11)
+  unsupported:
+    masks (1): Add/A/ADBE Mask Parade

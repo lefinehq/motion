@@ -18,6 +18,8 @@ use crate::fmt_num;
 use crate::table;
 
 pub(crate) const TIME_EXPECTED: &str = "`<number>f` or `<number>s`, e.g. `12f` or `0.4s`";
+pub(crate) const SIGNED_TIME_EXPECTED: &str =
+    "`<number>f` or `<number>s`, which may be negative, e.g. `12f` or `-0.4s`";
 pub(crate) const COLOR_EXPECTED: &str = "`#RGB`, `#RRGGBB` or `#RRGGBBAA`";
 /// The accepted forms of a size, for a value that is not a string.
 const SIZE_EXPECTED: &str = "a size name such as `1080p`, or `<width>x<height>`";
@@ -67,6 +69,29 @@ impl fmt::Display for Time {
             Time::Seconds(seconds) => write!(f, "{}s", fmt_num(*seconds)),
         }
     }
+}
+
+/// A time that may fall before zero: where a layer's own time starts on its
+/// parent's timeline (`offset`), or a key before the layer's own zero.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SignedTime(pub Time);
+
+impl FromStr for SignedTime {
+    type Err = Diagnostic;
+
+    /// Parses `<number>f` or `<number>s`, with any finite number.
+    fn from_str(text: &str) -> Result<SignedTime> {
+        let signed = |input: &mut &str| {
+            (number, unit)
+                .map(|(value, unit)| SignedTime(unit(value)))
+                .parse_next(input)
+        };
+        parse_whole(text, signed, "time", SIGNED_TIME_EXPECTED)
+    }
+}
+
+impl Form for SignedTime {
+    const FORM: &str = SIGNED_TIME_EXPECTED;
 }
 
 /// `<number>f` or `<number>s`, also a piece of the behaviour and anim grammars.

@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use motion_import::map::{Options, import};
 use motion_import::{ItemKind, Project, Report, Stream};
 
 /// Every `.aep` file under `dir`, sorted, at any depth.
@@ -87,5 +88,58 @@ fn every_sample_project_reads() {
         files.len()
     );
     println!("properties: {properties:?}\n{total}");
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+#[ignore = "needs $MOTION_AEP_SAMPLES"]
+fn every_sample_composition_imports() {
+    let dir = PathBuf::from(std::env::var("MOTION_AEP_SAMPLES").expect("set $MOTION_AEP_SAMPLES"));
+    let mut unsupported: BTreeMap<String, usize> = BTreeMap::new();
+    let mut fates = [0usize; 4];
+    let mut failures = Vec::new();
+    let mut imported = 0;
+    for path in projects(&dir) {
+        let bytes = fs::read(&path).expect("read a sample");
+        let Ok(project) = motion_import::decode(&bytes) else {
+            continue;
+        };
+        let names = project.items.iter().filter_map(|item| match item.kind {
+            ItemKind::Composition(_) => Some(item.name.clone()),
+            _ => None,
+        });
+        for comp in names {
+            let options = Options {
+                comp: Some(comp.clone()),
+                fonts: Vec::new(),
+            };
+            match import(&project, &options) {
+                Ok(import) => {
+                    imported += 1;
+                    let mapping = import.mapping;
+                    mapping.counts.values().for_each(|c| {
+                        fates[0] += c.mapped;
+                        fates[1] += c.defaulted;
+                        fates[2] += c.ignored;
+                        fates[3] += c.unsupported;
+                    });
+                    mapping.unsupported.iter().for_each(|finding| {
+                        *unsupported.entry(finding.what.clone()).or_default() += 1;
+                    });
+                }
+                Err(d) => failures.push(format!("{}/{comp}: {d}", path.display())),
+            }
+        }
+    }
+    let [mapped, defaulted, ignored, missing] = fates;
+    println!(
+        "{imported} compositions imported: {mapped} mapped, {defaulted} defaulted, \
+         {ignored} ignored, {missing} unsupported"
+    );
+    let mut ranked: Vec<(&String, &usize)> = unsupported.iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    ranked
+        .iter()
+        .for_each(|(what, count)| println!("  {count:5} {what}"));
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

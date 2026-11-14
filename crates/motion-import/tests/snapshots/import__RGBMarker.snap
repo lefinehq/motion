@@ -1,0 +1,15 @@
+---
+source: crates/motion-import/tests/import.rs
+expression: "format!(\"{scene}\\n{}\", import.mapping)"
+---
+{"motion":1,"size":"400x400","fps":29.970001,"dur":"6.039373s","bg":"#000000",
+"layers":[
+{"id":"shape-layer-1","shapes":[{"group":[{"rect":[350,350]},{"fill":[1,0,0,1],"anim":{"color":[{"t":"0s","v":[1,0,0,1],"curve":"hold"},{"t":"2.002002s","v":[0,1,0,1],"curve":"hold"},{"t":"4.004004s","v":[0,0,1,1]}]}}]}],"anchor":[0,0],"position":[200,200]}
+]}
+
+imported `Marker`
+  7 mapped, 9 defaulted, 13 ignored, 0 unsupported, over 29 match names
+  ignored, drawing nothing:
+    it does not apply to the layer as it is (3D-only, or the unused half of a position) (12)
+    markers (1)
+  unsupported: none

@@ -1,0 +1,19 @@
+---
+source: crates/motion-import/tests/import.rs
+expression: "format!(\"{scene}\\n{}\", import.mapping)"
+---
+{"motion":1,"size":"400x300","fps":30,"dur":"6s","bg":"#FFFFFF",
+"layers":[
+{"id":"a3","shapes":[{"group":[{"path":"M-34,-23.5 C-34,-23.5 35,-23.5 35,-23.5"},{"stroke":[0.403922,0.160784,0.698039,1],"width":10}]}],"anchor":[35,-23.5],"parent":"rotator","anim":{"position":[{"t":"0.633333s","v":[94.5,37.125],"curve":"speed(0.000121,0.633518,0,0.44)"},{"t":"1.1s","v":[96.2,64.04537],"curve":"speed(0,0.166667,0,1)"},{"t":"3.866667s","v":[96.2,64.04537],"curve":"speed(0,0.6,0.000147,0.6593)"},{"t":"4.466667s","v":[94.5,37.125]}],"rotate":[{"t":"0.633333s","v":0,"curve":"speed(0.000121,0.633518,0,0.44)"},{"t":"1.1s","v":45,"curve":"speed(0,0.166667,0,0.166667)"},{"t":"3.866667s","v":45,"curve":"speed(0,0.6,0.000147,0.6593)"},{"t":"4.466667s","v":0}]}},
+{"id":"a2","shapes":[{"group":[{"path":"M-34,0 C-34,0 35,0 35,0"},{"stroke":[0.403922,0.160784,0.698039,1],"width":10}]}],"anchor":[0.5,0],"position":[60,60.625],"parent":"rotator"},
+{"id":"a1","shapes":[{"group":[{"path":"M-34,22.25 C-34,22.25 35,22.25 35,22.25"},{"stroke":[0.403922,0.160784,0.698039,1],"width":10}]}],"anchor":[35,22.25],"parent":"rotator","anim":{"position":[{"t":"0.633333s","v":[94.5,82.875],"curve":"speed(0.000121,0.633518,0,0.44)"},{"t":"1.1s","v":[96.2,57.05463],"curve":"speed(0,0.166667,0,1)"},{"t":"3.866667s","v":[96.2,57.05463],"curve":"speed(0,0.6,0.000147,0.6593)"},{"t":"4.466667s","v":[94.5,82.875]}],"rotate":[{"t":"0.633333s","v":0,"curve":"speed(0.000121,0.633518,0,0.44)"},{"t":"1.1s","v":-45,"curve":"speed(0,0.166667,0,0.166667)"},{"t":"3.866667s","v":-45,"curve":"speed(0,0.6,0.000147,0.6593)"},{"t":"4.466667s","v":0}]}},
+{"id":"rotator","pivot":true,"anchor":[0.5,0.5],"position":[200.5,149.375],"anim":{"rotate":[{"t":"0.633333s","v":0,"curve":"speed(0.000121,0.633518,0,0.44)"},{"t":"1.1s","v":190.7,"curve":"speed(0.000059,0.398357,0,0.437969)"},{"t":"1.35s","v":176.1,"curve":"speed(0,0.309902,0,0.316354)"},{"t":"1.833333s","v":181.8,"curve":"speed(0,0.437888,0,0.316354)"},{"t":"2.366667s","v":180,"curve":"speed(0,0.385215,0,0.267191)"},{"t":"3.7s","v":180,"curve":"speed(0,0.406025,0.000167,0.907551)"},{"t":"3.866667s","v":167.9,"curve":"speed(0,0.6,0.000147,0.6593)"},{"t":"4.466667s","v":363,"curve":"speed(0,0.166667,0.000116,0.538279)"},{"t":"4.7s","v":360}]}}
+]}
+
+imported `HamburgerArrow`
+  36 mapped, 24 defaulted, 48 ignored, 2 unsupported, over 33 match names
+  ignored, drawing nothing:
+    empty (3)
+    it does not apply to the layer as it is (3D-only, or the unused half of a position) (45)
+  unsupported:
+    `ADBE Vector Filter - Trim` (2): HamburgerArrow/A3/ADBE Root Vectors Group/ADBE Vector Filter - Trim; HamburgerArrow/A1/ADBE Root Vectors Group/ADBE Vector Filter - Trim

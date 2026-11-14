@@ -128,14 +128,12 @@ pub const LAYER_KEYS: [&str; 22] = [
 ];
 
 /// Every key a layer may hold: [`LAYER_KEYS`], then the names of the
-/// properties a layer sets by name (not `position`, which `at` sets).
+/// properties a layer sets by name.
 pub fn layer_keys() -> impl Iterator<Item = &'static str> + Clone {
-    use crate::property::{PROPERTIES, Rest};
-    let by_name = PROPERTIES
-        .iter()
-        .filter(|spec| spec.rest != Rest::At)
-        .map(|spec| spec.name);
-    LAYER_KEYS.into_iter().chain(by_name)
+    use crate::property::PROPERTIES;
+    LAYER_KEYS
+        .into_iter()
+        .chain(PROPERTIES.iter().map(|spec| spec.name))
 }
 
 /// Parses scene JSON text into a [`Document`].

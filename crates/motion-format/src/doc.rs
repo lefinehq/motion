@@ -19,7 +19,7 @@ use crate::Curve;
 use crate::anim::{EASING_EXPECTED, KEY_EXPECTED, PATH_EXPECTED, TRACK_EXPECTED};
 use crate::preset::Start;
 use crate::shorthand::{Behaviour, Font, Position, RectShape};
-use crate::units::{Color, Size, Time, TimeSpan};
+use crate::units::{Color, SignedTime, Size, Time, TimeSpan};
 
 /// The accepted form of a document value, told to a value of the wrong JSON
 /// type instead of serde's "a string" or "a map".
@@ -73,7 +73,7 @@ pub(crate) struct LayerDoc {
     pub(crate) anim: Object<AnimDoc>,
     pub(crate) parent: Present<String>,
     pub(crate) span: Present<Shorthand<TimeSpan>>,
-    pub(crate) offset: Present<Shorthand<Time>>,
+    pub(crate) offset: Present<Shorthand<SignedTime>>,
     pub(crate) stretch: Present<Number>,
     pub(crate) fx: Present<List<ItemsDoc>>,
     pub(crate) hidden: Present<bool>,
@@ -409,8 +409,8 @@ impl Form for PathDoc {
 pub(crate) enum KeyTime {
     /// A bare number, counted in frames.
     Frames(f64),
-    /// A shorthand such as `12f` or `0.4s`.
-    Written(Shorthand<Time>),
+    /// A shorthand such as `12f` or `0.4s`; it may be negative.
+    Written(Shorthand<SignedTime>),
 }
 
 /// A JSON number, which a wrong type is told is "a number" rather than `f64`.
@@ -443,7 +443,7 @@ impl Serialize for Number {
 
 impl<'de> Deserialize<'de> for KeyTime {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let visitor = ScalarVisitor("a frame count, or a time such as `12f` or `0.4s`");
+        let visitor = ScalarVisitor("a frame count, or a time such as `12f` or `-0.4s`");
         Ok(match deserializer.deserialize_any(visitor)? {
             Scalar::Number(n) => KeyTime::Frames(n),
             Scalar::Text(text) => KeyTime::Written(Shorthand::new(text)),

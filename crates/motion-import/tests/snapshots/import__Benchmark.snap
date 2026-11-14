@@ -1,0 +1,23 @@
+---
+source: crates/motion-import/tests/import.rs
+expression: "format!(\"{scene}\\n{}\", import.mapping)"
+---
+{"motion":1,"size":"400x400","fps":60,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"yellow-solid-1","rect":"400x400","fill":[1,0.881066,0,1],"anchor":[200,200],"position":[200,200]},
+{"id":"heart-80-png","pivot":true,"position":[352,357],"anchor":[40,40]},
+{"id":"shape-layer-1","shapes":[{"group":[{"stroke":[1,1,1,1]},{"fill":[1,0,0,1]}],"scale":[0.675559,0.622599],"anim":{"position":[{"t":"0s","v":[104.03125,-124.953125],"curve":"linear","path":[[-36.333333,40.166667],[36.333333,-40.166667]]},{"t":"0.983333s","v":[-113.96875,116.046875]}]}},{"group":[{"stroke":[1,1,1,1],"width":10},{"fill":[1,0,0,1]}],"position":[-124.640625,3.804688]},{"group":[{"ellipse":[89.898438,89.898438]},{"stroke":[1,1,1,1]},{"fill":[1,0,0,1]}],"position":[-9.050781,-127.050781]},{"group":[{"rect":[101.414063,91.421875]},{"stroke":[1,1,1,1]},{"fill":[1,0,0,1]}],"position":[-135.292969,-134.289063]}],"position":[0,0],"anchor":[0,0],"parent":"shape-layer-2"},
+{"id":"shape-layer-2","shapes":[{"group":[{"ellipse":[332.710938,332.710938]},{"stroke":[1,1,1,1]},{"fill":[1,0,0,1]}],"position":[0.355469,0.355469]}],"anchor":[0,0],"hidden":true,"anim":{"position":[{"t":"0s","v":[233,170],"curve":"linear","path":[[-11.166667,11],[11.166667,-11]]},{"t":"0.983333s","v":[166,236]}]}},
+{"id":"benchmark","text":"Benchmark","position":[200,57],"anchor":[0,0],"font":"Helvetica 72","fill":[0,0,0,1],"style":{"stroke":[1,0,0,1],"stroke-width":1,"paint":"stroke-over","leading":112,"align":"center"}}
+]}
+
+imported `Benchmark`
+  42 mapped, 64 defaulted, 87 ignored, 4 unsupported, over 52 match names
+  ignored, drawing nothing:
+    empty (17)
+    it does not apply to the layer as it is (3D-only, or the unused half of a position) (70)
+  unsupported:
+    `ADBE Vector Filter - Repeater` (1): Benchmark/Shape Layer 1/ADBE Root Vectors Group/ADBE Vector Group/ADBE Vectors Group/ADBE Vector Filter - Repeater
+    `ADBE Vector Shape - Star` (2): Benchmark/Shape Layer 1/ADBE Root Vectors Group/ADBE Vector Group/ADBE Vectors Group/ADBE Vector Shape - Star; Benchmark/Shape Layer 1/ADBE Root Vectors Group/ADBE Vector Group/ADBE Vectors Group/ADBE Vector Shape - Star
+    image and video footage (drawn as nothing) (1): Benchmark/Heart-80.png
+    track mattes (`alpha`) (1): Benchmark/Shape Layer 1

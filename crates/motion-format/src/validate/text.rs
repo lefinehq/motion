@@ -226,17 +226,23 @@ fn runs_of(styles: Vec<(CharacterStyle, Option<usize>)>, base: &CharacterStyle) 
     runs
 }
 
-/// Box text's `[width, height]`, both above zero.
-fn frame(written: &ValueDoc) -> Result<[f64; 2]> {
-    const FORM: &str = "`[width, height]` in px, both above zero, e.g. `[600, 300]`";
+/// Box text's box: `[width, height]` from the layer's origin, or
+/// `[x, y, width, height]` from its top-left corner, the sizes above zero.
+fn frame(written: &ValueDoc) -> Result<kurbo::Rect> {
+    const FORM: &str = "`[width, height]` from the layer's origin, or `[x, y, width, height]` \
+                        from the box's top-left corner, in px, the sizes above zero, \
+                        e.g. `[600, 300]` or `[-300, -150, 600, 300]`";
+    let rect = |x: f64, y: f64, w: f64, h: f64| kurbo::Rect::new(x, y, x + w, y + h);
     match written {
-        ValueDoc::Numbers(n) if n.len() == 2 && n.iter().all(|v| v.is_finite() && *v > 0.0) => {
-            Ok([n[0], n[1]])
-        }
-        _ => Err(
-            Diagnostic::new(Kind::Invalid, "a box is a width and a height above zero")
-                .expected(FORM),
-        ),
+        ValueDoc::Numbers(n) if n.iter().all(|v| v.is_finite()) => match n.as_slice() {
+            [w, h] if *w > 0.0 && *h > 0.0 => Ok(rect(0.0, 0.0, *w, *h)),
+            [x, y, w, h] if *w > 0.0 && *h > 0.0 => Ok(rect(*x, *y, *w, *h)),
+            _ => Err(
+                Diagnostic::new(Kind::Invalid, "a box's width and height are above zero")
+                    .expected(FORM),
+            ),
+        },
+        _ => Err(Diagnostic::new(Kind::Invalid, "a box is two or four numbers").expected(FORM)),
     }
 }
 

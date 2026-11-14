@@ -78,5 +78,11 @@ fn empty_text_has_one_base_run_and_a_box_makes_box_text() {
     let t = text(r#""text":"","box":[300,120]"#);
     assert_eq!(t.runs.len(), 1);
     assert_eq!(t.runs[0].range, 0..0);
-    assert_eq!(t.frame, Some([300.0, 120.0]));
+    assert_eq!(t.frame, Some(kurbo::Rect::new(0.0, 0.0, 300.0, 120.0)));
+}
+
+#[test]
+fn a_box_may_start_away_from_the_layers_origin() {
+    let t = text(r#""text":"","box":[-150,-60.5,300,120]"#);
+    assert_eq!(t.frame, Some(kurbo::Rect::new(-150.0, -60.5, 150.0, 59.5)));
 }

@@ -1,0 +1,17 @@
+---
+source: crates/motion-import/tests/import.rs
+expression: "format!(\"{scene}\\n{}\", import.mapping)"
+---
+{"motion":1,"size":"1920x1080","fps":60,"dur":"60s","bg":"#000000",
+"layers":[
+{"id":"text-layer","text":"Text Layer","anchor":[0,0],"position":[960,540],"font":"BritannicBold 185","fill":[1,1,1,1],"style":{"paint":"stroke-over","align":"center"}},
+{"id":"expression-controls","pivot":true,"anchor":[50,50],"position":[960,540]}
+]}
+
+imported `Comp 01`
+  5 mapped, 10 defaulted, 36 ignored, 0 unsupported, over 34 match names
+  ignored, drawing nothing:
+    an expression control, which draws nothing (7)
+    empty (2)
+    it does not apply to the layer as it is (3D-only, or the unused half of a position) (27)
+  unsupported: none

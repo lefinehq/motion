@@ -9,6 +9,7 @@
 
 mod cos;
 mod decode;
+pub mod map;
 mod model;
 mod record;
 mod report;

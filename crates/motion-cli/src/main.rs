@@ -116,6 +116,26 @@ enum Command {
         #[arg(long, value_enum, default_value = "precise")]
         quality: QualityArg,
     },
+    /// Import an `.aep` project as a scene, and print what the import mapped,
+    /// defaulted, ignored or could not support yet.
+    Import {
+        /// Path to the `.aep` file.
+        project: PathBuf,
+        /// The scene file to write.
+        #[arg(long, short, value_name = "FILE")]
+        out: PathBuf,
+        /// The composition that becomes the scene, by name; by default the
+        /// one composition no other draws.
+        #[arg(long, value_name = "NAME")]
+        comp: Option<String>,
+        /// A font file or folder for the scene's `fonts`, relative to the
+        /// scene file; repeat for more.
+        #[arg(long = "font", value_name = "PATH")]
+        fonts: Vec<String>,
+        /// Print the report as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Print an `.aep` project: its items, layers and properties, then what
     /// the reader could not decode yet.
     Inspect {
@@ -135,7 +155,7 @@ impl Command {
             | Command::At { scene, .. }
             | Command::Edit { scene, .. }
             | Command::Render { scene, .. } => scene,
-            Command::Inspect { project, .. } => project,
+            Command::Import { project, .. } | Command::Inspect { project, .. } => project,
         }
     }
 }
@@ -169,6 +189,18 @@ fn main() -> ExitCode {
             frames.or(frame.map(commands::render::Frames::one)),
             &out,
             quality.into(),
+        ),
+        Command::Import {
+            project,
+            out,
+            comp,
+            fonts,
+            json,
+        } => commands::import::run(
+            &project,
+            &motion_engine::ImportOptions { comp, fonts },
+            &out,
+            json,
         ),
         Command::Inspect { project, json } => commands::inspect::run(&project, json),
     };
