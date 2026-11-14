@@ -73,6 +73,8 @@ pub mod key {
     pub const FX: &str = "fx";
     /// Left out of the frame, yet kept in the scene.
     pub const HIDDEN: &str = "hidden";
+    /// Layer key: the layer whose drawing decides where this one shows.
+    pub const MATTE: &str = "matte";
 
     /// The path of composition `id`, `comps.card`.
     pub fn comp_path(id: &str) -> String {
@@ -102,7 +104,7 @@ pub const COMP_KEYS: [&str; 5] = [key::SIZE, key::FPS, key::DUR, key::BG, key::L
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 22] = [
+pub const LAYER_KEYS: [&str; 23] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -125,6 +127,7 @@ pub const LAYER_KEYS: [&str; 22] = [
     key::STRETCH,
     key::FX,
     key::HIDDEN,
+    key::MATTE,
 ];
 
 /// Every key a layer may hold: [`LAYER_KEYS`], then the names of the

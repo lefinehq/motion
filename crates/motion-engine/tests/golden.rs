@@ -35,6 +35,11 @@ use rstest::rstest;
 #[case::nested_comp("nested_comp", 12)]
 // The fill effect on text, on a composition and twice on one shape.
 #[case::fill_effect("fill_effect", 0)]
+// A hidden text layer as an alpha matte; a moving rect as an inverted one;
+// a luma matte of stripes inside a nested composition; and a matte that is
+// matted itself, at the start and with the door moved across.
+#[case::mattes_start("mattes", 0)]
+#[case::mattes_moved("mattes", 12)]
 fn golden(#[case] scene: &str, #[case] frame: u32) {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden");
     let session = Session::open(dir.join(format!("{scene}.json"))).unwrap();

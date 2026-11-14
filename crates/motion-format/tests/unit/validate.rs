@@ -289,6 +289,39 @@ fn a_parent_chain_that_ends_is_fine_and_a_loop_is_not() {
 }
 
 #[test]
+fn a_matte_names_a_layer_of_its_list_and_a_mode() {
+    use crate::shorthand::{MATTE_MODES, Matte, MatteMode};
+    let d = doc(&scene(
+        r#"{"id":"a","rect":"1x1","matte":"b"},{"id":"b","rect":"1x1","matte":" c  luma-inverted "},{"id":"c","rect":"1x1","hidden":true}"#,
+    ));
+    let mattes: Vec<Option<Matte>> = d.scene().layers.iter().map(|l| l.matte.clone()).collect();
+    let matte = |layer: &str, mode| {
+        Some(Matte {
+            layer: layer.into(),
+            mode,
+        })
+    };
+    assert_eq!(
+        mattes,
+        [
+            matte("b", MatteMode::Alpha),
+            matte("c", MatteMode::LumaInverted),
+            None
+        ]
+    );
+    for (name, mode) in MATTE_MODES {
+        assert_eq!(mode.name(), name);
+        assert_eq!(format!("x {name}").parse::<Matte>().unwrap().mode, mode);
+    }
+    assert_eq!(
+        fails(&scene(
+            r#"{"id":"a","rect":"1x1","matte":"b"},{"id":"b","rect":"1x1","matte":"c"},{"id":"c","rect":"1x1","matte":"b"}"#
+        )),
+        at(Kind::Invalid, "layers[1].matte")
+    );
+}
+
+#[test]
 fn object_keys_carry_a_path_and_curves_per_component() {
     use crate::anim::Easing;
     use crate::{Curve, Value};

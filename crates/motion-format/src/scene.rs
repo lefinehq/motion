@@ -9,7 +9,7 @@ use crate::item::Item;
 use crate::parse::scene_from_value;
 use crate::preset::{PresetSpec, lookup, names};
 use crate::property::Prop;
-use crate::shorthand::{Behaviour, Position, RectShape};
+use crate::shorthand::{Behaviour, Matte, Position, RectShape};
 use crate::text::TextContent;
 use crate::units::{Color, Size, Time, TimeSpan};
 use crate::value::Value;
@@ -106,6 +106,8 @@ pub struct Layer {
     pub fx: Vec<Item>,
     /// Left out of the frame, yet kept in the scene; its children still move with it.
     pub hidden: bool,
+    /// The layer of its own list whose drawing decides where it shows.
+    pub matte: Option<Matte>,
 }
 
 impl Layer {

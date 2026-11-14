@@ -2,9 +2,7 @@
   "samples": {
     "s737": {
       "unsupported": {
-        "expressions (the keys under them are kept)": 15,
-        "track mattes (`alpha_inverted`)": 2,
-        "track mattes (`alpha`)": 2
+        "expressions (the keys under them are kept)": 15
       },
       "texts": 5,
       "texts_within": 2,
@@ -12,24 +10,23 @@
       "all": {
         "from": 0.0,
         "frames": 299,
-        "drawn_error": 0.496524,
-        "drawn_failing": 0.970066,
-        "union_error": 0.694214,
-        "union_failing": 0.952477
+        "drawn_error": 0.562379,
+        "drawn_failing": 0.892001,
+        "union_error": 0.753563,
+        "union_failing": 0.922492
       },
       "settled": {
         "from": 3.0,
         "frames": 119,
-        "drawn_error": 0.807165,
-        "drawn_failing": 0.976826,
-        "union_error": 0.708827,
-        "union_failing": 0.931359
+        "drawn_error": 0.830724,
+        "drawn_failing": 0.976091,
+        "union_error": 0.703031,
+        "union_failing": 0.888644
       }
     },
     "s740": {
       "unsupported": {
-        "expressions (the keys under them are kept)": 10,
-        "track mattes (`alpha_inverted`)": 1
+        "expressions (the keys under them are kept)": 10
       },
       "texts": 3,
       "texts_within": 2,
@@ -37,10 +34,10 @@
       "all": {
         "from": 0.0,
         "frames": 302,
-        "drawn_error": 0.01961,
-        "drawn_failing": 0.049325,
-        "union_error": 0.174846,
-        "union_failing": 0.29578
+        "drawn_error": 0.018747,
+        "drawn_failing": 0.047634,
+        "union_error": 0.174344,
+        "union_failing": 0.294797
       },
       "settled": {
         "from": 3.0,

@@ -9,7 +9,7 @@ use motion_format::anim::{AnimTrack, Easing};
 use motion_format::key::layer_path;
 use motion_format::preset::{PresetSpec, Start};
 use motion_format::property::{Prop, Rest, Target};
-use motion_format::shorthand::{Axis, Behaviour};
+use motion_format::shorthand::{Axis, Behaviour, MatteMode};
 use motion_format::units::Color;
 use motion_format::{Content, Item, Layer, Result, Scene, Value, ValueType};
 use motion_text::Typesetter;
@@ -104,6 +104,15 @@ fn nodes(
         })
         .collect();
     assert_no_cycle(&parents);
+    // Validation has checked that each matte names a layer of this list.
+    let mattes: Vec<Option<(usize, MatteMode)>> = layers
+        .iter()
+        .map(|layer| {
+            let matte = layer.matte.as_ref()?;
+            let index = layers.iter().position(|l| l.id == matte.layer)?;
+            Some((index, matte.mode))
+        })
+        .collect();
     Ok(layers
         .iter()
         .zip(contents)
@@ -111,7 +120,10 @@ fn nodes(
         .map(|(i, (layer, content))| {
             // `at` resolves in the parent's box, or on the canvas without a parent.
             let extent = parents[i].map_or(canvas, |p| boxes[p]);
-            node(layer, scene, fps, content, boxes[i], parents[i], extent)
+            Node {
+                matte: mattes[i],
+                ..node(layer, scene, fps, content, boxes[i], parents[i], extent)
+            }
         })
         .collect())
 }
@@ -253,6 +265,7 @@ fn node(
         ),
         fx: item_nodes(&layer.fx, fps),
         hidden: layer.hidden,
+        matte: None,
     }
 }
 

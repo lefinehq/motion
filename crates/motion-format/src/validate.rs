@@ -23,9 +23,9 @@ use crate::doc::{
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, SHAPES};
 use crate::parse::key::{
-    ANIM, ANIMATE, AT, BG, BOX, COMP, DUR, FILL, FONT, FPS, FX, ID, IN, LAYERS, MOTION, OFFSET,
-    PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH,
-    STYLE, TEXT, comp_path, layer_path,
+    ANIM, ANIMATE, AT, BG, BOX, COMP, DUR, FILL, FONT, FPS, FX, ID, IN, LAYERS, MATTE, MOTION,
+    OFFSET, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN,
+    STRETCH, STYLE, TEXT, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -120,7 +120,8 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
 }
 
 /// A list of layers on one canvas, with paths relative to the list's owner:
-/// each layer valid, ids unique, parents that exist and never loop, and no
+/// each layer valid, ids unique, parents and mattes that exist and never
+/// loop, and no
 /// track fighting an entrance.
 fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
     let layers = docs
@@ -129,7 +130,20 @@ fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
         .map(|(i, Object(layer_doc))| layer(layer_doc, context).map_err(|e| e.under(layer_path(i))))
         .collect::<Result<Vec<_>>>()?;
     unique_ids(&layers)?;
-    parents(&layers)?;
+    links(
+        &layers,
+        PARENT,
+        |layer| layer.parent.as_deref(),
+        "would move with itself through its parents",
+        "parents that never lead back to the layer",
+    )?;
+    links(
+        &layers,
+        MATTE,
+        |layer| layer.matte.as_ref().map(|m| m.layer.as_str()),
+        "would be its own matte through its mattes",
+        "mattes that never lead back to the layer",
+    )?;
     for (i, (layer, Object(doc))) in layers.iter().zip(docs).enumerate() {
         let Object(written) = &doc.anim;
         entrance_conflict(layer, &layers, context, written).map_err(|e| e.under(layer_path(i)))?;
@@ -308,6 +322,7 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
             None => Vec::new(),
         },
         hidden: doc.hidden.unwrap_or(false),
+        matte: optional(doc.matte.as_ref(), MATTE)?,
     };
     if let Some(span) = layer.span {
         span_runs_forward(span, context.fps).map_err(|e| e.under(SPAN))?;
@@ -355,18 +370,26 @@ fn stretch(stretch: Number) -> Result<f64> {
     )
 }
 
-/// Every `parent` names another layer, and following parents never comes back.
-fn parents(layers: &[Layer]) -> Result<()> {
+/// Every link at `key` (a parent, a matte) names another layer of the list,
+/// and following links never comes back; `looping` ends the message for a
+/// layer that would reach itself, `expected` says what is allowed.
+fn links(
+    layers: &[Layer],
+    key: &str,
+    link: impl Fn(&Layer) -> Option<&str>,
+    looping: &str,
+    expected: &'static str,
+) -> Result<()> {
     let index = |id: &str| layers.iter().position(|layer| layer.id == id);
     for (i, layer) in layers.iter().enumerate() {
-        let Some(parent) = &layer.parent else {
+        let Some(target) = link(layer) else {
             continue;
         };
-        let place = |d: Diagnostic| d.at(PARENT).under(layer_path(i));
-        let mut next = index(parent).ok_or_else(|| {
+        let place = |d: Diagnostic| d.at(key).under(layer_path(i));
+        let mut next = index(target).ok_or_else(|| {
             place(Diagnostic::unknown(
                 "layer id",
-                parent,
+                target,
                 layers.iter().map(|l| l.id.as_str()),
             ))
         })?;
@@ -374,14 +397,11 @@ fn parents(layers: &[Layer]) -> Result<()> {
         for _ in 0..layers.len() {
             if next == i {
                 return Err(place(
-                    Diagnostic::new(
-                        Kind::Invalid,
-                        format!("`{}` would move with itself through its parents", layer.id),
-                    )
-                    .expected("parents that never lead back to the layer"),
+                    Diagnostic::new(Kind::Invalid, format!("`{}` {looping}", layer.id))
+                        .expected(expected),
                 ));
             }
-            match &layers[next].parent {
+            match link(&layers[next]) {
                 Some(up) => next = index(up).unwrap_or(next),
                 None => break,
             }

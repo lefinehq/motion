@@ -1,0 +1,10 @@
+{"motion":1,"size":"320x120","fps":10,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"word","text":"MATTE","font":"Inter Variable 40 900","fill":"#000000","at":"80 40","hidden":true},
+{"id":"photo","rect":"150x60","fill":"#E4572E","at":"80 40","matte":"word"},
+{"id":"door","rect":"40x60","fill":"#000000","at":"240 40","hidden":true,"anim":{"x":"200 -> 280 @0-10f"}},
+{"id":"reveal","rect":"150x60","fill":"#3B82F6","at":"240 40","matte":"door alpha-inverted"},
+{"id":"glow","shapes":[{"ellipse":[100,40]},{"fill":"#FFFFFF"}],"at":"80 95","hidden":true},
+{"id":"lit","rect":"150x40","fill":"#2E7D32","at":"80 95","matte":"glow luma"},
+{"id":"shade","rect":"150x40","fill":"#FFE000","at":"240 95","matte":"glow luma-inverted"}
+]}
