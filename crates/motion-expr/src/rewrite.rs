@@ -16,16 +16,7 @@ use boa_interner::{Interner, ToIndentedString};
 use boa_parser::{Parser, Source};
 use motion_format::{Diagnostic, Kind, Result};
 
-/// The engine a project evaluates its expressions with, which decides the
-/// forms a source may use.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Dialect {
-    /// The modern engine: ECMAScript 2018.
-    Modern,
-    /// The legacy engine: ECMAScript 3, with `if … else` on one line, the
-    /// snake_case aliases and `this(…)` for `thisLayer(…)`.
-    Legacy,
-}
+use crate::Dialect;
 
 /// A source ready to compile.
 #[derive(Debug, Clone, PartialEq, Eq)]

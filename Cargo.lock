@@ -1354,6 +1354,7 @@ dependencies = [
  "kurbo",
  "motion-expr",
  "motion-format",
+ "motion-import",
  "motion-scene",
  "pretty_assertions",
  "proptest",

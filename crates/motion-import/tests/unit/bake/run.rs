@@ -1,9 +1,9 @@
-//! Unit tests for `src/bake/mod.rs`: evaluating a project's expressions.
+//! Unit tests for `src/bake/run.rs`: evaluating a project's expressions.
 
 use pretty_assertions::assert_eq;
 
 use super::*;
-use crate::model::{Child, Layer};
+use crate::model::{Child, ExpressionEngine, Layer};
 use crate::test_support::build::{
     comp, expressed, layer, number, point, project, property, slider, transform,
 };

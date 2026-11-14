@@ -14,9 +14,10 @@ use boa_engine::{
 };
 use motion_format::{Diagnostic, Kind, Result};
 
+use crate::Dialect;
 use crate::host::{Host, Missing, NodeId, NodeKind, Select, Val};
 use crate::noise;
-use crate::rewrite::{Dialect, rewrite};
+use crate::rewrite::rewrite;
 
 /// The language functions that need no host.
 const LIBRARY: &str = include_str!("library.js");
