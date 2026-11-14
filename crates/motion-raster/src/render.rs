@@ -275,19 +275,25 @@ impl Painter {
     }
 
     /// Fills the draw's rectangle with its picture, whose pixels the paint
-    /// transform stretches over it.
+    /// transform stretches over it, sampled from the copy that suits the
+    /// size it lands at.
     fn image(&mut self, draw: &ImageDraw, transform: Affine) {
         let rect = draw.rect;
-        let (width, height) = (
-            f64::from(draw.picture.width()),
-            f64::from(draw.picture.height()),
-        );
-        self.ctx.set_transform(transform);
-        self.ctx.set_paint_transform(
+        let stretch = |width: u32, height: u32| {
             Affine::translate((rect.x0, rect.y0))
-                * Affine::scale_non_uniform(rect.width() / width, rect.height() / height),
-        );
-        self.ctx.set_paint(draw.picture.to_vello());
+                * Affine::scale_non_uniform(
+                    rect.width() / f64::from(width),
+                    rect.height() / f64::from(height),
+                )
+        };
+        // How far one picture pixel reaches on the target, along whichever
+        // of its sides is drawn longer.
+        let [a, b, c, d, _, _] =
+            (transform * stretch(draw.picture.width(), draw.picture.height())).as_coeffs();
+        let (paint, width, height) = draw.picture.paint(a.hypot(b).max(c.hypot(d)));
+        self.ctx.set_transform(transform);
+        self.ctx.set_paint_transform(stretch(width, height));
+        self.ctx.set_paint(paint);
         self.ctx.fill_rect(&rect);
         // Later paints are placed by their geometry alone.
         self.ctx.reset_paint_transform();

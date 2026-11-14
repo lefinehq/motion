@@ -14,7 +14,7 @@ fn pair() -> Image {
 
 /// The premultiplied pixel at `(x, y)`.
 fn premultiplied(picture: &Picture, x: usize, y: usize) -> [u8; 4] {
-    let pixel = picture.pixels.data()[y * picture.width() as usize + x];
+    let pixel = picture.levels.full.data()[y * picture.width() as usize + x];
     [pixel.r, pixel.g, pixel.b, pixel.a]
 }
 
@@ -74,6 +74,79 @@ fn a_picture_the_rasteriser_cannot_hold_is_out_of_range(#[case] width: u32, #[ca
     let e = Picture::from_image(&image).unwrap_err();
     assert_eq!(e.kind, Kind::OutOfRange);
     assert_eq!(e.expected.as_deref(), Some("1 to 65535 pixels a side"));
+}
+
+/// A `side` by `side` checkerboard of single black and white pixels.
+fn checker(side: u32) -> Picture {
+    let pixels = (0..side * side)
+        .flat_map(|i| match (i % side + i / side) % 2 {
+            0 => [0, 0, 0, 255],
+            _ => [255, 255, 255, 255],
+        })
+        .collect();
+    Picture::from_image(&Image::new(side, side, pixels).unwrap()).unwrap()
+}
+
+#[test]
+fn each_half_averages_the_two_by_two_under_it_down_to_one_pixel() {
+    // Opaque red beside transparent, then two greys: 4x2 halves to 2x1, 1x1.
+    let image = Image::new(
+        4,
+        2,
+        [
+            [255, 0, 0, 255],
+            [0, 0, 0, 0],
+            [100, 100, 100, 255],
+            [200, 200, 200, 255],
+        ]
+        .repeat(2)
+        .concat(),
+    )
+    .unwrap();
+    let picture = Picture::from_image(&image).unwrap();
+    let halves = halves(&picture.levels.full);
+    let sizes: Vec<(u16, u16)> = halves.iter().map(|p| (p.width(), p.height())).collect();
+    assert_eq!(sizes, [(2, 1), (1, 1)]);
+    let rgba = |p: &Pixmap, i: usize| {
+        let c = p.data()[i];
+        [c.r, c.g, c.b, c.a]
+    };
+    // Premultiplied: the transparent pixel adds alpha 0 and no colour.
+    assert_eq!(rgba(&halves[0], 0), [128, 0, 0, 128]);
+    assert_eq!(rgba(&halves[0], 1), [150, 150, 150, 255]);
+    assert_eq!(rgba(&halves[1], 0), [139, 75, 75, 192]);
+}
+
+#[rstest]
+#[case::full_size(1.0, 64)]
+#[case::just_over_half(0.6, 64)]
+#[case::under_half(0.4, 32)]
+#[case::a_tenth(0.1, 8)]
+#[case::past_the_last_level(1e-9, 1)]
+#[case::degenerate(0.0, 64)]
+fn a_picture_drawn_small_is_sampled_from_the_copy_its_size_needs(
+    #[case] step: f64,
+    #[case] side: u32,
+) {
+    let (_, width, height) = checker(64).paint(step);
+    assert_eq!((width, height), (side, side));
+}
+
+#[test]
+fn a_fine_pattern_drawn_small_averages_instead_of_aliasing() {
+    use crate::{Frame, ImageDraw, Node, RenderOptions, render_with};
+    use vello_cpu::kurbo::Rect;
+    let frame = Frame {
+        nodes: vec![Node::Image(ImageDraw {
+            picture: checker(64),
+            rect: Rect::new(0.0, 0.0, 8.0, 8.0),
+        })],
+        ..Frame::default()
+    };
+    let image = render_with(&frame, 8, 8, RenderOptions::GOLDEN).unwrap();
+    for pixel in image.pixels().chunks_exact(4) {
+        assert!(pixel[0].abs_diff(128) <= 2, "{pixel:?}");
+    }
 }
 
 #[test]
