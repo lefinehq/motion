@@ -11,9 +11,17 @@
 //   __numKeys(id), __keyTime(id, n), __keyValue(id, n)
 //   __rectAt(id, t)     a layer's source rectangle [left, top, width, height]
 //   __this()            the property being baked
-// `time` is set before each run.
+//   __vary(id, own)     marks the run as one that changes with time, unless
+//                       the property holds one value at every time (-1: none)
+// `$time` is the run's time. Reading `time` marks the run; the objects
+// read `$time` through `$now`, which marks it only when what they read
+// at that time changes, so an expression of values that never change is
+// known to give one value at every time.
 
 var $H = 0.0005; // half the step of a numeric velocity, in seconds
+
+// The run's time, for a read of `id` (-1: for anything else).
+function $now(id, own) { __vary(id, own); return $time; }
 
 function $node(id) {
   if (id < 0) return undefined;
@@ -63,7 +71,7 @@ function $layer(id) {
     mask: function (sel) { return $node($childOrThrow(__child(id, "mask", true), sel, "mask")); },
     content: function (sel) { return $node($childOrThrow(__child(id, "content", true), sel, "content")); },
     sourceRectAtTime: function (t) {
-      var r = __rectAt(id, t === undefined ? time : $v(t));
+      var r = __rectAt(id, t === undefined ? $now(-1, false) : $v(t));
       return { left: r[0], top: r[1], width: r[2], height: r[3] };
     },
     get parent() { return $node(__link(id, "parent")); },
@@ -96,9 +104,9 @@ var $PropMethods = {
   wiggle: function (f, a, o, m, t) { return $wiggle(this.$id, this.$own, f, a, o, m, t); }
 };
 var $PropGetters = {
-  value: function () { return __valueAt(this.$id, time, this.$own); },
-  velocity: function () { return $velocity(this.$id, time, this.$own); },
-  speed: function () { return length($velocity(this.$id, time, this.$own)); },
+  value: function () { return __valueAt(this.$id, $now(this.$id, this.$own), this.$own); },
+  velocity: function () { return $velocity(this.$id, $now(this.$id, this.$own), this.$own); },
+  speed: function () { return length($velocity(this.$id, $now(this.$id, this.$own), this.$own)); },
   numKeys: function () { return __numKeys(this.$id); },
   propertyIndex: function () { return __attr(this.$id, "propertyIndex"); },
   name: function () { return __attr(this.$id, "name"); }
@@ -120,7 +128,7 @@ var $TextProp = $decorate({
 });
 function $prop(id) {
   var own = id === __this();
-  var v = __valueAt(id, time, own), o;
+  var v = __valueAt(id, $now(id, own), own), o;
   if ($isArr(v)) { o = v.slice(); Object.setPrototypeOf(o, $ArrayProp); }
   else { o = Object.create(typeof v === "string" ? $TextProp : $NumberProp); o.$value = v; }
   Object.defineProperty(o, "$id", { value: id });
@@ -154,7 +162,7 @@ function $nearestKey(id, t) {
 function $loop(id, out, type, count, duration) {
   type = type === undefined ? "cycle" : String($v(type));
   count = count === undefined ? 0 : $v(count);
-  var n = __numKeys(id), own = id === __this();
+  var n = __numKeys(id), own = id === __this(), time = $now(id, own);
   if (n < 2) return __valueAt(id, time, own);
   var first = __keyTime(id, 1), last = __keyTime(id, n), start, end;
   if (out) {
@@ -192,7 +200,7 @@ function $loop(id, out, type, count, duration) {
 function $smooth(id, own, width, samples, t) {
   width = width === undefined ? 0.2 : $v(width);
   samples = samples === undefined ? 5 : $v(samples);
-  t = t === undefined ? time : $v(t);
+  t = t === undefined ? $now(id, own) : $v(t);
   if (samples < 2) return __valueAt(id, t, own);
   var sum = 0;
   for (var i = 0; i < samples; i++) sum = $add(sum, __valueAt(id, t - width / 2 + width * i / (samples - 1), own));
@@ -203,7 +211,7 @@ function $wiggle(id, own, freq, amp, octaves, mult, t) {
   freq = $v(freq); amp = $v(amp);
   octaves = octaves === undefined ? 1 : $v(octaves);
   mult = mult === undefined ? 0.5 : $v(mult);
-  t = t === undefined ? time : $v(t);
+  t = t === undefined ? $now(-1, false) : $v(t);
   var v = __valueAt(id, t, own), dims = $isArr(v) ? v.length : 1, out = $isArr(v) ? v.slice() : v;
   for (var d = 0; d < dims; d++) {
     var sum = 0, a = 1, f = freq;
@@ -228,8 +236,8 @@ function $thisComp() { var u = __this(); while (u >= 0 && __kind(u) !== 1) u = _
 $global("thisProperty", function () { return $prop(__this()); });
 $global("thisLayer", function () { return $thisLayer(); });
 $global("thisComp", function () { return $thisComp(); });
-$global("value", function () { return __valueAt(__this(), time, true); });
-$global("velocity", function () { return $velocity(__this(), time, true); });
+$global("value", function () { return __valueAt(__this(), $now(__this(), true), true); });
+$global("velocity", function () { return $velocity(__this(), $now(__this(), true), true); });
 $global("numKeys", function () { return __numKeys(__this()); });
 ["index", "inPoint", "outPoint", "startTime", "width", "height", "name", "hasParent", "parent",
  "transform", "anchorPoint", "position", "scale", "rotation", "opacity", "marker", "text",
@@ -249,7 +257,7 @@ function effect(sel) { return $thisLayer().effect(sel); }
 function mask(sel) { return $thisLayer().mask(sel); }
 function content(sel) { return $thisLayer().content(sel); }
 function sourceRectAtTime(t) { return $thisLayer().sourceRectAtTime(t); }
-function posterizeTime(fps) { fps = $v(fps); if (fps > 0) time = Math.floor(time * fps + 1e-9) / fps; return fps; }
+function posterizeTime(fps) { fps = $v(fps); if (fps > 0) $time = Math.floor($time * fps + 1e-9) / fps; return fps; }
 function seedRandom(offset, timeless) { __seedRandom($v(offset), !!timeless); }
 function random(a, b) {
   a = $v(a); b = $v(b);

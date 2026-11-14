@@ -120,6 +120,64 @@ fn values_return_to_the_projects_units() {
 }
 
 #[test]
+fn an_expression_of_values_that_never_change_runs_once() {
+    let project = controlled();
+    let bakes = bake(&project, Some(5));
+    let constant = |m: &str| match &bake_of(&bakes, &project, "Title", m).outcome {
+        Ok(samples) => samples.constant,
+        Err(why) => panic!("{m}: {why}"),
+    };
+    assert!(constant("ADBE Opacity"), "value / 2 of a still opacity");
+    assert!(!constant("ADBE Position"), "it reads a keyed slider");
+    assert!(!constant("ADBE Rotate Z"), "it reads the position");
+    let (times, channels) = numbers(bake_of(&bakes, &project, "Title", "ADBE Opacity"));
+    assert_eq!(channels[0].len(), times.len(), "a sample at every frame");
+}
+
+#[test]
+fn an_expression_reading_a_constant_one_is_constant() {
+    let title = Layer {
+        out_point: 3600.0,
+        ..layer(
+            2,
+            "Title",
+            vec![transform(vec![
+                expressed("ADBE Opacity", number(0.5), "value * 2"),
+                expressed(
+                    "ADBE Rotate Z",
+                    number(0.0),
+                    "transform.opacity / 100 * 360",
+                ),
+                expressed(
+                    "ADBE Position",
+                    point(0.0, 0.0),
+                    "[transform.rotation, time]",
+                ),
+            ])],
+        )
+    };
+    let project = project(vec![(5, "Main", comp(vec![title], 3600.0))]);
+    let bakes = bake(&project, Some(5));
+    let samples = |m: &str| match &bake_of(&bakes, &project, "Title", m).outcome {
+        Ok(samples) => samples.clone(),
+        Err(why) => panic!("{m}: {why}"),
+    };
+    let rotation = samples("ADBE Rotate Z");
+    assert!(rotation.constant);
+    assert_eq!(
+        rotation.times.len(),
+        36_000,
+        "an hour at 10 frames a second"
+    );
+    let position = samples("ADBE Position");
+    assert!(!position.constant);
+    let Sampled::Numbers { channels, .. } = &position.values else {
+        panic!("numbers");
+    };
+    assert!(channels[0].iter().all(|&x| (x - 360.0).abs() < 1e-9));
+}
+
+#[test]
 fn an_expression_reading_another_waits_for_it() {
     let project = controlled();
     let bakes = bake(&project, Some(5));

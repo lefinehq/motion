@@ -141,3 +141,22 @@ The ledger, before → after:
 | s611 | all | 0.4304 → 0.7037 | 100% → 99.6% |
 
 s611 is worse for a reason outside expressions: its colours now come from its settings layer, as in the reference (near white), and the audio spectrum effect, which is not supported, draws its whole solid in that colour. Before, the solid drew in the fill's own red.
+
+## Constant runs, as built
+
+The export sweep stopped on one sample project: a comp an hour long at 24 fps with 200 expressions, 17 million runs, every one giving the same value. An expression that reads nothing that changes with time now runs once.
+
+- **What a run read.** `time` is an accessor: reading it marks the run. The prelude reads the run's time itself through `$now(node)`, which marks the run only when the host says that node's value changes (`Host::constant`). Randomness marks it unless `seedRandom(…, true)` seeded it without the time. `time` cannot be deleted or redefined, so no run can leave an unmarked `time` behind.
+- **What changes.** A property without keys or expression holds still. An expression whose run was not marked gives its value at every time, and a run that reads it is not marked either. A keyed value read at a fixed time (`valueAtTime(0)`) does not mark the run; a read at the run's time does.
+- **The bake.** The first run that is not marked ends the frame loop: its value fills every frame. Values the expression does not give still come from the property under it, frame by frame.
+- **Conservative where it cannot tell.** `sourceRectAtTime()` at the run's time and `wiggle` always mark the run. So does a `value` read after the expression set `time` itself.
+
+Every sample project imported by main and by this branch gives the same scene, byte for byte: 162 projects with one root and 700 root comps of the others. The 24 comps and 8 projects that do not import fail the same way on both.
+
+| | main | constant runs |
+|---|---|---|
+| The hour-long comp (200 expressions) | 1,287 s | 1.3 s (same scene) |
+| 162 single-root projects, total | 58.0 s | 17.9 s |
+| 700 root comps, total | 153.5 s | 71.5 s |
+| s611 | 2.76 s | 0.35 s |
+| The export sweep (238 projects) | did not finish | 36.7 s |

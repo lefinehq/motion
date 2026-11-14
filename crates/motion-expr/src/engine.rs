@@ -7,7 +7,6 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use boa_engine::object::builtins::JsArray;
-use boa_engine::property::Attribute;
 use boa_engine::{
     Context, JsError, JsNativeError, JsResult, JsString, JsValue, NativeFunction, Script, Source,
     js_string,
@@ -30,6 +29,20 @@ const LEGACY: &str = include_str!("legacy.js");
 /// interpreter recurse: every corpus expression compiles in 4 MB in a debug
 /// build and 2 MB in a release one, and this leaves room for deep runs.
 pub const STACK_SIZE: usize = 32 << 20;
+
+/// The globals the prelude starts with. `time` reads `$time`, which each
+/// run sets, and marks the run as one that changes with time; the prelude
+/// reads `$time` itself, through `$now`, which marks it only when what it
+/// reads at that time changes. `time` cannot be deleted or redefined, so no
+/// run can leave a `time` that reads unmarked.
+const TIME: &str = "delete globalThis.Date; Math.random = function () { return __random(); };
+var $time = 0;
+Object.defineProperty(globalThis, 'time', {
+  get: function () { __vary(-1, false); return $time; },
+  set: function (v) { $time = v; },
+  configurable: false
+});
+";
 
 /// The marker of a compiled, encoded script, which cannot be read.
 const ENCODED: &str = "@JSXBIN@";
@@ -74,6 +87,10 @@ pub struct Run {
     /// Whether it used noise or randomness, which we cannot reproduce
     /// exactly: such a value is our own approximation.
     pub approximate: bool,
+    /// Whether it read nothing that changes with time, so it gives this
+    /// value at every time: not `time`, no value the host says changes,
+    /// and no randomness seeded by the time.
+    pub constant: bool,
 }
 
 /// Why a run gave no value.
@@ -94,6 +111,10 @@ struct State {
     missing: RefCell<Option<Missing>>,
     approximate: Cell<bool>,
     random: Cell<u64>,
+    /// Whether the random sequence was seeded without the time.
+    timeless: Cell<bool>,
+    /// Whether the run read something that changes with time.
+    varies: Cell<bool>,
     time: Cell<f64>,
 }
 
@@ -273,6 +294,21 @@ fn natives() -> Vec<(&'static str, usize, NativeFunction)> {
             }),
         ),
         (
+            "__vary",
+            2,
+            NativeFunction::from_fn_ptr(|_, a, ctx| {
+                // A negative id is a read of no one property.
+                let n = node(a, 0, ctx).ok();
+                let own = arg(a, 1).to_boolean();
+                let st = state(ctx);
+                let constant = n.is_some_and(|n| st.host.constant(n, own));
+                if !constant {
+                    st.varies.set(true);
+                }
+                Ok(JsValue::undefined())
+            }),
+        ),
+        (
             "__valueAt",
             3,
             NativeFunction::from_fn_ptr(|_, a, ctx| {
@@ -357,6 +393,9 @@ fn natives() -> Vec<(&'static str, usize, NativeFunction)> {
             NativeFunction::from_fn_ptr(|_, _, ctx| {
                 let st = state(ctx);
                 st.approximate.set(true);
+                if !st.timeless.get() {
+                    st.varies.set(true);
+                }
                 let (next, value) = noise::next(st.random.get());
                 st.random.set(next);
                 Ok(value.into())
@@ -369,6 +408,7 @@ fn natives() -> Vec<(&'static str, usize, NativeFunction)> {
                 let offset = number(a, 0, ctx)?;
                 let timeless = arg(a, 1).to_boolean();
                 let st = state(ctx);
+                st.timeless.set(timeless);
                 let time = if timeless { 0.0 } else { st.time.get() };
                 st.random.set(noise::mix(&[
                     u64::from(st.this.get()),
@@ -460,6 +500,8 @@ impl Engine {
             missing: RefCell::new(None),
             approximate: Cell::new(false),
             random: Cell::new(0),
+            timeless: Cell::new(false),
+            varies: Cell::new(false),
             time: Cell::new(0.0),
         });
         let failed = |e: JsError| {
@@ -485,12 +527,7 @@ impl Engine {
             math.set(JsString::from(name), f, false, &mut context)
                 .map_err(failed)?;
         }
-        context
-            .register_global_property(js_string!("time"), 0.0, Attribute::all())
-            .map_err(failed)?;
-        let mut prelude = String::from(
-            "delete globalThis.Date; Math.random = function () { return __random(); };\n",
-        );
+        let mut prelude = String::from(TIME);
         // The prelude's own arithmetic is not rewritten: the helpers are made of it.
         prelude.push_str(LIBRARY);
         prelude.push('\n');
@@ -558,6 +595,8 @@ impl Engine {
         st.time.set(time);
         st.approximate.set(false);
         st.missing.replace(None);
+        st.timeless.set(false);
+        st.varies.set(false);
         st.random
             .set(noise::mix(&[u64::from(this), 0, time.to_bits()]));
         let global = self.context.global_object();
@@ -575,9 +614,13 @@ impl Engine {
                 Missing::Unknown(what) => Failure::Unknown(what),
             });
         }
-        let approximate = st.approximate.get();
+        let (approximate, constant) = (st.approximate.get(), !st.varies.get());
         value
-            .map(|value| Run { value, approximate })
+            .map(|value| Run {
+                value,
+                approximate,
+                constant,
+            })
             .map_err(Failure::Error)
     }
 }
