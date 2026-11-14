@@ -1,7 +1,5 @@
-//! Compiles a validated [`motion_format::Scene`] into a [`SceneGraph`] (sizes
-//! in pixels, one keyframe track per property, in frames) and [`evaluate`]s
-//! it at any frame without drawing. Nothing after this crate reads shorthand
-//! strings.
+//! Steps 2 and 3: [`compile`] a [`motion_format::Scene`] into a [`SceneGraph`] in pixels
+//! and frames, then [`evaluate`] it at any frame without drawing.
 
 mod compile;
 pub mod curve;

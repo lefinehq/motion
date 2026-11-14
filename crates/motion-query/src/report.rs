@@ -1,8 +1,4 @@
-//! The result of `check`: what was found, and how it is printed.
-//!
-//! A side branch working on the output of step 3 (not a numbered rendering
-//! step). The text format is compact on purpose, because an
-//! agent reads it instead of looking at frames.
+//! The result of `check`, printed compactly because an agent reads it instead of frames.
 
 use motion_format::fmt_num;
 use std::fmt;
@@ -25,7 +21,7 @@ impl fmt::Display for Severity {
     }
 }
 
-/// Which rule found a violation: the typed identity of a rule.
+/// The identity of a rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Code {
     /// A visible node leaves the canvas.
@@ -55,8 +51,7 @@ impl fmt::Display for Code {
 pub struct Violation {
     /// How serious the problem is.
     pub severity: Severity,
-    /// The rule that found it; prints as its short name, such as
-    /// `offscreen`.
+    /// The rule that found it.
     pub code: Code,
     /// The layer id the problem is on.
     pub id: String,
@@ -66,7 +61,7 @@ pub struct Violation {
     pub last_frame: u32,
     /// The worst overshoot in the run, rounded up to a whole pixel.
     pub amount_px: f64,
-    /// A suggested replacement, written as an edit such as `card at="center 880"`.
+    /// An edit that clears it, such as `card at="center 880"`.
     pub fix: Option<String>,
 }
 
@@ -94,7 +89,7 @@ impl fmt::Display for Violation {
 pub struct Report {
     /// The problems, in scene order.
     pub violations: Vec<Violation>,
-    /// How many (rule, node) pairs were evaluated and had no problem.
+    /// How many (rule, node) pairs ran and found nothing.
     pub passed: usize,
 }
 

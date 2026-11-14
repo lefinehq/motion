@@ -1,8 +1,5 @@
-//! The `at` query: where things are at one moment.
-//!
-//! A side branch working on the output of step 3 (not a numbered rendering
-//! step). Prints resolved numbers, so the agent never has to
-//! do easing or layout maths itself.
+//! The `at` query: resolved numbers at one moment, so an agent never does easing
+//! or layout maths itself.
 
 use motion_format::fmt_num;
 use motion_format::property::Prop;
@@ -11,13 +8,8 @@ use motion_scene::SceneGraph;
 use motion_scene::evaluate;
 use tracing::instrument;
 
-/// Describes the requested nodes at `frame`, one line each.
-///
-/// An empty `ids` means every node. Lines follow scene order, and
-/// the format is `{id} x={x} y={y} w={w} h={h}` followed by every other
-/// registered property, in registry order, whose value differs from its
-/// default, as `name={value}`. Values are compared as printed, so float dust
-/// such as a scale of 1.0000000000000002 does not show up.
+/// One line per node in `ids` (all when empty) at `frame`: `{id} x= y= w= h=`, then each
+/// other property whose printed value differs from its default, so float dust stays hidden.
 #[instrument(level = "debug", skip(graph, ids), fields(ids = ids.len()))]
 pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
     if frame < 0.0 {

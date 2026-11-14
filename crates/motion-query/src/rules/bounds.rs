@@ -1,10 +1,4 @@
-//! Rules about a node's box leaving the canvas.
-//!
-//! A side branch working on the output of step 3 (not a numbered rendering
-//! step): `offscreen` for the canvas itself, `unsafe` for the title-safe area
-//! inside it. Both measure only the axes on which the box fits their area, so
-//! a full-bleed background is never reported (see the module docs of
-//! `rules`).
+//! Bounds rules: `offscreen` for the canvas, `unsafe` for the title-safe area inside it.
 
 use super::{Area, Overshoot, Rule, overshoot, visible};
 use crate::report::{Code, Severity};
@@ -20,8 +14,7 @@ pub(super) const OFFSCREEN: Rule = Rule {
     severity: Severity::Error,
     suppressed_by: None,
     evaluate: offscreen,
-    // Aim the fix at the safe area so one edit clears both rules; a sweep
-    // that does not fit the safe area falls back to the canvas.
+    // Aim at the safe area so one edit clears both rules.
     areas: |graph| (canvas(graph), safe_area(graph)),
 };
 
@@ -47,7 +40,6 @@ fn safe_area(graph: &SceneGraph) -> Area {
 }
 
 fn offscreen(node: &NodeState, graph: &SceneGraph) -> Option<Overshoot> {
-    // Invisible nodes (before their entrance) may start off-screen.
     if !visible(node) {
         return None;
     }

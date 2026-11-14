@@ -1,7 +1,4 @@
-//! The scene graph types: the output of compilation.
-//!
-//! Part of step 2 (Compile). Everything here is plain data in pixels and
-//! frames; nothing needs parsing or unit conversion any more.
+//! The scene graph: the compiler's output, plain data in pixels and frames.
 
 use crate::track::Track;
 
@@ -40,11 +37,8 @@ pub struct Node {
     pub width: f64,
     /// Box height in pixels.
     pub height: f64,
-    /// One track per property, parallel to `motion_format::PROPERTIES`: the
-    /// length must equal the registry's, which evaluation relies on.
+    /// One track per property, parallel to `motion_format::property::PROPERTIES`.
     pub tracks: Vec<Track>,
-    /// Whether `(x, y)` still follow the layer's `at`. False for an axis that
-    /// an `anim` track drives or whose entrance starts at an absolute value,
-    /// because moving `at` then no longer moves the whole motion.
+    /// Whether moving the layer's `at` moves the whole motion on `(x, y)`.
     pub follows_at: (bool, bool),
 }

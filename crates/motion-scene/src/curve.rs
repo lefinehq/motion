@@ -1,7 +1,4 @@
-//! Samples easing curves: how progress through an animation maps to movement.
-//!
-//! Part of step 2 (Compile), used by step 3 (Evaluate). The curves
-//! themselves are parsed by `motion_format`; this turns one into a value.
+//! Samples easing curves: maps progress through an animation to eased progress.
 
 use motion_format::Curve;
 
@@ -20,22 +17,16 @@ pub fn sample(curve: Curve, p: f64) -> f64 {
     }
 }
 
-/// One coordinate of a cubic bézier from (0,0) to (1,1) with control values
-/// `a` and `b`, at parameter `t`.
+/// One coordinate at `t` of a cubic bézier from 0 to 1 with control values `a` and `b`.
 fn coord(a: f64, b: f64, t: f64) -> f64 {
     let u = 1.0 - t;
     3.0 * u * u * t * a + 3.0 * u * t * t * b + t * t * t
 }
 
-/// Solves the bézier with control points `(x1, y1)` and `(x2, y2)` for the
-/// `y` that belongs to `x == p`.
+/// The `y` of the bézier with controls `(x1, y1)`, `(x2, y2)` where its `x` is `p`.
 fn bezier(x1: f64, y1: f64, x2: f64, y2: f64, p: f64) -> f64 {
-    // The curve is given as x(t), y(t), but we need y for a known x, so we
-    // first find t. x(t) is monotonic on [0, 1] whenever x1 and x2 lie in
-    // 0..=1 (the format enforces this for custom curves), so
-    // bisection always converges. We use it because it is robust and has no
-    // special cases; speed does not matter yet. 40 halvings narrow the
-    // interval to about 1e-12, far below a pixel.
+    // Bisect for t: robust, and x(t) is monotonic because the format keeps x1
+    // and x2 in 0..=1. 40 halvings reach about 1e-12.
     let (mut lo, mut hi) = (0.0, 1.0);
     for _ in 0..40 {
         let mid = (lo + hi) / 2.0;

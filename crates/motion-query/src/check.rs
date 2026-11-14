@@ -1,9 +1,5 @@
-//! The `check` query: run every rule over every frame of a scene.
-//!
-//! A side branch working on the output of step 3 (not a numbered rendering
-//! step). Frames are evaluated one at a time and fed to every rule, so
-//! memory grows with layers and rules, not with frames. Consecutive failing
-//! frames become one [`Violation`] so the report stays short.
+//! The `check` query: every rule over every frame, with consecutive failing frames
+//! merged into one [`Violation`] so the report stays short.
 
 use crate::report::{Code, Report, Violation};
 use crate::rules::{Area, EPSILON, Overshoot, RULES, Rule, shift, visible};
@@ -13,10 +9,7 @@ use motion_format::{Layer, Scene};
 use motion_scene::{Node, NodeState, SceneGraph, evaluate};
 use tracing::{Span, field, instrument};
 
-/// Runs the standard rules on `scene` over every frame of `graph`.
-///
-/// `graph` must be the compiled form of `scene`: nodes and layers are matched
-/// by position.
+/// Runs the standard rules on `scene` over every frame of `graph`, its compiled form.
 #[instrument(
     level = "debug",
     skip_all,
@@ -29,10 +22,10 @@ use tracing::{Span, field, instrument};
 )]
 pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
     debug_assert_eq!(scene.layers.len(), graph.nodes.len());
-    // Whole frames 0..ceil(duration).
     let frame_count = graph.duration_frames.ceil().max(0.0) as u32;
     Span::current().record("frames", frame_count);
 
+    // One frame at a time: memory grows with layers and rules, not frames.
     let mut scans: Vec<LayerScan> = graph.nodes.iter().map(|_| LayerScan::new()).collect();
     for frame in 0..frame_count {
         let state = evaluate(graph, f64::from(frame));
@@ -60,11 +53,8 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
 struct LayerScan {
     /// The failing runs of each rule, parallel to [`RULES`].
     runs: Vec<Runs>,
-    /// The box the layer covers over all its visible frames, if any.
-    ///
-    /// A fix moves the resting position, and so every frame at once; clamping
-    /// this whole sweep (not one frame) is what makes a hint for an animated
-    /// layer settle in one edit instead of trading one bad frame for another.
+    /// The box the layer covers over its visible frames. Fix hints clamp this whole
+    /// sweep, since moving `at` moves every frame, so they settle in one edit.
     sweep: Option<Area>,
 }
 
@@ -92,10 +82,8 @@ impl LayerScan {
         }
     }
 
-    /// Adds this layer's findings to `report` and returns how many rules ran.
-    ///
-    /// A rule is skipped when the rule that suppresses it (listed earlier in
-    /// [`RULES`]) failed on this layer; a skipped rule neither ran nor passed.
+    /// Adds this layer's findings to `report` and returns how many rules ran. A rule
+    /// whose `suppressed_by` failed here is skipped: it neither runs nor passes.
     fn finish(self, layer: &Layer, node: &Node, graph: &SceneGraph, report: &mut Report) -> usize {
         let mut failed: Vec<Code> = Vec::new();
         let mut rules_run = 0;
@@ -121,14 +109,12 @@ impl LayerScan {
     }
 }
 
-/// The failing runs of one rule on one layer, in frame order. The last one
-/// is still open: the next failing frame may extend it.
+/// One rule's failing runs on one layer, in frame order; the last may still grow.
 #[derive(Default)]
 struct Runs(Vec<Run>);
 
 impl Runs {
-    /// Records that the rule failed at `frame`, which is later than any
-    /// frame recorded so far.
+    /// Records a failure at `frame`, later than any recorded so far.
     fn add(&mut self, frame: u32, found: Overshoot) {
         match self.0.last_mut() {
             Some(run) if run.last + 1 == frame => run.extend(frame, found),
@@ -158,8 +144,7 @@ impl Run {
     }
 
     fn into_violation(self, rule: &Rule, id: &str, fix: Option<String>) -> Violation {
-        // Round up to whole pixels, ignoring float noise: 60 * (11 / 12) is
-        // 55.000000000000007 and must read +55, not +56.
+        // Whole pixels, ignoring float noise: 55.000000000000007 reads +55, not +56.
         let amount = (self.worst.amount - EPSILON).ceil();
         Violation {
             severity: rule.severity,
@@ -173,9 +158,7 @@ impl Run {
     }
 }
 
-/// The edit that clears `rule` for `layer`, if a move of `at` can: the shift
-/// that brings the layer's `sweep` into the rule's aim, on the axes that
-/// still follow `at`.
+/// The `at` edit that moves `sweep` into `rule`'s aim, on the axes that follow `at`.
 fn fix_hint(
     rule: &Rule,
     sweep: Area,
@@ -185,8 +168,7 @@ fn fix_hint(
 ) -> Option<String> {
     let (area, aim) = (rule.areas)(graph);
     let (dx, dy) = shift(sweep, area, aim);
-    // An axis driven by an `anim` track ignores `at`, so moving `at`
-    // cannot fix it: leave that axis alone.
+    // Moving `at` cannot shift an axis that does not follow it.
     let (follows_x, follows_y) = node.follows_at;
     let only_followed = |delta: f64, follows: bool| if follows { delta } else { 0.0 };
     fix(
@@ -197,10 +179,8 @@ fn fix_hint(
     )
 }
 
-/// Builds `id at="x y"` from a shift, or `None` if nothing moves.
-///
-/// An axis that does not move keeps its original coordinate (so `center`
-/// stays `center`); a moving axis resolves `center` to pixels first.
+/// `id at="x y"` for a shift, or `None` if nothing moves. An axis that does not
+/// move keeps its coordinate, so `center` stays `center`.
 fn fix(id: &str, at: Position, (dx, dy): (f64, f64), graph: &SceneGraph) -> Option<String> {
     if dx == 0.0 && dy == 0.0 {
         return None;

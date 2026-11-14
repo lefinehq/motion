@@ -1,19 +1,12 @@
-//! Evaluating a scene graph at a point in time.
-//!
-//! Part of step 3 (Evaluate): turns the static graph from the compile step
-//! into the concrete values of a single frame.
+//! Step 3 (Evaluate): every node's values at one frame.
 
 use crate::{FrameState, NodeState};
 use crate::{Node, SceneGraph};
 use motion_format::property::PROPERTIES;
 use tracing::instrument;
 
-/// Evaluates every node of `graph` at `frame`.
-///
-/// `frame` is measured in frames from the start of the scene and may be
-/// fractional: sub-frame times are allowed, for example to sample several
-/// instants inside one frame for motion blur later.
-// A `trace` span: per frame, and only a cached level check when disabled.
+/// Evaluates every node of `graph` at `frame`, which may be fractional (sub-frame samples).
+// `trace`: it runs per frame, and costs one cached level check when disabled.
 #[instrument(level = "trace", skip(graph))]
 pub fn evaluate(graph: &SceneGraph, frame: f64) -> FrameState {
     FrameState {
@@ -22,7 +15,7 @@ pub fn evaluate(graph: &SceneGraph, frame: f64) -> FrameState {
     }
 }
 
-/// Resolves one node at `frame`: every track sampled, then clamped.
+/// One node at `frame`, each value clamped to its property's range.
 fn node_state(node: &Node, frame: f64) -> NodeState {
     // `zip` would silently drop a missing track, so check the invariant.
     debug_assert_eq!(node.tracks.len(), PROPERTIES.len());
@@ -31,9 +24,7 @@ fn node_state(node: &Node, frame: f64) -> NodeState {
         .zip(&node.tracks)
         .map(|(spec, track)| {
             let value = track.sample(frame);
-            // A custom curve may overshoot so the motion springs past its
-            // target; unbounded properties follow it, but a bounded one
-            // (opacity) cannot leave its range.
+            // A custom curve may spring past its target; opacity must not.
             spec.range.map_or(value, |(lo, hi)| value.clamp(lo, hi))
         })
         .collect();
