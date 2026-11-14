@@ -9,7 +9,6 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-derive_more.workspace = true
 motion-format = { path = "../motion-format" }
 motion-scene = { path = "../motion-scene" }
 motion-query = { path = "../motion-query" }

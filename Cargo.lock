@@ -498,7 +498,6 @@ dependencies = [
 name = "motion-engine"
 version = "0.0.0"
 dependencies = [
- "derive_more",
  "motion-edit",
  "motion-format",
  "motion-import",
@@ -547,7 +546,6 @@ dependencies = [
 name = "motion-query"
 version = "0.0.0"
 dependencies = [
- "derive_more",
  "insta",
  "kurbo",
  "motion-format",
@@ -562,13 +560,11 @@ dependencies = [
 name = "motion-scene"
 version = "0.0.0"
 dependencies = [
- "derive_more",
  "kurbo",
  "motion-format",
  "pretty_assertions",
  "proptest",
  "rstest",
- "strum",
  "tracing",
 ]
 

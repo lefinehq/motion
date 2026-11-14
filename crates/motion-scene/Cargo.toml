@@ -9,8 +9,6 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-strum.workspace = true
-derive_more.workspace = true
 kurbo.workspace = true
 motion-format = { path = "../motion-format" }
 tracing.workspace = true
