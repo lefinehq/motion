@@ -9,7 +9,7 @@ use winnow::ascii::float;
 use winnow::combinator::{eof, repeat_till};
 use winnow::error::{AddContext, ErrMode, FromExternalError, ParserError};
 use winnow::prelude::*;
-use winnow::stream::Stream;
+use winnow::stream::{Stream, StreamIsPartial};
 use winnow::token::{any, take_till, take_while};
 
 /// Why a grammar failed: the reason the failing part gave, if any.
@@ -47,18 +47,39 @@ impl<I, R> FromExternalError<I, R> for Failure<R> {
 /// The result of a grammar piece that fails with reasons of type `R`.
 pub type Parsed<T, R = Infallible> = ModalResult<T, Failure<R>>;
 
-/// Runs `grammar` over all of `text`; `explain` turns a failure's reason into a diagnostic.
+/// Runs `grammar` over all of `input`; `explain` turns a failure's reason into a diagnostic.
 ///
 /// # Errors
-/// The [`Diagnostic`] `explain` makes when `grammar` fails or leaves text unread.
-pub fn parse_all<'s, T, R>(
-    text: &'s str,
-    mut grammar: impl Parser<&'s str, T, ErrMode<Failure<R>>>,
+/// The [`Diagnostic`] `explain` makes when `grammar` fails or leaves input unread.
+pub fn parse_all<I, T, R>(
+    input: I,
+    grammar: impl Parser<I, T, ErrMode<Failure<R>>>,
     explain: impl FnOnce(Option<R>) -> Diagnostic,
-) -> Result<T> {
-    grammar
-        .parse(text)
-        .map_err(|error| explain(error.into_inner().0))
+) -> Result<T>
+where
+    I: Stream + StreamIsPartial,
+{
+    parse_at(input, grammar, |reason, _| explain(reason))
+}
+
+/// [`parse_all`], also handing `explain` the offset where `grammar` failed:
+/// for long inputs, such as binary-embedded text, where the offset is the
+/// only way to find the fault.
+///
+/// # Errors
+/// The [`Diagnostic`] `explain` makes when `grammar` fails or leaves input unread.
+pub fn parse_at<I, T, R>(
+    input: I,
+    mut grammar: impl Parser<I, T, ErrMode<Failure<R>>>,
+    explain: impl FnOnce(Option<R>, usize) -> Diagnostic,
+) -> Result<T>
+where
+    I: Stream + StreamIsPartial,
+{
+    grammar.parse(input).map_err(|error| {
+        let offset = error.offset();
+        explain(error.into_inner().0, offset)
+    })
 }
 
 /// [`parse_all`] for a grammar with one kind of failure: "`{text}` is not a valid {noun}".

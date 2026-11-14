@@ -32,6 +32,16 @@ fn parse_all_hands_the_innermost_reason_to_explain() {
 }
 
 #[test]
+fn parse_at_hands_the_failing_offset_and_works_on_bytes() {
+    let grammar = (b"ab".as_slice(), one_of(b'0'..=b'9').context("a digit"));
+    let error = parse_at(b"abx".as_slice(), grammar, |reason, offset| {
+        Diagnostic::syntax(format!("{} at {offset}", reason.unwrap_or("none")))
+    })
+    .unwrap_err();
+    assert_eq!(error.message, "a digit at 2");
+}
+
+#[test]
 fn numbers_are_finite_decimals() {
     assert_eq!(all("-0.5", number), Some(-0.5));
     assert_eq!(all(".2", number), Some(0.2));
