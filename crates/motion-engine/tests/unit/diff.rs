@@ -1,5 +1,5 @@
 //! Unit tests for `src/diff.rs`: a scene against references drawn from
-//! itself, moved, sampled between frames, and refused.
+//! itself, moved, missing, sampled between frames, and refused.
 
 use std::fs;
 
@@ -49,6 +49,7 @@ fn options(frames: Vec<PathBuf>, fps: f64) -> DiffOptions {
         start: 0.0,
         tolerance: DiffOptions::TOLERANCE,
         images: None,
+        ignore: Vec::new(),
     }
 }
 
@@ -58,12 +59,25 @@ fn a_scene_matches_its_own_frames_exactly() {
     let frames = references("own", &scene, &[0.0, 3.0, 6.0, 9.0]);
     let diff = scene.diff(&options(frames, 10.0 / 3.0)).unwrap();
     assert_eq!(diff.frames.len(), 4);
-    let errors: Vec<(f64, f64)> = diff
+    let errors: Vec<[f64; 6]> = diff
         .frames
         .iter()
-        .map(|f| (f.drawn.mean, f.union.failing))
+        .map(|f| {
+            [f.content, f.drawn, f.union]
+                .iter()
+                .flat_map(|e| [e.mean, e.failing])
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap()
+        })
         .collect();
-    assert_eq!(errors, [(0.0, 0.0); 4]);
+    assert_eq!(errors, [[0.0; 6]; 4]);
+    assert_eq!(diff.content_failing.worst, 0.0);
+    assert!(
+        diff.frames
+            .iter()
+            .all(|f| f.content.pixels == f.drawn.pixels)
+    );
     assert!(diff.frames.iter().all(|f| f.drawn.psnr.is_none()));
     assert!((diff.frames[1].time - 0.3).abs() < 1e-12);
     assert!(diff.frames[0].drawn.pixels > 0);
@@ -102,26 +116,43 @@ fn a_misplaced_element_counts_over_all_the_scene_draws() {
 }
 
 #[test]
-fn a_hidden_layer_is_neither_drawn_nor_measured() {
-    let mut scene = session(SCENE);
-    let without = session(&SCENE.replace(
-        r##""fill":"#808080","##,
-        r##""fill":"#808080","hidden":true,"##,
-    ));
-    let frames = references("hidden", &without, &[0.0, 5.0]);
-    assert!(
-        scene
-            .diff(&options(frames.clone(), 2.0))
-            .unwrap()
-            .union_mean
-            .worst
-            > 0.0
-    );
-    scene.edit("bar hidden=true").unwrap();
+fn content_the_scene_misses_counts_only_over_the_content() {
+    let empty = session(&SCENE.replace(r#""fill":"#, r#""hidden":true,"fill":"#));
+    let frames = references("missing", &session(SCENE), &[0.0, 5.0]);
+    let diff = empty.diff(&options(frames, 2.0)).unwrap();
+    let first = &diff.frames[0];
+    assert_eq!((first.drawn.pixels, first.union.pixels), (0, 0));
     assert_eq!(
-        scene.diff(&options(frames, 2.0)).unwrap().union_mean.worst,
-        0.0
+        (diff.drawn_failing.worst, diff.union_failing.worst),
+        (0.0, 0.0)
     );
+    assert!(first.content.pixels > 0, "{first:?}");
+    assert_eq!(diff.content_failing.mean, 1.0);
+    assert!(diff.content_mean.mean > 0.0);
+}
+
+#[test]
+fn an_ignored_layer_is_neither_drawn_nor_measured() {
+    let scene = session(SCENE);
+    // The reference fills the bar with something else, as footage would.
+    let filled = session(&SCENE.replace("#808080", "#20C0FF"));
+    let frames = references("ignored", &filled, &[0.0, 5.0]);
+    let measured = scene.diff(&options(frames.clone(), 2.0)).unwrap();
+    assert!(measured.union_mean.worst > 0.0);
+    assert!(measured.content_failing.worst > 0.0);
+    let ignoring = DiffOptions {
+        ignore: vec!["bar".into()],
+        ..options(frames, 2.0)
+    };
+    let diff = scene.diff(&ignoring).unwrap();
+    assert_eq!(diff.union_mean.worst, 0.0);
+    assert_eq!(diff.content_failing.worst, 0.0);
+    assert_eq!(diff.frames[0].content.pixels, diff.frames[0].drawn.pixels);
+    let unknown = DiffOptions {
+        ignore: vec!["nope".into()],
+        ..ignoring
+    };
+    assert!(scene.diff(&unknown).is_err());
 }
 
 #[test]
@@ -134,6 +165,8 @@ fn error_images_mark_the_failing_pixels() {
     scene.diff(&with_images).unwrap();
     let image = Image::from_png(&fs::read(dir.join("f000.png")).unwrap()).unwrap();
     assert_eq!(image.pixel(5, 10), Some([255, 0, 0, 255]));
+    // The reference's box where the scene draws nothing: missed content.
+    assert_eq!(image.pixel(15, 10), Some([255, 63, 63, 255]));
 }
 
 #[test]
@@ -162,6 +195,7 @@ fn pooling_takes_the_mean_the_99th_percentile_and_the_worst_frame() {
     let frame = |file: &str, mean: f64| FrameDiff {
         file: file.into(),
         time: 0.0,
+        content: Error::default(),
         drawn: Error {
             mean,
             ..Error::default()

@@ -36,7 +36,7 @@ The compatibility corpus is `crates/motion-format/tests/compat/`: scenes that co
 `motion fidelity <manifest.toml>` runs, for each sample in a local manifest, the import, the text geometry check and `motion diff`. It then writes one line of numbers per sample:
 - what the import could not support, by kind;
 - the worst text line and how many texts are within tolerance;
-- mean error and failing fraction, both where drawn and over all drawn;
+- mean error and failing fraction over the content (the headline, [D42](../design/decisions.md#d42-fidelity-is-headlined-over-the-reference-content)), where drawn and over all drawn;
 - the same, for settled frames only.
 
 The command compares the result with the last ledger and prints what improved and what regressed.

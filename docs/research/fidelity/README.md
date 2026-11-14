@@ -25,9 +25,19 @@ The manifest is a JSON file, with paths relative to it:
 - `settled` is when the entrance is over, so the layout's own error is not hidden by the motion's.
 - `comp` picks the composition, `start` the scene time of the first reference frame.
 
+## The windows
+
+Each frame's error is measured over three sets of pixels ([D42](../../design/decisions.md#d42-fidelity-is-headlined-over-the-reference-content)):
+
+- **`content`**, the headline: where the scene draws, and where the reference differs from the scene's background by more than the tolerance (0.016 per channel). Content the scene fails to draw is measured here, and fails. Where an ignored layer draws and nothing else does, the reference is left out, as the layer is.
+- **`drawn`**: where the scene draws in that frame. Low `drawn` with high `content` means content is missing, not misdrawn.
+- **`union`**: everything the scene draws in any compared frame, so an element that arrives late counts.
+
+Before `content`, a scene that drew nothing in its settled frames scored a perfect 0: in the local corpus of 198 templates, 31 of 39 passing samples passed only that way. The four samples below all ignore a full-frame layer the reference fills, so for them `content` equals `drawn`.
+
 ## The samples
 
-| Sample | Unsupported | Text within | Settled, failing where drawn | Biggest gap |
+| Sample | Unsupported | Text within | Settled, failing over the content | Biggest gap |
 |---|---|---|---|---|
 | s740 | 10 expressions | 2 of 3 (worst 0.59 px) | 3.6% | expressions (the first 2 s) |
 | s737 | 15 expressions | 2 of 5 | 97.6% | expressions: the title's colours come from colour controls through expressions, and two elements are timed by them |

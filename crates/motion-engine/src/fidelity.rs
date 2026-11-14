@@ -111,6 +111,14 @@ pub struct Window {
     pub from: f64,
     /// How many frames.
     pub frames: usize,
+    /// Colour error where the scene draws or the reference differs from its
+    /// background, 0 to 1; none in a ledger written before it was measured.
+    #[serde(default)]
+    pub content_error: Option<f64>,
+    /// Failing fraction where the scene draws or the reference differs from
+    /// its background: the headline number.
+    #[serde(default)]
+    pub content_failing: Option<f64>,
     /// Colour error where the scene draws, 0 to 1.
     pub drawn_error: f64,
     /// Failing fraction where the scene draws.
@@ -204,11 +212,8 @@ pub fn measure(sample: &Sample, work: &Path, images: bool) -> Result<Measure> {
     let scene = dir.join("scene.json");
     fs::write(&scene, write_document(&import.json))
         .map_err(|e| under(Diagnostic::io("write", &scene, &e)))?;
-    let mut session = Session::open(&scene).map_err(under)?;
+    let session = Session::open(&scene).map_err(under)?;
     let geometry = session.text_geometry(&import.texts).map_err(under)?;
-    for id in &sample.ignore {
-        session.edit(&format!("{id} hidden=true")).map_err(under)?;
-    }
     let diff = session
         .diff(&DiffOptions {
             frames: DiffOptions::frames_in(&sample.reference).map_err(under)?,
@@ -216,6 +221,7 @@ pub fn measure(sample: &Sample, work: &Path, images: bool) -> Result<Measure> {
             start: sample.start,
             tolerance: DiffOptions::TOLERANCE,
             images: images.then(|| dir.join("errors")),
+            ignore: sample.ignore.clone(),
         })
         .map_err(under)?;
     let mut unsupported = BTreeMap::new();
@@ -255,6 +261,8 @@ fn window(frames: &[FrameDiff], from: f64) -> Window {
     Window {
         from,
         frames: frames.len(),
+        content_error: Some(mean(|f| f.content.mean)),
+        content_failing: Some(mean(|f| f.content.failing)),
         drawn_error: mean(|f| f.drawn.mean),
         drawn_failing: mean(|f| f.drawn.failing),
         union_error: mean(|f| f.union.mean),
@@ -332,6 +340,15 @@ fn metrics(measure: &Measure) -> BTreeMap<String, f64> {
     ];
     for (name, window) in windows {
         let Some(w) = window else { continue };
+        let content = [
+            ("content_error", w.content_error),
+            ("content_failing", w.content_failing),
+        ];
+        for (metric, value) in content {
+            if let Some(value) = value {
+                out.insert(format!("{name} {metric}"), value);
+            }
+        }
         out.insert(format!("{name} drawn_error"), w.drawn_error);
         out.insert(format!("{name} drawn_failing"), w.drawn_failing);
         out.insert(format!("{name} union_error"), w.union_error);

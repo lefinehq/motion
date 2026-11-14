@@ -28,16 +28,14 @@ pub struct Args<'a> {
 
 /// Compares `scene` with the reference and prints the summary.
 pub fn run(scene: &Path, args: &Args<'_>) -> Result<ExitCode> {
-    let mut session = Session::open(scene)?;
-    for id in args.ignore {
-        session.edit(&format!("{id} hidden=true"))?;
-    }
+    let session = Session::open(scene)?;
     let options = DiffOptions {
         frames: DiffOptions::frames_in(args.reference)?,
         fps: args.fps,
         start: args.start,
         tolerance: args.tolerance,
         images: args.images.map(Path::to_path_buf),
+        ignore: args.ignore.to_vec(),
     };
     let diff = session.diff(&options)?;
     print!("{}", summary(&diff));
@@ -63,9 +61,11 @@ fn summary(diff: &Diff) -> String {
         )
     };
     format!(
-        "{} frames, tolerance {}\n{}{}{}{}",
+        "{} frames, tolerance {}\n{}{}{}{}{}{}",
         diff.frames.len(),
         diff.tolerance,
+        line("error over the content", &diff.content_mean),
+        line("failing over the content", &diff.content_failing),
         line("error where drawn", &diff.drawn_mean),
         line("failing where drawn", &diff.drawn_failing),
         line("error over all drawn", &diff.union_mean),
