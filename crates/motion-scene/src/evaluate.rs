@@ -1,7 +1,6 @@
 //! Step 3 (Evaluate): every node's values at one frame.
 
-use crate::{FrameState, NodeState};
-use crate::{Node, SceneGraph};
+use crate::{FrameState, Node, NodeState, SceneGraph};
 use motion_format::property::PROPERTIES;
 use tracing::instrument;
 

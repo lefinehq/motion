@@ -86,11 +86,7 @@ pub(crate) fn shift(sweep: Area, area: Area, aim: Area) -> (f64, f64) {
 /// One axis of [`shift`]. All pairs are `(low edge, high edge)`.
 fn axis_shift(sweep: (f64, f64), area: (f64, f64), aim: (f64, f64)) -> f64 {
     let fits = |r: (f64, f64)| sweep.1 - sweep.0 <= r.1 - r.0 + EPSILON;
-    let target = if fits(aim) {
-        aim
-    } else if fits(area) {
-        area
-    } else {
+    let Some(target) = [aim, area].into_iter().find(|&r| fits(r)) else {
         return 0.0;
     };
     let exact = if sweep.0 < target.0 - EPSILON {
