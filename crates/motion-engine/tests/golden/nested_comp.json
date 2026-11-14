@@ -1,0 +1,12 @@
+{"motion":1,"size":"320x240","fps":10,"dur":"2s","bg":"#F4F1EA",
+"comps":{
+ "dot":{"size":"60x60","fps":10,"dur":"2s","bg":"#00000000","layers":[
+  {"id":"ring","shapes":[{"ellipse":[44,44]},{"stroke":"#F6C445","width":8}],"at":"30 30"}]},
+ "badge":{"size":"180x110","fps":20,"dur":"2s","bg":"#2E86AB","layers":[
+  {"id":"bar","rect":"220x26","fill":"#E4572E","at":"90 55","rotate":-25,"anim":{"rotate":"-25 -> 25 @0-40f"}},
+  {"id":"spot","comp":"dot","at":"150 20"},
+  {"id":"label","text":"nested","font":"Inter Variable 26 700","fill":"#FFFFFF","at":"70 92"}]}},
+"layers":[
+{"id":"back","comp":"badge","at":"115 95","rotate":-8,"opacity":0.6},
+{"id":"front","comp":"badge","at":"200 150","rotate":10,"offset":"5f"}
+]}

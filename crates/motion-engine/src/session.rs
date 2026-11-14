@@ -1,19 +1,25 @@
 //! A scene being worked on: read once, compiled on demand, edited and saved.
 
 use std::fs;
+use std::num::NonZero;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{Mutex, OnceLock, PoisonError};
+use std::thread;
 
 use motion_edit::{apply_edit, parse_edit};
 use motion_format::units::Time;
 use motion_format::{Diagnostic, Kind, Result};
-use motion_format::{Document, Scene, parse_document, write_document};
+use motion_format::{Document, Scene, Value, parse_document, write_document};
 use motion_query::{Report, at, check};
+use motion_raster::{Frame, Image, RenderOptions};
 use motion_scene::{FrameState, evaluate};
 use motion_scene::{SceneGraph, compile};
 use motion_text::{FontSet, Typesetter};
 
+use crate::render::display_list;
 use crate::stage::{stage, stage_ok};
 
 /// One scene and the results of the steps run on it. Methods run their steps
@@ -112,6 +118,115 @@ impl Session {
         Ok(stage_ok("evaluate", || evaluate(graph, frame)))
     }
 
+    /// The display list of `frame`: what the rasteriser draws (steps
+    /// `evaluate` and `display`).
+    ///
+    /// # Errors
+    /// As [`Session::graph`], or an effect the rasteriser cannot draw.
+    pub fn display_list(&self, frame: f64) -> Result<Frame> {
+        let state = self.frame(frame)?;
+        let graph = self.graph()?;
+        let background = Value::from(self.doc.scene().background);
+        let c = background.components();
+        stage("display", || {
+            display_list(graph, [c[0], c[1], c[2], c[3]], &state)
+        })
+    }
+
+    /// Draws `frame`, possibly fractional, with the default options: precise
+    /// colours and the processor's fastest instructions (steps `evaluate`,
+    /// `display` and `render`).
+    ///
+    /// # Errors
+    /// As [`Session::render_with`].
+    pub fn render(&self, frame: f64) -> Result<Image> {
+        self.render_with(frame, RenderOptions::default())
+    }
+
+    /// Draws `frame` with `options`; [`RenderOptions::GOLDEN`] draws the same
+    /// bits on every processor.
+    ///
+    /// # Errors
+    /// As [`Session::display_list`], or a canvas the rasteriser cannot hold
+    /// (zero or above 65535 pixels a side).
+    pub fn render_with(&self, frame: f64, options: RenderOptions) -> Result<Image> {
+        let list = self.display_list(frame)?;
+        let graph = self.graph()?;
+        let (width, height) = (pixels(graph.width), pixels(graph.height));
+        stage("render", || {
+            motion_raster::render_with(&list, width, height, options)
+        })
+    }
+
+    /// The whole frames the scene lasts: from 0 to its length, rounded up.
+    ///
+    /// # Errors
+    /// As [`Session::graph`].
+    pub fn frames(&self) -> Result<Range<u32>> {
+        Ok(0..self.graph()?.duration_frames.ceil() as u32)
+    }
+
+    /// Draws every frame of `frames`, one per processor thread at a time,
+    /// and hands each image to `each` on the thread that drew it, in no set
+    /// order. Step timings add up the threads' time.
+    ///
+    /// # Errors
+    /// An out-of-range diagnostic for frames past [`Session::frames`], or
+    /// the first failure by frame number, from drawing or from `each`, with
+    /// the frame named in its message. Frames not started when one fails are
+    /// left undrawn.
+    pub fn render_frames(
+        &self,
+        frames: Range<u32>,
+        options: RenderOptions,
+        each: impl Fn(u32, Image) -> Result<()> + Sync,
+    ) -> Result<()> {
+        let scene = self.frames()?;
+        if frames.start > frames.end || frames.end > scene.end {
+            return Err(Diagnostic::new(
+                Kind::OutOfRange,
+                format!("frames {}..{}", frames.start, frames.end),
+            )
+            .expected(format!(
+                "frames within the scene's 0..{} (an end past the last frame)",
+                scene.end
+            )));
+        }
+        let next = AtomicU32::new(frames.start);
+        let stop = AtomicBool::new(false);
+        let failure: Mutex<Option<(u32, Diagnostic)>> = Mutex::new(None);
+        let workers = thread::available_parallelism()
+            .map_or(1, NonZero::get)
+            .min(frames.len().max(1));
+        thread::scope(|scope| {
+            for _ in 0..workers {
+                scope.spawn(|| {
+                    while !stop.load(Ordering::Relaxed) {
+                        let frame = next.fetch_add(1, Ordering::Relaxed);
+                        if frame >= frames.end {
+                            break;
+                        }
+                        let drawn = self
+                            .render_with(f64::from(frame), options)
+                            .and_then(|image| each(frame, image));
+                        if let Err(mut d) = drawn {
+                            stop.store(true, Ordering::Relaxed);
+                            d.message = format!("frame {frame}: {}", d.message);
+                            let mut first = failure.lock().unwrap_or_else(PoisonError::into_inner);
+                            if first.as_ref().is_none_or(|(at, _)| frame < *at) {
+                                *first = Some((frame, d));
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        match failure.into_inner().unwrap_or_else(PoisonError::into_inner) {
+            Some((_, d)) => Err(d),
+            None => Ok(()),
+        }
+    }
+
     /// The check report over every frame (step `check`).
     ///
     /// # Errors
@@ -183,6 +298,11 @@ impl FromStr for Session {
             graph: OnceLock::new(),
         })
     }
+}
+
+/// A canvas side in whole pixels; validation keeps sizes whole and positive.
+fn pixels(side: f64) -> u32 {
+    side.round() as u32
 }
 
 /// The sibling file the new text is written to before it replaces `path`.

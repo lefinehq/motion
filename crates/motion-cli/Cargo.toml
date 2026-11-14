@@ -1,6 +1,6 @@
 [package]
 name = "motion-cli"
-description = "The `motion` command-line tool: check, query and edit motion scenes, and inspect `.aep` projects."
+description = "The `motion` command-line tool: check, query, edit and render motion scenes, and inspect `.aep` projects."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

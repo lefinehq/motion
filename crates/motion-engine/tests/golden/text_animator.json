@@ -1,0 +1,9 @@
+{"motion":1,"size":"320x240","fps":10,"dur":"3s","bg":"#14161C",
+"layers":[
+{"id":"title","text":"Rise up\none line\nat a time","font":"Inter Variable 30 800","fill":"#FFFFFF","at":"160 100",
+ "style":{"stroke":"#E4572E","stroke-width":3,"paint":"fill-over","align":"center"},
+ "animate":[{"animator":[{"range":"line","smooth":0.5,"anim":{"offset":[{"t":0,"v":0},{"t":"2s","v":1}]}}],"position":[0,40],"opacity":0}]},
+{"id":"wave","text":"per glyph","font":"Inter Variable 24 600","fill":"#7FD1B9","at":"160 205",
+ "style":{"stroke":"#0B3D4F","stroke-width":1.5,"paint":"stroke-over"},
+ "animate":[{"animator":[{"range":"char","shape":"triangle"}],"rotate":-25,"scale":1.5,"fill":"#F6C445","opacity":0.6,"stroke-width":1}]}
+]}

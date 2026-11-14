@@ -1,0 +1,11 @@
+{"motion":1,"size":"320x240","fps":10,"dur":"1s","bg":"#F4F1EA",
+"fonts":["../../../motion-raster/tests/fixtures/FixtureSans-Black.ttf"],
+"layers":[
+{"id":"plain","text":"Plain","font":"FixtureSans-Black 40","fill":"#1E3A5F","at":"85 45"},
+{"id":"bold","text":"Bold","font":"FixtureSans-Black 40","fill":"#1E3A5F","at":"235 45","style":{"faux-bold":true}},
+{"id":"italic","text":"Italic","font":"FixtureSans-Black 40","fill":"#1E3A5F","at":"85 110","style":{"faux-italic":true}},
+{"id":"both","text":"Both","font":"FixtureSans-Black 40","fill":"#1E3A5F","at":"235 110","style":{"faux-bold":true,"faux-italic":true}},
+{"id":"ghost","text":"Ghost","font":"FixtureSans-Black 52","fill":"#E4572E80","at":"160 185",
+ "style":{"faux-bold":true,"stroke":"#1E3A5F","stroke-width":2,"paint":"stroke-over"},
+ "runs":[{"range":[0,2],"faux-bold":false}]}
+]}

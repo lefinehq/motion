@@ -82,10 +82,12 @@ fn help_describes_the_tool_and_lists_its_commands() {
     assert_eq!(out.status.code(), Some(0));
     let text = stdout(&out);
     assert!(
-        text.starts_with("Check, query and edit motion scenes, and inspect `.aep` projects\n"),
+        text.starts_with(
+            "Check, query, edit and render motion scenes, and inspect `.aep` projects\n"
+        ),
         "{text}"
     );
-    for command in ["check", "at", "edit", "inspect"] {
+    for command in ["check", "at", "edit", "render", "inspect"] {
         assert!(
             text.lines().any(|l| l.trim_start().starts_with(command)),
             "{command}: {text}"
@@ -419,4 +421,66 @@ fn inspect_a_file_that_is_not_a_project_exits_two() {
     assert_eq!(out.status.code(), Some(2));
     let error = motion_engine::import(LAUNCH).expect_err("not a project");
     assert_eq!(stderr(&out), error_line(&error));
+}
+
+#[test]
+fn render_writes_one_numbered_png_per_frame() {
+    let out = scratch("render-frames");
+    let dir = out.to_str().expect("utf-8 path");
+    let run = motion(&["render", LAUNCH, "--frames", "3-5", "--out", dir]);
+    assert_eq!(run.status.code(), Some(0), "{}", stderr(&run));
+    assert_eq!(stdout(&run), format!("3 frames written to {dir}\n"));
+    let mut files: Vec<String> = fs::read_dir(&out)
+        .expect("read out")
+        .map(|e| e.expect("entry").file_name().into_string().expect("utf-8"))
+        .collect();
+    files.sort();
+    assert_eq!(
+        files,
+        ["frame-00003.png", "frame-00004.png", "frame-00005.png"]
+    );
+    let session = Session::open(LAUNCH).expect("open");
+    let png = fs::read(out.join("frame-00004.png")).expect("read png");
+    assert_eq!(
+        png,
+        session.render(4.0).expect("render").to_png().expect("png")
+    );
+}
+
+#[test]
+fn render_takes_one_frame_and_makes_the_folder() {
+    let out = scratch("render-one").join("deeper");
+    let dir = out.to_str().expect("utf-8 path");
+    let run = motion(&["render", LAUNCH, "--frame", "0", "--out", dir]);
+    assert_eq!(run.status.code(), Some(0), "{}", stderr(&run));
+    assert_eq!(stdout(&run), format!("1 frame written to {dir}\n"));
+    assert!(out.join("frame-00000.png").is_file());
+}
+
+#[test]
+fn render_past_the_end_exits_with_the_engine_error() {
+    let out = scratch("render-past");
+    let dir = out.to_str().expect("utf-8 path");
+    let run = motion(&["render", LAUNCH, "--frames", "149-150", "--out", dir]);
+    let expected = Session::open(LAUNCH)
+        .expect("open")
+        .render_frames(149..151, Default::default(), |_, _| Ok(()))
+        .expect_err("past the end");
+    assert_eq!(
+        run.status.code(),
+        Some(i32::from(expected.kind.exit_code()))
+    );
+    assert_eq!(stderr(&run), error_line(&expected));
+}
+
+#[rstest]
+#[case::both_frame_flags(&["--frame", "1", "--frames", "1-2"])]
+#[case::a_backwards_range(&["--frames", "5-1"])]
+fn bad_render_arguments_are_usage_errors(#[case] args: &[&str]) {
+    let out = scratch(&format!("render-usage-{}", args.len()));
+    let mut all = vec!["render", LAUNCH, "--out", out.to_str().expect("utf-8")];
+    all.extend_from_slice(args);
+    let run = motion(&all);
+    assert_eq!(run.status.code(), Some(2));
+    assert!(stdout(&run).is_empty());
 }

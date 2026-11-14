@@ -15,6 +15,7 @@ motion-text = { path = "../motion-text" }
 motion-query = { path = "../motion-query" }
 motion-edit = { path = "../motion-edit" }
 motion-import = { path = "../motion-import" }
+motion-raster = { path = "../motion-raster" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 

@@ -1,0 +1,11 @@
+{"motion":1,"size":"320x240","fps":10,"dur":"1s","bg":"#14161C",
+"comps":{
+ "tile":{"size":"120x80","fps":10,"dur":"1s","bg":"#2E86AB","layers":[
+  {"id":"mark","shapes":[{"ellipse":[50,50]},{"fill":"#F6C445"},{"stroke":"#FFFFFF","width":4}],"at":"60 40"}]}},
+"layers":[
+{"id":"word","text":"recolour","font":"Inter Variable 40 800","fill":"#FFFFFF","at":"160 60",
+ "style":{"stroke":"#7FD1B9","stroke-width":3},"fx":[{"fill":"#E4572E"}]},
+{"id":"tinted","comp":"tile","at":"90 160","rotate":-6,"fx":[{"fill":"#FFFFFF","opacity":0.5}]},
+{"id":"untinted","comp":"tile","at":"230 160","rotate":6},
+{"id":"stack","shapes":[{"rect":[40,40]},{"fill":"#7FD1B9"}],"at":"160 208","fx":[{"fill":"#F6C445"},{"fill":"#E4572E","opacity":0.5}]}
+]}
