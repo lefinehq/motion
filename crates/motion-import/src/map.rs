@@ -297,20 +297,19 @@ impl<'p> Walk<'p> {
 
     /// The id of the composition `id`, given the first time it is met, when
     /// it is queued to be written.
-    fn comp_id(&mut self, id: u32) -> Option<String> {
-        if let Some(known) = self.comp_ids.get(&id) {
-            return Some(known.clone());
+    fn comp_id(&mut self, item: &Item) -> String {
+        if let Some(known) = self.comp_ids.get(&item.id) {
+            return known.clone();
         }
-        let item = self.items.get(&id).copied()?;
         let given = self.taken.give(&item.name, "comp");
         self.mapping.ids.push(Named {
             comp: None,
             name: item.name.clone(),
             id: given.clone(),
         });
-        self.comp_ids.insert(id, given.clone());
-        self.pending.push(id);
-        Some(given)
+        self.comp_ids.insert(item.id, given.clone());
+        self.pending.push(item.id);
+        given
     }
 
     /// The layers of `composition`, called `name`, bottom first as a scene
