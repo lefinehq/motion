@@ -7,7 +7,6 @@
 //! colours, whose channels are fractions from 0 to 1.
 
 use std::collections::BTreeMap;
-use std::fmt;
 
 use serde::Serialize;
 use strum::{Display, EnumIter};
@@ -25,19 +24,15 @@ pub struct Project {
     pub skipped: BTreeMap<String, usize>,
 }
 
-/// A file version: the major number grows with each release of the desktop tool.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+/// A file version, printed `major.minor`: the major number grows with each
+/// release of the desktop tool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, derive_more::Display)]
+#[display("{major}.{minor}")]
 pub struct Version {
     /// The major number, such as 93.
     pub major: u16,
     /// The minor number, which differs between builds of one release.
     pub minor: u16,
-}
-
-impl fmt::Display for Version {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}.{}", self.major, self.minor)
-    }
 }
 
 /// One project item: a folder, a composition or a footage item.
