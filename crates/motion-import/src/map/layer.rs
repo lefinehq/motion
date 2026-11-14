@@ -164,22 +164,25 @@ impl<'p> Walk<'p> {
                 pivot(self, out, Some("adjustment layers"))
             }
             LayerKind::Av if layer.switches.null => pivot(self, out, None),
-            LayerKind::Av => match source.map(|item| (item.id, &item.kind)) {
-                Some((id, ItemKind::Composition(_))) => match self.comp_id(id) {
-                    Some(comp) => {
-                        out.keys.insert("comp".into(), json!(comp));
-                        // On a vector layer the switch changes nothing we draw.
-                        if layer.switches.collapse {
-                            self.mapping.unsupported(
-                                &place.at,
-                                "collapsed transformations (drawn as a clipped composition)",
-                            );
-                        }
+            LayerKind::Av => match source.map(|item| (item, &item.kind)) {
+                Some((item, ItemKind::Composition(_))) => {
+                    let comp = self.comp_id(item);
+                    out.keys.insert("comp".into(), json!(comp));
+                    // On a vector layer the switch changes nothing we draw.
+                    if layer.switches.collapse {
+                        self.mapping.unsupported(
+                            &place.at,
+                            "collapsed transformations (drawn as a clipped composition)",
+                        );
                     }
-                    None => pivot(self, out, Some("compositions it cannot find")),
-                },
+                }
                 Some((_, ItemKind::Footage(footage))) => self.footage(footage, out, place, pivot),
-                _ => pivot(self, out, None),
+                Some((_, ItemKind::Folder)) => pivot(self, out, None),
+                // The layer names a source the project does not hold.
+                None if layer.source.is_some() => {
+                    pivot(self, out, Some("a source the project does not hold"))
+                }
+                None => pivot(self, out, None),
             },
             LayerKind::Camera => pivot(self, out, Some("cameras")),
             LayerKind::Light => pivot(self, out, Some("lights")),
@@ -240,10 +243,16 @@ impl<'p> Walk<'p> {
         if !switches.enabled || switches.guide {
             out.keys.insert("hidden".into(), json!(true));
         }
-        if let Some(parent) = layer.parent.and_then(|id| ids.get(&id)) {
-            out.keys.insert("parent".into(), json!(parent));
-        }
         let mut unsupported = |what: String| self.mapping.unsupported(&place.at, what);
+        match layer.parent.map(|id| ids.get(&id)) {
+            Some(Some(parent)) => {
+                out.keys.insert("parent".into(), json!(parent));
+            }
+            Some(None) => unsupported(
+                "a parent that is not in its composition (drawn without a parent)".into(),
+            ),
+            None => {}
+        }
         if switches.three_d {
             unsupported("3D layers (drawn flat)".into());
         }

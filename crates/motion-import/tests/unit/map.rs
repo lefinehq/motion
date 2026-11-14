@@ -87,3 +87,46 @@ fn a_project_without_compositions_says_so() {
     assert_eq!(error.kind, Kind::Missing);
     assert_eq!(error.message, "the project holds no composition to import");
 }
+
+/// What the import of one comp holding `layers` reports, as `(at, what)`.
+fn findings(layers: Vec<crate::model::Layer>) -> Vec<(String, String)> {
+    use crate::test_support::build::{comp, project};
+    let project = project(vec![(1, "Main", comp(layers, 2.0))]);
+    import(&project, &Options::default())
+        .expect("it imports")
+        .mapping
+        .unsupported
+        .into_iter()
+        .map(|finding| (finding.at, finding.what))
+        .collect()
+}
+
+#[test]
+fn a_layer_whose_source_is_missing_is_reported() {
+    use crate::test_support::build::layer;
+    let mut orphan = layer(2, "Orphan", vec![]);
+    orphan.source = Some(99);
+    let found = findings(vec![orphan]);
+    assert_eq!(
+        found,
+        [(
+            "Main/Orphan".to_owned(),
+            "a source the project does not hold (drawn as nothing)".to_owned()
+        )]
+    );
+}
+
+#[test]
+fn a_parent_outside_the_composition_is_reported() {
+    use crate::test_support::build::layer;
+    let mut child = layer(2, "Child", vec![]);
+    child.parent = Some(99);
+    let found = findings(vec![child]);
+    assert_eq!(
+        found,
+        [(
+            "Main/Child".to_owned(),
+            "a parent that is not in its composition (drawn without a parent)".to_owned()
+        )]
+    );
+}
