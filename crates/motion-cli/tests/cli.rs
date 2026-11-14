@@ -1,8 +1,12 @@
-//! End-to-end tests: run the real `motion` binary and check its output and exit code.
+//! End-to-end tests: run the real `motion` binary and check its output and
+//! exit code. An error line is compared with the engine's own diagnostic, so
+//! only the `error: …` format is pinned here, not the wording.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+
+use motion_engine::{Diagnostic, Session};
 
 const LAUNCH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/launch.json");
 const OFFSCREEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/offscreen.json");
@@ -10,20 +14,41 @@ const OFFSCREEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/off
 /// Runs `motion` with the given arguments, without a `MOTION_LOG` from the
 /// environment.
 fn motion(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_motion"))
-        .args(args)
-        .env_remove("MOTION_LOG")
-        .output()
-        .expect("run motion")
+    run(
+        Command::new(env!("CARGO_BIN_EXE_motion")).env_remove("MOTION_LOG"),
+        args,
+    )
 }
 
 /// Runs `motion` with `MOTION_LOG` set to `filter`.
 fn motion_with_log(filter: &str, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_motion"))
-        .args(args)
-        .env("MOTION_LOG", filter)
-        .output()
-        .expect("run motion")
+    run(
+        Command::new(env!("CARGO_BIN_EXE_motion")).env("MOTION_LOG", filter),
+        args,
+    )
+}
+
+fn run(command: &mut Command, args: &[&str]) -> Output {
+    command.args(args).output().expect("run motion")
+}
+
+/// The line `motion` prints to stderr for `diagnostic`.
+fn error_line(diagnostic: &Diagnostic) -> String {
+    format!("error: {diagnostic}\n")
+}
+
+/// What the engine says when asked for `ids` at `time` in the launch example.
+fn at_error(time: &str, ids: &[&str]) -> Diagnostic {
+    let ids: Vec<String> = ids.iter().map(|&id| id.to_owned()).collect();
+    Session::open(LAUNCH)
+        .expect("open")
+        .at(time, &ids)
+        .expect_err("a failing query")
+}
+
+/// What the engine says when opening `path`.
+fn open_error(path: impl AsRef<Path>) -> Diagnostic {
+    Session::open(path.as_ref()).expect_err("a failing open")
 }
 
 /// A fresh scratch directory for one test (tests run in parallel).
@@ -47,6 +72,23 @@ fn stdout(out: &Output) -> String {
 
 fn stderr(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).into_owned()
+}
+
+#[test]
+fn help_describes_the_tool_and_lists_its_commands() {
+    let out = motion(&["--help"]);
+    assert_eq!(out.status.code(), Some(0));
+    let text = stdout(&out);
+    assert!(
+        text.starts_with("Check, query and edit motion scenes\n"),
+        "{text}"
+    );
+    for command in ["check", "at", "edit"] {
+        assert!(
+            text.lines().any(|l| l.trim_start().starts_with(command)),
+            "{command}: {text}"
+        );
+    }
 }
 
 #[test]
@@ -83,10 +125,7 @@ fn at_without_ids_prints_every_node() {
 #[test]
 fn at_unknown_id_exits_two() {
     let out = motion(&["at", LAUNCH, "1s", "nope"]);
-    assert_eq!(
-        stderr(&out),
-        "error: unknown layer id `nope`; expected one of title, card\n"
-    );
+    assert_eq!(stderr(&out), error_line(&at_error("1s", &["nope"])));
     assert_eq!(out.status.code(), Some(2));
 }
 
@@ -94,20 +133,15 @@ fn at_unknown_id_exits_two() {
 fn at_bad_time_exits_two() {
     let out = motion(&["at", LAUNCH, "soon", "title"]);
     assert_eq!(out.status.code(), Some(2));
-    assert_eq!(
-        stderr(&out),
-        "error: `soon` is not a valid time; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`\n"
-    );
+    assert_eq!(stderr(&out), error_line(&at_error("soon", &["title"])));
 }
 
 #[test]
 fn missing_file_exits_two() {
-    let out = motion(&["check", "/definitely/not/here.json"]);
+    let missing = "/definitely/not/here.json";
+    let out = motion(&["check", missing]);
     assert_eq!(out.status.code(), Some(2));
-    assert_eq!(
-        stderr(&out),
-        "error: cannot read `/definitely/not/here.json`: No such file or directory (os error 2)\n"
-    );
+    assert_eq!(stderr(&out), error_line(&open_error(missing)));
 }
 
 #[test]
@@ -123,10 +157,7 @@ fn edit_writes_canonical_file_and_prints_report() {
 
 #[test]
 fn edit_takes_nested_keys_and_json_values() {
-    let path = copy_to(
-        "edit_nested_json",
-        concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/launch.json"),
-    );
+    let path = copy_to("edit_nested_json", LAUNCH);
     let out = motion(&[
         "edit",
         &path,
@@ -157,10 +188,11 @@ fn edit_malformed_line_leaves_file_untouched() {
     let before = fs::read(&path).expect("read");
     let out = motion(&["edit", &path, "card"]);
     assert_eq!(out.status.code(), Some(2));
-    assert_eq!(
-        stderr(&out),
-        "error: no changes after `card`; expected `<key>=<value>`\n"
-    );
+    let malformed = Session::open(&path)
+        .expect("open")
+        .edit("card")
+        .expect_err("a malformed line");
+    assert_eq!(stderr(&out), error_line(&malformed));
     assert_eq!(fs::read(&path).expect("read"), before);
 }
 
@@ -186,11 +218,10 @@ fn invalid_scene_exits_two_with_path() {
     fs::write(&path, bad).expect("write");
     let out = motion(&["check", path.to_str().expect("utf-8")]);
     assert_eq!(out.status.code(), Some(2));
-    assert!(
-        stderr(&out).contains("layers[0].in: unknown preset `zoom`"),
-        "{}",
-        stderr(&out)
-    );
+    let invalid = open_error(&path);
+    assert_eq!(invalid.path.as_deref(), Some("layers[0].in"));
+    assert_eq!(stderr(&out), error_line(&invalid));
+    assert!(stderr(&out).starts_with("error: layers[0].in: "));
 }
 
 #[test]
@@ -245,8 +276,8 @@ fn an_invalid_motion_log_is_one_warning_then_the_level() {
         "{text}"
     );
     assert_eq!(
-        lines[1],
-        "error: unknown layer id `nope`; expected one of title, card"
+        format!("{}\n", lines[1]),
+        error_line(&at_error("1s", &["nope"]))
     );
 }
 

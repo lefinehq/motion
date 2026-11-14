@@ -31,25 +31,20 @@ fn set_keeps_an_existing_key_in_place_and_appends_a_new_one() {
 #[test]
 fn set_through_a_non_object_names_it() {
     let mut v = json!({"in": "fade", "a": {"b": 1}});
-    let e = set(&mut v, &at("in.opacity"), json!(1)).unwrap_err();
-    assert_eq!(e.kind, Kind::WrongType);
-    assert_eq!(
-        e.to_string(),
-        "cannot set `in.opacity`: `in` is not an object"
-    );
-    assert_eq!(
-        set(&mut v, &at("a.b.c"), json!(1)).unwrap_err().to_string(),
-        "cannot set `a.b.c`: `a.b` is not an object"
-    );
+    for (key, parent) in [("in.opacity", "`in`"), ("a.b.c", "`a.b`")] {
+        let e = set(&mut v, &at(key), json!(1)).unwrap_err();
+        assert_eq!(e.kind, Kind::WrongType, "{key}");
+        assert_eq!(e.path, None, "{key}");
+        assert!(e.message.contains(parent), "{key}: {e}");
+    }
 }
 
 #[test]
-fn set_on_a_root_that_is_not_an_object_says_so() {
+fn set_on_a_root_that_is_not_an_object_names_no_key() {
     let mut v = json!([1]);
-    assert_eq!(
-        set(&mut v, &at("in"), json!(1)).unwrap_err().to_string(),
-        "cannot set `in`: the edited value is not an object"
-    );
+    let e = set(&mut v, &at("in"), json!(1)).unwrap_err();
+    assert_eq!(e.kind, Kind::WrongType);
+    assert!(!e.message.contains("``"), "{e}");
 }
 
 #[test]

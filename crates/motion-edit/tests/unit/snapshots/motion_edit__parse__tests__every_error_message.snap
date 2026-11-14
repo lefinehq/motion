@@ -7,8 +7,12 @@ expression: "report.join(\"\\n\")"
 `card` → no changes after `card`; expected `<key>=<value>`
 `card at=center 666` → `666` is not a change; expected `<key>=<value>`, with quotes around a value that has spaces
 `a"b x=1` → unexpected quote in `a"`; expected quotes only around a value, as in `<key>="<value>"`
+`a "x"=1` → unexpected quote in `"`; expected quotes only around a value, as in `<key>="<value>"`
 `a x"y=1` → unexpected quote in `x"`; expected quotes only around a value, as in `<key>="<value>"`
 `a x=ab"c d"` → unexpected quote in `x=ab"c`; expected the whole value quoted: x="abc d"
+`a x=ab"c d` → unexpected quote in `x=ab"c`; expected the whole value quoted: x="abc d"
+`a x=ab"c"` → unexpected quote in `x=ab"c"`; expected the whole value quoted: x="abc"
+`a x=1="2 3" y=4` → unexpected quote in `x=1="2`; expected the whole value quoted: x="1=2 3"
 `a x=a"b\"c"` → unexpected quote in `x=a"b\"c"`; expected the whole value quoted: x="ab\"c"
 `card delay+=10f` → operator `+=` is not supported yet; expected `<key>=<value>`
 `a x-=1` → operator `-=` is not supported yet; expected `<key>=<value>`
@@ -25,7 +29,14 @@ expression: "report.join(\"\\n\")"
 `a x=[1,]` → invalid JSON in `x`: trailing comma at line 1 column 4; expected `<key>=[…]` or `<key>={…}`, valid JSON
 `a x=[1}` → invalid JSON in `x`: expected `,` or `]` at line 1 column 3; expected `<key>=[…]` or `<key>={…}`, valid JSON
 `a x=[1,"]" y=2` → invalid JSON in `x`: expected `,` or `]` at line 1 column 8; expected `<key>=[…]` or `<key>={…}`, valid JSON
+`a x=[[[…]]]` → invalid JSON in `x`: recursion limit exceeded at line 1 column 128; expected `<key>=[…]` or `<key>={…}`, valid JSON
 `a x=[1]y` → unexpected text after the end of the JSON value in `x=[1]y`; expected a space after the closing bracket
 `a fill=red fill=blue` → key `fill` given twice
 `card anim={} anim.x=1` → keys `anim` and `anim.x` overlap; set them in separate edits or merge them into one value
 `card anim.x.y=1 anim.x=2` → keys `anim.x` and `anim.x.y` overlap; set them in separate edits or merge them into one value
+`ghost fill=#FFF` → unknown layer id `ghost`; expected one of title, card
+`card colour=#FFF` → unknown layer key `colour`; expected one of id, text, rect, font, fill, at, in, anim
+`scene colour=red` → unknown scene key `colour`; expected one of motion, size, fps, dur, bg, presets, layers
+`card in.opacity=1` → cannot set `in.opacity`: `in` is not an object
+`title text=2024` → layers[0].text: invalid type: integer `2024`; expected a quoted value: `text="2024"`
+`title text=true` → layers[0].text: invalid type: boolean `true`; expected a quoted value: `text="true"`

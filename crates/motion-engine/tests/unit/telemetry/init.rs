@@ -6,6 +6,8 @@ use std::sync::{Arc, Mutex};
 use tracing::{debug, debug_span, warn};
 
 use super::*;
+use crate::telemetry::timing::STAGE_TARGET;
+use crate::test_support::with_subscriber;
 
 /// A writer that keeps every byte, for reading the lines back.
 #[derive(Clone, Default)]
@@ -39,7 +41,7 @@ fn captured_with(filter: EnvFilter, format: Format, body: impl FnOnce()) -> Stri
     let capture = Capture::default();
     let writer = capture.clone();
     let subscriber = subscriber(filter, format, move || writer.clone(), false, None);
-    tracing::subscriber::with_default(subscriber, body);
+    with_subscriber(subscriber, body);
     capture.text()
 }
 
@@ -112,10 +114,8 @@ fn timings_see_steps_the_filter_hides() {
         false,
         Some(timings.clone()),
     );
-    tracing::subscriber::with_default(subscriber, || {
-        let _step =
-            debug_span!(target: crate::telemetry::timing::STAGE_TARGET, "stage", stage = "check")
-                .entered();
+    with_subscriber(subscriber, || {
+        let _step = debug_span!(target: STAGE_TARGET, "stage", stage = "check").entered();
     });
     let names: Vec<String> = timings.steps().into_iter().map(|(name, _)| name).collect();
     assert_eq!(names, ["check"]);

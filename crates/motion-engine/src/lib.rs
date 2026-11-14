@@ -15,6 +15,10 @@ mod session;
 mod stage;
 pub mod telemetry;
 
+#[cfg(test)]
+#[path = "../tests/unit/support.rs"]
+mod test_support;
+
 pub use session::Session;
 
 pub use motion_format::{Diagnostic, Document, Kind, Result, Scene};
