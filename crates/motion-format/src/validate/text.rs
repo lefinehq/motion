@@ -40,7 +40,7 @@ pub(super) fn text(
     let Object(style) = &doc.style;
     for (name, written) in style {
         let key = known(name, None).map_err(|e| e.at(name.as_str()).under(STYLE))?;
-        if matches!(key.name, "font" | "fill") {
+        if key.on_layer {
             return Err(Diagnostic::new(
                 Kind::Conflict,
                 format!("`{name}` is set on the layer, not in `{STYLE}`"),
