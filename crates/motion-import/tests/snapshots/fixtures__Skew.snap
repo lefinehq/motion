@@ -1,0 +1,75 @@
+---
+source: crates/motion-import/tests/fixtures.rs
+expression: "format!(\"{project}{}\", project.report())"
+---
+project 92.14, 8 bits per channel
+composition 1 "Comp 1" 200x200, 29.97 fps, 2.04s, work area 0s-2.04s
+  layer 12 "Shape Layer 1" shape, 0s-2.04s
+    ADBE Root Vectors Group
+      ADBE Vector Group "Rectangle 1"
+        ADBE Vectors Group
+          ADBE Vector Shape - Rect "Rectangle Path 1"
+            ADBE Vector Rect Size = [50, 50]
+          ADBE Vector Shape - Rect "Rectangle Path 2"
+            ADBE Vector Rect Size = [50, 50]
+            ADBE Vector Rect Position = [98, 0]
+          ADBE Vector Shape - Rect "Rectangle Path 3"
+            ADBE Vector Rect Size = [50, 50]
+            ADBE Vector Rect Position = [98, 97]
+        ADBE Vector Transform Group
+          ADBE Vector Position = [-47.55, -73.52]
+          ADBE Vector Skew = 45
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+composition 13 "Comp 2" 200x200, 29.97 fps, 2.04s, work area 0s-2.04s
+  layer 24 "Shape Layer 1" shape, 0s-2.04s
+    ADBE Root Vectors Group
+      ADBE Vector Group "Rectangle 1"
+        ADBE Vectors Group
+          ADBE Vector Shape - Star "Polystar Path 1"
+            ADBE Vector Star Inner Radius = 17
+            ADBE Vector Star Outer Radius = 58
+          ADBE Vector Shape - Rect "Rectangle Path 1"
+            ADBE Vector Rect Size = [4, 4]
+            ADBE Vector Rect Position = [57, -20]
+        ADBE Vector Transform Group
+          ADBE Vector Skew = 54.5
+          ADBE Vector Skew Axis: 2 keyframes 0s-2s
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+report
+  items: composition 2
+  layers: shape 2
+  effects: none
+  opaque: orientation 2
+  skipped: LIST:CIF2 2, LIST:CIFO 2, LIST:CLay 6, LIST:CPPl 1, LIST:Ewst 22, LIST:FEE 2, LIST:Gide 4, LIST:LRdr 1, LIST:LSIf 1, LIST:OvdG 2, LIST:PRin 2, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 12, LIST:SecL 2, LIST:dats 2, LIST:gpuG 1, LIST:otky 2, LIST:sfnm 1, Utf8 1, acer 1, adfr 1, cdrp 2, cpid 1, dwga 1, fcid 1, fdta 1, fiac 46, fidi 2, fifl 46, fimr 2, fiop 46, fipc 46, fipl 2, fips 8, fits 1, fitt 1, fivc 1, fivi 1, foac 46, fots 2, fott 2, fovc 2, fovi 2, ftts 46, fvdv 46, nnhd 1, oacc 1, qtlg 1, svap 1, wsnm 1, wsns 1

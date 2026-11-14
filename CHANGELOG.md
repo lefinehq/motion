@@ -24,6 +24,8 @@ All notable changes to this project are documented here. The format is based on 
 - One error type, `Diagnostic`, with a kind (syntax, unknown name, out of range, missing, conflict, wrong type, invalid, io) that sets the exit code.
 - `motion-engine`: a `Session` that is the one entry point for tools, and `motion-cli` now goes through it.
 - Logs with `--log <level>`, `--log-format json` and `MOTION_LOG`, and step timings with `--timings`.
+- `motion-import`: reads `.aep` projects (items, compositions, footage, layers, the property tree, keyframes, expressions and paths) into a typed model, keeps what it cannot decode yet as opaque values with a reason, and counts everything in an import report.
+- `motion inspect <project.aep>` prints a project as a tree with its import report, or both as JSON with `--json`; the engine reads projects with `motion_engine::import`.
 
 ### Changed
 

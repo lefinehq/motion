@@ -80,10 +80,10 @@ fn help_describes_the_tool_and_lists_its_commands() {
     assert_eq!(out.status.code(), Some(0));
     let text = stdout(&out);
     assert!(
-        text.starts_with("Check, query and edit motion scenes\n"),
+        text.starts_with("Check, query and edit motion scenes, and inspect `.aep` projects\n"),
         "{text}"
     );
-    for command in ["check", "at", "edit"] {
+    for command in ["check", "at", "edit", "inspect"] {
         assert!(
             text.lines().any(|l| l.trim_start().starts_with(command)),
             "{command}: {text}"
@@ -374,4 +374,58 @@ fn timings_follow_a_failure_too() {
             .is_some_and(|l| l.starts_with("timings read=")),
         "{text}"
     );
+}
+
+/// The smallest `.aep` project, a file version and an empty root folder,
+/// written to a scratch directory.
+fn empty_project(name: &str) -> String {
+    let chunk = |tag: &[u8; 4], body: &[u8]| {
+        let size = u32::try_from(body.len()).expect("a small body");
+        [tag.as_slice(), &size.to_be_bytes(), body].concat()
+    };
+    let head = chunk(
+        b"head",
+        &[0, 94, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    );
+    let file = chunk(
+        b"RIFX",
+        &[b"Egg!".as_slice(), &head, &chunk(b"LIST", b"Fold")].concat(),
+    );
+    let path = scratch(name).join("project.aep");
+    fs::write(&path, file).expect("write project");
+    path.to_str().expect("utf-8 path").to_string()
+}
+
+#[test]
+fn inspect_prints_the_tree_then_the_report() {
+    let path = empty_project("inspect-tree");
+    let out = motion(&["inspect", &path]);
+    assert_eq!(out.status.code(), Some(0));
+    let text = stdout(&out);
+    assert!(
+        text.starts_with("project 94.9, unknown bits per channel\nreport\n"),
+        "{text}"
+    );
+    assert!(
+        text.ends_with("  opaque: none\n  skipped: none\n"),
+        "{text}"
+    );
+}
+
+#[test]
+fn inspect_json_prints_the_model_and_the_report() {
+    let path = empty_project("inspect-json");
+    let out = motion(&["inspect", &path, "--json"]);
+    assert_eq!(out.status.code(), Some(0));
+    let json: serde_json::Value = serde_json::from_str(&stdout(&out)).expect("JSON");
+    assert_eq!(json["project"]["version"]["major"], 94);
+    assert_eq!(json["report"]["layers"], serde_json::json!({}));
+}
+
+#[test]
+fn inspect_a_file_that_is_not_a_project_exits_two() {
+    let out = motion(&["inspect", LAUNCH]);
+    assert_eq!(out.status.code(), Some(2));
+    let error = motion_engine::import(LAUNCH).expect_err("not a project");
+    assert_eq!(stderr(&out), error_line(&error));
 }

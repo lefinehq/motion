@@ -1,0 +1,22 @@
+[package]
+name = "motion-import"
+description = "Reads `.aep` projects into a typed, lossless model, and reports what it could not decode yet."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+motion-format = { path = "../motion-format" }
+binrw.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true

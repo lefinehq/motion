@@ -1,0 +1,18 @@
+---
+source: crates/motion-import/src/../tests/unit/tree.rs
+expression: sample_project().to_string()
+---
+project 94.9, 8 bits per channel
+folder 1 "Scenes"
+  composition 2 "Main" 1920x1080, 29.97 fps, 4s, work area 0s-4s
+    layer 10 "Title" text, 0s-4s, parent 11, 3d
+      ADBE Text Properties
+        ADBE Text Document = opaque text_document
+      ADBE Effect Parade
+        ADBE Slider Control "Speed" (off)
+          ADBE Slider Control-0001 = 2
+      ADBE Transform Group
+        ADBE Position = [960, 540.5, 0]
+        ADBE Opacity: 2 keyframes 0.5s-1.25s, expression (off) "wiggle(1, 0.1)" ...
+    layer 11 "Ctrl" av, 0s-4s, source 3, null
+footage 3 "Red Solid" solid [1, 0, 0, 1] 100x100, 0 fps, 0s

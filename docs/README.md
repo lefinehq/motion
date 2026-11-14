@@ -20,6 +20,7 @@ Read these in order. Each one takes about five minutes.
 Reference:
 
 - [Glossary](glossary.md): the words we use and what they mean.
+- [`.aep` import](design/aep-import.md): what the project reader decodes, what it keeps opaque, and how to add a decoder.
 - [Research: baselines, 2026-11-13](research/2026-11-13-baselines.md): the measurements behind our goals.
 - [Research: quality measurement, 2026-11-13](research/2026-11-13-quality-measurement.md): how quality is measured elsewhere, and what we should adopt.
 

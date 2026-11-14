@@ -179,7 +179,7 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Variants are where most of the repetitive work is.
   - Real projects give exact ground truth for testing.
 
-### D24. Import through an exporter inside the desktop tool
+### D24. Import through an exporter inside the desktop tool (replaced by D30)
 
 - **Decision:** an exporter runs inside the desktop tool and uses its documented scripting API. A direct `.aep` reader comes later, after a legal review.
 - **Why:**
@@ -230,6 +230,17 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Ten crates for a reader, a checker and an editor was more structure than code: every change crossed several manifests.
   - Long comments repeated the code and went stale with it.
   - The renderer, encoder and importer will be crates of their own, because they bring heavy dependencies.
+
+### D30. Read `.aep` projects directly
+
+- **Decision:** motion reads `.aep` project files itself, with no desktop tool installed and no exporter. This replaces D24.
+  - The reader works from the files alone and from public format notes, never from the desktop tool's code.
+  - Whatever the reader cannot decode yet stays in the model as an opaque value with its reason, and the import report lists it. Nothing is dropped silently.
+  - Binary records are read with `binrw`, the binary counterpart of the text grammars in D28.
+- **Why:**
+  - Designers and agents can import a project on any machine, including servers where the desktop tool cannot run.
+  - Reading a file format for interoperability is well established, and the format is already documented in the open.
+  - The report makes the gap measurable, so support grows by how often a feature appears in real projects.
 
 ## Open questions
 

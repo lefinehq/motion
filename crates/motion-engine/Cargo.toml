@@ -1,6 +1,6 @@
 [package]
 name = "motion-engine"
-description = "Runs motion end to end: one session per scene file, every step logged and timed, and the stderr subscriber that shows it."
+description = "Runs motion end to end: one session per scene file, the import of `.aep` projects, every step logged and timed, and the stderr subscriber that shows it."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,6 +13,7 @@ motion-format = { path = "../motion-format" }
 motion-scene = { path = "../motion-scene" }
 motion-query = { path = "../motion-query" }
 motion-edit = { path = "../motion-edit" }
+motion-import = { path = "../motion-import" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 

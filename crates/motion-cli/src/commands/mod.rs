@@ -4,6 +4,7 @@
 pub mod at;
 pub mod check;
 pub mod edit;
+pub mod inspect;
 
 use std::process::ExitCode;
 
