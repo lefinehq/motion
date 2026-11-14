@@ -175,9 +175,10 @@ enum Command {
         /// The scene file to write.
         #[arg(long, short, value_name = "FILE")]
         out: PathBuf,
-        /// The composition that becomes the scene, by name; by default the
-        /// one composition no other draws.
-        #[arg(long, value_name = "NAME")]
+        /// The composition that becomes the scene, by name, or by item id
+        /// (as `motion inspect` prints it) where names repeat; by default
+        /// the one composition no other draws.
+        #[arg(long, value_name = "NAME|ID")]
         comp: Option<String>,
         /// A font file or folder for the scene's `fonts`, relative to the
         /// scene file; repeat for more.

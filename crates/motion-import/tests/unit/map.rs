@@ -60,8 +60,8 @@ fn chooses_the_composition_by_name_or_refuses_to_guess() {
         ..second
     });
     let error = import(&project, &Options::default()).unwrap_err();
-    assert_eq!(error.kind, Kind::Missing);
-    assert!(error.message.contains("`Main`, `Alt`"), "{}", error.message);
+    assert_eq!(error.kind, Kind::Conflict);
+    assert!(error.expected.is_some());
     let chosen = Options {
         comp: Some("Alt".into()),
         ..Options::default()
@@ -129,4 +129,62 @@ fn a_parent_outside_the_composition_is_reported() {
             "a parent that is not in its composition (drawn without a parent)".to_owned()
         )]
     );
+}
+
+/// The sample project with a second composition called `name`, item id 4,
+/// 300 wide where the first is not.
+fn with_second(name: &str) -> Project {
+    let mut project = sample_project();
+    let mut second = project.items[1].clone();
+    if let ItemKind::Composition(composition) = &mut second.kind {
+        composition.width = 300;
+    }
+    project.items.push(Item {
+        id: 4,
+        name: name.into(),
+        ..second
+    });
+    project
+}
+
+/// The width of the scene `options` imports from `project`.
+fn width(project: &Project, options: &Options) -> String {
+    let import = import(project, options).unwrap();
+    import.json["size"]
+        .as_str()
+        .unwrap()
+        .split('x')
+        .next()
+        .unwrap()
+        .to_owned()
+}
+
+/// `--comp` set to `comp`.
+fn comp(comp: &str) -> Options {
+    Options {
+        comp: Some(comp.into()),
+        ..Options::default()
+    }
+}
+
+#[test]
+fn a_name_two_compositions_share_is_refused_and_an_id_chooses() {
+    let project = with_second("Main");
+    let error = import(&project, &comp("Main")).unwrap_err();
+    assert_eq!(error.kind, Kind::Conflict);
+    assert_eq!(
+        error.expected.as_deref(),
+        Some("one of them by its item id (`--comp <id>`)")
+    );
+    let first = project.items[1].id.to_string();
+    assert_ne!(width(&project, &comp(&first)), "300");
+    assert_eq!(width(&project, &comp("4")), "300");
+}
+
+#[test]
+fn a_name_wins_over_an_id() {
+    let project = with_second("4");
+    assert_eq!(width(&project, &comp("4")), "300");
+    let first = project.items[1].id.to_string();
+    assert_ne!(width(&project, &comp(&first)), "300");
 }

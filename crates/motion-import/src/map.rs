@@ -38,8 +38,9 @@ use keys::num;
 /// What to import.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Options {
-    /// The composition that becomes the scene, by name; by default the one
-    /// composition no other draws.
+    /// The composition that becomes the scene, by name, or by item id when
+    /// no composition has that name; by default the one composition no
+    /// other draws.
     pub comp: Option<String>,
     /// Font files and folders for the scene's `fonts`, relative to where the
     /// scene will be saved.
@@ -127,7 +128,13 @@ fn read_back(json: &Json) -> Result<Document> {
     })
 }
 
-/// The composition `name` names, or else the one composition no layer draws.
+/// How the composition to import is asked for, for its errors.
+const COMP_EXPECTED: &str =
+    "the composition to import, by name or item id (`--comp <name>`, `--comp <id>`)";
+
+/// The composition `name` names, or else the one composition no layer
+/// draws. A name is a composition's name or, when no composition is called
+/// that, its item id; a name several compositions share is refused.
 fn root<'p>(project: &'p Project, name: Option<&str>) -> Result<(&'p Item, &'p Composition)> {
     let compositions: Vec<(&Item, &Composition)> = project
         .items
@@ -143,13 +150,8 @@ fn root<'p>(project: &'p Project, name: Option<&str>) -> Result<(&'p Item, &'p C
                 .expected("a project with at least one composition"),
         );
     }
-    let names = || compositions.iter().map(|(item, _)| item.name.as_str());
     if let Some(name) = name {
-        return compositions
-            .iter()
-            .find(|(item, _)| item.name == name)
-            .copied()
-            .ok_or_else(|| Diagnostic::unknown("composition", name, names()));
+        return named(&compositions, name);
     }
     let drawn: Vec<u32> = compositions
         .iter()
@@ -163,22 +165,66 @@ fn root<'p>(project: &'p Project, name: Option<&str>) -> Result<(&'p Item, &'p C
         .collect();
     match roots.as_slice() {
         [root] => Ok(*root),
-        _ => {
-            let listed: Vec<String> = roots
-                .iter()
-                .map(|(item, _)| format!("`{}`", item.name))
-                .collect();
-            Err(Diagnostic::new(
-                Kind::Missing,
-                format!(
-                    "{} compositions are drawn by no other, so none is the scene: {}",
-                    roots.len(),
-                    listed.join(", ")
-                ),
-            )
-            .expected("the composition to import, by name (`--comp <name>`)"))
-        }
+        [] => Err(Diagnostic::new(
+            Kind::Missing,
+            "every composition is drawn by another, so none is the scene",
+        )
+        .expected(COMP_EXPECTED)),
+        several => Err(Diagnostic::new(
+            Kind::Conflict,
+            format!(
+                "{} compositions are drawn by no other, so none is the scene: {}",
+                several.len(),
+                listed(several)
+            ),
+        )
+        .expected(COMP_EXPECTED)),
     }
+}
+
+/// The one composition of `compositions` called `name`, or else whose item
+/// id `name` is.
+fn named<'p>(
+    compositions: &[(&'p Item, &'p Composition)],
+    name: &str,
+) -> Result<(&'p Item, &'p Composition)> {
+    let called: Vec<(&Item, &Composition)> = compositions
+        .iter()
+        .filter(|(item, _)| item.name == name)
+        .copied()
+        .collect();
+    let by_id = || {
+        let id: u32 = name.parse().ok()?;
+        compositions.iter().find(|(item, _)| item.id == id).copied()
+    };
+    match called.as_slice() {
+        [one] => Ok(*one),
+        [] => by_id().ok_or_else(|| {
+            Diagnostic::unknown(
+                "composition",
+                name,
+                compositions.iter().map(|(item, _)| item.name.as_str()),
+            )
+        }),
+        several => Err(Diagnostic::new(
+            Kind::Conflict,
+            format!(
+                "{} compositions are called `{name}`: {}",
+                several.len(),
+                listed(several)
+            ),
+        )
+        .expected("one of them by its item id (`--comp <id>`)")),
+    }
+}
+
+/// `compositions` by name and item id, for an error.
+fn listed(compositions: &[(&Item, &Composition)]) -> String {
+    compositions
+        .iter()
+        .map(|(item, _)| format!("`{}` (id {})", item.name, item.id))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The walk over one project, with what it has written so far.

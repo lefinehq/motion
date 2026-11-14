@@ -255,11 +255,11 @@ These are wrong today, whatever the roadmap. Each gets a test that reproduces it
 
 | Where | What happens |
 |---|---|
-| `motion-import/src/map/text.rs:215-262` | A stroked run of width 0 imports as width 1, because the import's default stroke width differs from the format's. |
+| `motion-import/src/map/text.rs:215-262` | A stroked run of width 0 imports as width 1, because the import's default stroke width differs from the format's. *Resolved in PR #39.* |
 | `motion-import/src/record.rs:249-265`, fixture `Layer-01` | The collapse switch is not decoded, and the layer "Transformations Collapsed" reads as `solo`. Either the solo bit is mislabelled or the fixture really is soloed. *Resolved in PR #40:* the fixture is soloed (its flags B byte is `0x08`). Collapse is decoded, and reported on comp layers. |
 | `motion-import/src/map/layer.rs:167-176` | A layer whose source is missing is dropped silently. The branch meant to report it can never run. *Resolved in PR #41.* |
 | `motion-import/src/map/layer.rs:236-238` | A parent outside the layer's comp is dropped with no finding. *Resolved in PR #41.* |
-| `motion-import/src/map.rs:114-165` | `--comp` takes the first comp with a matching name, even when two have it. |
+| `motion-import/src/map.rs:114-165` | `--comp` takes the first comp with a matching name, even when two have it. *Resolved in PR #43.* |
 | `motion-edit/src/apply.rs:14, 59` | A layer with the id `scene` cannot be edited. *Folded into D43:* the address grammar decides how the scene itself is named. |
 | `motion-engine/src/diff.rs:305, 325, 356` | Two `pixels()` helpers round differently, and `diff` renders outside the `render` stage. *Resolved in PR #44:* every frame the engine draws goes through `Session::draw`. (They rounded alike, since float casts saturate; the second was only a copy.) |
 
