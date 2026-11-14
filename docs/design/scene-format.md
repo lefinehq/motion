@@ -271,6 +271,8 @@ The layer's box is the box its lines cover, which for point text starts above an
 | `space-after` | paragraph | a number of px |
 | `auto-leading` | paragraph | a number, at least 0 |
 
+`faux-bold` thickens the glyphs and adds 30 thousandths of an em after each character, the space the project files' own layouts give it.
+
 ### Text animators
 
 `animate` on a text layer lists animators. An animator's key holds its selectors, and its other keys are what it applies: each part of the text takes those values scaled by how much the selectors choose it. An animator applies only the properties it sets or animates.

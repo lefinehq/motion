@@ -28,6 +28,13 @@ pub struct StyledText {
 /// The size of synthesised small capitals when nothing says otherwise.
 pub const SMALL_CAPS_SCALE: f64 = 0.7;
 
+/// The space faux bold adds after each character, in thousandths of an em,
+/// as tracking does: the thickened glyphs need room. Measured against a
+/// project's stored layout of a 55 px faux bold title, whose three lines it
+/// fits within 1.2 px (from 5 to 15 px narrow without it); see the research
+/// note on the first sample's fidelity.
+pub const FAUX_BOLD_TRACKING: f64 = 30.0;
+
 impl StyledText {
     /// `text` in one character style, every paragraph in the default
     /// paragraph style, as point text.
@@ -157,7 +164,8 @@ pub struct CharacterStyle {
     pub baseline_shift: f64,
     /// Capitals.
     pub caps: Caps,
-    /// Whether a bold is synthesised; recorded for the renderer.
+    /// Whether a bold is synthesised: layout adds [`FAUX_BOLD_TRACKING`]
+    /// after each character, and the renderer thickens the glyphs.
     pub faux_bold: bool,
     /// Whether an italic is synthesised; recorded for the renderer.
     pub faux_italic: bool,

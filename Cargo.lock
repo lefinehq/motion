@@ -893,7 +893,9 @@ name = "motion-raster"
 version = "0.0.0"
 dependencies = [
  "fearless_simd",
+ "kurbo",
  "motion-format",
+ "peniko",
  "png",
  "proptest",
  "rstest",
@@ -919,6 +921,7 @@ version = "0.0.0"
 dependencies = [
  "insta",
  "kurbo",
+ "linebender_resource_handle",
  "motion-format",
  "motion-import",
  "parlance",

@@ -46,6 +46,8 @@ derive_more = { version = "2", features = [
   "into",
 ] }
 kurbo = { version = "0.13", features = ["serde"] }
+# Paint and font vocabulary shared with the rasteriser (D37).
+peniko = { version = "0.6", default-features = false, features = ["std"] }
 rstest = { version = "0.28", default-features = false }
 pretty_assertions = "1"
 # Text layout and shaping (D33). No system fonts: fonts come from given files.
@@ -54,6 +56,8 @@ parley = { version = "0.13", default-features = false, features = ["std"] }
 parlance = { version = "0.1", default-features = false, features = ["std"] }
 # Font tables: names, metrics and glyph ids.
 skrifa = "0.49"
+# The font bytes type the shaper and the rasteriser share (D37: vocabulary).
+linebender_resource_handle = "0.1"
 # The CPU rasteriser (D2, D34); here only to check that font data types agree.
 vello_cpu = "0.4"
 
