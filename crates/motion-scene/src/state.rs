@@ -23,8 +23,8 @@ pub struct NodeState {
 
 impl NodeState {
     /// The value of `prop`.
-    pub fn get(&self, prop: Prop) -> Value {
-        self.values[prop.index()]
+    pub fn get(&self, prop: Prop) -> &Value {
+        &self.values[prop.index()]
     }
 
     /// The value of a number property.

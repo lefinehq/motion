@@ -80,7 +80,7 @@ impl Layer {
         self.values
             .iter()
             .find(|(p, _)| *p == prop)
-            .map(|(_, v)| *v)
+            .map(|(_, v)| v.clone())
     }
 
     /// Where `prop` rests on this layer: the value it sets, else the

@@ -466,7 +466,16 @@ fn easing(written: Option<&EasingDoc>, target: Target) -> Result<Easing> {
         None => Ok(Easing::All(Curve::Linear)),
         Some(EasingDoc::One(curve)) => Ok(Easing::All(curve.parse()?)),
         Some(EasingDoc::Each(curves)) => {
-            let dims = target.value_type().dims();
+            let Some(dims) = target.value_type().dims() else {
+                return Err(Diagnostic::new(
+                    Kind::Invalid,
+                    format!(
+                        "`{}` is a path, so one curve eases every vertex together",
+                        target.name()
+                    ),
+                )
+                .expected("one curve"));
+            };
             if target.prop.spec().spatial && target.component.is_none() {
                 return Err(Diagnostic::new(
                     Kind::Invalid,
@@ -654,7 +663,7 @@ fn entrance_conflict(
     let rest = |target: Target| {
         let whole = match (layer.value(target.prop), &target.prop.spec().rest) {
             (Some(value), _) => value,
-            (None, Rest::Value(value)) => *value,
+            (None, Rest::Value(value)) => value.clone(),
             (None, Rest::At) => target.prop.spec().rest(&layer.at, extent?, (0.0, 0.0)),
             (None, Rest::BoxCentre) => {
                 target

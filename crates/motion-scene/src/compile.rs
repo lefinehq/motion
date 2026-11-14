@@ -186,7 +186,7 @@ fn property_track(prop: Prop, rest: Value, written: &[Written], fps: f64) -> Pro
             None => Track::constant(rest),
         });
     }
-    let components = (0..spec.ty.dims()).map(|i| {
+    let components = (0..spec.components.len()).map(|i| {
         let keys = match mine.iter().find(|w| w.target.component == Some(i)) {
             Some(w) => w.keys.clone(),
             None => match whole {
@@ -215,7 +215,7 @@ fn entrance_keys(behaviour: &Behaviour, from: Start, rest: Value, fps: f64) -> V
     vec![
         KeySpec {
             frame: start,
-            value: from.resolve(rest, behaviour.distance),
+            value: from.resolve(&rest, behaviour.distance),
             easing: Easing::All(behaviour.curve),
             path: None,
         },
@@ -230,7 +230,7 @@ fn anim_keys(track: &AnimTrack, fps: f64) -> Vec<KeySpec> {
         .iter()
         .map(|k| KeySpec {
             frame: k.time.to_frames(fps),
-            value: k.value,
+            value: k.value.clone(),
             easing: k.easing.clone(),
             path: k.path,
         })

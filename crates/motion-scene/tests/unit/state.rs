@@ -12,9 +12,9 @@ fn state(scale: f64, rotate: f64) -> NodeState {
         y: Coord::Px(300.0),
     };
     let values: Vec<Value> = Prop::all()
-        .map(|p| match p {
-            Prop::SCALE => Value::Point([scale, scale]),
-            Prop::ROTATE => Value::Number(rotate),
+        .map(|p| match p.name() {
+            "scale" => Value::Point([scale, scale]),
+            "rotate" => Value::Number(rotate),
             _ => p.spec().rest(&at, (1920.0, 1080.0), (100.0, 50.0)),
         })
         .collect();
@@ -68,7 +68,7 @@ fn the_edge_getters_read_from_bounds() {
 #[test]
 fn getters_read_the_value_of_a_property() {
     let s = state(2.0, 45.0);
-    assert_eq!(s.get(Prop::SCALE), Value::Point([2.0, 2.0]));
+    assert_eq!(s.get(Prop::SCALE), &Value::Point([2.0, 2.0]));
     assert_eq!(
         (s.point(Prop::SCALE), s.number(Prop::ROTATE)),
         ([2.0, 2.0], 45.0)
