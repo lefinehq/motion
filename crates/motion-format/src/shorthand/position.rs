@@ -1,7 +1,7 @@
 //! The `at` shorthand: where a layer's centre sits, as `"<x> <y>"`.
 //!
 //! Part of step 1 (Read): parses a layer's `at` string into a [`Position`].
-//! Step 2 resolves `center` against the canvas.
+//! Step 2 resolves `center` against the canvas, with [`Coord::resolve`].
 
 use std::fmt;
 use std::str::FromStr;
@@ -26,6 +26,17 @@ pub enum Coord {
     Px(f64),
 }
 
+impl Coord {
+    /// The coordinate in pixels on an axis `extent` pixels long: `center`
+    /// is half of it.
+    pub fn resolve(self, extent: f64) -> f64 {
+        match self {
+            Coord::Center => extent / 2.0,
+            Coord::Px(v) => v,
+        }
+    }
+}
+
 impl fmt::Display for Coord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -42,6 +53,35 @@ pub struct Position {
     pub x: Coord,
     /// Vertical coordinate.
     pub y: Coord,
+}
+
+/// One axis of the canvas, and of a [`Position`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis {
+    /// Horizontal, left to right.
+    X,
+    /// Vertical, top to bottom.
+    Y,
+}
+
+impl Position {
+    /// The coordinate on `axis`.
+    pub fn along(&self, axis: Axis) -> Coord {
+        match axis {
+            Axis::X => self.x,
+            Axis::Y => self.y,
+        }
+    }
+
+    /// The coordinate on `axis` in pixels, on a canvas of `canvas` (width,
+    /// height) pixels.
+    pub fn resolve(&self, axis: Axis, (width, height): (f64, f64)) -> f64 {
+        let extent = match axis {
+            Axis::X => width,
+            Axis::Y => height,
+        };
+        self.along(axis).resolve(extent)
+    }
 }
 
 impl FromStr for Position {

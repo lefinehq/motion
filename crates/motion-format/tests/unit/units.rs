@@ -1,6 +1,7 @@
 //! Unit tests for `src/units.rs`.
 
 use super::*;
+use motion_diagnostic::Kind;
 
 #[test]
 fn time_parses_frames_and_seconds() {
@@ -99,7 +100,7 @@ fn size_parses_presets_and_explicit_pixels() {
             .parse::<Size>()
             .unwrap_err()
             .to_string()
-            .contains("`720p`, `1080p`, `4k`, `square`, `vertical` or `<width>x<height>`")
+            .contains("one of 720p, 1080p, 4k, square, vertical, or <width>x<height>")
     );
 }
 #[test]
@@ -147,12 +148,31 @@ fn size_rejects_malformed_explicit_sizes() {
 }
 
 #[test]
-fn size_expected_lists_every_named_size_in_order() {
-    let names: Vec<String> = SIZES.iter().map(|(name, _)| format!("`{name}`")).collect();
-    let listed = format!("{} or `<width>x<height>`", names.join(", "));
-    assert_eq!(SIZE_EXPECTED, listed);
+fn unknown_size_lists_every_named_size_in_order() {
+    let e = "8k".parse::<Size>().unwrap_err();
+    assert_eq!(e.kind, Kind::UnknownName);
+    let names: Vec<&str> = SIZES.iter().map(|(name, _)| *name).collect();
+    assert_eq!(
+        e.to_string(),
+        format!(
+            "unknown size `8k`; expected one of {}, or <width>x<height>",
+            names.join(", ")
+        )
+    );
     for (name, size) in SIZES {
         assert_eq!(name.parse::<Size>().unwrap(), *size);
+    }
+}
+
+#[test]
+fn malformed_explicit_size_gives_the_explicit_form() {
+    for bad in ["640x", "640x0", "1x2x3", "+640x0"] {
+        let e = bad.parse::<Size>().unwrap_err();
+        assert_eq!(e.kind, Kind::Syntax, "{bad}");
+        assert_eq!(
+            e.to_string(),
+            format!("`{bad}` is not a valid size; expected {EXPLICIT_EXPECTED}")
+        );
     }
 }
 

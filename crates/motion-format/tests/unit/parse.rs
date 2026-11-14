@@ -64,7 +64,7 @@ fn null_is_never_a_left_out_key() {
     let scene = |kv: &str| msg(&format!(r#"{{"motion":1,"dur":"1s","layers":[],{kv}}}"#));
     assert_eq!(
         scene(r#""size":null"#),
-        "size: invalid type: null; expected `720p`, `1080p`, `4k`, `square`, `vertical` or `<width>x<height>`"
+        "size: invalid type: null; expected a size name such as `1080p`, or `<width>x<height>`"
     );
     assert_eq!(
         scene(r#""fps":null"#),
@@ -122,7 +122,7 @@ fn wrong_types_name_what_was_found_and_the_accepted_form() {
     );
     assert_eq!(
         msg(r#"{"motion":1,"dur":"1s","size":3,"layers":[]}"#),
-        "size: invalid type: integer `3`; expected `720p`, `1080p`, `4k`, `square`, `vertical` or `<width>x<height>`"
+        "size: invalid type: integer `3`; expected a size name such as `1080p`, or `<width>x<height>`"
     );
     assert_eq!(
         msg(r#"{"motion":1,"dur":"1s","bg":0,"layers":[]}"#),

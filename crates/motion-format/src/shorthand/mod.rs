@@ -14,5 +14,5 @@ mod rect;
 
 pub use behaviour::Behaviour;
 pub use font::Font;
-pub use position::{Coord, Position};
+pub use position::{Axis, Coord, Position};
 pub use rect::RectShape;

@@ -25,23 +25,24 @@
 //!
 //! # Adding a rule
 //!
-//! 1. Create `rules/<name>.rs` with a `pub(super) const RULE: Rule`, a
+//! 1. Add the rule's [`Code`] variant and its name in `report.rs`.
+//! 2. Create `rules/<name>.rs` with a `pub(super) const RULE: Rule`, a
 //!    function `fn(&NodeState, &SceneGraph) -> Option<Overshoot>` that
 //!    returns `None` when the node is fine on that frame, and the areas its
 //!    fix hint aims at (see [`Rule::areas`]).
-//! 2. Declare the module below and add `<name>::RULE` to [`RULES`]. Order
+//! 3. Declare the module below and add `<name>::RULE` to [`RULES`]. Order
 //!    matters: it is the order of lines in the report.
-//! 3. If the rule would only repeat a bigger problem, set `suppressed_by` to
+//! 4. If the rule would only repeat a bigger problem, set `suppressed_by` to
 //!    the code of that rule so the report stays short. That rule must be
 //!    listed EARLIER in [`RULES`], because `check` only knows about rules
 //!    that already ran for the node.
-//! 4. Add unit tests next to the rule and a scene test in `check.rs`.
+//! 5. Add unit tests next to the rule and a scene test in `check.rs`.
 
 mod bounds;
 
-use crate::report::Severity;
+use crate::report::{Code, Severity};
 use motion_eval::NodeState;
-use motion_format::property::names;
+use motion_format::property::Prop;
 use motion_scene::SceneGraph;
 
 /// A rule's finding on one frame.
@@ -53,12 +54,12 @@ pub(crate) struct Overshoot {
 
 /// A rule that can be run on a node at one frame.
 pub(crate) struct Rule {
-    /// The short name shown in reports.
-    pub code: &'static str,
+    /// Which rule this is; its name is what reports show.
+    pub code: Code,
     /// How serious a violation of this rule is.
     pub severity: Severity,
-    /// If a node has a violation with this code, this rule is skipped for it.
-    pub suppressed_by: Option<&'static str>,
+    /// The rule whose violation on a node makes this one skip that node.
+    pub suppressed_by: Option<Code>,
     /// The test itself.
     pub evaluate: fn(&NodeState, &SceneGraph) -> Option<Overshoot>,
     /// The rule's area and the area its fix hint aims at, as
@@ -82,7 +83,7 @@ const INVISIBLE: f64 = 0.0;
 
 /// Whether rules look at `node` on this frame.
 pub(crate) fn visible(node: &NodeState) -> bool {
-    node.get(names::OPACITY) > INVISIBLE
+    node.get(Prop::OPACITY) > INVISIBLE
 }
 
 /// An axis-aligned rectangle as `(left, top, right, bottom)`.

@@ -2,7 +2,7 @@
 //! through a whole scene.
 
 use super::*;
-use crate::property::property;
+use crate::property::Prop;
 use crate::{parse_document, scene_from_value};
 use motion_diagnostic::Kind;
 use serde_json::{Value, json};
@@ -53,8 +53,8 @@ fn default_curve_is_linear() {
 #[test]
 fn bare_numbers_are_frames_and_order_follows_object() {
     let t = anim(json!({"y": [[2, 1]], "x": [[0, 1], [4.5, 2]]})).unwrap();
-    assert_eq!(t[0].property, property("y").unwrap().0);
-    assert_eq!(t[1].property, property("x").unwrap().0);
+    assert_eq!(t[0].property, Prop::Y);
+    assert_eq!(t[1].property, Prop::X);
     assert_eq!(t[1].keys[1].time, Time::Frames(4.5));
 }
 

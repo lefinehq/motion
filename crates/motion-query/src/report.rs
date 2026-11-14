@@ -25,13 +25,39 @@ impl fmt::Display for Severity {
     }
 }
 
+/// Which rule found a violation: the typed identity of a rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Code {
+    /// A visible node leaves the canvas.
+    Offscreen,
+    /// A visible node leaves the title-safe area.
+    Unsafe,
+}
+
+impl Code {
+    /// The short name shown in reports, such as `offscreen`.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Code::Offscreen => "offscreen",
+            Code::Unsafe => "unsafe",
+        }
+    }
+}
+
+impl fmt::Display for Code {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
 /// One problem found on a node, merged over a run of consecutive frames.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Violation {
     /// How serious the problem is.
     pub severity: Severity,
-    /// The short name of the rule that found it, such as `offscreen`.
-    pub code: &'static str,
+    /// The rule that found it; prints as its short name, such as
+    /// `offscreen`.
+    pub code: Code,
     /// The layer id the problem is on.
     pub id: String,
     /// The first frame of the run.

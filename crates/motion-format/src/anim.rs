@@ -15,6 +15,7 @@ use winnow::combinator::{opt, peek, preceded};
 use winnow::prelude::*;
 
 use crate::Curve;
+use crate::property::Prop;
 use crate::units::{Time, amount, unit};
 
 /// The accepted forms of a track, for error messages.
@@ -48,8 +49,8 @@ pub struct AnimKey {
 /// The keys of one property.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnimTrack {
-    /// Index into [`PROPERTIES`](crate::property::PROPERTIES).
-    pub property: usize,
+    /// The property the track animates.
+    pub property: Prop,
     /// Keys in non-decreasing time order; never empty.
     pub keys: Vec<AnimKey>,
 }

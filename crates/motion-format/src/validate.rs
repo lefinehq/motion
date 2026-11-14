@@ -23,7 +23,7 @@ use crate::parse::key::{
     ANIM, AT, BG, DUR, FILL, FONT, FPS, ID, IN, LAYERS, MOTION, PRESETS, RECT, SIZE,
 };
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
-use crate::property::{PROPERTIES, PropertySpec, property, property_names};
+use crate::property::{Prop, PropertySpec, property_names};
 use crate::shorthand::{Behaviour, Coord, Font, Position};
 use crate::units::{Color, Size, TIME_EXPECTED, Time};
 use crate::{Content, Curve, Layer, Scene, fmt_num};
@@ -272,20 +272,17 @@ fn anim(tracks: &AnimDoc, fps: f64) -> Result<Vec<AnimTrack>> {
 
 /// One track: a known property, and keys in its range and in time order.
 fn track(name: &str, doc: &TrackDoc, fps: f64) -> Result<AnimTrack> {
-    let (index, spec) = known_property(name)?;
+    let property = known_property(name)?;
     let keys = match doc {
-        TrackDoc::Line(text) => line(text, spec, fps)?,
-        TrackDoc::Keys(keys) => key_list(keys, spec, fps)?,
+        TrackDoc::Line(text) => line(text, property.spec(), fps)?,
+        TrackDoc::Keys(keys) => key_list(keys, property.spec(), fps)?,
     };
-    Ok(AnimTrack {
-        property: index,
-        keys,
-    })
+    Ok(AnimTrack { property, keys })
 }
 
 /// Looks `name` up in the property registry.
-fn known_property(name: &str) -> Result<(usize, &'static PropertySpec)> {
-    property(name).ok_or_else(|| Diagnostic::unknown("property", name, property_names()))
+fn known_property(name: &str) -> Result<Prop> {
+    Prop::named(name).ok_or_else(|| Diagnostic::unknown("property", name, property_names()))
 }
 
 /// The string form: both values in range, and a range that runs forward.
@@ -420,22 +417,22 @@ fn preset(name: &str, body: &PresetDoc) -> Result<PresetSpec> {
 /// absolute start obeys the property's range, like an `anim` key; a
 /// distance in pixels means nothing for a bounded property such as opacity,
 /// and would leave its range.
-fn preset_start(prop: &str, start: Start) -> Result<(usize, Start)> {
-    let (index, spec) = known_property(prop)?;
+fn preset_start(name: &str, start: Start) -> Result<(Prop, Start)> {
+    let prop = known_property(name)?;
     match start {
         Start::Value(v) => {
-            in_range(v, spec)?;
+            in_range(v, prop.spec())?;
         }
-        Start::Plus | Start::Minus if spec.range.is_some() => {
+        Start::Plus | Start::Minus if prop.spec().range.is_some() => {
             return Err(Diagnostic::new(
                 Kind::OutOfRange,
-                format!("`{prop}` has a fixed range, so it cannot start at a distance"),
+                format!("`{name}` has a fixed range, so it cannot start at a distance"),
             )
             .expected("a number within its range, e.g. 0"));
         }
         Start::Plus | Start::Minus => {}
     }
-    Ok((index, start))
+    Ok((prop, start))
 }
 
 /// Rejects an `anim` track for a property the `in` preset already animates:
@@ -456,7 +453,7 @@ fn entrance_conflict(layer: &Layer, stage: &Stage, written: &AnimDoc) -> Result<
     else {
         return Ok(());
     };
-    let name = PROPERTIES[track.property].name;
+    let name = track.property.name();
     let canvas = (f64::from(stage.size.width), f64::from(stage.size.height));
     let expansion = expand_as_anim(spec, behaviour, &layer.at, canvas, stage.fps, written);
     Err(Diagnostic::new(

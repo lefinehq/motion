@@ -4,10 +4,10 @@
 //! and turns each layer's entrance and `anim` keys into one keyframe track per
 //! property, with times in frames.
 
-use motion_format::preset::Start;
-use motion_format::property::names;
-use motion_format::property::{PROPERTIES, property};
-use motion_format::shorthand::Coord;
+use motion_format::anim::AnimTrack;
+use motion_format::preset::{PresetSpec, Start};
+use motion_format::property::{PROPERTIES, Prop};
+use motion_format::shorthand::Behaviour;
 use motion_format::{Content, Curve, Layer, Scene};
 
 use tracing::{debug_span, field};
@@ -24,28 +24,11 @@ pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
     let _entered = span.enter();
     let width = f64::from(scene.size.width);
     let height = f64::from(scene.size.height);
-    let nodes = scene
+    let nodes: Vec<Node> = scene
         .layers
         .iter()
-        .map(|layer| {
-            let (kind, w, h) = match &layer.content {
-                Content::Text { text, font } => {
-                    let (w, h) = measure.measure(text, font);
-                    (NodeKind::Text, w, h)
-                }
-                Content::Rect(r) => (NodeKind::Rect, r.width, r.height),
-            };
-            let (tracks, follows_at) = tracks(layer, scene, (width, height));
-            Node {
-                id: layer.id.clone(),
-                kind,
-                width: w,
-                height: h,
-                tracks,
-                follows_at,
-            }
-        })
-        .collect::<Vec<Node>>();
+        .map(|layer| node(layer, scene, (width, height), measure))
+        .collect();
     // Counting walks every track, so it is done only when someone listens.
     if !span.is_disabled() {
         let animated = nodes
@@ -64,97 +47,108 @@ pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
     }
 }
 
-/// Turns a coordinate into pixels; `center` is half the canvas extent.
-fn resolve(c: Coord, extent: f64) -> f64 {
-    match c {
-        Coord::Center => extent / 2.0,
-        Coord::Px(v) => v,
+/// Compiles one layer: its box, measured for text, and its tracks.
+fn node(layer: &Layer, scene: &Scene, canvas: (f64, f64), measure: &dyn TextMeasure) -> Node {
+    let (kind, width, height) = match &layer.content {
+        Content::Text { text, font } => {
+            let (w, h) = measure.measure(text, font);
+            (NodeKind::Text, w, h)
+        }
+        Content::Rect(r) => (NodeKind::Rect, r.width, r.height),
+    };
+    let entrance = entrance(layer, scene);
+    Node {
+        id: layer.id.clone(),
+        kind,
+        width,
+        height,
+        tracks: tracks(layer, entrance, canvas, scene.fps),
+        follows_at: (
+            follows_at(layer, entrance, Prop::X),
+            follows_at(layer, entrance, Prop::Y),
+        ),
     }
 }
 
-/// Builds the tracks of `layer`, parallel to [`PROPERTIES`], and whether
-/// `(x, y)` still follow `at`.
-fn tracks(layer: &Layer, scene: &Scene, canvas: (f64, f64)) -> (Vec<Track>, (bool, bool)) {
-    let fps = scene.fps;
-    let index_of = |name: &str| property(name).map(|(i, _)| i);
-    // `at` sets the resting x and y.
-    let (x_at, y_at) = (index_of(names::X), index_of(names::Y));
-    // Resting values: `at` for the two position properties, the registry
-    // default for the rest.
+/// The layer's entrance with the preset it performs. A missing preset is
+/// impossible after parsing, which checks the name.
+fn entrance<'s>(layer: &'s Layer, scene: &'s Scene) -> Option<(&'s Behaviour, &'s PresetSpec)> {
+    let behaviour = layer.enter.as_ref()?;
+    scene
+        .preset(&behaviour.preset)
+        .map(|spec| (behaviour, spec))
+}
+
+/// Builds the tracks of `layer`, parallel to [`PROPERTIES`]: each property
+/// rests at its resting value, the entrance moves the properties its preset
+/// names, and `anim` sets its own.
+fn tracks(
+    layer: &Layer,
+    entrance: Option<(&Behaviour, &PresetSpec)>,
+    canvas: (f64, f64),
+    fps: f64,
+) -> Vec<Track> {
     let rest: Vec<f64> = PROPERTIES
         .iter()
-        .enumerate()
-        .map(|(i, spec)| {
-            if Some(i) == x_at {
-                resolve(layer.at.x, canvas.0)
-            } else if Some(i) == y_at {
-                resolve(layer.at.y, canvas.1)
-            } else {
-                spec.default
-            }
-        })
+        .map(|spec| spec.rest(&layer.at, canvas))
         .collect();
     let mut tracks: Vec<Track> = rest.iter().map(|&v| Track::constant(v)).collect();
-
-    // The entrance: every property the preset names runs from its start
-    // value to its resting value.
-    // A missing preset is impossible after parsing, which checks the name.
-    let entrance = layer
-        .enter
-        .as_ref()
-        .and_then(|b| scene.preset(&b.preset).map(|spec| (b, spec)));
-    if let Some((b, spec)) = entrance {
-        let start = b.start.to_frames(fps);
-        let end = start + b.duration.to_frames(fps);
+    if let Some((behaviour, spec)) = entrance {
         for &(prop, from) in &spec.props {
-            let rest = rest[prop];
-            let from = match from {
-                Start::Value(v) => v,
-                Start::Plus => rest + b.distance,
-                Start::Minus => rest - b.distance,
-            };
-            tracks[prop] = Track::new(vec![
-                Key {
-                    frame: start,
-                    value: from,
-                    curve: b.curve,
-                },
-                Key {
-                    frame: end,
-                    value: rest,
-                    curve: Curve::Linear,
-                },
-            ]);
+            tracks[prop.index()] = entrance_track(behaviour, from, rest[prop.index()], fps);
         }
     }
-
     // The parser rejects an `anim` track for a property the entrance also
     // animates, so this override only matters for scenes built in code.
-    for a in &layer.anim {
-        let keys = a
-            .keys
-            .iter()
-            .map(|k| Key {
-                frame: k.time.to_frames(fps),
-                value: k.value,
-                curve: k.curve,
-            })
-            .collect();
-        tracks[a.property] = Track::new(keys);
+    for track in &layer.anim {
+        tracks[track.property.index()] = anim_track(track, fps);
     }
-    // An axis stops following `at` when `anim` drives it, or when the
-    // entrance starts it at an absolute value: only the end of that track
-    // moves with `at`, so shifting `at` cannot bring the start into view.
-    let follows = |axis: Option<usize>| {
-        let by_anim = layer.anim.iter().any(|a| Some(a.property) == axis);
-        let by_start = entrance.is_some_and(|(_, spec)| {
-            spec.props
-                .iter()
-                .any(|&(p, s)| Some(p) == axis && matches!(s, Start::Value(_)))
-        });
-        !by_anim && !by_start
-    };
-    (tracks, (follows(x_at), follows(y_at)))
+    tracks
+}
+
+/// One property of an entrance: from its start to `rest`, over the
+/// behaviour's frames and with its curve.
+fn entrance_track(behaviour: &Behaviour, from: Start, rest: f64, fps: f64) -> Track {
+    let (start, end) = behaviour.frames(fps);
+    Track::new(vec![
+        Key {
+            frame: start,
+            value: from.resolve(rest, behaviour.distance),
+            curve: behaviour.curve,
+        },
+        Key {
+            frame: end,
+            value: rest,
+            curve: Curve::Linear,
+        },
+    ])
+}
+
+/// An `anim` track with its times in frames.
+fn anim_track(track: &AnimTrack, fps: f64) -> Track {
+    let keys = track
+        .keys
+        .iter()
+        .map(|k| Key {
+            frame: k.time.to_frames(fps),
+            value: k.value,
+            curve: k.curve,
+        })
+        .collect();
+    Track::new(keys)
+}
+
+/// Whether `axis` still follows `at`. It stops when `anim` drives it, or
+/// when the entrance starts it at an absolute value: only the end of that
+/// track moves with `at`, so shifting `at` cannot bring the start into view.
+fn follows_at(layer: &Layer, entrance: Option<(&Behaviour, &PresetSpec)>, axis: Prop) -> bool {
+    let by_anim = layer.anim.iter().any(|track| track.property == axis);
+    let by_start = entrance.is_some_and(|(_, spec)| {
+        spec.props
+            .iter()
+            .any(|&(prop, start)| prop == axis && matches!(start, Start::Value(_)))
+    });
+    !by_anim && !by_start
 }
 
 #[cfg(test)]

@@ -1,6 +1,17 @@
 //! Unit tests for `src/shorthand/position.rs`.
 
 use super::*;
+
+#[test]
+fn coordinates_resolve_against_the_canvas() {
+    assert_eq!(Coord::Center.resolve(1080.0), 540.0);
+    assert_eq!(Coord::Px(-20.0).resolve(1080.0), -20.0);
+    let p = "center 260".parse::<Position>().unwrap();
+    assert_eq!(p.along(Axis::Y), Coord::Px(260.0));
+    assert_eq!(p.resolve(Axis::X, (1920.0, 1080.0)), 960.0);
+    assert_eq!(p.resolve(Axis::Y, (1920.0, 1080.0)), 260.0);
+}
+
 #[test]
 fn position_parses_center_and_pixels() {
     let p = "center 260".parse::<Position>().unwrap();

@@ -270,12 +270,12 @@ impl<'de> Deserialize<'de> for StartDoc {
     /// A number, `"+d"` or `"-d"`. Any other string is the right type with
     /// the wrong content, so it is an invalid value, not a wrong type.
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        const EXPECTED: &str = r#"a number, "+d" or "-d""#;
-        match deserializer.deserialize_any(ScalarVisitor(EXPECTED))? {
+        let expected = Start::form();
+        match deserializer.deserialize_any(ScalarVisitor(expected))? {
             Scalar::Number(n) => Ok(StartDoc(Start::Value(n))),
             Scalar::Text(text) => Start::distance(&text)
                 .map(StartDoc)
-                .ok_or_else(|| de::Error::invalid_value(Unexpected::Str(&text), &EXPECTED)),
+                .ok_or_else(|| de::Error::invalid_value(Unexpected::Str(&text), &expected)),
         }
     }
 }

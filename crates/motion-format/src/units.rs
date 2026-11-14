@@ -7,9 +7,9 @@ use std::fmt;
 use std::str::FromStr;
 
 use motion_diagnostic::{Diagnostic, Result};
-use motion_grammar::{Failure, Parsed, number, parse_whole};
+use motion_grammar::{Failure, Parsed, number, parse_all, parse_whole};
 use winnow::ascii::digit1;
-use winnow::combinator::{alt, opt, preceded, separated_pair};
+use winnow::combinator::{alt, cut_err, eof, opt, peek, preceded, separated_pair, terminated};
 use winnow::error::ErrMode;
 use winnow::prelude::*;
 use winnow::stream::AsChar;
@@ -17,12 +17,18 @@ use winnow::token::{rest, take_while};
 
 use crate::doc::Form;
 use crate::fmt_num;
+use crate::table;
 
 pub(crate) const TIME_EXPECTED: &str = "`<number>f` or `<number>s`, e.g. `12f` or `0.4s`";
 pub(crate) const COLOR_EXPECTED: &str = "`#RGB`, `#RRGGBB` or `#RRGGBBAA`";
-/// Lists the names in [`SIZES`] in order; a unit test keeps the two in step.
-pub(crate) const SIZE_EXPECTED: &str =
-    "`720p`, `1080p`, `4k`, `square`, `vertical` or `<width>x<height>`";
+/// The accepted forms of a size, for a value that is not a string. The
+/// names are listed by the unknown-size error, which reads [`SIZES`].
+const SIZE_EXPECTED: &str = "a size name such as `1080p`, or `<width>x<height>`";
+/// The form of an explicit size, as listed after the size names.
+const EXPLICIT_FORM: &str = "<width>x<height>";
+/// The expected form of an explicit size.
+const EXPLICIT_EXPECTED: &str =
+    "`<width>x<height>`, each a whole number of pixels above zero, e.g. `1920x1080`";
 
 /// A point or length in time, in the unit the author wrote it in.
 ///
@@ -181,10 +187,7 @@ impl Size {
 
     /// Looks a size up in [`SIZES`] by name.
     fn named(name: &str) -> Option<Size> {
-        SIZES
-            .iter()
-            .find(|(n, _)| *n == name)
-            .map(|(_, size)| *size)
+        table::lookup(SIZES, name).map(|(_, size)| *size)
     }
 }
 
@@ -194,7 +197,11 @@ impl FromStr for Size {
     /// Parses a size name (`1080p`, `4k`, `square`, …) or an explicit
     /// `<width>x<height>` where both sides are above zero.
     fn from_str(text: &str) -> Result<Size> {
-        parse_whole(text, size, "size", SIZE_EXPECTED)
+        parse_all(text, size, |problem| {
+            // An explicit size names its problem once `<digits>x` is read,
+            // so a failure without one is a name that is not in the table.
+            problem.unwrap_or(SizeProblem::Unknown).diagnostic(text)
+        })
     }
 }
 
@@ -202,18 +209,50 @@ impl Form for Size {
     const FORM: &str = SIZE_EXPECTED;
 }
 
-/// A name from [`SIZES`] or `<width>x<height>`.
-fn size(input: &mut &str) -> Parsed<Size> {
+/// What is wrong with a size string.
+#[derive(Debug, Clone, Copy)]
+enum SizeProblem {
+    /// The text is not a name in [`SIZES`], nor shaped like an explicit
+    /// size.
+    Unknown,
+    /// The text starts like `<width>x`, but is not two whole numbers above
+    /// zero.
+    Explicit,
+}
+
+impl SizeProblem {
+    /// The diagnostic for `text`, which has this problem: the one place the
+    /// size grammar's failures become messages.
+    fn diagnostic(self, text: &str) -> Diagnostic {
+        match self {
+            SizeProblem::Unknown => {
+                Diagnostic::unknown("size", text, table::names(SIZES)).or_expected(EXPLICIT_FORM)
+            }
+            SizeProblem::Explicit => Diagnostic::syntax(format!("`{text}` is not a valid size"))
+                .expected(EXPLICIT_EXPECTED),
+        }
+    }
+}
+
+/// A name from [`SIZES`] or `<width>x<height>`. Once `<digits>x` is read
+/// the text is an explicit size, so its error gives that form instead of
+/// listing the names.
+fn size(input: &mut &str) -> Parsed<Size, SizeProblem> {
     alt((
         rest.verify_map(Size::named),
-        separated_pair(pixels, 'x', pixels).map(|(width, height)| Size { width, height }),
+        preceded(
+            peek((opt('+'), digit1, 'x')),
+            cut_err(terminated(separated_pair(pixels, 'x', pixels), eof))
+                .context(SizeProblem::Explicit),
+        )
+        .map(|(width, height)| Size { width, height }),
     ))
     .parse_next(input)
 }
 
 /// A whole number of pixels above zero, as `u32` reads it: an optional `+`,
 /// then digits.
-fn pixels(input: &mut &str) -> Parsed<u32> {
+fn pixels<R>(input: &mut &str) -> Parsed<u32, R> {
     preceded(opt('+'), digit1)
         .parse_to()
         .verify(|n: &u32| *n > 0)

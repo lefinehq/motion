@@ -17,6 +17,7 @@ use winnow::token::rest;
 
 use crate::doc::Form;
 use crate::fmt_num;
+use crate::table;
 
 /// The accepted forms of a curve, for a value that is not a string. The
 /// names are listed by the unknown-curve error, which reads [`NAMED_CURVES`].
@@ -59,10 +60,7 @@ pub const NAMED_CURVES: &[(&str, Curve)] = &[
 impl Curve {
     /// Looks a curve up in [`NAMED_CURVES`] by name.
     pub fn named(name: &str) -> Option<Curve> {
-        NAMED_CURVES
-            .iter()
-            .find(|(n, _)| *n == name)
-            .map(|(_, c)| *c)
+        table::lookup(NAMED_CURVES, name).map(|(_, c)| *c)
     }
 }
 
@@ -71,12 +69,10 @@ impl FromStr for Curve {
 
     /// Parses a name from [`NAMED_CURVES`] or `cubic(x1,y1,x2,y2)`.
     fn from_str(token: &str) -> Result<Curve> {
-        parse_all(token, curve, |problem| match problem {
-            None => {
-                let names = NAMED_CURVES.iter().map(|(name, _)| name);
-                Diagnostic::unknown("curve", token, names).or_expected(CUBIC_FORM)
-            }
-            Some(problem) => Diagnostic::syntax(problem.describe(token)).expected(CUBIC_EXPECTED),
+        parse_all(token, curve, |problem| {
+            // A custom curve names its problem once `cubic(` is read, so a
+            // failure without one is a name that is not in the table.
+            problem.unwrap_or(Problem::Unknown).diagnostic(token)
         })
     }
 }
@@ -85,24 +81,37 @@ impl Form for Curve {
     const FORM: &str = EXPECTED;
 }
 
-/// What is wrong with a token that starts `cubic(`.
+/// What is wrong with a curve token.
 #[derive(Debug, Clone, Copy)]
-enum Cubic {
-    /// The token does not end with the `)` that closes the arguments.
+enum Problem {
+    /// The token is not a name in [`NAMED_CURVES`], nor a custom curve.
+    Unknown,
+    /// A custom curve without the `)` that closes its arguments.
     Unclosed,
-    /// The arguments are not four numbers.
+    /// A custom curve whose arguments are not four numbers.
     Count,
-    /// `x1` or `x2` is outside 0..=1.
+    /// A custom curve with `x1` or `x2` outside 0..=1.
     XRange,
 }
 
-impl Cubic {
-    /// The message for `token`, which has this problem.
-    fn describe(self, token: &str) -> String {
+impl Problem {
+    /// The diagnostic for `token`, which has this problem: the one place
+    /// the curve grammar's failures become messages.
+    fn diagnostic(self, token: &str) -> Diagnostic {
         match self {
-            Cubic::Unclosed => format!("`{token}` is missing its closing `)`"),
-            Cubic::Count => format!("`{token}` needs four numbers"),
-            Cubic::XRange => format!("`{token}`: x1 and x2 must be between 0 and 1"),
+            Problem::Unknown => Diagnostic::unknown("curve", token, table::names(NAMED_CURVES))
+                .or_expected(CUBIC_FORM),
+            Problem::Unclosed => {
+                Diagnostic::syntax(format!("`{token}` is missing its closing `)`"))
+                    .expected(CUBIC_EXPECTED)
+            }
+            Problem::Count => {
+                Diagnostic::syntax(format!("`{token}` needs four numbers")).expected(CUBIC_EXPECTED)
+            }
+            Problem::XRange => {
+                Diagnostic::syntax(format!("`{token}`: x1 and x2 must be between 0 and 1"))
+                    .expected(CUBIC_EXPECTED)
+            }
         }
     }
 }
@@ -110,37 +119,37 @@ impl Cubic {
 /// A table name or `cubic(x1,y1,x2,y2)`. Once `cubic(` is read the token is
 /// a custom curve, so its errors say what is wrong with the arguments
 /// instead of listing the names.
-fn curve(input: &mut &str) -> Parsed<Curve, Cubic> {
+fn curve(input: &mut &str) -> Parsed<Curve, Problem> {
     alt((preceded(CUBIC_PREFIX, cut_err(cubic_arguments)), named)).parse_next(input)
 }
 
 /// A curve name: the whole token, looked up in [`NAMED_CURVES`]. Names are
 /// data, so the grammar knows none of them, nor their alphabet.
-fn named(input: &mut &str) -> Parsed<Curve, Cubic> {
+fn named(input: &mut &str) -> Parsed<Curve, Problem> {
     rest.verify_map(Curve::named).parse_next(input)
 }
 
 /// `x1,y1,x2,y2)`: what follows `cubic(`. The token must end with `)`
 /// before its arguments are read. Each step gives its own reason where it
 /// can fail, and the first reason given sticks.
-fn cubic_arguments(input: &mut &str) -> Parsed<Curve, Cubic> {
+fn cubic_arguments(input: &mut &str) -> Parsed<Curve, Problem> {
     closed
-        .context(Cubic::Unclosed)
+        .context(Problem::Unclosed)
         .and_then(arguments)
         .parse_next(input)
 }
 
 /// Everything up to and including the closing `)`, which ends the token.
-fn closed<'s>(input: &mut &'s str) -> Parsed<&'s str, Cubic> {
+fn closed<'s>(input: &mut &'s str) -> Parsed<&'s str, Problem> {
     ends_with(')').take().parse_next(input)
 }
 
 /// The four numbers and the `)` after them, with `x1` and `x2` in range.
-fn arguments(input: &mut &str) -> Parsed<Curve, Cubic> {
+fn arguments(input: &mut &str) -> Parsed<Curve, Problem> {
     terminated(separated_pair(point, ',', point), (')', eof))
-        .context(Cubic::Count)
+        .context(Problem::Count)
         .verify(x_in_range)
-        .context(Cubic::XRange)
+        .context(Problem::XRange)
         .map(|((x1, y1), (x2, y2))| Curve::Bezier(x1, y1, x2, y2))
         .parse_next(input)
 }
@@ -155,12 +164,12 @@ fn x_in_range(((x1, _), (x2, _)): &(Point, Point)) -> bool {
 type Point = (f64, f64);
 
 /// `x,y`: one control point.
-fn point(input: &mut &str) -> Parsed<Point, Cubic> {
+fn point(input: &mut &str) -> Parsed<Point, Problem> {
     separated_pair(coordinate, ',', coordinate).parse_next(input)
 }
 
 /// One number of a control point, optionally padded with spaces.
-fn coordinate(input: &mut &str) -> Parsed<f64, Cubic> {
+fn coordinate(input: &mut &str) -> Parsed<f64, Problem> {
     delimited(blank0, number, blank0).parse_next(input)
 }
 

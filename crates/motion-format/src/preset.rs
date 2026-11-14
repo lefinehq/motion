@@ -11,8 +11,9 @@ use serde_json::{Map, Value};
 
 use crate::doc::{AnimDoc, PresetsDoc};
 use crate::fmt_num;
-use crate::property::{PROPERTIES, names as prop};
-use crate::shorthand::{Behaviour, Coord, Position};
+use crate::property::Prop;
+use crate::shorthand::{Behaviour, Position};
+use crate::table;
 use crate::validate;
 
 /// The built-in presets, embedded at compile time.
@@ -35,18 +36,37 @@ pub enum Start {
 impl Start {
     /// The start a string stands for: `"+d"` or `"-d"`.
     pub(crate) fn distance(text: &str) -> Option<Start> {
-        DISTANCES
-            .iter()
-            .find(|(written, _)| *written == text)
-            .map(|(_, start)| *start)
+        table::lookup(&DISTANCES, text).map(|(_, start)| *start)
+    }
+
+    /// The accepted forms of a start, for errors: `a number, "+d" or "-d"`,
+    /// with the strings read from the table.
+    pub(crate) fn form() -> &'static str {
+        static FORM: OnceLock<String> = OnceLock::new();
+        FORM.get_or_init(|| {
+            let written: Vec<String> = table::names(&DISTANCES)
+                .map(|name| format!("\"{name}\""))
+                .collect();
+            format!("a number, {}", written.join(" or "))
+        })
+    }
+
+    /// The value a property starts at, for a property resting at `rest`
+    /// and a behaviour that travels `distance` pixels.
+    pub fn resolve(self, rest: f64, distance: f64) -> f64 {
+        match self {
+            Start::Value(v) => v,
+            Start::Plus => rest + distance,
+            Start::Minus => rest - distance,
+        }
     }
 }
 
 /// A preset: the properties it animates and where each starts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PresetSpec {
-    /// `(index into PROPERTIES, start)` in the order written.
-    pub props: Vec<(usize, Start)>,
+    /// Each property and its start, in the order written.
+    pub props: Vec<(Prop, Start)>,
 }
 
 /// The built-in presets in file order, parsed once.
@@ -67,9 +87,9 @@ pub fn builtin_presets() -> &'static [(String, PresetSpec)] {
 ///
 /// Each track runs from the preset's start value to the resting value, over
 /// the behaviour's frames and with its curve, which is what the compiler
-/// builds from `in`. The resting value is the registry default, except for
-/// the two properties `at` sets, which are resolved against `canvas`
-/// (`center` is half the size). `others` are the layer's `anim` tracks as
+/// builds from `in`. The resting value is the property's
+/// [`rest`](crate::property::PropertySpec::rest): the registry default, or
+/// the `at` axis resolved against `canvas`. `others` are the layer's `anim` tracks as
 /// written; those for properties the preset does not animate are appended
 /// unchanged, so the object can replace the whole `anim`.
 pub(crate) fn expand_as_anim(
@@ -80,25 +100,11 @@ pub(crate) fn expand_as_anim(
     fps: f64,
     others: &AnimDoc,
 ) -> String {
-    let resolve = |c: Coord, extent: f64| match c {
-        Coord::Center => extent / 2.0,
-        Coord::Px(v) => v,
-    };
-    let start = behaviour.start.to_frames(fps);
-    let end = start + behaviour.duration.to_frames(fps);
+    let (start, end) = behaviour.frames(fps);
     let mut tracks = Map::new();
-    for &(index, from) in &spec.props {
-        let property = &PROPERTIES[index];
-        let rest = match property.name {
-            n if n == prop::X => resolve(at.x, canvas.0),
-            n if n == prop::Y => resolve(at.y, canvas.1),
-            _ => property.default,
-        };
-        let from = match from {
-            Start::Value(v) => v,
-            Start::Plus => rest + behaviour.distance,
-            Start::Minus => rest - behaviour.distance,
-        };
+    for &(prop, from) in &spec.props {
+        let rest = prop.spec().rest(at, canvas);
+        let from = from.resolve(rest, behaviour.distance);
         let track = format!(
             "{} -> {} @{}-{}f {}",
             fmt_num(from),
@@ -107,7 +113,7 @@ pub(crate) fn expand_as_anim(
             fmt_num(end),
             behaviour.curve
         );
-        tracks.insert(property.name.to_owned(), Value::String(track));
+        tracks.insert(prop.name().to_owned(), Value::String(track));
     }
     for (name, track) in others {
         tracks.entry(name.as_str()).or_insert_with(|| {
@@ -121,18 +127,16 @@ pub(crate) fn expand_as_anim(
 
 /// Finds `name` among a scene's own presets first, then the built-ins.
 pub(crate) fn lookup<'a>(own: &'a [(String, PresetSpec)], name: &str) -> Option<&'a PresetSpec> {
-    own.iter()
-        .chain(builtin_presets())
-        .find(|(n, _)| n == name)
-        .map(|(_, spec)| spec)
+    table::lookup(own.iter().chain(builtin_presets()), name).map(|(_, spec)| spec)
 }
 
 /// The names of the resolved table, a scene's own first, without duplicates.
 pub(crate) fn names(own: &[(String, PresetSpec)]) -> Vec<&str> {
     let mut out: Vec<&str> = Vec::new();
-    for (n, _) in own.iter().chain(builtin_presets()) {
-        if !out.contains(&n.as_str()) {
-            out.push(n);
+    for name in table::names(own.iter().chain(builtin_presets())) {
+        // A scene's own preset hides the built-in of the same name.
+        if !out.contains(&name) {
+            out.push(name);
         }
     }
     out

@@ -6,11 +6,11 @@
 //! [`Violation`] so the report stays short. Fix hints come from the box a
 //! node sweeps over all its visible frames (see the `rules` module docs).
 
-use crate::report::{Report, Violation};
+use crate::report::{Code, Report, Violation};
 use crate::rules::{Area, Overshoot, RULES, Rule, shift, visible};
 use motion_eval::{FrameState, evaluate};
-use motion_format::Scene;
 use motion_format::shorthand::{Coord, Position};
+use motion_format::{Layer, Scene};
 use motion_scene::SceneGraph;
 use tracing::{Span, field, instrument};
 
@@ -36,49 +36,76 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
         .collect();
     Span::current().record("frames", frame_count);
 
-    let mut violations = Vec::new();
-    let mut passed = 0;
+    let mut report = Report {
+        violations: Vec::new(),
+        passed: 0,
+    };
     let mut rules_run = 0;
     for (index, layer) in scene.layers.iter().enumerate() {
-        let mut failed_codes: Vec<&str> = Vec::new();
-        for rule in RULES {
-            if rule
-                .suppressed_by
-                .is_some_and(|c| failed_codes.contains(&c))
-            {
-                continue;
-            }
-            rules_run += 1;
-            let found = runs(rule, index, &frames, graph);
-            if found.is_empty() {
-                passed += 1;
-                continue;
-            }
-            failed_codes.push(rule.code);
-            let fix = sweep(index, &frames).and_then(|sweep| {
-                let (area, aim) = (rule.areas)(graph);
-                let (mut dx, mut dy) = shift(sweep, area, aim);
-                // An axis driven by an `anim` track ignores `at`, so moving
-                // `at` cannot fix it: leave that axis alone.
-                let (follows_x, follows_y) = graph.nodes[index].follows_at;
-                if !follows_x {
-                    dx = 0.0;
-                }
-                if !follows_y {
-                    dy = 0.0;
-                }
-                fix(&layer.id, layer.at, (dx, dy), graph)
-            });
-            for run in found {
-                violations.push(run.into_violation(rule, &layer.id, fix.clone()));
-            }
-        }
+        rules_run += check_layer(index, layer, &frames, graph, &mut report);
     }
     Span::current()
         .record("rules_run", rules_run)
-        .record("violations", violations.len())
-        .record("passed", passed);
-    Report { violations, passed }
+        .record("violations", report.violations.len())
+        .record("passed", report.passed);
+    report
+}
+
+/// Runs every rule on layer `index`, adding what it finds to `report`, and
+/// returns how many rules ran. A rule is skipped when the rule that
+/// suppresses it has already failed on this layer.
+fn check_layer(
+    index: usize,
+    layer: &Layer,
+    frames: &[FrameState],
+    graph: &SceneGraph,
+    report: &mut Report,
+) -> usize {
+    let mut failed: Vec<Code> = Vec::new();
+    let mut rules_run = 0;
+    for rule in RULES {
+        if rule.suppressed_by.is_some_and(|by| failed.contains(&by)) {
+            continue;
+        }
+        rules_run += 1;
+        let found = runs(rule, index, frames, graph);
+        if found.is_empty() {
+            report.passed += 1;
+            continue;
+        }
+        failed.push(rule.code);
+        let fix = fix_hint(rule, index, layer, frames, graph);
+        for run in found {
+            let violation = run.into_violation(rule, &layer.id, fix.clone());
+            report.violations.push(violation);
+        }
+    }
+    rules_run
+}
+
+/// The edit that clears `rule` for layer `index`, if a move of `at` can:
+/// the shift that brings the node's sweep into the rule's aim, on the axes
+/// that still follow `at`.
+fn fix_hint(
+    rule: &Rule,
+    index: usize,
+    layer: &Layer,
+    frames: &[FrameState],
+    graph: &SceneGraph,
+) -> Option<String> {
+    let sweep = sweep(index, frames)?;
+    let (area, aim) = (rule.areas)(graph);
+    let (dx, dy) = shift(sweep, area, aim);
+    // An axis driven by an `anim` track ignores `at`, so moving `at`
+    // cannot fix it: leave that axis alone.
+    let (follows_x, follows_y) = graph.nodes[index].follows_at;
+    let only_followed = |delta: f64, follows: bool| if follows { delta } else { 0.0 };
+    fix(
+        &layer.id,
+        layer.at,
+        (only_followed(dx, follows_x), only_followed(dy, follows_y)),
+        graph,
+    )
 }
 
 /// The box node `index` covers over all frames on which it is visible, or
@@ -154,10 +181,9 @@ fn fix(id: &str, at: Position, (dx, dy): (f64, f64), graph: &SceneGraph) -> Opti
     if dx == 0.0 && dy == 0.0 {
         return None;
     }
-    let moved = |c: Coord, delta: f64, canvas: f64| match (c, delta) {
-        (c, 0.0) => c,
-        (Coord::Px(v), d) => Coord::Px(v + d),
-        (Coord::Center, d) => Coord::Px(canvas / 2.0 + d),
+    let moved = |c: Coord, delta: f64, extent: f64| match delta {
+        0.0 => c,
+        d => Coord::Px(c.resolve(extent) + d),
     };
     let (x, y) = (moved(at.x, dx, graph.width), moved(at.y, dy, graph.height));
     Some(format!("{id} at=\"{x} {y}\""))

@@ -42,6 +42,13 @@ pub struct Behaviour {
 }
 
 impl Behaviour {
+    /// The frames the motion starts and ends on, at `fps` frames per
+    /// second: `(start, start + duration)`.
+    pub fn frames(&self, fps: f64) -> (f64, f64) {
+        let start = self.start.to_frames(fps);
+        (start, start + self.duration.to_frames(fps))
+    }
+
     /// The behaviour of `preset` with each token's field set over the
     /// defaults.
     fn tuned(preset: String, tokens: Vec<Token<'_>>) -> Behaviour {

@@ -7,7 +7,7 @@
 use motion_diagnostic::{Diagnostic, Kind, Result};
 use motion_eval::evaluate;
 use motion_format::fmt_num;
-use motion_format::property::{PROPERTIES, names};
+use motion_format::property::Prop;
 use motion_scene::SceneGraph;
 use tracing::instrument;
 
@@ -39,19 +39,16 @@ pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
             let mut line = format!(
                 "{} x={} y={} w={} h={}",
                 n.id,
-                fmt_num(n.get(names::X)),
-                fmt_num(n.get(names::Y)),
+                fmt_num(n.get(Prop::X)),
+                fmt_num(n.get(Prop::Y)),
                 fmt_num(n.width),
                 fmt_num(n.height)
             );
-            for (spec, &value) in PROPERTIES.iter().zip(&n.values) {
-                // x and y are always printed above.
-                if spec.name == names::X || spec.name == names::Y {
-                    continue;
-                }
-                let shown = fmt_num(value);
-                if shown != fmt_num(spec.default) {
-                    line.push_str(&format!(" {}={shown}", spec.name));
+            // x and y are always printed above.
+            for prop in Prop::all().filter(|p| ![Prop::X, Prop::Y].contains(p)) {
+                let shown = fmt_num(n.get(prop));
+                if shown != fmt_num(prop.spec().default) {
+                    line.push_str(&format!(" {}={shown}", prop.name()));
                 }
             }
             line

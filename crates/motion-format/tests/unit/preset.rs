@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::doc::AnimDoc;
-use crate::property::property;
+use crate::property::Prop;
 use crate::validate::is_valid_id;
 use crate::{parse_document, scene_from_value};
 use motion_diagnostic::{Kind, Result};
@@ -24,15 +24,12 @@ fn builtin_file_parses_and_names_known_properties() {
     assert!(!table.is_empty());
     for (name, spec) in table {
         assert!(is_valid_id(name), "{name}");
-        for (i, _) in &spec.props {
-            assert!(*i < crate::property::PROPERTIES.len(), "{name}");
-        }
+        assert!(!spec.props.is_empty(), "{name}");
     }
     // Order of the file is kept.
     assert_eq!(table[0].0, "fade");
     let up = lookup(&[], "fade-up").unwrap();
-    let y = property("y").unwrap().0;
-    assert!(up.props.contains(&(y, Start::Plus)));
+    assert!(up.props.contains(&(Prop::Y, Start::Plus)));
 }
 
 #[test]
