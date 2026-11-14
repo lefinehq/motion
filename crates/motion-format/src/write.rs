@@ -5,6 +5,8 @@
 
 use serde_json::Value;
 
+use crate::key::LAYERS;
+
 /// Writes a document in canonical form.
 ///
 /// Every key except `layers` is minified on the first line; `layers` always
@@ -13,7 +15,7 @@ use serde_json::Value;
 pub fn write_document(doc: &Value) -> String {
     let Some((obj, layers)) = doc
         .as_object()
-        .and_then(|o| o.get("layers")?.as_array().map(|l| (o, l)))
+        .and_then(|o| o.get(LAYERS)?.as_array().map(|l| (o, l)))
     else {
         return format!("{doc}\n");
     };
@@ -21,7 +23,7 @@ pub fn write_document(doc: &Value) -> String {
     // so the `layers` part can follow on the next line.
     let rest: serde_json::Map<String, Value> = obj
         .iter()
-        .filter(|(k, _)| k.as_str() != "layers")
+        .filter(|(k, _)| k.as_str() != LAYERS)
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     let mut out = String::new();
@@ -32,7 +34,7 @@ pub fn write_document(doc: &Value) -> String {
     } else {
         out.push_str("{\n");
     }
-    out.push_str("\"layers\":[\n");
+    out.push_str(&format!("\"{LAYERS}\":[\n"));
     let lines: Vec<String> = layers.iter().map(Value::to_string).collect();
     out.push_str(&lines.join(",\n"));
     if !lines.is_empty() {

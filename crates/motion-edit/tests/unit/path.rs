@@ -3,9 +3,9 @@
 use super::*;
 use serde_json::json;
 
-/// The segments of a dotted path, as a parsed key holds them.
-fn at(path: &str) -> Vec<String> {
-    path.split('.').map(str::to_owned).collect()
+/// A dotted path, as the edit grammar reads it.
+fn at(path: &str) -> KeyPath {
+    path.parse().unwrap()
 }
 
 fn keys(v: &Value) -> Vec<&str> {
@@ -72,6 +72,5 @@ fn removing_a_missing_path_changes_nothing() {
     assert!(!remove(&mut v, &at("a.x")));
     assert!(!remove(&mut v, &at("in.x")));
     assert!(!remove(&mut v, &at("nope")));
-    assert!(!remove(&mut v, &[]));
     assert_eq!(v, json!({"a": {}, "in": "fade"}));
 }

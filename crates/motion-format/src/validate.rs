@@ -19,6 +19,7 @@ use crate::doc::{
     AnimDoc, KeyDoc, KeyTime, LayerDoc, List, Number, Object, PresetDoc, PresetsDoc, SceneDoc,
     Shorthand, StartDoc, TrackDoc,
 };
+use crate::edit_word::NONE;
 use crate::parse::key::{
     ANIM, AT, BG, DUR, FILL, FONT, FPS, ID, IN, LAYERS, MOTION, PRESETS, RECT, SIZE,
 };
@@ -466,7 +467,7 @@ fn entrance_conflict(layer: &Layer, stage: &Stage, written: &AnimDoc) -> Result<
     .at(name)
     .under(ANIM)
     .expected(format!(
-        "`{} in=none anim={expansion}` (the entrance as anim tracks; then adjust `{name}`), or define a scene preset without `{name}` under \"presets\"",
+        "`{} {IN}={NONE} {ANIM}={expansion}` (the entrance as anim tracks; then adjust `{name}`), or define a scene preset without `{name}` under \"{PRESETS}\"",
         layer.id
     )))
 }

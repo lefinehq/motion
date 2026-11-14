@@ -103,7 +103,7 @@ impl Session {
     /// A diagnostic for a line that cannot be parsed or an edit whose result
     /// is not a valid scene; the session is then left as it was.
     pub fn edit(&mut self, line: &str) -> Result<Report> {
-        self.doc = stage("edit", || apply_edit(&self.doc.raw, &parse_edit(line)?))?;
+        self.doc = stage("edit", || apply_edit(&self.doc, &parse_edit(line)?))?;
         // The old graph describes the old scene.
         self.graph = OnceLock::new();
         Ok(self.check())

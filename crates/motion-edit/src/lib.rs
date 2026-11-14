@@ -23,8 +23,11 @@
 //! ```
 
 mod apply;
+mod key_path;
 mod parse;
 mod path;
+mod problem;
 
 pub use apply::apply_edit;
-pub use parse::{Change, Edit, EditValue, KeyPath, parse_edit};
+pub use key_path::KeyPath;
+pub use parse::{Change, Edit, EditValue, parse_edit};

@@ -18,15 +18,13 @@
 //!
 //! A quote is only allowed around a whole value, and a quoted or JSON value
 //! must end its word. Every syntax failure names a [`Problem`] where it
-//! happens, and [`Problem::diagnostic`] is the one place that turns it into a
-//! [`Diagnostic`]. Two changes that write the same place are a conflict, not
-//! a syntax error, and [`Edit::check_conflicts`] reports them once the line
-//! is read.
-
-use std::borrow::Cow;
-use std::fmt;
+//! happens, and [`Problem::diagnostic`], in `crate::problem`, is the one
+//! place that turns it into a [`Diagnostic`]. Two changes that write the
+//! same place are a conflict, not a syntax error, and
+//! [`Edit::check_conflicts`] reports them once the line is read.
 
 use motion_diagnostic::{Diagnostic, Kind, Result};
+use motion_format::edit_word::{FALSE, NONE, TRUE};
 use motion_grammar::{Failure, Parsed, blank0, blank1, ends_with, parse_all, word};
 use serde_json::{Number, Value};
 use winnow::combinator::{
@@ -37,6 +35,9 @@ use winnow::error::{ErrMode, FromExternalError};
 use winnow::prelude::*;
 use winnow::stream::Stream;
 use winnow::token::{any, none_of, one_of, take_till, take_while};
+
+use crate::key_path::KeyPath;
+use crate::problem::Problem;
 
 /// A parsed edit: one target and the changes to make to it.
 #[derive(Debug, Clone, PartialEq)]
@@ -64,43 +65,6 @@ pub enum EditValue {
     Set(Value),
     /// Remove the key (written `none`).
     Remove,
-}
-
-/// The key of a change: a dotted path such as `anim.opacity`, kept both as
-/// written and as its segments, so neither has to be rebuilt from the other.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeyPath {
-    /// The key as written, segments joined by `.`.
-    text: String,
-    /// The names of the path; never empty.
-    segments: Vec<String>,
-}
-
-impl KeyPath {
-    /// The key as written: `anim.opacity`.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.text
-    }
-
-    /// The names of the path, outermost first: `anim`, `opacity`. There is
-    /// always at least one.
-    #[must_use]
-    pub fn segments(&self) -> &[String] {
-        &self.segments
-    }
-
-    /// True when one key is the other or a prefix of it, segment by
-    /// segment: `anim` and `anim.x`, but not `anim` and `animal`.
-    fn overlaps(&self, other: &KeyPath) -> bool {
-        self.segments.starts_with(&other.segments) || other.segments.starts_with(&self.segments)
-    }
-}
-
-impl fmt::Display for KeyPath {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.text)
-    }
 }
 
 /// Parses one edit line such as `card fill=#FF0000 in=none`.
@@ -133,7 +97,7 @@ impl Edit {
             else {
                 continue;
             };
-            let (outer, inner) = if earlier.key.segments.len() <= later.key.segments.len() {
+            let (outer, inner) = if earlier.key.segments().len() <= later.key.segments().len() {
                 (&earlier.key, &later.key)
             } else {
                 (&later.key, &earlier.key)
@@ -151,157 +115,11 @@ impl Edit {
     }
 }
 
-/// What the edit grammar fails with.
-type Error<'s> = ErrMode<Failure<Problem<'s>>>;
-
-/// The accepted form of a whole line.
-const LINE_FORM: &str = "`<target> <key>=<value>`";
-/// The accepted form of one change.
-const CHANGE_FORM: &str = "`<key>=<value>`";
-/// The accepted form of a key.
-const PATH_FORM: &str = "`<key>[.<key>…]=<value>`";
-/// The accepted form of a JSON value.
-const JSON_FORM: &str = "`<key>=[…]` or `<key>={…}`, valid JSON";
-/// The escapes a quoted value accepts.
-const ESCAPES: &str = "`\\\"` or `\\\\`";
 /// The operators people try before `=`; only `=` is supported for now.
 const OPERATORS: [char; 7] = ['+', '-', '*', '/', '<', '>', '!'];
 
-/// What is wrong with the syntax of an edit line, with the text it is
-/// wrong about.
-#[derive(Debug, Clone)]
-enum Problem<'s> {
-    /// The line has no word at all.
-    Empty,
-    /// The first word is already a change: there is no target.
-    NoTarget(&'s str),
-    /// The target has no changes after it.
-    NoChanges(&'s str),
-    /// A word after the target has no `=`.
-    NotAChange(&'s str),
-    /// A quote in a target or a key: the text before it.
-    StrayQuote(&'s str),
-    /// A quote inside a bare value. `meant` is the whole value as its author
-    /// meant it, for the suggestion.
-    Misquoted {
-        written: &'s str,
-        key: &'s str,
-        meant: String,
-    },
-    /// An operator such as `+` before the `=`.
-    Operator(char),
-    /// A change with nothing before its `=`.
-    MissingKey(&'s str),
-    /// A key that is not a dotted path of names.
-    InvalidKey(&'s str),
-    /// A change with nothing after its `=`.
-    MissingValue(&'s str),
-    /// A quoted value without its closing quote; `rest` is the line from the
-    /// value on.
-    UnclosedQuote { key: &'s str, rest: &'s str },
-    /// A quoted value followed by more text; `text` is the value with it.
-    TextAfterQuote { key: &'s str, text: &'s str },
-    /// A `\` followed by something other than `"` or `\`.
-    Escape(char),
-    /// A `\` at the very end of the line.
-    DanglingEscape,
-    /// A JSON value cut short by the end of the line; `rest` is the line
-    /// from the value on.
-    UnclosedJson {
-        key: &'s str,
-        open: char,
-        rest: &'s str,
-    },
-    /// A JSON value serde_json rejects, with its reason.
-    InvalidJson { key: &'s str, reason: String },
-    /// A JSON value followed by more text; `text` is the value with it.
-    TextAfterJson { key: &'s str, text: &'s str },
-}
-
-impl Problem<'_> {
-    /// The diagnostic for this problem: the one place the edit grammar's
-    /// failures become messages. Every problem names its text and the form
-    /// expected there.
-    fn diagnostic(self) -> Diagnostic {
-        let (message, expected): (String, Cow<'static, str>) = match self {
-            Problem::Empty => ("empty edit".into(), LINE_FORM.into()),
-            Problem::NoTarget(word) => (
-                format!("no target before `{word}`"),
-                "a target first: a layer id or `scene`".into(),
-            ),
-            Problem::NoChanges(target) => {
-                (format!("no changes after `{target}`"), CHANGE_FORM.into())
-            }
-            Problem::NotAChange(word) => (
-                format!("`{word}` is not a change"),
-                "`<key>=<value>`, with quotes around a value that has spaces".into(),
-            ),
-            Problem::StrayQuote(before) => (
-                format!("unexpected quote in `{before}\"`"),
-                "quotes only around a value, as in `<key>=\"<value>\"`".into(),
-            ),
-            Problem::Misquoted {
-                written,
-                key,
-                meant,
-            } => {
-                // Escaped, so the suggestion can be pasted back as it is.
-                let meant = meant.replace('\\', "\\\\").replace('"', "\\\"");
-                (
-                    format!("unexpected quote in `{written}`"),
-                    format!("the whole value quoted: {key}=\"{meant}\"").into(),
-                )
-            }
-            Problem::Operator(op) => (
-                format!("operator `{op}=` is not supported yet"),
-                CHANGE_FORM.into(),
-            ),
-            Problem::MissingKey(word) => (
-                format!("missing key before `=` in `{word}`"),
-                CHANGE_FORM.into(),
-            ),
-            Problem::InvalidKey(key) => (
-                format!(
-                    "invalid key `{key}`: each dot-separated part must be non-empty letters, digits, `-` or `_`"
-                ),
-                PATH_FORM.into(),
-            ),
-            Problem::MissingValue(key) => (
-                format!("missing value for `{key}`"),
-                format!("`{key}=<value>`, or `{key}=\"\"` for an empty string").into(),
-            ),
-            Problem::UnclosedQuote { key, rest } => (
-                format!("unclosed quote in `{key}={rest}`"),
-                "a closing `\"`".into(),
-            ),
-            Problem::TextAfterQuote { key, text } => (
-                format!("unexpected text after the closing quote in `{key}={text}`"),
-                "a space after the quote, or the whole value quoted".into(),
-            ),
-            Problem::Escape(other) => (
-                format!("unknown escape `\\{other}` in a quoted value"),
-                ESCAPES.into(),
-            ),
-            Problem::DanglingEscape => (
-                "dangling `\\` at the end of a quoted value".into(),
-                ESCAPES.into(),
-            ),
-            Problem::UnclosedJson { key, open, rest } => (
-                format!("unclosed `{open}` in `{key}={rest}`"),
-                JSON_FORM.into(),
-            ),
-            Problem::InvalidJson { key, reason } => (
-                format!("invalid JSON in `{key}`: {reason}"),
-                JSON_FORM.into(),
-            ),
-            Problem::TextAfterJson { key, text } => (
-                format!("unexpected text after the end of the JSON value in `{key}={text}`"),
-                "a space after the closing bracket".into(),
-            ),
-        };
-        Diagnostic::syntax(message).expected(expected)
-    }
-}
+/// What the edit grammar fails with.
+type Error<'s> = ErrMode<Failure<Problem<'s>>>;
 
 /// The whole line: the target, then each change after a space.
 fn edit<'s>(input: &mut &'s str) -> Parsed<Edit, Problem<'s>> {
@@ -362,7 +180,7 @@ fn change<'s>(input: &mut &'s str) -> Parsed<Change, Problem<'s>> {
 /// A key, the whole of the input: a dotted path of names. A key that ends
 /// in an operator (`delay+` of `delay+=10f`) is that operator, even `-`,
 /// which a name may otherwise contain.
-fn path<'s>(input: &mut &'s str) -> Parsed<KeyPath, Problem<'s>> {
+pub(crate) fn path<'s>(input: &mut &'s str) -> Parsed<KeyPath, Problem<'s>> {
     let text = *input;
     preceded(
         peek(opt(ends_with(one_of(OPERATORS)))).try_map(|op| match op {
@@ -372,10 +190,7 @@ fn path<'s>(input: &mut &'s str) -> Parsed<KeyPath, Problem<'s>> {
         terminated(separated(1.., segment.map(str::to_owned), '.'), eof)
             .context(Problem::InvalidKey(text)),
     )
-    .map(|segments| KeyPath {
-        text: text.to_owned(),
-        segments,
-    })
+    .map(|segments| KeyPath::new(text, segments))
     .parse_next(input)
 }
 
@@ -500,9 +315,9 @@ fn meant_char<'s>(input: &mut &'s str) -> Parsed<char, Problem<'s>> {
 /// are booleans, a number is a number, and anything else is a string.
 fn scalar(text: &str) -> EditValue {
     match text {
-        "none" => EditValue::Remove,
-        "true" => EditValue::Set(Value::Bool(true)),
-        "false" => EditValue::Set(Value::Bool(false)),
+        NONE => EditValue::Remove,
+        TRUE => EditValue::Set(Value::Bool(true)),
+        FALSE => EditValue::Set(Value::Bool(false)),
         _ => EditValue::Set(number(text).unwrap_or_else(|| Value::from(text))),
     }
 }

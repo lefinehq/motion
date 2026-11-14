@@ -14,40 +14,41 @@ use crate::doc::{Form, Object, SceneDoc};
 use crate::{Document, Scene, validate};
 
 /// The spelling of every scene and layer key, the one place code writes it.
-/// [`SCENE_KEYS`] and [`LAYER_KEYS`] list these, and the rules in
-/// `crate::validate` place their errors with them, so an error path cannot
-/// name a key the format does not have.
-pub(crate) mod key {
+/// [`SCENE_KEYS`] and [`LAYER_KEYS`] list these, the rules in
+/// `crate::validate` place their errors with them, and the writer and the
+/// edit crate find keys with them, so no code can name a key the format does
+/// not have.
+pub mod key {
     /// The format version.
-    pub(crate) const MOTION: &str = "motion";
+    pub const MOTION: &str = "motion";
     /// The canvas size.
-    pub(crate) const SIZE: &str = "size";
+    pub const SIZE: &str = "size";
     /// Frames per second.
-    pub(crate) const FPS: &str = "fps";
+    pub const FPS: &str = "fps";
     /// The scene's length.
-    pub(crate) const DUR: &str = "dur";
+    pub const DUR: &str = "dur";
     /// The background colour.
-    pub(crate) const BG: &str = "bg";
+    pub const BG: &str = "bg";
     /// The scene's own presets.
-    pub(crate) const PRESETS: &str = "presets";
+    pub const PRESETS: &str = "presets";
     /// The layers.
-    pub(crate) const LAYERS: &str = "layers";
+    pub const LAYERS: &str = "layers";
     /// A layer's id.
-    pub(crate) const ID: &str = "id";
+    pub const ID: &str = "id";
     /// The words of a text layer.
-    pub(crate) const TEXT: &str = "text";
+    pub const TEXT: &str = "text";
     /// The shape of a rect layer.
-    pub(crate) const RECT: &str = "rect";
+    pub const RECT: &str = "rect";
     /// The font of a text layer.
-    pub(crate) const FONT: &str = "font";
+    pub const FONT: &str = "font";
     /// A layer's fill colour.
-    pub(crate) const FILL: &str = "fill";
+    pub const FILL: &str = "fill";
     /// A layer's position.
-    pub(crate) const AT: &str = "at";
+    pub const AT: &str = "at";
     /// A layer's entrance.
-    pub(crate) const IN: &str = "in";
+    pub const IN: &str = "in";
     /// A layer's tracks.
-    pub(crate) const ANIM: &str = "anim";
+    pub const ANIM: &str = "anim";
 }
 
 /// The keys allowed at the top level of a scene, in the order of
