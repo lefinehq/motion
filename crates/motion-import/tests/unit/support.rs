@@ -2,6 +2,8 @@
 //! files, laid out as the spec says, so each test states only the bytes it is
 //! about; and a small decoded project for the tests of what reads the model.
 
+use std::collections::BTreeMap;
+
 use crate::model::{
     BaselineOption, Caps, CharacterStyle, Child, Color, Composition, Ease, Expression, Footage,
     Group, Interpolation, Item, ItemKind, Justification, Kerning, Keyframe, Layer, LayerKind,
@@ -17,6 +19,8 @@ pub(crate) fn sample_project() -> Project {
         match_name: match_name.into(),
         name: None,
         enabled: true,
+        hidden: false,
+        separated: false,
         value,
         expression: None,
         min: None,
@@ -26,6 +30,7 @@ pub(crate) fn sample_project() -> Project {
         match_name: match_name.into(),
         name: None,
         enabled: true,
+        hidden: false,
         children,
     };
     let key = |time, value| Keyframe {
@@ -197,6 +202,7 @@ pub(crate) fn sample_project() -> Project {
             item(2, "Main", Some(1), ItemKind::Composition(comp)),
             item(3, "Red Solid", None, ItemKind::Footage(solid)),
         ],
+        effects: BTreeMap::new(),
         skipped: [("fvdv".to_owned(), 2), ("LIST:Ewst".to_owned(), 1)].into(),
     }
 }

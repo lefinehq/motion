@@ -7,5 +7,6 @@ extend-exclude = ["crates/motion-import/tests/fixtures/", "*.snap"]
 als = "als"
 fo = "fo"
 jod = "jod"
+pard = "pard"
 pn = "pn"
 rin = "rin"

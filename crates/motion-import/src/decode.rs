@@ -10,7 +10,8 @@ use std::collections::{BTreeMap, HashMap};
 use motion_format::{Diagnostic, Kind, Result};
 
 use crate::model::{
-    Color, Composition, Footage, Item, ItemKind, Layer, Project, Source, Span, Switches, Version,
+    Color, Composition, EffectDefinition, Footage, Item, ItemKind, Layer, Project, Source, Span,
+    Switches, Version,
 };
 use crate::record::{
     self, Alias, Cdta, Head, Idta, Ldta, Nhed, PlaceholderOpti, Ratio, Record, SolidOpti, Sspc,
@@ -18,6 +19,7 @@ use crate::record::{
 };
 use crate::rifx::{self, Chunk, Name};
 
+mod effect;
 mod property;
 mod text;
 
@@ -63,6 +65,9 @@ pub fn decode(file: &[u8]) -> Result<Project> {
     let head: Head = scan.record()?;
     decoder.wrapped_text.set(head.major >= Head::WRAPPED_TEXT);
     let depth = scan.optional::<Nhed>()?.map(|nhed| nhed.depth);
+    if let Some(efdg) = scan.list(effect::EFDG)? {
+        decoder.effect_table(efdg)?;
+    }
     let mut fold = scan.require_list(FOLD)?;
     let mut items = decoder.items(&mut fold, None)?;
     name_layers(&mut items);
@@ -74,6 +79,7 @@ pub fn decode(file: &[u8]) -> Result<Project> {
         },
         bits_per_channel: depth.and_then(|d| Nhed::BITS.get(usize::from(d)).copied()),
         items,
+        effects: decoder.effects.into_inner(),
         skipped: decoder.skipped.into_inner(),
     })
 }
@@ -106,6 +112,8 @@ struct Decoder {
     wrapped_text: Cell<bool>,
     /// The chunks passed over so far, by name.
     skipped: RefCell<BTreeMap<String, usize>>,
+    /// The effect definitions read so far, by match name.
+    effects: RefCell<BTreeMap<String, EffectDefinition>>,
 }
 
 impl Decoder {
@@ -115,6 +123,21 @@ impl Decoder {
         names
             .into_iter()
             .for_each(|name| *skipped.entry(name.to_string()).or_default() += 1);
+    }
+    /// The text of a wrapper chunk such as `tdsn` or `pdnm`: a `Utf8` inside
+    /// it from [`Head::WRAPPED_TEXT`] on, NUL-terminated bytes before.
+    ///
+    /// # Errors
+    /// A diagnostic when the wrapper's children cannot be read.
+    fn wrapped_text(&self, scan: &Scan<'_, '_>, chunk: Chunk<'_>) -> Result<String> {
+        if !self.wrapped_text.get() {
+            return Ok(text(chunk.body));
+        }
+        let mut inner = scan.open(chunk, scan.child_path(chunk.name))?;
+        Ok(inner
+            .find(UTF8)
+            .map(|utf8| text(utf8.body))
+            .unwrap_or_default())
     }
 
     /// The items of a folder list, each folder followed by its contents.

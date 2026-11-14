@@ -168,6 +168,29 @@ impl Wrapper {
     }
 }
 
+/// The flags of a group or stream, from its `tdsb`; one without a `tdsb`
+/// applies and shows.
+#[derive(Debug, Clone, Copy)]
+struct Flags {
+    /// It applies.
+    enabled: bool,
+    /// It does not apply to the layer as it is.
+    hidden: bool,
+    /// Its dimensions are separated.
+    separated: bool,
+}
+
+impl Flags {
+    /// The flags in `tdsb`, if there is one.
+    fn of(tdsb: Option<Tdsb>) -> Flags {
+        Flags {
+            enabled: tdsb.as_ref().is_none_or(Tdsb::enabled),
+            hidden: tdsb.as_ref().is_some_and(Tdsb::hidden),
+            separated: tdsb.as_ref().is_some_and(Tdsb::separated),
+        }
+    }
+}
+
 /// How a layer's keyframe times map to composition seconds
 /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#interpreting-keyframes)).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -196,7 +219,7 @@ impl Decoder {
         match_name: String,
         timing: Timing,
     ) -> Result<Group> {
-        let enabled = scan.optional::<Tdsb>()?.is_none_or(|tdsb| tdsb.enabled());
+        let flags = Flags::of(scan.optional::<Tdsb>()?);
         let name = self.display_name(&mut scan)?;
         let children = scan
             .children(TDMN)
@@ -210,7 +233,8 @@ impl Decoder {
         Ok(Group {
             match_name,
             name,
-            enabled,
+            enabled: flags.enabled,
+            hidden: flags.hidden,
             children,
         })
     }
@@ -240,6 +264,7 @@ impl Decoder {
         Ok(match kind {
             Body::Group => Child::Group(self.group(scan, match_name, timing)?),
             Body::Effect => {
+                self.define_effect(&mut scan, &match_name)?;
                 Child::Group(self.group(scan.require_list(TDGP)?, match_name, timing)?)
             }
             Body::Stream => {
@@ -265,7 +290,7 @@ impl Decoder {
         values: &Values,
         timing: Timing,
     ) -> Result<Property> {
-        let enabled = scan.optional::<Tdsb>()?.is_none_or(|tdsb| tdsb.enabled());
+        let flags = Flags::of(scan.optional::<Tdsb>()?);
         let name = self.display_name(&mut scan)?;
         let tdb4: Tdb4 = scan.record()?;
         let value = match scan.find(Cdat::NAME) {
@@ -291,7 +316,9 @@ impl Decoder {
         Ok(Property {
             match_name,
             name,
-            enabled,
+            enabled: flags.enabled,
+            hidden: flags.hidden,
+            separated: flags.separated,
             value,
             expression,
             min,
@@ -304,15 +331,7 @@ impl Decoder {
         let Some(tdsn) = scan.find(TDSN) else {
             return Ok(None);
         };
-        let name = if self.wrapped_text.get() {
-            let mut inner = scan.open(tdsn, scan.child_path(TDSN))?;
-            inner
-                .find(UTF8)
-                .map(|utf8| text(utf8.body))
-                .unwrap_or_default()
-        } else {
-            text(tdsn.body)
-        };
+        let name = self.wrapped_text(scan, tdsn)?;
         Ok(Some(name).filter(|name| !name.is_empty() && name != DEFAULT_NAME))
     }
 }
@@ -533,6 +552,8 @@ fn opaque(match_name: String, reason: Reason) -> Property {
         match_name,
         name: None,
         enabled: true,
+        hidden: false,
+        separated: false,
         value: Stream::Static(Value::Opaque { reason }),
         expression: None,
         min: None,

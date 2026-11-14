@@ -40,7 +40,8 @@ ADBE Text Document = text "Keep\nyour life\nsimple" (3 lines), Lato-Black 55, fi
 | Folders, compositions and footage, with their folder | `LIST:Fold`, `LIST:Item`, `idta`, `cdta` |
 | Footage: solids (colour), files (path), placeholders; size, rate, duration | `LIST:Pin `, `sspc`, `opti`, `LIST:Als2` |
 | Layers: name, kind, source, parent, timing in composition seconds, switches, blend mode, track matte | `LIST:Layr`, `ldta` |
-| The property tree: groups, effects, masks, names, enabled state | `LIST:tdgp`, `tdmn`, `tdsn`, `tdsb`, `LIST:sspc` |
+| The property tree: groups, effects, masks, names; enabled, hidden (does not apply to the layer as it is) and separated dimensions | `LIST:tdgp`, `tdmn`, `tdsn`, `tdsb`, `LIST:sspc` |
+| Effect definitions: each parameter's control, default and bounds | `LIST:EfdG`, `EfDC`, `LIST:EfDf`, `LIST:parT`, `parn`, `pard`, `pdnm`, `fnam` |
 | Numbers, vectors and colours, static or keyframed with interpolation, eases and spatial tangents | `LIST:tdbs`, `tdb4`, `cdat`, `LIST:list`, `lhd3`, `ldat` |
 | Expressions, ranges | `Utf8` or `expr`, `tdum`, `tduM` |
 | Mask and shape paths, static or keyframed | `LIST:om-s`, `LIST:omks`, `LIST:shap`, `shph` |

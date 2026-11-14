@@ -20,6 +20,8 @@ pub struct Project {
     pub bits_per_channel: Option<u8>,
     /// Every item. A folder's contents follow the folder and name it as theirs.
     pub items: Vec<Item>,
+    /// The definition of each effect type the project uses, by match name.
+    pub effects: BTreeMap<String, EffectDefinition>,
     /// The chunks the reader passed over, by name, with how often each appears.
     pub skipped: BTreeMap<String, usize>,
 }
@@ -131,6 +133,9 @@ pub struct Group {
     pub name: Option<String>,
     /// Whether it applies; a switched-off effect or layer style does not.
     pub enabled: bool,
+    /// Whether it is hidden in the timeline because it does not apply to the
+    /// layer as it is, such as a 3D-only group on a 2D layer.
+    pub hidden: bool,
     /// Its groups and properties, in file order.
     pub children: Vec<Child>,
 }
@@ -164,6 +169,13 @@ pub struct Property {
     pub name: Option<String>,
     /// Whether it applies.
     pub enabled: bool,
+    /// Whether it is hidden in the timeline because it does not apply to the
+    /// layer as it is: a 3D-only property on a 2D layer, or the unused half of
+    /// a separable position. It then never changes a frame.
+    pub hidden: bool,
+    /// Whether a separable property (`ADBE Position`) has its dimensions
+    /// separated: its `_0`, `_1` and `_2` streams then hold the value.
+    pub separated: bool,
     /// Its value, or its keyframes.
     pub value: Stream,
     /// The expression that computes it, if any.
@@ -367,8 +379,10 @@ macro_rules! coded {
     };
 }
 
+mod effect;
 mod text;
 
+pub use effect::{Control, EffectDefinition, Parameter};
 pub use text::{
     BaselineOption, Caps, CharacterStyle, ComposedLine, ComposedSegment, Justification, Kerning,
     LeadingType, LineJoin, ParagraphStyle, Run, TextDocument, TextFrame,
