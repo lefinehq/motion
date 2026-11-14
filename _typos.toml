@@ -10,3 +10,7 @@ jod = "jod"
 pard = "pard"
 pn = "pn"
 rin = "rin"
+
+[default]
+# The curve fitting library `curve_fit_nd` (N-dimensional).
+extend-ignore-re = ["curve[-_]fit[-_]nd"]
