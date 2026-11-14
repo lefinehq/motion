@@ -19,6 +19,7 @@ tracing.workspace = true
 rstest.workspace = true
 pretty_assertions.workspace = true
 insta.workspace = true
+motion-text = { path = "../motion-text" }
 
 [lints]
 workspace = true

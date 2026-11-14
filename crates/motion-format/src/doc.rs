@@ -38,6 +38,7 @@ pub(crate) struct SceneDoc {
     pub(crate) dur: Present<Shorthand<Time>>,
     pub(crate) bg: Present<Shorthand<Color>>,
     pub(crate) presets: Object<PresetsDoc>,
+    pub(crate) fonts: Present<List<FontsDoc>>,
     pub(crate) comps: Object<CompsDoc>,
     pub(crate) layers: Present<List<LayersDoc>>,
 }
@@ -59,7 +60,12 @@ pub(crate) struct LayerDoc {
     pub(crate) comp: Present<String>,
     pub(crate) pivot: Present<bool>,
     pub(crate) font: Present<Shorthand<Font>>,
-    pub(crate) fill: Present<Shorthand<Color>>,
+    pub(crate) fill: Present<serde_json::Value>,
+    pub(crate) style: Object<StyleDoc>,
+    pub(crate) runs: Present<List<StylesDoc>>,
+    pub(crate) paragraphs: Present<List<StylesDoc>>,
+    #[serde(rename = "box")]
+    pub(crate) frame: Present<ValueDoc>,
     pub(crate) at: Present<Shorthand<Position>>,
     #[serde(rename = "in")]
     pub(crate) enter: Present<Shorthand<Behaviour>>,
@@ -102,6 +108,28 @@ pub(crate) type ItemsDoc = Vec<Object<ItemDoc>>;
 
 impl Form for ItemsDoc {
     const FORM: &str = r##"a list of item objects, e.g. [{"rect":[300,100]},{"fill":"#FFE000"}]"##;
+}
+
+/// A text style object: style keys by name, which `crate::validate` checks
+/// against [`STYLE_KEYS`](crate::text::STYLE_KEYS).
+pub(crate) type StyleDoc = IndexMap<String, serde_json::Value>;
+
+impl Form for StyleDoc {
+    const FORM: &str = r#"an object of text style keys, e.g. {"tracking":20,"align":"center"}"#;
+}
+
+/// A list of style objects: a text layer's `runs` or `paragraphs`.
+pub(crate) type StylesDoc = Vec<Object<StyleDoc>>;
+
+impl Form for StylesDoc {
+    const FORM: &str = r##"a list of style objects, e.g. [{"range":[0,4],"fill":"#FF0000"}]"##;
+}
+
+/// The `fonts` list: font files and folders, relative to the scene file.
+pub(crate) type FontsDoc = Vec<String>;
+
+impl Form for FontsDoc {
+    const FORM: &str = r#"a list of font files and folders, e.g. ["fonts/lato"]"#;
 }
 
 /// The `comps` object: compositions by id.

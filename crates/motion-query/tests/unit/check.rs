@@ -6,10 +6,15 @@ use pretty_assertions::assert_eq;
 use rstest::rstest;
 use std::ops::RangeInclusive;
 
+/// A typesetter with the built-in fonts.
+fn typesetter() -> motion_text::Typesetter {
+    motion_text::Typesetter::new(motion_text::FontSet::builtin())
+}
+
 /// Checks the scene in `json`.
 fn check_json(json: &str) -> Report {
     let scene = motion_format::parse_document(json).unwrap().scene().clone();
-    let graph = motion_scene::compile(&scene, &motion_scene::ApproxTextMeasure);
+    let graph = motion_scene::compile(&scene, &mut typesetter()).unwrap();
     check(&scene, &graph)
 }
 

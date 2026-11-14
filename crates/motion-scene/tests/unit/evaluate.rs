@@ -21,8 +21,9 @@ fn y(n: &NodeState) -> f64 {
 fn graph(json: &str) -> SceneGraph {
     crate::compile(
         motion_format::parse_document(json).unwrap().scene(),
-        &crate::ApproxTextMeasure,
+        &mut motion_text::Typesetter::new(motion_text::FontSet::builtin()),
     )
+    .unwrap()
 }
 
 /// A 100x100 rect centred at y=700 with a linear 12-frame entrance from frame 15.
@@ -246,7 +247,10 @@ fn a_comp_compiles_its_canvas_and_the_layer_box() {
     // The layer's box is the card, centred on the canvas.
     let state = evaluate(&graph, 50.0);
     assert_eq!(
-        (state.nodes[0].width, state.nodes[0].height),
+        (
+            state.nodes[0].own_box.width(),
+            state.nodes[0].own_box.height()
+        ),
         (400.0, 200.0)
     );
     assert_eq!(state.nodes[0].bounds().x0, (1920.0 - 400.0) / 2.0);

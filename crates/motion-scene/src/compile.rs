@@ -1,50 +1,64 @@
-//! Step 2 (Compile): resolves positions, measures text, links parents and
+//! Step 2 (Compile): resolves positions, sets text, links parents and
 //! turns each layer's resting values, entrance and `anim` into one track per
 //! property ([`PROPERTIES`](motion_format::property::PROPERTIES)); each shape
 //! item and effect likewise gets a track per row of its kind's registry, and
 //! each composition its own nodes on its own clock.
 
+use kurbo::Rect;
 use motion_format::anim::{AnimTrack, Easing};
+use motion_format::key::layer_path;
 use motion_format::preset::{PresetSpec, Start};
 use motion_format::property::{Prop, Rest, Target};
 use motion_format::shorthand::{Axis, Behaviour};
 use motion_format::units::Color;
-use motion_format::{Content, Item, Layer, Scene, Value, ValueType};
+use motion_format::{Content, Item, Layer, Result, Scene, Value, ValueType};
+use motion_text::Typesetter;
 
 use tracing::{debug_span, field};
 
 use crate::graph::{CompGraph, ItemNode, Node, NodeContent, PropertyTrack, SceneGraph, Timing};
-use crate::text::TextMeasure;
+use crate::text;
 use crate::track::{KeySpec, Track};
 
-/// Compiles `scene` into a [`SceneGraph`], using `measure` to size text.
+/// Compiles `scene` into a [`SceneGraph`], setting its text with `typesetter`.
+///
+/// # Errors
+/// A [`Diagnostic`](motion_format::Diagnostic) when a text layer names a font `typesetter` lacks or
+/// holds a character its font has no glyph for.
 ///
 /// # Panics
 /// If following parents leads back to a layer, or a `comp` layer names a
 /// composition the scene lacks, which validation rules out.
-pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
+pub fn compile(scene: &Scene, typesetter: &mut Typesetter) -> Result<SceneGraph> {
     // Only animated tracks count: every node has one track per property.
     let span = debug_span!("compile", nodes = scene.layers.len(), tracks = field::Empty);
     let _entered = span.enter();
     let width = f64::from(scene.size.width);
     let height = f64::from(scene.size.height);
-    let comps: Vec<CompGraph> = scene
+    let comps = scene
         .comps
         .iter()
         .map(|comp| {
-            let canvas = (f64::from(comp.size.width), f64::from(comp.size.height));
-            CompGraph {
+            let canvas = Rect::new(
+                0.0,
+                0.0,
+                f64::from(comp.size.width),
+                f64::from(comp.size.height),
+            );
+            Ok(CompGraph {
                 id: comp.id.clone(),
-                width: canvas.0,
-                height: canvas.1,
+                width: canvas.width(),
+                height: canvas.height(),
                 fps: comp.fps,
                 duration_frames: comp.duration.to_frames(comp.fps),
                 background: rgba(comp.background),
-                nodes: nodes(&comp.layers, canvas, comp.fps, scene, measure),
-            }
+                nodes: nodes(&comp.layers, canvas, comp.fps, scene, typesetter)
+                    .map_err(|e| e.under(motion_format::key::comp_path(&comp.id)))?,
+            })
         })
-        .collect();
-    let nodes = nodes(&scene.layers, (width, height), scene.fps, scene, measure);
+        .collect::<Result<Vec<CompGraph>>>()?;
+    let canvas = Rect::new(0.0, 0.0, width, height);
+    let nodes = nodes(&scene.layers, canvas, scene.fps, scene, typesetter)?;
     // Counting walks every track, so skip it when nobody listens.
     if !span.is_disabled() {
         let animated = nodes
@@ -55,28 +69,33 @@ pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
             .count();
         span.record("tracks", animated);
     }
-    SceneGraph {
+    Ok(SceneGraph {
         width,
         height,
         fps: scene.fps,
         duration_frames: scene.duration.to_frames(scene.fps),
         nodes,
         comps,
-    }
+    })
 }
 
-/// The nodes of one canvas of `canvas` pixels whose clock runs at `fps`.
+/// The nodes of one `canvas` whose clock runs at `fps`, with paths relative
+/// to the list's owner.
 fn nodes(
     layers: &[Layer],
-    canvas: (f64, f64),
+    canvas: Rect,
     fps: f64,
     scene: &Scene,
-    measure: &dyn TextMeasure,
-) -> Vec<Node> {
-    let boxes: Vec<(f64, f64)> = layers
+    typesetter: &mut Typesetter,
+) -> Result<Vec<Node>> {
+    let contents = layers
         .iter()
-        .map(|layer| content_box(layer, scene, measure))
-        .collect();
+        .enumerate()
+        .map(|(i, layer)| {
+            node_content(layer, scene, fps, typesetter).map_err(|e| e.under(layer_path(i)))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let boxes: Vec<Rect> = contents.iter().map(|c| content_box(c, scene)).collect();
     let parents: Vec<Option<usize>> = layers
         .iter()
         .map(|layer| {
@@ -85,38 +104,42 @@ fn nodes(
         })
         .collect();
     assert_no_cycle(&parents);
-    layers
+    Ok(layers
         .iter()
+        .zip(contents)
         .enumerate()
-        .map(|(i, layer)| {
+        .map(|(i, (layer, content))| {
             // `at` resolves in the parent's box, or on the canvas without a parent.
             let extent = parents[i].map_or(canvas, |p| boxes[p]);
-            node(layer, scene, fps, boxes[i], parents[i], extent)
+            node(layer, scene, fps, content, boxes[i], parents[i], extent)
         })
-        .collect()
+        .collect())
 }
 
-/// A layer's box in pixels: measured text, a rect's size, a composition's
-/// canvas, and none for shapes and pivots, whose coordinates start at their anchor.
-fn content_box(layer: &Layer, scene: &Scene, measure: &dyn TextMeasure) -> (f64, f64) {
-    match &layer.content {
-        Content::Text { text, font } => measure.measure(text, font),
-        Content::Rect(r) => (r.width, r.height),
-        Content::Comp(id) => {
-            let comp = scene.comp(id).expect("validation checks every comp exists");
-            (f64::from(comp.size.width), f64::from(comp.size.height))
+/// A node's box in its own coordinates: a text layout's bounds, a rect's or
+/// a composition's canvas from the origin, and empty at the origin for
+/// shapes and pivots.
+fn content_box(content: &NodeContent, scene: &Scene) -> Rect {
+    match content {
+        NodeContent::Text(text) => text.layout.bounds(),
+        NodeContent::Rect(r) => Rect::new(0.0, 0.0, r.width, r.height),
+        NodeContent::Comp(index) => {
+            let size = scene.comps[*index].size;
+            Rect::new(0.0, 0.0, f64::from(size.width), f64::from(size.height))
         }
-        Content::Shapes(_) | Content::Pivot => (0.0, 0.0),
+        NodeContent::Shapes(_) | NodeContent::Pivot => Rect::ZERO,
     }
 }
 
-/// What a layer draws, compiled.
-fn node_content(layer: &Layer, scene: &Scene, fps: f64) -> NodeContent {
-    match &layer.content {
-        Content::Text { text, font } => NodeContent::Text {
-            text: text.clone(),
-            font: font.clone(),
-        },
+/// What a layer draws, compiled; text is set here.
+fn node_content(
+    layer: &Layer,
+    scene: &Scene,
+    fps: f64,
+    typesetter: &mut Typesetter,
+) -> Result<NodeContent> {
+    Ok(match &layer.content {
+        Content::Text(text) => NodeContent::Text(text::set(text, typesetter)?),
         Content::Rect(r) => NodeContent::Rect(*r),
         Content::Shapes(items) => NodeContent::Shapes(item_nodes(items, fps)),
         Content::Comp(id) => NodeContent::Comp(
@@ -127,7 +150,7 @@ fn node_content(layer: &Layer, scene: &Scene, fps: f64) -> NodeContent {
                 .expect("validation checks every comp exists"),
         ),
         Content::Pivot => NodeContent::Pivot,
-    }
+    })
 }
 
 /// The items that are not hidden, compiled.
@@ -163,7 +186,7 @@ fn item_node(item: &Item, fps: f64) -> ItemNode {
     }
 }
 
-/// A colour as straight RGBA from 0 to 1.
+/// An 8-bit colour as straight RGBA from 0 to 1.
 fn rgba(color: Color) -> [f64; 4] {
     let value = Value::from(color);
     let c = value.components();
@@ -193,17 +216,17 @@ fn node(
     layer: &Layer,
     scene: &Scene,
     fps: f64,
-    (width, height): (f64, f64),
+    content: NodeContent,
+    bounds: Rect,
     parent: Option<usize>,
-    extent: (f64, f64),
+    extent: Rect,
 ) -> Node {
     let entrance = entrance(layer, scene);
     Node {
         id: layer.id.clone(),
-        content: node_content(layer, scene, fps),
-        fill: rgba(layer.fill),
-        width,
-        height,
+        content,
+        fill: layer.fill,
+        bounds,
         parent,
         timing: Timing {
             span: layer
@@ -212,7 +235,7 @@ fn node(
             offset: layer.offset.to_frames(fps),
             stretch: layer.stretch,
         },
-        tracks: tracks(layer, entrance, extent, (width, height), fps),
+        tracks: tracks(layer, entrance, extent, bounds, fps),
         follows_at: (
             follows_at(layer, entrance, Axis::X),
             follows_at(layer, entrance, Axis::Y),
@@ -240,14 +263,14 @@ struct Written {
 fn tracks(
     layer: &Layer,
     entrance: Option<(&Behaviour, &PresetSpec)>,
-    extent: (f64, f64),
-    size: (f64, f64),
+    extent: Rect,
+    own: Rect,
     fps: f64,
 ) -> Vec<PropertyTrack> {
     let mut written: Vec<Written> = Vec::new();
     if let Some((behaviour, spec)) = entrance {
         for &(target, from) in &spec.props {
-            let rest = target.rest_of(layer.rest(target.prop, extent, size));
+            let rest = target.rest_of(layer.rest(target.prop, extent, own));
             written.push(Written {
                 target,
                 keys: entrance_keys(behaviour, from, rest, fps),
@@ -264,7 +287,7 @@ fn tracks(
     }
     Prop::all()
         .map(|prop| {
-            let rest = layer.rest(prop, extent, size);
+            let rest = layer.rest(prop, extent, own);
             property_track(prop, rest, &written, fps)
         })
         .collect()

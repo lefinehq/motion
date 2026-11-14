@@ -4,16 +4,21 @@ use crate::at;
 use motion_format::{Diagnostic, Kind};
 use rstest::rstest;
 
+/// A typesetter with the built-in fonts.
+fn typesetter() -> motion_text::Typesetter {
+    motion_text::Typesetter::new(motion_text::FontSet::builtin())
+}
+
 #[test]
 fn at_prints_resolved_values() {
     let s = motion_format::parse_document(include_str!("../../../../examples/launch.json"))
         .unwrap()
         .scene()
         .clone();
-    let g = motion_scene::compile(&s, &motion_scene::ApproxTextMeasure);
+    let g = motion_scene::compile(&s, &mut typesetter()).unwrap();
     assert_eq!(
         at(&g, 200.0, &["title".into()]).unwrap(),
-        "title x=960 y=260 w=580.8 h=115.2"
+        "title x=960 y=260 w=633.42 h=116.16"
     );
     assert_eq!(at(&g, 0.0, &[]).unwrap().lines().count(), 2);
     assert_eq!(
@@ -24,8 +29,9 @@ fn at_prints_resolved_values() {
         motion_format::parse_document(r#"{"motion":1,"dur":"1s","layers":[]}"#)
             .unwrap()
             .scene(),
-        &motion_scene::ApproxTextMeasure,
-    );
+        &mut typesetter(),
+    )
+    .unwrap();
     assert_eq!(at(&empty, 0.0, &[]).unwrap(), "");
 }
 
@@ -36,7 +42,7 @@ fn graph(layer: &str) -> motion_scene::SceneGraph {
         .unwrap()
         .scene()
         .clone();
-    motion_scene::compile(&s, &motion_scene::ApproxTextMeasure)
+    motion_scene::compile(&s, &mut typesetter()).unwrap()
 }
 
 /// x, y, w and h are fixed columns; other properties follow only when they
@@ -85,7 +91,7 @@ fn a_child_prints_where_its_anchor_lands_on_the_canvas() {
     .unwrap()
     .scene()
     .clone();
-    let g = motion_scene::compile(&s, &motion_scene::ApproxTextMeasure);
+    let g = motion_scene::compile(&s, &mut typesetter()).unwrap();
     // `center center` is the middle of the card's box, which sits at (500, 400).
     assert_eq!(
         at(&g, 0.0, &["kid".into()]).unwrap(),

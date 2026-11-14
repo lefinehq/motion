@@ -10,8 +10,9 @@ use motion_format::units::Time;
 use motion_format::{Diagnostic, Kind, Result};
 use motion_format::{Document, Scene, parse_document, write_document};
 use motion_query::{Report, at, check};
-use motion_scene::{ApproxTextMeasure, SceneGraph, compile};
 use motion_scene::{FrameState, evaluate};
+use motion_scene::{SceneGraph, compile};
+use motion_text::{FontSet, Typesetter};
 
 use crate::stage::{stage, stage_ok};
 
@@ -23,8 +24,11 @@ pub struct Session {
     path: Option<PathBuf>,
     /// The scene as read or last edited.
     doc: Document,
+    /// The fonts the scene's text is set in: the built-in ones and those its
+    /// `fonts` names, read on first use and dropped by an edit.
+    fonts: OnceLock<Result<FontSet>>,
     /// The compiled scene, built on first use and dropped by an edit.
-    graph: OnceLock<SceneGraph>,
+    graph: OnceLock<Result<SceneGraph>>,
 }
 
 impl Session {
@@ -53,22 +57,68 @@ impl Session {
         self.doc.scene()
     }
 
+    /// The fonts (step `fonts`): Inter, which is built in, and every file and
+    /// folder the scene's `fonts` names, relative to the scene file's folder
+    /// (the working folder for a scene without a file). Read once per edit.
+    ///
+    /// # Errors
+    /// A [`Kind::Io`] diagnostic for a font that cannot be read, at its place
+    /// in `fonts`, or one for a file that is not a font.
+    pub fn fonts(&self) -> Result<&FontSet> {
+        self.fonts
+            .get_or_init(|| stage("fonts", || self.read_fonts()))
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    fn read_fonts(&self) -> Result<FontSet> {
+        let base = self
+            .path
+            .as_deref()
+            .and_then(Path::parent)
+            .unwrap_or(Path::new(""));
+        let mut fonts = FontSet::builtin();
+        for (i, entry) in self.doc.scene().fonts.iter().enumerate() {
+            let path = base.join(entry);
+            let added = match path.is_dir() {
+                true => fonts.add_folder(&path),
+                false => fonts.add_file(&path),
+            };
+            added.map_err(|e| e.at(format!("{}[{i}]", motion_format::key::FONTS)))?;
+        }
+        Ok(fonts)
+    }
+
     /// The compiled scene (step `compile`), built once per edit.
-    pub fn graph(&self) -> &SceneGraph {
+    ///
+    /// # Errors
+    /// A font that cannot be read, or text whose font or glyphs the fonts lack.
+    pub fn graph(&self) -> Result<&SceneGraph> {
         self.graph
-            .get_or_init(|| stage_ok("compile", || compile(self.doc.scene(), &ApproxTextMeasure)))
+            .get_or_init(|| {
+                let mut typesetter = Typesetter::new(self.fonts()?.clone());
+                stage("compile", || compile(self.doc.scene(), &mut typesetter))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
     }
 
     /// Every node's values at `frame`, possibly fractional (step `evaluate`).
-    pub fn frame(&self, frame: f64) -> FrameState {
-        let graph = self.graph();
-        stage_ok("evaluate", || evaluate(graph, frame))
+    ///
+    /// # Errors
+    /// As [`Session::graph`].
+    pub fn frame(&self, frame: f64) -> Result<FrameState> {
+        let graph = self.graph()?;
+        Ok(stage_ok("evaluate", || evaluate(graph, frame)))
     }
 
     /// The check report over every frame (step `check`).
-    pub fn check(&self) -> Report {
-        let graph = self.graph();
-        stage_ok("check", || check(self.doc.scene(), graph))
+    ///
+    /// # Errors
+    /// As [`Session::graph`].
+    pub fn check(&self) -> Result<Report> {
+        let graph = self.graph()?;
+        Ok(stage_ok("check", || check(self.doc.scene(), graph)))
     }
 
     /// Where the layers in `ids` (all when empty) are at `time`, such as
@@ -79,7 +129,7 @@ impl Session {
     pub fn at(&self, time: &str, ids: &[String]) -> Result<String> {
         let fps = self.doc.scene().fps;
         let frame = stage("time", || Ok(time.parse::<Time>()?.to_frames(fps)))?;
-        let graph = self.graph();
+        let graph = self.graph()?;
         stage("at", || at(graph, frame, ids))
     }
 
@@ -91,8 +141,9 @@ impl Session {
     /// left as it was.
     pub fn edit(&mut self, line: &str) -> Result<Report> {
         self.doc = stage("edit", || apply_edit(&self.doc, &parse_edit(line)?))?;
+        self.fonts = OnceLock::new();
         self.graph = OnceLock::new();
-        Ok(self.check())
+        self.check()
     }
 
     /// Writes the scene, in canonical form, back to its file (step `save`),
@@ -128,6 +179,7 @@ impl FromStr for Session {
         Ok(Self {
             path: None,
             doc,
+            fonts: OnceLock::new(),
             graph: OnceLock::new(),
         })
     }

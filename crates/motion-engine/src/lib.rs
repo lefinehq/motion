@@ -7,7 +7,7 @@
 //!
 //! let scene = r#"{"motion":1,"dur":"1s","layers":[{"id":"card","rect":"100x100"}]}"#;
 //! let mut session: Session = scene.parse().unwrap();
-//! assert_eq!(session.check().to_string(), "OK 2");
+//! assert_eq!(session.check().unwrap().to_string(), "OK 2");
 //! let report = session.edit("card at=\"center 2000\"").unwrap();
 //! assert!(report.has_errors());
 //! ```

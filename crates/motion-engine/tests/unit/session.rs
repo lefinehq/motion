@@ -30,7 +30,7 @@ fn scratch_copy(name: &str) -> PathBuf {
 #[test]
 fn the_launch_example_checks_ok() {
     let session = Session::open(LAUNCH).expect("open");
-    assert_eq!(session.check().to_string(), "OK 4");
+    assert_eq!(session.check().expect("check").to_string(), "OK 4");
     assert_eq!(session.path(), Some(Path::new(LAUNCH)));
 }
 
@@ -55,7 +55,7 @@ fn at_rejects_a_bad_time_and_an_unknown_id() {
 #[test]
 fn frame_evaluates_every_node() {
     let session = Session::open(LAUNCH).expect("open");
-    let state = session.frame(30.0);
+    let state = session.frame(30.0).expect("frame");
     assert_eq!(state.frame, 30.0);
     assert_eq!(state.nodes.len(), 2);
 }
@@ -99,7 +99,7 @@ fn a_failed_edit_leaves_the_session_and_file_as_they_were() {
 #[test]
 fn an_edit_drops_the_compiled_graph() {
     let mut session = Session::open(LAUNCH).expect("open");
-    let width = |s: &Session| s.graph().nodes[1].width;
+    let width = |s: &Session| s.graph().expect("graph").nodes[1].bounds.width();
     assert_eq!(width(&session), 300.0);
     // The edit's check compiles the new scene, so the graph is fresh.
     session.edit("card rect=500x400").expect("edit");
@@ -147,9 +147,9 @@ fn queries_on_one_session_compile_once_until_an_edit() {
     let subscriber = tracing_subscriber::registry().with(compiles.clone());
     with_subscriber(subscriber, || {
         let mut session = Session::open(LAUNCH).expect("open");
-        assert!(!session.check().has_errors());
+        assert!(!session.check().expect("check").has_errors());
         session.at("1s", &[]).expect("at");
-        session.frame(30.0);
+        session.frame(30.0).expect("frame");
         assert_eq!(compiles.count(), 1);
         // The edit's check compiles the new scene; later queries reuse it.
         session.edit("card rect=500x400").expect("edit");
@@ -165,11 +165,71 @@ fn every_step_is_timed_under_its_own_name() {
     with_subscriber(subscriber, || {
         let session = Session::open(LAUNCH).expect("open");
         session.at("1s", &[]).expect("at");
-        session.frame(30.0);
+        session.frame(30.0).expect("frame");
     });
     let names: Vec<String> = timings.steps().into_iter().map(|(name, _)| name).collect();
     assert_eq!(
         names,
-        ["read", "parse", "time", "compile", "at", "evaluate"]
+        [
+            "read", "parse", "time", "fonts", "compile", "at", "evaluate"
+        ]
+    );
+}
+
+/// The raster crate's fixture font, an OFL subset whose PostScript name is
+/// `FixtureSans-Black`.
+const FIXTURE_FONT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../motion-raster/tests/fixtures/FixtureSans-Black.ttf"
+);
+
+/// A scene file in a fresh directory, with the fixture font copied into
+/// `fonts/` beside it, holding `json`.
+fn scene_with_fonts(name: &str, json: &str) -> PathBuf {
+    let path = scratch_copy(name);
+    let fonts = path.with_file_name("fonts");
+    fs::create_dir_all(&fonts).expect("create fonts dir");
+    fs::copy(FIXTURE_FONT, fonts.join("FixtureSans-Black.ttf")).expect("copy font");
+    fs::write(&path, json).expect("write scene");
+    path
+}
+
+#[test]
+fn fonts_resolve_beside_the_scene_file_and_set_its_text() {
+    let path = scene_with_fonts(
+        "fonts",
+        r#"{"motion":1,"dur":"1s","fonts":["fonts"],"layers":[{"id":"t","text":"AB","font":"FixtureSans-Black 40"}]}"#,
+    );
+    let session = Session::open(&path).expect("open");
+    let fonts = session.fonts().expect("fonts");
+    assert!(
+        fonts
+            .faces()
+            .iter()
+            .any(|f| f.postscript_name == "FixtureSans-Black")
+    );
+    let graph = session.graph().expect("graph");
+    assert!(graph.nodes[0].bounds.width() > 0.0);
+}
+
+#[test]
+fn a_missing_font_file_or_face_is_reported() {
+    let missing = scene_with_fonts(
+        "missing-font",
+        r#"{"motion":1,"dur":"1s","fonts":["fonts","nowhere.ttf"],"layers":[]}"#,
+    );
+    let error = Session::open(&missing).expect("open").graph().unwrap_err();
+    assert_eq!(
+        (error.kind, error.path.as_deref()),
+        (Kind::Io, Some("fonts[1]"))
+    );
+    let unknown = scene_with_fonts(
+        "unknown-face",
+        r#"{"motion":1,"dur":"1s","layers":[{"id":"t","text":"A","font":"Nope-Bold 10"}]}"#,
+    );
+    let error = Session::open(&unknown).expect("open").check().unwrap_err();
+    assert_eq!(
+        (error.kind, error.path.as_deref()),
+        (Kind::UnknownName, Some("layers[0].font"))
     );
 }

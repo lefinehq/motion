@@ -224,7 +224,8 @@ fn fix_hint(
     let only_followed = |delta: f64, follows: bool| if follows { delta } else { 0.0 };
     // `at` keywords resolve in the parent's box, or on the canvas.
     let extent = node.parent.map_or((graph.width, graph.height), |p| {
-        (graph.nodes[p].width, graph.nodes[p].height)
+        let parent = graph.nodes[p].bounds;
+        (parent.width(), parent.height())
     });
     fix(
         &layer.id,

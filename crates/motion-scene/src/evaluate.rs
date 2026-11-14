@@ -43,10 +43,7 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
             let local = node.timing.local(frame);
             let mut shown = node.timing.shows_at(frame);
             let content = match &node.content {
-                NodeContent::Text { text, font } => ContentState::Text {
-                    text: text.clone(),
-                    font: font.clone(),
-                },
+                NodeContent::Text(text) => ContentState::Text(text.clone()),
                 NodeContent::Rect(r) => ContentState::Rect(*r),
                 NodeContent::Shapes(items) => {
                     ContentState::Shapes(shape::draws(&items_at(items, local)))
@@ -68,17 +65,16 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
                     .map(ShapeDraw::bounds)
                     .reduce(|a, b| a.union(b))
                     .unwrap_or(Rect::ZERO),
-                _ => Rect::new(0.0, 0.0, node.width, node.height),
+                _ => node.bounds,
             };
             NodeState {
                 id: node.id.clone(),
-                width: node.width,
-                height: node.height,
                 values,
                 transform: world.expect("every transform is computed"),
                 shown,
                 hidden: node.hidden,
                 content,
+                own_box: node.bounds,
                 local_bounds,
                 fill: node.fill,
                 fx: items_at(&node.fx, local),

@@ -2,11 +2,12 @@
 //! outline, draw order and bounds.
 
 use super::*;
-use crate::{ApproxTextMeasure, ContentState, FrameState, compile, evaluate};
+use crate::{ContentState, FrameState, compile, evaluate};
 use kurbo::{ParamCurveArclen, PathEl};
 use motion_format::item::SHAPES;
 use motion_format::parse_document;
 use motion_format::property::LAYER;
+use motion_text::{FontSet, Typesetter};
 
 /// The frame-0 state of a scene whose one layer `a` holds `shapes`.
 fn frame(shapes: &str, frame: f64) -> FrameState {
@@ -14,7 +15,8 @@ fn frame(shapes: &str, frame: f64) -> FrameState {
         r#"{{"motion":1,"dur":"1s","fps":10,"layers":[{{"id":"a","shapes":[{shapes}]}}]}}"#
     );
     let doc = parse_document(&json).unwrap();
-    evaluate(&compile(doc.scene(), &ApproxTextMeasure), frame)
+    let graph = compile(doc.scene(), &mut Typesetter::new(FontSet::builtin())).unwrap();
+    evaluate(&graph, frame)
 }
 
 fn draws_of(shapes: &str) -> Vec<ShapeDraw> {

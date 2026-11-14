@@ -56,7 +56,13 @@ fn rest_comes_from_at_the_box_or_the_row() {
     };
     let rests: Vec<Value> = PROPERTIES
         .iter()
-        .map(|p| p.rest(&at, (1920.0, 1080.0), (40.0, 20.0)))
+        .map(|p| {
+            p.rest(
+                &at,
+                kurbo::Rect::new(0.0, 0.0, 1920.0, 1080.0),
+                kurbo::Rect::new(0.0, 0.0, 40.0, 20.0),
+            )
+        })
         .collect();
     assert_eq!(
         rests,

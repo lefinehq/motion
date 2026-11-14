@@ -260,7 +260,7 @@ motion's value lies in the parts the agent touches: the format, the edits and th
 
 ### D33. Text is shaped from font assets
 
-- **Decision:** fonts are assets, found by PostScript or family name in folders the caller gives; a missing font or glyph is an error. Shaping and line layout use Parley, with HarfRust shaping, in a crate of its own, `motion-text`. Compile reaches it through the `TextMeasure` seam, so steps 1 to 3 stay free of font files when a test does not need them.
+- **Decision:** fonts are assets, found by PostScript or family name in folders the caller gives; a missing font or glyph is an error. Shaping and line layout use Parley, with HarfRust shaping, in a crate of its own, `motion-text`. Compile takes a `motion_text::Typesetter` and sets every text layer once, since a layout does not animate. Inter is embedded, so compiling never reads files; the engine reads the fonts a scene's `fonts` lists. (Until 2026-11-14 compile went through a `TextMeasure` seam with an estimate; text animators need the real glyphs, clusters and lines, so the seam went.)
 - **Why:**
   - Real shaping is required for every script and for exact line breaks; an estimate cannot be checked against a reference.
   - System fonts make a render depend on the machine (D12, D14).

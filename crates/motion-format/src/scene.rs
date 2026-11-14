@@ -9,7 +9,8 @@ use crate::item::Item;
 use crate::parse::scene_from_value;
 use crate::preset::{PresetSpec, lookup, names};
 use crate::property::Prop;
-use crate::shorthand::{Behaviour, Font, Position, RectShape};
+use crate::shorthand::{Behaviour, Position, RectShape};
+use crate::text::TextContent;
 use crate::units::{Color, Size, Time, TimeSpan};
 use crate::value::Value;
 
@@ -28,6 +29,8 @@ pub struct Scene {
     pub background: Color,
     /// The scene's own presets, which hide built-ins of the same name.
     pub presets: Vec<(String, PresetSpec)>,
+    /// Font files and folders, relative to the scene file, besides the built-in Inter.
+    pub fonts: Vec<String>,
     /// Compositions that `comp` layers draw, in the order written.
     pub comps: Vec<Comp>,
     /// Layers in paint order: the first is at the back.
@@ -76,8 +79,9 @@ pub struct Layer {
     pub id: String,
     /// What the layer draws.
     pub content: Content,
-    /// Fill colour (the text colour for text layers).
-    pub fill: Color,
+    /// The fill colour of a rect layer, straight RGBA from 0 to 1; a text
+    /// layer's colours are in its runs.
+    pub fill: [f64; 4],
     /// Where the layer's anchor sits, in its parent's box or on the canvas:
     /// its centre, unless `anchor` moves it.
     pub at: Position,
@@ -114,23 +118,18 @@ impl Layer {
     }
 
     /// Where `prop` rests on this layer: the value it sets, else the
-    /// registry's rest, on a canvas of `canvas` pixels for a box of `size`.
-    pub fn rest(&self, prop: Prop, canvas: (f64, f64), size: (f64, f64)) -> Value {
+    /// registry's rest, with `at` resolved in `extent` for a box of `own`.
+    pub fn rest(&self, prop: Prop, extent: kurbo::Rect, own: kurbo::Rect) -> Value {
         self.value(prop)
-            .unwrap_or_else(|| prop.spec().rest(&self.at, canvas, size))
+            .unwrap_or_else(|| prop.spec().rest(&self.at, extent, own))
     }
 }
 
 /// What a layer draws.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Content {
-    /// A line of text.
-    Text {
-        /// The words to draw.
-        text: String,
-        /// Family, size and weight.
-        font: Font,
-    },
+    /// Text, with its style.
+    Text(Box<TextContent>),
     /// A rectangle, possibly with rounded corners.
     Rect(RectShape),
     /// Shape items: groups, outlines and the paints that draw them. The

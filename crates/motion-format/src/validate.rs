@@ -3,9 +3,12 @@
 //! without the enclosing path; the caller places it with [`Diagnostic::under`].
 
 mod item;
+mod text;
 
 use std::collections::HashSet;
 use std::str::FromStr;
+
+use kurbo::Rect;
 
 use crate::{Diagnostic, Kind, Result};
 
@@ -20,8 +23,9 @@ use crate::doc::{
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, SHAPES};
 use crate::parse::key::{
-    ANIM, AT, BG, COMP, DUR, FILL, FONT, FPS, FX, ID, IN, LAYERS, MOTION, OFFSET, PARENT, PIVOT,
-    PRESETS, RECT, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, TEXT, comp_path, layer_path,
+    ANIM, AT, BG, BOX, COMP, DUR, FILL, FONT, FPS, FX, ID, IN, LAYERS, MOTION, OFFSET, PARAGRAPHS,
+    PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT,
+    comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -54,12 +58,8 @@ const CLEAR: Color = Color {
     b: 0,
     a: 0,
 };
-const DEFAULT_FILL: Color = Color {
-    r: 255,
-    g: 255,
-    b: 255,
-    a: 255,
-};
+/// White, the fill when a layer sets none.
+const DEFAULT_FILL: [f64; 4] = [1.0; 4];
 const DEFAULT_POSITION: Position = Position {
     x: Coord::Center,
     y: Coord::Center,
@@ -87,6 +87,10 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
     let presets = presets(own_presets).map_err(|e| e.under(PRESETS))?;
     let Object(comp_docs) = &doc.comps;
     let comp_sizes = comp_sizes(comp_docs)?;
+    let fonts = match &*doc.fonts {
+        Some(List(fonts)) => fonts.clone(),
+        None => Vec::new(),
+    };
     let List(layer_docs) = required(doc.layers.as_ref(), LAYERS, "[]")?;
     let context = Context {
         presets: &presets,
@@ -109,6 +113,7 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
         duration,
         background,
         presets,
+        fonts,
         comps,
         layers,
     })
@@ -279,7 +284,10 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
     let layer = Layer {
         id: id.to_owned(),
         content: content(doc, context)?,
-        fill: optional(doc.fill.as_ref(), FILL)?.unwrap_or(DEFAULT_FILL),
+        fill: match &*doc.fill {
+            Some(written) => crate::text::color(written).map_err(|e| e.under(FILL))?,
+            None => DEFAULT_FILL,
+        },
         at: optional(doc.at.as_ref(), AT)?.unwrap_or(DEFAULT_POSITION),
         values,
         enter: doc
@@ -430,13 +438,24 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
                 .expected(EXAMPLE));
         }
     };
-    only_on(doc.font.is_some(), FONT, key, &[TEXT])?;
     only_on(doc.fill.is_some(), FILL, key, &[TEXT, RECT])?;
+    let Object(style) = &doc.style;
+    for (written, name) in [
+        (doc.font.is_some(), FONT),
+        (!style.is_empty(), STYLE),
+        (doc.runs.is_some(), RUNS),
+        (doc.paragraphs.is_some(), PARAGRAPHS),
+        (doc.frame.is_some(), BOX),
+    ] {
+        only_on(written, name, key, &[TEXT])?;
+    }
     match key {
-        TEXT => Ok(Content::Text {
-            text: doc.text.clone().expect("written"),
-            font: optional(doc.font.as_ref(), FONT)?.unwrap_or_else(default_font),
-        }),
+        TEXT => Ok(Content::Text(Box::new(text::text(
+            doc,
+            doc.text.as_deref().expect("written"),
+            default_font(),
+            DEFAULT_FILL,
+        )?))),
         RECT => Ok(Content::Rect(
             doc.rect.as_ref().expect("written").parse_at(RECT)?,
         )),
@@ -475,9 +494,10 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
     }
 }
 
+/// Inter, which ships built in, by the family name its variable font gives.
 fn default_font() -> Font {
     Font {
-        family: "Inter".into(),
+        family: "Inter Variable".into(),
         size: 48.0,
         weight: 400,
     }
@@ -880,7 +900,9 @@ fn entrance_conflict(
         return Ok(());
     };
     let name = track.target.name();
-    let canvas = (
+    let canvas = Rect::new(
+        0.0,
+        0.0,
         f64::from(context.size.width),
         f64::from(context.size.height),
     );
@@ -896,7 +918,7 @@ fn entrance_conflict(
         let whole = match (layer.value(target.prop), &target.prop.spec().rest) {
             (Some(value), _) => value,
             (None, Rest::Value(value)) => value.clone(),
-            (None, Rest::At) => target.prop.spec().rest(&layer.at, extent?, (0.0, 0.0)),
+            (None, Rest::At) => target.prop.spec().rest(&layer.at, extent?, Rect::ZERO),
             (None, Rest::BoxCentre) => {
                 target
                     .prop
@@ -928,18 +950,18 @@ fn entrance_conflict(
     )))
 }
 
-/// A layer's box in pixels when it is known before compiling: a rect's, a
-/// composition's canvas, and none for shapes and pivots, whose own
-/// coordinates start at their anchor.
-fn known_box(layer: &Layer, context: &Context) -> Option<(f64, f64)> {
+/// A layer's box in its own pixels when it is known before compiling: a
+/// rect's, a composition's canvas, and an empty box at the origin for shapes
+/// and pivots. A text box is known only once the text is set.
+fn known_box(layer: &Layer, context: &Context) -> Option<Rect> {
     match &layer.content {
-        Content::Rect(rect) => Some((rect.width, rect.height)),
+        Content::Rect(rect) => Some(Rect::new(0.0, 0.0, rect.width, rect.height)),
         Content::Comp(id) => context
             .comps
             .iter()
             .find(|(c, _)| c == id)
-            .map(|(_, size)| (f64::from(size.width), f64::from(size.height))),
-        Content::Shapes(_) | Content::Pivot => Some((0.0, 0.0)),
+            .map(|(_, size)| Rect::new(0.0, 0.0, f64::from(size.width), f64::from(size.height))),
+        Content::Shapes(_) | Content::Pivot => Some(Rect::ZERO),
         Content::Text { .. } => None,
     }
 }

@@ -1,7 +1,7 @@
 //! Unit tests for `src/compile.rs`.
 
 use super::*;
-use crate::text::ApproxTextMeasure;
+use motion_text::{FontSet, Typesetter};
 use rstest::rstest;
 
 fn launch() -> motion_format::Scene {
@@ -13,7 +13,7 @@ fn launch() -> motion_format::Scene {
 
 fn compile_json(json: &str) -> SceneGraph {
     let scene = motion_format::parse_document(json).unwrap().scene().clone();
-    compile(&scene, &ApproxTextMeasure)
+    compile(&scene, &mut Typesetter::new(FontSet::builtin())).unwrap()
 }
 
 /// What drives the property or component called `name` on `node`: its
@@ -74,7 +74,7 @@ fn one(extra: &str, top: &str) -> SceneGraph {
 
 #[test]
 fn resolves_sizes_and_rest_positions() {
-    let g = compile(&launch(), &ApproxTextMeasure);
+    let g = compile(&launch(), &mut Typesetter::new(FontSet::builtin())).unwrap();
     assert_eq!(
         (g.width, g.height, g.duration_frames),
         (1920.0, 1080.0, 150.0)
@@ -82,15 +82,26 @@ fn resolves_sizes_and_rest_positions() {
     let t = &g.nodes[0];
     assert_eq!(track(t, "x").sample(0.0), 960.0);
     assert_eq!(track(t, "y").sample(1e6), 260.0);
-    assert!((t.width - 580.8).abs() < 1e-9 && (t.height - 115.2).abs() < 1e-9);
+    // The title is set in Inter at 96 px: its box is the layout's bounds,
+    // from the first baseline's start, and the anchor rests at its centre.
+    assert!(
+        t.bounds.x0 == 0.0 && t.bounds.y0 < 0.0 && t.bounds.width() > 400.0,
+        "{:?}",
+        t.bounds
+    );
+    let anchor = track(t, "anchor-x").sample(0.0);
+    assert_eq!(anchor, t.bounds.center().x);
     let c = &g.nodes[1];
-    assert_eq!((c.width, c.height), (300.0, 400.0));
+    assert_eq!((c.bounds.width(), c.bounds.height()), (300.0, 400.0));
     assert_eq!(track(c, "x").sample(0.0), 960.0);
 }
 
 #[test]
 fn every_node_has_one_track_per_property() {
-    for n in &compile(&launch(), &ApproxTextMeasure).nodes {
+    for n in &compile(&launch(), &mut Typesetter::new(FontSet::builtin()))
+        .unwrap()
+        .nodes
+    {
         assert_eq!(n.tracks.len(), motion_format::property::PROPERTIES.len());
     }
 }
@@ -112,7 +123,7 @@ fn untouched_properties_are_constant_at_their_default() {
 
 #[test]
 fn fade_up_compiles_to_an_opacity_and_a_y_track() {
-    let g = compile(&launch(), &ApproxTextMeasure);
+    let g = compile(&launch(), &mut Typesetter::new(FontSet::builtin())).unwrap();
     let c = &g.nodes[1];
     assert_eq!(pairs(track(c, "opacity")), [(15.0, 0.0), (27.0, 1.0)]);
     assert_eq!(pairs(track(c, "y")), [(15.0, 760.0), (27.0, 700.0)]);
@@ -283,7 +294,7 @@ fn a_code_built_parent_cycle_is_refused() {
     .scene()
     .clone();
     scene.layers[0].parent = Some("b".into());
-    compile(&scene, &ApproxTextMeasure);
+    compile(&scene, &mut Typesetter::new(FontSet::builtin())).unwrap();
 }
 
 #[test]
