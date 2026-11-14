@@ -5,6 +5,7 @@ use motion_format::property::Prop;
 use std::sync::Arc;
 
 use kurbo::Rect;
+use motion_format::ImageContent;
 use motion_format::shorthand::{MatteMode, RectShape};
 
 use crate::text::TextNode;
@@ -65,6 +66,8 @@ pub enum NodeContent {
     Shapes(Vec<ItemNode>),
     /// The composition at this index of [`SceneGraph::comps`].
     Comp(usize),
+    /// A picture file stretched over the node's box.
+    Image(Arc<ImageContent>),
     /// Nothing; other nodes move with it.
     Pivot,
 }
@@ -162,7 +165,8 @@ pub struct Node {
     /// The colour of a rect node, straight RGBA from 0 to 1.
     pub fill: [f64; 4],
     /// Its box in its own coordinates: a rect's or a composition's from the
-    /// origin, a text layout's bounds, or empty at the origin for shapes and pivots.
+    /// origin, a text layout's bounds, an image's `box`, or empty at the
+    /// origin for shapes and pivots.
     pub bounds: Rect,
     /// The index of the node it moves with, if any.
     pub parent: Option<usize>,

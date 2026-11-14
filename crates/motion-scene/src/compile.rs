@@ -4,6 +4,8 @@
 //! item and effect likewise gets a track per row of its kind's registry, and
 //! each composition its own nodes on its own clock.
 
+use std::sync::Arc;
+
 use kurbo::Rect;
 use motion_format::anim::{AnimTrack, Easing};
 use motion_format::key::layer_path;
@@ -129,8 +131,8 @@ fn nodes(
 }
 
 /// A node's box in its own coordinates: a text layout's bounds, a rect's or
-/// a composition's canvas from the origin, and empty at the origin for
-/// shapes and pivots.
+/// a composition's canvas from the origin, an image's `box`, and empty at
+/// the origin for shapes and pivots.
 fn content_box(content: &NodeContent, scene: &Scene) -> Rect {
     match content {
         NodeContent::Text { text, .. } => text.layout.bounds(),
@@ -139,6 +141,7 @@ fn content_box(content: &NodeContent, scene: &Scene) -> Rect {
             let size = scene.comps[*index].size;
             Rect::new(0.0, 0.0, f64::from(size.width), f64::from(size.height))
         }
+        NodeContent::Image(image) => image.frame,
         NodeContent::Shapes(_) | NodeContent::Pivot => Rect::ZERO,
     }
 }
@@ -164,6 +167,7 @@ fn node_content(
                 .position(|c| &c.id == id)
                 .expect("validation checks every comp exists"),
         ),
+        Content::Image(image) => NodeContent::Image(Arc::new(image.clone())),
         Content::Pivot => NodeContent::Pivot,
     })
 }

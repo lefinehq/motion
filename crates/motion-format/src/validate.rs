@@ -23,9 +23,9 @@ use crate::doc::{
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, SHAPES};
 use crate::parse::key::{
-    ANIM, ANIMATE, AT, BG, BOX, COMP, DUR, FILL, FONT, FPS, FX, ID, IN, LAYERS, MATTE, MOTION,
-    OFFSET, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN,
-    STRETCH, STYLE, TEXT, comp_path, layer_path,
+    ANIM, ANIMATE, AT, BG, BOX, COMP, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN, LAYERS, MATTE,
+    MOTION, OFFSET, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SIZE,
+    SPAN, STRETCH, STYLE, TEXT, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -33,7 +33,7 @@ use crate::property::{LAYER, Prop, PropertySpec, Registry, Rest, Target};
 use crate::shorthand::{Behaviour, Coord, Font, Position};
 use crate::units::{Color, SPAN_EXPECTED, SignedTime, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
-use crate::{Comp, Content, Curve, Layer, Scene, fmt_num};
+use crate::{Comp, Content, Curve, ImageContent, Layer, Scene, fmt_num};
 
 /// The id rule, as an accepted form.
 pub(crate) const ID_RULE: &str =
@@ -427,7 +427,7 @@ pub(crate) fn is_valid_id(id: &str) -> bool {
 }
 
 /// The keys that say what a layer draws, of which it has exactly one.
-const CONTENT_KEYS: [&str; 5] = [TEXT, RECT, SHAPES_KEY, COMP, PIVOT];
+const CONTENT_KEYS: [&str; 6] = [TEXT, RECT, SHAPES_KEY, COMP, IMAGE, PIVOT];
 
 /// A layer draws exactly one of [`CONTENT_KEYS`]. None is `Missing` and two
 /// is a `Conflict`, at the second, with the same message since the fix is the same.
@@ -437,6 +437,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         doc.rect.is_some(),
         doc.shapes.is_some(),
         doc.comp.is_some(),
+        doc.image.is_some(),
         doc.pivot.is_some(),
     ];
     let mut keys = CONTENT_KEYS
@@ -449,8 +450,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         let (last, rest) = quoted.split_last().expect("content keys");
         format!("needs exactly one of {} or {last}", rest.join(", "))
     };
-    const EXAMPLE: &str =
-        r#"e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card" or "pivot":true"#;
+    const EXAMPLE: &str = r#"e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg" or "pivot":true"#;
     let key = match (keys.next(), keys.next()) {
         (Some(key), None) => key,
         (None, _) => return Err(Diagnostic::new(Kind::Missing, one_of()).expected(EXAMPLE)),
@@ -461,13 +461,13 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         }
     };
     only_on(doc.fill.is_some(), FILL, key, &[TEXT, RECT])?;
+    only_on(doc.frame.is_some(), BOX, key, &[TEXT, IMAGE])?;
     let Object(style) = &doc.style;
     for (written, name) in [
         (doc.font.is_some(), FONT),
         (!style.is_empty(), STYLE),
         (doc.runs.is_some(), RUNS),
         (doc.paragraphs.is_some(), PARAGRAPHS),
-        (doc.frame.is_some(), BOX),
         (doc.animate.is_some(), ANIMATE),
     ] {
         only_on(written, name, key, &[TEXT])?;
@@ -507,6 +507,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
                 .at(COMP)),
             }
         }
+        IMAGE => image(doc.image.as_deref().expect("written"), doc.frame.as_ref()),
         _ => match *doc.pivot {
             Some(true) => Ok(Content::Pivot),
             _ => Err(
@@ -516,6 +517,25 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
             ),
         },
     }
+}
+
+/// An image layer: a picture file, relative to the scene file, filling the
+/// layer's `box`, which it must have since the scene is read without
+/// opening its files.
+fn image(path: &str, frame: Option<&ValueDoc>) -> Result<Content> {
+    if path.trim().is_empty() {
+        return Err(Diagnostic::new(Kind::Invalid, "an empty image path")
+            .at(IMAGE)
+            .expected("a PNG or JPEG file, relative to the scene file, e.g. `photos/beach.jpg`"));
+    }
+    let frame = frame.ok_or_else(|| {
+        Diagnostic::new(Kind::Missing, "missing `box`: an image layer fills its box")
+            .expected(r#"the picture's size in px, e.g. "box":[1920,1080]"#)
+    })?;
+    Ok(Content::Image(ImageContent {
+        path: path.to_owned(),
+        frame: text::frame(frame).map_err(|e| e.under(BOX))?,
+    }))
 }
 
 /// Inter, which ships built in, by the family name its variable font gives.
@@ -965,8 +985,8 @@ fn entrance_conflict(
 }
 
 /// A layer's box in its own pixels when it is known before compiling: a
-/// rect's, a composition's canvas, and an empty box at the origin for shapes
-/// and pivots. A text box is known only once the text is set.
+/// rect's, a composition's canvas, an image's `box`, and an empty box at the
+/// origin for shapes and pivots. A text box is known only once the text is set.
 fn known_box(layer: &Layer, context: &Context) -> Option<Rect> {
     match &layer.content {
         Content::Rect(rect) => Some(Rect::new(0.0, 0.0, rect.width, rect.height)),
@@ -975,6 +995,7 @@ fn known_box(layer: &Layer, context: &Context) -> Option<Rect> {
             .iter()
             .find(|(c, _)| c == id)
             .map(|(_, size)| Rect::new(0.0, 0.0, f64::from(size.width), f64::from(size.height))),
+        Content::Image(image) => Some(image.frame),
         Content::Shapes(_) | Content::Pivot => Some(Rect::ZERO),
         Content::Text { .. } => None,
     }

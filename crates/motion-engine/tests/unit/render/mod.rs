@@ -85,6 +85,45 @@ fn a_rect_layer_is_its_box_filled_under_its_transform() {
     );
 }
 
+/// The golden scenes' picture, 48x32, by its absolute path.
+const TILES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/images/tiles.png");
+
+#[test]
+fn an_image_layer_is_its_picture_over_its_box_under_its_transform() {
+    let session = session(&scene(&format!(
+        r#"{{"id":"photo","image":"{TILES}","box":[-4,-2,96,64],"at":"100 50","rotate":30,"opacity":0.5}}"#
+    )));
+    let state = session.frame(0.0).unwrap();
+    let frame = session.display_list(0.0).unwrap();
+    let layer = only_layer(&frame);
+    assert_eq!(layer.transform, state.nodes[0].transform);
+    assert_eq!(layer.opacity, 0.5);
+    let [Node::Image(image)] = layer.children.as_slice() else {
+        panic!("one picture: {:?}", layer.children)
+    };
+    assert_eq!(image.rect, Rect::new(-4.0, -2.0, 92.0, 62.0));
+    assert_eq!((image.picture.width(), image.picture.height()), (48, 32));
+}
+
+#[test]
+fn a_missing_picture_is_an_error_at_its_layers_image() {
+    let e = session(&scene(
+        r#"{"id":"photo","image":"no/such/file.png","box":[10,10]}"#,
+    ))
+    .display_list(0.0)
+    .unwrap_err();
+    assert_eq!(
+        (e.kind, e.path.as_deref()),
+        (motion_format::Kind::Io, Some("photo.image"))
+    );
+    assert!(e.message.contains("file.png"), "{e}");
+    // A picture no frame shows is never read.
+    let hidden = session(&scene(
+        r#"{"id":"photo","image":"no/such/file.png","box":[10,10],"hidden":true}"#,
+    ));
+    assert!(hidden.display_list(0.0).is_ok());
+}
+
 #[test]
 fn rounding_stops_at_half_the_shorter_side() {
     let pill = rect(

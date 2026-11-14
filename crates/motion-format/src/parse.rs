@@ -39,6 +39,8 @@ pub mod key {
     pub const SHAPES: &str = "shapes";
     /// The composition a layer draws.
     pub const COMP: &str = "comp";
+    /// The picture file an image layer draws, relative to the scene file.
+    pub const IMAGE: &str = "image";
     /// A layer that draws nothing, for others to move with.
     pub const PIVOT: &str = "pivot";
     /// The font of a text layer.
@@ -104,12 +106,13 @@ pub const COMP_KEYS: [&str; 5] = [key::SIZE, key::FPS, key::DUR, key::BG, key::L
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 23] = [
+pub const LAYER_KEYS: [&str; 24] = [
     key::ID,
     key::TEXT,
     key::RECT,
     key::SHAPES,
     key::COMP,
+    key::IMAGE,
     key::PIVOT,
     key::FONT,
     key::FILL,

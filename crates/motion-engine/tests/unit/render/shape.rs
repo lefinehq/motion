@@ -64,7 +64,7 @@ fn leaves(shapes: &str) -> Vec<(Affine, PathDraw)> {
                 [Node::Path(path)] => (*transform, path.clone()),
                 other => panic!("not one path: {other:?}"),
             },
-            Node::Glyphs(_) => panic!("glyphs in a shape layer"),
+            Node::Glyphs(_) | Node::Image(_) => panic!("not an outline: {node:?}"),
         })
         .collect()
 }

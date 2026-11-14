@@ -17,6 +17,7 @@ mod fidelity;
 mod fonts;
 mod geometry;
 mod import;
+mod pictures;
 mod render;
 mod session;
 mod stage;

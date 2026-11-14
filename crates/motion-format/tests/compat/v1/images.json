@@ -1,0 +1,7 @@
+{"motion":1,"size":"160x90","fps":12,"dur":"1s","bg":"#F4F1EA",
+"layers":[
+{"id":"photo","image":"images/tiles.png","box":[24,16],"at":"center center","scale":3,
+ "anim":{"rotate":"-8 -> 8 @0-1s ease-in-out","opacity":"0.4 -> 1 @0-6f"}},
+{"id":"thumb","image":"images/tiles.png","box":[-12,-8,24,16],"position":[24,0],"scale":0.5,"parent":"photo","hidden":true},
+{"id":"badge","rect":"12x8","fill":"#1D4ED8","position":[24,0],"parent":"photo","matte":"thumb luma"}
+]}

@@ -1,6 +1,8 @@
 //! Step 3 (Evaluate): every node's values, transform and content at one
 //! frame, compositions at their nodes' own time.
 
+use std::sync::Arc;
+
 use kurbo::{Affine, Rect, Vec2};
 use motion_format::Value;
 use motion_format::property::{PROPERTIES, Prop, PropertySpec};
@@ -83,6 +85,7 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
                         .then(|| Box::new(evaluate_comp(graph, *index, inner)));
                     ContentState::Comp(*index, state)
                 }
+                NodeContent::Image(image) => ContentState::Image(Arc::clone(image)),
                 NodeContent::Pivot => ContentState::Pivot,
             };
             let local_bounds = match &content {

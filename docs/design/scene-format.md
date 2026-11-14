@@ -24,7 +24,7 @@ Here is what each layer does:
 - **`cards`** is five cards in a row, one per label. They fade up one after another, starting at frame 15 and six frames apart.
 - **`bloom`** has no content, only an effect. It adds a soft glow to everything below it.
 
-The syntax shown here is illustrative, and `repeat`, `layout`, `data`, `item` and `fx` are designed but not built yet. What is built today is the canvas, `text` and `rect` layers, `fill`, `at`, `in`, `anim` and `presets`; the sections below say what is still planned.
+The syntax shown here is illustrative, and `repeat`, `layout`, `data`, `item` and `fx` are designed but not built yet. What is built today is the canvas, `text`, `rect` and `image` layers, `fill`, `at`, `in`, `anim` and `presets`; the sections below say what is still planned.
 
 ## The canvas
 
@@ -47,7 +47,7 @@ Layers are stacked from bottom to top, in the order they are listed.
 | `rect` | A rectangle the size of its box, with an optional corner radius (`"300x100 r12"`) |
 | `shapes` | Shape items: groups, rectangles, ellipses and free paths, drawn by fills and strokes (see [Shapes](#shapes-effects-and-compositions)) |
 | `svg` | An SVG file as shapes |
-| `image` | A picture file |
+| `image` | A PNG or JPEG file stretched over the layer's `box` (see [Images](#images)) |
 | `solid` | A flat colour |
 | `comp` | A composition from `comps`, drawn in the layer's box at the layer's own time |
 | `pivot` | An invisible layer (`"pivot":true`) that only carries a position, rotation and scale. Other layers can use it as a parent. |
@@ -140,6 +140,19 @@ Each kind lists its properties in `crates/motion-format/src/item.rs`; this table
 "comps":{"card":{"size":"600x400","dur":"5s","layers":[{"id":"title","text":"Hello"}]}},
 "layers":[{"id":"card-1","comp":"card","at":"540 700","offset":"1s"}]
 ```
+
+## Images
+
+An image layer draws a picture file: `image` names a PNG or JPEG file, relative to the scene file (an absolute path also works), and `box` says where its pixels go in the layer's own coordinates, `[width, height]` from the origin or `[x, y, width, height]`, as for box text. The picture is stretched to fill the box, so its size in the file does not have to match; an import writes the size the project gave it.
+
+```json
+{"id":"photo","image":"photos/beach.jpg","box":[1920,1080],"at":"center center","opacity":0.8}
+```
+
+- **Box.** `box` is required: the scene is read, checked and laid out without opening its files, so the layer's size is in the scene. `anchor` rests at the box's centre, and `check` measures the box.
+- **Files.** A render reads and decodes each file once, the first time a frame shows it, and draws every later frame from that. A file that is missing, or is not a PNG or JPEG file, is an error that names the file; a file no frame shows is never read. The format is recognised by the file's first bytes, not its name.
+- **Colour.** PNG keeps its transparency; JPEG is opaque. Pixels are read as sRGB, and sampled bilinearly.
+- Like any layer, an image has a transform, parent, opacity, span and time, can be a matte, and can be matted. Video files are not image layers; they come with video layers in phase 2.
 
 ## Animation, at three levels of detail
 

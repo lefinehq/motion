@@ -58,6 +58,7 @@ pub(crate) struct LayerDoc {
     pub(crate) rect: Present<Shorthand<RectShape>>,
     pub(crate) shapes: Present<List<ItemsDoc>>,
     pub(crate) comp: Present<String>,
+    pub(crate) image: Present<String>,
     pub(crate) pivot: Present<bool>,
     pub(crate) font: Present<Shorthand<Font>>,
     pub(crate) fill: Present<serde_json::Value>,
