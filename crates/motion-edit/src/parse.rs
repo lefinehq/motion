@@ -1,5 +1,15 @@
 //! The `winnow` grammar that reads an edit line into an [`Edit`]. It knows
 //! nothing about scenes: whether a key fits its target is checked in `apply`.
+//!
+//! ```text
+//! line    = target (ws change)+
+//! change  = path "=" value
+//! path    = segment ("." segment)*      a segment is letters, digits, `-` and `_`
+//! value   = quoted | json | bare
+//! quoted  = '"' (char | '\"' | '\\')* '"'
+//! json    = a JSON array or object, read by serde_json up to its closing bracket
+//! bare    = text up to the next space: `none`, `true`, `false`, a number, or a string
+//! ```
 
 use motion_format::edit_word::{FALSE, NONE, TRUE};
 use motion_format::grammar::{Failure, Parsed, blank0, blank1, ends_with, parse_all, word};
