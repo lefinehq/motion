@@ -396,7 +396,9 @@ fn inspect_prints_the_tree_then_the_report() {
     assert_eq!(out.status.code(), Some(0));
     let text = stdout(&out);
     assert!(
-        text.starts_with("project 94.9, unknown bits per channel\nreport\n"),
+        text.starts_with(
+            "project 94.9, unknown bits per channel, expressions in extendscript\nreport\n"
+        ),
         "{text}"
     );
     assert!(

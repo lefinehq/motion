@@ -22,8 +22,38 @@ pub struct Project {
     pub items: Vec<Item>,
     /// The definition of each effect type the project uses, by match name.
     pub effects: BTreeMap<String, EffectDefinition>,
+    /// The engine its expressions are evaluated with.
+    pub expression_engine: ExpressionEngine,
     /// The chunks the reader passed over, by name, with how often each appears.
     pub skipped: BTreeMap<String, usize>,
+}
+
+/// The engine a project evaluates its expressions with, from its `ExEn`
+/// chunk. It prints as the file stores it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, derive_more::Display)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpressionEngine {
+    /// `javascript-1.0`: the modern engine, ECMAScript 2018.
+    #[display("javascript-1.0")]
+    JavaScript,
+    /// `extendscript`: the legacy engine, ECMAScript 3, which is also what
+    /// files from before the choice existed use.
+    #[display("extendscript")]
+    ExtendScript,
+    /// A name this reader does not know, as stored.
+    #[display("{_0}")]
+    Other(String),
+}
+
+impl ExpressionEngine {
+    /// The engine stored as `name`.
+    pub fn named(name: &str) -> ExpressionEngine {
+        match name {
+            "javascript-1.0" => ExpressionEngine::JavaScript,
+            "extendscript" => ExpressionEngine::ExtendScript,
+            other => ExpressionEngine::Other(other.to_owned()),
+        }
+    }
 }
 
 /// A file version, printed `major.minor`: the major number grows with each

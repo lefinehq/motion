@@ -4,7 +4,6 @@
       "unsupported": {
         "`ADBE Stroke`": 2,
         "`ADBE Text Expressible Selector`": 1,
-        "expressions (the keys under them are kept)": 9,
         "masks": 3,
         "time remapping": 1
       },
@@ -14,22 +13,22 @@
       "all": {
         "from": 0.0,
         "frames": 302,
-        "content_error": 0.3449,
-        "content_failing": 0.956004,
-        "drawn_error": 0.3449,
-        "drawn_failing": 0.956004,
-        "union_error": 0.391816,
-        "union_failing": 0.965767
+        "content_error": 0.331182,
+        "content_failing": 0.941555,
+        "drawn_error": 0.331182,
+        "drawn_failing": 0.941555,
+        "union_error": 0.378046,
+        "union_failing": 0.958262
       },
       "settled": {
         "from": 3.0,
         "frames": 122,
-        "content_error": 0.338053,
-        "content_failing": 0.934282,
-        "drawn_error": 0.338053,
-        "drawn_failing": 0.934282,
-        "union_error": 0.380514,
-        "union_failing": 0.952303
+        "content_error": 0.33416,
+        "content_failing": 0.929699,
+        "drawn_error": 0.33416,
+        "drawn_failing": 0.929699,
+        "union_error": 0.375918,
+        "union_failing": 0.949878
       }
     },
     "s611": {
@@ -37,8 +36,7 @@
         "`ADBE AudSpect`": 2,
         "`ADBE Drop Shadow`": 2,
         "`ADBE Mirror`": 2,
-        "adjustment layers (drawn as nothing)": 1,
-        "expressions (the keys under them are kept)": 6
+        "adjustment layers (drawn as nothing)": 1
       },
       "texts": 1,
       "texts_within": 1,
@@ -46,78 +44,74 @@
       "all": {
         "from": 0.0,
         "frames": 900,
-        "content_error": 0.43035,
-        "content_failing": 1.0,
-        "drawn_error": 0.43035,
-        "drawn_failing": 1.0,
-        "union_error": 0.43035,
-        "union_failing": 1.0
+        "content_error": 0.703695,
+        "content_failing": 0.996425,
+        "drawn_error": 0.703695,
+        "drawn_failing": 0.996425,
+        "union_error": 0.703695,
+        "union_failing": 0.996425
       },
       "settled": {
         "from": 3.0,
         "frames": 720,
-        "content_error": 0.430411,
-        "content_failing": 1.0,
-        "drawn_error": 0.430411,
-        "drawn_failing": 1.0,
-        "union_error": 0.430411,
-        "union_failing": 1.0
+        "content_error": 0.703482,
+        "content_failing": 0.996125,
+        "drawn_error": 0.703482,
+        "drawn_failing": 0.996125,
+        "union_error": 0.703482,
+        "union_failing": 0.996125
       }
     },
     "s737": {
-      "unsupported": {
-        "expressions (the keys under them are kept)": 15
-      },
+      "unsupported": {},
       "texts": 5,
       "texts_within": 2,
       "text_worst": 4.338731,
       "all": {
         "from": 0.0,
         "frames": 299,
-        "content_error": 0.562379,
-        "content_failing": 0.892001,
-        "drawn_error": 0.562379,
-        "drawn_failing": 0.892001,
-        "union_error": 0.753563,
-        "union_failing": 0.922492
+        "content_error": 0.213833,
+        "content_failing": 0.363405,
+        "drawn_error": 0.213833,
+        "drawn_failing": 0.363405,
+        "union_error": 0.59194,
+        "union_failing": 0.742078
       },
       "settled": {
         "from": 3.0,
         "frames": 119,
-        "content_error": 0.830724,
-        "content_failing": 0.976091,
-        "drawn_error": 0.830724,
-        "drawn_failing": 0.976091,
-        "union_error": 0.703031,
-        "union_failing": 0.888644
+        "content_error": 0.026213,
+        "content_failing": 0.113366,
+        "drawn_error": 0.026213,
+        "drawn_failing": 0.113366,
+        "union_error": 0.333179,
+        "union_failing": 0.501002
       }
     },
     "s740": {
-      "unsupported": {
-        "expressions (the keys under them are kept)": 10
-      },
+      "unsupported": {},
       "texts": 3,
       "texts_within": 2,
       "text_worst": 0.592682,
       "all": {
         "from": 0.0,
         "frames": 302,
-        "content_error": 0.018747,
-        "content_failing": 0.047634,
-        "drawn_error": 0.018747,
-        "drawn_failing": 0.047634,
-        "union_error": 0.174344,
-        "union_failing": 0.294797
+        "content_error": 0.011942,
+        "content_failing": 0.04026,
+        "drawn_error": 0.011942,
+        "drawn_failing": 0.04026,
+        "union_error": 0.051803,
+        "union_failing": 0.119068
       },
       "settled": {
         "from": 3.0,
         "frames": 122,
-        "content_error": 0.009655,
-        "content_failing": 0.035966,
-        "drawn_error": 0.009655,
-        "drawn_failing": 0.035966,
-        "union_error": 0.009655,
-        "union_failing": 0.035966
+        "content_error": 0.009257,
+        "content_failing": 0.03558,
+        "drawn_error": 0.009257,
+        "drawn_failing": 0.03558,
+        "union_error": 0.009257,
+        "union_failing": 0.03558
       }
     }
   }

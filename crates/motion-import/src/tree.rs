@@ -23,7 +23,11 @@ impl fmt::Display for Project {
         let depth = self
             .bits_per_channel
             .map_or_else(|| "unknown".to_owned(), |bits| bits.to_string());
-        writeln!(f, "project {}, {depth} bits per channel", self.version)?;
+        writeln!(
+            f,
+            "project {}, {depth} bits per channel, expressions in {}",
+            self.version, self.expression_engine
+        )?;
         let mut levels: HashMap<u32, usize> = HashMap::new();
         self.items.iter().try_for_each(|item| {
             let level = item

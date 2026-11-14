@@ -2,7 +2,7 @@
 source: crates/motion-import/tests/fixtures.rs
 expression: "format!(\"{project}{}\", project.report())"
 ---
-project 88.1, 8 bits per channel
+project 88.1, 8 bits per channel, expressions in extendscript
 composition 40 "HamburgerArrow" 400x300, 30 fps, 6s, work area 0s-6s
   layer 46 "Rotator" av, 0s-6s, source 32, null
     ADBE Time Remapping = 0

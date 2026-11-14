@@ -2,7 +2,7 @@
 source: crates/motion-import/tests/fixtures.rs
 expression: "format!(\"{project}{}\", project.report())"
 ---
-project 92.6, 8 bits per channel
+project 92.6, 8 bits per channel, expressions in extendscript
 composition 949 "miter" 300x300, 60 fps, 3s, work area 0s-3s
   layer 960 "Shape Layer 1" shape, 0s-3s
     ADBE Root Vectors Group

@@ -203,6 +203,7 @@ pub(crate) fn sample_project() -> Project {
             item(3, "Red Solid", None, ItemKind::Footage(solid)),
         ],
         effects: BTreeMap::new(),
+        expression_engine: crate::model::ExpressionEngine::JavaScript,
         skipped: [("fvdv".to_owned(), 2), ("LIST:Ewst".to_owned(), 1)].into(),
     }
 }
@@ -407,4 +408,176 @@ pub(crate) fn cdta(width: u16, height: u16, fps: u16, seconds: u32) -> Vec<u8> {
             ],
         ),
     )
+}
+
+/// Small projects for the tests of expressions: properties, groups, layers
+/// and comps with only what a test is about.
+pub(crate) mod build {
+    use std::collections::BTreeMap;
+
+    use crate::model::{
+        Child, Color, Composition, Control, EffectDefinition, Expression, Group, Item, ItemKind,
+        Layer, LayerKind, Parameter, Project, Property, Span, Stream, Switches, Value, Version,
+    };
+    use crate::{BlendMode, TrackMatte};
+
+    /// A property holding `value`.
+    pub(crate) fn property(match_name: &str, value: Stream) -> Property {
+        Property {
+            match_name: match_name.into(),
+            name: None,
+            enabled: true,
+            hidden: false,
+            separated: false,
+            value,
+            expression: None,
+            min: None,
+            max: None,
+        }
+    }
+
+    /// A property holding `value` under the expression `source`.
+    pub(crate) fn expressed(match_name: &str, value: Stream, source: &str) -> Property {
+        Property {
+            expression: Some(Expression {
+                text: source.into(),
+                enabled: true,
+            }),
+            ..property(match_name, value)
+        }
+    }
+
+    /// One number all the time.
+    pub(crate) fn number(n: f64) -> Stream {
+        Stream::Static(Value::Number(n))
+    }
+
+    /// One point all the time.
+    pub(crate) fn point(x: f64, y: f64) -> Stream {
+        Stream::Static(Value::Vector3([x, y, 0.0]))
+    }
+
+    /// A group of `children`.
+    pub(crate) fn group(match_name: &str, children: Vec<Child>) -> Group {
+        Group {
+            match_name: match_name.into(),
+            name: None,
+            enabled: true,
+            hidden: false,
+            children,
+        }
+    }
+
+    /// A layer's transform holding `properties`.
+    pub(crate) fn transform(properties: Vec<Property>) -> Child {
+        Child::Group(group(
+            "ADBE Transform Group",
+            properties.into_iter().map(Child::Property).collect(),
+        ))
+    }
+
+    /// A layer's effects: one slider control named `name`, its slider
+    /// stored as `slider`, or left at its default.
+    pub(crate) fn slider(name: &str, slider: Option<Property>) -> Child {
+        let control = Group {
+            name: Some(name.into()),
+            ..group(
+                "ADBE Slider Control",
+                slider.into_iter().map(Child::Property).collect(),
+            )
+        };
+        Child::Group(group("ADBE Effect Parade", vec![Child::Group(control)]))
+    }
+
+    /// A layer called `name`, shown from 0 to 2 seconds.
+    pub(crate) fn layer(id: u32, name: &str, children: Vec<Child>) -> Layer {
+        Layer {
+            id,
+            name: name.into(),
+            kind: LayerKind::Av,
+            source: None,
+            parent: None,
+            in_point: 0.0,
+            out_point: 2.0,
+            start_time: 0.0,
+            stretch: 1.0,
+            switches: Switches {
+                enabled: true,
+                ..Switches::default()
+            },
+            blend_mode: BlendMode::Normal,
+            track_matte: TrackMatte::None,
+            matte_layer: None,
+            properties: group("", children),
+        }
+    }
+
+    /// A 200 by 100 comp of `layers`, at 10 frames a second, `duration` long.
+    pub(crate) fn comp(layers: Vec<Layer>, duration: f64) -> Composition {
+        Composition {
+            width: 200,
+            height: 100,
+            pixel_aspect: 1.0,
+            frame_rate: 10.0,
+            duration,
+            background: Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            },
+            work_area: Span {
+                start: 0.0,
+                end: duration,
+            },
+            layers,
+        }
+    }
+
+    /// A project of `comps` (item id, name, comp), whose slider controls
+    /// have the definition the original gives them.
+    pub(crate) fn project(comps: Vec<(u32, &str, Composition)>) -> Project {
+        let parameter = |match_name: &str, name: &str, control| Parameter {
+            match_name: match_name.into(),
+            name: name.into(),
+            invisible: false,
+            animatable: true,
+            control,
+        };
+        let slider = EffectDefinition {
+            name: "Slider Control".into(),
+            parameters: vec![
+                parameter("ADBE Slider Control-0000", "", Control::Layer),
+                parameter(
+                    "ADBE Slider Control-0001",
+                    "Slider",
+                    Control::Slider {
+                        default: 0.0,
+                        min: None,
+                        max: None,
+                        percent: false,
+                    },
+                ),
+            ],
+        };
+        Project {
+            version: Version {
+                major: 94,
+                minor: 9,
+            },
+            bits_per_channel: Some(8),
+            items: comps
+                .into_iter()
+                .map(|(id, name, comp)| Item {
+                    id,
+                    name: name.into(),
+                    folder: None,
+                    kind: ItemKind::Composition(comp),
+                })
+                .collect(),
+            effects: BTreeMap::from([("ADBE Slider Control".to_owned(), slider)]),
+            expression_engine: crate::model::ExpressionEngine::JavaScript,
+            skipped: BTreeMap::new(),
+        }
+    }
 }

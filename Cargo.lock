@@ -1351,6 +1351,8 @@ dependencies = [
  "binrw",
  "derive_more",
  "insta",
+ "kurbo",
+ "motion-expr",
  "motion-format",
  "pretty_assertions",
  "proptest",

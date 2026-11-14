@@ -57,7 +57,7 @@ pub struct Named {
 }
 
 /// What an import did.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct Mapping {
     /// The composition that became the scene.
     pub scene: String,
@@ -69,6 +69,47 @@ pub struct Mapping {
     pub ignored: BTreeMap<String, usize>,
     /// Every composition and layer, with its id.
     pub ids: Vec<Named>,
+    /// Every expression the import met that is switched on, and what it
+    /// became.
+    pub expressions: Vec<ExpressionReport>,
+}
+
+/// What one expression became.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ExpressionReport {
+    /// Where its property is, as `composition/layer/match name/…`.
+    pub at: String,
+    /// Its first line.
+    pub source: String,
+    /// The engine it was evaluated as: `modern` or `legacy`.
+    pub engine: String,
+    /// How many frames it was evaluated at.
+    pub frames: usize,
+    /// What it became.
+    pub outcome: Outcome,
+}
+
+/// What an expression became.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "result", rename_all = "snake_case")]
+pub enum Outcome {
+    /// Keys, in place of those under it.
+    Baked {
+        /// Whether it used noise or randomness, which the bake approximates.
+        approximate: bool,
+        /// How many keys the property had under it.
+        keys_before: usize,
+        /// How many keys it became, over all the tracks it is written to.
+        keys: usize,
+        /// The largest distance from a sample to the keys, per component,
+        /// in the project's units.
+        max_error: Vec<f64>,
+    },
+    /// Nothing: the keys under it are kept.
+    NotBaked {
+        /// Why.
+        why: String,
+    },
 }
 
 impl Mapping {
@@ -131,6 +172,30 @@ impl fmt::Display for Mapping {
             self.ignored
                 .iter()
                 .try_for_each(|(why, count)| writeln!(f, "    {why} ({count})"))?;
+        }
+        if !self.expressions.is_empty() {
+            let baked: Vec<(bool, usize, usize)> = self
+                .expressions
+                .iter()
+                .filter_map(|e| match &e.outcome {
+                    Outcome::Baked {
+                        approximate,
+                        keys_before,
+                        keys,
+                        ..
+                    } => Some((*approximate, *keys_before, *keys)),
+                    Outcome::NotBaked { .. } => None,
+                })
+                .collect();
+            writeln!(
+                f,
+                "  expressions: {} baked ({} approximate) into {} keys, where {} were; {} not baked",
+                baked.len(),
+                baked.iter().filter(|b| b.0).count(),
+                baked.iter().map(|b| b.2).sum::<usize>(),
+                baked.iter().map(|b| b.1).sum::<usize>(),
+                self.expressions.len() - baked.len()
+            )?;
         }
         let groups = self.by_what();
         if groups.is_empty() {
