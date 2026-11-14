@@ -1,0 +1,15 @@
+---
+source: crates/motion-engine/tests/compat.rs
+expression: "frames.join(\"\\n\")"
+---
+frame 0: 68dbb043616a5581
+  badge [1 0 0 1 240 160] 240,160 | 0,0 | 1,1 | 0 | 1
+  rings [1 0 0 1 240 340] 240,340 | 0,0 | 1,1 | 0 | 1
+
+frame 11: 9f9c7efc2134b93b
+  badge [1 0 0 1 240 160] 240,160 | 0,0 | 1,1 | 0 | 1
+  rings [1 0 0 1 240 340] 240,340 | 0,0 | 1,1 | 0 | 1
+
+frame 23: 60bdf3d51dc49a1c
+  badge [1 0 0 1 240 160] 240,160 | 0,0 | 1,1 | 0 | 1
+  rings [1 0 0 1 240 340] 240,340 | 0,0 | 1,1 | 0 | 1

@@ -328,6 +328,10 @@ motion never goes to the network while rendering. A render depends only on the s
 - **JSON Schema.** A schema is generated from the engine's own types and published, so editors and agents can validate scenes.
 - **Errors you can act on.** When a short string does not parse, the error shows what the full, expanded form should look like.
 
+## Versions
+
+`"motion": 1` is the format's version. It stays 1 while changes only add: a new key, a new value form, a looser limit. A change that alters what a written scene means bumps it, and motion reads every older version through migrations ([D36](decisions.md#d36-the-format-only-changes-in-the-open)). The scenes in `crates/motion-format/tests/compat/` hold that promise in CI: together they use every name in this document, and what each one draws is a snapshot.
+
 ## Why JSON
 
 We measured the same scene in several formats (see the [research note](../research/2026-11-13-baselines.md#formats)). JSON wins on three counts:

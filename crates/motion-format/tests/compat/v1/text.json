@@ -1,0 +1,20 @@
+{"motion":1,"size":"800x600","fps":24,"dur":"1s","bg":"#000000",
+"fonts":["../../../../motion-raster/tests/fixtures/FixtureSans-Black.ttf"],
+"layers":[
+{"id":"styled","text":"Keep\nyour life\nsimple","font":"Inter Variable 40","fill":"#FFFFFF","at":"220 150",
+ "style":{"italic":false,"stroke":"#8F8F8F","stroke-width":2,"paint":"stroke-over","tracking":20,"leading":48,"baseline":2,"caps":"all","faux-bold":true,"faux-italic":true,
+  "align":"center","indent-first":4,"indent-start":2,"indent-end":2,"space-before":2,"space-after":4,"auto-leading":1.2},
+ "runs":[{"range":[0,4],"fill":"#FFE000","font":"FixtureSans-Black 40"}],
+ "paragraphs":[{"align":"left"},{"align":"center"},{"align":"right"}]},
+{"id":"boxed","text":"A box of words that wraps onto lines","font":"FixtureSans-Black 24","fill":"#FFFFFF","box":[0,0,300,120],"at":"600 160"},
+{"id":"parts","text":"chars and words\nand lines","font":"Inter Variable 32","fill":"#FFFFFF","at":"400 420",
+ "animate":[{"animator":[
+   {"range":"char","shape":"square","mode":"add","start":0,"end":1,"offset":0,"amount":1,"smooth":1,"anim":{"offset":"0 -> 1 @0-1s"}},
+   {"range":"char-no-space","shape":"ramp-up","mode":"subtract"},
+   {"range":"word","shape":"ramp-down","mode":"intersect"},
+   {"range":"line","shape":"triangle","mode":"min"},
+   {"range":"char","shape":"round","mode":"max"},
+   {"range":"word","shape":"smooth","mode":"difference"}],
+  "position":[0,20],"anchor":[0,0],"scale":[1.2,1.2],"rotate":10,"opacity":0.5,"fill":"#FF0000","stroke":"#00FF00","stroke-width":1,"tracking":50,
+  "anim":{"rotate":"10 -> 0 @0-1s"}}]}
+]}
