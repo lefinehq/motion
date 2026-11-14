@@ -246,11 +246,37 @@ pub enum Value {
     Vector3([f64; 3]),
     /// A colour.
     Color(Color),
+    /// A bezier path: a mask's or a shape's.
+    Path(Path),
     /// A value the reader does not decode yet.
     Opaque {
         /// What sort of value it is.
         reason: Reason,
     },
+}
+
+/// A bezier path
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#listshap)).
+/// A shape's path is in the pixels of its group; a mask's is in the pixels
+/// of a layer without a source, and in fractions of the source's size on a
+/// layer with one.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Path {
+    /// The last vertex joins the first.
+    pub closed: bool,
+    /// The vertices, in order.
+    pub vertices: Vec<Vertex>,
+}
+
+/// One vertex of a [`Path`].
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Vertex {
+    /// Where it is.
+    pub point: [f64; 2],
+    /// The incoming control point, as an offset from `point`.
+    pub in_tangent: [f64; 2],
+    /// The outgoing control point, as an offset from `point`.
+    pub out_tangent: [f64; 2],
 }
 
 /// What sort of value an [`Value::Opaque`] holds, so the report can count
@@ -266,8 +292,6 @@ pub enum Reason {
     Markers,
     /// A 3D layer's orientation angles.
     Orientation,
-    /// A mask or shape path.
-    Path,
     /// A stream whose value lives in a record of its own, such as an
     /// effect's arbitrary data.
     Valueless,

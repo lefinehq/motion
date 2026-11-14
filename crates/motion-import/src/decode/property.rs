@@ -9,10 +9,11 @@ use motion_format::{Diagnostic, Kind, Result};
 
 use super::{Decoder, Scan, UTF8};
 use crate::model::{
-    Child, Color, Ease, Expression, Group, Keyframe, Property, Reason, Spatial, Stream, Value,
+    Child, Color, Ease, Expression, Group, Keyframe, Path, Property, Reason, Spatial, Stream,
+    Value, Vertex,
 };
 use crate::record::{
-    Bound, Cdat, KeyBody, KeyItem, Layout, Lhd3, OneEase, Record, Tdb4, Tdsb, text,
+    Bound, Cdat, KeyBody, KeyItem, Layout, Lhd3, OneEase, Points, Record, Shph, Tdb4, Tdsb, text,
 };
 use crate::rifx::{Chunk, Name, Tag};
 
@@ -30,6 +31,10 @@ const KEYFRAMES: Name = Name::list(b"list");
 const LDAT: Name = Name::chunk(b"ldat");
 /// An expression, in files older than [`crate::record::Head::WRAPPED_TEXT`].
 const EXPR: Name = Name::chunk(b"expr");
+/// The paths of a path stream, one per keyframe.
+const OMKS: Name = Name::list(b"omks");
+/// One path.
+const SHAP: Name = Name::list(b"shap");
 
 /// The match name that ends a group.
 const GROUP_END: &str = "ADBE Group End";
@@ -45,6 +50,8 @@ enum Body {
     Effect,
     /// A stream whose value, if valueless, is not decoded.
     Stream,
+    /// A path stream, with its paths next to it.
+    Path,
     /// A stream inside a wrapper that holds its values, not decoded yet.
     Wrapped(Reason),
 }
@@ -56,12 +63,39 @@ const BODIES: [(Tag, Body); 8] = [
     (Tag(*b"tdgp"), Body::Group),
     (Tag(*b"sspc"), Body::Effect),
     (Tag(*b"tdbs"), Body::Stream),
-    (Tag(*b"om-s"), Body::Wrapped(Reason::Path)),
+    (Tag(*b"om-s"), Body::Path),
     (Tag(*b"otst"), Body::Wrapped(Reason::Orientation)),
     (Tag(*b"btds"), Body::Wrapped(Reason::TextDocument)),
     (Tag(*b"mrst"), Body::Wrapped(Reason::Markers)),
     (Tag(*b"GCst"), Body::Wrapped(Reason::Gradient)),
 ];
+
+/// Where a valueless stream's values live: in a wrapper the reader does not
+/// decode yet, or in the paths read next to the stream, one per keyframe.
+#[derive(Debug)]
+enum Values {
+    /// Not decoded, for this reason.
+    Opaque(Reason),
+    /// One path per keyframe, or one for a static stream.
+    Paths(Vec<Path>),
+}
+
+impl Values {
+    /// The value of keyframe `index`, or of the static stream at 0.
+    ///
+    /// # Errors
+    /// A [`Kind::Missing`] diagnostic, at `scan`, when there is no path for it.
+    fn get(&self, index: usize, scan: &Scan<'_, '_>) -> Result<Value> {
+        match self {
+            Values::Opaque(reason) => Ok(Value::Opaque { reason: *reason }),
+            Values::Paths(paths) => paths.get(index).cloned().map(Value::Path).ok_or_else(|| {
+                Diagnostic::new(Kind::Missing, format!("no path for value {index}"))
+                    .at(scan.path.clone())
+                    .expected("one `LIST:shap` per keyframe in `LIST:omks`")
+            }),
+        }
+    }
+}
 
 /// How a layer's keyframe times map to composition seconds
 /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#interpreting-keyframes)).
@@ -138,11 +172,22 @@ impl Decoder {
                 Child::Group(self.group(scan.require_list(TDGP)?, match_name, timing)?)
             }
             Body::Stream => {
-                Child::Property(self.stream(scan, match_name, Reason::Valueless, timing)?)
+                let values = Values::Opaque(Reason::Valueless);
+                Child::Property(self.stream(scan, match_name, &values, timing)?)
+            }
+            Body::Path => {
+                let stream = scan.require_list(TDBS)?;
+                let paths = match scan.list(OMKS)? {
+                    Some(mut omks) => omks.lists(SHAP).map(|shap| path(shap?)).collect(),
+                    None => Ok(Vec::new()),
+                };
+                let values = Values::Paths(paths?);
+                Child::Property(self.stream(stream, match_name, &values, timing)?)
             }
             Body::Wrapped(reason) => {
                 let stream = scan.require_list(TDBS)?;
-                Child::Property(self.stream(stream, match_name, reason, timing)?)
+                let values = Values::Opaque(reason);
+                Child::Property(self.stream(stream, match_name, &values, timing)?)
             }
         })
     }
@@ -150,22 +195,22 @@ impl Decoder {
     /// A stream: its flags, name, metadata, value or keyframes, expression
     /// and bounds
     /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#listtdbs)).
-    /// `reason` says what a valueless stream's values are.
+    /// `values` holds a valueless stream's values.
     fn stream(
         &self,
         mut scan: Scan<'_, '_>,
         match_name: String,
-        reason: Reason,
+        values: &Values,
         timing: Timing,
     ) -> Result<Property> {
         let enabled = scan.optional::<Tdsb>()?.is_none_or(|tdsb| tdsb.enabled());
         let name = self.display_name(&mut scan)?;
         let tdb4: Tdb4 = scan.record()?;
         let value = match scan.find(Cdat::NAME) {
-            Some(cdat) => Stream::Static(static_value(&scan, cdat, &tdb4, reason)?),
+            Some(cdat) => Stream::Static(static_value(&scan, cdat, &tdb4, values)?),
             None => {
                 let list = scan.require_list(KEYFRAMES)?;
-                Stream::Animated(keyframes(list, &tdb4, reason, timing)?)
+                Stream::Animated(keyframes(list, &tdb4, values, timing)?)
             }
         };
         let expression = scan
@@ -219,13 +264,13 @@ fn static_value(
     scan: &Scan<'_, '_>,
     cdat: Chunk<'_>,
     tdb4: &Tdb4,
-    reason: Reason,
+    values: &Values,
 ) -> Result<Value> {
     if matches!(
         tdb4.layout(),
         Layout::SingleEaseValueless | Layout::Valueless
     ) {
-        return Ok(Value::Opaque { reason });
+        return values.get(0, scan);
     }
     let dims = usize::from(tdb4.dims);
     let cdat: Cdat = scan.parse(cdat, ())?;
@@ -252,7 +297,7 @@ fn static_value(
 fn keyframes(
     mut list: Scan<'_, '_>,
     tdb4: &Tdb4,
-    reason: Reason,
+    values: &Values,
     timing: Timing,
 ) -> Result<Vec<Keyframe>> {
     let lhd3: Lhd3 = list.record()?;
@@ -282,18 +327,24 @@ fn keyframes(
     let args = (usize::from(tdb4.dims), tdb4.layout());
     items
         .into_iter()
-        .map(|body| {
+        .enumerate()
+        .map(|(index, body)| {
             let item: KeyItem = list.parse(Chunk { name: LDAT, body }, args)?;
             let time = timing.seconds(item.time, time_base);
-            Ok(keyframe(item, time, tdb4, reason))
+            let valueless = || values.get(index, &list);
+            keyframe(item, time, tdb4, valueless)
         })
         .collect()
 }
 
 /// The keyframe at `time` that `item` describes; a valueless stream's value
-/// is opaque, for `reason`.
-fn keyframe(item: KeyItem, time: f64, tdb4: &Tdb4, reason: Reason) -> Keyframe {
-    let opaque = Value::Opaque { reason };
+/// comes from `valueless`.
+fn keyframe(
+    item: KeyItem,
+    time: f64,
+    tdb4: &Tdb4,
+    valueless: impl FnOnce() -> Result<Value>,
+) -> Result<Keyframe> {
     let (value, in_ease, out_ease, spatial) = match item.body {
         KeyBody::PerDimension {
             value,
@@ -326,11 +377,11 @@ fn keyframe(item: KeyItem, time: f64, tdb4: &Tdb4, reason: Reason) -> Keyframe {
         }
         KeyBody::SingleEaseValueless { ease } => {
             let (in_ease, out_ease) = sides(&ease);
-            (opaque, in_ease, out_ease, None)
+            (valueless()?, in_ease, out_ease, None)
         }
-        KeyBody::Valueless => (opaque, Vec::new(), Vec::new(), None),
+        KeyBody::Valueless => (valueless()?, Vec::new(), Vec::new(), None),
     };
-    Keyframe {
+    Ok(Keyframe {
         time,
         value,
         in_interpolation: item.in_interpolation.into(),
@@ -341,7 +392,42 @@ fn keyframe(item: KeyItem, time: f64, tdb4: &Tdb4, reason: Reason) -> Keyframe {
         continuous: item.flags & KeyItem::CONTINUOUS != 0,
         auto_bezier: item.flags & KeyItem::AUTO_BEZIER != 0,
         roving: item.flags & KeyItem::ROVING != 0,
-    }
+    })
+}
+
+/// One path, from a `LIST:shap`: its box, then its points, three per vertex
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#listshap)).
+fn path(mut shap: Scan<'_, '_>) -> Result<Path> {
+    let shph: Shph = shap.record()?;
+    let mut list = shap.require_list(KEYFRAMES)?;
+    let lhd3: Lhd3 = list.record()?;
+    let stored = list.optional::<Points>()?.map(|ldat| ldat.points);
+    let count = usize::try_from(lhd3.count).unwrap_or(usize::MAX);
+    let points: Vec<[f64; 2]> = stored
+        .unwrap_or_default()
+        .into_iter()
+        .take(count)
+        .map(|point| shph.point(point))
+        .collect();
+    let (triples, _) = points.as_chunks::<3>();
+    // The incoming control point of each vertex ends the triple before it.
+    let previous = triples.iter().cycle().skip(triples.len().saturating_sub(1));
+    let vertices = triples
+        .iter()
+        .zip(previous)
+        .map(|(&[point, [out_x, out_y], _], &[_, _, [in_x, in_y]])| {
+            let [x, y] = point;
+            Vertex {
+                point,
+                in_tangent: [in_x - x, in_y - y],
+                out_tangent: [out_x - x, out_y - y],
+            }
+        })
+        .collect();
+    Ok(Path {
+        closed: shph.closed(),
+        vertices,
+    })
 }
 
 /// The value that `numbers`, one per dimension, make; a colour when `color`.

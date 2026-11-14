@@ -503,6 +503,52 @@ impl Bound {
     pub const MAX: Name = Name::chunk(b"tduM");
 }
 
+/// `shph`: a path's flags and the box its points are normalized to
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#shph)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Shph {
+    /// Bit 3: the path is open.
+    #[br(seek_before = at(0x03))]
+    pub flags: u8,
+    /// The box's left, top, right and bottom edges.
+    pub bounds: [f32; 4],
+}
+
+impl Record for Shph {
+    const NAME: Name = Name::chunk(b"shph");
+}
+
+impl Shph {
+    /// Whether the path's last vertex joins its first.
+    pub fn closed(&self) -> bool {
+        self.flags & 0x08 == 0
+    }
+
+    /// The point at `[x, y]`, normalized to the box, in the path's space.
+    pub fn point(&self, [x, y]: [f32; 2]) -> [f64; 2] {
+        let [left, top, right, bottom] = self.bounds.map(f64::from);
+        [
+            left + f64::from(x) * (right - left),
+            top + f64::from(y) * (bottom - top),
+        ]
+    }
+}
+
+/// The `ldat` of a path's `LIST:list`: points, three per vertex (the vertex,
+/// its outgoing control point, the next vertex's incoming one), each an x
+/// and a y normalized to the [`Shph`] box
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#vertex-items)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Points {
+    /// Every point in the chunk.
+    #[br(parse_with = until_eof)]
+    pub points: Vec<[f32; 2]>,
+}
+
+impl Record for Points {
+    const NAME: Name = Name::chunk(b"ldat");
+}
+
 /// `sspc`: a footage source's cached media settings
 /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#sspc)).
 /// The fields motion reads sit at the same offsets in the 222-byte form and in

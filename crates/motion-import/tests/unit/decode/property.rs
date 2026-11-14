@@ -537,3 +537,105 @@ fn refuses_keyframes_the_list_cannot_hold() {
         Some("a `tdb4` time base of at least 1")
     );
 }
+
+/// A `LIST:shap` in the box from (0, 0) to (100, 200), with `flags` and
+/// `points` normalized to the box.
+fn shap(flags: u8, points: &[[f32; 2]]) -> Vec<u8> {
+    let bounds: Vec<u8> = [0.0f32, 0.0, 100.0, 200.0]
+        .iter()
+        .flat_map(|edge| edge.to_be_bytes())
+        .collect();
+    let shph = record(24, &[(0x03, &[flags]), (0x04, &bounds)]);
+    let points: Vec<u8> = points
+        .iter()
+        .flatten()
+        .flat_map(|c| c.to_be_bytes())
+        .collect();
+    let count = u32::try_from(points.len() / 8).expect("a few points");
+    let lhd3 = record(52, &[(0x08, &count.to_be_bytes()), (0x10, &[0, 0, 0, 8])]);
+    list(
+        b"shap",
+        &[
+            chunk(b"shph", &shph),
+            list(b"list", &[chunk(b"lhd3", &lhd3), chunk(b"ldat", &points)]),
+            chunk(b"omtn", &[]),
+        ],
+    )
+}
+
+/// Two vertices: (0, 0) and (100, 200), with their control points.
+const TWO_VERTICES: [[f32; 2]; 6] = [
+    [0.0, 0.0],
+    [0.125, 0.0],
+    [0.5, 0.875],
+    [1.0, 1.0],
+    [0.875, 1.0],
+    [0.0, 0.25],
+];
+
+#[test]
+fn reads_paths_with_tangents_relative_to_their_vertices() {
+    let stream = tdbs(&[tdb4(1, 0x07, true, false), chunk(b"cdat", &[0; 4])]);
+    let path = list(
+        b"om-s",
+        &[stream, list(b"omks", &[shap(0x01, &TWO_VERTICES)])],
+    );
+    let body = group_body(1, "", &[tdmn("ADBE Vector Shape"), path]);
+    let group = read(&body, true).0.unwrap();
+    assert_eq!(
+        property(&group, 0).value,
+        Stream::Static(Value::Path(Path {
+            closed: true,
+            vertices: vec![
+                Vertex {
+                    point: [0.0, 0.0],
+                    in_tangent: [0.0, 50.0],
+                    out_tangent: [12.5, 0.0],
+                },
+                Vertex {
+                    point: [100.0, 200.0],
+                    in_tangent: [-50.0, -25.0],
+                    out_tangent: [-12.5, 0.0],
+                },
+            ],
+        }))
+    );
+}
+
+#[test]
+fn gives_each_path_keyframe_its_own_path() {
+    let stream = tdbs(&[
+        tdb4(1, 0x06, true, false),
+        keys(
+            64,
+            &[key_item(0, 1, 1, &[0.0; 7]), key_item(600, 1, 1, &[0.0; 7])],
+        ),
+    ]);
+    let paths = list(b"omks", &[shap(0x09, &[]), shap(0x01, &TWO_VERTICES)]);
+    let keyframes = animated("ADBE Mask Shape", list(b"om-s", &[stream, paths]));
+    let shapes: Vec<(bool, usize)> = keyframes
+        .iter()
+        .map(|key| match &key.value {
+            Value::Path(path) => (path.closed, path.vertices.len()),
+            other => panic!("a path, not {other:?}"),
+        })
+        .collect();
+    assert_eq!(shapes, [(false, 0), (true, 2)]);
+}
+
+#[test]
+fn refuses_a_path_keyframe_without_its_path() {
+    let stream = tdbs(&[
+        tdb4(1, 0x06, true, false),
+        keys(64, &[key_item(0, 1, 1, &[0.0; 7])]),
+    ]);
+    let body = group_body(1, "", &[tdmn("ADBE Mask Shape"), list(b"om-s", &[stream])]);
+    let error = read(&body, true).0.unwrap_err();
+    assert_eq!(
+        (error.kind, error.path.as_deref()),
+        (
+            Kind::Missing,
+            Some("LIST:tdgp/ADBE Mask Shape/LIST:tdbs/LIST:list")
+        )
+    );
+}
