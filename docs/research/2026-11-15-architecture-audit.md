@@ -27,7 +27,7 @@ These templates are built for variants: the designer gathers colours, sizes and 
 
 ## The workstreams, in fix order
 
-Each workstream lists the findings it closes, by crate and line on `main` at `7bd7ea0`. **Sev** is how much the finding blocks the roadmap: **high** means it blocks it or will force a rewrite; **medium** means it must be fixed but does not block; **low** means it is cleanup.
+Each workstream lists the findings it closes, by crate and line on `main` at `d470e05`, after PR #34. **Sev** is how much the finding blocks the roadmap: **high** means it blocks it or will force a rewrite; **medium** means it must be fixed but does not block; **low** means it is cleanup.
 
 ### 1. One layer address
 
@@ -55,9 +55,9 @@ This needs a decision (D43): the separator, and how a comp instance is told apar
 | `motion-query/src/at.rs:16-35` | high | `at` searches top-level nodes, takes `&[String]` and returns one preformatted `String`. |
 | `motion-engine/src/session.rs:351-363`, `diff.rs:47-49`, `fidelity.rs:52-55`, `geometry.rs:191-244` | high | `hiding`, `ignore` and the text geometry address layers in three ways, and none of them can reach a nested layer. |
 | `motion-engine/src/render/mod.rs:128, 149` | low | Render errors name a bare `node.id` and drop the comp. |
-| `motion-import/src/map.rs:282-303`, `map/ids.rs:18-45` | high | A scene id is an ASCII slug whose suffix depends on file order. Source item and layer ids are dropped. Non-ASCII names become `layer-N`. |
-| `motion-import/src/map.rs:289-293` | medium | `Named.comp` is documented as a scene id but holds the project comp's name. |
-| `motion-import/src/map/items.rs:22-25`, `map/report.rs:40-46` | medium | Findings are keyed by a prose `name/name/match-name` path. |
+| `motion-import/src/map.rs:292-313`, `map/ids.rs:18-45` | high | A scene id is an ASCII slug whose suffix depends on file order. Source item and layer ids are dropped. Non-ASCII names become `layer-N`. |
+| `motion-import/src/map.rs:299-303` | medium | `Named.comp` is documented as a scene id but holds the project comp's name. |
+| `motion-import/src/map/items.rs:23-41`, `map/report.rs:40-46, 79-81` | medium | Findings and expression reports are keyed by a prose `name/name/match-name` path. |
 | `motion-cli/src/commands/import.rs:115-118` | medium | The CLI prints a third spelling, `comp/layer`. |
 | `motion-edit/src/apply.rs:14, 59, 148` | medium | `scene` is a reserved target but a valid id, and a layer named "Scene" imports as `scene` and can never be edited. |
 
@@ -91,10 +91,11 @@ The import builds the scene as untyped JSON with about 38 literal keys and hand-
 |---|---|---|
 | `motion-format/src/value.rs:255-288`, `curve.rs:202-235`, `path.rs:224-249` | high | `Display` is lossy, and the round-trip proptests round their inputs first (`tests/unit/value.rs:151`). |
 | `motion-format/src/write.rs:18-52` | medium | The canonical writer slices serialized strings and pastes them together. It knows only `layers` and `comps`. |
-| `motion-import/src/map/layer.rs:77-291`, `map.rs:218-258`, `map/text.rs:75-153` | medium | Literal keys, and shorthands formatted with `format!`. `motion_format::key` is used in one file only. |
-| `motion-import/src/map/keys.rs:197-231` | medium | `speed(…)`, `hold` and `linear` are printed by hand, apart from `Curve`'s `Display`. |
-| `motion-import/src/map/text.rs:217-274` | medium | The style names and defaults are copied, and have drifted: **a stroked run of width 0 imports as width 1**. |
-| `motion-import/src/map.rs:54-56`, `map/fonts.rs:44-85` | medium | `Import` holds both the raw JSON and the `Document`. `substitute_fonts` patches the JSON afterwards with `split_once` and `format!`. |
+| `motion-import/src/map/layer.rs:77-291`, `map.rs:219-273`, `map/text.rs:70-150` | medium | Literal keys, and shorthands formatted with `format!`. `motion_format::key` is used in one file only. |
+| `motion-import/src/map/keys.rs:206-231, 302` | medium | `speed(…)`, `hold` and `linear` are printed by hand, apart from `Curve`'s `Display`. Since PR #34, `speed(…)` is printed in two places. |
+| `motion-import/src/eval.rs` (new in PR #34) vs `motion-scene/src/curve.rs:73-95`, `track.rs:139-210` | high | The bake reads a property's value through a second keyframe evaluator, "as the map writes them for the scene". It re-implements the scene's ease solver, linear and hold sides, and its arc-length walk along spatial paths. The two must agree by hand, and when they drift a baked expression reads values the scene never draws. | The bake samples the mapped tracks through motion-scene, so it sees what the scene draws by construction. Map first, then bake on the mapped values. |
+| `motion-import/src/map/text.rs:215-262` | medium | The style names and defaults are copied, and have drifted: **a stroked run of width 0 imports as width 1**. |
+| `motion-import/src/map.rs:53-57`, `map/fonts.rs:44-85` | medium | `Import` holds both the raw JSON and the `Document`. `substitute_fonts` patches the JSON afterwards with `split_once` and `format!`. |
 | `motion-engine/src/fonts.rs:78-104` | medium | `add_fonts_entry` edits raw JSON and copies the writer's key order. |
 | `motion-query/src/check.rs:263`, `motion-edit/src/apply.rs:142`, `problem.rs:92` | medium | Edit lines are built by hand in three crates, and `Violation.fix` is an `Option<String>`. |
 
@@ -137,10 +138,10 @@ This needs a decision that refines D38: an expression that only reads controls s
 |---|---|---|
 | `motion-import/src/map/rows.rs:662-689` | high | Slider, angle, checkbox, colour, point and layer controls are dropped. The control layer becomes a bare `pivot`. |
 | `motion-import/src/map/rows.rs:627-631` | high | Comp-instance overrides and the data group are ignored as "drawing nothing", but overrides do change frames. |
-| `motion-import/src/map/items.rs:356-362` | high | `Group.name` is never written. "Headline Color" and "Logo" are lost. |
+| `motion-import/src/map/items.rs:306-330` | high | `item()` never writes `Group.name`. "Headline Color" and "Logo" are lost. |
 | `motion-format/src/scene.rs:89`, `item.rs:416-423` | high | A value is a literal or a track. There is no slot form and no control effect kind. |
 | `motion-scene/src/compile.rs:86-131, 291-322` | high | Compile is single-pass, and each box comes only from its own content. |
-| `motion-import/src/map/items.rs:146-149`, `map/text.rs:59-62` | medium | An expression is reported as a fixed string. D38 says the report keeps its source and what it became. |
+| `motion-import/src/map/report.rs:76-90` | medium | Since PR #34 each expression has a report, but it keeps only the source's first line, and its place is a prose path. A live link cannot be built from it later. |
 | `motion-import/src/map/rows.rs:711`, `decode/property.rs:86-88`, `model.rs:70-88` | medium | Markers stay opaque, and comps have none. They are the designer's own beats, which cut-downs need. |
 
 ### 6. The registry covers every value (D27)
@@ -163,7 +164,7 @@ D27 says every animatable value is a registered property. Today only the five tr
 | `motion-text/src/typeset.rs:90-95`, `caps.rs:91-94`, `motion-raster/src/style.rs:119-136`, `blend.rs:147-172` | medium | Each row is found by a linear search plus `expect("every X has a row")`. |
 | `motion-engine/src/render/mod.rs:104-109`, `motion-text/src/style.rs:214, 277, 296` | medium | `Caps`, `Justification`, `TextFrame` and `MatteMode` are defined more than once. |
 | `motion-format/src/shorthand/behaviour.rs:235-258` | medium | Curve tokens are recognised by their shape, so `speed(…)` is rejected in `in`. |
-| `motion-import/src/map/items.rs:383-400`, `map/layer.rs:45-48`, `map/rows.rs:609-611` | low | Match names are spelled across several modules. Layer styles are sorted by a prefix test. |
+| `motion-import/src/map/items.rs:376-400`, `map/layer.rs:45-48`, `map/rows.rs:609-611` | low | Match names are spelled across several modules. Layer styles are sorted by a prefix test. |
 
 ### 7. Text that survives a swap
 
@@ -194,7 +195,7 @@ Context such as "frame N:" or "sample `id`:" is added by rewriting the message. 
 |---|---|---|
 | `motion-engine/src/session.rs:295`, `pictures.rs:49-52`, `fidelity.rs:190-193` | medium | Context is put into the message with `format!`. |
 | `motion-engine/src/fidelity.rs:227-230` | medium | The ledger groups findings by their text. |
-| `motion-import/src/map.rs:102-109` | medium | `read_back` flattens the format's diagnostic and loses its kind, path and expected form. |
+| `motion-import/src/map.rs:104-111` | medium | `read_back` flattens the format's diagnostic and loses its kind, path and expected form. |
 | `motion-engine/src/diff.rs:96-143, 211-221`, `fidelity.rs:108-130, 256-271, 321-358` | medium | Three windows × two metrics are written out field by field. Metric names and direction are string literals. |
 | `motion-cli/src/commands/render.rs:35-56` | medium | `Frames` is parsed with `split_once('-')` into a `String` error. |
 | `motion-edit/src/path.rs:23-26` | medium | "`in` is not an object" has no path and no expected form. |
@@ -204,9 +205,10 @@ Context such as "frame N:" or "sample `id`:" is added by rewriting the message. 
 
 ### 9. Guards that guard
 
-The checks for D37, D38 and D39 grep source and manifest lines and look only at direct dependencies. Once motion-import depends on motion-expr (PR #34), the render path links the script engine, and every check still passes.
+The checks for D37, D38 and D39 grep source and manifest lines and look only at direct dependencies. Since PR #34, motion-import depends on motion-expr, so motion-engine, the crate that renders, and the CLI link the script engine (`cargo tree -i boa_engine`). No render calls it, but the check passes only because motion-engine is left out of the crates it checks.
 
 **Target shape:**
+- baking behind a `bake` feature of motion-import that only the CLI turns on, the same pattern D39 uses for `fetch`, so a crate that renders but does not import never links the script engine;
 - cargo-deny `[bans]` with `wrappers` for the script engine and the font fetcher;
 - a structural public-API check instead of grep;
 - workspace lints against `unwrap`, `expect`, `panic` and truncating casts;
@@ -214,7 +216,7 @@ The checks for D37, D38 and D39 grep source and manifest lines and look only at 
 
 | Where | Sev | What is wrong |
 |---|---|---|
-| `motion-engine/tests/boundaries.rs:87-101, 136-153` | medium | Cargo.toml is parsed line by line, direct dependencies only, and the engine is left out of `DRAWS`. |
+| `motion-engine/tests/boundaries.rs:87-101, 136-153` | high | Cargo.toml is parsed line by line, direct dependencies only, and the engine is left out of `DRAWS`. Since PR #34 the engine links the script engine and the test still passes. |
 | `motion-engine/tests/boundaries.rs:59-63`, `motion-text/src/layout.rs:13`, `font.rs:8`, `motion-raster/src/list.rs:6-7` | medium | Public fields are typed through `parley` and `vello_cpu`, and the check misses them. |
 | `Cargo.toml:15-19` | medium | Lints are `clippy::all` only. 27 `as` casts go unchecked. |
 | `.github/workflows/ci.yml:14-31` | medium | No `wasm32` build. Feature unification hides motion-fonts without `fetch`. |
@@ -253,25 +255,32 @@ These are wrong today, whatever the roadmap. Each gets a test that reproduces it
 
 | Where | What happens |
 |---|---|
-| `motion-import/src/map/text.rs:217-274` | A stroked run of width 0 imports as width 1, because the import's default stroke width differs from the format's. |
+| `motion-import/src/map/text.rs:215-262` | A stroked run of width 0 imports as width 1, because the import's default stroke width differs from the format's. |
 | `motion-import/src/record.rs:249-265`, fixture `Layer-01` | The collapse switch is not decoded, and the layer "Transformations Collapsed" reads as `solo`. Either the solo bit is mislabelled or the fixture really is soloed. |
 | `motion-import/src/map/layer.rs:167-176` | A layer whose source is missing is dropped silently. The branch meant to report it can never run. |
 | `motion-import/src/map/layer.rs:236-238` | A parent outside the layer's comp is dropped with no finding. |
-| `motion-import/src/map.rs:128-161` | `--comp` takes the first comp with a matching name, even when two have it. |
+| `motion-import/src/map.rs:114-165` | `--comp` takes the first comp with a matching name, even when two have it. |
 | `motion-edit/src/apply.rs:14, 59` | A layer with the id `scene` cannot be edited. |
 | `motion-engine/src/diff.rs:305, 325, 356` | Two `pixels()` helpers round differently, and `diff` renders outside the `render` stage. |
 
-## PR #34 and D38
+## After PR #34: D38 and the variant surface
 
-PR #34 bakes every expression into keys, which is right for those driven by `time`, `wiggle` and `loopOut`. But in 108 templates, expressions read a control layer. Baking those keeps the pixels and loses the variant surface: the colour a designer put on one control is copied into a few hundred keys across many layers.
+PR #34 bakes every expression into keys. That is right for expressions driven by `time`, `wiggle` or `loopOut`. But in 108 templates, expressions read a control layer. Baking those keeps the pixels and loses the variant surface: the colour a designer set on one control is copied into a few hundred keys across many layers.
 
-Two points before it merges:
-- **The import should keep what baking replaces:** the controls (workstream 5) and each expression's source. Then a later live-link mapping can take over without a re-import format change.
-- **Workstream 9 matters now:** with motion-import depending on motion-expr, nothing stops the script engine from reaching the render path.
+D38 already names this case under **Not now**: live expressions "would be a separate decision, made only if a real template needs a value to follow an edit". The corpus shows that 108 templates need exactly that, so the separate decision is D44.
+
+What PR #34 brings that D44 can build on:
+- **The model decodes controls.** Slider, angle, checkbox, pop-up, colour and point controls are decoded with their defaults, and the bake reads them (`bake/host.rs:447`). The map still drops them (workstream 5).
+- **Each expression has a report:** its engine, its frames and its outcome. Its source and its place still need to become data (workstreams 1 and 5).
+
+Where PR #34 diverges from this audit:
+- **A second keyframe evaluator,** `motion-import/src/eval.rs` (workstream 3).
+- **The script engine is now in the render crate's dependencies,** and the guard misses it (workstream 9).
+- **`speed(…)` is printed by hand in a second place** (workstream 3).
 
 ## What comes next
 
-1. **Fix the bugs above,** one small PR each.
+1. **Fix the bugs above,** one small PR each, and put baking behind a `bake` feature (workstream 9).
 2. **Decision D43: the layer address.** Then workstreams 1 and 2. This is the first item on the variant list: editing text inside nested comps.
 3. **Workstreams 3 and 4.** Typed writing and the import session remove the JSON patching that the slot work would otherwise build on.
 4. **Decision D44: live control links, refining D38.** Then workstream 5, and workstream 7 for text swaps.
