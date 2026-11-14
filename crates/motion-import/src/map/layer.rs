@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use motion_format::property::LAYER;
 use serde_json::{Value as Json, json};
 
-use super::footage::{Media, file_name, media};
+use super::footage::{Media, media};
 use super::items::{Out, Place, Sink};
 use super::keys::{Clock, num};
 use super::report::Fate;
@@ -182,7 +182,7 @@ impl<'p> Walk<'p> {
 
     /// A footage layer: a solid is a rectangle of its colour, and a still
     /// picture that was found an image filling the footage's size. Other
-    /// footage is a pivot, reported with why and the file's name.
+    /// footage is a pivot, reported with why.
     fn footage(
         &mut self,
         footage: &Footage,
@@ -211,16 +211,7 @@ impl<'p> Walk<'p> {
                             .unsupported(&place.at, "non-square pixels (drawn square)");
                     }
                 }
-                Media::Unsupported(why) => {
-                    pivot(self, out, None);
-                    self.mapping
-                        .count(&format!("layer: {why}"), Fate::Unsupported);
-                    // The file's name last, in backticks, as fonts are named.
-                    self.mapping.unsupported(
-                        &place.at,
-                        format!("{why} (drawn as nothing) (`{}`)", file_name(stored)),
-                    );
-                }
+                Media::Unsupported(why) => pivot(self, out, Some(why)),
             },
             Source::File { path: None } => {
                 pivot(self, out, Some("footage whose file path it cannot read"))

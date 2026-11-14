@@ -219,7 +219,7 @@ fn still_footage_that_cannot_be_found_is_reported_with_its_file() {
     assert_eq!(layer(&import, "heart-80-png")["pivot"], true);
     let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
     assert!(
-        what.contains(&"image footage it cannot find (drawn as nothing) (`Heart-80.png`)"),
+        what.contains(&"image footage it cannot find (drawn as nothing)"),
         "{what:?}"
     );
 }
