@@ -261,7 +261,7 @@ The layer's box is the box its lines cover, which for point text starts above an
 | `leading` | character | `auto` or a number of px |
 | `baseline` | character | a number of px |
 | `caps` | character | `normal`, `small`, `all` or `all-small` |
-| `faux-bold` | character | `true` or `false`; thickens glyphs and adds 30 thousandths of an em after each character |
+| `faux-bold` | character | `true` or `false` |
 | `faux-italic` | character | `true` or `false` |
 | `align` | paragraph | `left`, `right`, `center`, `justify-left`, `justify-right`, `justify-center` or `justify-all` |
 | `indent-first` | paragraph | a number of px |
@@ -270,6 +270,8 @@ The layer's box is the box its lines cover, which for point text starts above an
 | `space-before` | paragraph | a number of px |
 | `space-after` | paragraph | a number of px |
 | `auto-leading` | paragraph | a number, at least 0 |
+
+`faux-bold` thickens the glyphs and adds 30 thousandths of an em after each character, the space the project files' own layouts give it.
 
 ### Text animators
 
