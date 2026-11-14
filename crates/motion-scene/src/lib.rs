@@ -11,7 +11,7 @@ mod state;
 mod text;
 mod track;
 
-pub use animate::{GlyphParts, GlyphState, Parts};
+pub use animate::{COUNTS, GlyphParts, GlyphState, Parts};
 pub use compile::compile;
 pub use curve::Ease;
 pub use evaluate::{evaluate, evaluate_comp, local_transform};

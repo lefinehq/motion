@@ -14,7 +14,7 @@ use crate::state::ItemState;
 use crate::text::TextNode;
 
 /// The counts a selector can choose from, in the order of its `by` choices.
-const COUNTS: [&str; 4] = ["char", "char-no-space", "word", "line"];
+pub const COUNTS: [&str; 4] = ["char", "char-no-space", "word", "line"];
 
 /// Which part of each count one glyph belongs to; `None` where a count
 /// leaves the glyph out, as `word` does spaces.
