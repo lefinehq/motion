@@ -20,6 +20,10 @@ const ENGINES: &[&str] = &[
     "winnow",
     "png",
     "ureq",
+    "boa_engine",
+    "boa_parser",
+    "boa_ast",
+    "boa_interner",
 ];
 
 /// The workspace's crates folder.
@@ -125,6 +129,47 @@ fn nothing_that_renders_can_reach_the_network() {
     assert!(
         found.is_empty(),
         "only the CLI and the font crate's `fetch` feature may reach the network (D39):\n{}",
+        found.join("\n")
+    );
+}
+
+/// The crates that draw, and those they are made of.
+const DRAWS: &[&str] = &[
+    "motion-format",
+    "motion-scene",
+    "motion-text",
+    "motion-raster",
+    "motion-query",
+    "motion-edit",
+];
+
+/// The script engine and the crate around it (D38).
+const SCRIPT: &[&str] = &[
+    "motion-expr",
+    "boa_engine",
+    "boa_parser",
+    "boa_ast",
+    "boa_interner",
+];
+
+/// D38: a render never runs JavaScript. No crate that draws depends on the
+/// script engine; only the import bakes expressions.
+#[test]
+fn nothing_that_draws_links_the_script_engine() {
+    let mut found = Vec::new();
+    for name in DRAWS {
+        let manifest = Path::new(CRATES).join(name).join("Cargo.toml");
+        let text = fs::read_to_string(&manifest).expect("read a manifest");
+        for line in dependency_lines(&text) {
+            let dependency = line.split(['=', ' ', '.']).next().unwrap_or("");
+            if SCRIPT.contains(&dependency) {
+                found.push(format!("{}: {line}", manifest.display()));
+            }
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "only the import may run expressions (D38):\n{}",
         found.join("\n")
     );
 }
