@@ -828,6 +828,7 @@ dependencies = [
  "motion-format",
  "motion-import",
  "motion-query",
+ "motion-raster",
  "motion-scene",
  "motion-text",
  "pretty_assertions",

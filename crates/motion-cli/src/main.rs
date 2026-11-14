@@ -8,11 +8,12 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use motion_engine::Quality;
 use motion_engine::telemetry::timing::{REPORT_TARGET, Timings, millis};
 use motion_engine::telemetry::{Format, LevelFilter, Options};
 use tracing::info;
 
-/// Check, query and edit motion scenes, and inspect `.aep` projects.
+/// Check, query, edit and render motion scenes, and inspect `.aep` projects.
 #[derive(Parser)]
 #[command(name = "motion", version)]
 struct Cli {
@@ -53,6 +54,24 @@ impl From<LogFormat> for Format {
     }
 }
 
+/// The `--quality` values.
+#[derive(Clone, Copy, ValueEnum)]
+enum QualityArg {
+    /// 32-bit float compositing: no banding.
+    Precise,
+    /// 8- and 16-bit integer compositing: faster, for previews.
+    Fast,
+}
+
+impl From<QualityArg> for Quality {
+    fn from(quality: QualityArg) -> Self {
+        match quality {
+            QualityArg::Precise => Quality::Precise,
+            QualityArg::Fast => Quality::Fast,
+        }
+    }
+}
+
 /// A subcommand; it converts to its name, as typed.
 #[derive(Subcommand, strum::IntoStaticStr)]
 #[strum(serialize_all = "lowercase")]
@@ -78,6 +97,25 @@ enum Command {
         /// A layer id (or `scene`) followed by `key=value` pairs.
         line: String,
     },
+    /// Draw frames of a scene into PNG files named `frame-00000.png`.
+    Render {
+        /// Path to the scene file.
+        scene: PathBuf,
+        /// The frames to draw, `A-B` with both ends included; all when
+        /// neither this nor `--frame` is given.
+        #[arg(long, value_name = "A-B", conflicts_with = "frame")]
+        frames: Option<commands::render::Frames>,
+        /// One frame to draw.
+        #[arg(long, value_name = "N")]
+        frame: Option<u32>,
+        /// The folder the PNG files are written to; created if missing.
+        #[arg(long, value_name = "DIR")]
+        out: PathBuf,
+        /// How colours are computed: `precise` for delivered frames, `fast`
+        /// for previews.
+        #[arg(long, value_enum, default_value = "precise")]
+        quality: QualityArg,
+    },
     /// Print an `.aep` project: its items, layers and properties, then what
     /// the reader could not decode yet.
     Inspect {
@@ -93,9 +131,10 @@ impl Command {
     /// The file the command works on.
     fn file(&self) -> &Path {
         match self {
-            Command::Check { scene } | Command::At { scene, .. } | Command::Edit { scene, .. } => {
-                scene
-            }
+            Command::Check { scene }
+            | Command::At { scene, .. }
+            | Command::Edit { scene, .. }
+            | Command::Render { scene, .. } => scene,
             Command::Inspect { project, .. } => project,
         }
     }
@@ -119,6 +158,18 @@ fn main() -> ExitCode {
         Command::Check { scene } => commands::check::run(&scene),
         Command::At { scene, time, ids } => commands::at::run(&scene, &time, &ids),
         Command::Edit { scene, line } => commands::edit::run(&scene, &line),
+        Command::Render {
+            scene,
+            frames,
+            frame,
+            out,
+            quality,
+        } => commands::render::run(
+            &scene,
+            frames.or(frame.map(commands::render::Frames::one)),
+            &out,
+            quality.into(),
+        ),
         Command::Inspect { project, json } => commands::inspect::run(&project, json),
     };
     let code = match result {

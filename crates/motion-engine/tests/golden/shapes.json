@@ -1,0 +1,9 @@
+{"motion":1,"size":"320x240","fps":10,"dur":"1s","bg":"#F4F1EA",
+"layers":[
+{"id":"plate","rect":"240x170 r28","fill":"#1E3A5F","at":"160 120","rotate":6,"opacity":0.9},
+{"id":"evenodd","shapes":[{"path":"M0,-46 L27,37 L-44,-14 L44,-14 L-27,37 Z"},{"fill":"#F6C445","rule":"evenodd"}],"at":"95 95"},
+{"id":"nonzero","shapes":[{"path":"M0,-46 L27,37 L-44,-14 L44,-14 L-27,37 Z"},{"fill":"#F6C445"}],"at":"225 95"},
+{"id":"squashed","shapes":[{"group":[{"ellipse":[44,44]},{"stroke":"#E4572E","width":5}],"scale":[2.2,0.7]}],"at":"160 95"},
+{"id":"zigzag","shapes":[{"group":[{"path":"M-70,0 L-35,-22 L0,0 L35,-22 L70,0"},{"stroke":"#FFFFFF","width":9,"cap":"round","join":"round"}],"position":[0,0]},{"group":[{"path":"M-70,0 L-35,-22 L0,0 L35,-22 L70,0"},{"stroke":"#7FD1B9","width":9,"cap":"butt","join":"miter","miter":10}],"position":[0,34]}],"at":"160 175"},
+{"id":"glass","shapes":[{"group":[{"rect":[60,60],"position":[-18,0],"round":10},{"rect":[60,60],"position":[18,0],"round":10},{"fill":"#FFFFFF","opacity":0.6}],"opacity":0.75,"rotate":-12}],"at":"250 188","opacity":0.8}
+]}

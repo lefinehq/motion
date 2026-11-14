@@ -1,7 +1,7 @@
 //! Unit tests for `src/session.rs`.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use tracing::Subscriber;
 use tracing::span::{Attributes, Id};
@@ -232,4 +232,83 @@ fn a_missing_font_file_or_face_is_reported() {
         (error.kind, error.path.as_deref()),
         (Kind::UnknownName, Some("layers[0].font"))
     );
+}
+
+/// A 4x2 scene of 5 frames whose background is red.
+const TINY: &str = r##"{"motion":1,"size":"4x2","fps":5,"dur":"1s","bg":"#FF0000","layers":[]}"##;
+
+#[test]
+fn a_frame_is_drawn_at_the_scene_size() {
+    let session: Session = TINY.parse().unwrap();
+    let image = session.render_with(0.0, RenderOptions::GOLDEN).unwrap();
+    assert_eq!((image.width(), image.height()), (4, 2));
+    assert_eq!(image.pixel(3, 1), Some([255, 0, 0, 255]));
+    assert_eq!(session.render(0.0).unwrap(), image);
+}
+
+#[test]
+fn the_frames_run_to_the_length_rounded_up() {
+    let session: Session = TINY.parse().unwrap();
+    assert_eq!(session.frames().unwrap(), 0..5);
+    let session: Session = TINY.replace("1s", "1.1s").parse().unwrap();
+    assert_eq!(session.frames().unwrap(), 0..6);
+}
+
+#[test]
+fn every_frame_of_a_range_is_drawn_once() {
+    let session: Session = TINY.parse().unwrap();
+    let drawn = Mutex::new(Vec::new());
+    session
+        .render_frames(1..5, RenderOptions::GOLDEN, |frame, image| {
+            assert_eq!(image.width(), 4);
+            drawn.lock().unwrap().push(frame);
+            Ok(())
+        })
+        .unwrap();
+    let mut drawn = drawn.into_inner().unwrap();
+    drawn.sort_unstable();
+    assert_eq!(drawn, [1, 2, 3, 4]);
+}
+
+#[rstest]
+#[case::past_the_end(3..6)]
+#[case::backwards(Range { start: 3, end: 2 })]
+fn frames_outside_the_scene_are_refused(#[case] frames: Range<u32>) {
+    let session: Session = TINY.parse().unwrap();
+    let error = session
+        .render_frames(frames, RenderOptions::GOLDEN, |_, _| {
+            panic!("nothing is drawn")
+        })
+        .unwrap_err();
+    assert_eq!(error.kind, Kind::OutOfRange);
+    assert_eq!(
+        error.expected.as_deref(),
+        Some("frames within the scene's 0..5 (an end past the last frame)")
+    );
+}
+
+#[test]
+fn the_first_failing_frame_is_reported_with_its_number() {
+    let session: Session = TINY.parse().unwrap();
+    let error = session
+        .render_frames(0..5, RenderOptions::GOLDEN, |frame, _| match frame {
+            2 | 4 => Err(Diagnostic::new(Kind::Io, "disk full")),
+            _ => Ok(()),
+        })
+        .unwrap_err();
+    assert_eq!(error.kind, Kind::Io);
+    assert_eq!(error.message, "frame 2: disk full");
+}
+
+#[test]
+fn render_is_timed_as_display_and_render_steps() {
+    let timings = Timings::default();
+    with_subscriber(tracing_subscriber::registry().with(timings.layer()), || {
+        let session: Session = TINY.parse().unwrap();
+        session.render(0.0).unwrap();
+    });
+    let steps: Vec<String> = timings.steps().into_iter().map(|(s, _)| s).collect();
+    for step in ["evaluate", "display", "render"] {
+        assert!(steps.iter().any(|s| s == step), "{step} in {steps:?}");
+    }
 }
