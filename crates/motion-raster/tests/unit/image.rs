@@ -39,21 +39,51 @@ fn png_round_trips_exactly_and_deterministically() {
     assert_eq!(image.to_png().unwrap(), bytes);
 }
 
-#[test]
-fn from_png_rejects_other_formats() {
+/// A one-pixel PNG of `color` type and `depth` holding `data`.
+fn encoded(color: png::ColorType, depth: png::BitDepth, data: &[u8]) -> Vec<u8> {
     let mut bytes = Vec::new();
     let mut encoder = png::Encoder::new(&mut bytes, 1, 1);
-    encoder.set_color(png::ColorType::Rgb);
-    encoder.set_depth(png::BitDepth::Eight);
+    encoder.set_color(color);
+    encoder.set_depth(depth);
     let mut writer = encoder.write_header().unwrap();
-    writer.write_image_data(&[1, 2, 3]).unwrap();
+    writer.write_image_data(data).unwrap();
     writer.finish().unwrap();
-    let e = Image::from_png(&bytes).unwrap_err();
-    assert_eq!(e.kind, Kind::Invalid);
-    assert_eq!(e.expected.as_deref(), Some("an 8-bit RGBA PNG"));
+    bytes
+}
+
+#[test]
+fn from_png_reads_every_colour_type_as_rgba() {
+    use png::{BitDepth, ColorType};
+    let cases: [(ColorType, BitDepth, &[u8], [u8; 4]); 5] = [
+        (ColorType::Rgb, BitDepth::Eight, &[1, 2, 3], [1, 2, 3, 255]),
+        (ColorType::Grayscale, BitDepth::Eight, &[9], [9, 9, 9, 255]),
+        (
+            ColorType::GrayscaleAlpha,
+            BitDepth::Eight,
+            &[9, 7],
+            [9, 9, 9, 7],
+        ),
+        (
+            ColorType::Rgba,
+            BitDepth::Sixteen,
+            &[1, 0, 2, 0, 3, 0, 4, 0],
+            [1, 2, 3, 4],
+        ),
+        (
+            ColorType::Rgb,
+            BitDepth::Sixteen,
+            &[200, 9, 100, 9, 50, 9],
+            [200, 100, 50, 255],
+        ),
+    ];
+    for (color, depth, data, expected) in cases {
+        let image = Image::from_png(&encoded(color, depth, data)).unwrap();
+        assert_eq!(image.pixel(0, 0), Some(expected), "{color:?} {depth:?}");
+    }
+    let e = Image::from_png(b"not a png").unwrap_err();
     assert_eq!(
-        Image::from_png(b"not a png").unwrap_err().kind,
-        Kind::Invalid
+        (e.kind, e.expected.as_deref()),
+        (Kind::Invalid, Some("a PNG"))
     );
 }
 
