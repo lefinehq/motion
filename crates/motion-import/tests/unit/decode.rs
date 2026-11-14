@@ -233,7 +233,7 @@ fn refuses_lists_nested_too_deep() {
 
 /// A layer list: an `ldta` of `size` bytes with `id`, `kind`, `source` and
 /// `flags`, 200 % stretch, starting at 1 s, in at 0.5 s and out at 2 s of
-/// layer time, then `name`.
+/// layer time, then `name` and an empty property tree.
 fn layer(size: usize, id: u32, kind: u8, source: u32, flags: [u8; 3], name: &str) -> Vec<u8> {
     let ldta = record(
         size,
@@ -255,7 +255,11 @@ fn layer(size: usize, id: u32, kind: u8, source: u32, flags: [u8; 3], name: &str
     );
     list(
         b"Layr",
-        &[chunk(b"ldta", &ldta), chunk(b"Utf8", name.as_bytes())],
+        &[
+            chunk(b"ldta", &ldta),
+            chunk(b"Utf8", name.as_bytes()),
+            list(b"tdgp", &[]),
+        ],
     )
 }
 

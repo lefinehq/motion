@@ -17,6 +17,7 @@ mod test_support;
 
 pub use decode::decode;
 pub use model::{
-    BlendMode, Color, Composition, Footage, Item, ItemKind, Layer, LayerKind, Project, Source,
-    Span, Switches, TrackMatte, Version,
+    BlendMode, Child, Color, Composition, Expression, Footage, Group, Item, ItemKind, Layer,
+    LayerKind, Project, Property, Reason, Source, Span, Stream, Switches, TrackMatte, Value,
+    Version,
 };

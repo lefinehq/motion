@@ -118,6 +118,115 @@ pub struct Layer {
     /// The id of its track matte layer, in files that store one; older files
     /// use the layer above.
     pub matte_layer: Option<u32>,
+    /// The root of its property tree: transform, masks, effects, contents.
+    pub properties: Group,
+}
+
+/// A property group, such as `ADBE Transform Group`, a mask or an effect.
+/// Match names are data: the tree has no type per property.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Group {
+    /// The name the file matches the group by, such as `ADBE Effect Parade`;
+    /// empty on a layer's root group.
+    pub match_name: String,
+    /// The name the user gave it, if any (`Mask 1`, `Group 1`).
+    pub name: Option<String>,
+    /// Whether it applies; a switched-off effect or layer style does not.
+    pub enabled: bool,
+    /// Its groups and properties, in file order.
+    pub children: Vec<Child>,
+}
+
+/// One child of a [`Group`].
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Child {
+    /// A nested group.
+    Group(Group),
+    /// A property.
+    Property(Property),
+}
+
+/// An animatable property, such as `ADBE Position`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Property {
+    /// The name the file matches the property by.
+    pub match_name: String,
+    /// The name the user gave it, if any.
+    pub name: Option<String>,
+    /// Whether it applies.
+    pub enabled: bool,
+    /// Its value, or its keyframes.
+    pub value: Stream,
+    /// The expression that computes it, if any.
+    pub expression: Option<Expression>,
+    /// The smallest value it takes, where the file stores one.
+    pub min: Option<f64>,
+    /// The largest value it takes, where the file stores one.
+    pub max: Option<f64>,
+}
+
+/// A property's value over time.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Stream {
+    /// One value at all times.
+    Static(Value),
+}
+
+/// An expression attached to a property.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Expression {
+    /// Its source text, line breaks as typed.
+    pub text: String,
+    /// Whether it is switched on.
+    pub enabled: bool,
+}
+
+/// One value of a property.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Value {
+    /// A number: an opacity, a rotation, a slider.
+    Number(f64),
+    /// A 2D vector: a size, a shape position.
+    Vector2([f64; 2]),
+    /// A 3D vector: a position, an anchor point, a scale.
+    Vector3([f64; 3]),
+    /// A colour.
+    Color(Color),
+    /// A value the reader does not decode yet.
+    Opaque {
+        /// What sort of value it is.
+        reason: Reason,
+    },
+}
+
+/// What sort of value an [`Value::Opaque`] holds, so the report can count
+/// how often each appears.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Reason {
+    /// A text layer's text and its style.
+    TextDocument,
+    /// The colour stops of a gradient.
+    Gradient,
+    /// Layer markers.
+    Markers,
+    /// A 3D layer's orientation angles.
+    Orientation,
+    /// A mask or shape path.
+    Path,
+    /// Keyframes, not read yet.
+    Keyframes,
+    /// A stream whose value lives in a record of its own, such as an
+    /// effect's arbitrary data.
+    Valueless,
+    /// A value with a number of dimensions no stream kind has.
+    Dimensions,
+    /// A property whose body is neither a stream nor a group, such as a
+    /// layer's alternate source.
+    OtherBody,
 }
 
 /// A layer's switches.

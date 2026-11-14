@@ -18,6 +18,8 @@ use crate::record::{
 };
 use crate::rifx::{self, Chunk, Name};
 
+mod property;
+
 /// The root folder of the project's items.
 const FOLD: Name = Name::list(b"Fold");
 /// One item.
@@ -221,6 +223,7 @@ impl Decoder {
             blend_mode: ldta.blend_mode.into(),
             track_matte: ldta.track_matte.into(),
             matte_layer: ldta.matte_layer.and_then(id),
+            properties: self.group(scan.require_list(property::TDGP)?, String::new())?,
         })
     }
 
@@ -391,6 +394,25 @@ impl<'a, 'd> Scan<'a, 'd> {
             let chunk = self.find(name)?;
             Some(self.open(chunk, self.child_path(format_args!("{name}[{index}]"))))
         })
+    }
+
+    /// The remaining children, split into runs that each start with a chunk
+    /// called `separator`, such as a group's `tdmn` and the body after it.
+    /// Chunks before the first separator are skipped.
+    fn children(&mut self, separator: Name) -> Vec<(Chunk<'a>, Vec<Chunk<'a>>)> {
+        let rest = self.chunks.get(self.next..).unwrap_or_default();
+        let runs = rest
+            .chunk_by(|_, next| next.name != separator)
+            .filter_map(|run| match run.split_first() {
+                Some((first, body)) if first.name == separator => Some((*first, body.to_vec())),
+                _ => {
+                    self.decoder.skip(run.iter().map(|chunk| chunk.name));
+                    None
+                }
+            })
+            .collect();
+        self.next = self.chunks.len();
+        runs
     }
 
     /// A scan over the children of `chunk`, found at `path`.

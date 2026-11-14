@@ -265,6 +265,119 @@ impl Ldta {
     }
 }
 
+/// `tdsb`: the flags of a property group or stream
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#tdsb)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Tdsb {
+    /// The flag word.
+    pub flags: u32,
+}
+
+impl Record for Tdsb {
+    const NAME: Name = Name::chunk(b"tdsb");
+}
+
+impl Tdsb {
+    /// Whether the group or stream applies.
+    pub fn enabled(&self) -> bool {
+        self.flags & 0x01 != 0
+    }
+}
+
+/// `tdb4`: a stream's dimensions, kind and time base
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#tdb4)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Tdb4 {
+    /// Values per keyframe: 1 to 3, or 4 for a colour.
+    #[br(seek_before = at(0x02))]
+    pub dims: u16,
+    /// Stream flags, such as [`Tdb4::SINGLE_EASE`].
+    pub flags: u16,
+    /// Bit 0: the value lives in a container next to the stream.
+    #[br(seek_before = at(0x38))]
+    pub value_flags: u16,
+    /// Bit 0: the value is a colour.
+    pub type_flags: u16,
+    /// Bit 0: the expression is switched off.
+    #[br(seek_before = at(0x77))]
+    pub expression_flags: u8,
+}
+
+impl Record for Tdb4 {
+    const NAME: Name = Name::chunk(b"tdb4");
+}
+
+impl Tdb4 {
+    /// Stream flag: one ease for the whole value, and tangents per dimension.
+    pub const SINGLE_EASE: u16 = 0x02;
+
+    /// How the stream's values and keyframes are laid out.
+    pub fn layout(&self) -> Layout {
+        match (
+            self.value_flags & 0x01 != 0,
+            self.flags & Self::SINGLE_EASE != 0,
+        ) {
+            (false, false) => Layout::PerDimension,
+            (false, true) => Layout::SingleEase,
+            (true, true) => Layout::SingleEaseValueless,
+            (true, false) => Layout::Valueless,
+        }
+    }
+
+    /// Whether the value is a colour.
+    pub fn is_color(&self) -> bool {
+        self.type_flags & 0x01 != 0
+    }
+
+    /// Whether the stream's expression, if any, is switched on.
+    pub fn expression_enabled(&self) -> bool {
+        self.expression_flags & 0x01 == 0
+    }
+}
+
+/// How a stream lays out its values, from [`Tdb4::layout`]
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#stream-kinds)).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Layout {
+    /// Numbers: the value, then an ease per dimension.
+    PerDimension,
+    /// Spatial values and colours: one ease, then the value and its tangents.
+    SingleEase,
+    /// Paths, gradients and orientation: one ease; the value lives elsewhere.
+    SingleEaseValueless,
+    /// Text documents and markers: timing only; the value lives elsewhere.
+    Valueless,
+}
+
+/// `cdat`: a stream's static value, as big-endian doubles
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#cdat)).
+/// The value is the first `dims` of them.
+#[derive(BinRead, Debug)]
+pub(crate) struct Cdat {
+    /// Every double in the chunk.
+    #[br(parse_with = until_eof)]
+    pub numbers: Vec<f64>,
+}
+
+impl Record for Cdat {
+    const NAME: Name = Name::chunk(b"cdat");
+}
+
+/// `tdum` and `tduM`: a stream's minimum and maximum, one double each
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#tdum)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Bound {
+    /// The bound.
+    pub value: f64,
+}
+
+impl Bound {
+    /// The chunk of a minimum.
+    pub const MIN: Name = Name::chunk(b"tdum");
+    /// The chunk of a maximum.
+    pub const MAX: Name = Name::chunk(b"tduM");
+}
+
 /// `sspc`: a footage source's cached media settings
 /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#sspc)).
 /// The fields motion reads sit at the same offsets in the 222-byte form and in
