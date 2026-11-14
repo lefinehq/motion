@@ -50,7 +50,7 @@ impl Start {
     /// The start value of a target resting at `rest`, for a behaviour that
     /// travels `distance` pixels. A number starts every component of a point;
     /// validation allows that only where the property broadcasts.
-    pub fn resolve(self, rest: Value, distance: f64) -> Value {
+    pub fn resolve(self, rest: &Value, distance: f64) -> Value {
         let offset = |d: f64| Value::Number(rest.components()[0] + d);
         match self {
             Start::Value(v) => Value::splat(rest.value_type(), v),
@@ -100,7 +100,7 @@ pub(crate) fn expand_as_anim(
         .iter()
         .map(|&(target, from)| {
             let rest = rest(target)?;
-            let from = from.resolve(rest, behaviour.distance);
+            let from = from.resolve(&rest, behaviour.distance);
             let track = format!(
                 "{from} -> {rest} @{}-{}f {}",
                 fmt_num(start),

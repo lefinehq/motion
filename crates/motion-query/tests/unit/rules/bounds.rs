@@ -3,7 +3,6 @@
 use super::*;
 use motion_format::Value;
 use motion_format::property::Prop;
-use motion_scene::local_transform;
 use rstest::rstest;
 
 fn graph() -> SceneGraph {
@@ -13,6 +12,7 @@ fn graph() -> SceneGraph {
         fps: 30.0,
         duration_frames: 30.0,
         nodes: vec![],
+        comps: vec![],
     }
 }
 
@@ -23,23 +23,16 @@ fn node(x: f64, y: f64, w: f64, h: f64, opacity: f64) -> NodeState {
 /// Like `node`, with a scale and a rotation (degrees).
 fn rotated(x: f64, y: f64, w: f64, h: f64, opacity: f64, scale: f64, rotate: f64) -> NodeState {
     let values: Vec<Value> = Prop::all()
-        .map(|p| match p {
-            Prop::POSITION => Value::Point([x, y]),
-            Prop::ANCHOR => Value::Point([w / 2.0, h / 2.0]),
-            Prop::SCALE => Value::Point([scale, scale]),
-            Prop::OPACITY => Value::Number(opacity),
-            Prop::ROTATE => Value::Number(rotate),
+        .map(|p| match p.name() {
+            "position" => Value::Point([x, y]),
+            "anchor" => Value::Point([w / 2.0, h / 2.0]),
+            "scale" => Value::Point([scale, scale]),
+            "opacity" => Value::Number(opacity),
+            "rotate" => Value::Number(rotate),
             _ => unreachable!("every property is listed"),
         })
         .collect();
-    NodeState {
-        id: "n".into(),
-        width: w,
-        height: h,
-        transform: local_transform(&values),
-        values,
-        shown: true,
-    }
+    NodeState::of_box("n", w, h, values)
 }
 
 /// How far `node` leaves the canvas, or `None` when it is fine.

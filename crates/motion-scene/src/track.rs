@@ -1,6 +1,6 @@
 //! Keyframe tracks: one property's typed value over a layer's own time, in
 //! frames. Each span between two keys eases each component in value space
-//! ([`Ease`]); a spatial span instead moves along a bézier path at a speed its
+//! ([`Ease`]), the numbers of a path's vertices too; a spatial span instead moves along a bézier path at a speed its
 //! one ease gives along the path's length.
 
 use kurbo::{CubicBez, ParamCurve, ParamCurveArclen, Point};
@@ -40,7 +40,7 @@ impl KeySpec {
 }
 
 /// One key of a compiled track.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Key {
     /// The frame the key sits on.
     pub frame: f64,
@@ -76,12 +76,17 @@ impl Track {
     /// span of a point moves along a path: straight, or bent by the key's `path`.
     ///
     /// # Panics
-    /// If `keys` is empty or a key's value is not of type `ty`.
+    /// If `keys` is empty, a key's value is not of type `ty`, or two keys of a
+    /// path differ in shape (validation rules both out).
     pub fn new(ty: ValueType, mut keys: Vec<KeySpec>, fps: f64, spatial: bool) -> Track {
         assert!(!keys.is_empty(), "a track needs at least one key");
         assert!(
             keys.iter().all(|k| k.value.value_type() == ty),
             "keys of one type"
+        );
+        assert!(
+            keys.iter().all(|k| k.value.same_shape(&keys[0].value)),
+            "keys of one shape"
         );
         keys.sort_by(|a, b| a.frame.total_cmp(&b.frame));
         let spatial = spatial && ty == ValueType::Point;
@@ -135,20 +140,20 @@ impl Track {
         // Lands after every key of a shared frame, so the last of them wins.
         let after = self.keys.partition_point(|k| k.frame <= frame);
         let Some(i) = after.checked_sub(1) else {
-            return self.keys[0].value;
+            return self.keys[0].value.clone();
         };
         let (left, Some(right)) = (&self.keys[i], self.keys.get(after)) else {
-            return self.keys[i].value;
+            return self.keys[i].value.clone();
         };
         // right.frame > frame >= left.frame, so the span is positive.
         let p = (frame - left.frame) / (right.frame - left.frame);
-        self.segments[i].sample(left.value, right.value, p)
+        self.segments[i].sample(&left.value, &right.value, p)
     }
 }
 
 impl Segment {
     /// The value at progress `p` from `from` to `to`.
-    fn sample(&self, from: Value, to: Value, p: f64) -> Value {
+    fn sample(&self, from: &Value, to: &Value, p: f64) -> Value {
         match self {
             Segment::Components(eases) => {
                 let components: Vec<f64> = eases
@@ -156,7 +161,7 @@ impl Segment {
                     .zip(from.components().iter().zip(to.components()))
                     .map(|(ease, (&a, &b))| ease.sample(a, b, p))
                     .collect();
-                Value::from_components(from.value_type(), &components)
+                from.with_components(&components)
             }
             Segment::Path { path, length, ease } => {
                 let along = ease.sample(0.0, *length, p);
@@ -187,7 +192,7 @@ impl Segment {
 fn segment(a: &KeySpec, b: &KeySpec, fps: f64, spatial: bool) -> Segment {
     let seconds = (b.frame - a.frame) / fps;
     if spatial {
-        let (p0, p3) = (point(a.value), point(b.value));
+        let (p0, p3) = (point(&a.value), point(&b.value));
         let [out, into] = a.path.unwrap_or([[0.0; 2]; 2]);
         let path = CubicBez::new(
             p0,
@@ -216,7 +221,7 @@ fn segment(a: &KeySpec, b: &KeySpec, fps: f64, spatial: bool) -> Segment {
     )
 }
 
-fn point(value: Value) -> Point {
+fn point(value: &Value) -> Point {
     let [x, y] = value.as_point().expect("a spatial track holds points");
     Point::new(x, y)
 }

@@ -44,11 +44,13 @@ Layers are stacked from bottom to top, in the order they are listed.
 | Layer | What it is |
 |---|---|
 | `text` | Text, with full shaping for any script |
-| `rect`, `ellipse`, `path`, `svg` | Shapes |
+| `rect` | A rectangle the size of its box, with an optional corner radius (`"300x100 r12"`) |
+| `shapes` | Shape items: groups, rectangles, ellipses and free paths, drawn by fills and strokes (see [Shapes](#shapes-effects-and-compositions)) |
+| `svg` | An SVG file as shapes |
 | `image` | A picture file |
 | `solid` | A flat colour |
-| `comp` | A nested composition: a whole scene used as a layer |
-| `pivot` | An invisible layer that only carries a position, rotation and scale. Other layers can use it as a parent. |
+| `comp` | A composition from `comps`, drawn in the layer's box at the layer's own time |
+| `pivot` | An invisible layer (`"pivot":true`) that only carries a position, rotation and scale. Other layers can use it as a parent. |
 | filter layer | A layer with only an `fx` list. It applies the effects to everything below it. |
 | `camera` | The viewpoint for 2.5D layers |
 | `audio` | A sound file placed on the timeline |
@@ -63,6 +65,7 @@ Every layer can also have:
 - **`mask`:** cut-out shapes, with feather and expansion
 - **`matte`:** use another layer's alpha or brightness as a stencil
 - **`fx`:** a list of effects
+- **`hidden`:** `true` leaves it out of the frame but keeps it in the scene; its children still move with it
 - **`mblur`:** motion blur
 - in and out points, and a time offset
 
@@ -89,6 +92,54 @@ Every animatable value of a layer is a **property**. They are listed once, in `c
 **Parenting and time.** A layer can move with another (`"parent":"card"`): its position, rotation and scale apply on top of the parent's, while opacity stays its own. Its `at` is then read in the parent's box, so `"at":"center center"` is the middle of the parent, and `motion at` prints where its anchor lands on the canvas. `"span":"1s-16s"` sets when a layer shows, on the scene's timeline (parenting moves a layer, not its time). `"offset":"1s"` says where the layer's own time starts: its keys and its entrance are in its own time, so moving a layer later is one edit. `"stretch":2` plays its own time at half speed, and a negative stretch runs it backwards from `offset`. Speeds in `speed(...)` are per second of the layer's own time, so a stretch slows them too.
 
 Checks measure the transformed box: the layer's box through its anchor, scale, rotation and position, and its parents'.
+
+## Shapes, effects and compositions
+
+A `shapes` layer draws a list of **items**. Each item is an object whose kind's name is one of its keys; that key holds the kind's main value, and the other keys are its properties and settings. Every kind has its own property registry, so its values and `anim` tracks follow the same rules as a layer's ([D32](decisions.md#d32-one-format-for-authored-and-imported-scenes)).
+
+```json
+{"id":"badge","at":"540 960","shapes":[
+  {"group":[{"rect":[300,100],"round":50},{"fill":"#FFE000"}],"rotate":-4},
+  {"ellipse":[40,40],"position":[-110,0],"id":"dot"},
+  {"stroke":"#101010","width":6,"join":"round"}
+]}
+```
+
+How items combine:
+
+- **Order.** The first item draws on top.
+- **Paints.** A fill or stroke draws every outline listed before it in its group, including the outlines inside earlier groups, seen through those groups' transforms. Above, the stroke outlines both the rounded rectangle and the dot; the fill paints only the rectangle.
+- **Space.** A paint fills and strokes in its own group's space, so a stroke's width scales with the groups around it, not with the groups it reaches into.
+- **Fill rule.** All the outlines one fill covers count as one path for its `rule`, so `evenodd` cuts holes where they overlap.
+- **Groups.** A group has a layer's transform (`position`, `anchor`, `scale`, `rotate`, `opacity`), resting at the origin. Its opacity multiplies the paints inside it.
+- **Box.** A shape layer's own coordinates start at its anchor, `[0, 0]`; `check` measures the outlines it draws, widened by half of each stroke.
+- **Ids and `hidden`.** An item may have an `id`, unique within its layer; `"hidden":true` leaves it out of the frame.
+
+Each kind lists its properties in `crates/motion-format/src/item.rs`; this table mirrors that list, and a test checks it.
+
+| Item | Key holds | Properties | Settings |
+|---|---|---|---|
+| `group` | its items | `position`, `anchor`, `scale`, `rotate`, `opacity` | |
+| `rect` | `size` | `size`, `position`, `round` | |
+| `ellipse` | `size` | `size`, `position` | |
+| `path` | `path` | `path` | |
+| `fill` | `color` | `color`, `opacity` | `rule`: `nonzero`, `evenodd` |
+| `stroke` | `color` | `color`, `opacity`, `width`, `miter` | `cap`: `butt`, `round`, `square`; `join`: `miter`, `round`, `bevel` |
+
+`size` splits into `width` and `height`, and `position` into `x` and `y`, for tracks. A rectangle's `round` is capped at half its shorter side. A `path` is SVG path data with absolute `M`, `L`, `C` and `Z` (`"M0,0 C40,0 80,40 80,80 Z"`); a track on it uses a key list, and every key keeps the same number of vertices and the same closure, so the outline moves vertex by vertex.
+
+**Effects.** `fx` is a list in the same item form, applied in order to what the layer draws:
+
+| Effect | Key holds | Properties | Settings |
+|---|---|---|---|
+| `fill` | `color` | `color`, `opacity` | |
+
+**Compositions.** `comps` holds compositions by id. Each has its own `size`, `dur`, optional `fps` (the scene's by default) and `bg` (clear by default), and its own `layers`. A layer with `"comp":"card"` draws it in a box of the composition's size. The composition's time is the layer's own time, so `offset` and `stretch` move and slow it, and the layer shows nothing outside the composition's length. Compositions may draw other compositions, but never themselves.
+
+```json
+"comps":{"card":{"size":"600x400","dur":"5s","layers":[{"id":"title","text":"Hello"}]}},
+"layers":[{"id":"card-1","comp":"card","at":"540 700","offset":"1s"}]
+```
 
 ## Animation, at three levels of detail
 

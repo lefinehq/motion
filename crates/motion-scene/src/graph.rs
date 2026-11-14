@@ -1,10 +1,13 @@
 //! The scene graph: the compiler's output, plain data in pixels and frames.
 
-use motion_format::Value;
+use motion_format::item::ItemKind;
+use motion_format::shorthand::{Font, RectShape};
+use motion_format::{Value, ValueType};
 
 use crate::track::Track;
 
-/// A compiled scene: canvas, timing and nodes in paint order.
+/// A compiled scene: canvas, timing and nodes in paint order, and the
+/// compositions its `comp` nodes draw.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SceneGraph {
     /// Canvas width in pixels.
@@ -17,15 +20,63 @@ pub struct SceneGraph {
     pub duration_frames: f64,
     /// Nodes in paint order: the first is at the back.
     pub nodes: Vec<Node>,
+    /// Every composition, in the scene's order; [`NodeContent::Comp`] indexes it.
+    pub comps: Vec<CompGraph>,
 }
 
-/// The kind of thing a node draws.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeKind {
+/// A compiled composition: its own canvas, clock and nodes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompGraph {
+    /// Its id in the scene.
+    pub id: String,
+    /// Canvas width in pixels.
+    pub width: f64,
+    /// Canvas height in pixels.
+    pub height: f64,
+    /// Frames per second of its own timeline.
+    pub fps: f64,
+    /// Length in its own frames; a node drawing it shows nothing past it.
+    pub duration_frames: f64,
+    /// The colour behind its nodes, straight RGBA from 0 to 1.
+    pub background: [f64; 4],
+    /// Nodes in paint order: the first is at the back.
+    pub nodes: Vec<Node>,
+}
+
+/// What a node draws.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NodeContent {
     /// A line of text.
-    Text,
-    /// A rectangle.
-    Rect,
+    Text {
+        /// The words.
+        text: String,
+        /// Family, size and weight.
+        font: Font,
+    },
+    /// A rectangle the size of the node's box.
+    Rect(RectShape),
+    /// Shape items; the first draws on top.
+    Shapes(Vec<ItemNode>),
+    /// The composition at this index of [`SceneGraph::comps`].
+    Comp(usize),
+    /// Nothing; other nodes move with it.
+    Pivot,
+}
+
+/// A compiled shape item or effect: its kind, a track per property of the
+/// kind's registry, its settings and a group's items.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ItemNode {
+    /// Its kind.
+    pub kind: &'static ItemKind,
+    /// Its id, if the scene gave one.
+    pub id: Option<String>,
+    /// One track per row of the kind's registry, sampled at the node's own frame.
+    pub tracks: Vec<PropertyTrack>,
+    /// The choice of each of the kind's settings.
+    pub settings: Vec<usize>,
+    /// A group's items; the first draws on top.
+    pub items: Vec<ItemNode>,
 }
 
 /// When a node shows and how its own time runs, in frames of its composition's
@@ -71,7 +122,7 @@ pub enum PropertyTrack {
 
 impl PropertyTrack {
     /// The value at `frame`.
-    pub fn sample(&self, frame: f64, ty: motion_format::ValueType) -> Value {
+    pub fn sample(&self, frame: f64, ty: ValueType) -> Value {
         match self {
             PropertyTrack::Whole(track) => track.sample(frame),
             PropertyTrack::Split(tracks) => {
@@ -99,7 +150,9 @@ pub struct Node {
     /// The layer id this node came from.
     pub id: String,
     /// What the node draws.
-    pub kind: NodeKind,
+    pub content: NodeContent,
+    /// The colour of a text or rect node, straight RGBA from 0 to 1.
+    pub fill: [f64; 4],
     /// Box width in pixels, in the node's own coordinates.
     pub width: f64,
     /// Box height in pixels, in the node's own coordinates.
@@ -113,6 +166,10 @@ pub struct Node {
     pub tracks: Vec<PropertyTrack>,
     /// Whether moving the layer's `at` moves the whole motion on `(x, y)`.
     pub follows_at: (bool, bool),
+    /// Effects on what it draws, in order; hidden ones are left out.
+    pub fx: Vec<ItemNode>,
+    /// Left out of the frame; its children still move with it.
+    pub hidden: bool,
 }
 
 #[cfg(test)]

@@ -30,6 +30,23 @@ fn layers(layers: &str) -> Result<crate::Document> {
     parse_document(&format!(r#"{{"motion":1,"dur":"1s","layers":[{layers}]}}"#))
 }
 
+/// A scene with one shape layer whose `shapes` list holds `items`.
+fn shapes(items: &str) -> Result<crate::Document> {
+    layers(&format!(r#"{{"id":"a","shapes":[{items}]}}"#))
+}
+
+/// A scene with one rect layer whose `fx` list holds `effects`.
+fn fx(effects: &str) -> Result<crate::Document> {
+    layers(&format!(r#"{{"id":"a","rect":"1x1","fx":[{effects}]}}"#))
+}
+
+/// A scene whose `comps` object holds `comps`, drawn by layer `a` as `card`.
+fn comps(comps: &str) -> Result<crate::Document> {
+    parse_document(&format!(
+        r#"{{"motion":1,"dur":"1s","comps":{{{comps}}},"layers":[{{"id":"a","comp":"card"}}]}}"#
+    ))
+}
+
 /// A scene with one rect layer whose `anim` object holds `tracks`.
 fn anim(tracks: &str) -> Result<crate::Document> {
     layers(&format!(r#"{{"id":"a","rect":"1x1","anim":{{{tracks}}}}}"#))
@@ -253,6 +270,73 @@ fn every_error_message() {
                 "0 -> 1 @0-5f bouncy",
                 "0 -> 1 @0-5f ease ease",
             ],
+        ),
+        section(
+            "contents",
+            &[
+                r#"{"id":"a","shapes":[],"comp":"x"}"#,
+                r#"{"id":"a","pivot":false}"#,
+                r##"{"id":"a","pivot":true,"fill":"#fff"}"##,
+                r#"{"id":"a","shapes":{}}"#,
+                r#"{"id":"a","comp":"nowhere"}"#,
+                r#"{"id":"a","pivot":true,"hidden":1}"#,
+            ],
+            layers,
+        ),
+        section(
+            "shapes",
+            &[
+                "1",
+                "{}",
+                r#"{"round":3}"#,
+                r##"{"rect":[1,1],"fill":"#fff"}"##,
+                r#"{"rect":[1,1],"size":[2,2]}"#,
+                r#"{"rect":[1,1],"colour":1}"#,
+                r#"{"rect":[-1,1]}"#,
+                r#"{"rect":"wide"}"#,
+                r#"{"rect":[1,1],"round":-2}"#,
+                r#"{"group":{}}"#,
+                r#"{"group":[{"rect":[1,1],"cap":"round"}]}"#,
+                r##"{"stroke":"#000","cap":"pointy"}"##,
+                r##"{"stroke":"#000","cap":1}"##,
+                r##"{"stroke":"#000","miter":0.5}"##,
+                r##"{"fill":"#fff","id":"Bad"}"##,
+                r##"{"fill":"#fff","id":"f"},{"group":[{"fill":"#000","id":"f"}]}"##,
+                r#"{"path":[1,2]}"#,
+                r#"{"path":"M0,0 Q1,1 2,2"}"#,
+                r#"{"path":"M0,0 L1,1","anim":{"path":"M0,0 L1,1 -> M0,0 L2,2 @0-5f"}}"#,
+                r#"{"path":"M0,0 L1,1","anim":{"path":[{"t":0,"v":"M0,0 L1,1"},{"t":5,"v":"M0,0 L1,1 Z"}]}}"#,
+                r#"{"path":"M0,0 L1,1","anim":{"path":[{"t":0,"v":"M0,0 L1,1","curve":["ease","ease"]}]}}"#,
+                r#"{"rect":[1,1],"anim":{"opacity":"0 -> 1 @0-5f"}}"#,
+                r#"{"rect":[1,1],"anim":{"width":"0 -> 1 @0-5f","size":"0,0 -> 1,1 @0-5f"}}"#,
+                r##"{"fill":"#fff","anim":{"color":"#000 -> 2,0,0 @0-5f"}}"##,
+            ],
+            shapes,
+        ),
+        section(
+            "effects",
+            &[
+                r#"{"rect":[1,1]}"#,
+                r##"{"fill":"#fff","opacity":3}"##,
+                r##"{"fill":"#fff","rule":"evenodd"}"##,
+            ],
+            fx,
+        ),
+        section(
+            "comps",
+            &[
+                r#""card":1"#,
+                r#""Card":{"size":"1x1","dur":"1s","layers":[]}"#,
+                r#""card":{"dur":"1s","layers":[]}"#,
+                r#""card":{"size":"1x1","layers":[]}"#,
+                r#""card":{"size":"1x1","dur":"1s"}"#,
+                r#""card":{"size":"1x1","dur":"1s","fps":0,"layers":[]}"#,
+                r#""card":{"size":"1x1","dur":"1s","layers":[],"tint":1}"#,
+                r#""card":{"size":"1x1","dur":"1s","layers":[{"id":"x"}]}"#,
+                r#""card":{"size":"1x1","dur":"1s","layers":[{"id":"x","comp":"card"}]}"#,
+                r#""card":{"size":"1x1","dur":"1s","layers":[{"id":"x","comp":"b"}]},"b":{"size":"1x1","dur":"1s","layers":[{"id":"y","comp":"card"}]}"#,
+            ],
+            comps,
         ),
         section("range", &["@x-5f", "@05f", "@0-5"], TimeSpan::from_range),
         shorthand::<TimeSpan>("span", &["x-5f", "05f", "0-5", "@0-5f"]),

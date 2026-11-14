@@ -1,47 +1,119 @@
-//! Step 3 (Evaluate): every node's values and transform at one frame.
+//! Step 3 (Evaluate): every node's values, transform and content at one
+//! frame, compositions at their nodes' own time.
 
-use kurbo::{Affine, Vec2};
+use kurbo::{Affine, Rect, Vec2};
 use motion_format::Value;
-use motion_format::property::{PROPERTIES, Prop};
+use motion_format::property::{PROPERTIES, Prop, PropertySpec};
 use tracing::instrument;
 
-use crate::{FrameState, Node, NodeState, SceneGraph};
+use crate::shape::{self, ShapeDraw};
+use crate::{
+    ContentState, FrameState, ItemNode, ItemState, Node, NodeContent, NodeState, PropertyTrack,
+    SceneGraph,
+};
 
 /// Evaluates every node of `graph` at `frame`, which may be fractional (sub-frame samples).
 // `trace`: it runs per frame, and costs one cached level check when disabled.
 #[instrument(level = "trace", skip(graph))]
 pub fn evaluate(graph: &SceneGraph, frame: f64) -> FrameState {
-    let values: Vec<Vec<Value>> = graph.nodes.iter().map(|n| values(n, frame)).collect();
-    let mut world: Vec<Option<Affine>> = vec![None; graph.nodes.len()];
-    for i in 0..graph.nodes.len() {
-        transform(graph, &values, &mut world, i);
+    evaluate_nodes(graph, &graph.nodes, frame, graph.fps)
+}
+
+/// Evaluates the composition at `index` of `graph.comps` at its own `frame`.
+///
+/// # Panics
+/// If `index` is not a composition of `graph`.
+pub fn evaluate_comp(graph: &SceneGraph, index: usize, frame: f64) -> FrameState {
+    let comp = &graph.comps[index];
+    evaluate_nodes(graph, &comp.nodes, frame, comp.fps)
+}
+
+/// The state of `nodes`, one canvas whose clock runs at `fps`, at `frame`.
+fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> FrameState {
+    let values: Vec<Vec<Value>> = nodes.iter().map(|n| values(n, frame)).collect();
+    let mut world: Vec<Option<Affine>> = vec![None; nodes.len()];
+    for i in 0..nodes.len() {
+        transform(nodes, &values, &mut world, i);
     }
-    let nodes = graph
-        .nodes
+    let nodes = nodes
         .iter()
         .zip(values)
         .zip(world)
-        .map(|((node, values), world)| NodeState {
-            id: node.id.clone(),
-            width: node.width,
-            height: node.height,
-            values,
-            transform: world.expect("every transform is computed"),
-            shown: node.timing.shows_at(frame),
+        .map(|((node, values), world)| {
+            let local = node.timing.local(frame);
+            let mut shown = node.timing.shows_at(frame);
+            let content = match &node.content {
+                NodeContent::Text { text, font } => ContentState::Text {
+                    text: text.clone(),
+                    font: font.clone(),
+                },
+                NodeContent::Rect(r) => ContentState::Rect(*r),
+                NodeContent::Shapes(items) => {
+                    ContentState::Shapes(shape::draws(&items_at(items, local)))
+                }
+                NodeContent::Comp(index) => {
+                    let comp = &graph.comps[*index];
+                    // The node's own time, in seconds, is the composition's.
+                    let inner = local * comp.fps / fps;
+                    shown &= (0.0..comp.duration_frames).contains(&inner);
+                    let state = (shown && !node.hidden)
+                        .then(|| Box::new(evaluate_comp(graph, *index, inner)));
+                    ContentState::Comp(*index, state)
+                }
+                NodeContent::Pivot => ContentState::Pivot,
+            };
+            let local_bounds = match &content {
+                ContentState::Shapes(draws) => draws
+                    .iter()
+                    .map(ShapeDraw::bounds)
+                    .reduce(|a, b| a.union(b))
+                    .unwrap_or(Rect::ZERO),
+                _ => Rect::new(0.0, 0.0, node.width, node.height),
+            };
+            NodeState {
+                id: node.id.clone(),
+                width: node.width,
+                height: node.height,
+                values,
+                transform: world.expect("every transform is computed"),
+                shown,
+                hidden: node.hidden,
+                content,
+                local_bounds,
+                fill: node.fill,
+                fx: items_at(&node.fx, local),
+            }
         })
         .collect();
     FrameState { frame, nodes }
 }
 
-/// One node's values at the parent's `frame`, sampled at its own time and
-/// each component clamped to its property's range.
-fn values(node: &Node, frame: f64) -> Vec<Value> {
-    // `zip` would silently drop a missing track, so check the invariant.
-    debug_assert_eq!(node.tracks.len(), PROPERTIES.len());
-    let local = node.timing.local(frame);
-    PROPERTIES
+/// Items at a node's own frame `local`.
+fn items_at(items: &[ItemNode], local: f64) -> Vec<ItemState> {
+    items
         .iter()
-        .zip(&node.tracks)
+        .map(|item| ItemState {
+            kind: item.kind,
+            id: item.id.clone(),
+            values: sample(item.kind.registry.rows, &item.tracks, local),
+            settings: item.settings.clone(),
+            items: items_at(&item.items, local),
+        })
+        .collect()
+}
+
+/// One node's values at the parent's `frame`, sampled at its own time.
+fn values(node: &Node, frame: f64) -> Vec<Value> {
+    sample(PROPERTIES, &node.tracks, node.timing.local(frame))
+}
+
+/// The value of each of `rows` from its track at `local`, each component
+/// clamped to its row's range.
+fn sample(rows: &[PropertySpec], tracks: &[PropertyTrack], local: f64) -> Vec<Value> {
+    // `zip` would silently drop a missing track, so check the invariant.
+    debug_assert_eq!(tracks.len(), rows.len());
+    rows.iter()
+        .zip(tracks)
         .map(|(spec, track)| {
             let value = track.sample(local, spec.ty);
             // A custom curve may spring past its target; opacity must not.
@@ -50,7 +122,7 @@ fn values(node: &Node, frame: f64) -> Vec<Value> {
                 Some((lo, hi)) => {
                     let clamped: Vec<f64> =
                         value.components().iter().map(|v| v.clamp(lo, hi)).collect();
-                    Value::from_components(spec.ty, &clamped)
+                    value.with_components(&clamped)
                 }
             }
         })
@@ -60,7 +132,7 @@ fn values(node: &Node, frame: f64) -> Vec<Value> {
 /// Node `i`'s transform to the canvas, its parents' first. Validation rules
 /// out parent cycles, so the recursion ends.
 fn transform(
-    graph: &SceneGraph,
+    nodes: &[Node],
     values: &[Vec<Value>],
     world: &mut [Option<Affine>],
     i: usize,
@@ -68,9 +140,9 @@ fn transform(
     if let Some(done) = world[i] {
         return done;
     }
-    let parent = graph.nodes[i]
+    let parent = nodes[i]
         .parent
-        .map_or(Affine::IDENTITY, |p| transform(graph, values, world, p));
+        .map_or(Affine::IDENTITY, |p| transform(nodes, values, world, p));
     let own = local_transform(&values[i]);
     world[i] = Some(parent * own);
     parent * own

@@ -33,13 +33,10 @@ fn registry_names_are_unique_and_documented() {
     for prop in Prop::all() {
         assert_eq!(Prop::named(prop.name()), Some(prop));
         assert!(!prop.spec().doc.is_empty(), "{}", prop.name());
-        // A point names each of its components; a number has none.
-        assert_eq!(
-            prop.spec().components.len(),
-            match prop.spec().ty.dims() {
-                1 => 0,
-                n => n,
-            },
+        // A property names every component it splits into, or none.
+        let named = prop.spec().components.len();
+        assert!(
+            named == 0 || Some(named) == prop.spec().ty.dims(),
             "{}",
             prop.name()
         );
@@ -113,10 +110,13 @@ fn targets_overlap_when_they_write_the_same_numbers() {
 fn rest_of_picks_the_component() {
     let rest = Value::Point([3.0, 4.0]);
     assert_eq!(
-        Target::named("y").unwrap().rest_of(rest),
+        Target::named("y").unwrap().rest_of(rest.clone()),
         Value::Number(4.0)
     );
-    assert_eq!(Target::named("position").unwrap().rest_of(rest), rest);
+    assert_eq!(
+        Target::named("position").unwrap().rest_of(rest.clone()),
+        rest
+    );
 }
 
 #[test]

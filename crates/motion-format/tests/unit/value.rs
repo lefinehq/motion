@@ -6,9 +6,10 @@ use proptest::prelude::*;
 
 #[test]
 fn each_type_knows_its_component_count() {
-    assert_eq!(ValueType::Number.dims(), 1);
-    assert_eq!(ValueType::Point.dims(), 2);
-    assert_eq!(ValueType::Color.dims(), 4);
+    assert_eq!(ValueType::Number.dims(), Some(1));
+    assert_eq!(ValueType::Point.dims(), Some(2));
+    assert_eq!(ValueType::Color.dims(), Some(4));
+    assert_eq!(ValueType::Path.dims(), None);
 }
 
 #[test]
@@ -19,7 +20,7 @@ fn components_round_trip_through_every_type() {
         Value::Color([1.0, 0.5, 0.0, 1.0]),
     ] {
         let ty = value.value_type();
-        assert_eq!(value.components().len(), ty.dims());
+        assert_eq!(Some(value.components().len()), ty.dims());
         assert_eq!(Value::from_components(ty, value.components()), value);
     }
 }
@@ -151,4 +152,54 @@ proptest! {
         let back = Value::parse(&value.to_string(), ValueType::Point, false).unwrap();
         prop_assert_eq!(back, value);
     }
+}
+
+fn square() -> Value {
+    Value::parse("M0,0 L10,0 L10,10 Z", ValueType::Path, false).unwrap()
+}
+
+#[test]
+fn a_path_reads_and_writes_as_path_data() {
+    let value = square();
+    assert_eq!(value.value_type(), ValueType::Path);
+    assert_eq!(value.as_path().unwrap().len(), 3);
+    assert_eq!(value.components().len(), 18);
+    let written = value.to_string();
+    assert_eq!(
+        Value::parse(&written, ValueType::Path, false).unwrap(),
+        value
+    );
+}
+
+#[test]
+fn with_components_keeps_the_shape() {
+    let value = square();
+    let moved = value.with_components(&[1.0; 18]);
+    assert!(moved.same_shape(&value));
+    assert!(moved.as_path().unwrap().closed());
+    assert_eq!(
+        Value::Point([1.0, 2.0]).with_components(&[3.0, 4.0]),
+        Value::Point([3.0, 4.0])
+    );
+}
+
+#[test]
+fn same_shape_compares_type_and_path_shape() {
+    let open = Value::parse("M0,0 L10,0 L10,10", ValueType::Path, false).unwrap();
+    assert!(!square().same_shape(&open));
+    assert!(Value::Number(1.0).same_shape(&Value::Number(2.0)));
+    assert!(!Value::Number(1.0).same_shape(&Value::Point([1.0, 1.0])));
+}
+
+#[test]
+fn a_path_is_not_written_as_numbers() {
+    let error = Value::from_numbers(&[1.0, 2.0], ValueType::Path, false).unwrap_err();
+    assert_eq!(error.kind, Kind::WrongType);
+    assert!(error.message.contains("path data"));
+}
+
+#[test]
+#[should_panic(expected = "fixed-size")]
+fn from_components_needs_a_fixed_size_type() {
+    Value::from_components(ValueType::Path, &[]);
 }
