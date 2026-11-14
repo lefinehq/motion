@@ -282,6 +282,7 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Reference renders are compressed and may show content we do not have (a photo in a placeholder), so a plain image difference is misleading.
   - Measuring over the union of what we draw catches elements that are missing or late, not only ones drawn wrongly.
   - Stored text layout is exact, so text can be held to a stricter limit than video allows.
+- **Since D42:** a third window, over the reference's content, catches what we fail to draw, and is the headline number.
 
 ### D36. The format only changes in the open
 
@@ -344,6 +345,15 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Stretching to the box keeps a render exact when a file is swapped for a smaller or larger one (a proxy, a variant's photo): the layout does not move.
   - A shorthand such as `"photo.jpg 1920x1080"` was rejected: file names hold spaces, so splitting the string is guesswork.
 - **Not now:** video and image sequences (phase 2), fit modes other than stretch (`contain`, `cover`), colour profiles other than sRGB, and filtering beyond bilinear for strong reductions.
+
+### D42. Fidelity is headlined over the reference content
+
+- **Decision:** `motion diff` measures a third window besides `drawn` and `union` (D35): `content`, per frame, the pixels where the scene draws or where the reference differs from the scene's background colour by more than the tolerance. Where an ignored layer draws and nothing else of the scene does, the reference is left out, as the layer is. `content_failing` is the headline number of `motion diff`, `motion fidelity` and the ledger, and the ledger's regression check counts it like the others. `drawn` and `union` stay.
+- **Why:**
+  - `drawn` and `union` only look at pixels the scene draws, so content it fails to draw was never measured. A scene that draws nothing in its settled frames scored a perfect 0: in the local corpus of 198 templates, 31 of 39 passing samples passed only that way.
+  - Where the scene draws nothing, its frame is its background, so a reference pixel past the tolerance from it is content the scene misses. The window needs no new mask machinery: one comparison, with the same tolerance as the failing pixels.
+  - `drawn` and `union` still tell layout error (drawn in the wrong place or colour) apart from missing content (absent from `drawn`, present in `content`).
+  - An ignored layer stands for content the reference has and the scene does not, such as a photo in a placeholder, so measuring the reference there would count a gap the manifest declared.
 
 ## Open questions
 

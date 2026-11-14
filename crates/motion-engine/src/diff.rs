@@ -1,9 +1,17 @@
-//! Fidelity against a reference render ([D35]): each reference frame is
-//! compared with the scene drawn at the reference frame's exact time, and the
-//! error is measured twice: where the scene draws in that frame, and over
-//! everything it draws anywhere in the compared frames, so an element that
-//! is missing or late still counts against it. What the scene does not draw,
-//! such as footage a template leaves to its user, is not measured.
+//! Fidelity against a reference render ([D35], [D42]): each reference frame
+//! is compared with the scene drawn at the reference frame's exact time, and
+//! the error is measured over three windows:
+//!
+//! - `content`, the headline: where the scene draws in that frame, and where
+//!   the reference differs from the scene's background by more than the
+//!   tolerance, so content the scene fails to draw counts against it;
+//! - `drawn`: where the scene draws in that frame;
+//! - `union`: everything it draws anywhere in the compared frames, so an
+//!   element that is late still counts.
+//!
+//! Layers the options ignore, such as footage a template leaves to its user,
+//! are neither drawn nor measured: where they would draw and the scene draws
+//! nothing else, the reference is not measured either.
 //!
 //! Errors are on 8-bit sRGB values scaled to 0..1. A pixel fails when any
 //! channel differs by more than the tolerance (Blender's render tests use
@@ -11,6 +19,7 @@
 //! worst frame, since a mean hides a few bad frames.
 //!
 //! [D35]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d35-fidelity-is-measured-against-reference-renders
+//! [D42]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d42-fidelity-is-headlined-over-the-reference-content
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,6 +44,9 @@ pub struct DiffOptions {
     pub tolerance: f64,
     /// A folder to write one error image per frame into, if any.
     pub images: Option<PathBuf>,
+    /// Layers left out of the drawing and the measure, by id: what the
+    /// reference shows differently on purpose, such as a placeholder.
+    pub ignore: Vec<String>,
 }
 
 impl DiffOptions {
@@ -87,6 +99,9 @@ pub struct FrameDiff {
     pub file: String,
     /// The scene time it was compared at, in seconds.
     pub time: f64,
+    /// The error where the scene draws in this frame, or the reference
+    /// differs from the scene's background.
+    pub content: Error,
     /// The error where the scene draws in this frame.
     pub drawn: Error,
     /// The error over everything the scene draws in any compared frame.
@@ -113,6 +128,10 @@ pub struct Diff {
     pub tolerance: f64,
     /// Every frame, in order.
     pub frames: Vec<FrameDiff>,
+    /// The mean error over the content, pooled.
+    pub content_mean: Pooled,
+    /// The failing share over the content, pooled.
+    pub content_failing: Pooled,
     /// The mean error where the scene draws, pooled.
     pub drawn_mean: Pooled,
     /// The failing share where the scene draws, pooled.
@@ -129,6 +148,9 @@ struct Pair {
     ours: Image,
     /// Whether we draw each pixel, before the background.
     coverage: Vec<bool>,
+    /// Whether we draw each pixel with the ignored layers shown; none when
+    /// no layer is ignored, or the pass does not need it.
+    shown: Option<Vec<bool>>,
     /// The reference frame.
     reference: Image,
 }
@@ -161,24 +183,36 @@ impl Session {
             )
             .expected("as many reference frames as the scene lasts, or a later `--start`"));
         }
-        let union = self.union(options, &times)?;
-        let frames = self.each_pair(options, &times, &|i, pair| {
+        // The ignored layers are hidden from what is measured, and this
+        // session still draws them, to tell where the content window ends.
+        let hidden;
+        let (measured, shown) = match options.ignore.is_empty() {
+            true => (self, None),
+            false => {
+                hidden = self.hiding(&options.ignore)?;
+                (&hidden, Some(self))
+            }
+        };
+        let union = measured.union(options, &times)?;
+        let frames = measured.each_pair(options, &times, shown, &|i, pair| {
             let file = file_name(&options.frames[i]);
-            let drawn = error(pair, &pair.coverage, options.tolerance);
-            let union_error = error(pair, &union, options.tolerance);
+            let content = content(pair, options.tolerance);
             if let Some(dir) = &options.images {
-                write_error_image(dir, &file, pair, &union, options.tolerance)?;
+                write_error_image(dir, &file, pair, &union, &content, options.tolerance)?;
             }
             Ok(FrameDiff {
                 file,
                 time: times[i],
-                drawn,
-                union: union_error,
+                content: error(pair, &content, options.tolerance),
+                drawn: error(pair, &pair.coverage, options.tolerance),
+                union: error(pair, &union, options.tolerance),
             })
         })?;
         let pool = |pick: fn(&FrameDiff) -> f64| pooled(&frames, pick);
         Ok(Diff {
             tolerance: options.tolerance,
+            content_mean: pool(|f| f.content.mean),
+            content_failing: pool(|f| f.content.failing),
             drawn_mean: pool(|f| f.drawn.mean),
             drawn_failing: pool(|f| f.drawn.failing),
             union_mean: pool(|f| f.union.mean),
@@ -189,7 +223,7 @@ impl Session {
 
     /// Where the scene draws in any of the frames.
     fn union(&self, options: &DiffOptions, times: &[f64]) -> Result<Vec<bool>> {
-        let masks = self.each_pair(options, times, &|_, pair| Ok(pair.coverage.clone()))?;
+        let masks = self.each_pair(options, times, None, &|_, pair| Ok(pair.coverage.clone()))?;
         Ok(masks.into_iter().fold(Vec::new(), |mut union, mask| {
             if union.is_empty() {
                 return mask;
@@ -201,11 +235,13 @@ impl Session {
 
     /// Calls `each` on every frame drawn and read, on as many threads as the
     /// processor has, and returns the results in frame order, or the first
-    /// frame's error.
+    /// frame's error. `shown`, if any, is this scene with the ignored layers
+    /// drawn, for [`Pair::shown`].
     fn each_pair<T: Send>(
         &self,
         options: &DiffOptions,
         times: &[f64],
+        shown: Option<&Session>,
         each: &(dyn Fn(usize, &Pair) -> Result<T> + Sync),
     ) -> Result<Vec<T>> {
         let threads = thread::available_parallelism().map_or(1, usize::from);
@@ -220,7 +256,7 @@ impl Session {
                             .map(|&i| {
                                 (
                                     i,
-                                    self.pair(options, times[i], i)
+                                    self.pair(options, shown, times[i], i)
                                         .and_then(|pair| each(i, &pair)),
                                 )
                             })
@@ -238,12 +274,20 @@ impl Session {
         ordered.into_iter().map(|(_, result)| result).collect()
     }
 
-    /// Reference frame `index` and the scene drawn at `time` seconds.
-    fn pair(&self, options: &DiffOptions, time: f64, index: usize) -> Result<Pair> {
+    /// Reference frame `index` and the scene drawn at `time` seconds, with
+    /// where `shown` draws then, if given.
+    fn pair(
+        &self,
+        options: &DiffOptions,
+        shown: Option<&Session>,
+        time: f64,
+        index: usize,
+    ) -> Result<Pair> {
         let path = &options.frames[index];
         let bytes = fs::read(path).map_err(|e| Diagnostic::io("read", path, &e))?;
         let reference = Image::from_png(&bytes).map_err(|d| d.at(path.display().to_string()))?;
-        let list = self.display_list(time * self.scene().fps)?;
+        let frame = time * self.scene().fps;
+        let list = self.display_list(frame)?;
         let graph = self.graph()?;
         let (width, height) = (pixels(graph.width), pixels(graph.height));
         if (reference.width(), reference.height()) != (width, height) {
@@ -258,23 +302,54 @@ impl Session {
             )
             .expected("reference frames of the scene's size"));
         }
-        let options = RenderOptions::default();
-        let ours = motion_raster::render_with(&list, width, height, options)?;
-        let bare = Frame {
-            background: None,
-            ..list
-        };
-        let coverage = motion_raster::render_with(&bare, width, height, options)?
-            .pixels()
-            .chunks_exact(4)
-            .map(|p| p[3] > 0)
-            .collect();
+        let ours = motion_raster::render_with(&list, width, height, RenderOptions::default())?;
+        let shown = shown
+            .map(|session| coverage(session.display_list(frame)?, width, height))
+            .transpose()?;
         Ok(Pair {
             ours,
-            coverage,
+            coverage: coverage(list, width, height)?,
+            shown,
             reference,
         })
     }
+}
+
+/// Whether `list` draws each pixel, before its background.
+fn coverage(list: Frame, width: u32, height: u32) -> Result<Vec<bool>> {
+    let bare = Frame {
+        background: None,
+        ..list
+    };
+    Ok(
+        motion_raster::render_with(&bare, width, height, RenderOptions::default())?
+            .pixels()
+            .chunks_exact(4)
+            .map(|p| p[3] > 0)
+            .collect(),
+    )
+}
+
+/// The content window of `pair`: where the scene draws, and where it does
+/// not but the reference differs from it by more than the tolerance. There
+/// our frame is the scene's background, so those are pixels where the
+/// reference shows something the scene misses; except under an ignored
+/// layer, which the reference fills with what the scene does not have.
+fn content(pair: &Pair, tolerance: f64) -> Vec<bool> {
+    let limit = tolerance * 255.0;
+    let shown = pair.shown.as_deref().unwrap_or(&pair.coverage);
+    pair.ours
+        .pixels()
+        .chunks_exact(4)
+        .zip(pair.reference.pixels().chunks_exact(4))
+        .zip(pair.coverage.iter().zip(shown))
+        .map(|((a, b), (drawn, shown))| *drawn || (!shown && f64::from(difference(a, b)) > limit))
+        .collect()
+}
+
+/// The largest difference between the colour channels of two pixels.
+fn difference(a: &[u8], b: &[u8]) -> u8 {
+    (0..3).map(|i| a[i].abs_diff(b[i])).max().unwrap_or(0)
 }
 
 /// A scene size in whole pixels, as the rasteriser takes it.
@@ -354,12 +429,14 @@ fn file_name(path: &Path) -> String {
 }
 
 /// Writes the error image of one frame into `dir`: the reference dimmed to
-/// grey, with each measured pixel's error in red and the failing ones bright.
+/// grey, with the error of each pixel over all drawn or the content in red
+/// and the failing ones bright, so content the scene misses is bright too.
 fn write_error_image(
     dir: &Path,
     file: &str,
     pair: &Pair,
     union: &[bool],
+    content: &[bool],
     tolerance: f64,
 ) -> Result<()> {
     fs::create_dir_all(dir).map_err(|e| Diagnostic::io("create", dir, &e))?;
@@ -369,11 +446,11 @@ fn write_error_image(
         .pixels()
         .chunks_exact(4)
         .zip(pair.reference.pixels().chunks_exact(4))
-        .zip(union)
-        .flat_map(|((a, b), inside)| {
+        .zip(union.iter().zip(content))
+        .flat_map(|((a, b), (union, content))| {
             let grey = ((u16::from(b[0]) + u16::from(b[1]) + u16::from(b[2])) / 12) as u8;
-            let error = (0..3).map(|i| a[i].abs_diff(b[i])).max().unwrap_or(0);
-            match (*inside, f64::from(error) > limit) {
+            let error = difference(a, b);
+            match (*union || *content, f64::from(error) > limit) {
                 (true, true) => [255, grey, grey, 255],
                 (true, false) => [
                     grey.saturating_add(error.saturating_mul(4)),

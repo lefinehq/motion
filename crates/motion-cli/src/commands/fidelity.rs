@@ -92,11 +92,13 @@ fn print_measure(id: &str, measure: &Measure) {
     }
 }
 
-/// A window's errors.
+/// A window's errors, the content's first.
 fn window(name: &str, w: &Window) -> String {
     format!(
-        "{name} ({}): where drawn {:.4}, {:.2}% failing; over all drawn {:.4}, {:.2}% failing",
+        "{name} ({}): content {:.4}, {:.2}% failing; where drawn {:.4}, {:.2}% failing; over all drawn {:.4}, {:.2}% failing",
         w.frames,
+        w.content_error.unwrap_or_default(),
+        w.content_failing.unwrap_or_default() * 100.0,
         w.drawn_error,
         w.drawn_failing * 100.0,
         w.union_error,

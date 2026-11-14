@@ -61,6 +61,7 @@ All notable changes to this project are documented here. The format is based on 
 - The scene is read with a serde document, so errors in its shape carry the path of the value.
 - Edit paths use a real grammar, so `card anim.opacity="0 -> 1 @0-12f"` and JSON values (`anim={...}`) are read by `serde_json`.
 - Quiet by default: nothing is logged unless `--log` or `MOTION_LOG` asks for it, and a failing run prints only its `error:` line.
+- `motion diff` and `motion fidelity` measure a third window, `content`: where the scene draws or the reference differs from the scene's background by more than the tolerance, so content the scene fails to draw counts against it. It is the headline number in their output, their JSON and the ledger, and the ledger's regression check counts it; `DiffOptions` takes the layers to ignore, and the diff leaves out where they draw ([D42](docs/design/decisions.md#d42-fidelity-is-headlined-over-the-reference-content)).
 
 - `at` prints only the properties that differ from their default after `x y w h`.
 - The property `x` and `y` are now the components of `position`; `scale` is a point (`scale=0.8,0.8` in `at`); `at` places the layer's anchor, which rests at the centre of its box, so existing scenes draw as before.

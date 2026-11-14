@@ -24,6 +24,8 @@ fn measure_at(error: f64) -> Measure {
     let window = Window {
         from: 0.0,
         frames: 3,
+        content_error: Some(error),
+        content_failing: Some(error),
         drawn_error: error,
         drawn_failing: error,
         union_error: error,
@@ -100,6 +102,7 @@ fn a_sample_measured_against_its_own_frames_has_no_error() {
     assert_eq!((measure.texts, measure.text_worst), (0, Some(0.0)));
     assert_eq!(measure.all.frames, 3);
     assert_eq!(measure.all.union_failing, 0.0);
+    assert_eq!(measure.all.content_failing, Some(0.0));
     assert_eq!(measure.settled.as_ref().map(|w| w.frames), Some(2));
     assert!(work.join("star/scene.json").exists());
     assert!(work.join("star/errors/f0.png").exists());
@@ -132,6 +135,10 @@ fn comparing_ledgers_names_what_got_better_or_worse() {
         of("settled union_failing"),
         Some((Some(0.1), Some(0.05), Some(true)))
     );
+    assert_eq!(
+        of("settled content_failing"),
+        Some((Some(0.1), Some(0.05), Some(true)))
+    );
     assert_eq!(of("texts_within"), Some((Some(0.0), Some(1.0), Some(true))));
     assert_eq!(of("unsupported: stars"), Some((Some(1.0), None, None)));
     assert!(
@@ -143,8 +150,22 @@ fn comparing_ledgers_names_what_got_better_or_worse() {
     assert!(
         worse
             .iter()
-            .any(|c| c.metric == "settled drawn_error" && c.better == Some(false))
+            .any(|c| c.metric == "settled content_failing" && c.better == Some(false))
     );
+    // A ledger from before the content window: its numbers are new, not worse.
+    let mut old = measure_at(0.1);
+    old.settled = None;
+    old.all.content_error = None;
+    old.all.content_failing = None;
+    let older = Ledger {
+        samples: BTreeMap::from([("a".to_owned(), old)]),
+    };
+    let first = compare(&older, &before);
+    let content = first
+        .iter()
+        .find(|c| c.metric == "all content_failing")
+        .unwrap();
+    assert_eq!((content.before, content.better), (None, None));
 }
 
 #[test]
@@ -162,4 +183,17 @@ fn a_ledger_round_trips_rounded() {
     assert_eq!(read.samples["a"].all.drawn_error, 0.123_457);
     assert_eq!(read.samples["a"].text_worst, None);
     assert!(ledger.to_json().ends_with("}\n"));
+    // A ledger written before the content window still reads.
+    let old: String = ledger
+        .to_json()
+        .lines()
+        .filter(|line| !line.contains("\"content_"))
+        .collect();
+    fs::write(&path, old).unwrap();
+    assert_eq!(
+        Ledger::read(&path).unwrap().samples["a"]
+            .all
+            .content_failing,
+        None
+    );
 }

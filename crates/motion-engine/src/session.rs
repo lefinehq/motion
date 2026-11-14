@@ -343,6 +343,26 @@ impl Session {
         self.check()
     }
 
+    /// A copy of this session with the layers `ids` hidden, as an edit
+    /// hides them; this one is left as it is.
+    ///
+    /// # Errors
+    /// As [`Session::edit`], for an id the scene does not have.
+    pub(crate) fn hiding(&self, ids: &[String]) -> Result<Session> {
+        let mut hidden = Session {
+            path: self.path.clone(),
+            doc: self.doc.clone(),
+            fonts: OnceLock::new(),
+            graph: OnceLock::new(),
+            font_cache: self.font_cache.clone(),
+            pictures: Pictures::default(),
+        };
+        for id in ids {
+            hidden.edit(&format!("{id} hidden=true"))?;
+        }
+        Ok(hidden)
+    }
+
     /// Writes the scene, in canonical form, back to its file (step `save`),
     /// through a renamed temp file so a failed write never leaves half a scene.
     ///
