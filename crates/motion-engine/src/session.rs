@@ -10,6 +10,7 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 use std::thread;
 
 use motion_edit::{apply_edit, parse_edit};
+use motion_fonts::{Cache, Lock};
 use motion_format::units::Time;
 use motion_format::{Diagnostic, Kind, Result};
 use motion_format::{Document, Scene, Value, parse_document, write_document};
@@ -35,6 +36,8 @@ pub struct Session {
     fonts: OnceLock<Result<FontSet>>,
     /// The compiled scene, built on first use and dropped by an edit.
     graph: OnceLock<Result<SceneGraph>>,
+    /// Where locked fonts are loaded from; this user's cache when unset.
+    font_cache: Option<Cache>,
 }
 
 impl Session {
@@ -67,9 +70,16 @@ impl Session {
     /// folder the scene's `fonts` names, relative to the scene file's folder
     /// (the working folder for a scene without a file). Read once per edit.
     ///
+    /// An entry ending in `.lock` is a [`Lock`]: each face it pins is loaded
+    /// from the font cache and checked against its hash ([D39]). A render
+    /// never fetches a font.
+    ///
     /// # Errors
     /// A [`Kind::Io`] diagnostic for a font that cannot be read, at its place
-    /// in `fonts`, or one for a file that is not a font.
+    /// in `fonts`, or one for a file that is not a font; for a lock, one for
+    /// a face the cache lacks, naming the command that fetches it.
+    ///
+    /// [D39]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d39-fonts-are-resolved-before-a-render
     pub fn fonts(&self) -> Result<&FontSet> {
         self.fonts
             .get_or_init(|| stage("fonts", || self.read_fonts()))
@@ -78,21 +88,79 @@ impl Session {
     }
 
     fn read_fonts(&self) -> Result<FontSet> {
-        let base = self
-            .path
+        self.read_font_entries(true)
+    }
+
+    /// The fonts without those the scene's locks pin: the built-in ones and
+    /// the files and folders its `fonts` names. What a fetch starts from, so
+    /// it works on a scene whose lock is not fetched yet.
+    ///
+    /// # Errors
+    /// As [`Session::fonts`], for the files and folders.
+    pub fn unlocked_fonts(&self) -> Result<FontSet> {
+        self.read_font_entries(false)
+    }
+
+    /// The locks the scene's `fonts` names, relative to the working folder.
+    pub fn locks(&self) -> Vec<PathBuf> {
+        let base = self.base();
+        self.doc
+            .scene()
+            .fonts
+            .iter()
+            .map(|entry| base.join(entry))
+            .filter(|path| is_lock(path))
+            .collect()
+    }
+
+    /// The folder the scene's `fonts` are relative to.
+    fn base(&self) -> &Path {
+        self.path
             .as_deref()
             .and_then(Path::parent)
-            .unwrap_or(Path::new(""));
+            .unwrap_or(Path::new(""))
+    }
+
+    fn read_font_entries(&self, locks: bool) -> Result<FontSet> {
+        let base = self.base();
         let mut fonts = FontSet::builtin();
         for (i, entry) in self.doc.scene().fonts.iter().enumerate() {
             let path = base.join(entry);
-            let added = match path.is_dir() {
-                true => fonts.add_folder(&path),
-                false => fonts.add_file(&path),
+            let added = match (is_lock(&path), path.is_dir()) {
+                (true, _) if !locks => continue,
+                (true, _) => self.add_locked(&mut fonts, &path),
+                (false, true) => fonts.add_folder(&path),
+                (false, false) => fonts.add_file(&path),
             };
             added.map_err(|e| e.at(format!("{}[{i}]", motion_format::key::FONTS)))?;
         }
         Ok(fonts)
+    }
+
+    /// Adds every face the lock at `path` pins, from the font cache.
+    fn add_locked(&self, fonts: &mut FontSet, path: &Path) -> Result<usize> {
+        let lock = Lock::read(path)?;
+        let cache = match &self.font_cache {
+            Some(cache) => cache.clone(),
+            None => Cache::user()?,
+        };
+        let mut added = 0;
+        let mut loaded = std::collections::BTreeSet::new();
+        for font in &lock.fonts {
+            if loaded.insert(font.sha256) {
+                let bytes = cache.load(font)?;
+                let source = format!("{} ({} {})", font.postscript, font.family, font.version);
+                added += fonts.add_bytes(bytes, &source)?;
+            }
+        }
+        Ok(added)
+    }
+
+    /// Loads locked fonts from `cache` instead of this user's cache.
+    pub fn set_font_cache(&mut self, cache: Cache) {
+        self.font_cache = Some(cache);
+        self.fonts = OnceLock::new();
+        self.graph = OnceLock::new();
     }
 
     /// The compiled scene (step `compile`), built once per edit.
@@ -296,8 +364,15 @@ impl FromStr for Session {
             doc,
             fonts: OnceLock::new(),
             graph: OnceLock::new(),
+            font_cache: None,
         })
     }
+}
+
+/// Whether a `fonts` entry is a lock.
+fn is_lock(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e == crate::fonts::LOCK_EXTENSION)
 }
 
 /// A canvas side in whole pixels; validation keeps sizes whole and positive.

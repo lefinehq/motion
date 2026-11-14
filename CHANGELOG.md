@@ -45,6 +45,9 @@ All notable changes to this project are documented here. The format is based on 
 - `motion-raster`: draws a frame's display list (layers with transform, opacity, blend mode, clip and effects; filled and stroked paths; glyph runs) into an RGBA image with `vello_cpu`, and writes PNG files. Seventeen blend modes, caps, joins and fill rules are tables; the `fill` effect is the first row of the effect registry. Golden images are drawn with portable scalar code so they compare exactly across machines.
 - `motion-text`: a font set read from given files and folders (by PostScript name, or family, weight and slant; every named instance of a variable font; Inter built in), and text layout with Parley and HarfRust: paragraphs, character runs, point and box text, every justification, indents, paragraph spacing, leading, tracking, baseline shift and capitals, into lines with cumulative character advances and glyph runs ready for `vello_cpu`. A missing font or glyph is an error.
 
+- `motion-fonts`, `motion fonts fetch` and `motion import --fetch-fonts`: the fonts a scene lacks are found in open-licensed sources (each family's repository and Google Fonts), pinned in a lock beside the scene and kept in a content-addressed cache. For an import, each family takes the release whose glyph ids and widths match the project's stored text. A lock in a scene's `fonts` loads its faces from the cache and checks their hashes; a render never fetches (D39).
+- The text check compares glyph ids with those the project stored, and the import report says when they differ.
+
 ### Changed
 
 - Six crates instead of ten: the error type and shared grammar pieces live in `motion-format`, evaluation in `motion-scene`, and logging setup in `motion-engine`.

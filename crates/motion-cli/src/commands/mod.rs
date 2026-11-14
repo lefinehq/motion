@@ -6,6 +6,7 @@ pub mod check;
 pub mod diff;
 pub mod edit;
 pub mod fidelity;
+pub mod fonts;
 pub mod import;
 pub mod inspect;
 pub mod render;

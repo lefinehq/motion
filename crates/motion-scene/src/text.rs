@@ -37,7 +37,7 @@ impl TextNode {
 /// A [`motion_format::Diagnostic`] when a run names a font the set does not
 /// have or holds a character its font has no glyph for; a missing font is
 /// never replaced by another.
-pub(crate) fn set(content: &TextContent, typesetter: &mut Typesetter) -> Result<Arc<TextNode>> {
+pub fn set(content: &TextContent, typesetter: &mut Typesetter) -> Result<Arc<TextNode>> {
     let styled = styled(content, typesetter.fonts());
     // Find every face first, so a missing one is reported at the scene key that names it.
     for (run, asked) in content.runs.iter().zip(&styled.runs) {

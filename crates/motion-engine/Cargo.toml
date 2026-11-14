@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 motion-format = { path = "../motion-format" }
+motion-fonts = { path = "../motion-fonts" }
 motion-scene = { path = "../motion-scene" }
 motion-text = { path = "../motion-text" }
 motion-query = { path = "../motion-query" }
