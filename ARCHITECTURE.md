@@ -32,8 +32,9 @@ Each crate has one job and a list of things it must never do. Keeping those rule
 | `motion-scene` | Compiles a scene into a scene graph with resolved sizes and tracks (step 2), and works out every node's position, size and opacity at a frame (step 3). | Touch pixels or read files. |
 | `motion-query` | Side branch: `check` and `at` answer questions about a scene with numbers. | Write files or touch pixels. |
 | `motion-edit` | Side branch: parses one-line edits and applies them to a parsed scene's raw JSON. | Write files or touch pixels. |
-| `motion-engine` | `Session`: the only entry point for tools. It reads, parses, compiles and evaluates a scene and runs `check`, `at` and edits, each step inside a `tracing` span. Its `telemetry` module installs the stderr subscriber for logs and step timings. | Print, read arguments, let a tool bypass it to call a step directly, or install a subscriber itself (only binaries and tests call `telemetry::init`). |
-| `motion-cli` | The `motion` command: reads the arguments, runs each command through a `Session`, and prints its output. | Hold engine logic. It is the only place that prints, and it reaches scenes only through `Session`. |
+| `motion-engine` | `Session`: the only entry point for tools. It reads, parses, compiles and evaluates a scene and runs `check`, `at` and edits, and `import` reads an `.aep` project, each step inside a `tracing` span. Its `telemetry` module installs the stderr subscriber for logs and step timings. | Print, read arguments, let a tool bypass it to call a step directly, or install a subscriber itself (only binaries and tests call `telemetry::init`). |
+| `motion-import` | Reads `.aep` projects: the RIFX chunk tree, then items, compositions, layers, the property tree, keyframes and paths, into a typed model that keeps whatever it cannot decode yet as an opaque value with its reason, and counts it in the import report ([D30](docs/design/decisions.md#d30-read-aep-projects-directly), [design](docs/design/aep-import.md)). | Read files, panic or index out of bounds on any input, or drop a chunk silently: every chunk it passes over is counted. |
+| `motion-cli` | The `motion` command: reads the arguments, runs each command through a `Session`, and prints its output. | Hold engine logic. It is the only place that prints, and it reaches scenes only through `Session` and `.aep` projects only through `motion_engine::import`. |
 
 Crates are added task by task, and only when a piece has its own dependencies or its own users. This table lists only crates that exist.
 
@@ -44,7 +45,6 @@ Crates are added task by task, and only when a piece has its own dependencies or
 | `motion-raster` | Rasterise shapes and text into pixels (step 4). |
 | `motion-composite` | Combine layers: effects, masks, mattes, blend modes (step 4). |
 | `motion-encode` | Write video and audio files (step 5). |
-| `motion-import` | Bring in assets and other formats. |
 | `motion-variants` | Turn one designed project into many variants. |
 
 ## Parsing, validation and errors
@@ -59,6 +59,8 @@ Libraries never print: they return a `Diagnostic` or log with `tracing`, and onl
 | Shorthand grammars: units, rect, font, position, behaviour, tracks | `crates/motion-format/src/units.rs`, `shorthand/`, `anim.rs`, `curve.rs` |
 | Validation: every rule beyond the shape | `crates/motion-format/src/validate.rs` |
 | The edit line grammar and path edits | `crates/motion-edit/src/parse.rs`, `apply.rs` |
+| `.aep` chunks, binary records and the one binrw-to-`Diagnostic` mapping | `crates/motion-import/src/rifx.rs`, `record.rs` |
+| The `.aep` model, and the table of property bodies | `crates/motion-import/src/model.rs`, `decode/property.rs` |
 | The entry point and its step spans | `crates/motion-engine/src/session.rs`, `stage.rs` |
 
 See [Contributing](CONTRIBUTING.md#how-errors-work) for how to add a shorthand or a field.
@@ -81,3 +83,4 @@ The rule: **names are data; add a row, not a branch.** A new property is a row i
 
 1. `crates/motion-format/src/lib.rs`: the scene format and its units.
 2. `crates/motion-scene/src/evaluate.rs`: how a frame's values are worked out.
+3. `crates/motion-import/src/decode.rs`: how an `.aep` project is read, then `record.rs` for the records it reads.
