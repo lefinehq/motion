@@ -9,6 +9,7 @@ use motion_eval::evaluate;
 use motion_format::fmt_num;
 use motion_format::property::{PROPERTIES, names};
 use motion_scene::SceneGraph;
+use tracing::instrument;
 
 /// Describes the requested nodes at `frame`, one line each.
 ///
@@ -17,6 +18,7 @@ use motion_scene::SceneGraph;
 /// registered property, in registry order, whose value differs from its
 /// default, as `name={value}`. Values are compared as printed, so float dust
 /// such as a scale of 1.0000000000000002 does not show up.
+#[instrument(level = "debug", skip(graph, ids), fields(ids = ids.len()))]
 pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
     if frame < 0.0 {
         return Err(Diagnostic::new(Kind::OutOfRange, "time must be 0 or later"));

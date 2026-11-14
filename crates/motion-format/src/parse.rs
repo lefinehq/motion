@@ -8,6 +8,7 @@
 
 use motion_diagnostic::{Diagnostic, Kind, Result};
 use serde_json::Value;
+use tracing::{Span, debug, field, instrument};
 
 use crate::doc::{Form, Object, SceneDoc};
 use crate::{Document, Scene, validate};
@@ -75,18 +76,25 @@ pub const LAYER_KEYS: [&str; 8] = [
 
 /// Parses scene JSON text into a [`Document`]: the original value (kept so
 /// edits and writes preserve what the author wrote) plus the typed scene.
+#[instrument(level = "debug", skip_all, fields(bytes = json.len(), layers = field::Empty))]
 pub fn parse_document(json: &str) -> Result<Document> {
     let raw: Value = serde_json::from_str(json)
         .map_err(|e| Diagnostic::syntax(format!("invalid JSON: {e}")).expected(SceneDoc::FORM))?;
     let scene = scene_from_value(&raw)?;
+    Span::current().record("layers", scene.layers.len());
     Ok(Document { raw, scene })
 }
 
 /// Validates a JSON value and converts it into a typed [`Scene`], applying
 /// defaults for the keys that may be left out.
 pub fn scene_from_value(value: &Value) -> Result<Scene> {
-    let Object::<SceneDoc>(doc) = serde_path_to_error::deserialize(value).map_err(structural)?;
-    validate::scene(&doc)
+    let checked = serde_path_to_error::deserialize(value)
+        .map_err(structural)
+        .and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc));
+    // Validation stops at the first rule that fails, so this is that rule.
+    checked.inspect_err(|d| {
+        debug!(kind = ?d.kind, path = d.path.as_deref(), "rejected: {}", d.message);
+    })
 }
 
 /// Serde's error messages, one row per shape: how the message starts, and

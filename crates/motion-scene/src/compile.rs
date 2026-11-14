@@ -10,11 +10,16 @@ use motion_format::property::{PROPERTIES, property};
 use motion_format::shorthand::Coord;
 use motion_format::{Content, Curve, Layer, Scene};
 
+use tracing::{Span, field, instrument};
+
 use crate::graph::{Node, NodeKind, SceneGraph};
 use crate::text::TextMeasure;
 use crate::track::{Key, Track};
 
 /// Compiles `scene` into a [`SceneGraph`], using `measure` to size text.
+// `tracks` counts the animated tracks: every node has one per property, so
+// the total would say nothing.
+#[instrument(level = "debug", skip_all, fields(nodes = scene.layers.len(), tracks = field::Empty))]
 pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
     let width = f64::from(scene.size.width);
     let height = f64::from(scene.size.height);
@@ -39,7 +44,15 @@ pub fn compile(scene: &Scene, measure: &dyn TextMeasure) -> SceneGraph {
                 follows_at,
             }
         })
-        .collect();
+        .collect::<Vec<Node>>();
+    Span::current().record(
+        "tracks",
+        nodes
+            .iter()
+            .flat_map(|node| &node.tracks)
+            .filter(|track| !track.is_constant())
+            .count(),
+    );
     SceneGraph {
         width,
         height,

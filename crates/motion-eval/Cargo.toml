@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 motion-format = { path = "../motion-format" }
 motion-scene = { path = "../motion-scene" }
+tracing.workspace = true
 
 [lints]
 workspace = true

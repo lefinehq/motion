@@ -15,6 +15,7 @@ serde_path_to_error.workspace = true
 winnow.workspace = true
 motion-diagnostic = { path = "../motion-diagnostic" }
 motion-grammar = { path = "../motion-grammar" }
+tracing.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

@@ -1,7 +1,7 @@
-//! The `motion` command-line tool: the only place that reads and writes files
-//! and prints. It holds no engine logic; it wires `motion-format`,
-//! `motion-scene`, `motion-eval`, `motion-query` and `motion-edit` together
-//! (a side branch of the pipeline, not a numbered rendering step).
+//! The `motion` command-line tool: the only place that prints. It holds no
+//! engine logic: every command goes through a `motion_engine::Session`,
+//! which reads, runs and writes the scene (a side branch of the pipeline,
+//! not a numbered rendering step).
 //!
 //! Commands:
 //!
@@ -11,25 +11,63 @@
 //!
 //! Exit codes: `0` when all is well, `1` when the check report has an error
 //! line, and otherwise the code of the diagnostic's kind
-//! ([`Kind::exit_code`](motion_diagnostic::Kind::exit_code), `2` for every
+//! ([`Kind::exit_code`](motion_engine::Kind::exit_code), `2` for every
 //! kind today) when the file, the time or the edit line is unusable. Output
 //! goes to stdout; failures print `error: {diagnostic}` to stderr, from here
 //! only.
+//!
+//! Logs go to stderr through `motion-telemetry`: `--log <level>` (default
+//! `warn`, overridden by `MOTION_LOG`), `--log-format text|json`, and
+//! `--timings` for a `timings …` line at the end.
 
 mod commands;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+use motion_telemetry::{Format, LevelFilter, Options};
 
 /// Check, query and edit motion scenes.
 #[derive(Parser)]
 #[command(name = "motion", version, about)]
 struct Cli {
+    /// The most verbose log level written to stderr: off, error, warn, info,
+    /// debug or trace. `MOTION_LOG` (e.g. `motion_query=debug`) overrides it.
+    #[arg(
+        long = "log",
+        value_name = "LEVEL",
+        default_value = "warn",
+        global = true
+    )]
+    log: LevelFilter,
+    /// How log lines are written to stderr.
+    #[arg(long, value_enum, default_value = "text", global = true)]
+    log_format: LogFormat,
+    /// Print how long each step took to stderr, at the end.
+    #[arg(long, global = true)]
+    timings: bool,
     /// The command to run.
     #[command(subcommand)]
     command: Command,
+}
+
+/// The `--log-format` values.
+#[derive(Clone, Copy, ValueEnum)]
+enum LogFormat {
+    /// One human-readable line per event.
+    Text,
+    /// One JSON object per line, for machines and agents.
+    Json,
+}
+
+impl From<LogFormat> for Format {
+    fn from(format: LogFormat) -> Self {
+        match format {
+            LogFormat::Text => Format::Text,
+            LogFormat::Json => Format::Json,
+        }
+    }
 }
 
 /// The commands `motion` understands.
@@ -60,16 +98,26 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let telemetry = motion_telemetry::init(Options {
+        level: cli.log,
+        format: cli.log_format.into(),
+        timings: cli.timings,
+    });
     let result = match cli.command {
         Command::Check { scene } => commands::check::run(&scene),
         Command::At { scene, time, ids } => commands::at::run(&scene, &time, &ids),
         Command::Edit { scene, line } => commands::edit::run(&scene, &line),
     };
-    match result {
+    let code = match result {
         Ok(code) => code,
+        // The engine has already logged the diagnostic as an `error` event.
         Err(d) => {
             eprintln!("error: {d}");
             ExitCode::from(d.kind.exit_code())
         }
+    };
+    if let Some(timings) = telemetry.timings() {
+        eprintln!("{}", timings.report());
     }
+    code
 }

@@ -1,28 +1,25 @@
-//! The commands behind the `motion` binary, plus the steps they share:
-//! loading a scene file and compiling it into a scene graph.
+//! The commands behind the `motion` binary, plus the report printing they
+//! share.
 //!
-//! The command layer of the CLI: the only code in the workspace that touches
-//! files. It runs steps 1 to 3 (read, compile, evaluate) and hands the result
-//! to the query and edit side branch.
+//! The command layer of the CLI: each command opens a
+//! [`Session`](motion_engine::Session), which runs the pipeline, and prints
+//! what it returns. No command calls a pipeline crate directly.
 
 pub mod at;
 pub mod check;
 pub mod edit;
 
-use std::path::Path;
+use std::process::ExitCode;
 
-use motion_diagnostic::{Diagnostic, Kind, Result};
-use motion_format::{Document, Scene, parse_document};
-use motion_scene::{ApproxTextMeasure, SceneGraph, compile};
+use motion_engine::Report;
 
-/// Reads and validates a scene file.
-pub fn load(path: &Path) -> Result<Document> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| Diagnostic::new(Kind::Io, format!("cannot read `{}`: {e}", path.display())))?;
-    parse_document(&text)
-}
-
-/// Compiles a scene with the built-in approximate text measurer.
-pub fn compile_scene(scene: &Scene) -> SceneGraph {
-    compile(scene, &ApproxTextMeasure)
+/// Prints a check report and maps it to an exit code: 1 when it has an
+/// error line.
+pub fn print_report(report: &Report) -> ExitCode {
+    println!("{report}");
+    if report.has_errors() {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
 }

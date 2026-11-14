@@ -7,8 +7,9 @@
 //! `motion_format::scene_from_value` before it is returned.
 
 use motion_diagnostic::{Diagnostic, Kind, Result};
-use motion_format::{LAYER_KEYS, SCENE_KEYS, scene_from_value};
+use motion_format::{Document, LAYER_KEYS, SCENE_KEYS, scene_from_value};
 use serde_json::Value;
+use tracing::{Span, field, instrument};
 
 use crate::path;
 use crate::{Edit, EditValue};
@@ -16,7 +17,8 @@ use crate::{Edit, EditValue};
 /// The reserved target that means the top level of the document.
 const SCENE_TARGET: &str = "scene";
 
-/// Applies `edit` to a clone of `raw` and returns the validated result.
+/// Applies `edit` to a clone of `raw` and returns the validated result: the
+/// new raw JSON with the scene it describes.
 ///
 /// The target `scene` always means the top level of the document, so a
 /// layer whose id is `scene` cannot be edited this way.
@@ -32,10 +34,35 @@ const SCENE_TARGET: &str = "scene";
 /// failure's kind, path and expected form, with `invalid result: ` before
 /// its message; when quoting a bare number or boolean would fix it, the
 /// expected form shows the quoted change instead.
-pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Value> {
+#[instrument(
+    level = "debug",
+    skip_all,
+    fields(target = %edit.target, keys = %change_keys(edit), outcome = field::Empty)
+)]
+pub fn apply_edit(raw: &Value, edit: &Edit) -> Result<Document> {
+    let applied = validated(raw, edit);
+    Span::current().record(
+        "outcome",
+        if applied.is_ok() {
+            "applied"
+        } else {
+            "rejected"
+        },
+    );
+    applied
+}
+
+/// The changed keys of `edit`, comma-separated, for the `apply_edit` span.
+fn change_keys(edit: &Edit) -> String {
+    let keys: Vec<&str> = edit.changes.iter().map(|c| c.key.as_str()).collect();
+    keys.join(",")
+}
+
+/// [`apply_edit`] without the span.
+fn validated(raw: &Value, edit: &Edit) -> Result<Document> {
     let (out, target) = apply_changes(raw, edit)?;
     match scene_from_value(&out) {
-        Ok(_) => Ok(out),
+        Ok(scene) => Ok(Document { raw: out, scene }),
         Err(mut e) => {
             if let Some(quoted) = quote_hint(raw, edit, &target, &e) {
                 e.expected = Some(quoted.into());

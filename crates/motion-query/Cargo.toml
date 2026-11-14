@@ -12,6 +12,7 @@ motion-diagnostic = { path = "../motion-diagnostic" }
 motion-format = { path = "../motion-format" }
 motion-scene = { path = "../motion-scene" }
 motion-eval = { path = "../motion-eval" }
+tracing.workspace = true
 
 [dev-dependencies]
 insta.workspace = true

@@ -10,7 +10,7 @@ fn doc() -> Value {
         .raw
 }
 fn run(l: &str) -> Value {
-    apply_edit(&doc(), &parse_edit(l).unwrap()).unwrap()
+    apply_edit(&doc(), &parse_edit(l).unwrap()).unwrap().raw
 }
 fn err(l: &str) -> String {
     apply_edit(&doc(), &parse_edit(l).unwrap())
@@ -23,7 +23,9 @@ fn keys(v: &Value) -> Vec<&str> {
 
 #[test]
 fn sets_and_removes_layer_keys() {
-    let out = apply_edit(&doc(), &parse_edit(r#"card fill=#FF0000 in=none"#).unwrap()).unwrap();
+    let out = apply_edit(&doc(), &parse_edit(r#"card fill=#FF0000 in=none"#).unwrap())
+        .unwrap()
+        .raw;
     assert_eq!(out["layers"][1]["fill"], "#FF0000");
     assert!(out["layers"][1].get("in").is_none());
     assert_eq!(out["layers"][0], doc()["layers"][0]); // untouched layers stay byte-identical
@@ -32,7 +34,9 @@ fn sets_and_removes_layer_keys() {
 #[test]
 fn edits_the_scene_itself() {
     assert_eq!(
-        apply_edit(&doc(), &parse_edit("scene bg=#000000 fps=60").unwrap()).unwrap()["fps"],
+        apply_edit(&doc(), &parse_edit("scene bg=#000000 fps=60").unwrap())
+            .unwrap()
+            .raw["fps"],
         60
     );
 }
@@ -205,22 +209,29 @@ fn json_array_round_trips_into_a_valid_scene() {
 fn preset_defined_then_used() {
     let out = run(r#"scene presets.my-pop={"opacity":0,"scale":0.5}"#);
     assert_eq!(out["presets"]["my-pop"], json!({"opacity":0,"scale":0.5}));
-    let out = apply_edit(&out, &parse_edit("card in=my-pop").unwrap()).unwrap();
+    let out = apply_edit(&out, &parse_edit("card in=my-pop").unwrap())
+        .unwrap()
+        .raw;
     assert_eq!(out["layers"][1]["in"], "my-pop");
 }
 
 #[test]
 fn removing_nested_keys_cleans_up_empty_objects() {
     let base = with_anim();
-    let out = apply_edit(&base, &parse_edit("card anim.opacity=none").unwrap()).unwrap();
+    let out = apply_edit(&base, &parse_edit("card anim.opacity=none").unwrap())
+        .unwrap()
+        .raw;
     assert!(out["layers"][1].get("anim").is_none());
     // Siblings keep the parent alive.
     let two = apply_edit(
         &base,
         &parse_edit("card anim.scale=[[\"0f\",1],[\"6f\",2]]").unwrap(),
     )
-    .unwrap();
-    let out = apply_edit(&two, &parse_edit("card anim.opacity=none").unwrap()).unwrap();
+    .unwrap()
+    .raw;
+    let out = apply_edit(&two, &parse_edit("card anim.opacity=none").unwrap())
+        .unwrap()
+        .raw;
     assert_eq!(keys(&out["layers"][1]["anim"]), ["scale"]);
 }
 

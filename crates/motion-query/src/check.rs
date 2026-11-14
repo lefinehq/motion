@@ -12,20 +12,33 @@ use motion_eval::{FrameState, evaluate};
 use motion_format::Scene;
 use motion_format::shorthand::{Coord, Position};
 use motion_scene::SceneGraph;
+use tracing::{Span, field, instrument};
 
 /// Runs the standard rules on `scene` over every frame of `graph`.
 ///
 /// `graph` must be the compiled form of `scene`: nodes and layers are matched
 /// by position.
+#[instrument(
+    level = "debug",
+    skip_all,
+    fields(
+        frames = field::Empty,
+        rules_run = field::Empty,
+        violations = field::Empty,
+        passed = field::Empty
+    )
+)]
 pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
     // Whole frames 0..ceil(duration). Evaluate each once and share it.
     let frame_count = graph.duration_frames.ceil().max(0.0) as u32;
     let frames: Vec<FrameState> = (0..frame_count)
         .map(|f| evaluate(graph, f as f64))
         .collect();
+    Span::current().record("frames", frame_count);
 
     let mut violations = Vec::new();
     let mut passed = 0;
+    let mut rules_run = 0;
     for (index, layer) in scene.layers.iter().enumerate() {
         let mut failed_codes: Vec<&str> = Vec::new();
         for rule in RULES {
@@ -35,6 +48,7 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
             {
                 continue;
             }
+            rules_run += 1;
             let found = runs(rule, index, &frames, graph);
             if found.is_empty() {
                 passed += 1;
@@ -60,6 +74,10 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
             }
         }
     }
+    Span::current()
+        .record("rules_run", rules_run)
+        .record("violations", violations.len())
+        .record("passed", passed);
     Report { violations, passed }
 }
 
