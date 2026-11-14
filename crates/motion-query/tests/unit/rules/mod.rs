@@ -38,11 +38,11 @@ fn whole_pixels_unless_rounding_would_leave_the_target() {
 #[test]
 fn both_axes_move_at_once() {
     let s = shift(
-        (900.0, -10.0, 1030.0, 90.0),
-        (0.0, 0.0, 1000.0, 500.0),
-        (50.0, 25.0, 950.0, 475.0),
+        Rect::new(900.0, -10.0, 1030.0, 90.0),
+        Rect::new(0.0, 0.0, 1000.0, 500.0),
+        Rect::new(50.0, 25.0, 950.0, 475.0),
     );
-    assert_eq!(s, (-80.0, 35.0));
+    assert_eq!(s, Vec2::new(-80.0, 35.0));
 }
 
 #[test]

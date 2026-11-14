@@ -1,5 +1,6 @@
 //! The result of evaluation: plain values, so checks and renderers never see animation.
 
+use kurbo::{Point, Rect, Vec2};
 use motion_format::property::Prop;
 
 /// One node's resolved values at a single frame.
@@ -21,10 +22,10 @@ impl NodeState {
         self.values[prop.index()]
     }
 
-    /// The axis-aligned box `(left, top, right, bottom)` as drawn: scaled, then
-    /// rotated by `rotate` degrees about `(x, y)`.
-    pub fn bounds(&self) -> (f64, f64, f64, f64) {
-        let (x, y) = (self.get(Prop::X), self.get(Prop::Y));
+    /// The axis-aligned box as drawn: scaled, then rotated by `rotate` degrees
+    /// about `(x, y)`.
+    pub fn bounds(&self) -> Rect {
+        let centre = Point::new(self.get(Prop::X), self.get(Prop::Y));
         // Mirroring (a negative scale) does not change the covered area.
         let scale = self.get(Prop::SCALE).abs();
         let (half_w, half_h) = (self.width * scale / 2.0, self.height * scale / 2.0);
@@ -32,29 +33,28 @@ impl NodeState {
         // Snap trig dust (cos 90° is 6e-17) so a quarter turn gives exact edges.
         let snap = |v: f64| if v.abs() < 1e-12 { 0.0 } else { v.abs() };
         let (cos, sin) = (snap(theta.cos()), snap(theta.sin()));
-        let half_x = half_w * cos + half_h * sin;
-        let half_y = half_w * sin + half_h * cos;
-        (x - half_x, y - half_y, x + half_x, y + half_y)
+        let half = Vec2::new(half_w * cos + half_h * sin, half_w * sin + half_h * cos);
+        Rect::from_points(centre - half, centre + half)
     }
 
     /// The left edge of [`NodeState::bounds`].
     pub fn left(&self) -> f64 {
-        self.bounds().0
+        self.bounds().x0
     }
 
     /// The right edge of [`NodeState::bounds`].
     pub fn right(&self) -> f64 {
-        self.bounds().2
+        self.bounds().x1
     }
 
     /// The top edge of [`NodeState::bounds`].
     pub fn top(&self) -> f64 {
-        self.bounds().1
+        self.bounds().y0
     }
 
     /// The bottom edge of [`NodeState::bounds`].
     pub fn bottom(&self) -> f64 {
-        self.bounds().3
+        self.bounds().y1
     }
 }
 

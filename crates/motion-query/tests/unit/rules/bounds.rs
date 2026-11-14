@@ -90,7 +90,10 @@ fn offscreen_aims_at_the_safe_area_and_unsafe_at_itself() {
     let (area, aim) = (OFFSCREEN.areas)(&graph());
     assert_eq!(
         (area, aim),
-        ((0.0, 0.0, 1000.0, 500.0), (50.0, 25.0, 950.0, 475.0))
+        (
+            Rect::new(0.0, 0.0, 1000.0, 500.0),
+            Rect::new(50.0, 25.0, 950.0, 475.0)
+        )
     );
     let (area, aim) = (UNSAFE.areas)(&graph());
     assert_eq!(area, aim);
