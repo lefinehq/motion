@@ -11,6 +11,16 @@ use std::fmt;
 
 use serde::Serialize;
 
+/// The name serde gives `value`, such as `text_document` or `alpha_inverted`,
+/// so the report and the tree name things as `--json` does.
+pub(crate) fn label(value: &impl Serialize) -> String {
+    match serde_json::to_value(value) {
+        Ok(serde_json::Value::String(name)) => name,
+        Ok(other) => other.to_string(),
+        Err(error) => error.to_string(),
+    }
+}
+
 /// A whole `.aep` project.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Project {
@@ -64,6 +74,17 @@ pub enum ItemKind {
     Composition(Composition),
     /// Footage: a solid, a file or a placeholder.
     Footage(Footage),
+}
+
+impl ItemKind {
+    /// The kind's name, as `--json` writes it.
+    pub fn name(&self) -> &'static str {
+        match self {
+            ItemKind::Folder => "folder",
+            ItemKind::Composition(_) => "composition",
+            ItemKind::Footage(_) => "footage",
+        }
+    }
 }
 
 /// A composition's settings.
@@ -135,6 +156,16 @@ pub struct Group {
     pub enabled: bool,
     /// Its groups and properties, in file order.
     pub children: Vec<Child>,
+}
+
+impl Group {
+    /// Every property below the group, depth first.
+    pub fn properties(&self) -> Box<dyn Iterator<Item = &Property> + '_> {
+        Box::new(self.children.iter().flat_map(|child| match child {
+            Child::Group(group) => group.properties(),
+            Child::Property(property) => Box::new(std::iter::once(property)),
+        }))
+    }
 }
 
 /// One child of a [`Group`].

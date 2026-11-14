@@ -1,6 +1,198 @@
-//! Byte builders shared by the unit tests: chunks, lists, fixed records and
-//! whole files, laid out as the spec says, so each test states only the bytes
-//! it is about.
+//! Builders shared by the unit tests: chunks, lists, fixed records and whole
+//! files, laid out as the spec says, so each test states only the bytes it is
+//! about; and a small decoded project for the tests of what reads the model.
+
+use crate::model::{
+    Child, Color, Composition, Ease, Expression, Footage, Group, Interpolation, Item, ItemKind,
+    Keyframe, Layer, LayerKind, Project, Property, Reason, Source, Span, Stream, Switches, Value,
+    Version,
+};
+use crate::{BlendMode, TrackMatte};
+
+/// A project with a folder holding a composition, and a solid: a text layer
+/// with a transform, a text document and an effect, and a null.
+pub(crate) fn sample_project() -> Project {
+    let property = |match_name: &str, value| Property {
+        match_name: match_name.into(),
+        name: None,
+        enabled: true,
+        value,
+        expression: None,
+        min: None,
+        max: None,
+    };
+    let group = |match_name: &str, children| Group {
+        match_name: match_name.into(),
+        name: None,
+        enabled: true,
+        children,
+    };
+    let key = |time, value| Keyframe {
+        time,
+        value: Value::Number(value),
+        in_interpolation: Interpolation::Linear,
+        out_interpolation: Interpolation::Bezier,
+        in_ease: vec![Ease {
+            speed: 0.0,
+            influence: 1.0 / 6.0,
+        }],
+        out_ease: vec![Ease {
+            speed: 0.0,
+            influence: 1.0 / 6.0,
+        }],
+        spatial: None,
+        continuous: false,
+        auto_bezier: false,
+        roving: false,
+    };
+    let opacity = Property {
+        expression: Some(Expression {
+            text: "wiggle(1, 0.1)\r\n// shake".into(),
+            enabled: false,
+        }),
+        min: Some(0.0),
+        max: Some(100.0),
+        ..property(
+            "ADBE Opacity",
+            Stream::Animated(vec![key(0.5, 0.0), key(1.25, 1.0)]),
+        )
+    };
+    let transform = group(
+        "ADBE Transform Group",
+        vec![
+            Child::Property(property(
+                "ADBE Position",
+                Stream::Static(Value::Vector3([960.0, 540.5, 0.0])),
+            )),
+            Child::Property(opacity),
+        ],
+    );
+    let text = group(
+        "ADBE Text Properties",
+        vec![Child::Property(property(
+            "ADBE Text Document",
+            Stream::Static(Value::Opaque {
+                reason: Reason::TextDocument,
+            }),
+        ))],
+    );
+    let slider = Group {
+        name: Some("Speed".into()),
+        enabled: false,
+        ..group(
+            "ADBE Slider Control",
+            vec![Child::Property(property(
+                "ADBE Slider Control-0001",
+                Stream::Static(Value::Number(2.0)),
+            ))],
+        )
+    };
+    let effects = group("ADBE Effect Parade", vec![Child::Group(slider)]);
+    let styles = group(
+        "ADBE Layer Styles",
+        vec![Child::Group(group("ADBE Blend Options Group", vec![]))],
+    );
+    let layer = |id, name: &str, kind, switches, children| Layer {
+        id,
+        name: name.into(),
+        kind,
+        source: None,
+        parent: None,
+        in_point: 0.0,
+        out_point: 4.0,
+        start_time: 0.0,
+        stretch: 1.0,
+        switches,
+        blend_mode: BlendMode::Normal,
+        track_matte: TrackMatte::None,
+        matte_layer: None,
+        properties: group("", children),
+    };
+    let on = Switches {
+        enabled: true,
+        ..Switches::default()
+    };
+    let title = Layer {
+        parent: Some(11),
+        ..layer(
+            10,
+            "Title",
+            LayerKind::Text,
+            Switches {
+                three_d: true,
+                ..on
+            },
+            vec![
+                Child::Group(text),
+                Child::Group(effects),
+                Child::Group(transform),
+                Child::Group(styles),
+            ],
+        )
+    };
+    let null = Layer {
+        source: Some(3),
+        ..layer(
+            11,
+            "Ctrl",
+            LayerKind::Av,
+            Switches { null: true, ..on },
+            vec![],
+        )
+    };
+    let comp = Composition {
+        width: 1920,
+        height: 1080,
+        pixel_aspect: 1.0,
+        frame_rate: 29.97,
+        duration: 4.0,
+        background: Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        },
+        work_area: Span {
+            start: 0.0,
+            end: 4.0,
+        },
+        layers: vec![title, null],
+    };
+    let solid = Footage {
+        width: 100,
+        height: 100,
+        pixel_aspect: 1.0,
+        frame_rate: 0.0,
+        duration: 0.0,
+        source: Source::Solid {
+            color: Color {
+                r: 1.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            },
+        },
+    };
+    let item = |id, name: &str, folder, kind| Item {
+        id,
+        name: name.into(),
+        folder,
+        kind,
+    };
+    Project {
+        version: Version {
+            major: 94,
+            minor: 9,
+        },
+        bits_per_channel: Some(8),
+        items: vec![
+            item(1, "Scenes", None, ItemKind::Folder),
+            item(2, "Main", Some(1), ItemKind::Composition(comp)),
+            item(3, "Red Solid", None, ItemKind::Footage(solid)),
+        ],
+        skipped: [("fvdv".to_owned(), 2), ("LIST:Ewst".to_owned(), 1)].into(),
+    }
+}
 
 /// A chunk with `tag` and `body`, padded to an even length.
 pub(crate) fn chunk(tag: &[u8; 4], body: &[u8]) -> Vec<u8> {
