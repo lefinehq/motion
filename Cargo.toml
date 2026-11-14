@@ -65,6 +65,14 @@ base64 = "0.23"
 # The font fetcher's HTTP client, with Mozilla's root certificates so a
 # fetch does not depend on the machine's trust store (D39).
 ureq = { version = "3", default-features = false, features = ["rustls"] }
+# The JavaScript engine that bakes expressions at import (D38), its parser
+# and syntax tree for the operator rewrite. Never linked by what draws.
+boa_engine = { version = "0.22", default-features = false }
+boa_parser = "0.22"
+boa_ast = "0.22"
+boa_interner = "0.22"
+# Maths that gives the same bits on every platform, for baked keys.
+libm = "0.2"
 # The CPU rasteriser (D2, D34); here only to check that font data types agree.
 vello_cpu = "0.4"
 
@@ -87,6 +95,10 @@ opt-level = 3
 [profile.dev.package.parley]
 opt-level = 3
 [profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.boa_engine]
+opt-level = 3
+[profile.dev.package.boa_parser]
 opt-level = 3
 [profile.dev.package.zune-jpeg]
 opt-level = 3

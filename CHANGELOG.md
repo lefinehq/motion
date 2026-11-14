@@ -52,6 +52,8 @@ All notable changes to this project are documented here. The format is based on 
 - Image layers: `"image":"photos/beach.jpg"` with a `box` draws a PNG or JPEG file stretched over the box, relative to the scene file. The engine decodes each file once, when a frame first shows it; `motion-raster` gains `Picture` and the `ImageDraw` leaf, decoding PNG with `png` and JPEG with `zune-jpeg` ([D41](docs/design/decisions.md#d41-image-layers-name-their-file-and-carry-their-box)).
 - The import draws still footage: it looks for each footage file where the project stored it, then by name under the project's folder, and writes the pictures it finds as image layers. Footage it cannot find, video, image sequences and audio are reported with why. `motion_engine::import_scene` takes where the scene will be saved, so footage paths are relative to it.
 
+- `motion-expr`: expressions compile once and run at any time over a host (comps, layers, properties, keys), with the language's array arithmetic, interpolation, loops, vector and colour functions, the legacy engine's forms, deterministic maths and randomness, and a fitter that turns per-frame samples into a few keys within a tolerance. Every distinct expression of the local corpus compiles (D38).
+
 ### Changed
 
 - Six crates instead of ten: the error type and shared grammar pieces live in `motion-format`, evaluation in `motion-scene`, and logging setup in `motion-engine`.
