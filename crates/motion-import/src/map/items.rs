@@ -10,7 +10,9 @@ use super::Walk;
 use super::keys::{Clock, Written, num, written};
 use super::report::Fate;
 use super::rows::{self, Kind, Missing, Part, Policy, Row, To};
-use crate::model::{Child, Control, EffectDefinition, Group, Property, Stream, Value};
+use crate::model::{
+    Child, ComposedLine, Control, EffectDefinition, Group, Property, Stream, Value,
+};
 
 /// Why a hidden property or group is ignored.
 const NOT_APPLYING: &str =
@@ -48,6 +50,8 @@ pub(super) struct Out {
     pub keys: Map<String, Json>,
     /// Its tracks, by target name.
     pub anim: Map<String, Json>,
+    /// The lines the project laid its text out in, for a text layer.
+    pub lines: Option<Vec<ComposedLine>>,
 }
 
 impl Out {
