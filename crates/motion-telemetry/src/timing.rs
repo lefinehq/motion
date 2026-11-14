@@ -65,22 +65,13 @@ impl Timings {
         self.lock().clone()
     }
 
-    /// The total time of `step` in milliseconds, or `None` when it never
-    /// ran.
-    pub fn millis(&self, step: &str) -> Option<f64> {
-        self.lock()
-            .iter()
-            .find(|(name, _)| name == step)
-            .map(|(_, total)| total.as_secs_f64() * 1000.0)
-    }
-
     /// The line the CLI prints: `timings parse=0.40ms compile=0.10ms`, in
     /// milliseconds with two decimals.
     pub fn report(&self) -> String {
         let mut line = String::from("timings");
         for (name, total) in self.lock().iter() {
             // Writing to a `String` cannot fail.
-            let _ = write!(line, " {name}={:.2}ms", total.as_secs_f64() * 1000.0);
+            let _ = write!(line, " {name}={:.2}ms", millis(*total));
         }
         line
     }
@@ -106,6 +97,12 @@ impl Timings {
     fn lock(&self) -> MutexGuard<'_, Vec<(String, Duration)>> {
         self.steps.lock().unwrap_or_else(PoisonError::into_inner)
     }
+}
+
+/// `total` in milliseconds, rounded to two decimals: how every report shows
+/// a step's time.
+pub fn millis(total: Duration) -> f64 {
+    (total.as_secs_f64() * 100_000.0).round() / 100.0
 }
 
 /// The layer behind [`Timings::layer`].

@@ -76,12 +76,10 @@ fn report_lists_each_step_in_milliseconds() {
 }
 
 #[test]
-fn millis_reads_one_step_total() {
-    let timings = Timings::default();
-    let check = timings.slot("check".into());
-    timings.add(check, Duration::from_micros(1500));
-    assert_eq!(timings.millis("check"), Some(1.5));
-    assert_eq!(timings.millis("parse"), None);
+fn millis_rounds_to_two_decimals() {
+    assert_eq!(millis(Duration::from_micros(1500)), 1.5);
+    assert_eq!(millis(Duration::from_nanos(1_234_567)), 1.23);
+    assert_eq!(millis(Duration::from_nanos(4_999)), 0.0);
 }
 
 #[test]

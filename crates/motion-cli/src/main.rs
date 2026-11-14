@@ -19,7 +19,8 @@
 //! Logs go to stderr through `motion-telemetry`: `--log <level>` (default
 //! `off`, so a plain run's stderr is only the `error:` line; overridden by
 //! `MOTION_LOG`), `--log-format text|json`, and `--timings` for the step
-//! timings at the end: a `timings …` line, or one JSON event in JSON mode.
+//! timings at the end: a `timings …` line, or one JSON event per step in
+//! JSON mode.
 
 mod commands;
 
@@ -27,7 +28,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use motion_telemetry::timing::{REPORT_TARGET, Timings};
+use motion_telemetry::timing::{REPORT_TARGET, Timings, millis};
 use motion_telemetry::{Format, LevelFilter, Options};
 use tracing::info;
 
@@ -48,7 +49,7 @@ struct Cli {
     #[arg(long, value_enum, default_value = "text", global = true)]
     log_format: LogFormat,
     /// Print how long each step took to stderr, at the end: a `timings …`
-    /// line, or one event in JSON log mode.
+    /// line, or one event per step in JSON log mode.
     #[arg(long, global = true)]
     timings: bool,
     /// The command to run.
@@ -155,27 +156,12 @@ fn main() -> ExitCode {
     code
 }
 
-/// The timings as one `info` event with a field per step, in milliseconds,
-/// so the JSON log stream stays one object per line.
-///
-/// `tracing` fixes an event's field names where it is written, so this
-/// lists every step the engine's `Session` runs; a step that did not run
-/// leaves its field out. The CLI test
-/// `json_timings_are_one_event_with_the_text_line_steps` fails when a new
-/// step is missing here.
+/// The timings as `info` events, one per step in the order of the text
+/// line: `{"stage":"parse","ms":0.4}`. One event per step keeps the JSON log
+/// stream one object per line, and the step name is a field value, so no
+/// list of steps lives here.
 fn log_timings(timings: &Timings) {
-    let ms = |step| timings.millis(step);
-    info!(
-        target: REPORT_TARGET,
-        read = ms("read"),
-        parse = ms("parse"),
-        compile = ms("compile"),
-        evaluate = ms("evaluate"),
-        check = ms("check"),
-        time = ms("time"),
-        at = ms("at"),
-        edit = ms("edit"),
-        save = ms("save"),
-        "timings"
-    );
+    for (step, total) in timings.steps() {
+        info!(target: REPORT_TARGET, stage = %step, ms = millis(total), "timing");
+    }
 }

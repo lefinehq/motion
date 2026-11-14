@@ -191,9 +191,8 @@ impl Size {
 impl FromStr for Size {
     type Err = Diagnostic;
 
-    /// Parses a name from [`SIZES`] (`720p`, `1080p`, `4k`, `square`,
-    /// `vertical`) or an explicit `<width>x<height>` where both sides are
-    /// above zero.
+    /// Parses a size name (`1080p`, `4k`, `square`, …) or an explicit
+    /// `<width>x<height>` where both sides are above zero.
     fn from_str(text: &str) -> Result<Size> {
         parse_whole(text, size, "size", SIZE_EXPECTED)
     }

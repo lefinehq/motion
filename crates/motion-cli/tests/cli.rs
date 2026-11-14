@@ -297,7 +297,7 @@ fn timings_print_one_line_on_stderr() {
 }
 
 #[test]
-fn json_timings_are_one_event_with_the_text_line_steps() {
+fn every_text_line_step_has_one_json_event() {
     let path = copy_to("json_timings", LAUNCH);
     for args in [
         &["check", LAUNCH][..],
@@ -305,7 +305,7 @@ fn json_timings_are_one_event_with_the_text_line_steps() {
         &["edit", &path, "card rect=500x400"],
     ] {
         let text = stderr(&motion(&[&["--timings"], args].concat()));
-        let mut steps: Vec<&str> = text
+        let steps: Vec<&str> = text
             .strip_prefix("timings ")
             .unwrap_or_else(|| panic!("{args:?}: {text}"))
             .split_whitespace()
@@ -314,23 +314,20 @@ fn json_timings_are_one_event_with_the_text_line_steps() {
         let json = stderr(&motion(
             &[&["--timings", "--log-format", "json"], args].concat(),
         ));
-        let lines: Vec<&str> = json.lines().collect();
-        assert_eq!(lines.len(), 1, "{args:?}: {json}");
-        let event: serde_json::Value = serde_json::from_str(lines[0]).expect("a JSON line");
-        assert_eq!(event["level"], "INFO", "{json}");
-        assert_eq!(event["target"], "motion::timings", "{json}");
-        let fields = event["fields"].as_object().expect("fields");
-        let mut keys: Vec<&str> = fields
-            .iter()
-            .filter(|(name, _)| *name != "message")
-            .map(|(name, value)| {
-                assert!(value.is_f64(), "{json}");
-                name.as_str()
+        let events: Vec<String> = json
+            .lines()
+            .map(|line| {
+                let event: serde_json::Value = serde_json::from_str(line).expect("a JSON line");
+                assert_eq!(event["level"], "INFO", "{json}");
+                assert_eq!(event["target"], "motion::timings", "{json}");
+                assert!(event["fields"]["ms"].is_number(), "{json}");
+                event["fields"]["stage"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("no stage: {json}"))
+                    .to_owned()
             })
             .collect();
-        steps.sort_unstable();
-        keys.sort_unstable();
-        assert_eq!(keys, steps, "{args:?}");
+        assert_eq!(events, steps, "{args:?}");
     }
 }
 
