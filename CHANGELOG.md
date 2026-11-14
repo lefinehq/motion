@@ -32,6 +32,7 @@ All notable changes to this project are documented here. The format is based on 
 - Keys ease in value space: `speed(out,out-reach,in,in-reach)` holds any ease, including a span between equal keys; a point that moves in space follows a bézier path (`"path"` on an object key) at a pace measured along it; other points can take one curve per component.
 - Layers can follow a `parent`, show only in their `span`, and run on their own time with `offset` and `stretch`.
 - `motion-raster`: draws a frame's display list (layers with transform, opacity, blend mode, clip and effects; filled and stroked paths; glyph runs) into an RGBA image with `vello_cpu`, and writes PNG files. Seventeen blend modes, caps, joins and fill rules are tables; the `fill` effect is the first row of the effect registry. Golden images are drawn with portable scalar code so they compare exactly across machines.
+- `motion-text`: a font set read from given files and folders (by PostScript name, or family, weight and slant; every named instance of a variable font; Inter built in), and text layout with Parley and HarfRust: paragraphs, character runs, point and box text, every justification, indents, paragraph spacing, leading, tracking, baseline shift and capitals, into lines with cumulative character advances and glyph runs ready for `vello_cpu`. A missing font or glyph is an error.
 
 ### Changed
 

@@ -1,0 +1,26 @@
+[package]
+name = "motion-text"
+description = "Finds fonts among given font files and lays out styled text with real shaping, for motion scenes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+kurbo.workspace = true
+motion-format = { path = "../motion-format" }
+parlance.workspace = true
+parley.workspace = true
+skrifa.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+motion-import = { path = "../motion-import" }
+proptest.workspace = true
+rstest.workspace = true
+vello_cpu.workspace = true
+
+[lints]
+workspace = true
