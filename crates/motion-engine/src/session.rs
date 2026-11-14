@@ -11,13 +11,13 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::OnceLock;
 
-use motion_diagnostic::{Diagnostic, Kind, Result};
 use motion_edit::{apply_edit, parse_edit};
-use motion_eval::{FrameState, evaluate};
 use motion_format::units::Time;
+use motion_format::{Diagnostic, Kind, Result};
 use motion_format::{Document, Scene, parse_document, write_document};
 use motion_query::{Report, at, check};
 use motion_scene::{ApproxTextMeasure, SceneGraph, compile};
+use motion_scene::{FrameState, evaluate};
 
 use crate::stage::{stage, stage_ok};
 

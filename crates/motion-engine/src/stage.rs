@@ -14,7 +14,7 @@
 //! Only [`Session`](crate::Session) runs steps, so both wrappers are
 //! private to the crate.
 
-use motion_diagnostic::{Diagnostic, Result};
+use motion_format::{Diagnostic, Result};
 use tracing::{debug_span, error};
 
 /// Runs the step `name`, logging its diagnostic, if any, before returning it

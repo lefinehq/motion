@@ -9,8 +9,8 @@
 use std::fmt;
 use std::str::FromStr;
 
-use motion_diagnostic::{Diagnostic, Result};
-use motion_grammar::{Parsed, blank0, ends_with, number, parse_all};
+use crate::grammar::{Parsed, blank0, ends_with, number, parse_all};
+use crate::{Diagnostic, Result};
 use winnow::combinator::{alt, cut_err, delimited, eof, preceded, separated_pair, terminated};
 use winnow::prelude::*;
 use winnow::token::rest;

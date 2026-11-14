@@ -5,7 +5,7 @@
 //! uses these on the raw document, so that keys keep the order the author
 //! wrote them in.
 
-use motion_diagnostic::{Diagnostic, Kind, Result};
+use motion_format::{Diagnostic, Kind, Result};
 use serde_json::{Map, Value};
 
 use crate::KeyPath;

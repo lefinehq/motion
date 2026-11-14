@@ -33,7 +33,7 @@ pub const STAGE_FIELD: &str = "stage";
 /// The target of the events, one per step, that carry the timings in JSON
 /// log mode.
 ///
-/// [`init`](crate::init) always lets this target through at `info` when
+/// [`init`](super::init) always lets this target through at `info` when
 /// timings are on, whatever the log level.
 pub const REPORT_TARGET: &str = "motion::timings";
 
@@ -164,5 +164,5 @@ impl Visit for StageName {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/timing.rs"]
+#[path = "../../tests/unit/telemetry/timing.rs"]
 mod tests;

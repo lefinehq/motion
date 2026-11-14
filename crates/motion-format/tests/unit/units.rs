@@ -1,7 +1,7 @@
 //! Unit tests for `src/units.rs`.
 
 use super::*;
-use motion_diagnostic::Kind;
+use crate::Kind;
 
 #[test]
 fn time_parses_frames_and_seconds() {

@@ -23,8 +23,8 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::str::FromStr;
 
+use crate::Diagnostic;
 use indexmap::IndexMap;
-use motion_diagnostic::Diagnostic;
 use serde::de::value::{MapAccessDeserializer, SeqAccessDeserializer};
 use serde::de::{
     self, Deserialize, Deserializer, IgnoredAny, MapAccess, SeqAccess, Unexpected, Visitor,

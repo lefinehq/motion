@@ -18,7 +18,7 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{Layer, fmt};
 
-use crate::timing::{REPORT_TARGET, Timings};
+use super::timing::{REPORT_TARGET, Timings};
 
 /// The environment variable that overrides [`Options::level`], in
 /// `EnvFilter` syntax: `debug`, or `warn,motion_query=debug`.
@@ -197,5 +197,5 @@ where
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/init.rs"]
+#[path = "../../tests/unit/telemetry/init.rs"]
 mod tests;

@@ -41,8 +41,8 @@
 mod bounds;
 
 use crate::report::{Code, Severity};
-use motion_eval::NodeState;
 use motion_format::property::Prop;
+use motion_scene::NodeState;
 use motion_scene::SceneGraph;
 
 /// A rule's finding on one frame.

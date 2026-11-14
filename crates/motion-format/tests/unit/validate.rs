@@ -5,7 +5,7 @@ use crate::parse_document;
 use crate::shorthand::{Coord, Position};
 use crate::units::{Color, Size};
 use crate::{Content, Document};
-use motion_diagnostic::{Diagnostic, Kind};
+use crate::{Diagnostic, Kind};
 
 fn doc(json: &str) -> Document {
     parse_document(json).unwrap()

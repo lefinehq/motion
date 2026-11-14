@@ -28,8 +28,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use motion_telemetry::timing::{REPORT_TARGET, Timings, millis};
-use motion_telemetry::{Format, LevelFilter, Options};
+use motion_engine::telemetry::timing::{REPORT_TARGET, Timings, millis};
+use motion_engine::telemetry::{Format, LevelFilter, Options};
 use tracing::info;
 
 /// Check, query and edit motion scenes.
@@ -124,7 +124,7 @@ impl Command {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let format = cli.log_format.into();
-    let telemetry = motion_telemetry::init(Options {
+    let telemetry = motion_engine::telemetry::init(Options {
         level: cli.log,
         format,
         timings: cli.timings,

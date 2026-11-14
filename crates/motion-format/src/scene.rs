@@ -4,7 +4,7 @@
 //! are produced by [`parse_document`](crate::parse_document) and
 //! [`Document::from_value`].
 
-use motion_diagnostic::Result;
+use crate::Result;
 use serde_json::Value;
 
 use crate::anim::AnimTrack;
@@ -97,7 +97,7 @@ impl Document {
     /// applying the defaults of the keys left out.
     ///
     /// # Errors
-    /// Returns a [`Diagnostic`](motion_diagnostic::Diagnostic) for the first
+    /// Returns a [`Diagnostic`](crate::Diagnostic) for the first
     /// part of `raw` that is not a valid scene, at its path.
     pub fn from_value(raw: Value) -> Result<Document> {
         let scene = scene_from_value(&raw)?;

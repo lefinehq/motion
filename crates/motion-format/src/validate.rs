@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 use std::str::FromStr;
 
-use motion_diagnostic::{Diagnostic, Kind, Result};
+use crate::{Diagnostic, Kind, Result};
 
 use crate::anim::{AnimKey, AnimTrack, KEYS_EXPECTED, RANGE_EXPECTED, Span, TrackLine};
 use crate::doc::{

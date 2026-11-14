@@ -1,7 +1,7 @@
 //! Unit tests for `src/curve.rs`.
 
 use super::*;
-use motion_diagnostic::Kind;
+use crate::Kind;
 
 #[test]
 fn every_table_name_parses_to_its_entry() {

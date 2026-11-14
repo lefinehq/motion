@@ -4,9 +4,9 @@ use super::*;
 use motion_format::property::Prop;
 
 fn graph(json: &str) -> SceneGraph {
-    motion_scene::compile(
+    crate::compile(
         motion_format::parse_document(json).unwrap().scene(),
-        &motion_scene::ApproxTextMeasure,
+        &crate::ApproxTextMeasure,
     )
 }
 

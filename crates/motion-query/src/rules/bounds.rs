@@ -8,7 +8,7 @@
 
 use super::{Area, Overshoot, Rule, overshoot, visible};
 use crate::report::{Code, Severity};
-use motion_eval::NodeState;
+use motion_scene::NodeState;
 use motion_scene::SceneGraph;
 
 /// The title-safe area keeps this fraction of the canvas free on each side.

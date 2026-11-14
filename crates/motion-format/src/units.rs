@@ -6,8 +6,8 @@
 use std::fmt;
 use std::str::FromStr;
 
-use motion_diagnostic::{Diagnostic, Result};
-use motion_grammar::{Failure, Parsed, number, parse_all, parse_whole};
+use crate::grammar::{Failure, Parsed, number, parse_all, parse_whole};
+use crate::{Diagnostic, Result};
 use winnow::ascii::digit1;
 use winnow::combinator::{alt, cut_err, opt, peek, preceded, separated_pair};
 use winnow::error::ErrMode;

@@ -6,8 +6,8 @@
 //! author wrote them. The target is found in the typed scene, and the result
 //! is re-validated with [`Document::from_value`] before it is returned.
 
-use motion_diagnostic::{Diagnostic, Kind, Result};
 use motion_format::key::{LAYERS, layer_path};
+use motion_format::{Diagnostic, Kind, Result};
 use motion_format::{Document, LAYER_KEYS, SCENE_KEYS};
 use serde_json::Value;
 use tracing::{Span, field, instrument};

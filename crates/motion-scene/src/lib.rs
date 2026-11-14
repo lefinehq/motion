@@ -1,18 +1,19 @@
-//! `motion-scene`: the scene graph of motion.
-//!
-//! This crate is step 2 of the pipeline (Compile): it turns a validated
-//! [`motion_format::Scene`] into a [`SceneGraph`] where every layer has a
-//! size in pixels and a keyframe track for every property, in frames. Later
-//! steps (evaluate, query, render) read the graph and never need to know
-//! about shorthand strings.
+//! Compiles a validated [`motion_format::Scene`] into a [`SceneGraph`] (sizes
+//! in pixels, one keyframe track per property, in frames) and [`evaluate`]s
+//! it at any frame without drawing. Nothing after this crate reads shorthand
+//! strings.
 
 mod compile;
 pub mod curve;
+mod evaluate;
 mod graph;
+mod state;
 mod text;
 mod track;
 
 pub use compile::compile;
+pub use evaluate::evaluate;
 pub use graph::{Node, NodeKind, SceneGraph};
+pub use state::{FrameState, NodeState};
 pub use text::{ApproxTextMeasure, TextMeasure};
 pub use track::{Key, Track};

@@ -6,7 +6,7 @@ use crate::parse::scene_from_value;
 use crate::parse_document;
 use crate::property::Prop;
 use crate::validate::is_valid_id;
-use motion_diagnostic::{Kind, Result};
+use crate::{Kind, Result};
 
 /// The presets of a scene whose `presets` is `value`.
 fn presets_of(value: Value) -> Result<Vec<(String, PresetSpec)>> {

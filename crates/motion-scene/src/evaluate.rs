@@ -4,8 +4,8 @@
 //! into the concrete values of a single frame.
 
 use crate::{FrameState, NodeState};
+use crate::{Node, SceneGraph};
 use motion_format::property::PROPERTIES;
-use motion_scene::{Node, SceneGraph};
 use tracing::instrument;
 
 /// Evaluates every node of `graph` at `frame`.

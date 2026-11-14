@@ -7,8 +7,8 @@
 
 use std::str::FromStr;
 
-use motion_diagnostic::{Diagnostic, Kind, Result};
-use motion_grammar::{Failure, Parsed, blank0, blank1, ends_with, number, parse_all, word};
+use crate::grammar::{Failure, Parsed, blank0, blank1, ends_with, number, parse_all, word};
+use crate::{Diagnostic, Kind, Result};
 use winnow::combinator::{alt, cut_err, delimited, eof, peek, preceded, repeat, terminated};
 use winnow::error::ErrMode;
 use winnow::prelude::*;

@@ -240,7 +240,8 @@ fn an_invalid_motion_log_is_one_warning_then_the_level() {
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines.len(), 2, "{text}");
     assert!(
-        lines[0].contains(" WARN motion_telemetry") && lines[0].contains("value=motion=loud"),
+        lines[0].contains(" WARN motion_engine::telemetry")
+            && lines[0].contains("value=motion=loud"),
         "{text}"
     );
     assert_eq!(

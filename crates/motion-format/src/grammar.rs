@@ -14,7 +14,7 @@
 
 use std::convert::Infallible;
 
-use motion_diagnostic::{Diagnostic, Result};
+use crate::{Diagnostic, Result};
 use winnow::ascii::float;
 use winnow::combinator::{eof, repeat_till};
 use winnow::error::{AddContext, ErrMode, FromExternalError, ParserError};
@@ -140,5 +140,5 @@ pub fn ends_with<'s, O, R>(
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/lib.rs"]
+#[path = "../tests/unit/grammar.rs"]
 mod tests;

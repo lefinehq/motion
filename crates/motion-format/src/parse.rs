@@ -6,7 +6,7 @@
 //! `crate::validate`. This module only joins the steps and maps serde's
 //! errors to a [`Diagnostic`].
 
-use motion_diagnostic::{Diagnostic, Kind, Result};
+use crate::{Diagnostic, Kind, Result};
 use serde_json::Value;
 use tracing::{Span, debug, field, instrument};
 

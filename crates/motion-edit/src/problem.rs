@@ -7,7 +7,7 @@
 
 use std::borrow::Cow;
 
-use motion_diagnostic::Diagnostic;
+use motion_format::Diagnostic;
 
 /// The accepted form of a whole line.
 const LINE_FORM: &str = "`<target> <key>=<value>`";

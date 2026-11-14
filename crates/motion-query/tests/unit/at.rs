@@ -1,7 +1,7 @@
 //! Unit tests for `src/at.rs`.
 
 use crate::at;
-use motion_diagnostic::Kind;
+use motion_format::Kind;
 
 #[test]
 fn at_prints_resolved_values() {

@@ -4,8 +4,8 @@
 
 use std::str::FromStr;
 
-use motion_diagnostic::{Diagnostic, Result};
-use motion_grammar::{Parsed, blank0, blank1, number, parse_whole};
+use crate::grammar::{Parsed, blank0, blank1, number, parse_whole};
+use crate::{Diagnostic, Result};
 use winnow::combinator::{delimited, opt, preceded, separated_pair};
 use winnow::prelude::*;
 

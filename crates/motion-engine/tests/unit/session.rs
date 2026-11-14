@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use motion_telemetry::timing::Timings;
+use crate::telemetry::timing::Timings;
 use tracing::Subscriber;
 use tracing::span::{Attributes, Id};
 use tracing_subscriber::Layer;

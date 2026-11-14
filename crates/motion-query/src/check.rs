@@ -8,11 +8,11 @@
 
 use crate::report::{Code, Report, Violation};
 use crate::rules::{Area, Overshoot, RULES, Rule, shift, visible};
-use motion_eval::{FrameState, evaluate};
 use motion_format::key::AT;
 use motion_format::shorthand::{Coord, Position};
 use motion_format::{Layer, Scene};
 use motion_scene::SceneGraph;
+use motion_scene::{FrameState, evaluate};
 use tracing::{Span, field, instrument};
 
 /// Runs the standard rules on `scene` over every frame of `graph`.

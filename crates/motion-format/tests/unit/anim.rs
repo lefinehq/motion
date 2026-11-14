@@ -2,10 +2,10 @@
 //! through a whole scene.
 
 use super::*;
+use crate::Kind;
 use crate::parse::scene_from_value;
 use crate::parse_document;
 use crate::property::Prop;
-use motion_diagnostic::Kind;
 use serde_json::{Value, json};
 
 /// The tracks of `v` as the `anim` of the second layer of a scene.

@@ -357,16 +357,8 @@ dependencies = [
  "clap",
  "motion-engine",
  "motion-format",
- "motion-telemetry",
  "serde_json",
  "tracing",
-]
-
-[[package]]
-name = "motion-diagnostic"
-version = "0.0.0"
-dependencies = [
- "proptest",
 ]
 
 [[package]]
@@ -374,9 +366,7 @@ name = "motion-edit"
 version = "0.0.0"
 dependencies = [
  "insta",
- "motion-diagnostic",
  "motion-format",
- "motion-grammar",
  "proptest",
  "serde_json",
  "tracing",
@@ -387,24 +377,13 @@ dependencies = [
 name = "motion-engine"
 version = "0.0.0"
 dependencies = [
- "motion-diagnostic",
  "motion-edit",
- "motion-eval",
  "motion-format",
  "motion-query",
  "motion-scene",
- "motion-telemetry",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "motion-eval"
-version = "0.0.0"
-dependencies = [
- "motion-format",
- "motion-scene",
- "tracing",
 ]
 
 [[package]]
@@ -412,8 +391,6 @@ name = "motion-format"
 version = "0.0.0"
 dependencies = [
  "indexmap",
- "motion-diagnostic",
- "motion-grammar",
  "proptest",
  "serde",
  "serde_json",
@@ -423,21 +400,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "motion-grammar"
-version = "0.0.0"
-dependencies = [
- "motion-diagnostic",
- "proptest",
- "winnow",
-]
-
-[[package]]
 name = "motion-query"
 version = "0.0.0"
 dependencies = [
  "insta",
- "motion-diagnostic",
- "motion-eval",
  "motion-format",
  "motion-scene",
  "tracing",
@@ -450,15 +416,6 @@ dependencies = [
  "motion-format",
  "proptest",
  "tracing",
-]
-
-[[package]]
-name = "motion-telemetry"
-version = "0.0.0"
-dependencies = [
- "serde_json",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

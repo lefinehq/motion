@@ -9,8 +9,8 @@
 
 use std::str::FromStr;
 
-use motion_diagnostic::{Diagnostic, Result};
-use motion_grammar::{Parsed, blank0, blank1, parse_all, word};
+use crate::grammar::{Parsed, blank0, blank1, parse_all, word};
+use crate::{Diagnostic, Result};
 use winnow::combinator::{opt, peek, preceded};
 use winnow::prelude::*;
 

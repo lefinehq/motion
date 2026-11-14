@@ -7,8 +7,8 @@
 use std::fmt;
 use std::str::FromStr;
 
-use motion_diagnostic::{Diagnostic, Result};
-use motion_grammar::parse_all;
+use motion_format::grammar::parse_all;
+use motion_format::{Diagnostic, Result};
 
 use crate::parse::path;
 use crate::problem::Problem;

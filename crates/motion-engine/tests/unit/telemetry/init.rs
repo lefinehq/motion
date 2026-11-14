@@ -96,7 +96,7 @@ fn the_filter_drops_quieter_events() {
 
 #[test]
 fn the_filter_takes_per_crate_directives() {
-    let text = captured("warn,motion_telemetry=debug", Format::Text, || {
+    let text = captured("warn,motion_engine::telemetry=debug", Format::Text, || {
         debug!("shown");
     });
     assert!(text.contains("shown"), "{text}");
@@ -114,7 +114,8 @@ fn timings_see_steps_the_filter_hides() {
     );
     tracing::subscriber::with_default(subscriber, || {
         let _step =
-            debug_span!(target: crate::timing::STAGE_TARGET, "stage", stage = "check").entered();
+            debug_span!(target: crate::telemetry::timing::STAGE_TARGET, "stage", stage = "check")
+                .entered();
     });
     let names: Vec<String> = timings.steps().into_iter().map(|(name, _)| name).collect();
     assert_eq!(names, ["check"]);
@@ -133,7 +134,10 @@ fn the_default_logs_nothing() {
 
 #[test]
 fn a_valid_env_value_replaces_the_level() {
-    let (filter, rejected) = filter(LevelFilter::OFF, Ok("motion_telemetry=debug".into()));
+    let (filter, rejected) = filter(
+        LevelFilter::OFF,
+        Ok("motion_engine::telemetry=debug".into()),
+    );
     assert!(rejected.is_none());
     let text = captured_with(filter, Format::Text, || debug!("shown"));
     assert!(text.contains("shown"), "{text}");

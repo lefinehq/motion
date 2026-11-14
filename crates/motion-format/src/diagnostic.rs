@@ -7,7 +7,7 @@
 //! agent can fix its input in one try.
 //!
 //! ```
-//! use motion_diagnostic::{Diagnostic, Kind};
+//! use motion_format::{Diagnostic, Kind};
 //!
 //! let d = Diagnostic::syntax("`12` is not a valid time")
 //!     .expected("`<number>f` or `<number>s`")
@@ -133,7 +133,7 @@ impl Diagnostic {
     /// ```
     /// use std::io;
     /// use std::path::Path;
-    /// use motion_diagnostic::{Diagnostic, Kind};
+    /// use motion_format::{Diagnostic, Kind};
     ///
     /// let err = io::Error::new(io::ErrorKind::NotFound, "not found");
     /// let d = Diagnostic::io("read", Path::new("scene.json"), &err);
@@ -188,7 +188,7 @@ impl Diagnostic {
     /// `{expected}, or {form}`; sets it when none is set yet.
     ///
     /// ```
-    /// use motion_diagnostic::Diagnostic;
+    /// use motion_format::Diagnostic;
     ///
     /// let d = Diagnostic::unknown("curve", "bounce", ["linear", "ease"])
     ///     .or_expected("cubic(x1,y1,x2,y2)");
@@ -228,5 +228,5 @@ impl fmt::Display for Diagnostic {
 impl std::error::Error for Diagnostic {}
 
 #[cfg(test)]
-#[path = "../tests/unit/lib.rs"]
+#[path = "../tests/unit/diagnostic.rs"]
 mod tests;

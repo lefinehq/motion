@@ -23,9 +23,9 @@
 //! same place are a conflict, not a syntax error, and
 //! [`Edit::check_conflicts`] reports them once the line is read.
 
-use motion_diagnostic::{Diagnostic, Kind, Result};
 use motion_format::edit_word::{FALSE, NONE, TRUE};
-use motion_grammar::{Failure, Parsed, blank0, blank1, ends_with, parse_all, word};
+use motion_format::grammar::{Failure, Parsed, blank0, blank1, ends_with, parse_all, word};
+use motion_format::{Diagnostic, Kind, Result};
 use serde_json::{Number, Value};
 use winnow::combinator::{
     alt, cut_err, delimited, dispatch, empty, eof, fail, opt, peek, preceded, repeat, separated,

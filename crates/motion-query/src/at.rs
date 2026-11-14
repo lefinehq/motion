@@ -4,11 +4,11 @@
 //! step). Prints resolved numbers, so the agent never has to
 //! do easing or layout maths itself.
 
-use motion_diagnostic::{Diagnostic, Kind, Result};
-use motion_eval::evaluate;
 use motion_format::fmt_num;
 use motion_format::property::Prop;
+use motion_format::{Diagnostic, Kind, Result};
 use motion_scene::SceneGraph;
+use motion_scene::evaluate;
 use tracing::instrument;
 
 /// Describes the requested nodes at `frame`, one line each.

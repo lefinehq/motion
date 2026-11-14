@@ -9,9 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-motion-diagnostic = { path = "../motion-diagnostic" }
 motion-format = { path = "../motion-format" }
-motion-grammar = { path = "../motion-grammar" }
 serde_json = { workspace = true }
 winnow.workspace = true
 tracing.workspace = true

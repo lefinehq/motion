@@ -21,11 +21,10 @@
 
 mod session;
 mod stage;
+pub mod telemetry;
 
 pub use session::Session;
 
-pub use motion_diagnostic::{Diagnostic, Kind, Result};
-pub use motion_eval::FrameState;
-pub use motion_format::{Document, Scene};
+pub use motion_format::{Diagnostic, Document, Kind, Result, Scene};
 pub use motion_query::Report;
-pub use motion_scene::SceneGraph;
+pub use motion_scene::{FrameState, SceneGraph};
