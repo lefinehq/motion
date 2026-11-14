@@ -17,7 +17,7 @@ fn counts_items_layers_effects_opaque_values_and_skipped_chunks() {
             items: map([("composition", 1), ("folder", 1), ("footage", 1)]),
             layers: map([("null", 1), ("text", 1)]),
             effects: map([("ADBE Slider Control", 1)]),
-            opaque: map([("text_document", 1)]),
+            opaque: map([("markers", 1)]),
             skipped: map([("LIST:Ewst", 1), ("fvdv", 2)]),
         }
     );

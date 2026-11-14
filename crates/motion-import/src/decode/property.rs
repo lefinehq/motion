@@ -13,7 +13,8 @@ use crate::model::{
     Value, Vertex,
 };
 use crate::record::{
-    Bound, Cdat, KeyBody, KeyItem, Layout, Lhd3, OneEase, Points, Record, Shph, Tdb4, Tdsb, text,
+    Bound, Cdat, KeyBody, KeyItem, Layout, Lhd3, OneEase, Otda, Points, Record, Shph, Tdb4, Tdsb,
+    text,
 };
 use crate::rifx::{Chunk, Name, Tag};
 
@@ -35,6 +36,10 @@ const EXPR: Name = Name::chunk(b"expr");
 const OMKS: Name = Name::list(b"omks");
 /// One path.
 const SHAP: Name = Name::list(b"shap");
+/// The orientations of an orientation stream, one `otda` per keyframe.
+const OTKY: Name = Name::list(b"otky");
+/// The text documents of a Source Text stream, as one object-syntax body.
+const BTDK: Name = Name::list(b"btdk");
 
 /// The match name that ends a group.
 const GROUP_END: &str = "ADBE Group End";
@@ -50,10 +55,21 @@ enum Body {
     Effect,
     /// A stream whose value, if valueless, is not decoded.
     Stream,
-    /// A path stream, with its paths next to it.
-    Path,
-    /// A stream inside a wrapper that holds its values, not decoded yet.
-    Wrapped(Reason),
+    /// A stream inside a wrapper that also holds its values.
+    Wrapped(Wrapper),
+}
+
+/// Where a wrapped stream's values are, next to it in the wrapper.
+#[derive(Debug, Clone, Copy)]
+enum Wrapper {
+    /// Paths, one `LIST:shap` per keyframe in a `LIST:omks`.
+    Paths,
+    /// Orientations, one `otda` per keyframe in a `LIST:otky`.
+    Orientations,
+    /// Text documents, all in the one body of a `LIST:btdk`.
+    TextDocuments,
+    /// Not decoded yet, for this reason.
+    Opaque(Reason),
 }
 
 /// The bodies the reader knows, by list type
@@ -63,37 +79,92 @@ const BODIES: [(Tag, Body); 8] = [
     (Tag(*b"tdgp"), Body::Group),
     (Tag(*b"sspc"), Body::Effect),
     (Tag(*b"tdbs"), Body::Stream),
-    (Tag(*b"om-s"), Body::Path),
-    (Tag(*b"otst"), Body::Wrapped(Reason::Orientation)),
-    (Tag(*b"btds"), Body::Wrapped(Reason::TextDocument)),
-    (Tag(*b"mrst"), Body::Wrapped(Reason::Markers)),
-    (Tag(*b"GCst"), Body::Wrapped(Reason::Gradient)),
+    (Tag(*b"om-s"), Body::Wrapped(Wrapper::Paths)),
+    (Tag(*b"otst"), Body::Wrapped(Wrapper::Orientations)),
+    (Tag(*b"btds"), Body::Wrapped(Wrapper::TextDocuments)),
+    (
+        Tag(*b"mrst"),
+        Body::Wrapped(Wrapper::Opaque(Reason::Markers)),
+    ),
+    (
+        Tag(*b"GCst"),
+        Body::Wrapped(Wrapper::Opaque(Reason::Gradient)),
+    ),
 ];
 
 /// Where a valueless stream's values live: in a wrapper the reader does not
-/// decode yet, or in the paths read next to the stream, one per keyframe.
+/// decode yet, or listed next to the stream, one per keyframe.
 #[derive(Debug)]
 enum Values {
     /// Not decoded, for this reason.
     Opaque(Reason),
-    /// One path per keyframe, or one for a static stream.
-    Paths(Vec<Path>),
+    /// One value per keyframe, or one for a static stream, read from the
+    /// wrapper.
+    Listed {
+        /// The values, in keyframe order.
+        values: Vec<Value>,
+        /// Where they are, for the error when one is missing.
+        source: &'static str,
+    },
 }
 
 impl Values {
     /// The value of keyframe `index`, or of the static stream at 0.
     ///
     /// # Errors
-    /// A [`Kind::Missing`] diagnostic, at `scan`, when there is no path for it.
+    /// A [`Kind::Missing`] diagnostic, at `scan`, when there is no value for it.
     fn get(&self, index: usize, scan: &Scan<'_, '_>) -> Result<Value> {
         match self {
             Values::Opaque(reason) => Ok(Value::Opaque { reason: *reason }),
-            Values::Paths(paths) => paths.get(index).cloned().map(Value::Path).ok_or_else(|| {
-                Diagnostic::new(Kind::Missing, format!("no path for value {index}"))
+            Values::Listed { values, source } => values.get(index).cloned().ok_or_else(|| {
+                Diagnostic::new(Kind::Missing, format!("no value for keyframe {index}"))
                     .at(scan.path.clone())
-                    .expected("one `LIST:shap` per keyframe in `LIST:omks`")
+                    .expected(format!("one value per keyframe: {source}"))
             }),
         }
+    }
+}
+
+impl Wrapper {
+    /// The values the wrapper holds next to its stream, read from `scan`.
+    ///
+    /// # Errors
+    /// A diagnostic when the list of values is missing or one cannot be read.
+    fn values(self, scan: &mut Scan<'_, '_>) -> Result<Values> {
+        let listed = |values, source| Values::Listed { values, source };
+        Ok(match self {
+            Wrapper::Opaque(reason) => Values::Opaque(reason),
+            Wrapper::Paths => {
+                let paths = match scan.list(OMKS)? {
+                    Some(mut omks) => omks
+                        .lists(SHAP)
+                        .map(|shap| path(shap?).map(Value::Path))
+                        .collect::<Result<_>>()?,
+                    None => Vec::new(),
+                };
+                listed(paths, "one `LIST:shap` per keyframe in `LIST:omks`")
+            }
+            Wrapper::Orientations => {
+                let mut otky = scan.require_list(OTKY)?;
+                let chunks: Vec<_> = std::iter::from_fn(|| otky.find(Otda::NAME)).collect();
+                let angles = chunks
+                    .into_iter()
+                    .map(|chunk| {
+                        otky.parse::<Otda>(chunk, ())
+                            .map(|o| Value::Vector3(o.angles))
+                    })
+                    .collect::<Result<_>>()?;
+                listed(angles, "one `otda` per keyframe in `LIST:otky`")
+            }
+            Wrapper::TextDocuments => {
+                let btdk = scan.require(BTDK)?;
+                let documents = super::text::documents(btdk.body, &scan.child_path(BTDK))?
+                    .into_iter()
+                    .map(|document| Value::Text(Box::new(document)))
+                    .collect();
+                listed(documents, "one document per keyframe in `LIST:btdk`")
+            }
+        })
     }
 }
 
@@ -175,18 +246,9 @@ impl Decoder {
                 let values = Values::Opaque(Reason::Valueless);
                 Child::Property(self.stream(scan, match_name, &values, timing)?)
             }
-            Body::Path => {
+            Body::Wrapped(wrapper) => {
                 let stream = scan.require_list(TDBS)?;
-                let paths = match scan.list(OMKS)? {
-                    Some(mut omks) => omks.lists(SHAP).map(|shap| path(shap?)).collect(),
-                    None => Ok(Vec::new()),
-                };
-                let values = Values::Paths(paths?);
-                Child::Property(self.stream(stream, match_name, &values, timing)?)
-            }
-            Body::Wrapped(reason) => {
-                let stream = scan.require_list(TDBS)?;
-                let values = Values::Opaque(reason);
+                let values = wrapper.values(&mut scan)?;
                 Child::Property(self.stream(stream, match_name, &values, timing)?)
             }
         })

@@ -279,6 +279,8 @@ pub enum Value {
     Color(Color),
     /// A bezier path: a mask's or a shape's.
     Path(Path),
+    /// A text layer's text and its style.
+    Text(Box<TextDocument>),
     /// A value the reader does not decode yet.
     Opaque {
         /// What sort of value it is.
@@ -315,14 +317,10 @@ pub struct Vertex {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Reason {
-    /// A text layer's text and its style.
-    TextDocument,
     /// The colour stops of a gradient.
     Gradient,
     /// Layer markers.
     Markers,
-    /// A 3D layer's orientation angles.
-    Orientation,
     /// A stream whose value lives in a record of its own, such as an
     /// effect's arbitrary data.
     Valueless,
@@ -382,6 +380,13 @@ macro_rules! coded {
         }
     };
 }
+
+mod text;
+
+pub use text::{
+    BaselineOption, Caps, CharacterStyle, ComposedLine, ComposedSegment, Justification, Kerning,
+    LeadingType, LineJoin, ParagraphStyle, Run, TextDocument, TextFrame,
+};
 
 coded! {
     /// What sort of layer it is

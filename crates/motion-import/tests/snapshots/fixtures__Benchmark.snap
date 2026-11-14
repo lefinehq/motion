@@ -1,17 +1,18 @@
 ---
 source: crates/motion-import/tests/fixtures.rs
+assertion_line: 71
 expression: "format!(\"{project}{}\", project.report())"
 ---
 project 94.4, 8 bits per channel
 composition 28 "Benchmark" 400x400, 60 fps, 1s, work area 0s-1s
   layer 53 "Benchmark" text, 0s-1s
     ADBE Text Properties
-      ADBE Text Document = opaque text_document
+      ADBE Text Document = text "Benchmark" (1 line), Helvetica 72, fill [0, 0, 0, 1], stroke [1, 0, 0, 1], center
     ADBE Transform Group
       ADBE Position = [200, 57, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -37,7 +38,7 @@ composition 28 "Benchmark" 400x400, 60 fps, 1s, work area 0s-1s
       ADBE Position: 2 keyframes 0s-0.98s
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -97,7 +98,7 @@ composition 28 "Benchmark" 400x400, 60 fps, 1s, work area 0s-1s
       ADBE Position = [0, 0, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -117,7 +118,7 @@ composition 28 "Benchmark" 400x400, 60 fps, 1s, work area 0s-1s
       ADBE Position = [352, 357, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -138,7 +139,7 @@ composition 28 "Benchmark" 400x400, 60 fps, 1s, work area 0s-1s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -161,5 +162,5 @@ report
   items: composition 1, folder 1, footage 2
   layers: av 2, shape 2, text 1
   effects: none
-  opaque: orientation 5, other_body 2, text_document 1
-  skipped: LIST:CIF2 1, LIST:CIF3 1, LIST:CIFO 1, LIST:CLRS 2, LIST:CLay 3, LIST:CPPl 1, LIST:DLay 1, LIST:Ewst 16, LIST:ExEn 1, LIST:FEE 1, LIST:Gide 8, LIST:LRdr 1, LIST:LSIf 1, LIST:OvG2 2, LIST:PRin 1, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 6, LIST:SecL 1, LIST:btdk 1, LIST:btgu 1, LIST:dats 1, LIST:gpuG 1, LIST:mnfo 2, LIST:otky 5, LIST:sfnm 1, PwCs 1, Utf8 10, acer 1, adfr 1, blsi 2, blsv 2, cdrp 1, comr 1, cpid 1, dwga 1, fcid 1, fdta 1, fiac 35, fidi 1, fifl 35, fimr 1, fiop 35, fipc 35, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, fmpl 1, foac 35, fots 1, fott 1, fovc 1, fovi 1, ftgi 2, ftts 35, fvdv 35, idpc 4, iide 4, mrid 1, nnhd 1, oacc 1, pcms 1, pdvc 1, pgui 2, qtlg 1, sfdt 1, svap 1, wsnm 1, wsns 1
+  opaque: other_body 2
+  skipped: LIST:CIF2 1, LIST:CIF3 1, LIST:CIFO 1, LIST:CLRS 2, LIST:CLay 3, LIST:CPPl 1, LIST:DLay 1, LIST:Ewst 16, LIST:ExEn 1, LIST:FEE 1, LIST:Gide 8, LIST:LRdr 1, LIST:LSIf 1, LIST:OvG2 2, LIST:PRin 1, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 6, LIST:SecL 1, LIST:btgu 1, LIST:dats 1, LIST:gpuG 1, LIST:mnfo 2, LIST:sfnm 1, PwCs 1, Utf8 10, acer 1, adfr 1, blsi 2, blsv 2, cdrp 1, comr 1, cpid 1, dwga 1, fcid 1, fdta 1, fiac 35, fidi 1, fifl 35, fimr 1, fiop 35, fipc 35, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, fmpl 1, foac 35, fots 1, fott 1, fovc 1, fovi 1, ftgi 2, ftts 35, fvdv 35, idpc 4, iide 4, mrid 1, nnhd 1, oacc 1, pcms 1, pdvc 1, pgui 2, qtlg 1, sfdt 1, svap 1, wsnm 1, wsns 1

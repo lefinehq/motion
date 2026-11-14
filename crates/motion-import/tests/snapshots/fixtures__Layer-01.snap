@@ -8,7 +8,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -30,7 +30,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -49,7 +49,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -68,7 +68,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -87,7 +87,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -106,7 +106,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -142,7 +142,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -161,7 +161,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -180,7 +180,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -199,7 +199,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -218,7 +218,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -237,7 +237,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -256,7 +256,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -275,7 +275,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -294,7 +294,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -313,7 +313,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -333,5 +333,5 @@ report
   items: composition 1, folder 1, footage 1
   layers: null 16, shape 1
   effects: ADBE Fill 1
-  opaque: orientation 16
-  skipped: LIST:CIF2 1, LIST:CIF3 1, LIST:CIFO 1, LIST:CLRS 1, LIST:CLay 3, LIST:CPPl 1, LIST:Ewst 27, LIST:ExEn 1, LIST:FEE 1, LIST:Gide 19, LIST:LRdr 1, LIST:LSIf 1, LIST:OvG2 16, LIST:PRin 1, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 6, LIST:SecL 1, LIST:dats 1, LIST:gpuG 1, LIST:mnfo 1, LIST:otky 16, LIST:parT 1, LIST:sfnm 1, Utf8 4, acer 1, adfr 1, cdrp 1, cpid 1, dwga 1, fcid 1, fdta 1, fiac 56, fidi 1, fifl 56, fimr 1, fiop 56, fipc 56, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, fnam 1, foac 56, fots 1, fott 1, fovc 1, fovi 1, ftgi 1, ftts 56, fvdv 56, nnhd 1, oacc 1, pgui 2, qtlg 1, sfdt 1, svap 1, tdpi 1, tdps 1, wsnm 1, wsns 1
+  opaque: none
+  skipped: LIST:CIF2 1, LIST:CIF3 1, LIST:CIFO 1, LIST:CLRS 1, LIST:CLay 3, LIST:CPPl 1, LIST:Ewst 27, LIST:ExEn 1, LIST:FEE 1, LIST:Gide 19, LIST:LRdr 1, LIST:LSIf 1, LIST:OvG2 16, LIST:PRin 1, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 6, LIST:SecL 1, LIST:dats 1, LIST:gpuG 1, LIST:mnfo 1, LIST:parT 1, LIST:sfnm 1, Utf8 4, acer 1, adfr 1, cdrp 1, cpid 1, dwga 1, fcid 1, fdta 1, fiac 56, fidi 1, fifl 56, fimr 1, fiop 56, fipc 56, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, fnam 1, foac 56, fots 1, fott 1, fovc 1, fovi 1, ftgi 1, ftts 56, fvdv 56, nnhd 1, oacc 1, pgui 2, qtlg 1, sfdt 1, svap 1, tdpi 1, tdps 1, wsnm 1, wsns 1

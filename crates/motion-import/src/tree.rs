@@ -11,8 +11,8 @@ use std::fmt;
 use motion_format::fmt_num;
 
 use crate::model::{
-    Child, Composition, Footage, Group, ItemKind, Layer, Project, Property, Source, Stream, Value,
-    label,
+    Child, Composition, Footage, Group, ItemKind, Layer, Project, Property, Source, Stream,
+    TextDocument, TextFrame, Value, label,
 };
 
 /// The width of one level of indentation.
@@ -167,7 +167,9 @@ impl fmt::Display for Property {
                     write!(f, " {}s-{}s", fmt_num(first.time), fmt_num(last.time))?;
                 }
                 match keyframes.first().map(|key| &key.value) {
-                    Some(opaque @ Value::Opaque { .. }) => write!(f, ", {opaque}"),
+                    Some(value @ (Value::Opaque { .. } | Value::Text(_))) => {
+                        write!(f, ", first {value}")
+                    }
                     _ => Ok(()),
                 }
             }
@@ -196,7 +198,35 @@ impl fmt::Display for Value {
                 let shape = if path.closed { "closed" } else { "open" };
                 write!(f, "path {shape}, {} vertices", path.vertices.len())
             }
+            Value::Text(document) => write!(f, "{document}"),
             Value::Opaque { reason } => write!(f, "opaque {}", label(reason)),
+        }
+    }
+}
+
+/// A text document: its text, line count, frame, and the style its text
+/// starts with, as `text "Hi" (1 line), Inter-Bold 44, fill [1, 1, 1, 1], center`.
+impl fmt::Display for TextDocument {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let lines = self.lines.len();
+        let plural = if lines == 1 { "" } else { "s" };
+        write!(f, "text {:?} ({lines} line{plural})", self.text)?;
+        if let TextFrame::Box { width, height, .. } = self.frame {
+            write!(f, ", box {}x{}", fmt_num(width), fmt_num(height))?;
+        }
+        if let Some(style) = self.characters.first().map(|run| &run.style) {
+            write!(f, ", {} {}", style.font, fmt_num(style.size))?;
+            let paints = [("fill", style.fill), ("stroke", style.stroke)];
+            paints
+                .iter()
+                .filter_map(|(name, color)| color.map(|c| (name, c)))
+                .try_for_each(|(name, c)| {
+                    write!(f, ", {name} {}", Numbers(&[c.r, c.g, c.b, c.a]))
+                })?;
+        }
+        match self.paragraphs.first() {
+            Some(run) => write!(f, ", {}", label(&run.style.justification)),
+            None => Ok(()),
         }
     }
 }

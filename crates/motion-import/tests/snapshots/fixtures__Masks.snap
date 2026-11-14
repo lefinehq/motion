@@ -20,7 +20,7 @@ composition 68 "Add" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [91, 90.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -53,7 +53,7 @@ composition 212 "Add Add" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [91, 90.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -84,7 +84,7 @@ composition 284 "Add Inverted" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [91, 90.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -117,7 +117,7 @@ composition 188 "Add_Subtract" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [91, 90.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -147,7 +147,7 @@ composition 1 "Comp 1" 200x200, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [108, 116, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -175,7 +175,7 @@ composition 1 "Comp 1" 200x200, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [78, 72, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -208,7 +208,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [205.5, 320.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -240,7 +240,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [205.5, 251.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -272,7 +272,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [205.5, 192.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -304,7 +304,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [108.5, 319.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -336,7 +336,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [108.5, 258.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -368,7 +368,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [108.5, 190.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -400,7 +400,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [108.5, 105.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -432,7 +432,7 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [205.5, 105.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -453,7 +453,7 @@ composition 344 "MaskNonInv" 100x150, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [25, 25, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -473,7 +473,7 @@ composition 344 "MaskNonInv" 100x150, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [75, 25, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -493,7 +493,7 @@ composition 344 "MaskNonInv" 100x150, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [25, 125, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -513,7 +513,7 @@ composition 344 "MaskNonInv" 100x150, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [25, 75, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -533,7 +533,7 @@ composition 344 "MaskNonInv" 100x150, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [75, 75, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -553,7 +553,7 @@ composition 344 "MaskNonInv" 100x150, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [75, 125, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -584,7 +584,7 @@ composition 236 "Subtract" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [91, 90.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -615,7 +615,7 @@ composition 308 "Subtract Inverted" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [91, 90.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -648,7 +648,7 @@ composition 332 "Subtract Inverted Add Inverted" 50x50, 29.97 fps, 2.04s, work a
       ADBE Position = [91, 90.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -681,7 +681,7 @@ composition 164 "Subtract Subtrct" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [91, 90.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -714,7 +714,7 @@ composition 92 "Subtract_Add" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
       ADBE Position = [91, 90.5, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -732,5 +732,5 @@ report
   items: composition 12
   layers: av 6, shape 19
   effects: none
-  opaque: orientation 25
-  skipped: LIST:CIF2 12, LIST:CIFO 12, LIST:CLay 36, LIST:CPPl 1, LIST:Ewst 145, LIST:FEE 12, LIST:Gide 37, LIST:LRdr 1, LIST:LSIf 1, LIST:OvG2 6, LIST:OvdG 25, LIST:PRin 12, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 72, LIST:SecL 12, LIST:dats 12, LIST:gpuG 1, LIST:otky 25, LIST:sfnm 1, Utf8 1, acer 1, adfr 1, cdrp 12, cpid 1, dwga 1, fcid 1, fdta 1, fiac 302, fidi 12, fifl 302, fimr 12, fiop 302, fipc 302, fipl 12, fips 48, fits 1, fitt 1, fivc 1, fivi 1, foac 302, fots 12, fott 12, fovc 12, fovi 12, ftts 302, fvdv 302, mkif 30, nnhd 1, oacc 1, omtn 32, qtlg 1, svap 1, wsnm 1, wsns 1
+  opaque: none
+  skipped: LIST:CIF2 12, LIST:CIFO 12, LIST:CLay 36, LIST:CPPl 1, LIST:Ewst 145, LIST:FEE 12, LIST:Gide 37, LIST:LRdr 1, LIST:LSIf 1, LIST:OvG2 6, LIST:OvdG 25, LIST:PRin 12, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 72, LIST:SecL 12, LIST:dats 12, LIST:gpuG 1, LIST:sfnm 1, Utf8 1, acer 1, adfr 1, cdrp 12, cpid 1, dwga 1, fcid 1, fdta 1, fiac 302, fidi 12, fifl 302, fimr 12, fiop 302, fipc 302, fipl 12, fips 48, fits 1, fitt 1, fivc 1, fivi 1, foac 302, fots 12, fott 12, fovc 12, fovi 12, ftts 302, fvdv 302, mkif 30, nnhd 1, oacc 1, omtn 32, qtlg 1, svap 1, wsnm 1, wsns 1

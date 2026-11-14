@@ -22,7 +22,7 @@ composition 1 "Star" 400x400, 60 fps, 4s, work area 0s-4s
       ADBE Position = [203, 208, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -40,5 +40,5 @@ report
   items: composition 1
   layers: shape 1
   effects: none
-  opaque: orientation 1
-  skipped: LIST:CLay 3, LIST:CPPl 1, LIST:CapI 1, LIST:Ewst 11, LIST:FEE 1, LIST:Gide 2, LIST:LRdr 1, LIST:LSIf 1, LIST:PRin 1, LIST:PTRE 1, LIST:SLay 6, LIST:SecL 1, LIST:gpuG 1, LIST:otky 1, Utf8 1, acer 1, adfr 1, cdrp 1, cpid 1, fcid 1, fdta 1, fiac 23, fidi 1, fifl 23, fimr 1, fiop 23, fipc 23, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, foac 23, fots 1, fott 1, fovc 1, fovi 1, ftts 23, fvdv 23, qtlg 1, svap 1, wsnm 1, wsns 1
+  opaque: none
+  skipped: LIST:CLay 3, LIST:CPPl 1, LIST:CapI 1, LIST:Ewst 11, LIST:FEE 1, LIST:Gide 2, LIST:LRdr 1, LIST:LSIf 1, LIST:PRin 1, LIST:PTRE 1, LIST:SLay 6, LIST:SecL 1, LIST:gpuG 1, Utf8 1, acer 1, adfr 1, cdrp 1, cpid 1, fcid 1, fdta 1, fiac 23, fidi 1, fifl 23, fimr 1, fiop 23, fipc 23, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, foac 23, fots 1, fott 1, fovc 1, fovi 1, ftts 23, fvdv 23, qtlg 1, svap 1, wsnm 1, wsns 1

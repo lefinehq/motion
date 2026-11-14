@@ -11,7 +11,7 @@ composition 40 "HamburgerArrow" 400x300, 30 fps, 6s, work area 0s-6s
       ADBE Position = [200.5, 149.38, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Rotate Z: 9 keyframes 0.63s-4.7s
@@ -43,7 +43,7 @@ composition 40 "HamburgerArrow" 400x300, 30 fps, 6s, work area 0s-6s
       ADBE Position: 4 keyframes 0.63s-4.47s
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Rotate Z: 4 keyframes 0.63s-4.47s
@@ -72,7 +72,7 @@ composition 40 "HamburgerArrow" 400x300, 30 fps, 6s, work area 0s-6s
       ADBE Position = [60, 60.62, 0]
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -103,7 +103,7 @@ composition 40 "HamburgerArrow" 400x300, 30 fps, 6s, work area 0s-6s
       ADBE Position: 4 keyframes 0.63s-4.47s
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Rotate Z: 4 keyframes 0.63s-4.47s
@@ -124,5 +124,5 @@ report
   items: composition 1, folder 1, footage 1
   layers: null 1, shape 3
   effects: none
-  opaque: orientation 4
-  skipped: LIST:CLRS 1, LIST:CLay 3, LIST:CPPl 1, LIST:CapI 1, LIST:Ewst 14, LIST:FEE 1, LIST:Gide 6, LIST:LRdr 1, LIST:LSIf 1, LIST:PRin 1, LIST:PTRE 1, LIST:SLay 6, LIST:SecL 1, LIST:gpuG 1, LIST:mnfo 1, LIST:otky 4, Utf8 2, acer 1, adfr 1, cdrp 1, cpid 1, fcid 1, fdta 1, fiac 30, fidi 1, fifl 30, fimr 1, fiop 30, fipc 30, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, foac 30, fots 2, fott 2, fovc 2, fovi 2, ftgi 1, ftts 30, fvdv 30, omtn 3, pgui 1, qtlg 1, sfdt 1, svap 1, wsnm 1, wsns 1
+  opaque: none
+  skipped: LIST:CLRS 1, LIST:CLay 3, LIST:CPPl 1, LIST:CapI 1, LIST:Ewst 14, LIST:FEE 1, LIST:Gide 6, LIST:LRdr 1, LIST:LSIf 1, LIST:PRin 1, LIST:PTRE 1, LIST:SLay 6, LIST:SecL 1, LIST:gpuG 1, LIST:mnfo 1, Utf8 2, acer 1, adfr 1, cdrp 1, cpid 1, fcid 1, fdta 1, fiac 30, fidi 1, fifl 30, fimr 1, fiop 30, fipc 30, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, foac 30, fots 2, fott 2, fovc 2, fovi 2, ftgi 1, ftts 30, fvdv 30, omtn 3, pgui 1, qtlg 1, sfdt 1, svap 1, wsnm 1, wsns 1

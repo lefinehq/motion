@@ -5,7 +5,7 @@ expression: "format!(\"{project}{}\", project.report())"
 project 93.9, 8 bits per channel
 composition 1 "Marker" 400x400, 29.97 fps, 6.04s, work area 0s-6.04s
   layer 12 "Shape Layer 1" shape, 0s-6.04s
-    ADBE Marker: 2 keyframes 2s-2.87s, opaque markers
+    ADBE Marker: 2 keyframes 2s-2.87s, first opaque markers
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"
         ADBE Vectors Group
@@ -16,7 +16,7 @@ composition 1 "Marker" 400x400, 29.97 fps, 6.04s, work area 0s-6.04s
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
-      ADBE Orientation = opaque orientation
+      ADBE Orientation = [0, 0, 0]
       ADBE Rotate X = 0
       ADBE Rotate Y = 0
       ADBE Envir Appear in Reflect = 1
@@ -34,5 +34,5 @@ report
   items: composition 1
   layers: shape 1
   effects: none
-  opaque: markers 1, orientation 1
-  skipped: LIST:CIF2 1, LIST:CIF3 1, LIST:CIFO 1, LIST:CLay 3, LIST:CPPl 1, LIST:Ewst 11, LIST:ExEn 1, LIST:FEE 1, LIST:Gide 2, LIST:LRdr 1, LIST:LSIf 1, LIST:PRin 1, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 6, LIST:SecL 1, LIST:dats 1, LIST:gpuG 1, LIST:mrky 1, LIST:otky 1, LIST:sfnm 1, Utf8 1, acer 1, adfr 1, cdrp 1, cpid 1, dwga 1, fcid 1, fdta 1, fiac 23, fidi 1, fifl 23, fimr 1, fiop 23, fipc 23, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, foac 23, fots 1, fott 1, fovc 1, fovi 1, ftts 23, fvdv 23, idpc 1, iide 1, nnhd 1, oacc 1, qtlg 1, svap 1, wsnm 1, wsns 1
+  opaque: markers 1
+  skipped: LIST:CIF2 1, LIST:CIF3 1, LIST:CIFO 1, LIST:CLay 3, LIST:CPPl 1, LIST:Ewst 11, LIST:ExEn 1, LIST:FEE 1, LIST:Gide 2, LIST:LRdr 1, LIST:LSIf 1, LIST:PRin 1, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 6, LIST:SecL 1, LIST:dats 1, LIST:gpuG 1, LIST:mrky 1, LIST:sfnm 1, Utf8 1, acer 1, adfr 1, cdrp 1, cpid 1, dwga 1, fcid 1, fdta 1, fiac 23, fidi 1, fifl 23, fimr 1, fiop 23, fipc 23, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, foac 23, fots 1, fott 1, fovc 1, fovi 1, ftts 23, fvdv 23, idpc 1, iide 1, nnhd 1, oacc 1, qtlg 1, svap 1, wsnm 1, wsns 1

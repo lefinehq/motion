@@ -3,9 +3,10 @@
 //! about; and a small decoded project for the tests of what reads the model.
 
 use crate::model::{
-    Child, Color, Composition, Ease, Expression, Footage, Group, Interpolation, Item, ItemKind,
-    Keyframe, Layer, LayerKind, Project, Property, Reason, Source, Span, Stream, Switches, Value,
-    Version,
+    BaselineOption, Caps, CharacterStyle, Child, Color, Composition, Ease, Expression, Footage,
+    Group, Interpolation, Item, ItemKind, Justification, Kerning, Keyframe, Layer, LayerKind,
+    LeadingType, LineJoin, ParagraphStyle, Project, Property, Reason, Run, Source, Span, Stream,
+    Switches, TextDocument, TextFrame, Value, Version,
 };
 use crate::{BlendMode, TrackMatte};
 
@@ -69,12 +70,18 @@ pub(crate) fn sample_project() -> Project {
     );
     let text = group(
         "ADBE Text Properties",
-        vec![Child::Property(property(
-            "ADBE Text Document",
-            Stream::Static(Value::Opaque {
-                reason: Reason::TextDocument,
-            }),
-        ))],
+        vec![
+            Child::Property(property(
+                "ADBE Text Document",
+                Stream::Static(Value::Text(Box::new(sample_document()))),
+            )),
+            Child::Property(property(
+                "ADBE Marker",
+                Stream::Static(Value::Opaque {
+                    reason: Reason::Markers,
+                }),
+            )),
+        ],
     );
     let slider = Group {
         name: Some("Speed".into()),
@@ -192,6 +199,140 @@ pub(crate) fn sample_project() -> Project {
         ],
         skipped: [("fvdv".to_owned(), 2), ("LIST:Ewst".to_owned(), 1)].into(),
     }
+}
+
+/// A two-line, centred box text in white Inter-Bold 44 with a red stroke.
+pub(crate) fn sample_document() -> TextDocument {
+    let white = Color {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+    };
+    let paragraph = ParagraphStyle {
+        justification: Justification::Center,
+        first_line_indent: 0.0,
+        start_indent: 0.0,
+        end_indent: 0.0,
+        space_before: 0.0,
+        space_after: 0.0,
+        leading_type: LeadingType::Roman,
+        auto_hyphenate: true,
+        every_line_composer: false,
+    };
+    let character = CharacterStyle {
+        font: "Inter-Bold".into(),
+        size: 44.0,
+        faux_bold: false,
+        faux_italic: false,
+        auto_leading: true,
+        leading: 52.8,
+        horizontal_scale: 1.0,
+        vertical_scale: 1.0,
+        tracking: 0.0,
+        baseline_shift: 0.0,
+        kerning: Kerning::Metrics,
+        caps: Caps::All,
+        baseline_option: BaselineOption::Normal,
+        ligatures: true,
+        tsume: 0.0,
+        no_break: false,
+        fill: Some(white),
+        stroke: Some(Color {
+            g: 0.0,
+            b: 0.0,
+            ..white
+        }),
+        stroke_over_fill: false,
+        stroke_width: 2.0,
+        line_join: LineJoin::Round,
+    };
+    TextDocument {
+        text: "Hello\nworld".into(),
+        paragraphs: vec![
+            Run {
+                range: 0..6,
+                style: paragraph,
+            },
+            Run {
+                range: 6..11,
+                style: paragraph,
+            },
+        ],
+        characters: vec![Run {
+            range: 0..11,
+            style: character,
+        }],
+        frame: TextFrame::Box {
+            left: -110.0,
+            top: -70.0,
+            width: 220.0,
+            height: 140.0,
+        },
+        lines: vec![],
+    }
+}
+
+/// The paragraph style every [`text_body`] document inherits: centred.
+pub(crate) const PARAGRAPH_DEFAULT: &str =
+    "<< /0 2 /1 0.0 /2 0.0 /3 0.0 /4 0.0 /5 0.0 /8 0 /9 true /29 false >>";
+
+/// The character style every [`text_body`] document inherits: font 0 at
+/// 44, white fill, red stroke not applied.
+pub(crate) const CHARACTER_DEFAULT: &str = "<< /0 0 /1 44.0 /2 false /3 false /4 true \
+     /5 .01 /6 1.0 /7 1.0 /8 0 /9 0.0 /11 1 /12 0 /13 0 /18 true /36 0.0 /52 false \
+     /53 << /99 /SimplePaint /0 << /0 1 /1 [ 1.0 1.0 1.0 1.0 ] >> >> \
+     /54 << /99 /SimplePaint /0 << /0 1 /1 [ 1.0 1.0 0.0 0.0 ] >> >> \
+     /56 true /57 false /58 false /62 0 /63 1.0 >>";
+
+/// A `LIST:btdk` body as the format writes it, with `fonts` in its table,
+/// `frames` (each `<< ... >>`) and `documents` (each built by
+/// [`text_document`]), inheriting [`CHARACTER_DEFAULT`] and
+/// [`PARAGRAPH_DEFAULT`] through one sheet each.
+pub(crate) fn text_body(fonts: &[&str], frames: &[&str], documents: &[String]) -> String {
+    let fonts: Vec<String> = fonts
+        .iter()
+        .map(|font| format!("<< /0 << /99 /CoolTypeFont /0 << /0 ({font}) /2 1 >> >> >>"))
+        .collect();
+    format!(
+        " /98 << /0 9 >> /0 << /1 << /0 [ {} ] >> \
+         /5 << /0 [ << /0 << /0 (Normal RGB) /6 << >> >> >> ] >> \
+         /6 << /0 [ << /0 << /0 (Normal RGB) /5 << >> >> >> ] /1 [ << /0 0 >> ] >> \
+         /8 << /0 [ {} ] >> >> \
+         /1 << /0 << >> /1 [ {} ] /2 {CHARACTER_DEFAULT} /3 {PARAGRAPH_DEFAULT} >>",
+        fonts.join(" "),
+        frames.join(" "),
+        documents.join(" ")
+    )
+}
+
+/// One document of a [`text_body`]: `text` as stored (paragraphs ending in
+/// CR), `paragraphs` and `characters` as `(count, style keys)` runs on
+/// sheet 0, and the composed-line cache `composed`.
+pub(crate) fn text_document(
+    text: &str,
+    paragraphs: &[(usize, &str)],
+    characters: &[(usize, &str)],
+    composed: &str,
+) -> String {
+    let paragraphs: Vec<String> = paragraphs
+        .iter()
+        .map(|(count, keys)| {
+            format!("<< /0 << /0 << /0 () /5 << {keys} >> /6 0 >> >> /1 {count} >>")
+        })
+        .collect();
+    let characters: Vec<String> = characters
+        .iter()
+        .map(|(count, keys)| {
+            format!("<< /0 << /0 << /0 () /5 0 /6 << {keys} >> >> >> /1 {count} >>")
+        })
+        .collect();
+    format!(
+        "<< /0 << /0 ({text}) /5 << /0 [ {} ] >> /6 << /0 [ {} ] >> >> \
+         /1 << /0 [ << /0 0 >> ] /2 [ {composed} ] >> >>",
+        paragraphs.join(" "),
+        characters.join(" ")
+    )
 }
 
 /// A chunk with `tag` and `body`, padded to an even length.
