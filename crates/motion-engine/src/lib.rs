@@ -12,6 +12,7 @@
 //! assert!(report.has_errors());
 //! ```
 
+mod diff;
 mod import;
 mod render;
 mod session;
@@ -22,6 +23,7 @@ pub mod telemetry;
 #[path = "../tests/unit/support.rs"]
 mod test_support;
 
+pub use diff::{Diff, DiffOptions, Error as DiffError, FrameDiff, Pooled};
 pub use import::{import, import_scene};
 pub use session::Session;
 

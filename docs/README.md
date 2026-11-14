@@ -23,6 +23,7 @@ Reference:
 - [`.aep` import](design/aep-import.md): what the project reader decodes, what it keeps opaque, and how to add a decoder.
 - [Research: baselines, 2026-11-13](research/2026-11-13-baselines.md): the measurements behind our goals.
 - [Research: quality measurement, 2026-11-13](research/2026-11-13-quality-measurement.md): how quality is measured elsewhere, and what we should adopt.
+- [Research: fidelity of the first sample, 2026-11-14](research/2026-11-14-fidelity-first-sample.md): `motion diff` against a reference render, and what the numbers show.
 
 ## How we write docs
 

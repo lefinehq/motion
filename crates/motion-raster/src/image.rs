@@ -76,35 +76,49 @@ impl Image {
         Ok(bytes)
     }
 
-    /// Reads an 8-bit RGBA PNG file, such as a golden image.
+    /// Reads a PNG file of any colour type and bit depth, such as a golden
+    /// image or a frame of a reference render, as 8-bit RGBA: grey becomes
+    /// RGB, 16-bit channels keep their high byte, and a file without alpha
+    /// is opaque.
     ///
     /// # Errors
-    /// An invalid-value diagnostic for bytes that are not such a PNG.
+    /// An invalid-value diagnostic for bytes that are not a PNG.
     pub fn from_png(bytes: &[u8]) -> Result<Image> {
-        let decoder = png::Decoder::new(Cursor::new(bytes));
+        let mut decoder = png::Decoder::new(Cursor::new(bytes));
+        decoder.set_transformations(png::Transformations::normalize_to_color8());
         let mut reader = decoder.read_info().map_err(png_error)?;
-        let info = reader.info();
-        if (info.color_type, info.bit_depth) != (png::ColorType::Rgba, png::BitDepth::Eight) {
-            return Err(Diagnostic::new(
-                Kind::Invalid,
-                format!("a {:?} PNG of depth {:?}", info.color_type, info.bit_depth),
-            )
-            .expected("an 8-bit RGBA PNG"));
-        }
         let size = reader.output_buffer_size().ok_or_else(|| {
-            Diagnostic::new(Kind::Invalid, "a PNG too large to decode")
-                .expected("an 8-bit RGBA PNG")
+            Diagnostic::new(Kind::Invalid, "a PNG too large to decode").expected("a PNG")
         })?;
-        let mut pixels = vec![0; size];
-        let frame = reader.next_frame(&mut pixels).map_err(png_error)?;
-        pixels.truncate(frame.buffer_size());
+        let mut decoded = vec![0; size];
+        let frame = reader.next_frame(&mut decoded).map_err(png_error)?;
+        decoded.truncate(frame.buffer_size());
+        let pixels = match frame.color_type {
+            png::ColorType::Rgba => decoded,
+            png::ColorType::Rgb => decoded
+                .chunks_exact(3)
+                .flat_map(|p| [p[0], p[1], p[2], 255])
+                .collect(),
+            png::ColorType::GrayscaleAlpha => decoded
+                .chunks_exact(2)
+                .flat_map(|p| [p[0], p[0], p[0], p[1]])
+                .collect(),
+            png::ColorType::Grayscale => decoded.iter().flat_map(|&g| [g, g, g, 255]).collect(),
+            png::ColorType::Indexed => {
+                return Err(Diagnostic::new(
+                    Kind::Invalid,
+                    "an indexed PNG the decoder did not expand",
+                )
+                .expected("a PNG"));
+            }
+        };
         Image::new(frame.width, frame.height, pixels)
     }
 }
 
 /// A PNG encoder or decoder failure as a diagnostic.
 fn png_error(error: impl std::fmt::Display) -> Diagnostic {
-    Diagnostic::new(Kind::Invalid, format!("PNG: {error}")).expected("an 8-bit RGBA PNG")
+    Diagnostic::new(Kind::Invalid, format!("PNG: {error}")).expected("a PNG")
 }
 
 #[cfg(test)]

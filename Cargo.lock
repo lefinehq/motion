@@ -833,6 +833,7 @@ dependencies = [
  "motion-text",
  "pretty_assertions",
  "rstest",
+ "serde",
  "serde_json",
  "tracing",
  "tracing-subscriber",

@@ -18,6 +18,7 @@ motion-import = { path = "../motion-import" }
 motion-raster = { path = "../motion-raster" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true

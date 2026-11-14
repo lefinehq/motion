@@ -116,6 +116,35 @@ enum Command {
         #[arg(long, value_enum, default_value = "precise")]
         quality: QualityArg,
     },
+    /// Compare a scene with a reference render's frames: the error where the
+    /// scene draws, and over everything it draws in the compared frames.
+    Diff {
+        /// Path to the scene file.
+        scene: PathBuf,
+        /// The folder of reference frames: PNG files of the scene's size,
+        /// in name order.
+        #[arg(long, value_name = "DIR")]
+        reference: PathBuf,
+        /// The reference's frame rate, such as `59.94`.
+        #[arg(long)]
+        fps: f64,
+        /// The scene time of the first reference frame, in seconds.
+        #[arg(long, default_value_t = 0.0)]
+        start: f64,
+        /// How far a channel may differ, from 0 to 1, before its pixel fails.
+        #[arg(long, default_value_t = motion_engine::DiffOptions::TOLERANCE)]
+        tolerance: f64,
+        /// Write every frame's numbers to this JSON file.
+        #[arg(long, value_name = "FILE")]
+        json: Option<PathBuf>,
+        /// Write one error image per frame into this folder.
+        #[arg(long, value_name = "DIR")]
+        images: Option<PathBuf>,
+        /// A layer to leave out of the drawing and the measure, by id, such
+        /// as a placeholder the reference fills; repeat for more.
+        #[arg(long, value_name = "ID")]
+        ignore: Vec<String>,
+    },
     /// Import an `.aep` project as a scene, and print what the import mapped,
     /// defaulted, ignored or could not support yet.
     Import {
@@ -154,7 +183,8 @@ impl Command {
             Command::Check { scene }
             | Command::At { scene, .. }
             | Command::Edit { scene, .. }
-            | Command::Render { scene, .. } => scene,
+            | Command::Render { scene, .. }
+            | Command::Diff { scene, .. } => scene,
             Command::Import { project, .. } | Command::Inspect { project, .. } => project,
         }
     }
@@ -189,6 +219,27 @@ fn main() -> ExitCode {
             frames.or(frame.map(commands::render::Frames::one)),
             &out,
             quality.into(),
+        ),
+        Command::Diff {
+            scene,
+            reference,
+            fps,
+            start,
+            tolerance,
+            json,
+            images,
+            ignore,
+        } => commands::diff::run(
+            &scene,
+            &commands::diff::Args {
+                reference: &reference,
+                fps,
+                start,
+                tolerance,
+                json: json.as_deref(),
+                images: images.as_deref(),
+                ignore: &ignore,
+            },
         ),
         Command::Import {
             project,
