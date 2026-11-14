@@ -1,0 +1,9 @@
+---
+source: crates/motion-text/src/../tests/unit/typeset.rs
+expression: "report.join(\"\\n\")"
+---
+unknown font: runs[0].style.font: unknown font `Nope-Bold`; expected one of InterVariable-Thin, InterVariable-ExtraLight, InterVariable-Light, InterVariable, InterVariable-Medium, InterVariable-SemiBold, InterVariable-Bold, InterVariable-ExtraBold, InterVariable-Black, InterVariableItalic-Thin, InterVariableItalic-ExtraLight, InterVariableItalic-Light, InterVariableItalic, InterVariableItalic-Medium, InterVariableItalic-SemiBold, InterVariableItalic-Bold, InterVariableItalic-ExtraBold, InterVariableItalic-Black
+missing glyph: runs[0]: font `InterVariable` has no glyph for `日` (U+65E5); expected a font that covers every character of its run
+zero size: runs[0].style.size: must be above zero; expected a size above zero
+paragraph count: paragraphs: 0 paragraph styles for 1 paragraphs; expected one paragraph style per `\n`-separated paragraph
+not a font: `nope.ttf` is not a font file: An offset was out of bounds; expected an OpenType or TrueType font (`.ttf`, `.otf`, `.ttc`, `.otc`)
