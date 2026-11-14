@@ -1,4 +1,4 @@
-//! Unit tests for `src/timing.rs`.
+//! Unit tests for `src/telemetry/timing.rs`.
 
 use tracing::{debug_span, field, info_span, trace_span};
 use tracing_subscriber::layer::SubscriberExt;

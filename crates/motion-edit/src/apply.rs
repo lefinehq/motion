@@ -1,10 +1,5 @@
-//! Applying a parsed [`Edit`] to a scene document.
-//!
-//! A side branch working on the document from step 1 (not a numbered
-//! rendering step). Changes are made to the raw JSON, not the typed scene,
-//! so that untouched parts, and the order of keys, stay exactly as the
-//! author wrote them. The target is found in the typed scene, and the result
-//! is re-validated with [`Document::from_value`] before it is returned.
+//! Applying an [`Edit`] to a [`Document`]. Changes go to the raw JSON, so
+//! untouched parts and the order of keys stay as the author wrote them.
 
 use motion_format::key::{LAYERS, layer_path};
 use motion_format::{Diagnostic, Kind, Result};
@@ -18,21 +13,15 @@ use crate::{Edit, EditValue};
 /// The reserved target that means the top level of the document.
 const SCENE_TARGET: &str = "scene";
 
-/// Applies `edit` to a copy of `doc` and returns the validated result: the
-/// new raw JSON with the scene it describes.
+/// Applies `edit` to a copy of `doc` and returns the re-validated result.
 ///
-/// The target `scene` always means the top level of the document, so a
-/// layer whose id is `scene` cannot be edited this way.
-/// Setting an existing key keeps its position; a new key is appended;
-/// removing a key that is not there does nothing; removing the last key of
-/// a nested object removes the object too. `doc` is never changed.
+/// An existing key keeps its position and a new one is appended; removing a
+/// missing key does nothing. The target `scene` always means the top level.
 ///
 /// # Errors
-/// Returns a [`Diagnostic`] for a key (its first path segment) that is not
-/// allowed for the target, a path through a value that is not an object,
-/// an unknown layer id, or a result that no longer passes validation. The
-/// last is the validation failure itself; when quoting a bare number or
-/// boolean would fix it, the expected form shows the quoted change instead.
+/// A diagnostic for a key that does not fit the target, an unknown layer id,
+/// a path through a non-object, or an invalid result; when quoting a bare
+/// value would fix the result, its expected form shows the quoted change.
 #[instrument(
     level = "debug",
     skip_all,
@@ -40,18 +29,16 @@ const SCENE_TARGET: &str = "scene";
 )]
 pub fn apply_edit(doc: &Document, edit: &Edit) -> Result<Document> {
     let applied = validated(doc, edit);
-    Span::current().record(
-        "outcome",
-        if applied.is_ok() {
-            "applied"
-        } else {
-            "rejected"
-        },
-    );
+    let outcome = if applied.is_ok() {
+        "applied"
+    } else {
+        "rejected"
+    };
+    Span::current().record("outcome", outcome);
     applied
 }
 
-/// The changed keys of `edit`, comma-separated, for the `apply_edit` span.
+/// The changed keys of `edit`, comma-separated, for the span.
 fn change_keys(edit: &Edit) -> String {
     let keys: Vec<&str> = edit.changes.iter().map(|c| c.key.as_str()).collect();
     keys.join(",")
@@ -67,25 +54,22 @@ enum Target {
 }
 
 impl Target {
-    /// Finds the object `name` stands for in `doc`: `scene`, or the layer
-    /// with that id.
+    /// The target `name` stands for in `doc`: `scene`, or a layer's id.
     fn find(doc: &Document, name: &str) -> Result<Target> {
         if name == SCENE_TARGET {
             return Ok(Target::Scene);
         }
         let layers = &doc.scene().layers;
-        match layers.iter().position(|layer| layer.id == name) {
-            Some(index) => Ok(Target::Layer(index)),
-            None => {
-                let ids = layers.iter().map(|layer| &layer.id);
-                Err(Diagnostic::unknown("layer id", name, ids))
-            }
-        }
+        layers
+            .iter()
+            .position(|layer| layer.id == name)
+            .map(Target::Layer)
+            .ok_or_else(|| {
+                Diagnostic::unknown("layer id", name, layers.iter().map(|layer| &layer.id))
+            })
     }
 
-    /// The target's object in `raw`, the JSON of the document it was found
-    /// in. A [`Document`]'s raw `layers` are its scene's layers, in the same
-    /// order, by construction, so the index is all it takes.
+    /// The target's object in `raw`, whose `layers` match the scene's, in order.
     fn object(self, raw: &mut Value) -> &mut Value {
         match self {
             Target::Scene => raw,
@@ -93,8 +77,7 @@ impl Target {
         }
     }
 
-    /// The path validation reports for `key` on the target. A layer's
-    /// prefix is the one validation writes, [`layer_path`].
+    /// The path validation reports for `key` on the target.
     fn path_of(self, key: &str) -> String {
         match self {
             Target::Scene => key.to_owned(),
@@ -112,10 +95,9 @@ fn validated(doc: &Document, edit: &Edit) -> Result<Document> {
     })
 }
 
-/// Applies the changes of `edit` to a copy of `doc`'s JSON, without
-/// validating the result. Also returns the target the changes went to.
+/// `edit` applied to a copy of `doc`'s JSON, unvalidated, and its target.
 fn apply_changes(doc: &Document, edit: &Edit) -> Result<(Value, Target)> {
-    // Keys are checked first so a typo is reported even for a bad target.
+    // Keys first, so a typo is reported even for a bad target.
     check_keys(edit)?;
     let target = Target::find(doc, &edit.target)?;
     let mut raw = doc.raw().clone();
@@ -123,28 +105,19 @@ fn apply_changes(doc: &Document, edit: &Edit) -> Result<(Value, Target)> {
     for change in &edit.changes {
         match &change.value {
             EditValue::Set(value) => path::set(object, &change.key, value.clone())?,
-            // Removing a key that is not there is not an error: the result is
-            // what was asked for.
+            // Removing a missing key already gives what was asked for.
             EditValue::Remove => _ = path::remove(object, &change.key),
         }
     }
     Ok((raw, target))
 }
 
-/// When a bare number or boolean landed on a key that needs a string, the
-/// quoted change to write instead, e.g. ``a quoted value: `text="2024"` ``.
+/// The quoted change to suggest when a bare number or boolean landed on a
+/// key that needs a string: ``a quoted value: `text="2024"` ``.
 ///
-/// The edit grammar turns `text=2024` into a JSON number, which the format
-/// rejects; the author almost always meant text. The decision is made on
-/// structure, not on message text: `error` is a [`Kind::WrongType`] at
-/// exactly the path a number or boolean change wrote, and the same edit with
-/// that value as a JSON string no longer fails there at all. The
-/// re-validation is what tells a string key from a number key: quoting
-/// `fps=true` leaves `fps` just as wrong, so it gets no hint. Any error at
-/// that path counts, not only a wrong type: quoting `dur=5` gives a time
-/// without a unit, so the author is better served by the time's form than by
-/// a quote. It runs only here, on the failure path, so a valid edit is
-/// validated once.
+/// It is decided on structure, not message text: `error` is a wrong type at
+/// the path the change wrote, and the quoted edit no longer fails there at
+/// all (quoting `fps=true` or `dur=5` would, so they get the key's own form).
 fn quote_hint(doc: &Document, edit: &Edit, target: Target, error: &Diagnostic) -> Option<String> {
     if error.kind != Kind::WrongType {
         return None;
@@ -169,22 +142,23 @@ fn quote_hint(doc: &Document, edit: &Edit, target: Target, error: &Diagnostic) -
     (!still_wrong).then(|| format!("a quoted value: `{key}=\"{value}\"`"))
 }
 
-/// Rejects keys that are not part of the format for this kind of target.
-/// Only the first segment of a path is checked here; deeper ones are checked
-/// by [`Document::from_value`] on the result.
+/// Rejects a key whose first segment is not a key of the target's kind;
+/// deeper segments are left to validation.
 fn check_keys(edit: &Edit) -> Result<()> {
     let (allowed, what): (&[&str], &str) = if edit.target == SCENE_TARGET {
         (&SCENE_KEYS, "scene key")
     } else {
         (&LAYER_KEYS, "layer key")
     };
-    edit.changes
+    match edit
+        .changes
         .iter()
         .map(|change| change.key.first())
         .find(|first| !allowed.contains(first))
-        .map_or(Ok(()), |first| {
-            Err(Diagnostic::unknown(what, first, allowed))
-        })
+    {
+        Some(first) => Err(Diagnostic::unknown(what, first, allowed)),
+        None => Ok(()),
+    }
 }
 
 #[cfg(test)]

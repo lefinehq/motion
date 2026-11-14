@@ -1,4 +1,4 @@
-//! Unit tests for `src/init.rs`.
+//! Unit tests for `src/telemetry/init.rs`.
 
 use std::io;
 use std::sync::{Arc, Mutex};

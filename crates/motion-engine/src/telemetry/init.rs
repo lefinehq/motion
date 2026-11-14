@@ -1,13 +1,8 @@
-//! Installing the subscriber: filter, format and the optional timings.
-//!
-//! The filter comes from the [`ENV_VAR`] environment variable when it is set
-//! (`EnvFilter` syntax, such as `motion_query=debug`), and from
-//! [`Options::level`] otherwise. A value that is not a valid filter is
-//! ignored with one `warn` event, written like any other log line.
-//! Everything is written to stderr.
+//! [`init`]: the subscriber, filtered by [`ENV_VAR`] or [`Options::level`],
+//! that writes every line to stderr.
 
 use std::env::{self, VarError};
-use std::io::IsTerminal;
+use std::io::{self, IsTerminal};
 
 use tracing::{Subscriber, warn};
 use tracing_subscriber::filter::{Directive, EnvFilter, LevelFilter};
@@ -21,7 +16,7 @@ use tracing_subscriber::{Layer, fmt};
 use super::timing::{REPORT_TARGET, Timings};
 
 /// The environment variable that overrides [`Options::level`], in
-/// `EnvFilter` syntax: `debug`, or `warn,motion_query=debug`.
+/// `EnvFilter` syntax such as `warn,motion_query=debug`.
 pub const ENV_VAR: &str = "MOTION_LOG";
 
 /// How log lines are written.
@@ -41,12 +36,12 @@ pub struct Options {
     pub level: LevelFilter,
     /// How each line is written.
     pub format: Format,
-    /// Whether to add up step timings; read them from [`Guard::timings`].
+    /// Whether to add up step timings, read from [`Guard::timings`].
     pub timings: bool,
 }
 
 impl Default for Options {
-    /// No log lines, as text when turned on, without timings.
+    /// Logs off, so a plain failing run prints only its `error:` line.
     fn default() -> Self {
         Self {
             level: LevelFilter::OFF,
@@ -56,10 +51,7 @@ impl Default for Options {
     }
 }
 
-/// What [`init`] installed: today, the step timings when asked for.
-///
-/// Keep it until the end of `main`, then print its
-/// [`report`](Timings::report) if there is one.
+/// What [`init`] installed; keep it until the end of `main`.
 #[derive(Debug, Default)]
 #[must_use = "the guard holds the step timings"]
 pub struct Guard {
@@ -67,18 +59,14 @@ pub struct Guard {
 }
 
 impl Guard {
-    /// The step timings, when [`Options::timings`] was on and this call
-    /// installed the subscriber.
+    /// The step timings, if asked for and this call installed the subscriber.
     pub fn timings(&self) -> Option<&Timings> {
         self.timings.as_ref()
     }
 }
 
-/// Installs the global subscriber, writing to stderr.
-///
-/// Safe to call more than once: when a subscriber is already installed (by
-/// an earlier call or by a test harness), it is kept and the returned guard
-/// has no timings.
+/// Installs the global subscriber. A subscriber installed earlier (by another
+/// call or a test harness) is kept, and the guard then has no timings.
 pub fn init(options: Options) -> Guard {
     let timings = options.timings.then(Timings::default);
     let (mut filter, rejected) = filter(options.level, env::var(ENV_VAR));
@@ -89,8 +77,8 @@ pub fn init(options: Options) -> Guard {
     let installed = subscriber(
         filter,
         options.format,
-        std::io::stderr,
-        std::io::stderr().is_terminal(),
+        io::stderr,
+        io::stderr().is_terminal(),
         timings.clone(),
     )
     .try_init();
@@ -105,8 +93,7 @@ pub fn init(options: Options) -> Guard {
     }
 }
 
-/// A value of [`ENV_VAR`] that is not a valid filter, kept until the
-/// subscriber that logs it is installed.
+/// An invalid [`ENV_VAR`] value, kept until there is a subscriber to log it.
 #[derive(Debug)]
 pub(crate) struct Rejected {
     /// The value as set, lossily decoded when it is not UTF-8.
@@ -126,38 +113,32 @@ impl Rejected {
     }
 }
 
-/// The filter from `var`, the value of [`ENV_VAR`], or just `level` when it
-/// is unset; or `level` and the rejection when it is not a valid filter.
-///
-/// The fallback lets this module's warnings through, so the rejection is
-/// shown even when `level` hides warnings.
+/// The filter from `var` (the [`ENV_VAR`] value), or from `level`. After a
+/// rejection it lets this module's warning through, whatever the level.
 pub(crate) fn filter(
     level: LevelFilter,
     var: Result<String, VarError>,
 ) -> (EnvFilter, Option<Rejected>) {
-    let builder = EnvFilter::builder().with_default_directive(level.into());
+    let fallback = || EnvFilter::default().add_directive(level.into());
     let rejected = match var {
-        Err(VarError::NotPresent) => None,
-        Ok(value) => match builder.parse(&value) {
+        Err(VarError::NotPresent) => return (fallback(), None),
+        Ok(value) => match EnvFilter::builder()
+            .with_default_directive(level.into())
+            .parse(&value)
+        {
             Ok(filter) => return (filter, None),
-            Err(e) => Some(Rejected {
+            Err(e) => Rejected {
                 value,
                 reason: e.to_string(),
-            }),
+            },
         },
-        Err(VarError::NotUnicode(value)) => Some(Rejected {
+        Err(VarError::NotUnicode(value)) => Rejected {
             value: value.to_string_lossy().into_owned(),
             reason: "not valid UTF-8".to_owned(),
-        }),
+        },
     };
-    let fallback = EnvFilter::default().add_directive(level.into());
-    match rejected {
-        None => (fallback, None),
-        Some(rejected) => (
-            fallback.add_directive(directive(module_path!(), LevelFilter::WARN)),
-            Some(rejected),
-        ),
-    }
+    let filter = fallback().add_directive(directive(module_path!(), LevelFilter::WARN));
+    (filter, Some(rejected))
 }
 
 /// The directive `{target}={level}`.
@@ -167,8 +148,7 @@ fn directive(target: &str, level: LevelFilter) -> Directive {
         .expect("a module path and a level make a valid directive")
 }
 
-/// The subscriber [`init`] installs, with the writer left open so tests can
-/// capture the lines. `ansi` colours text lines; it is on for terminals only.
+/// The subscriber [`init`] installs, with a writer that tests can capture.
 pub(crate) fn subscriber<W>(
     filter: EnvFilter,
     format: Format,
@@ -179,8 +159,7 @@ pub(crate) fn subscriber<W>(
 where
     W: for<'a> MakeWriter<'a> + Send + Sync + 'static,
 {
-    // A line per closed span shows the counts the spans carry (layers,
-    // nodes, violations) and how long each took, at the span's own level.
+    // A closed span's line shows its counts and how long it took.
     let lines = fmt::layer()
         .with_writer(writer)
         .with_ansi(ansi)
@@ -189,8 +168,7 @@ where
         Format::Text => lines.boxed(),
         Format::Json => lines.json().boxed(),
     };
-    // Each layer has its own filter: the level decides which lines are
-    // written, but the timings still see every step.
+    // The filter is the lines' own, so the timings still see every step.
     tracing_subscriber::registry()
         .with(lines.with_filter(filter))
         .with(timings.map(|timings| timings.layer()))

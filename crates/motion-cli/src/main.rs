@@ -1,26 +1,6 @@
-//! The `motion` command-line tool: the only place that prints. It holds no
-//! engine logic: every command goes through a `motion_engine::Session`,
-//! which reads, runs and writes the scene (a side branch of the pipeline,
-//! not a numbered rendering step).
-//!
-//! Commands:
-//!
-//! - `motion check <scene>` lists layout problems, then `OK n`.
-//! - `motion at <scene> <time> [ids...]` prints what is on screen at a time.
-//! - `motion edit <scene> <line>` changes the scene file, then prints its check.
-//!
-//! Exit codes: `0` when all is well, `1` when the check report has an error
-//! line, and otherwise the code of the diagnostic's kind
-//! ([`Kind::exit_code`](motion_engine::Kind::exit_code), `2` for every
-//! kind today) when the file, the time or the edit line is unusable. Output
-//! goes to stdout; failures print `error: {diagnostic}` to stderr, from here
-//! only.
-//!
-//! Logs go to stderr through `motion-telemetry`: `--log <level>` (default
-//! `off`, so a plain run's stderr is only the `error:` line; overridden by
-//! `MOTION_LOG`), `--log-format text|json`, and `--timings` for the step
-//! timings at the end: a `timings …` line, or one JSON event per step in
-//! JSON mode.
+//! The `motion` command-line tool, and the only place that prints: output to
+//! stdout; failures, logs and timings to stderr. It exits 0, 1 when a check
+//! has an error line, or a failure's [`Kind::exit_code`](motion_engine::Kind::exit_code).
 
 mod commands;
 
@@ -34,10 +14,10 @@ use tracing::info;
 
 /// Check, query and edit motion scenes.
 #[derive(Parser)]
-#[command(name = "motion", version, about)]
+#[command(name = "motion", version)]
 struct Cli {
-    /// The most verbose log level written to stderr: off, error, warn, info,
-    /// debug or trace. `MOTION_LOG` (e.g. `motion_query=debug`) overrides it.
+    /// Log level on stderr: off, error, warn, info, debug or trace.
+    /// `MOTION_LOG` (e.g. `motion_query=debug`) overrides it.
     #[arg(
         long = "log",
         value_name = "LEVEL",
@@ -45,14 +25,12 @@ struct Cli {
         global = true
     )]
     log: LevelFilter,
-    /// How log lines are written to stderr.
+    /// How log lines are written.
     #[arg(long, value_enum, default_value = "text", global = true)]
     log_format: LogFormat,
-    /// Print how long each step took to stderr, at the end: a `timings …`
-    /// line, or one event per step in JSON log mode.
+    /// Print each step's time to stderr at the end.
     #[arg(long, global = true)]
     timings: bool,
-    /// The command to run.
     #[command(subcommand)]
     command: Command,
 }
@@ -75,7 +53,6 @@ impl From<LogFormat> for Format {
     }
 }
 
-/// The commands `motion` understands.
 #[derive(Subcommand)]
 enum Command {
     /// Check a scene for problems such as layers leaving the frame; exits 1 on errors.
@@ -83,20 +60,20 @@ enum Command {
         /// Path to the scene file.
         scene: PathBuf,
     },
-    /// Show where layers are at one moment in time.
+    /// Show where layers are at one moment.
     At {
         /// Path to the scene file.
         scene: PathBuf,
-        /// The moment, as seconds or frames, for example `1.5s` or `45f`.
+        /// The moment, such as `1.5s` or `45f`.
         time: String,
-        /// Layer ids to show; every layer is shown when none are given.
+        /// Layer ids to show; all when none are given.
         ids: Vec<String>,
     },
     /// Apply an edit line such as `card fill=#FF0000` and save the scene.
     Edit {
         /// Path to the scene file.
         scene: PathBuf,
-        /// The edit line: a layer id (or `scene`) followed by `key=value` pairs.
+        /// A layer id (or `scene`) followed by `key=value` pairs.
         line: String,
     },
 }
@@ -141,7 +118,7 @@ fn main() -> ExitCode {
     };
     let code = match result {
         Ok(code) => code,
-        // The engine has already logged the diagnostic as an `error` event.
+        // The engine has already logged it.
         Err(d) => {
             eprintln!("error: {d}");
             ExitCode::from(d.kind.exit_code())
@@ -156,10 +133,8 @@ fn main() -> ExitCode {
     code
 }
 
-/// The timings as `info` events, one per step in the order of the text
-/// line: `{"stage":"parse","ms":0.4}`. One event per step keeps the JSON log
-/// stream one object per line, and the step name is a field value, so no
-/// list of steps lives here.
+/// The timings as one `info` event per step, so the JSON log stays one
+/// object per line.
 fn log_timings(timings: &Timings) {
     for (step, total) in timings.steps() {
         info!(target: REPORT_TARGET, stage = %step, ms = millis(total), "timing");

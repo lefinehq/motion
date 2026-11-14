@@ -1,10 +1,4 @@
 //! A scene being worked on: read once, compiled on demand, edited and saved.
-//!
-//! [`Session`] runs the pipeline end to end: read and parse (step 1),
-//! compile (step 2, cached until the next edit), evaluate (step 3), and the
-//! `check`, `at` and edit side branches. Each method runs its steps through
-//! the crate's `stage` wrapper one after another, never one inside another,
-//! so each step's timing is its own.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,10 +15,8 @@ use motion_scene::{FrameState, evaluate};
 
 use crate::stage::{stage, stage_ok};
 
-/// One scene document, with the results of the steps run on it so far.
-///
-/// The engine's entry point: [`open`](Session::open) a file, or
-/// [`parse`](str::parse) scene JSON that did not come from one.
+/// One scene and the results of the steps run on it. Methods run their steps
+/// one after another, never nested, so each step is timed on its own.
 #[derive(Debug)]
 pub struct Session {
     /// The file the scene was read from, and is saved to.
@@ -39,8 +31,8 @@ impl Session {
     /// Reads and parses the scene file at `path` (steps `read` and `parse`).
     ///
     /// # Errors
-    /// A [`Kind::Io`] diagnostic when the file cannot be read, or the
-    /// diagnostic of the first problem in the scene.
+    /// A [`Kind::Io`] diagnostic when the file cannot be read, or the first
+    /// problem in the scene.
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
         let path = path.into();
         let text = stage("read", || {
@@ -61,15 +53,13 @@ impl Session {
         self.doc.scene()
     }
 
-    /// The compiled scene (step `compile`), built on the first call after
-    /// opening or editing.
+    /// The compiled scene (step `compile`), built once per edit.
     pub fn graph(&self) -> &SceneGraph {
         self.graph
             .get_or_init(|| stage_ok("compile", || compile(self.doc.scene(), &ApproxTextMeasure)))
     }
 
-    /// Every node's values at `frame`, in frames from the start, possibly
-    /// fractional (step `evaluate`).
+    /// Every node's values at `frame`, possibly fractional (step `evaluate`).
     pub fn frame(&self, frame: f64) -> FrameState {
         let graph = self.graph();
         stage_ok("evaluate", || evaluate(graph, frame))
@@ -81,44 +71,36 @@ impl Session {
         stage_ok("check", || check(self.doc.scene(), graph))
     }
 
-    /// Where the layers in `ids` (every layer when empty) are at `time`,
-    /// written as seconds or frames such as `1.5s` or `45f` (steps `time`
-    /// and `at`).
+    /// Where the layers in `ids` (all when empty) are at `time`, such as
+    /// `1.5s` or `45f` (steps `time` and `at`).
     ///
     /// # Errors
-    /// A diagnostic for a time that cannot be parsed or is negative, or for
-    /// an id that is not a layer.
+    /// A diagnostic for a bad or negative time, or an id that is not a layer.
     pub fn at(&self, time: &str, ids: &[String]) -> Result<String> {
-        // Seconds need the scene's frame rate to become frames.
         let fps = self.doc.scene().fps;
         let frame = stage("time", || Ok(time.parse::<Time>()?.to_frames(fps)))?;
         let graph = self.graph();
         stage("at", || at(graph, frame, ids))
     }
 
-    /// Applies the edit `line` (step `edit`), keeps the result and returns
-    /// its check report. The file is not written until [`save`](Session::save).
+    /// Applies the edit `line` (step `edit`) and returns the new check report.
+    /// Nothing is written until [`save`](Session::save).
     ///
     /// # Errors
-    /// A diagnostic for a line that cannot be parsed or an edit whose result
-    /// is not a valid scene; the session is then left as it was.
+    /// A diagnostic for a bad line or an invalid result; the session is then
+    /// left as it was.
     pub fn edit(&mut self, line: &str) -> Result<Report> {
         self.doc = stage("edit", || apply_edit(&self.doc, &parse_edit(line)?))?;
-        // The old graph describes the old scene.
         self.graph = OnceLock::new();
         Ok(self.check())
     }
 
-    /// Writes the scene, in canonical form, back to the file it was read
-    /// from (step `save`).
-    ///
-    /// The text goes to a sibling temp file that is then renamed over the
-    /// scene. A rename is atomic, so a failed write never leaves a
-    /// half-written scene.
+    /// Writes the scene, in canonical form, back to its file (step `save`),
+    /// through a renamed temp file so a failed write never leaves half a scene.
     ///
     /// # Errors
     /// A [`Kind::Io`] diagnostic when the file cannot be written, or a
-    /// [`Kind::Missing`] one when the session was not opened from a file.
+    /// [`Kind::Missing`] one when the session has no file.
     pub fn save(&self) -> Result<()> {
         stage("save", || {
             let path = self.path.as_deref().ok_or_else(|| {
@@ -140,11 +122,7 @@ impl Session {
 impl FromStr for Session {
     type Err = Diagnostic;
 
-    /// Parses scene JSON that did not come from a file (step `parse`). Such a
-    /// session cannot be [saved](Session::save).
-    ///
-    /// # Errors
-    /// The diagnostic of the first problem in the scene.
+    /// Parses scene JSON that has no file (step `parse`), so cannot be saved.
     fn from_str(text: &str) -> Result<Self> {
         let doc = stage("parse", || parse_document(text))?;
         Ok(Self {
