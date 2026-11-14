@@ -51,7 +51,7 @@ pub struct Args {
 /// faces it has, checks its text against the stored layout, and prints the
 /// report, as JSON when asked.
 pub fn run(project: &Path, options: &ImportOptions, out: &Path, args: &Args) -> Result<ExitCode> {
-    let mut import = motion_engine::import_scene(project, options)?;
+    let mut import = motion_engine::import_scene(project, options, Some(out))?;
     write(out, &import.json)?;
     let fonts = match args.fetch_fonts {
         true => Some(fonts::for_import(out, &mut import.json, &import.texts)?),

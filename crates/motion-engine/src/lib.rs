@@ -15,6 +15,7 @@
 mod diff;
 mod fidelity;
 mod fonts;
+mod footage;
 mod geometry;
 mod import;
 mod pictures;

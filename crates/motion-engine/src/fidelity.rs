@@ -193,8 +193,11 @@ pub fn measure(sample: &Sample, work: &Path, images: bool) -> Result<Measure> {
     let options = Options {
         comp: sample.comp.clone(),
         fonts,
+        ..Options::default()
     };
-    let mut import = import_scene(&sample.project, &options).map_err(under)?;
+    // Footage is named by absolute paths, as fonts are, so the scene finds
+    // it from the work folder without a copy.
+    let mut import = import_scene(&sample.project, &options, None).map_err(under)?;
     // The sample's fonts are absolute, so the scene finds them from anywhere.
     let unset: Session = write_document(&import.json).parse().map_err(under)?;
     substitute_fonts(&mut import, unset.fonts().map_err(under)?).map_err(under)?;

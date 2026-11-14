@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use motion_format::property::LAYER;
 use serde_json::{Value as Json, json};
 
+use super::footage::{Media, file_name, media};
 use super::items::{Out, Place, Sink};
 use super::keys::{Clock, num};
 use super::report::Fate;
@@ -170,7 +171,7 @@ impl<'p> Walk<'p> {
                     }
                     None => pivot(self, out, Some("compositions it cannot find")),
                 },
-                Some((_, ItemKind::Footage(footage))) => self.footage(footage, out, pivot),
+                Some((_, ItemKind::Footage(footage))) => self.footage(footage, out, place, pivot),
                 _ => pivot(self, out, None),
             },
             LayerKind::Camera => pivot(self, out, Some("cameras")),
@@ -179,11 +180,14 @@ impl<'p> Walk<'p> {
         }
     }
 
-    /// A footage layer: a solid is a rectangle of its colour.
+    /// A footage layer: a solid is a rectangle of its colour, and a still
+    /// picture that was found an image filling the footage's size. Other
+    /// footage is a pivot, reported with why and the file's name.
     fn footage(
         &mut self,
         footage: &Footage,
         out: &mut Out,
+        place: &Place<'_>,
         pivot: impl Fn(&mut Walk<'_>, &mut Out, Option<&str>),
     ) {
         match &footage.source {
@@ -196,7 +200,31 @@ impl<'p> Walk<'p> {
                     .insert("fill".into(), super::keys::color_json(color));
                 self.mapping.count("footage: solid", Fate::Mapped);
             }
-            Source::File { .. } => pivot(self, out, Some("image and video footage")),
+            Source::File { path: Some(stored) } => match media(footage, stored, self.found) {
+                Media::Still(path) => {
+                    out.keys.insert("image".into(), json!(path));
+                    out.keys
+                        .insert("box".into(), json!([footage.width, footage.height]));
+                    self.mapping.count("footage: image", Fate::Mapped);
+                    if footage.pixel_aspect != 1.0 {
+                        self.mapping
+                            .unsupported(&place.at, "non-square pixels (drawn square)");
+                    }
+                }
+                Media::Unsupported(why) => {
+                    pivot(self, out, None);
+                    self.mapping
+                        .count(&format!("layer: {why}"), Fate::Unsupported);
+                    // The file's name last, in backticks, as fonts are named.
+                    self.mapping.unsupported(
+                        &place.at,
+                        format!("{why} (drawn as nothing) (`{}`)", file_name(stored)),
+                    );
+                }
+            },
+            Source::File { path: None } => {
+                pivot(self, out, Some("footage whose file path it cannot read"))
+            }
             Source::Placeholder => pivot(self, out, Some("missing footage")),
         }
     }

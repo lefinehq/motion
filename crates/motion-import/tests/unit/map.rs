@@ -16,6 +16,7 @@ fn imports_the_sample_with_its_report() {
     let import = imported(&Options {
         comp: None,
         fonts: vec!["fonts".into()],
+        ..Options::default()
     });
     let scene = motion_format::write_document(&import.json);
     insta::assert_snapshot!(format!("{scene}\n{}", import.mapping));

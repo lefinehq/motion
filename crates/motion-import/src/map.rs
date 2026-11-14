@@ -17,6 +17,7 @@ use serde::Serialize;
 use crate::model::{ComposedLine, Composition, Item, ItemKind, Project};
 
 mod fonts;
+mod footage;
 mod ids;
 mod items;
 mod keys;
@@ -25,6 +26,7 @@ mod report;
 mod rows;
 mod text;
 
+pub use footage::{STILL_EXTENSIONS, file_name};
 pub use report::{Counts, Finding, Mapping, Named};
 
 use ids::Ids;
@@ -39,6 +41,10 @@ pub struct Options {
     /// Font files and folders for the scene's `fonts`, relative to where the
     /// scene will be saved.
     pub fonts: Vec<String>,
+    /// The footage files found on disk: for each path the project stores,
+    /// the path an image layer names, relative to where the scene will be
+    /// saved or absolute. A still the map lacks is reported as not found.
+    pub footage: BTreeMap<String, String>,
 }
 
 /// An imported scene and what the import did.
@@ -77,7 +83,7 @@ pub struct StoredText {
 /// the import, when the scene it wrote is not a valid scene.
 pub fn import(project: &Project, options: &Options) -> Result<Import> {
     let root = root(project, options.comp.as_deref())?;
-    let mut walk = Walk::new(project);
+    let mut walk = Walk::new(project, &options.footage);
     let json = walk.scene(root, options);
     let document = read_back(&json)?;
     Ok(Import {
@@ -177,11 +183,13 @@ struct Walk<'p> {
     texts: Vec<StoredText>,
     /// The fonts the text written so far is set in, with where.
     fonts: BTreeMap<String, Vec<String>>,
+    /// The footage files found, by the path the project stores.
+    found: &'p BTreeMap<String, String>,
 }
 
 impl<'p> Walk<'p> {
-    /// A walk over `project`.
-    fn new(project: &'p Project) -> Walk<'p> {
+    /// A walk over `project`, with the footage files `found` for it.
+    fn new(project: &'p Project, found: &'p BTreeMap<String, String>) -> Walk<'p> {
         Walk {
             project,
             items: project.items.iter().map(|item| (item.id, item)).collect(),
@@ -192,6 +200,7 @@ impl<'p> Walk<'p> {
             scope: None,
             texts: Vec::new(),
             fonts: BTreeMap::new(),
+            found,
         }
     }
 

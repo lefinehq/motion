@@ -57,6 +57,7 @@ fn every_composition_imports_and_reads_back_unchanged() {
             let options = Options {
                 comp: Some(comp.clone()),
                 fonts: Vec::new(),
+                ..Default::default()
             };
             let import =
                 import(&project, &options).unwrap_or_else(|d| panic!("{name}/{comp}: {d}"));
@@ -78,6 +79,7 @@ fn every_fixture_imports_as_its_snapshot() {
         let options = Options {
             comp: Some(first),
             fonts: Vec::new(),
+            ..Default::default()
         };
         let import = import(&project, &options).expect("the composition imports");
         let scene = write_document(&import.json);
@@ -93,6 +95,7 @@ fn every_stored_text_names_a_text_layer_of_its_scope() {
             let options = Options {
                 comp: Some(comp.clone()),
                 fonts: Vec::new(),
+                ..Default::default()
             };
             let import = import(&project, &options).expect("the composition imports");
             for text in &import.texts {

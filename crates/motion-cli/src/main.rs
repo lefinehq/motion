@@ -319,7 +319,11 @@ fn main() -> ExitCode {
             json,
         } => commands::import::run(
             &project,
-            &motion_engine::ImportOptions { comp, fonts },
+            &motion_engine::ImportOptions {
+                comp,
+                fonts,
+                ..Default::default()
+            },
             &out,
             &commands::import::Args { fetch_fonts, json },
         ),

@@ -112,6 +112,7 @@ fn every_sample_composition_imports() {
             let options = Options {
                 comp: Some(comp.clone()),
                 fonts: Vec::new(),
+                ..Default::default()
             };
             match import(&project, &options) {
                 Ok(import) => {
