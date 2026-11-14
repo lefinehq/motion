@@ -21,12 +21,13 @@ mod text;
 
 use motion_format::Result;
 use motion_format::property::Prop;
-use motion_format::shorthand::RectShape;
+use motion_format::shorthand::{MatteMode, RectShape};
 use motion_raster::kurbo::{Affine, Rect, RoundedRect, Shape};
 use motion_raster::{
-    Blending, Clip, Color, DrawStyle, FillRule, Frame, Layer, Node, Paint, PathDraw,
+    Blending, Clip, Color, DrawStyle, FillRule, Frame, Layer, Matte, MatteMode as RasterMatte,
+    Node, Paint, PathDraw,
 };
-use motion_scene::{ContentState, FrameState, NodeState, SceneGraph};
+use motion_scene::{ContentState, FrameState, Node as GraphNode, NodeState, SceneGraph};
 
 /// How closely curves are flattened into the outlines this module builds
 /// from shapes, such as a rounded rectangle's corners, in pixels.
@@ -46,21 +47,55 @@ pub(crate) fn display_list(
     Ok(Frame {
         background: opaque_enough(background).then(|| color(background)),
         blending: Blending::Gamma,
-        nodes: nodes(graph, state)?,
+        nodes: nodes(graph, &graph.nodes, state)?,
     })
 }
 
-/// The layers of one canvas's nodes, back to front.
-fn nodes(graph: &SceneGraph, state: &FrameState) -> Result<Vec<Node>> {
-    state
-        .nodes
-        .iter()
-        .filter(|node| node.visible())
-        .filter_map(|node| layer(graph, node).transpose())
+/// The layers of one canvas's nodes, back to front: `list` is the canvas's
+/// compiled nodes, `state` their state at this frame.
+fn nodes(graph: &SceneGraph, list: &[GraphNode], state: &FrameState) -> Result<Vec<Node>> {
+    (0..state.nodes.len())
+        .filter(|&i| state.nodes[i].visible())
+        .filter_map(|i| matted(graph, list, state, i).transpose())
         .collect()
 }
 
-/// The layer of one visible node, or `None` when it draws nothing.
+/// The layer of node `i` of a canvas, with its matte if it has one, or
+/// `None` when it draws nothing.
+fn matted(
+    graph: &SceneGraph,
+    list: &[GraphNode],
+    state: &FrameState,
+    i: usize,
+) -> Result<Option<Node>> {
+    let Some(Node::Layer(drawn)) = layer(graph, &state.nodes[i])? else {
+        return Ok(None);
+    };
+    let Some((source, mode)) = list[i].matte else {
+        return Ok(Some(Node::Layer(drawn)));
+    };
+    // The matte layer draws into the mask whether or not it is hidden, and
+    // nothing outside its span; it may be matted in turn.
+    let matte = &state.nodes[source];
+    let source = match matte.shown {
+        true => matted(graph, list, state, source)?,
+        false => None,
+    };
+    Ok(Some(Node::Layer(Layer {
+        matte: Some(Matte {
+            source: Box::new(source.unwrap_or_else(|| Node::Layer(Layer::new(Vec::new())))),
+            mode: match mode {
+                MatteMode::Alpha => RasterMatte::Alpha,
+                MatteMode::AlphaInverted => RasterMatte::AlphaInverted,
+                MatteMode::Luma => RasterMatte::Luma,
+                MatteMode::LumaInverted => RasterMatte::LumaInverted,
+            },
+        }),
+        ..drawn
+    })))
+}
+
+/// The layer of one node without its matte, or `None` when it draws nothing.
 fn layer(graph: &SceneGraph, node: &NodeState) -> Result<Option<Node>> {
     let opacity = node.number(Prop::OPACITY) as f32;
     if opacity <= 0.0 {
@@ -81,7 +116,7 @@ fn layer(graph: &SceneGraph, node: &NodeState) -> Result<Option<Node>> {
             if opaque_enough(comp.background) {
                 children.push(fill(canvas.to_path(TOLERANCE), color(comp.background)));
             }
-            children.extend(nodes(graph, inner)?);
+            children.extend(nodes(graph, &comp.nodes, inner)?);
             children
         }
         ContentState::Comp(_, None) | ContentState::Pivot => Vec::new(),

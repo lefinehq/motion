@@ -6,13 +6,13 @@ use motion_format::{Diagnostic, Kind, Result};
 use vello_cpu::kurbo::{Affine, Rect};
 use vello_cpu::peniko::ImageAlphaType;
 use vello_cpu::{
-    Level, Pixmap, RasterizerSettings, RenderContext, RenderMode, RenderSettings, Resources,
+    Level, Mask, Pixmap, RasterizerSettings, RenderContext, RenderMode, RenderSettings, Resources,
     TargetInit,
 };
 
 use crate::effect::EffectContext;
 use crate::image::Image;
-use crate::list::{Blending, Frame, GlyphDraw, Layer, Node, PathDraw};
+use crate::list::{Blending, Frame, GlyphDraw, Layer, Matte, MatteMode, Node, PathDraw};
 use crate::style::{Color, DrawStyle};
 
 /// How the rasteriser computes colours.
@@ -99,19 +99,7 @@ pub fn render_with(
         )
         .expected("gamma blending"));
     }
-    let mut painter = Painter {
-        ctx: RenderContext::new_with(
-            w,
-            h,
-            RenderSettings {
-                level: options.level(),
-                num_threads: 0,
-            },
-        ),
-        resources: Resources::new(),
-        width: w,
-        height: h,
-    };
+    let mut painter = Painter::new(w, h, options);
     // The background is drawn as the bottom-most shape, not used to clear the
     // target: the rasteriser keeps a cleared target out of blending, and a
     // layer that multiplies must multiply with the background too.
@@ -122,17 +110,7 @@ pub fn render_with(
             .fill_rect(&Rect::new(0.0, 0.0, f64::from(w), f64::from(h)));
     }
     painter.nodes(&frame.nodes, Affine::IDENTITY)?;
-    painter.ctx.flush();
-    let mut pixmap = Pixmap::new(w, h);
-    painter.ctx.render_with(
-        &mut pixmap,
-        &mut painter.resources,
-        RasterizerSettings {
-            render_mode: options.mode(),
-            target_init: TargetInit::Clear(Color::TRANSPARENT.to_vello()),
-            ..RasterizerSettings::default()
-        },
-    );
+    let pixmap = painter.finish();
     Image::new(width, height, pixmap.take_rgba8(ImageAlphaType::Alpha))
 }
 
@@ -154,9 +132,73 @@ struct Painter {
     resources: Resources,
     width: u16,
     height: u16,
+    options: RenderOptions,
 }
 
 impl Painter {
+    /// A painter for a `width` by `height` target, drawing with `options`.
+    fn new(width: u16, height: u16, options: RenderOptions) -> Painter {
+        Painter {
+            ctx: RenderContext::new_with(
+                width,
+                height,
+                RenderSettings {
+                    level: options.level(),
+                    num_threads: 0,
+                },
+            ),
+            resources: Resources::new(),
+            width,
+            height,
+            options,
+        }
+    }
+
+    /// Renders what was drawn into a cleared pixmap of the target's size.
+    fn finish(mut self) -> Pixmap {
+        self.ctx.flush();
+        let mut pixmap = Pixmap::new(self.width, self.height);
+        self.ctx.render_with(
+            &mut pixmap,
+            &mut self.resources,
+            RasterizerSettings {
+                render_mode: self.options.mode(),
+                target_init: TargetInit::Clear(Color::TRANSPARENT.to_vello()),
+                ..RasterizerSettings::default()
+            },
+        );
+        pixmap
+    }
+
+    /// The mask `matte` makes: its source drawn on its own, in coordinates
+    /// `parent` maps to the frame, each pixel read as `matte.mode` says.
+    fn mask(&self, matte: &Matte, parent: Affine) -> Result<Mask> {
+        let mut painter = Painter::new(self.width, self.height, self.options);
+        painter.nodes(std::slice::from_ref(&*matte.source), parent)?;
+        let pixmap = painter.finish();
+        let data = pixmap
+            .data()
+            .iter()
+            .map(|pixel| {
+                // Premultiplied, so transparent pixels read as black.
+                let luma = || {
+                    let [r, g, b] = [pixel.r, pixel.g, pixel.b].map(f32::from);
+                    // Rec. 709 weights, as the CSS masking module uses.
+                    (r * 0.2126 + g * 0.7152 + b * 0.0722)
+                        .round()
+                        .clamp(0.0, 255.0) as u8
+                };
+                match matte.mode {
+                    MatteMode::Alpha => pixel.a,
+                    MatteMode::AlphaInverted => 255 - pixel.a,
+                    MatteMode::Luma => luma(),
+                    MatteMode::LumaInverted => 255 - luma(),
+                }
+            })
+            .collect();
+        Ok(Mask::from_parts(data, self.width, self.height))
+    }
+
     /// Draws `nodes` back to front, in coordinates `transform` maps to the frame.
     fn nodes(&mut self, nodes: &[Node], transform: Affine) -> Result<()> {
         nodes.iter().try_for_each(|node| match node {
@@ -180,6 +222,13 @@ impl Painter {
         if !layer.is_isolated() {
             return self.nodes(&layer.children, transform);
         }
+        // The matte is drawn in the coordinates the layer's parent gives, as
+        // the layer's siblings are; the rasteriser applies masks untransformed.
+        let mask = layer
+            .matte
+            .as_ref()
+            .map(|matte| self.mask(matte, parent))
+            .transpose()?;
         self.ctx.set_transform(transform);
         let clip = layer.clip.as_ref().map(|clip| clip.outline());
         if let Some((_, rule)) = &clip {
@@ -189,7 +238,7 @@ impl Painter {
             clip.as_ref().map(|(path, _)| path),
             Some(layer.blend.to_vello()),
             Some(layer.opacity),
-            None,
+            mask,
             None,
         );
         let drawn = self.nodes(&layer.children, transform);

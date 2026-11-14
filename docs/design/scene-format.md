@@ -63,7 +63,7 @@ Every layer can also have:
 - **`parent`:** another layer to follow
 - **`blend`:** a blend mode
 - **`mask`:** cut-out shapes, with feather and expansion
-- **`matte`:** use another layer's alpha or brightness as a stencil
+- **`matte`:** another layer of the same list whose drawing is a stencil: `"matte":"reveal alpha"` shows the layer where `reveal` is opaque. The modes are `alpha` (the default), `alpha-inverted`, `luma` and `luma-inverted`; luma reads transparency as black. The matte layer is drawn as it would be at that moment, with its transform, parents, opacity, effects, span and its own matte. Whether it is also drawn in the frame is up to its `hidden`, and a hidden layer still mattes
 - **`fx`:** a list of effects
 - **`hidden`:** `true` leaves it out of the frame but keeps it in the scene; its children still move with it
 - **`mblur`:** motion blur

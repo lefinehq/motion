@@ -48,7 +48,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","in":"zoom"}` → layers[0].in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in
 `{"id":"a","rect":"1x1","anim":null}` → layers[0].anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
 `{"id":"a","rect":"1x1","anim":[]}` → layers[0].anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
-`{"id":"a","rect":"1x1","x":1}` → layers[0].x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, position, anchor, scale, rotate, opacity
+`{"id":"a","rect":"1x1","x":1}` → layers[0].x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, matte, position, anchor, scale, rotate, opacity
 `{"id":"a","rect":"1x1","at":"1 2","position":[1,2]}` → layers[0].position: `position` and `at` both place the layer; expected one of them: "at":"540 960" places it in the parent's box, "position":[540,960] at an exact point in the parent's own coordinates
 `{"id":"a","rect":"1x1","rotate":"x"}` → layers[0].rotate: `x` is not a number; expected a number, e.g. `0.5`
 `{"id":"a","rect":"1x1","scale":[1,2,3]}` → layers[0].scale: 3 numbers do not make a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
@@ -57,6 +57,12 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","parent":"a"}` → layers[0].parent: `a` would move with itself through its parents; expected parents that never lead back to the layer
 `{"id":"a","rect":"1x1","parent":"b"},{"id":"b","rect":"1x1","parent":"a"}` → layers[0].parent: `a` would move with itself through its parents; expected parents that never lead back to the layer
 `{"id":"a","rect":"1x1","parent":3}` → layers[0].parent: invalid type: integer `3`; expected a string
+`{"id":"a","rect":"1x1","matte":"b"}` → layers[0].matte: unknown layer id `b`; expected one of a
+`{"id":"a","rect":"1x1","matte":"a"}` → layers[0].matte: `a` would be its own matte through its mattes; expected mattes that never lead back to the layer
+`{"id":"a","rect":"1x1","matte":"b"},{"id":"b","rect":"1x1","matte":"a luma"}` → layers[0].matte: `a` would be its own matte through its mattes; expected mattes that never lead back to the layer
+`{"id":"a","rect":"1x1","matte":"b sideways"},{"id":"b","rect":"1x1"}` → layers[0].matte: unknown matte mode `sideways`; expected one of alpha, alpha-inverted, luma, luma-inverted
+`{"id":"a","rect":"1x1","matte":"b alpha extra"},{"id":"b","rect":"1x1"}` → layers[0].matte: `b alpha extra` is not a valid matte; expected `<layer id> [alpha|alpha-inverted|luma|luma-inverted]`, e.g. `reveal alpha`
+`{"id":"a","rect":"1x1","matte":true}` → layers[0].matte: invalid type: boolean `true`; expected `<layer id> [alpha|alpha-inverted|luma|luma-inverted]`, e.g. `reveal alpha`
 `{"id":"a","rect":"1x1","span":"5f"}` → layers[0].span: `5f` has no `-` between start and end; expected `<start>-<end>` with a unit, e.g. `0-30f`, `0.5s-1s`; a bare start takes the end's unit
 `{"id":"a","rect":"1x1","span":"5-1f"}` → layers[0].span: `5f-1f` starts after it ends; expected `<start>-<end>` with a unit, e.g. `0-30f`, `0.5s-1s`; a bare start takes the end's unit
 `{"id":"a","rect":"1x1","offset":"-1x"}` → layers[0].offset: `-1x` is not a valid time; expected `<number>f` or `<number>s`, which may be negative, e.g. `12f` or `-0.4s`

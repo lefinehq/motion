@@ -18,7 +18,7 @@ use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
 use crate::Curve;
 use crate::anim::{EASING_EXPECTED, KEY_EXPECTED, PATH_EXPECTED, TRACK_EXPECTED};
 use crate::preset::Start;
-use crate::shorthand::{Behaviour, Font, Position, RectShape};
+use crate::shorthand::{Behaviour, Font, Matte, Position, RectShape};
 use crate::units::{Color, SignedTime, Size, Time, TimeSpan};
 
 /// The accepted form of a document value, told to a value of the wrong JSON
@@ -77,6 +77,7 @@ pub(crate) struct LayerDoc {
     pub(crate) stretch: Present<Number>,
     pub(crate) fx: Present<List<ItemsDoc>>,
     pub(crate) hidden: Present<bool>,
+    pub(crate) matte: Present<Shorthand<Matte>>,
     /// Every other key, kept as JSON until its name is checked, so an unknown
     /// key is reported as unknown whatever its value.
     #[serde(flatten)]

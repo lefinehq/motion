@@ -1,0 +1,13 @@
+{"motion":1,"size":"200x80","fps":10,"dur":"2s","bg":"#FFFFFF",
+"comps":{"card":{"size":"60x60","dur":"2s","bg":"#00000000","layers":[
+  {"id":"stripes","shapes":[{"rect":[60,10],"position":[30,10]},{"rect":[60,10],"position":[30,30]},{"rect":[60,10],"position":[30,50]},{"fill":"#FFFFFF"}],"position":[0,0],"hidden":true},
+  {"id":"face","rect":"60x60","fill":"#2E7D32","at":"30 30","matte":"stripes luma"}]}},
+"layers":[
+{"id":"word-matte","text":"HI","font":"Inter Variable 44 900","fill":"#000000","at":"40 40","hidden":true},
+{"id":"photo","rect":"70x70","fill":"#E4572E","at":"40 40","matte":"word-matte alpha"},
+{"id":"door","rect":"30x70","fill":"#000000","at":"95 40","hidden":true,"anim":{"x":"80 -> 175 @0-20f"}},
+{"id":"reveal","rect":"50x60","fill":"#3B82F6","at":"105 40","matte":"door alpha-inverted"},
+{"id":"card","comp":"card","at":"165 40"},
+{"id":"ring","shapes":[{"ellipse":[40,40]},{"fill":"#FFFFFF"}],"at":"165 40","hidden":true,"matte":"door alpha-inverted"},
+{"id":"halo","rect":"60x60","fill":"#FFE000","at":"165 40","opacity":0.6,"matte":"ring alpha"}
+]}

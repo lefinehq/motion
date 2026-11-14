@@ -22,7 +22,7 @@ mod style;
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use effect::{EFFECTS, Effect, EffectContext, EffectSpec, ParamSpec, ParamType, ParamValue};
 pub use image::Image;
-pub use list::{Blending, Clip, Frame, Glyph, GlyphDraw, Layer, Node, PathDraw};
+pub use list::{Blending, Clip, Frame, Glyph, GlyphDraw, Layer, Matte, MatteMode, Node, PathDraw};
 pub use render::{Quality, RenderOptions, Simd, render, render_with};
 pub use style::{
     CAPS, Cap, Color, Dashes, DrawStyle, FILL_RULES, FillRule, JOINS, Join, Paint, StrokeStyle,

@@ -36,11 +36,20 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
     for i in 0..nodes.len() {
         transform(nodes, &values, &mut world, i);
     }
+    // A hidden node another uses as its matte is still drawn, into the mask.
+    let mattes: Vec<bool> = (0..nodes.len())
+        .map(|i| {
+            nodes
+                .iter()
+                .any(|n| n.matte.is_some_and(|(source, _)| source == i))
+        })
+        .collect();
     let nodes = nodes
         .iter()
         .zip(values)
         .zip(world)
-        .map(|((node, values), world)| {
+        .zip(mattes)
+        .map(|(((node, values), world), matte)| {
             let local = node.timing.local(frame);
             let mut shown = node.timing.shows_at(frame);
             let content = match &node.content {
@@ -70,7 +79,7 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
                     // The node's own time, in seconds, is the composition's.
                     let inner = local * comp.fps / fps;
                     shown &= (0.0..comp.duration_frames).contains(&inner);
-                    let state = (shown && !node.hidden)
+                    let state = (shown && (!node.hidden || matte))
                         .then(|| Box::new(evaluate_comp(graph, *index, inner)));
                     ContentState::Comp(*index, state)
                 }

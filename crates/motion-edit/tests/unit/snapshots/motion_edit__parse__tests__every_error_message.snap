@@ -35,7 +35,7 @@ expression: "report.join(\"\\n\")"
 `card anim={} anim.x=1` → keys `anim` and `anim.x` overlap; set them in separate edits or merge them into one value
 `card anim.x.y=1 anim.x=2` → keys `anim.x` and `anim.x.y` overlap; set them in separate edits or merge them into one value
 `ghost fill=#FFF` → unknown layer id `ghost`; expected one of title, card
-`card colour=#FFF` → unknown layer key `colour`; expected one of id, text, rect, shapes, comp, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, position, anchor, scale, rotate, opacity
+`card colour=#FFF` → unknown layer key `colour`; expected one of id, text, rect, shapes, comp, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, matte, position, anchor, scale, rotate, opacity
 `scene colour=red` → unknown scene key `colour`; expected one of motion, size, fps, dur, bg, presets, fonts, comps, layers
 `card in.opacity=1` → cannot set `in.opacity`: `in` is not an object
 `title text=2024` → layers[0].text: invalid type: integer `2024`; expected a quoted value: `text="2024"`

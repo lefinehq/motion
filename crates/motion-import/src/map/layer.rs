@@ -16,6 +16,29 @@ use crate::model::{
     BlendMode, Child, Composition, Footage, Group, Item, ItemKind, Layer, LayerKind, Property,
     Source, TrackMatte,
 };
+use motion_format::shorthand::MatteMode;
+
+/// The scene's matte mode for a project's track matte, none without one,
+/// or the file's code for a kind the scene has no mode for.
+fn matte_mode(matte: TrackMatte) -> Result<Option<MatteMode>, u8> {
+    match matte {
+        TrackMatte::None => Ok(None),
+        TrackMatte::Alpha => Ok(Some(MatteMode::Alpha)),
+        TrackMatte::AlphaInverted => Ok(Some(MatteMode::AlphaInverted)),
+        TrackMatte::Luma => Ok(Some(MatteMode::Luma)),
+        TrackMatte::LumaInverted => Ok(Some(MatteMode::LumaInverted)),
+        TrackMatte::Other(code) => Err(code),
+    }
+}
+
+/// The id of `layer`'s matte layer: the one its file names, or in files
+/// that name none, the layer just above it.
+fn matte_layer(layer: &Layer, composition: &Composition) -> Option<u32> {
+    layer.matte_layer.or_else(|| {
+        let index = composition.layers.iter().position(|l| l.id == layer.id)?;
+        Some(composition.layers.get(index.checked_sub(1)?)?.id)
+    })
+}
 
 /// The match names of the root groups a layer's content comes from.
 const TRANSFORM_GROUP: &str = "ADBE Transform Group";
@@ -105,7 +128,7 @@ impl<'p> Walk<'p> {
                 }
             });
         self.rows(&root, &LAYER_ROOT, sink, &mut out, &place);
-        self.switches(layer, ids, &mut out, &place);
+        self.switches(layer, composition, ids, &mut out, &place);
         self.timing(layer, composition, &mut out);
         if let Some(lines) = out.lines.take() {
             self.texts.push(StoredText {
@@ -182,6 +205,7 @@ impl<'p> Walk<'p> {
     fn switches(
         &mut self,
         layer: &Layer,
+        composition: &Composition,
         ids: &HashMap<u32, String>,
         out: &mut Out,
         place: &Place<'_>,
@@ -206,8 +230,23 @@ impl<'p> Walk<'p> {
         if layer.blend_mode != BlendMode::Normal {
             unsupported(format!("the blend mode `{}`", layer.blend_mode));
         }
-        if layer.track_matte != TrackMatte::None {
-            unsupported(format!("track mattes (`{}`)", layer.track_matte));
+        let mode = match matte_mode(layer.track_matte) {
+            Ok(mode) => mode,
+            Err(code) => {
+                unsupported(format!("a track matte of an unknown kind ({code})"));
+                None
+            }
+        };
+        if let Some(mode) = mode {
+            match matte_layer(layer, composition).and_then(|id| ids.get(&id)) {
+                // The matte layer keeps its own visibility: projects switch
+                // off the layers they use as mattes, which still matte.
+                Some(id) => {
+                    out.keys
+                        .insert("matte".into(), json!(format!("{id} {}", mode.name())));
+                }
+                None => unsupported("a track matte without its matte layer".into()),
+            }
         }
     }
 

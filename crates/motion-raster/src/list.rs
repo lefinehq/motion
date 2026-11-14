@@ -48,8 +48,8 @@ pub enum Node {
 
 /// A group of nodes drawn together.
 ///
-/// A layer whose opacity is 1, whose blend mode is normal, which has no clip
-/// and no effects, and which is not marked `isolate` only moves its
+/// A layer whose opacity is 1, whose blend mode is normal, which has no clip,
+/// no effects and no matte, and which is not marked `isolate` only moves its
 /// children: it costs no extra buffer. Otherwise it is isolated: its
 /// children are drawn into a buffer of their own, so their blend modes see
 /// only each other, its effects run on that buffer in order, and the result
@@ -72,6 +72,34 @@ pub struct Layer {
     /// as a nested composition is: its children blend with each other, not
     /// with what is below it.
     pub isolate: bool,
+    /// What another layer draws, read as a stencil for this one.
+    pub matte: Option<Matte>,
+}
+
+/// A layer's matte: a node drawn in the layer's parent's coordinates, whose
+/// pixels decide how much of the layer shows at each point.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Matte {
+    /// What the matte layer draws, in the same coordinates as the layer it
+    /// mattes: the transform the layer's parent gives applies to both.
+    pub source: Box<Node>,
+    /// How the drawing is read.
+    pub mode: MatteMode,
+}
+
+/// How a matte's drawing is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatteMode {
+    /// The layer shows as much as the matte is opaque.
+    Alpha,
+    /// The layer shows as much as the matte is transparent.
+    AlphaInverted,
+    /// The layer shows as much as the matte is bright, transparency
+    /// counting as black.
+    Luma,
+    /// The layer shows as much as the matte is dark, transparency counting
+    /// as black.
+    LumaInverted,
 }
 
 impl Layer {
@@ -85,6 +113,7 @@ impl Layer {
             effects: Vec::new(),
             children,
             isolate: false,
+            matte: None,
         }
     }
 
@@ -95,6 +124,7 @@ impl Layer {
             || self.blend != BlendMode::Normal
             || self.clip.is_some()
             || !self.effects.is_empty()
+            || self.matte.is_some()
     }
 }
 

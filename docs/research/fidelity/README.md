@@ -24,11 +24,11 @@ The manifest is a JSON file, with paths relative to it:
 - `settled` is when the entrance is over, so the layout's own error is not hidden by the motion's.
 - `comp` picks the composition, `start` the scene time of the first reference frame.
 
-## The samples, 2026-11-14
+## The samples
 
 | Sample | Unsupported | Text within | Settled, failing where drawn | Biggest gap |
 |---|---|---|---|---|
-| s740 | 10 expressions, 1 matte | 2 of 3 (worst 0.59 px) | 3.6% | expressions (the first 2 s) |
-| s737 | 15 expressions, 4 mattes | 2 of 5 | 97.7% | track mattes: the layers used as mattes draw as plain white over the frame, and the title they reveal is hidden |
+| s740 | 10 expressions | 2 of 3 (worst 0.59 px) | 3.6% | expressions (the first 2 s) |
+| s737 | 15 expressions | 2 of 5 | 97.6% | expressions: the title's colours come from colour controls through expressions, and two elements are timed by them |
 
-s737 shows what one missing feature costs: until track mattes are supported, its numbers say little about anything else.
+**A correction.** The first version of this page blamed s737's numbers on its track mattes, saying their layers drew as plain white. That was wrong. The white was the full-frame solid the manifest ignores. Since mattes are supported (track mattes plan), s737's title shows in the right shape and place. But it is white where the reference's is black: its colour comes from a colour control through an expression. s737 now measures expressions more than anything else.

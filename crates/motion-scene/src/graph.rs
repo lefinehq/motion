@@ -5,7 +5,7 @@ use motion_format::property::Prop;
 use std::sync::Arc;
 
 use kurbo::Rect;
-use motion_format::shorthand::RectShape;
+use motion_format::shorthand::{MatteMode, RectShape};
 
 use crate::text::TextNode;
 use motion_format::{Value, ValueType};
@@ -177,6 +177,8 @@ pub struct Node {
     pub fx: Vec<ItemNode>,
     /// Left out of the frame; its children still move with it.
     pub hidden: bool,
+    /// The node of its own list whose drawing decides where it shows, and how.
+    pub matte: Option<(usize, MatteMode)>,
 }
 
 #[cfg(test)]

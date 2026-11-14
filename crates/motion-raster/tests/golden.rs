@@ -14,7 +14,8 @@ use motion_raster::kurbo::{Affine, BezPath, Circle, Point, Rect, Shape};
 use motion_raster::peniko::{Blob, FontData};
 use motion_raster::{
     BLEND_MODES, Cap, Clip, Color, Dashes, DrawStyle, Effect, FillRule, Frame, Glyph, GlyphDraw,
-    Image, Join, Layer, Node, ParamValue, PathDraw, RenderOptions, StrokeStyle, render_with,
+    Image, Join, Layer, Matte, MatteMode, Node, ParamValue, PathDraw, RenderOptions, StrokeStyle,
+    render_with,
 };
 
 const FONT: &[u8] = include_bytes!("fixtures/FixtureSans-Black.ttf");
@@ -224,6 +225,63 @@ fn fill_effect_recolours_a_group() {
         ..frame(vec![white(1.0, 0.0), white(0.5, 32.0)])
     };
     golden("fill_effect", &frame, 64, 36);
+}
+
+#[test]
+fn every_matte_mode() {
+    // One 32x32 cell per mode, each moved by its own transform: an orange bar
+    // the matte leaves alone, and a blue square matted by a white circle over
+    // a half-grey band, half of the circle at half opacity.
+    let modes = [
+        MatteMode::Alpha,
+        MatteMode::AlphaInverted,
+        MatteMode::Luma,
+        MatteMode::LumaInverted,
+    ];
+    let cells: Vec<Node> = modes
+        .iter()
+        .enumerate()
+        .map(|(i, mode)| {
+            let source = Layer::new(vec![
+                fill(
+                    Rect::new(2.0, 22.0, 30.0, 30.0).to_path(0.1),
+                    solid(0.5, 0.5, 0.5, 1.0),
+                ),
+                fill(
+                    Circle::new((16.0, 14.0), 9.0).to_path(0.1),
+                    solid(1.0, 1.0, 1.0, 1.0),
+                ),
+                Node::Layer(Layer {
+                    opacity: 0.5,
+                    ..Layer::new(vec![fill(
+                        Rect::new(16.0, 2.0, 30.0, 20.0).to_path(0.1),
+                        solid(1.0, 1.0, 1.0, 1.0),
+                    )])
+                }),
+            ]);
+            let matted = Layer {
+                matte: Some(Matte {
+                    source: Box::new(Node::Layer(source)),
+                    mode: *mode,
+                }),
+                ..Layer::new(vec![fill(
+                    Rect::new(2.0, 2.0, 30.0, 30.0).to_path(0.1),
+                    solid(0.1, 0.3, 0.9, 1.0),
+                )])
+            };
+            Node::Layer(Layer {
+                transform: Affine::translate((i as f64 * 32.0, 0.0)),
+                ..Layer::new(vec![
+                    fill(
+                        Rect::new(0.0, 12.0, 32.0, 18.0).to_path(0.1),
+                        solid(1.0, 0.5, 0.1, 1.0),
+                    ),
+                    Node::Layer(matted),
+                ])
+            })
+        })
+        .collect();
+    golden("matte_modes", &frame(cells), 128, 32);
 }
 
 #[test]
