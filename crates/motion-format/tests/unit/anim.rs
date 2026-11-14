@@ -7,7 +7,7 @@ use crate::ValueType;
 use crate::doc::{AnimDoc, Form};
 use crate::parse::scene_from_value;
 use crate::parse_document;
-use crate::units::TIME_EXPECTED;
+use crate::units::SIGNED_TIME_EXPECTED;
 use serde_json::{Value, json};
 
 /// The tracks of `v` as the `anim` of the second layer of a scene.
@@ -206,9 +206,8 @@ fn array_form_errors_say_what_kind_of_problem_they_are() {
             json!({"x": [["12", 0]]}),
             Kind::Syntax,
             &x0,
-            Some(TIME_EXPECTED),
+            Some(SIGNED_TIME_EXPECTED),
         ),
-        (json!({"x": [[-1, 0]]}), Kind::OutOfRange, &x0, None),
         (
             json!({"x": [[0, "a"]]}),
             Kind::Syntax,
@@ -259,6 +258,12 @@ fn array_form_errors_say_what_kind_of_problem_they_are() {
             assert_eq!(e.expected.as_deref(), Some(form), "{value}");
         }
     }
+}
+
+#[test]
+fn keys_may_fall_before_the_layers_own_zero() {
+    assert!(anim(json!({"x": [[-12, 0], ["-0.2s", 1], [0, 2]]})).is_ok());
+    assert!(anim(json!({"x": [["-0.2s", 0], [-7, 1]]})).is_err());
 }
 
 #[test]

@@ -81,7 +81,7 @@ Every animatable value of a layer is a **property**. They are listed once, in `c
 | `rotate` | number | 0 | | Rotation in degrees, clockwise. |
 | `opacity` | number | 1 | | How opaque the layer is, 0 (invisible) to 1 (solid). |
 
-**Resting values.** `at` sets where `position` rests. Any other property rests where the layer sets it, by its name as a layer key, or at the value above:
+**Resting values.** `at` sets where `position` rests, read in the parent's box. A layer may instead write `position` itself, an exact point in the parent's own coordinates, as imported scenes do; it cannot have both. Any other property rests where the layer sets it, by its name as a layer key, or at the value above:
 
 ```json
 {"id":"diamond","rect":"500x500","at":"526 1254","rotate":45,"scale":0.8,"anchor":[242,109]}
@@ -89,7 +89,7 @@ Every animatable value of a layer is a **property**. They are listed once, in `c
 
 **Components.** A track animates a whole property or one component of it: `"x"` moves only across, and `"scale"` animates both axes of scale. A property is animated whole or by its components, not both.
 
-**Parenting and time.** A layer can move with another (`"parent":"card"`): its position, rotation and scale apply on top of the parent's, while opacity stays its own. Its `at` is then read in the parent's box, so `"at":"center center"` is the middle of the parent, and `motion at` prints where its anchor lands on the canvas. `"span":"1s-16s"` sets when a layer shows, on the scene's timeline (parenting moves a layer, not its time). `"offset":"1s"` says where the layer's own time starts: its keys and its entrance are in its own time, so moving a layer later is one edit. `"stretch":2` plays its own time at half speed, and a negative stretch runs it backwards from `offset`. Speeds in `speed(...)` are per second of the layer's own time, so a stretch slows them too.
+**Parenting and time.** A layer can move with another (`"parent":"card"`): its position, rotation and scale apply on top of the parent's, while opacity stays its own. Its `at` is then read in the parent's box, so `"at":"center center"` is the middle of the parent, and `motion at` prints where its anchor lands on the canvas. `"span":"1s-16s"` sets when a layer shows, on the scene's timeline (parenting moves a layer, not its time). `"offset":"1s"` says where the layer's own time starts: its keys and its entrance are in its own time, so moving a layer later is one edit. An offset may be negative, so a layer can start partway through its own time. `"stretch":2` plays its own time at half speed, and a negative stretch runs it backwards from `offset`. Speeds in `speed(...)` are per second of the layer's own time, so a stretch slows them too.
 
 Checks measure the transformed box: the layer's box through its anchor, scale, rotation and position, and its parents'.
 
@@ -173,7 +173,7 @@ A value is written in its property's type: `0.5`, `[540, 960]` or `"#FFE000"`. A
 
 `path` holds two offsets: the handle leaving this key, from its value, and the handle arriving at the next key, from that key's value. Without it the path is straight. A point that moves in space takes one curve, which times the whole move along the path; a point that does not (`scale`) can take one curve per component, `["ease-out","linear"]`.
 
-A bare time is frames; a string such as `"1s"` carries its unit. Keys go in time order. The curve on a key leads to the next key. The last key's curve is unused. Before its first key a property holds the first value, and after its last key the last value.
+A bare time is frames; a string such as `"1s"` carries its unit. A key may fall before the layer's own zero (`-6` or `"-0.2s"`). Keys go in time order. The curve on a key leads to the next key. The last key's curve is unused. Before its first key a property holds the first value, and after its last key the last value.
 
 We store the highest level that fits. A delay or a stagger therefore stays a single value, and changing it is a single edit.
 

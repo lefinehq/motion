@@ -197,6 +197,23 @@ fn a_value_that_is_not_finite_is_not_a_number() {
 }
 
 #[test]
+fn position_sets_an_exact_point_whatever_the_parent_box() {
+    let d = doc(&scene(r#"{"id":"a","rect":"10x10","position":[-3.5,12]}"#));
+    let layer = &d.scene().layers[0];
+    use crate::Value;
+    use crate::property::Prop;
+    let shifted = kurbo::Rect::new(-40.0, -30.0, 60.0, 70.0);
+    assert_eq!(
+        layer.rest(
+            Prop::POSITION,
+            shifted,
+            kurbo::Rect::new(0.0, 0.0, 10.0, 10.0)
+        ),
+        Value::Point([-3.5, 12.0])
+    );
+}
+
+#[test]
 fn property_keys_set_resting_values_of_their_type() {
     let d = doc(&scene(
         r#"{"id":"a","rect":"10x10","rotate":45,"scale":0.8,"anchor":[0,0],"opacity":"0.5"}"#,
