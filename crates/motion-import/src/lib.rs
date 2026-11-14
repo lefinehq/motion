@@ -16,4 +16,7 @@ mod rifx;
 mod test_support;
 
 pub use decode::decode;
-pub use model::{Color, Composition, Footage, Item, ItemKind, Project, Source, Span, Version};
+pub use model::{
+    BlendMode, Color, Composition, Footage, Item, ItemKind, Layer, LayerKind, Project, Source,
+    Span, Switches, TrackMatte, Version,
+};

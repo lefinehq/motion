@@ -1,6 +1,7 @@
 //! Unit tests for `src/decode.rs`, on hand-built projects.
 
 use super::*;
+use crate::model::{BlendMode, LayerKind, TrackMatte};
 use crate::test_support::{cdta, chunk, item, list, project, record};
 
 /// A `LIST:Pin` whose `sspc` has `code` and a 100 x 50 size, then `rest`.
@@ -228,4 +229,104 @@ fn refuses_lists_nested_too_deep() {
         (error.kind, error.expected.as_deref()),
         (Kind::Invalid, Some("a shallower project"))
     );
+}
+
+/// A layer list: an `ldta` of `size` bytes with `id`, `kind`, `source` and
+/// `flags`, 200 % stretch, starting at 1 s, in at 0.5 s and out at 2 s of
+/// layer time, then `name`.
+fn layer(size: usize, id: u32, kind: u8, source: u32, flags: [u8; 3], name: &str) -> Vec<u8> {
+    let ldta = record(
+        size,
+        &[
+            (0x00, &id.to_be_bytes()),
+            (0x08, &2i32.to_be_bytes()),
+            (0x0C, &[0, 0, 2, 88, 0, 0, 2, 88]),
+            (0x14, &[0, 0, 1, 44, 0, 0, 2, 88]),
+            (0x1C, &[0, 0, 4, 176, 0, 0, 2, 88]),
+            (0x25, &flags),
+            (0x28, &source.to_be_bytes()),
+            (0x63, &[5]),
+            (0x6B, &[3]),
+            (0x6C, &1u32.to_be_bytes()),
+            (0x83, &[kind]),
+            (0x84, &id.saturating_sub(1).to_be_bytes()),
+            (size - 4, &(size as u32).to_be_bytes()),
+        ],
+    );
+    list(
+        b"Layr",
+        &[chunk(b"ldta", &ldta), chunk(b"Utf8", name.as_bytes())],
+    )
+}
+
+/// The layers of the composition that is the first item of `project`.
+fn layers(project: &Project) -> &[Layer] {
+    match project.items.first().map(|item| &item.kind) {
+        Some(ItemKind::Composition(composition)) => &composition.layers,
+        _ => panic!("a composition first"),
+    }
+}
+
+#[test]
+fn reads_layers_with_their_timing_switches_and_links() {
+    let comp = item(
+        Idta::COMPOSITION,
+        1,
+        "Main",
+        &[
+            cdta(100, 100, 24, 4),
+            layer(164, 10, 4, 0, [0x02, 0x8C, 0x41], "Shapes"),
+            layer(160, 11, 0, 2, [0, 0, 0x01], ""),
+        ],
+    );
+    let solid = item(Idta::FOOTAGE, 2, "", &[pin(b"Soli", &[solid_opti("Grey")])]);
+    let project = decoded(&project(94, &[comp, solid]));
+    let [shapes, grey] = layers(&project) else {
+        panic!("two layers")
+    };
+    assert_eq!(
+        (shapes.id, shapes.name.as_str(), shapes.kind),
+        (10, "Shapes", LayerKind::Shape)
+    );
+    assert_eq!(
+        (shapes.source, shapes.parent, shapes.matte_layer),
+        (None, Some(9), Some(164))
+    );
+    assert_eq!(
+        (
+            shapes.start_time,
+            shapes.stretch,
+            shapes.in_point,
+            shapes.out_point
+        ),
+        (1.0, 2.0, 2.0, 5.0)
+    );
+    assert_eq!(
+        (shapes.blend_mode, shapes.track_matte),
+        (BlendMode::Multiply, TrackMatte::Luma)
+    );
+    assert_eq!(
+        shapes.switches,
+        Switches {
+            enabled: true,
+            three_d: true,
+            solo: true,
+            shy: true,
+            guide: true,
+            null: true,
+            ..Switches::default()
+        }
+    );
+    assert_eq!(
+        (grey.name.as_str(), grey.source, grey.matte_layer),
+        ("Grey", Some(2), None)
+    );
+    assert_eq!(grey.kind, LayerKind::Av);
+}
+
+#[test]
+fn keeps_codes_it_does_not_know() {
+    assert_eq!(BlendMode::from(99), BlendMode::Other(99));
+    assert_eq!(BlendMode::from(0), BlendMode::Normal);
+    assert_eq!(LayerKind::from(6), LayerKind::Other(6));
 }

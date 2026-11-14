@@ -196,6 +196,75 @@ impl Cdta {
     pub const TO_END: u32 = u32::MAX;
 }
 
+/// `ldta`: a layer's id, timing, switches, blending and links
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#ldta)).
+/// The record is 160 bytes before file version 94 and 164 from it on; only
+/// the longer form stores a track matte layer.
+#[derive(BinRead, Debug)]
+pub(crate) struct Ldta {
+    /// The layer id.
+    pub id: u32,
+    /// Stretch dividend; the divisor is [`Ldta::stretch_den`].
+    #[br(seek_before = at(0x08))]
+    pub stretch_num: i32,
+    /// Where the layer's time 0 falls, in composition time.
+    pub start: Ratio<i32>,
+    /// In point, in layer time.
+    pub in_point: Ratio<i32>,
+    /// Out point, in layer time.
+    pub out_point: Ratio<i32>,
+    /// Layer flags A, B and C; the masks are [`Ldta::GUIDE`] and the others.
+    #[br(seek_before = at(0x25))]
+    pub flags: [u8; 3],
+    /// The source item's id; 0 or `u32::MAX` for none.
+    pub source: u32,
+    /// The blending mode's code.
+    #[br(seek_before = at(0x63))]
+    pub blend_mode: u8,
+    /// The track matte type's code.
+    #[br(seek_before = at(0x6B))]
+    pub track_matte: u8,
+    /// Stretch divisor.
+    pub stretch_den: u32,
+    /// The layer type's code.
+    #[br(seek_before = at(0x83))]
+    pub kind: u8,
+    /// The parent layer's id; 0 for none.
+    pub parent: u32,
+    /// The track matte layer's id, in the 164-byte form; 0 for none.
+    #[br(seek_before = at(0xA0), try)]
+    pub matte_layer: Option<u32>,
+}
+
+impl Record for Ldta {
+    const NAME: Name = Name::chunk(b"ldta");
+}
+
+/// The switches of [`Ldta::flags`], each a flag byte's index and mask.
+impl Ldta {
+    /// Guide layer, in flags A.
+    pub const GUIDE: (usize, u8) = (0, 0x02);
+    /// Adjustment layer, in flags B.
+    pub const ADJUSTMENT: (usize, u8) = (1, 0x02);
+    /// 3D layer, in flags B.
+    pub const THREE_D: (usize, u8) = (1, 0x04);
+    /// Solo, in flags B.
+    pub const SOLO: (usize, u8) = (1, 0x08);
+    /// Null layer, in flags B.
+    pub const NULL: (usize, u8) = (1, 0x80);
+    /// Video enabled, in flags C.
+    pub const ENABLED: (usize, u8) = (2, 0x01);
+    /// Motion blur, in flags C.
+    pub const MOTION_BLUR: (usize, u8) = (2, 0x08);
+    /// Shy, in flags C.
+    pub const SHY: (usize, u8) = (2, 0x40);
+
+    /// Whether the switch at `(byte, mask)` is on.
+    pub fn is_on(&self, (byte, mask): (usize, u8)) -> bool {
+        self.flags.get(byte).is_some_and(|flags| flags & mask != 0)
+    }
+}
+
 /// `sspc`: a footage source's cached media settings
 /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#sspc)).
 /// The fields motion reads sit at the same offsets in the 222-byte form and in

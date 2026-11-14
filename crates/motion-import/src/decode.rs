@@ -5,13 +5,16 @@
 //! every chunk the scan passes over is counted in [`Project::skipped`].
 
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use motion_format::{Diagnostic, Kind, Result};
 
-use crate::model::{Color, Composition, Footage, Item, ItemKind, Project, Source, Span, Version};
+use crate::model::{
+    Color, Composition, Footage, Item, ItemKind, Layer, Project, Source, Span, Switches, Version,
+};
 use crate::record::{
-    self, Alias, Cdta, Head, Idta, Nhed, PlaceholderOpti, Record, SolidOpti, Sspc, text,
+    self, Alias, Cdta, Head, Idta, Ldta, Nhed, PlaceholderOpti, Ratio, Record, SolidOpti, Sspc,
+    text,
 };
 use crate::rifx::{self, Chunk, Name};
 
@@ -21,6 +24,8 @@ const FOLD: Name = Name::list(b"Fold");
 const ITEM: Name = Name::list(b"Item");
 /// A folder's contents.
 const SFDR: Name = Name::list(b"Sfdr");
+/// One layer of a composition.
+const LAYR: Name = Name::list(b"Layr");
 /// A footage source.
 const PIN: Name = Name::list(b"Pin ");
 /// A file path, around its `alas`.
@@ -56,7 +61,8 @@ pub fn decode(file: &[u8]) -> Result<Project> {
     decoder.wrapped_text.set(head.major >= Head::WRAPPED_TEXT);
     let depth = scan.optional::<Nhed>()?.map(|nhed| nhed.depth);
     let mut fold = scan.require_list(FOLD)?;
-    let items = decoder.items(&mut fold, None)?;
+    let mut items = decoder.items(&mut fold, None)?;
+    name_layers(&mut items);
     drop((fold, scan));
     Ok(Project {
         version: Version {
@@ -67,6 +73,26 @@ pub fn decode(file: &[u8]) -> Result<Project> {
         items,
         skipped: decoder.skipped.into_inner(),
     })
+}
+
+/// Gives each layer without a name of its own the name of the item it shows.
+fn name_layers(items: &mut [Item]) {
+    let names: HashMap<u32, String> = items.iter().map(|i| (i.id, i.name.clone())).collect();
+    items
+        .iter_mut()
+        .filter_map(|item| match &mut item.kind {
+            ItemKind::Composition(composition) => Some(&mut composition.layers),
+            _ => None,
+        })
+        .flatten()
+        .filter(|layer| layer.name.is_empty())
+        .for_each(|layer| {
+            layer.name = layer
+                .source
+                .and_then(|id| names.get(&id))
+                .cloned()
+                .unwrap_or_default();
+        });
 }
 
 /// What the whole walk shares.
@@ -153,6 +179,48 @@ impl Decoder {
                     _ => cdta.work_end.value(),
                 },
             },
+            layers: scan
+                .lists(LAYR)
+                .map(|layer| self.layer(layer?))
+                .collect::<Result<_>>()?,
+        })
+    }
+
+    /// One layer: its record and its name
+    /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#ldta)).
+    fn layer(&self, mut scan: Scan<'_, '_>) -> Result<Layer> {
+        let ldta: Ldta = scan.record()?;
+        let name = scan.find(UTF8).map(|c| text(c.body)).unwrap_or_default();
+        let stretch = Ratio {
+            num: ldta.stretch_num,
+            den: ldta.stretch_den,
+        }
+        .value();
+        let start_time = ldta.start.value();
+        let id = |id: u32| (id != 0 && id != u32::MAX).then_some(id);
+        Ok(Layer {
+            id: ldta.id,
+            name,
+            kind: ldta.kind.into(),
+            source: id(ldta.source),
+            parent: id(ldta.parent),
+            in_point: start_time + ldta.in_point.value() * stretch,
+            out_point: start_time + ldta.out_point.value() * stretch,
+            start_time,
+            stretch,
+            switches: Switches {
+                enabled: ldta.is_on(Ldta::ENABLED),
+                three_d: ldta.is_on(Ldta::THREE_D),
+                solo: ldta.is_on(Ldta::SOLO),
+                shy: ldta.is_on(Ldta::SHY),
+                guide: ldta.is_on(Ldta::GUIDE),
+                motion_blur: ldta.is_on(Ldta::MOTION_BLUR),
+                null: ldta.is_on(Ldta::NULL),
+                adjustment: ldta.is_on(Ldta::ADJUSTMENT),
+            },
+            blend_mode: ldta.blend_mode.into(),
+            track_matte: ldta.track_matte.into(),
+            matte_layer: ldta.matte_layer.and_then(id),
         })
     }
 

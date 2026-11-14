@@ -83,6 +83,210 @@ pub struct Composition {
     pub background: Color,
     /// The part of the composition that renders by default.
     pub work_area: Span,
+    /// The layers, top first.
+    pub layers: Vec<Layer>,
+}
+
+/// One layer of a composition.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Layer {
+    /// The file's id, which parent and matte links refer to.
+    pub id: u32,
+    /// The name shown for the layer; its source item's when it has none.
+    pub name: String,
+    /// What sort of layer it is.
+    pub kind: LayerKind,
+    /// The id of the item it shows, if any.
+    pub source: Option<u32>,
+    /// The id of its parent layer, if any.
+    pub parent: Option<u32>,
+    /// When it starts showing, in composition seconds.
+    pub in_point: f64,
+    /// When it stops showing, in composition seconds.
+    pub out_point: f64,
+    /// Where its own time 0 falls, in composition seconds.
+    pub start_time: f64,
+    /// How fast its own time runs against the composition's: 2 plays at half
+    /// speed, a negative value plays backwards.
+    pub stretch: f64,
+    /// Its on-off switches.
+    pub switches: Switches,
+    /// How it blends with the layers below.
+    pub blend_mode: BlendMode,
+    /// How it uses its track matte.
+    pub track_matte: TrackMatte,
+    /// The id of its track matte layer, in files that store one; older files
+    /// use the layer above.
+    pub matte_layer: Option<u32>,
+}
+
+/// A layer's switches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+pub struct Switches {
+    /// It renders.
+    pub enabled: bool,
+    /// It is a 3D layer.
+    pub three_d: bool,
+    /// It is soloed.
+    pub solo: bool,
+    /// It is hidden from the timeline when shy layers are hidden.
+    pub shy: bool,
+    /// It is a guide, which does not render.
+    pub guide: bool,
+    /// It has motion blur.
+    pub motion_blur: bool,
+    /// It is a null: a layer that only carries a transform.
+    pub null: bool,
+    /// It is an adjustment layer, applying its effects to the layers below.
+    pub adjustment: bool,
+}
+
+/// Declares a unit enum read from one of the file's numeric codes: the
+/// variants are the table, and `Other` keeps a code the reader does not know.
+macro_rules! coded {
+    (
+        $(#[$meta:meta])*
+        pub enum $name:ident: $code:ty {
+            $($(#[$doc:meta])* $variant:ident = $pattern:pat,)*
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+        #[serde(rename_all = "snake_case")]
+        pub enum $name {
+            $($(#[$doc])* $variant,)*
+            /// A code this reader does not know yet.
+            Other($code),
+        }
+
+        impl From<$code> for $name {
+            fn from(code: $code) -> Self {
+                match code {
+                    $($pattern => Self::$variant,)*
+                    other => Self::Other(other),
+                }
+            }
+        }
+    };
+}
+
+coded! {
+    /// What sort of layer it is
+    /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#ldta), 0x83).
+    pub enum LayerKind: u8 {
+        /// Footage, a solid, a composition, a null or an adjustment layer.
+        Av = 0,
+        /// A light.
+        Light = 1,
+        /// A camera.
+        Camera = 2,
+        /// Text.
+        Text = 3,
+        /// Vector shapes.
+        Shape = 4,
+        /// A 3D model.
+        Model = 5,
+        /// A parametric mesh.
+        Mesh = 7,
+    }
+}
+
+coded! {
+    /// How a layer blends with the layers below
+    /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#ldta), 0x63).
+    pub enum BlendMode: u8 {
+        /// Normal; cameras and lights store 0.
+        Normal = 0 | 2,
+        /// Dissolve.
+        Dissolve = 3,
+        /// Add.
+        Add = 4,
+        /// Multiply.
+        Multiply = 5,
+        /// Screen.
+        Screen = 6,
+        /// Overlay.
+        Overlay = 7,
+        /// Soft light.
+        SoftLight = 8,
+        /// Hard light.
+        HardLight = 9,
+        /// Darken.
+        Darken = 10,
+        /// Lighten.
+        Lighten = 11,
+        /// Classic difference.
+        ClassicDifference = 12,
+        /// Hue.
+        Hue = 13,
+        /// Saturation.
+        Saturation = 14,
+        /// Colour.
+        Color = 15,
+        /// Luminosity.
+        Luminosity = 16,
+        /// Stencil alpha.
+        StencilAlpha = 17,
+        /// Stencil luma.
+        StencilLuma = 18,
+        /// Silhouette alpha.
+        SilhouetteAlpha = 19,
+        /// Silhouette luma.
+        SilhouetteLuma = 20,
+        /// Luminescent premultiply.
+        LuminescentPremultiply = 21,
+        /// Alpha add.
+        AlphaAdd = 22,
+        /// Classic colour dodge.
+        ClassicColorDodge = 23,
+        /// Classic colour burn.
+        ClassicColorBurn = 24,
+        /// Exclusion.
+        Exclusion = 25,
+        /// Difference.
+        Difference = 26,
+        /// Colour dodge.
+        ColorDodge = 27,
+        /// Colour burn.
+        ColorBurn = 28,
+        /// Linear dodge.
+        LinearDodge = 29,
+        /// Linear burn.
+        LinearBurn = 30,
+        /// Linear light.
+        LinearLight = 31,
+        /// Vivid light.
+        VividLight = 32,
+        /// Pin light.
+        PinLight = 33,
+        /// Hard mix.
+        HardMix = 34,
+        /// Lighter colour.
+        LighterColor = 35,
+        /// Darker colour.
+        DarkerColor = 36,
+        /// Subtract.
+        Subtract = 37,
+        /// Divide.
+        Divide = 38,
+    }
+}
+
+coded! {
+    /// How a layer uses its track matte
+    /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#ldta), 0x6B).
+    pub enum TrackMatte: u8 {
+        /// No matte.
+        None = 0,
+        /// The matte's alpha.
+        Alpha = 1,
+        /// The matte's alpha, inverted.
+        AlphaInverted = 2,
+        /// The matte's luminance.
+        Luma = 3,
+        /// The matte's luminance, inverted.
+        LumaInverted = 4,
+    }
 }
 
 /// A time range in seconds.
