@@ -22,8 +22,8 @@ expression: "report.join(\"\\n\")"
 `a fill=` → missing value for `fill`; expected `fill=<value>`, or `fill=""` for an empty string
 `a text="open` → unclosed quote in `text="open`; expected a closing `"`
 `a x="b"c` → unexpected text after the closing quote in `x="b"c`; expected a space after the quote, or the whole value quoted
-`a text="a\nb"` → unknown escape `\n` in a quoted value; expected `\"` or `\\`
-`a text="a\` → dangling `\` at the end of a quoted value; expected `\"` or `\\`
+`a text="a\qb"` → unknown escape `\q` in a quoted value; expected `\"`, `\\`, `\n` or `\t`
+`a text="a\` → dangling `\` at the end of a quoted value; expected `\"`, `\\`, `\n` or `\t`
 `a x=[1, 2` → unclosed `[` in `x=[1, 2`; expected `<key>=[…]` or `<key>={…}`, valid JSON
 `a x={"a":1` → unclosed `{` in `x={"a":1`; expected `<key>=[…]` or `<key>={…}`, valid JSON
 `a x=[1,]` → invalid JSON in `x`: trailing comma at line 1 column 4; expected `<key>=[…]` or `<key>={…}`, valid JSON

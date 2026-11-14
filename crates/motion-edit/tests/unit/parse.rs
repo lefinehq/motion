@@ -58,7 +58,7 @@ fn parses_targets_keys_and_typed_values() {
     r#"a text="open"#,
     Problem::UnclosedQuote { key: "text", rest: r#""open"# }
 )]
-#[case::unknown_escape(r#"a text="a\nb""#, Problem::Escape('n'))]
+#[case::unknown_escape(r#"a text="a\qb""#, Problem::Escape('q'))]
 #[case::dangling_escape(r#"a text="a\"#, Problem::DanglingEscape)]
 #[case::empty_segment_inside("a anim..x=1", Problem::InvalidKey("anim..x"))]
 #[case::empty_first_segment("a .x=1", Problem::InvalidKey(".x"))]
@@ -76,6 +76,9 @@ fn syntax_errors_name_their_problem(#[case] line: &str, #[case] problem: Problem
 
 #[rstest]
 #[case::backslash_escape_gives_one_backslash(r#"a text="C:\\dir""#, json!("C:\\dir"))]
+#[case::newline_escape(r#"a text="Make\nit move""#, json!("Make\nit move"))]
+#[case::tab_escape(r#"a text="a\tb""#, json!("a\tb"))]
+#[case::escaped_backslash_before_n(r#"a text="a\\nb""#, json!("a\\nb"))]
 #[case::escaped_quote_does_not_end_the_string_or_split_the_word(
     r#"a text="say \"hi there\" now""#,
     json!("say \"hi there\" now")
@@ -294,8 +297,13 @@ mod round_trips {
 
     proptest! {
         #[test]
-        fn quoted_text_reads_back_as_the_same_string(key in KEY, text in ".*") {
-            let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
+        fn quoted_text_reads_back_as_the_same_string(key in KEY, text in "(?s).*") {
+            let escaped = ESCAPES
+                .iter()
+                .fold(text.replace('\\', "\\\\"), |text, &(written, meant)| match meant {
+                    '\\' => text,
+                    _ => text.replace(meant, &format!("\\{written}")),
+                });
             let change = only_change(&format!("card {key}=\"{escaped}\""));
             prop_assert_eq!(change.key.as_str(), key.as_str());
             prop_assert_eq!(change.value, EditValue::Set(Value::String(text)));
@@ -349,7 +357,7 @@ fn every_error_message() {
         "a fill=",
         r#"a text="open"#,
         r#"a x="b"c"#,
-        r#"a text="a\nb""#,
+        r#"a text="a\qb""#,
         r#"a text="a\"#,
         "a x=[1, 2",
         r#"a x={"a":1"#,

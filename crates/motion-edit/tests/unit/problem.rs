@@ -28,7 +28,7 @@ fn every_problem_is_a_syntax_error_with_an_expected_form() {
             key: "x",
             text: "\"a\"b",
         },
-        Problem::Escape('n'),
+        Problem::Escape('q'),
         Problem::DanglingEscape,
         Problem::UnclosedJson {
             key: "x",
