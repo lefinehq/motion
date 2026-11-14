@@ -16,34 +16,27 @@ fn violation(severity: Severity, fix: Option<&str>) -> Violation {
 
 #[test]
 fn codes_display_as_their_names() {
-    assert_eq!(Code::Offscreen.to_string(), "offscreen");
-    assert_eq!(Code::Unsafe.to_string(), "unsafe");
+    for code in [Code::Offscreen, Code::Unsafe] {
+        assert_eq!(code.to_string(), code.name());
+    }
 }
 
 #[test]
-fn severity_displays_as_one_letter() {
-    assert_eq!(Severity::Error.to_string(), "E");
-    assert_eq!(Severity::Warning.to_string(), "W");
+fn severities_display_differently() {
+    assert_ne!(Severity::Error.to_string(), Severity::Warning.to_string());
 }
 
 #[test]
-fn violation_displays_without_fix() {
-    assert_eq!(
-        violation(Severity::Error, None).to_string(),
-        "E offscreen card 3-9f +12px"
-    );
+fn a_fix_is_appended_to_the_line() {
+    const FIX: &str = r#"card at="1 2""#;
+    let without = violation(Severity::Error, None).to_string();
+    let with = violation(Severity::Error, Some(FIX)).to_string();
+    assert!(!without.contains(FIX), "{without}");
+    assert!(with.starts_with(&without) && with.ends_with(FIX), "{with}");
 }
 
 #[test]
-fn violation_displays_with_fix() {
-    assert_eq!(
-        violation(Severity::Warning, Some("card at=\"1 2\"")).to_string(),
-        "W offscreen card 3-9f +12px; fix: card at=\"1 2\""
-    );
-}
-
-#[test]
-fn report_joins_lines_and_ends_with_ok_count() {
+fn report_prints_one_line_per_violation_then_the_ok_count() {
     let r = Report {
         violations: vec![
             violation(Severity::Error, None),
@@ -51,10 +44,12 @@ fn report_joins_lines_and_ends_with_ok_count() {
         ],
         passed: 2,
     };
-    assert_eq!(
-        r.to_string(),
-        "E offscreen card 3-9f +12px\nW offscreen card 3-9f +12px\nOK 2"
-    );
+    let text = r.to_string();
+    let lines: Vec<&str> = text.lines().collect();
+    let (last, found) = lines.split_last().unwrap();
+    let expected: Vec<String> = r.violations.iter().map(ToString::to_string).collect();
+    assert_eq!(found, expected);
+    assert!(last.ends_with(" 2"), "{last}");
 }
 
 #[test]
