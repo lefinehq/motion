@@ -3,7 +3,7 @@
 //!
 //! # Adding a rule
 //!
-//! 1. Add a [`Code`] variant and its name in `report.rs`.
+//! 1. Add a [`Code`] variant in `report.rs`; its name is the variant's, in snake case.
 //! 2. Write `rules/<name>.rs` with a `pub(super) const RULE: Rule`.
 //! 3. Add it to [`RULES`], whose order is the report's order.
 //! 4. If it would only repeat a bigger problem, set `suppressed_by` to a rule listed earlier.
@@ -12,6 +12,7 @@
 mod bounds;
 
 use crate::report::{Code, Severity};
+use kurbo::{Rect, Vec2};
 use motion_format::property::Prop;
 use motion_scene::NodeState;
 use motion_scene::SceneGraph;
@@ -35,7 +36,7 @@ pub(crate) struct Rule {
     pub evaluate: fn(&NodeState, &SceneGraph) -> Option<Overshoot>,
     /// `(area, aim)`: the rule's area and the one its fix hint aims at, which may be
     /// stricter so one edit clears later rules too.
-    pub areas: fn(&SceneGraph) -> (Area, Area),
+    pub areas: fn(&SceneGraph) -> (Rect, Rect),
 }
 
 /// Every rule, in report order.
@@ -52,15 +53,12 @@ pub(crate) fn visible(node: &NodeState) -> bool {
     node.get(Prop::OPACITY) > INVISIBLE
 }
 
-/// An axis-aligned rectangle as `(left, top, right, bottom)`.
-pub(crate) type Area = (f64, f64, f64, f64);
-
 /// How far `node`'s drawn box leaves `area`. An axis on which the box is larger is
 /// deliberate bleed (a full-bleed background), so it is not measured.
-pub(super) fn overshoot(node: &NodeState, area: Area) -> Option<Overshoot> {
-    let (left, top, right, bottom) = node.bounds();
-    let x = axis_amount(left, right, (area.0, area.2));
-    let y = axis_amount(top, bottom, (area.1, area.3));
+pub(super) fn overshoot(node: &NodeState, area: Rect) -> Option<Overshoot> {
+    let b = node.bounds();
+    let x = axis_amount(b.x0, b.x1, (area.x0, area.x1));
+    let y = axis_amount(b.y0, b.y1, (area.y0, area.y1));
     let amount = [x, y].into_iter().flatten().max_by(f64::total_cmp)?;
     Some(Overshoot { amount })
 }
@@ -74,12 +72,12 @@ fn axis_amount(lo: f64, hi: f64, area: (f64, f64)) -> Option<f64> {
     (amount > EPSILON).then_some(amount)
 }
 
-/// The move `(dx, dy)` that clamps `sweep`, the box a node covers over its visible
-/// frames, into `aim`, else into `area`, else nowhere, axis by axis.
-pub(crate) fn shift(sweep: Area, area: Area, aim: Area) -> (f64, f64) {
-    (
-        axis_shift((sweep.0, sweep.2), (area.0, area.2), (aim.0, aim.2)),
-        axis_shift((sweep.1, sweep.3), (area.1, area.3), (aim.1, aim.3)),
+/// The move that clamps `sweep`, the box a node covers over its visible frames,
+/// into `aim`, else into `area`, else nowhere, axis by axis.
+pub(crate) fn shift(sweep: Rect, area: Rect, aim: Rect) -> Vec2 {
+    Vec2::new(
+        axis_shift((sweep.x0, sweep.x1), (area.x0, area.x1), (aim.x0, aim.x1)),
+        axis_shift((sweep.y0, sweep.y1), (area.y0, area.y1), (aim.y0, aim.y1)),
     )
 }
 

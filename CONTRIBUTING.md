@@ -34,6 +34,18 @@ Tests check an error's `kind`, `path` and `expected`, not its wording. Each crat
 - **Licences and advisories:** `cargo install cargo-deny --locked`, then `cargo deny check`. The policy is in `deny.toml`: permissive licences only.
 - **Property tests:** `proptest` checks that every parser of user text never panics on arbitrary strings, and that printing then parsing gives back the same value.
 - **Snapshot tests:** `insta` is for tests of text output. Run `cargo insta review` (from `cargo install cargo-insta`) to accept or reject changed snapshots, and commit the `.snap` files.
+- **Tests:** CI runs `cargo nextest run --workspace` (from `cargo install cargo-nextest`), then `cargo test --workspace --doc` for the doctests. A test that runs one check over several inputs is one `#[rstest]` with a `#[case]` per input. Test files that compare large values use `pretty_assertions::assert_eq`.
+- **Hygiene:** `typos` checks spelling (chunk tags and codes are allowed in `_typos.toml`), `taplo fmt --check` checks TOML formatting, and `cargo machete` finds unused dependencies.
+
+## Standard crates
+
+Reach for these before writing an impl by hand:
+
+- **`strum`:** enum names: `Display`, `FromStr`, a list of every variant.
+- **`derive_more`:** boilerplate `Display`, `From`, `Deref` and constructors.
+- **`kurbo`:** geometry: `Rect`, `Point`, `Vec2`, `Affine`. It is also the geometry Vello draws with.
+
+A hand-written impl is for real logic only.
 
 ## How errors work
 

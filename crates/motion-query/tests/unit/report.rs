@@ -1,6 +1,7 @@
 //! Unit tests for `src/report.rs`.
 
 use super::*;
+use rstest::rstest;
 
 fn violation(severity: Severity, fix: Option<&str>) -> Violation {
     Violation {
@@ -14,11 +15,11 @@ fn violation(severity: Severity, fix: Option<&str>) -> Violation {
     }
 }
 
-#[test]
-fn codes_display_as_their_names() {
-    for code in [Code::Offscreen, Code::Unsafe] {
-        assert_eq!(code.to_string(), code.name());
-    }
+#[rstest]
+#[case(Code::Offscreen, "offscreen")]
+#[case(Code::Unsafe, "unsafe")]
+fn codes_display_as_their_names(#[case] code: Code, #[case] name: &str) {
+    assert_eq!(code.to_string(), name);
 }
 
 #[test]

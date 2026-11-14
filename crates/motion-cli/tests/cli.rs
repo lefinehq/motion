@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use motion_engine::{Diagnostic, Session};
+use pretty_assertions::assert_eq;
+use rstest::rstest;
 
 const LAUNCH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/launch.json");
 const OFFSCREEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/offscreen.json");
@@ -122,18 +124,13 @@ fn at_without_ids_prints_every_node() {
     assert!(text.contains("title") && text.contains("card"), "{text}");
 }
 
-#[test]
-fn at_unknown_id_exits_two() {
-    let out = motion(&["at", LAUNCH, "1s", "nope"]);
-    assert_eq!(stderr(&out), error_line(&at_error("1s", &["nope"])));
+#[rstest]
+#[case::unknown_id("1s", "nope")]
+#[case::bad_time("soon", "title")]
+fn a_failing_at_exits_two(#[case] time: &str, #[case] id: &str) {
+    let out = motion(&["at", LAUNCH, time, id]);
     assert_eq!(out.status.code(), Some(2));
-}
-
-#[test]
-fn at_bad_time_exits_two() {
-    let out = motion(&["at", LAUNCH, "soon", "title"]);
-    assert_eq!(out.status.code(), Some(2));
-    assert_eq!(stderr(&out), error_line(&at_error("soon", &["title"])));
+    assert_eq!(stderr(&out), error_line(&at_error(time, &[id])));
 }
 
 #[test]
@@ -237,19 +234,16 @@ fn a_failure_is_logged_once_before_the_error_line() {
     assert!(lines[1].starts_with("error: "), "{text}");
 }
 
-#[test]
-fn a_plain_failing_run_prints_exactly_one_error_line() {
-    for args in [
-        &["at", LAUNCH, "1s", "nope"][..],
-        &["at", LAUNCH, "soon"],
-        &["check", "/definitely/not/here.json"],
-    ] {
-        let out = motion(args);
-        let text = stderr(&out);
-        let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(lines.len(), 1, "{args:?}: {text}");
-        assert!(lines[0].starts_with("error: "), "{args:?}: {text}");
-    }
+#[rstest]
+#[case::unknown_id(&["at", LAUNCH, "1s", "nope"])]
+#[case::bad_time(&["at", LAUNCH, "soon"])]
+#[case::missing_file(&["check", "/definitely/not/here.json"])]
+fn a_plain_failing_run_prints_exactly_one_error_line(#[case] args: &[&str]) {
+    let out = motion(args);
+    let text = stderr(&out);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 1, "{text}");
+    assert!(lines[0].starts_with("error: "), "{text}");
 }
 
 #[test]
@@ -281,25 +275,22 @@ fn an_invalid_motion_log_is_one_warning_then_the_level() {
     );
 }
 
-#[test]
-fn json_logs_leave_stdout_unchanged() {
-    for args in [
-        &["check", LAUNCH][..],
-        &["check", OFFSCREEN],
-        &["at", LAUNCH, "1s"],
-        &["at", LAUNCH, "1s", "nope"],
-    ] {
-        let plain = motion(args);
-        let logged = motion(&[&["--log", "debug", "--log-format", "json"], args].concat());
-        assert_eq!(logged.stdout, plain.stdout, "{args:?}");
-        assert_eq!(logged.status.code(), plain.status.code(), "{args:?}");
-        let text = stderr(&logged);
-        let logs: Vec<&str> = text.lines().filter(|l| !l.starts_with("error: ")).collect();
-        assert!(!logs.is_empty(), "{args:?}: {text}");
-        for line in logs {
-            let event: serde_json::Value = serde_json::from_str(line).expect(line);
-            assert!(event["level"].is_string(), "{line}");
-        }
+#[rstest]
+#[case::clean_check(&["check", LAUNCH])]
+#[case::failing_check(&["check", OFFSCREEN])]
+#[case::at(&["at", LAUNCH, "1s"])]
+#[case::failing_at(&["at", LAUNCH, "1s", "nope"])]
+fn json_logs_leave_stdout_unchanged(#[case] args: &[&str]) {
+    let plain = motion(args);
+    let logged = motion(&[&["--log", "debug", "--log-format", "json"], args].concat());
+    assert_eq!(logged.stdout, plain.stdout);
+    assert_eq!(logged.status.code(), plain.status.code());
+    let text = stderr(&logged);
+    let logs: Vec<&str> = text.lines().filter(|l| !l.starts_with("error: ")).collect();
+    assert!(!logs.is_empty(), "{text}");
+    for line in logs {
+        let event: serde_json::Value = serde_json::from_str(line).expect(line);
+        assert!(event["level"].is_string(), "{line}");
     }
 }
 

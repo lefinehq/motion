@@ -2,6 +2,7 @@
 
 use super::*;
 use motion_format::property::Prop;
+use rstest::rstest;
 
 fn graph(json: &str) -> SceneGraph {
     crate::compile(
@@ -13,28 +14,25 @@ fn graph(json: &str) -> SceneGraph {
 /// A 100x100 rect centred at y=700 with a linear 12-frame entrance from frame 15.
 const LIN: &str = r#"{"motion":1,"dur":"2s","layers":[{"id":"c","rect":"100x100","at":"center 700","in":"fade-up 60px 12f linear @15f"}]}"#;
 
-#[test]
-fn hidden_and_offset_before_the_entrance() {
-    let n = &evaluate(&graph(LIN), 0.0).nodes[0];
-    assert_eq!((n.get(Prop::OPACITY), n.get(Prop::Y)), (0.0, 760.0));
+/// Hidden and offset before the entrance, interpolated during it, then settled.
+#[rstest]
+#[case::before_the_entrance(0.0, 0.0, 760.0)]
+#[case::during_the_entrance(21.0, 0.5, 730.0)]
+#[case::at_the_end(27.0, 1.0, 700.0)]
+#[case::after_the_end(59.0, 1.0, 700.0)]
+#[case::long_after_the_end(1000.0, 1.0, 700.0)]
+fn entrance_opacity_and_y(#[case] frame: f64, #[case] opacity: f64, #[case] y: f64) {
+    let n = &evaluate(&graph(LIN), frame).nodes[0];
+    assert_eq!((n.get(Prop::OPACITY), n.get(Prop::Y)), (opacity, y));
 }
 
 #[test]
-fn interpolates_during_the_entrance() {
+fn the_box_moves_with_the_entrance() {
     let n = &evaluate(&graph(LIN), 21.0).nodes[0];
-    assert_eq!((n.get(Prop::OPACITY), n.get(Prop::Y)), (0.5, 730.0));
     assert_eq!(
         (n.top(), n.bottom(), n.left(), n.right()),
         (680.0, 780.0, 910.0, 1010.0)
     );
-}
-
-#[test]
-fn settles_at_the_end_and_stays_there() {
-    for f in [27.0, 59.0, 1000.0] {
-        let n = &evaluate(&graph(LIN), f).nodes[0];
-        assert_eq!((n.get(Prop::OPACITY), n.get(Prop::Y)), (1.0, 700.0));
-    }
 }
 
 #[test]

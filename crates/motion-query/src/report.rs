@@ -3,47 +3,25 @@
 use motion_format::fmt_num;
 use std::fmt;
 
-/// How serious a violation is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// How serious a violation is, printed as its first letter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display)]
 pub enum Severity {
     /// Something is broken and should be fixed. Makes the CLI exit with 1.
+    #[strum(serialize = "E")]
     Error,
     /// Something is probably unintended but the scene still works.
+    #[strum(serialize = "W")]
     Warning,
 }
 
-impl fmt::Display for Severity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Severity::Error => "E",
-            Severity::Warning => "W",
-        })
-    }
-}
-
-/// The identity of a rule.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// The identity of a rule, printed as its short name, such as `offscreen`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::Display)]
+#[strum(serialize_all = "snake_case")]
 pub enum Code {
     /// A visible node leaves the canvas.
     Offscreen,
     /// A visible node leaves the title-safe area.
     Unsafe,
-}
-
-impl Code {
-    /// The short name shown in reports, such as `offscreen`.
-    pub const fn name(self) -> &'static str {
-        match self {
-            Code::Offscreen => "offscreen",
-            Code::Unsafe => "unsafe",
-        }
-    }
-}
-
-impl fmt::Display for Code {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name())
-    }
 }
 
 /// One problem found on a node, merged over a run of consecutive frames.

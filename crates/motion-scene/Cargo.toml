@@ -9,10 +9,13 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+kurbo.workspace = true
 motion-format = { path = "../motion-format" }
 tracing.workspace = true
 
 [dev-dependencies]
+rstest.workspace = true
+pretty_assertions.workspace = true
 proptest.workspace = true
 
 [lints]

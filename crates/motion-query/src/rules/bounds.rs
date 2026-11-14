@@ -1,7 +1,8 @@
 //! Bounds rules: `offscreen` for the canvas, `unsafe` for the title-safe area inside it.
 
-use super::{Area, Overshoot, Rule, overshoot, visible};
+use super::{Overshoot, Rule, overshoot, visible};
 use crate::report::{Code, Severity};
+use kurbo::Rect;
 use motion_scene::NodeState;
 use motion_scene::SceneGraph;
 
@@ -29,14 +30,14 @@ pub(super) const UNSAFE: Rule = Rule {
 };
 
 /// The whole canvas.
-fn canvas(graph: &SceneGraph) -> Area {
-    (0.0, 0.0, graph.width, graph.height)
+fn canvas(graph: &SceneGraph) -> Rect {
+    Rect::new(0.0, 0.0, graph.width, graph.height)
 }
 
 /// The title-safe area of the canvas.
-fn safe_area(graph: &SceneGraph) -> Area {
+fn safe_area(graph: &SceneGraph) -> Rect {
     let (dx, dy) = (graph.width * SAFE_INSET, graph.height * SAFE_INSET);
-    (dx, dy, graph.width - dx, graph.height - dy)
+    Rect::new(dx, dy, graph.width - dx, graph.height - dy)
 }
 
 fn offscreen(node: &NodeState, graph: &SceneGraph) -> Option<Overshoot> {

@@ -1,5 +1,7 @@
 //! Unit tests for `src/decode.rs`, on hand-built projects.
 
+use pretty_assertions::assert_eq;
+
 use super::*;
 use crate::model::{BlendMode, LayerKind, TrackMatte};
 use crate::test_support::{cdta, chunk, item, list, project, record};

@@ -12,7 +12,7 @@ use motion_format::fmt_num;
 
 use crate::model::{
     Child, Composition, Footage, Group, ItemKind, Layer, Project, Property, Source, Stream,
-    TextDocument, TextFrame, Value, label,
+    TextDocument, TextFrame, Value,
 };
 
 /// The width of one level of indentation.
@@ -32,14 +32,7 @@ impl fmt::Display for Project {
                 .map_or(0, |level| level + 1);
             levels.insert(item.id, level);
             let pad = level * INDENT;
-            write!(
-                f,
-                "{:pad$}{} {} {:?}",
-                "",
-                item.kind.name(),
-                item.id,
-                item.name
-            )?;
+            write!(f, "{:pad$}{} {} {:?}", "", item.kind, item.id, item.name)?;
             match &item.kind {
                 ItemKind::Folder => writeln!(f),
                 ItemKind::Footage(footage) => writeln!(f, " {footage}"),
@@ -120,7 +113,7 @@ impl fmt::Display for Layer {
             "layer {} {:?} {}, {}s-{}s",
             self.id,
             self.name,
-            label(&self.kind),
+            self.kind,
             fmt_num(self.in_point),
             fmt_num(self.out_point)
         )?;
@@ -199,7 +192,7 @@ impl fmt::Display for Value {
                 write!(f, "path {shape}, {} vertices", path.vertices.len())
             }
             Value::Text(document) => write!(f, "{document}"),
-            Value::Opaque { reason } => write!(f, "opaque {}", label(reason)),
+            Value::Opaque { reason } => write!(f, "opaque {reason}"),
         }
     }
 }
@@ -225,7 +218,7 @@ impl fmt::Display for TextDocument {
                 })?;
         }
         match self.paragraphs.first() {
-            Some(run) => write!(f, ", {}", label(&run.style.justification)),
+            Some(run) => write!(f, ", {}", run.style.justification),
             None => Ok(()),
         }
     }

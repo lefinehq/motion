@@ -2,7 +2,8 @@
 //! merged into one [`Violation`] so the report stays short.
 
 use crate::report::{Code, Report, Violation};
-use crate::rules::{Area, EPSILON, Overshoot, RULES, Rule, shift, visible};
+use crate::rules::{EPSILON, Overshoot, RULES, Rule, shift, visible};
+use kurbo::{Rect, Vec2};
 use motion_format::key::AT;
 use motion_format::shorthand::{Coord, Position};
 use motion_format::{Layer, Scene};
@@ -55,7 +56,7 @@ struct LayerScan {
     runs: Vec<Runs>,
     /// The box the layer covers over its visible frames. Fix hints clamp this whole
     /// sweep, since moving `at` moves every frame, so they settle in one edit.
-    sweep: Option<Area>,
+    sweep: Option<Rect>,
 }
 
 impl LayerScan {
@@ -75,10 +76,7 @@ impl LayerScan {
         }
         if visible(node) {
             let b = node.bounds();
-            self.sweep = Some(match self.sweep {
-                None => b,
-                Some(a) => (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)),
-            });
+            self.sweep = Some(self.sweep.map_or(b, |a| a.union(b)));
         }
     }
 
@@ -161,27 +159,27 @@ impl Run {
 /// The `at` edit that moves `sweep` into `rule`'s aim, on the axes that follow `at`.
 fn fix_hint(
     rule: &Rule,
-    sweep: Area,
+    sweep: Rect,
     layer: &Layer,
     node: &Node,
     graph: &SceneGraph,
 ) -> Option<String> {
     let (area, aim) = (rule.areas)(graph);
-    let (dx, dy) = shift(sweep, area, aim);
+    let Vec2 { x: dx, y: dy } = shift(sweep, area, aim);
     // Moving `at` cannot shift an axis that does not follow it.
     let (follows_x, follows_y) = node.follows_at;
     let only_followed = |delta: f64, follows: bool| if follows { delta } else { 0.0 };
     fix(
         &layer.id,
         layer.at,
-        (only_followed(dx, follows_x), only_followed(dy, follows_y)),
+        Vec2::new(only_followed(dx, follows_x), only_followed(dy, follows_y)),
         graph,
     )
 }
 
 /// `id at="x y"` for a shift, or `None` if nothing moves. An axis that does not
 /// move keeps its coordinate, so `center` stays `center`.
-fn fix(id: &str, at: Position, (dx, dy): (f64, f64), graph: &SceneGraph) -> Option<String> {
+fn fix(id: &str, at: Position, Vec2 { x: dx, y: dy }: Vec2, graph: &SceneGraph) -> Option<String> {
     if dx == 0.0 && dy == 0.0 {
         return None;
     }

@@ -1,0 +1,11 @@
+[files]
+# Fixture projects and their snapshots hold the authors' own spelling.
+extend-exclude = ["crates/motion-import/tests/fixtures/", "*.snap"]
+
+[default.extend-words]
+# Four-character chunk tags and short codes, not words.
+als = "als"
+fo = "fo"
+jod = "jod"
+pn = "pn"
+rin = "rin"

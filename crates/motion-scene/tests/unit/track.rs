@@ -2,6 +2,7 @@
 
 use super::*;
 use proptest::prelude::*;
+use rstest::rstest;
 
 fn key(frame: f64, value: f64, curve: Curve) -> Key {
     Key {
@@ -15,19 +16,16 @@ fn linear(frame: f64, value: f64) -> Key {
     key(frame, value, Curve::Linear)
 }
 
-#[test]
-fn holds_the_first_value_before_and_the_last_after() {
+/// Holds the first value before the keys and the last after them, and eases between.
+#[rstest]
+#[case::before(0.0, 2.0)]
+#[case::on_the_first(10.0, 2.0)]
+#[case::between(15.0, 3.0)]
+#[case::on_the_last(20.0, 4.0)]
+#[case::after(99.0, 4.0)]
+fn samples_a_two_key_track(#[case] frame: f64, #[case] value: f64) {
     let t = Track::new(vec![linear(10.0, 2.0), linear(20.0, 4.0)]);
-    assert_eq!(t.sample(0.0), 2.0);
-    assert_eq!(t.sample(10.0), 2.0);
-    assert_eq!(t.sample(20.0), 4.0);
-    assert_eq!(t.sample(99.0), 4.0);
-}
-
-#[test]
-fn eases_between_keys() {
-    let t = Track::new(vec![linear(10.0, 2.0), linear(20.0, 4.0)]);
-    assert_eq!(t.sample(15.0), 3.0);
+    assert_eq!(t.sample(frame), value);
 }
 
 #[test]

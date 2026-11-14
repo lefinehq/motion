@@ -1,5 +1,7 @@
 //! Unit tests for `src/telemetry/timing.rs`.
 
+use pretty_assertions::assert_eq;
+use rstest::rstest;
 use tracing::{debug_span, field, info_span, trace_span};
 use tracing_subscriber::layer::SubscriberExt;
 
@@ -75,11 +77,12 @@ fn report_lists_each_step_in_milliseconds() {
     assert_eq!(timings.report(), "timings parse=0.50ms compile=1.25ms");
 }
 
-#[test]
-fn millis_rounds_to_two_decimals() {
-    assert_eq!(millis(Duration::from_micros(1500)), 1.5);
-    assert_eq!(millis(Duration::from_nanos(1_234_567)), 1.23);
-    assert_eq!(millis(Duration::from_nanos(4_999)), 0.0);
+#[rstest]
+#[case(Duration::from_micros(1500), 1.5)]
+#[case(Duration::from_nanos(1_234_567), 1.23)]
+#[case(Duration::from_nanos(4_999), 0.0)]
+fn millis_rounds_to_two_decimals(#[case] total: Duration, #[case] ms: f64) {
+    assert_eq!(millis(total), ms);
 }
 
 #[test]
