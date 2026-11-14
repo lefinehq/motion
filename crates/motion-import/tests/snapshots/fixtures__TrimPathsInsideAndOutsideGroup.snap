@@ -1,0 +1,89 @@
+---
+source: crates/motion-import/tests/fixtures.rs
+expression: "format!(\"{project}{}\", project.report())"
+---
+project 92.14, 8 bits per channel
+composition 94 "Shapes" 80x80, 29.97 fps, 2.04s, work area 0s-2.04s
+  layer 100 "shapes" shape, 0s-2s
+    ADBE Root Vectors Group
+      ADBE Vector Group "Ellipse"
+        ADBE Vectors Group
+          ADBE Vector Shape - Ellipse "Ellipse Path 1"
+            ADBE Vector Ellipse Size = [20, 20]
+          ADBE Vector Filter - Trim "Trim Paths 1"
+            ADBE Vector Trim Start: 2 keyframes 0.4s-0.9s
+          ADBE Vector Graphic - Stroke "Stroke 1"
+            ADBE Vector Stroke Color = rgba [0.89, 0.28, 0.27, 1]
+            ADBE Vector Stroke Width = 1
+            ADBE Vector Stroke Line Cap = 2
+            ADBE Vector Stroke Line Join = 2
+            ADBE Vector Stroke Miter Limit = 4
+      ADBE Vector Group "Rectangle"
+        ADBE Vectors Group
+          ADBE Vector Shape - Rect "Rectangle Path 1"
+            ADBE Vector Rect Size = [60, 60]
+          ADBE Vector Filter - Trim "Trim Paths 1"
+            ADBE Vector Trim Start: 2 keyframes 0.4s-0.9s
+          ADBE Vector Graphic - Stroke "Stroke 1"
+            ADBE Vector Stroke Color = rgba [0.89, 0.28, 0.27, 1]
+            ADBE Vector Stroke Width = 1
+            ADBE Vector Stroke Line Cap = 2
+            ADBE Vector Stroke Line Join = 2
+            ADBE Vector Stroke Miter Limit = 4
+        ADBE Vector Transform Group
+          ADBE Vector Position = [0, -0.06]
+      ADBE Vector Group "Polystar"
+        ADBE Vectors Group
+          ADBE Vector Shape - Star "Polystar Path 1"
+            ADBE Vector Star Inner Radius = 10
+            ADBE Vector Star Outer Radius = 25
+          ADBE Vector Filter - Trim "Trim Paths 1"
+            ADBE Vector Trim Start: 2 keyframes 0.4s-0.9s
+          ADBE Vector Graphic - Stroke "Stroke 1"
+            ADBE Vector Stroke Color = rgba [0.89, 0.28, 0.27, 1]
+            ADBE Vector Stroke Width = 1
+            ADBE Vector Stroke Line Cap = 2
+            ADBE Vector Stroke Line Join = 2
+            ADBE Vector Stroke Miter Limit = 4
+        ADBE Vector Transform Group
+          ADBE Vector Position = [0, -0.06]
+      ADBE Vector Group "Shape"
+        ADBE Vectors Group
+          ADBE Vector Shape - Group "Path 1"
+            ADBE Vector Shape Direction = 2
+            ADBE Vector Shape = path closed, 4 vertices
+          ADBE Vector Filter - Trim "Trim Paths 1"
+            ADBE Vector Trim Start: 2 keyframes 0s-0.5s
+          ADBE Vector Graphic - Stroke "Stroke 1"
+            ADBE Vector Stroke Color = rgba [0.16, 0.11, 0.73, 1]
+            ADBE Vector Stroke Width = 1
+            ADBE Vector Stroke Line Cap = 2
+            ADBE Vector Stroke Line Join = 2
+            ADBE Vector Stroke Miter Limit = 4
+        ADBE Vector Transform Group
+          ADBE Vector Position = [0, -0.06]
+      ADBE Vector Filter - Trim "Trim Paths 1"
+        ADBE Vector Trim End: 2 keyframes 0.4s-0.9s
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+report
+  items: composition 1
+  layers: shape 1
+  effects: none
+  opaque: orientation 1
+  skipped: LIST:CIF2 1, LIST:CIFO 1, LIST:CLay 3, LIST:CPPl 1, LIST:Ewst 11, LIST:FEE 1, LIST:Gide 2, LIST:LRdr 1, LIST:LSIf 1, LIST:OvdG 1, LIST:PRin 1, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 6, LIST:SecL 1, LIST:dats 1, LIST:gpuG 1, LIST:otky 1, LIST:sfnm 1, Utf8 1, acer 1, adfr 1, cdrp 1, cpid 1, dwga 1, fcid 1, fdta 1, fiac 23, fidi 1, fifl 23, fimr 1, fiop 23, fipc 23, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, foac 23, fots 1, fott 1, fovc 1, fovi 1, ftts 23, fvdv 23, nnhd 1, oacc 1, omtn 1, qtlg 1, svap 1, wsnm 1, wsns 1

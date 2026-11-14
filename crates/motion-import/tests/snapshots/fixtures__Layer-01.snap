@@ -1,0 +1,337 @@
+---
+source: crates/motion-import/tests/fixtures.rs
+expression: "format!(\"{project}{}\", project.report())"
+---
+project 93.4, 8 bits per channel
+composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
+  layer 53 "Transformations Collapsed" shape, 0s-60s, solo
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 37 "Effects Enabled" av, 0s-60s, source 16, null
+    ADBE Time Remapping = 0
+    ADBE Effect Parade
+      ADBE Fill
+        ADBE Fill-0000 = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 35 "Motion Blur" av, 0s-60s, source 16, motion blur, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 34 "Locked" av, 0s-60s, source 16, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 32 "Shy" av, 0s-60s, source 16, shy, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 30 "Adjustment" av, 0s-60s, source 16, null, adjustment
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 29 "3D" av, 0s-60s, source 16, 3d, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Rotate Z = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 28 "Solo" av, 0s-60s, source 16, solo, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 27 "Guide" av, 0s-60s, source 16, guide, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 26 "Pixel Motion" av, 0s-60s, source 16, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 25 "Frame Mix" av, 0s-60s, source 16, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 22 "Wireframe Quality" av, 0s-60s, source 16, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 21 "Draft Quality" av, 0s-60s, source 16, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 20 "Best Quality" av, 0s-60s, source 16, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 18 "Bilinear Sampling" av, 0s-60s, source 16, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 17 "BIcubic Sampling" av, 0s-60s, source 16, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 24 "Default" av, 0s-60s, source 16, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+folder 13 "Solids"
+  footage 16 "Null 1" solid [1, 1, 1, 1] 100x100, 0 fps, 0s
+report
+  items: composition 1, folder 1, footage 1
+  layers: null 16, shape 1
+  effects: ADBE Fill 1
+  opaque: orientation 16
+  skipped: LIST:CIF2 1, LIST:CIF3 1, LIST:CIFO 1, LIST:CLRS 1, LIST:CLay 3, LIST:CPPl 1, LIST:Ewst 27, LIST:ExEn 1, LIST:FEE 1, LIST:Gide 19, LIST:LRdr 1, LIST:LSIf 1, LIST:OvG2 16, LIST:PRin 1, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 6, LIST:SecL 1, LIST:dats 1, LIST:gpuG 1, LIST:mnfo 1, LIST:otky 16, LIST:parT 1, LIST:sfnm 1, Utf8 4, acer 1, adfr 1, cdrp 1, cpid 1, dwga 1, fcid 1, fdta 1, fiac 56, fidi 1, fifl 56, fimr 1, fiop 56, fipc 56, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, fnam 1, foac 56, fots 1, fott 1, fovc 1, fovi 1, ftgi 1, ftts 56, fvdv 56, nnhd 1, oacc 1, pgui 2, qtlg 1, sfdt 1, svap 1, tdpi 1, tdps 1, wsnm 1, wsns 1

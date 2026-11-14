@@ -1,0 +1,11 @@
+---
+source: crates/motion-import/tests/fixtures.rs
+expression: "format!(\"{project}{}\", project.report())"
+---
+project 93.4, 16 bits per channel
+report
+  items: none
+  layers: none
+  effects: none
+  opaque: none
+  skipped: LIST:CPPl 1, LIST:ExEn 1, LIST:LRdr 1, LIST:LSIf 1, LIST:PTRE 1, LIST:Pefl 1, LIST:gpuG 1, LIST:sfnm 1, Utf8 1, acer 1, adfr 1, cpid 1, dwga 1, fcid 1, fdta 1, nnhd 1, oacc 1, qtlg 1, svap 1, wsnm 1, wsns 1

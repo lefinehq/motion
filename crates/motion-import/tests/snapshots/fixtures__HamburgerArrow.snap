@@ -1,0 +1,128 @@
+---
+source: crates/motion-import/tests/fixtures.rs
+expression: "format!(\"{project}{}\", project.report())"
+---
+project 88.1, 8 bits per channel
+composition 40 "HamburgerArrow" 400x300, 30 fps, 6s, work area 0s-6s
+  layer 46 "Rotator" av, 0s-6s, source 32, null
+    ADBE Time Remapping = 0
+    ADBE Transform Group
+      ADBE Anchor Point = [0.5, 0.5, 0]
+      ADBE Position = [200.5, 149.38, 0]
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Rotate Z: 9 keyframes 0.63s-4.7s
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 45 "A1" shape, 0s-6s, parent 46
+    ADBE Root Vectors Group
+      ADBE Vector Group "Shape 1"
+        ADBE Vectors Group
+          ADBE Vector Shape - Group "Path 1"
+            ADBE Vector Shape = path open, 2 vertices
+          ADBE Vector Graphic - Stroke "Stroke 1"
+            ADBE Vector Stroke Color = rgba [0.4, 0.16, 0.7, 1]
+            ADBE Vector Stroke Width = 10
+      ADBE Vector Filter - Trim "Trim Paths 1"
+        ADBE Vector Trim Start: 4 keyframes 0.63s-4.47s
+        ADBE Vector Trim End: 4 keyframes 0.63s-4.47s
+    ADBE Transform Group
+      ADBE Anchor Point = [35, 22.25, 0]
+      ADBE Position: 4 keyframes 0.63s-4.47s
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Rotate Z: 4 keyframes 0.63s-4.47s
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 44 "A2" shape, 0s-6s, parent 46
+    ADBE Root Vectors Group
+      ADBE Vector Group "Shape 1"
+        ADBE Vectors Group
+          ADBE Vector Shape - Group "Path 1"
+            ADBE Vector Shape = path open, 2 vertices
+          ADBE Vector Graphic - Stroke "Stroke 1"
+            ADBE Vector Stroke Color = rgba [0.4, 0.16, 0.7, 1]
+            ADBE Vector Stroke Width = 10
+    ADBE Transform Group
+      ADBE Anchor Point = [0.5, 0, 0]
+      ADBE Position = [60, 60.62, 0]
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 43 "A3" shape, 0s-6s, parent 46
+    ADBE Root Vectors Group
+      ADBE Vector Group "Shape 1"
+        ADBE Vectors Group
+          ADBE Vector Shape - Group "Path 1"
+            ADBE Vector Shape = path open, 2 vertices
+          ADBE Vector Graphic - Stroke "Stroke 1"
+            ADBE Vector Stroke Color = rgba [0.4, 0.16, 0.7, 1]
+            ADBE Vector Stroke Width = 10
+      ADBE Vector Filter - Trim "Trim Paths 1"
+        ADBE Vector Trim Start: 4 keyframes 0.63s-4.47s
+        ADBE Vector Trim End: 4 keyframes 0.63s-4.47s
+    ADBE Transform Group
+      ADBE Anchor Point = [35, -23.5, 0]
+      ADBE Position: 4 keyframes 0.63s-4.47s
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Rotate Z: 4 keyframes 0.63s-4.47s
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+folder 31 "Solids"
+  footage 32 "Null 1" solid [1, 1, 1, 1] 120x120, 0 fps, 0s
+report
+  items: composition 1, folder 1, footage 1
+  layers: null 1, shape 3
+  effects: none
+  opaque: orientation 4
+  skipped: LIST:CLRS 1, LIST:CLay 3, LIST:CPPl 1, LIST:CapI 1, LIST:Ewst 14, LIST:FEE 1, LIST:Gide 6, LIST:LRdr 1, LIST:LSIf 1, LIST:PRin 1, LIST:PTRE 1, LIST:SLay 6, LIST:SecL 1, LIST:gpuG 1, LIST:mnfo 1, LIST:otky 4, Utf8 2, acer 1, adfr 1, cdrp 1, cpid 1, fcid 1, fdta 1, fiac 30, fidi 1, fifl 30, fimr 1, fiop 30, fipc 30, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, foac 30, fots 2, fott 2, fovc 2, fovi 2, ftgi 1, ftts 30, fvdv 30, omtn 3, pgui 1, qtlg 1, sfdt 1, svap 1, wsnm 1, wsns 1

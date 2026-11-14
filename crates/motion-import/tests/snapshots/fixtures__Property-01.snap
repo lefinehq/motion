@@ -1,0 +1,71 @@
+---
+source: crates/motion-import/tests/fixtures.rs
+expression: "format!(\"{project}{}\", project.report())"
+---
+project 93.31, 8 bits per channel
+composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
+  layer 14 "Expression Controls" av, 0s-60s, source 13, null
+    ADBE Time Remapping = 0
+    ADBE Effect Parade
+      ADBE Checkbox Control
+        ADBE Checkbox Control-0000 = 0
+      ADBE Slider Control
+        ADBE Slider Control-0000 = 0
+      ADBE Point Control
+        ADBE Point Control-0000 = 0
+      ADBE Point3D Control
+        ADBE Point3D Control-0000 = 0
+      ADBE Color Control
+        ADBE Color Control-0000 = 0
+      ADBE Angle Control "Custom Angle Control Label"
+        ADBE Angle Control-0000 = 0
+      ADBE Layer Control
+        ADBE Layer Control-0000 = 0
+        ADBE Layer Control-0001 "Layer" = 0
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+    ADBE Source Options Group
+      ADBE Layer Source Alternate = opaque other_body
+  layer 15 "Text Layer" text, 0s-60s
+    ADBE Text Properties
+      ADBE Text Document = opaque text_document
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+folder 12 "Solids"
+  footage 13 "Null 1" solid [1, 1, 1, 1] 100x100, 0 fps, 0s
+report
+  items: composition 1, folder 1, footage 1
+  layers: null 1, text 1
+  effects: ADBE Angle Control 1, ADBE Checkbox Control 1, ADBE Color Control 1, ADBE Layer Control 1, ADBE Point Control 1, ADBE Point3D Control 1, ADBE Slider Control 1
+  opaque: orientation 2, other_body 1, text_document 1
+  skipped: LIST:CIF2 1, LIST:CIF3 1, LIST:CIFO 1, LIST:CLRS 1, LIST:CLay 3, LIST:CPPl 1, LIST:DLay 1, LIST:EfdG 1, LIST:Ewst 13, LIST:ExEn 1, LIST:FEE 1, LIST:Gide 4, LIST:LRdr 1, LIST:LSIf 1, LIST:OvG2 1, LIST:PRin 1, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 6, LIST:SecL 1, LIST:btdk 1, LIST:btgu 1, LIST:dats 1, LIST:gpuG 1, LIST:mnfo 1, LIST:otky 2, LIST:parT 7, LIST:sfnm 1, Utf8 5, acer 1, adfr 1, blsi 1, blsv 1, cdrp 1, comr 1, cpid 1, dwga 1, fcid 1, fdta 1, fiac 28, fidi 1, fifl 28, fimr 1, fiop 28, fipc 28, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, fmpl 1, fnam 7, foac 28, fots 2, fott 2, fovc 2, fovi 2, ftgi 1, ftts 28, fvdv 28, idpc 3, iide 3, mrid 1, nnhd 1, oacc 1, pcms 1, pgui 8, qtlg 1, sfdt 1, svap 1, tdpi 8, tdps 8, wsnm 1, wsns 1

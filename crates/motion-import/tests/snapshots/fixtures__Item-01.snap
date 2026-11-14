@@ -1,0 +1,59 @@
+---
+source: crates/motion-import/tests/fixtures.rs
+expression: "format!(\"{project}{}\", project.report())"
+---
+project 93.4, 8 bits per channel
+folder 46 "Folder 01"
+  composition 48 "Comp 01" 351x856, 21 fps, 31s, work area 0s-31s
+    layer 79 "Null 1" av, 0s-31s, source 78, null
+      ADBE Time Remapping = 0
+      ADBE Transform Group
+        ADBE Position_0 = 0
+        ADBE Position_1 = 0
+        ADBE Orientation = opaque orientation
+        ADBE Rotate X = 0
+        ADBE Rotate Y = 0
+        ADBE Envir Appear in Reflect = 1
+      ADBE Extrsn Options Group
+        ADBE Bevel Direction = 1
+      ADBE Material Options Group
+        ADBE Appears in Reflections = 1
+        ADBE Reflection Coefficient = 0
+        ADBE Glossiness Coefficient = 100
+        ADBE Fresnel Coefficient = 0
+        ADBE Transparency Coefficient = 0
+        ADBE Transp Rolloff = 0
+        ADBE Index of Refraction = 1
+    layer 76 "Shape Layer 1" shape, 0s-31s
+      ADBE Transform Group
+        ADBE Position_0 = 0
+        ADBE Position_1 = 0
+        ADBE Orientation = opaque orientation
+        ADBE Rotate X = 0
+        ADBE Rotate Y = 0
+        ADBE Envir Appear in Reflect = 1
+      ADBE Extrsn Options Group
+        ADBE Bevel Direction = 1
+      ADBE Material Options Group
+        ADBE Appears in Reflections = 1
+        ADBE Reflection Coefficient = 0
+        ADBE Glossiness Coefficient = 100
+        ADBE Fresnel Coefficient = 0
+        ADBE Transparency Coefficient = 0
+        ADBE Transp Rolloff = 0
+        ADBE Index of Refraction = 1
+folder 47 "Folder 02"
+  composition 59 "Comp 02" 452x639, 29.97 fps, 71.34s, work area 0s-71.34s
+folder 70 "Footage"
+  footage 74 "Blue Solid" solid [0, 0, 1, 1] 1920x1080, 0 fps, 0s
+  footage 73 "Green Solid" solid [0, 1, 0, 1] 1920x1080, 0 fps, 0s
+  footage 71 "Missing Footage" placeholder 1234x5678, 123.46 fps, 127s
+  footage 72 "Red Solid" solid [1, 0, 0, 1] 1920x1080, 0 fps, 0s
+folder 77 "Solids"
+  footage 78 "Null 1" solid [1, 1, 1, 1] 100x100, 0 fps, 0s
+report
+  items: composition 2, folder 4, footage 5
+  layers: null 1, shape 1
+  effects: none
+  opaque: orientation 2
+  skipped: LIST:CIF2 2, LIST:CIF3 2, LIST:CIFO 2, LIST:CLRS 5, LIST:CLay 6, LIST:CPPl 1, LIST:Ewst 22, LIST:ExEn 1, LIST:FEE 2, LIST:Gide 9, LIST:LRdr 1, LIST:LSIf 1, LIST:OvG2 1, LIST:PRin 2, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 12, LIST:SecL 2, LIST:dats 2, LIST:gpuG 1, LIST:mnfo 5, LIST:otky 2, LIST:sfnm 1, Utf8 16, acer 1, adfr 1, cdrp 2, cpid 1, dwga 1, fcid 1, fdta 1, fiac 51, fidi 2, fifl 51, fimr 2, fiop 51, fipc 51, fipl 2, fips 8, fits 1, fitt 1, fivc 1, fivi 1, foac 51, fots 2, fott 2, fovc 2, fovi 2, ftgi 5, ftts 51, fvdv 51, nnhd 1, oacc 1, pgui 5, qtlg 1, sfdt 4, svap 1, wsnm 1, wsns 1

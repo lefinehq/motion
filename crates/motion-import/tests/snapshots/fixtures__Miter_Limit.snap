@@ -1,0 +1,64 @@
+---
+source: crates/motion-import/tests/fixtures.rs
+expression: "format!(\"{project}{}\", project.report())"
+---
+project 92.6, 8 bits per channel
+composition 949 "miter" 300x300, 60 fps, 3s, work area 0s-3s
+  layer 960 "Shape Layer 1" shape, 0s-3s
+    ADBE Root Vectors Group
+      ADBE Vector Group "Shape 2"
+        ADBE Vectors Group
+          ADBE Vector Shape - Group "Path 1"
+            ADBE Vector Shape = path open, 1 vertices
+          ADBE Vector Graphic - Stroke "Stroke 1" (off)
+            ADBE Vector Stroke Width = 13
+          ADBE Vector Graphic - Fill "Fill 1"
+            ADBE Vector Fill Color = rgba [0.93, 0, 0, 1]
+      ADBE Vector Group "Shape 1"
+        ADBE Vectors Group
+          ADBE Vector Shape - Group "Path 1"
+            ADBE Vector Shape = path open, 1 vertices
+          ADBE Vector Graphic - Stroke "Stroke 1"
+            ADBE Vector Stroke Color = rgba [1, 0, 0, 1]
+            ADBE Vector Stroke Width = 13
+          ADBE Vector Graphic - Fill "Fill 1"
+            ADBE Vector Fill Color = rgba [0.93, 0, 0, 1]
+      ADBE Vector Group "Rectangle 1"
+        ADBE Vectors Group
+          ADBE Vector Shape - Group "Path 1"
+            ADBE Vector Shape Direction = 2
+            ADBE Vector Shape = path closed, 3 vertices
+          ADBE Vector Graphic - G-Stroke "Gradient Stroke 1"
+            ADBE Vector Grad Colors = opaque gradient
+            ADBE Vector Stroke Width = 13
+          ADBE Vector Graphic - Stroke "Stroke 1"
+            ADBE Vector Stroke Color = rgba [1, 0, 0, 1]
+            ADBE Vector Stroke Width = 13
+        ADBE Vector Transform Group
+          ADBE Vector Position = [3.57, 12.57]
+    ADBE Transform Group
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+folder 101 "Solids"
+  footage 756 "Deep Red Solid 2" solid [0.73, 0, 0, 1] 375x667, 0 fps, 0s
+  footage 814 "Deep Red Solid 3" solid [0.73, 0, 0, 1] 375x16, 0 fps, 0s
+report
+  items: composition 1, folder 1, footage 2
+  layers: shape 1
+  effects: none
+  opaque: gradient 1, orientation 1
+  skipped: LIST:CIFO 1, LIST:CLRS 2, LIST:CLay 3, LIST:CPPl 1, LIST:Ewst 11, LIST:FEE 1, LIST:GCky 1, LIST:Gide 4, LIST:LRdr 1, LIST:LSIf 1, LIST:PRin 1, LIST:PTRE 1, LIST:SLay 6, LIST:SecL 1, LIST:dats 1, LIST:gpuG 1, LIST:mnfo 2, LIST:otky 1, LIST:sfnm 1, Utf8 7, acer 1, adfr 1, cdrp 1, cpid 1, fcid 1, fdta 1, fiac 25, fidi 1, fifl 25, fimr 1, fiop 25, fipc 25, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, foac 25, fots 1, fott 1, fovc 1, fovi 1, ftgi 2, ftts 25, fvdv 25, nnhd 1, oacc 1, omtn 3, pgui 2, qtlg 1, sfdt 1, svap 1, wsnm 1, wsns 1

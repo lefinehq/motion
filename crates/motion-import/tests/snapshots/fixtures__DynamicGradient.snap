@@ -1,0 +1,84 @@
+---
+source: crates/motion-import/tests/fixtures.rs
+expression: "format!(\"{project}{}\", project.report())"
+---
+project 93.4, 8 bits per channel
+composition 1 "DyanamicGradient" 800x400, 30 fps, 10s, work area 0s-10s
+  layer 14 "Radial" shape, 0s-10s
+    ADBE Root Vectors Group
+      ADBE Vector Group "Rectangle"
+        ADBE Vectors Group
+          ADBE Vector Shape - Rect "Rectangle Path 1"
+            ADBE Vector Rect Size = [250, 250]
+          ADBE Vector Graphic - G-Stroke
+            ADBE Vector Grad Type = 2
+            ADBE Vector Grad End Pt = [300, 0]
+            ADBE Vector Grad HiLite Length = 0
+            ADBE Vector Grad HiLite Angle = 0
+            ADBE Vector Grad Colors = opaque gradient
+            ADBE Vector Stroke Width = 45
+          ADBE Vector Graphic - G-Fill
+            ADBE Vector Grad Type = 2
+            ADBE Vector Grad End Pt = [101, 0]
+            ADBE Vector Grad HiLite Length = 0
+            ADBE Vector Grad HiLite Angle = 0
+            ADBE Vector Grad Colors = opaque gradient
+        ADBE Vector Transform Group
+          ADBE Vector Position = [-218, 0]
+    ADBE Transform Group
+      ADBE Position = [836, 202, 0]
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+  layer 12 "Linear" shape, 0s-10s
+    ADBE Root Vectors Group
+      ADBE Vector Group "Rectangle"
+        ADBE Vectors Group
+          ADBE Vector Shape - Rect "Rectangle Path 1"
+            ADBE Vector Rect Size = [250, 250]
+          ADBE Vector Graphic - G-Stroke
+            ADBE Vector Grad Colors = opaque gradient
+            ADBE Vector Stroke Width = 45
+          ADBE Vector Graphic - G-Fill
+            ADBE Vector Grad Start Pt = [-75, 0]
+            ADBE Vector Grad End Pt = [75, 0]
+            ADBE Vector Grad Colors = opaque gradient
+        ADBE Vector Transform Group
+          ADBE Vector Position = [-218, 0]
+    ADBE Transform Group
+      ADBE Position = [400, 202, 0]
+      ADBE Position_0 = 0
+      ADBE Position_1 = 0
+      ADBE Orientation = opaque orientation
+      ADBE Rotate X = 0
+      ADBE Rotate Y = 0
+      ADBE Envir Appear in Reflect = 1
+    ADBE Extrsn Options Group
+      ADBE Bevel Direction = 1
+    ADBE Material Options Group
+      ADBE Appears in Reflections = 1
+      ADBE Reflection Coefficient = 0
+      ADBE Glossiness Coefficient = 100
+      ADBE Fresnel Coefficient = 0
+      ADBE Transparency Coefficient = 0
+      ADBE Transp Rolloff = 0
+      ADBE Index of Refraction = 1
+report
+  items: composition 1
+  layers: shape 2
+  effects: none
+  opaque: gradient 4, orientation 2
+  skipped: LIST:CIF2 1, LIST:CIF3 1, LIST:CIFO 1, LIST:CLay 3, LIST:CPPl 1, LIST:Ewst 12, LIST:ExEn 1, LIST:FEE 1, LIST:GCky 4, LIST:Gide 3, LIST:LRdr 1, LIST:LSIf 1, LIST:PRin 1, LIST:PTRE 1, LIST:Pefl 1, LIST:SLay 6, LIST:SecL 1, LIST:dats 1, LIST:gpuG 1, LIST:otky 2, LIST:sfnm 1, Utf8 1, acer 1, adfr 1, cdrp 1, cpid 1, dwga 1, fcid 1, fdta 1, fiac 25, fidi 1, fifl 25, fimr 1, fiop 25, fipc 25, fipl 1, fips 4, fits 1, fitt 1, fivc 1, fivi 1, foac 25, fots 1, fott 1, fovc 1, fovi 1, ftts 25, fvdv 25, nnhd 1, oacc 1, qtlg 1, svap 1, wsnm 1, wsns 1
