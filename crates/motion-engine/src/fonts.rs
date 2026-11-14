@@ -48,13 +48,16 @@ pub fn font_names(scene: &Scene) -> Vec<String> {
 pub fn missing_fonts(scene: &Scene, fonts: &FontSet) -> Vec<String> {
     font_names(scene)
         .into_iter()
-        .filter(|name| {
-            !fonts
-                .faces()
-                .iter()
-                .any(|face| &face.postscript_name == name || &face.family == name)
-        })
+        .filter(|name| !has_face(fonts, name))
         .collect()
+}
+
+/// Whether `fonts` has a face for `name`, by PostScript name or family.
+pub(crate) fn has_face(fonts: &FontSet, name: &str) -> bool {
+    fonts
+        .faces()
+        .iter()
+        .any(|face| face.postscript_name == name || face.family == name)
 }
 
 fn text_of(layer: &Layer) -> Option<&TextContent> {

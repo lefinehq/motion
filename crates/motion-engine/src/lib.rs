@@ -32,7 +32,7 @@ pub use fonts::{
     LOCK_EXTENSION, LayoutJudge, add_fonts_entry, font_names, lock_path, missing_fonts,
 };
 pub use geometry::{LineCheck, LineGeometry, TEXT_TOLERANCE, TextCheck, TextGeometry, check_text};
-pub use import::{import, import_scene};
+pub use import::{import, import_scene, substitute_fonts};
 pub use session::Session;
 
 pub use motion_format::{Diagnostic, Document, Kind, Result, Scene, write_document};
