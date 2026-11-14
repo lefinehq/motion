@@ -327,6 +327,8 @@ mod round_trips {
 
         #[test]
         fn json_reads_back_as_the_same_value(key in KEY, items in prop::collection::vec(".*", 0..4)) {
+            // `in` itself, or a key under it, would overlap the `in=none` after it.
+            prop_assume!(key.split('.').next() != Some("in"));
             let value = serde_json::json!({ "items": items });
             // The value ends at its balanced bracket, so a change can follow it.
             let edit = parse_edit(&format!("card {key}={value} in=none")).unwrap();

@@ -9,6 +9,7 @@
 use crate::report::{Code, Report, Violation};
 use crate::rules::{Area, Overshoot, RULES, Rule, shift, visible};
 use motion_eval::{FrameState, evaluate};
+use motion_format::key::AT;
 use motion_format::shorthand::{Coord, Position};
 use motion_format::{Layer, Scene};
 use motion_scene::SceneGraph;
@@ -186,7 +187,7 @@ fn fix(id: &str, at: Position, (dx, dy): (f64, f64), graph: &SceneGraph) -> Opti
         d => Coord::Px(c.resolve(extent) + d),
     };
     let (x, y) = (moved(at.x, dx, graph.width), moved(at.y, dy, graph.height));
-    Some(format!("{id} at=\"{x} {y}\""))
+    Some(format!("{id} {AT}=\"{x} {y}\""))
 }
 
 #[cfg(test)]

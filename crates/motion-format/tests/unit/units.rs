@@ -166,12 +166,31 @@ fn unknown_size_lists_every_named_size_in_order() {
 
 #[test]
 fn malformed_explicit_size_gives_the_explicit_form() {
-    for bad in ["640x", "640x0", "1x2x3", "+640x0"] {
+    for bad in ["640x", "640x0", "+640x0", "640x+"] {
         let e = bad.parse::<Size>().unwrap_err();
         assert_eq!(e.kind, Kind::Syntax, "{bad}");
         assert_eq!(
             e.to_string(),
             format!("`{bad}` is not a valid size; expected {EXPLICIT_EXPECTED}")
+        );
+    }
+}
+
+#[test]
+fn text_after_a_valid_explicit_size_is_named_apart() {
+    for (bad, size) in [
+        ("640x360 ", "640x360"),
+        ("640x360px", "640x360"),
+        ("+640x360 ", "+640x360"),
+        ("1x2x3", "1x2"),
+    ] {
+        let e = bad.parse::<Size>().unwrap_err();
+        assert_eq!(e.kind, Kind::Syntax, "{bad}");
+        assert_eq!(
+            e.to_string(),
+            format!(
+                "unexpected text after the size `{size}` in `{bad}`; expected {EXPLICIT_EXPECTED}"
+            )
         );
     }
 }

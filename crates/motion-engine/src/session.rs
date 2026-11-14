@@ -58,14 +58,14 @@ impl Session {
 
     /// The validated scene.
     pub fn scene(&self) -> &Scene {
-        &self.doc.scene
+        self.doc.scene()
     }
 
     /// The compiled scene (step `compile`), built on the first call after
     /// opening or editing.
     pub fn graph(&self) -> &SceneGraph {
         self.graph
-            .get_or_init(|| stage_ok("compile", || compile(&self.doc.scene, &ApproxTextMeasure)))
+            .get_or_init(|| stage_ok("compile", || compile(self.doc.scene(), &ApproxTextMeasure)))
     }
 
     /// Every node's values at `frame`, in frames from the start, possibly
@@ -78,7 +78,7 @@ impl Session {
     /// The check report over every frame (step `check`).
     pub fn check(&self) -> Report {
         let graph = self.graph();
-        stage_ok("check", || check(&self.doc.scene, graph))
+        stage_ok("check", || check(self.doc.scene(), graph))
     }
 
     /// Where the layers in `ids` (every layer when empty) are at `time`,
@@ -90,7 +90,7 @@ impl Session {
     /// an id that is not a layer.
     pub fn at(&self, time: &str, ids: &[String]) -> Result<String> {
         // Seconds need the scene's frame rate to become frames.
-        let fps = self.doc.scene.fps;
+        let fps = self.doc.scene().fps;
         let frame = stage("time", || Ok(time.parse::<Time>()?.to_frames(fps)))?;
         let graph = self.graph();
         stage("at", || at(graph, frame, ids))
@@ -126,7 +126,7 @@ impl Session {
                     .expected("a session from `Session::open`")
             })?;
             let tmp = temp_path(path);
-            fs::write(&tmp, write_document(&self.doc.raw))
+            fs::write(&tmp, write_document(self.doc.raw()))
                 .map_err(|e| Diagnostic::io("write", path, &e))?;
             fs::rename(&tmp, path).map_err(|e| {
                 // Best effort: the rename error is the one worth reporting.

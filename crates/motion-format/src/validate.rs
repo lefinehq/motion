@@ -21,7 +21,7 @@ use crate::doc::{
 };
 use crate::edit_word::NONE;
 use crate::parse::key::{
-    ANIM, AT, BG, DUR, FILL, FONT, FPS, ID, IN, LAYERS, MOTION, PRESETS, RECT, SIZE,
+    ANIM, AT, BG, DUR, FILL, FONT, FPS, ID, IN, LAYERS, MOTION, PRESETS, RECT, SIZE, layer_path,
 };
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
 use crate::property::{Prop, PropertySpec, property_names};
@@ -92,7 +92,7 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
         .iter()
         .enumerate()
         .map(|(i, Object(layer_doc))| {
-            layer(layer_doc, &context).map_err(|e| e.under(format!("{LAYERS}[{i}]")))
+            layer(layer_doc, &context).map_err(|e| e.under(layer_path(i)))
         })
         .collect::<Result<Vec<_>>>()?;
     unique_ids(&layers)?;
@@ -257,7 +257,7 @@ fn unique_ids(layers: &[Layer]) -> Result<()> {
         Some(i) => Err(
             Diagnostic::new(Kind::Conflict, format!("duplicate id `{}`", layers[i].id))
                 .at(ID)
-                .under(format!("{LAYERS}[{i}]"))
+                .under(layer_path(i))
                 .expected("every layer to have its own id"),
         ),
     }

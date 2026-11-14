@@ -4,12 +4,11 @@
 //! rendering step). Changes are made to the raw JSON, not the typed scene,
 //! so that untouched parts, and the order of keys, stay exactly as the
 //! author wrote them. The target is found in the typed scene, and the result
-//! is re-validated with `motion_format::scene_from_value` before it is
-//! returned.
+//! is re-validated with [`Document::from_value`] before it is returned.
 
 use motion_diagnostic::{Diagnostic, Kind, Result};
-use motion_format::key::LAYERS;
-use motion_format::{Document, LAYER_KEYS, SCENE_KEYS, scene_from_value};
+use motion_format::key::{LAYERS, layer_path};
+use motion_format::{Document, LAYER_KEYS, SCENE_KEYS};
 use serde_json::Value;
 use tracing::{Span, field, instrument};
 
@@ -34,10 +33,6 @@ const SCENE_TARGET: &str = "scene";
 /// an unknown layer id, or a result that no longer passes validation. The
 /// last is the validation failure itself; when quoting a bare number or
 /// boolean would fix it, the expected form shows the quoted change instead.
-///
-/// # Panics
-/// When `doc.raw` does not hold the layers of `doc.scene`, which a
-/// [`Document`] from `motion_format::parse_document` always does.
 #[instrument(
     level = "debug",
     skip_all,
@@ -78,7 +73,7 @@ impl Target {
         if name == SCENE_TARGET {
             return Ok(Target::Scene);
         }
-        let layers = &doc.scene.layers;
+        let layers = &doc.scene().layers;
         match layers.iter().position(|layer| layer.id == name) {
             Some(index) => Ok(Target::Layer(index)),
             None => {
@@ -89,8 +84,8 @@ impl Target {
     }
 
     /// The target's object in `raw`, the JSON of the document it was found
-    /// in. A parsed document's raw `layers` are its scene's layers, in the
-    /// same order, so the index is all it takes.
+    /// in. A [`Document`]'s raw `layers` are its scene's layers, in the same
+    /// order, by construction, so the index is all it takes.
     fn object(self, raw: &mut Value) -> &mut Value {
         match self {
             Target::Scene => raw,
@@ -98,11 +93,12 @@ impl Target {
         }
     }
 
-    /// The path validation reports for `key` on the target.
+    /// The path validation reports for `key` on the target. A layer's
+    /// prefix is the one validation writes, [`layer_path`].
     fn path_of(self, key: &str) -> String {
         match self {
             Target::Scene => key.to_owned(),
-            Target::Layer(index) => format!("{LAYERS}[{index}].{key}"),
+            Target::Layer(index) => format!("{}.{key}", layer_path(index)),
         }
     }
 }
@@ -110,13 +106,10 @@ impl Target {
 /// [`apply_edit`] without the span.
 fn validated(doc: &Document, edit: &Edit) -> Result<Document> {
     let (raw, target) = apply_changes(doc, edit)?;
-    match scene_from_value(&raw) {
-        Ok(scene) => Ok(Document { raw, scene }),
-        Err(e) => Err(match quote_hint(doc, edit, target, &e) {
-            Some(quoted) => e.expected(quoted),
-            None => e,
-        }),
-    }
+    Document::from_value(raw).map_err(|e| match quote_hint(doc, edit, target, &e) {
+        Some(quoted) => e.expected(quoted),
+        None => e,
+    })
 }
 
 /// Applies the changes of `edit` to a copy of `doc`'s JSON, without
@@ -125,7 +118,7 @@ fn apply_changes(doc: &Document, edit: &Edit) -> Result<(Value, Target)> {
     // Keys are checked first so a typo is reported even for a bad target.
     check_keys(edit)?;
     let target = Target::find(doc, &edit.target)?;
-    let mut raw = doc.raw.clone();
+    let mut raw = doc.raw().clone();
     let object = target.object(&mut raw);
     for change in &edit.changes {
         match &change.value {
@@ -172,13 +165,13 @@ fn quote_hint(doc: &Document, edit: &Edit, target: Target, error: &Diagnostic) -
     let mut quoted = edit.clone();
     quoted.changes[index].value = EditValue::Set(Value::String(value.to_string()));
     let (retried, _) = apply_changes(doc, &quoted).ok()?;
-    let still_wrong = matches!(scene_from_value(&retried), Err(e) if e.path == error.path);
+    let still_wrong = matches!(Document::from_value(retried), Err(e) if e.path == error.path);
     (!still_wrong).then(|| format!("a quoted value: `{key}=\"{value}\"`"))
 }
 
 /// Rejects keys that are not part of the format for this kind of target.
 /// Only the first segment of a path is checked here; deeper ones are checked
-/// by `scene_from_value` on the result.
+/// by [`Document::from_value`] on the result.
 fn check_keys(edit: &Edit) -> Result<()> {
     let (allowed, what): (&[&str], &str) = if edit.target == SCENE_TARGET {
         (&SCENE_KEYS, "scene key")

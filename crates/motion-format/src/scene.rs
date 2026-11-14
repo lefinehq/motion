@@ -1,11 +1,14 @@
 //! The typed scene model.
 //!
 //! Part of step 1 (Read). These are the values the compiler consumes; they
-//! are produced by [`parse_document`](crate::parse_document).
+//! are produced by [`parse_document`](crate::parse_document) and
+//! [`Document::from_value`].
 
+use motion_diagnostic::Result;
 use serde_json::Value;
 
 use crate::anim::AnimTrack;
+use crate::parse::scene_from_value;
 use crate::preset::{PresetSpec, lookup, names};
 use crate::shorthand::{Behaviour, Font, Position, RectShape};
 use crate::units::{Color, Size, Time};
@@ -76,11 +79,44 @@ pub enum Content {
 /// A parsed scene file: the typed scene and the JSON it came from.
 ///
 /// The raw value is kept so that writing the document back preserves the
-/// author's keys and values exactly.
+/// author's keys and values exactly. The fields are private and
+/// [`Document::from_value`] is the only way to make one, so the scene is
+/// always the validated reading of the raw value: code that finds a layer in
+/// [`scene`](Document::scene) can rely on finding it at the same index of the
+/// raw `layers`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
     /// The JSON as read.
-    pub raw: Value,
-    /// The validated scene.
-    pub scene: Scene,
+    raw: Value,
+    /// The validated scene `raw` describes.
+    scene: Scene,
+}
+
+impl Document {
+    /// Validates `raw` and keeps it with the typed [`Scene`] it describes,
+    /// applying the defaults of the keys left out.
+    ///
+    /// # Errors
+    /// Returns a [`Diagnostic`](motion_diagnostic::Diagnostic) for the first
+    /// part of `raw` that is not a valid scene, at its path.
+    pub fn from_value(raw: Value) -> Result<Document> {
+        let scene = scene_from_value(&raw)?;
+        Ok(Document { raw, scene })
+    }
+
+    /// The JSON as read, which writing the document back reproduces.
+    pub fn raw(&self) -> &Value {
+        &self.raw
+    }
+
+    /// The validated scene the JSON describes.
+    pub fn scene(&self) -> &Scene {
+        &self.scene
+    }
+
+    /// The JSON as read, without the scene, for a caller that keeps only
+    /// the value.
+    pub fn into_raw(self) -> Value {
+        self.raw
+    }
 }

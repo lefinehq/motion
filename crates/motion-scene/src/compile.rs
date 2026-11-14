@@ -7,7 +7,7 @@
 use motion_format::anim::AnimTrack;
 use motion_format::preset::{PresetSpec, Start};
 use motion_format::property::{PROPERTIES, Prop};
-use motion_format::shorthand::Behaviour;
+use motion_format::shorthand::{Axis, Behaviour};
 use motion_format::{Content, Curve, Layer, Scene};
 
 use tracing::{debug_span, field};
@@ -64,8 +64,8 @@ fn node(layer: &Layer, scene: &Scene, canvas: (f64, f64), measure: &dyn TextMeas
         height,
         tracks: tracks(layer, entrance, canvas, scene.fps),
         follows_at: (
-            follows_at(layer, entrance, Prop::X),
-            follows_at(layer, entrance, Prop::Y),
+            follows_at(layer, entrance, Axis::X),
+            follows_at(layer, entrance, Axis::Y),
         ),
     }
 }
@@ -141,12 +141,15 @@ fn anim_track(track: &AnimTrack, fps: f64) -> Track {
 /// Whether `axis` still follows `at`. It stops when `anim` drives it, or
 /// when the entrance starts it at an absolute value: only the end of that
 /// track moves with `at`, so shifting `at` cannot bring the start into view.
-fn follows_at(layer: &Layer, entrance: Option<(&Behaviour, &PresetSpec)>, axis: Prop) -> bool {
-    let by_anim = layer.anim.iter().any(|track| track.property == axis);
+/// The properties on `axis` are those the registry rests on it
+/// ([`rest_from_at`](motion_format::property::PropertySpec::rest_from_at)).
+fn follows_at(layer: &Layer, entrance: Option<(&Behaviour, &PresetSpec)>, axis: Axis) -> bool {
+    let on_axis = |prop: Prop| prop.spec().rest_from_at == Some(axis);
+    let by_anim = layer.anim.iter().any(|track| on_axis(track.property));
     let by_start = entrance.is_some_and(|(_, spec)| {
         spec.props
             .iter()
-            .any(|&(prop, start)| prop == axis && matches!(start, Start::Value(_)))
+            .any(|&(prop, start)| on_axis(prop) && matches!(start, Start::Value(_)))
     });
     !by_anim && !by_start
 }

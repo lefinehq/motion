@@ -8,13 +8,13 @@ fn doc() -> Document {
     motion_format::parse_document(include_str!("../../../../examples/launch.json")).unwrap()
 }
 fn raw() -> Value {
-    doc().raw
+    doc().into_raw()
 }
 fn edited(l: &str) -> Document {
     apply_edit(&doc(), &parse_edit(l).unwrap()).unwrap()
 }
 fn run(l: &str) -> Value {
-    edited(l).raw
+    edited(l).into_raw()
 }
 fn err(l: &str) -> String {
     apply_edit(&doc(), &parse_edit(l).unwrap())
@@ -29,7 +29,7 @@ fn keys(v: &Value) -> Vec<&str> {
 fn sets_and_removes_layer_keys() {
     let out = apply_edit(&doc(), &parse_edit(r#"card fill=#FF0000 in=none"#).unwrap())
         .unwrap()
-        .raw;
+        .into_raw();
     assert_eq!(out["layers"][1]["fill"], "#FF0000");
     assert!(out["layers"][1].get("in").is_none());
     assert_eq!(out["layers"][0], raw()["layers"][0]); // untouched layers stay byte-identical
@@ -40,7 +40,7 @@ fn edits_the_scene_itself() {
     assert_eq!(
         apply_edit(&doc(), &parse_edit("scene bg=#000000 fps=60").unwrap())
             .unwrap()
-            .raw["fps"],
+            .raw()["fps"],
         60
     );
 }
@@ -191,24 +191,24 @@ fn with_anim() -> Document {
 
 #[test]
 fn json_array_round_trips_into_a_valid_scene() {
-    let out = with_anim().raw;
+    let out = with_anim().into_raw();
     assert_eq!(
         out["layers"][1]["anim"]["opacity"],
         json!([["0f", 0], ["12f", 1, "ease-out"]])
     );
-    assert!(motion_format::scene_from_value(&out).is_ok());
+    assert!(Document::from_value(out).is_ok());
 }
 
 #[test]
 fn preset_defined_then_used() {
     let out = edited(r#"scene presets.my-pop={"opacity":0,"scale":0.5}"#);
     assert_eq!(
-        out.raw["presets"]["my-pop"],
+        out.raw()["presets"]["my-pop"],
         json!({"opacity":0,"scale":0.5})
     );
     let out = apply_edit(&out, &parse_edit("card in=my-pop").unwrap())
         .unwrap()
-        .raw;
+        .into_raw();
     assert_eq!(out["layers"][1]["in"], "my-pop");
 }
 
@@ -217,7 +217,7 @@ fn removing_nested_keys_cleans_up_empty_objects() {
     let base = with_anim();
     let out = apply_edit(&base, &parse_edit("card anim.opacity=none").unwrap())
         .unwrap()
-        .raw;
+        .into_raw();
     assert!(out["layers"][1].get("anim").is_none());
     // Siblings keep the parent alive.
     let two = apply_edit(
@@ -227,7 +227,7 @@ fn removing_nested_keys_cleans_up_empty_objects() {
     .unwrap();
     let out = apply_edit(&two, &parse_edit("card anim.opacity=none").unwrap())
         .unwrap()
-        .raw;
+        .into_raw();
     assert_eq!(keys(&out["layers"][1]["anim"]), ["scale"]);
 }
 

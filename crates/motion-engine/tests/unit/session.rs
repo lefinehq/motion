@@ -77,7 +77,7 @@ fn edit_then_save_writes_the_canonical_file() {
     assert!(report.has_errors(), "{report}");
     session.save().expect("save");
     let text = fs::read_to_string(&path).expect("read back");
-    assert_eq!(text, write_document(&session.doc.raw));
+    assert_eq!(text, write_document(session.doc.raw()));
     let reopened = Session::open(&path).expect("reopen");
     assert_eq!(reopened.scene(), session.scene());
     assert!(!temp_path(&path).exists());

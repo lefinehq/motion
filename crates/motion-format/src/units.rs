@@ -9,7 +9,7 @@ use std::str::FromStr;
 use motion_diagnostic::{Diagnostic, Result};
 use motion_grammar::{Failure, Parsed, number, parse_all, parse_whole};
 use winnow::ascii::digit1;
-use winnow::combinator::{alt, cut_err, eof, opt, peek, preceded, separated_pair, terminated};
+use winnow::combinator::{alt, cut_err, opt, peek, preceded, separated_pair};
 use winnow::error::ErrMode;
 use winnow::prelude::*;
 use winnow::stream::AsChar;
@@ -211,16 +211,19 @@ impl Form for Size {
 
 /// What is wrong with a size string.
 #[derive(Debug, Clone, Copy)]
-enum SizeProblem {
+enum SizeProblem<'s> {
     /// The text is not a name in [`SIZES`], nor shaped like an explicit
     /// size.
     Unknown,
     /// The text starts like `<width>x`, but is not two whole numbers above
     /// zero.
     Explicit,
+    /// The text starts with a valid `<width>x<height>`, then goes on; this
+    /// is the text after the size.
+    Trailing(&'s str),
 }
 
-impl SizeProblem {
+impl SizeProblem<'_> {
     /// The diagnostic for `text`, which has this problem: the one place the
     /// size grammar's failures become messages.
     fn diagnostic(self, text: &str) -> Diagnostic {
@@ -230,22 +233,37 @@ impl SizeProblem {
             }
             SizeProblem::Explicit => Diagnostic::syntax(format!("`{text}` is not a valid size"))
                 .expected(EXPLICIT_EXPECTED),
+            SizeProblem::Trailing(after) => {
+                // `after` is the end of `text`, so what comes before it is
+                // the size as the author wrote it.
+                let size = &text[..text.len() - after.len()];
+                Diagnostic::syntax(format!(
+                    "unexpected text after the size `{size}` in `{text}`"
+                ))
+                .expected(EXPLICIT_EXPECTED)
+            }
         }
     }
 }
 
 /// A name from [`SIZES`] or `<width>x<height>`. Once `<digits>x` is read
 /// the text is an explicit size, so its error gives that form instead of
-/// listing the names.
-fn size(input: &mut &str) -> Parsed<Size, SizeProblem> {
+/// listing the names; text after a valid size is named apart, since the
+/// size itself is right (`640x360 `).
+fn size<'s>(input: &mut &'s str) -> Parsed<Size, SizeProblem<'s>> {
     alt((
         rest.verify_map(Size::named),
         preceded(
             peek((opt('+'), digit1, 'x')),
-            cut_err(terminated(separated_pair(pixels, 'x', pixels), eof))
-                .context(SizeProblem::Explicit),
+            cut_err((
+                separated_pair(pixels, 'x', pixels).context(SizeProblem::Explicit),
+                rest.try_map(|after: &'s str| match after {
+                    "" => Ok(()),
+                    _ => Err(SizeProblem::Trailing(after)),
+                }),
+            )),
         )
-        .map(|(width, height)| Size { width, height }),
+        .map(|((width, height), ())| Size { width, height }),
     ))
     .parse_next(input)
 }

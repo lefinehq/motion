@@ -24,7 +24,34 @@ fn layer(kv: &str) -> String {
 #[test]
 fn raw_keeps_the_original_value() {
     let d = parse_document(r#"{"layers":[],"dur":"1s","motion":1}"#).unwrap();
-    assert_eq!(d.raw["dur"], "1s");
+    assert_eq!(d.raw()["dur"], "1s");
+}
+
+#[test]
+fn from_value_keeps_the_value_and_rejects_an_invalid_one() {
+    let raw = json!({"motion": 1, "dur": "1s", "layers": [{"id": "a", "rect": "1x1"}]});
+    let d = Document::from_value(raw.clone()).unwrap();
+    assert_eq!(d.scene().layers[0].id, "a");
+    assert_eq!(d.into_raw(), raw);
+    let e = Document::from_value(json!({"motion": 1, "layers": []})).unwrap_err();
+    assert_eq!(e.kind, Kind::Missing);
+}
+
+#[test]
+fn layer_errors_sit_under_the_layer_path() {
+    let second = |kv: &str| {
+        let json = format!(
+            r#"{{"motion":1,"dur":"1s","layers":[{{"id":"a","rect":"1x1"}},{{"id":"b","rect":"1x1",{kv}}}]}}"#
+        );
+        err(&json).path.unwrap()
+    };
+    let prefix = format!("{}.", key::layer_path(1));
+    // One from serde's structure, one from a validation rule, one from a
+    // rule that places its own path.
+    for kv in [r#""text":5"#, r#""fill":"red""#, r#""id":"a""#] {
+        let path = second(kv);
+        assert!(path.starts_with(&prefix), "{kv}: {path}");
+    }
 }
 
 #[test]

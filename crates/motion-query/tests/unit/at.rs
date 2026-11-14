@@ -7,7 +7,8 @@ use motion_diagnostic::Kind;
 fn at_prints_resolved_values() {
     let s = motion_format::parse_document(include_str!("../../../../examples/launch.json"))
         .unwrap()
-        .scene;
+        .scene()
+        .clone();
     let g = motion_scene::compile(&s, &motion_scene::ApproxTextMeasure);
     assert_eq!(
         at(&g, 200.0, &["title".into()]).unwrap(),
@@ -23,9 +24,9 @@ fn at_prints_resolved_values() {
         "time must be 0 or later"
     );
     let empty = motion_scene::compile(
-        &motion_format::parse_document(r#"{"motion":1,"dur":"1s","layers":[]}"#)
+        motion_format::parse_document(r#"{"motion":1,"dur":"1s","layers":[]}"#)
             .unwrap()
-            .scene,
+            .scene(),
         &motion_scene::ApproxTextMeasure,
     );
     assert_eq!(at(&empty, 0.0, &[]).unwrap(), "");
@@ -34,7 +35,10 @@ fn at_prints_resolved_values() {
 /// Compiles a one-layer scene.
 fn graph(layer: &str) -> motion_scene::SceneGraph {
     let json = format!(r#"{{"motion":1,"dur":"2s","layers":[{layer}]}}"#);
-    let s = motion_format::parse_document(&json).unwrap().scene;
+    let s = motion_format::parse_document(&json)
+        .unwrap()
+        .scene()
+        .clone();
     motion_scene::compile(&s, &motion_scene::ApproxTextMeasure)
 }
 

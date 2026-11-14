@@ -2,9 +2,10 @@
 
 use super::*;
 use crate::doc::AnimDoc;
+use crate::parse::scene_from_value;
+use crate::parse_document;
 use crate::property::Prop;
 use crate::validate::is_valid_id;
-use crate::{parse_document, scene_from_value};
 use motion_diagnostic::{Kind, Result};
 
 /// The presets of a scene whose `presets` is `value`.
@@ -95,7 +96,7 @@ fn scene_preset_adds_a_name_and_overrides_a_builtin() {
         "layers":[{{"id":"a","rect":"1x1","in":"slide"}},{{"id":"b","rect":"1x1","in":"fade"}}]}}"#
     ))
     .unwrap();
-    let s = &d.scene;
+    let s = d.scene();
     assert_eq!(s.preset("slide").unwrap().props.len(), 1);
     assert_eq!(s.preset("fade").unwrap().props.len(), 2);
     assert_eq!(s.preset("pop").unwrap().props.len(), 2);

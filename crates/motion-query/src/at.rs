@@ -44,8 +44,8 @@ pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
                 fmt_num(n.width),
                 fmt_num(n.height)
             );
-            // x and y are always printed above.
-            for prop in Prop::all().filter(|p| ![Prop::X, Prop::Y].contains(p)) {
+            // The properties `at` sets (x and y) are always printed above.
+            for prop in Prop::all().filter(|p| p.spec().rest_from_at.is_none()) {
                 let shown = fmt_num(n.get(prop));
                 if shown != fmt_num(prop.spec().default) {
                     line.push_str(&format!(" {}={shown}", prop.name()));

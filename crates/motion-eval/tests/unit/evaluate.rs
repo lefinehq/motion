@@ -5,7 +5,7 @@ use motion_format::property::Prop;
 
 fn graph(json: &str) -> SceneGraph {
     motion_scene::compile(
-        &motion_format::parse_document(json).unwrap().scene,
+        motion_format::parse_document(json).unwrap().scene(),
         &motion_scene::ApproxTextMeasure,
     )
 }

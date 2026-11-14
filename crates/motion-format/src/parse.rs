@@ -49,6 +49,14 @@ pub mod key {
     pub const IN: &str = "in";
     /// A layer's tracks.
     pub const ANIM: &str = "anim";
+
+    /// The path of the layer at `index`, as diagnostics write it:
+    /// `layers[2]`. Validation places a layer's errors under it, and the
+    /// edit crate compares error paths with it, so the two cannot drift
+    /// apart. It matches the paths serde reports for the same layer.
+    pub fn layer_path(index: usize) -> String {
+        format!("{LAYERS}[{index}]")
+    }
 }
 
 /// The keys allowed at the top level of a scene, in the order of
@@ -81,14 +89,16 @@ pub const LAYER_KEYS: [&str; 8] = [
 pub fn parse_document(json: &str) -> Result<Document> {
     let raw: Value = serde_json::from_str(json)
         .map_err(|e| Diagnostic::syntax(format!("invalid JSON: {e}")).expected(SceneDoc::FORM))?;
-    let scene = scene_from_value(&raw)?;
-    Span::current().record("layers", scene.layers.len());
-    Ok(Document { raw, scene })
+    let doc = Document::from_value(raw)?;
+    Span::current().record("layers", doc.scene().layers.len());
+    Ok(doc)
 }
 
 /// Validates a JSON value and converts it into a typed [`Scene`], applying
-/// defaults for the keys that may be left out.
-pub fn scene_from_value(value: &Value) -> Result<Scene> {
+/// defaults for the keys that may be left out. Outside this crate a scene
+/// is only ever read as part of a [`Document`], through
+/// [`Document::from_value`].
+pub(crate) fn scene_from_value(value: &Value) -> Result<Scene> {
     let checked = serde_path_to_error::deserialize(value)
         .map_err(structural)
         .and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc));

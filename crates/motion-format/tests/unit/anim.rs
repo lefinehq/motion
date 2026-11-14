@@ -2,8 +2,9 @@
 //! through a whole scene.
 
 use super::*;
+use crate::parse::scene_from_value;
+use crate::parse_document;
 use crate::property::Prop;
-use crate::{parse_document, scene_from_value};
 use motion_diagnostic::Kind;
 use serde_json::{Value, json};
 
@@ -236,7 +237,7 @@ fn scene(layer: &str) -> Result<crate::Document> {
 #[test]
 fn layer_carries_anim() {
     let d = scene(r#""anim":{"x":"0 -> 5 @0-5f"}"#).unwrap();
-    assert_eq!(d.scene.layers[0].anim.len(), 1);
+    assert_eq!(d.scene().layers[0].anim.len(), 1);
     // A property the preset does not touch is fine next to `in`.
     assert!(scene(r#""in":"fade-up","anim":{"rotate":"0 -> 5 @0-5f"}"#).is_ok());
 }

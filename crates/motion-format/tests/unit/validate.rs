@@ -27,16 +27,16 @@ fn scene(layers: &str) -> String {
 #[test]
 fn parses_minimal_scene_with_defaults() {
     let d = doc(r#"{"motion":1,"dur":"2s","layers":[{"id":"a","rect":"10x10"}]}"#);
-    assert_eq!(d.scene.fps, 30.0);
+    assert_eq!(d.scene().fps, 30.0);
     assert_eq!(
-        d.scene.size,
+        d.scene().size,
         Size {
             width: 1920,
             height: 1080
         }
     );
     assert_eq!(
-        d.scene.background,
+        d.scene().background,
         Color {
             r: 0,
             g: 0,
@@ -45,7 +45,7 @@ fn parses_minimal_scene_with_defaults() {
         }
     );
     assert_eq!(
-        d.scene.layers[0].fill,
+        d.scene().layers[0].fill,
         Color {
             r: 255,
             g: 255,
@@ -54,19 +54,19 @@ fn parses_minimal_scene_with_defaults() {
         }
     );
     assert_eq!(
-        d.scene.layers[0].at,
+        d.scene().layers[0].at,
         Position {
             x: Coord::Center,
             y: Coord::Center
         }
     );
-    assert!(d.scene.layers[0].enter.is_none());
+    assert!(d.scene().layers[0].enter.is_none());
 }
 
 #[test]
 fn text_layer_gets_the_default_font() {
     let d = doc(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":"Hi"}]}"#);
-    match &d.scene.layers[0].content {
+    match &d.scene().layers[0].content {
         Content::Text { text, font } => {
             assert_eq!(text, "Hi");
             assert_eq!(font.family, "Inter");
@@ -81,15 +81,15 @@ fn text_layer_gets_the_default_font() {
 fn size_fps_and_bg_overrides_reach_the_scene() {
     let d = doc(r##"{"motion":1,"size":"720p","fps":60,"dur":"1s","bg":"#102030","layers":[]}"##);
     assert_eq!(
-        d.scene.size,
+        d.scene().size,
         Size {
             width: 1280,
             height: 720
         }
     );
-    assert_eq!(d.scene.fps, 60.0);
+    assert_eq!(d.scene().fps, 60.0);
     assert_eq!(
-        d.scene.background,
+        d.scene().background,
         Color {
             r: 0x10,
             g: 0x20,
