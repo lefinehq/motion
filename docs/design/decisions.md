@@ -242,6 +242,46 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Reading a file format for interoperability is well established, and the format is already documented in the open.
   - The report makes the gap measurable, so support grows by how often a feature appears in real projects.
 
+### D31. Typed values and value-space keys
+
+- **Decision:** each property row declares a value type: number, point, colour or path. A track animates a whole value, or one component of a point (`x` and `y` are the components of `position`). Keys hold bezier handles in value units, written as speed and influence on each side of a key; a point key can also hold spatial tangents, and then the value moves along a curved path at a speed measured along that path. Named curves and `cubic(...)` stay as authoring forms and compile to the same keys. This extends D27.
+- **Why:**
+  - Imported masters use eases that a normalised curve cannot hold: a key that leaves a value and returns to it has no normalised form.
+  - A motion path is one curve in space, not two independent curves per axis; splitting it changes the motion.
+  - Colours and paths animate too, and one track type over typed values keeps evaluation, checks and edits generic.
+
+### D32. One format for authored and imported scenes
+
+- **Decision:** nested compositions, the shape content tree, effects and text animators are features of the scene format. The importer writes ordinary scenes. Every object with properties (a layer, a shape item, an effect, a text animator) carries its own `anim`. What a scene cannot express yet is listed in the import's mapping report.
+- **Why:**
+  - Variants, checks and edits then work the same on an imported master and on a scene an agent wrote.
+  - A separate import-only model would grow a second engine.
+  - The mapping report keeps the gap measurable, as the reader's report does (D30).
+
+### D33. Text is shaped from font assets
+
+- **Decision:** fonts are assets, found by PostScript or family name in folders the caller gives; a missing font or glyph is an error. Shaping and line layout use Parley, with HarfRust shaping, in a crate of its own, `motion-text`. Compile reaches it through the `TextMeasure` seam, so steps 1 to 3 stay free of font files when a test does not need them.
+- **Why:**
+  - Real shaping is required for every script and for exact line breaks; an estimate cannot be checked against a reference.
+  - System fonts make a render depend on the machine (D12, D14).
+  - Projects store their own text layout, so our layout can be measured against it.
+
+### D34. A layer-tree renderer on `vello_cpu`
+
+- **Decision:** `motion-raster` draws the evaluated scene as a tree. A nested composition is a clipped layer, and opacity, blend modes and effects are operations on layers. Effects are a registry: a name, typed parameters and a draw function. Blending happens in the colour space the scene sets: an imported scene takes the project's setting, and an authored scene defaults to linear light (D21).
+- **Why:**
+  - `vello_cpu` already provides isolated layers, clipping, masks and blend modes, so the tree maps onto it directly (D2).
+  - Matching a master means blending the way the master was made; projects that do not linearise blend in gamma space.
+  - A registry keeps effects as data, so adding one is adding a row and a function, never a branch in the renderer.
+
+### D35. Fidelity is measured against reference renders
+
+- **Decision:** `motion diff` compares our frames with a reference render and writes per-frame numbers as JSON: colour error where we draw, colour error over the union of everything we draw in the clip, and coverage overlap. Text geometry is checked separately against the layout stored in the project. The numbers go into a research note for each sample.
+- **Why:**
+  - Reference renders are compressed and may show content we do not have (a photo in a placeholder), so a plain image difference is misleading.
+  - Measuring over the union of what we draw catches elements that are missing or late, not only ones drawn wrongly.
+  - Stored text layout is exact, so text can be held to a stricter limit than video allows.
+
 ## Open questions
 
 ### Q1. Name and packages (deferred)
