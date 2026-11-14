@@ -1,0 +1,55 @@
+{
+  "samples": {
+    "s737": {
+      "unsupported": {
+        "expressions (the keys under them are kept)": 15,
+        "track mattes (`alpha_inverted`)": 2,
+        "track mattes (`alpha`)": 2
+      },
+      "texts": 5,
+      "texts_within": 2,
+      "text_worst": 4.338731,
+      "all": {
+        "from": 0.0,
+        "frames": 299,
+        "drawn_error": 0.496524,
+        "drawn_failing": 0.970066,
+        "union_error": 0.694214,
+        "union_failing": 0.952477
+      },
+      "settled": {
+        "from": 3.0,
+        "frames": 119,
+        "drawn_error": 0.807165,
+        "drawn_failing": 0.976826,
+        "union_error": 0.708827,
+        "union_failing": 0.931359
+      }
+    },
+    "s740": {
+      "unsupported": {
+        "expressions (the keys under them are kept)": 10,
+        "track mattes (`alpha_inverted`)": 1
+      },
+      "texts": 3,
+      "texts_within": 2,
+      "text_worst": 7.477102,
+      "all": {
+        "from": 0.0,
+        "frames": 302,
+        "drawn_error": 0.02545,
+        "drawn_failing": 0.054613,
+        "union_error": 0.18037,
+        "union_failing": 0.300857
+      },
+      "settled": {
+        "from": 3.0,
+        "frames": 122,
+        "drawn_error": 0.017629,
+        "drawn_failing": 0.043286,
+        "union_error": 0.017629,
+        "union_failing": 0.043286
+      }
+    }
+  }
+}

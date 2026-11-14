@@ -13,6 +13,7 @@
 //! ```
 
 mod diff;
+mod fidelity;
 mod geometry;
 mod import;
 mod render;
@@ -25,6 +26,7 @@ pub mod telemetry;
 mod test_support;
 
 pub use diff::{Diff, DiffOptions, Error as DiffError, FrameDiff, Pooled};
+pub use fidelity::{Change, Ledger, Manifest, Measure, NOISE, Sample, Window, compare, measure};
 pub use geometry::{LineCheck, LineGeometry, TEXT_TOLERANCE, TextCheck, TextGeometry};
 pub use import::{import, import_scene};
 pub use session::Session;
