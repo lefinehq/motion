@@ -26,6 +26,8 @@ All notable changes to this project are documented here. The format is based on 
 - Logs with `--log <level>`, `--log-format json` and `MOTION_LOG`, and step timings with `--timings`.
 - `motion-import`: reads `.aep` projects (items, compositions, footage, layers, the property tree, keyframes, expressions and paths) into a typed model, keeps what it cannot decode yet as opaque values with a reason, and counts everything in an import report.
 - `motion inspect <project.aep>` prints a project as a tree with its import report, or both as JSON with `--json`; the engine reads projects with `motion_engine::import`.
+- `motion-import` decodes text documents (text, paragraph and character runs with resolved style sheets, point or box frame, and the line layout the project stored) with a `winnow` grammar for their object syntax and serde records over it, and 3D orientation angles; neither is opaque any more.
+- `motion_format::grammar::parse_at`, which also hands the failing offset to the explanation; `parse_all` now takes any `winnow` input, bytes included.
 
 ### Changed
 
