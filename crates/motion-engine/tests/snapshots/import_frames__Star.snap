@@ -1,0 +1,12 @@
+---
+source: crates/motion-engine/tests/import_frames.rs
+expression: meaning
+---
+frame 0: 3ffa3a807198cb25
+  shape-layer-1 [1 0 0 1 203 208] 203,208 | 0,0 | 1,1 | 0 | 1
+
+frame 119: 3ffa3a807198cb25
+  shape-layer-1 [1 0 0 1 203 208] 203,208 | 0,0 | 1,1 | 0 | 1
+
+frame 239: 3ffa3a807198cb25
+  shape-layer-1 [1 0 0 1 203 208] 203,208 | 0,0 | 1,1 | 0 | 1

@@ -1,0 +1,5 @@
+---
+source: crates/motion-engine/tests/import_frames.rs
+expression: meaning
+---
+not drawn: layers[4].font: unknown font `Helvetica 400 Normal`; expected one of InterVariable-Thin, InterVariable-ExtraLight, InterVariable-Light, InterVariable, InterVariable-Medium, InterVariable-SemiBold, InterVariable-Bold, InterVariable-ExtraBold, InterVariable-Black, InterVariableItalic-Thin, InterVariableItalic-ExtraLight, InterVariableItalic-Light, InterVariableItalic, InterVariableItalic-Medium, InterVariableItalic-SemiBold, InterVariableItalic-Bold, InterVariableItalic-ExtraBold, InterVariableItalic-Black

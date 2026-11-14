@@ -99,6 +99,12 @@ fn root<'p>(project: &'p Project, name: Option<&str>) -> Result<(&'p Item, &'p C
             _ => None,
         })
         .collect();
+    if compositions.is_empty() {
+        return Err(
+            Diagnostic::new(Kind::Missing, "the project holds no composition to import")
+                .expected("a project with at least one composition"),
+        );
+    }
     let names = || compositions.iter().map(|(item, _)| item.name.as_str());
     if let Some(name) = name {
         return compositions

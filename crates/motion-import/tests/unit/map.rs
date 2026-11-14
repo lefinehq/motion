@@ -75,3 +75,14 @@ fn chooses_the_composition_by_name_or_refuses_to_guess() {
         Kind::UnknownName
     );
 }
+
+#[test]
+fn a_project_without_compositions_says_so() {
+    let mut project = sample_project();
+    project
+        .items
+        .retain(|item| !matches!(item.kind, ItemKind::Composition(_)));
+    let error = import(&project, &Options::default()).unwrap_err();
+    assert_eq!(error.kind, Kind::Missing);
+    assert_eq!(error.message, "the project holds no composition to import");
+}
