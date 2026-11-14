@@ -34,6 +34,9 @@ pub struct Face {
     /// The family, such as `Lato`: the typographic family when the font
     /// names one, else its family name.
     pub family: String,
+    /// The version its file names, such as `Version 3.100`; empty when it
+    /// names none.
+    pub version: String,
     /// The weight, 1 to 1000 (400 regular, 700 bold).
     pub weight: f32,
     /// The slant.
@@ -71,6 +74,7 @@ fn faces_of(font: &FontRef, data: &FontData, source: &str) -> Result<Vec<Face>> 
     let family = name(font, StringId::TYPOGRAPHIC_FAMILY_NAME)
         .or_else(|| name(font, StringId::FAMILY_NAME))
         .ok_or_else(|| missing_name(source, "family"))?;
+    let version = name(font, StringId::VERSION_STRING).unwrap_or_default();
     let attributes = font.attributes();
     let slant = slant(attributes.style);
     let instances = font.named_instances();
@@ -80,6 +84,7 @@ fn faces_of(font: &FontRef, data: &FontData, source: &str) -> Result<Vec<Face>> 
         return Ok(vec![Face {
             postscript_name,
             family,
+            version,
             weight: attributes.weight.value(),
             slant,
             variations: Vec::new(),
@@ -111,6 +116,7 @@ fn faces_of(font: &FontRef, data: &FontData, source: &str) -> Result<Vec<Face>> 
             Ok(Face {
                 postscript_name,
                 family: family.clone(),
+                version: version.clone(),
                 weight,
                 slant,
                 variations,

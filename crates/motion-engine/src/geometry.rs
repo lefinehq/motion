@@ -10,10 +10,11 @@
 //!
 //! [D35]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d35-fidelity-is-measured-against-reference-renders
 
-use motion_format::{Diagnostic, Kind, Result};
+use motion_format::text::TextContent;
+use motion_format::{Content, Diagnostic, Kind, Layer, Result, Scene};
 use motion_import::map::StoredText;
-use motion_scene::{Node, NodeContent, SceneGraph};
-use motion_text::TextLayout;
+use motion_scene::{Node, NodeContent, SceneGraph, set_text};
+use motion_text::{TextLayout, Typesetter};
 use serde::Serialize;
 
 use crate::Session;
@@ -67,6 +68,9 @@ pub struct LineGeometry {
     /// Each character's advance, cumulative from `start`; empty where the
     /// project stores none.
     pub advances: Vec<f64>,
+    /// The glyph ids it is set in. The project stores one per character, its
+    /// paragraph's end included; empty where it stores none.
+    pub glyphs: Vec<u32>,
 }
 
 impl LineCheck {
@@ -93,6 +97,25 @@ impl LineCheck {
         .into_iter()
         .chain(advances)
         .fold(0.0, f64::max)
+    }
+
+    /// How many of the stored glyph ids the scene sets another glyph for, or
+    /// none, and how many were compared; none when a side is missing or the
+    /// project stores no glyphs. A different glyph for the same character
+    /// means another version of the font.
+    pub fn glyphs_differ(&self) -> Option<(usize, usize)> {
+        let (stored, ours) = (&self.stored.as_ref()?.glyphs, &self.ours.as_ref()?.glyphs);
+        if stored.is_empty() {
+            return None;
+        }
+        // The project's glyph for the paragraph's end has none of ours.
+        let stored = match stored.len() == ours.len() + 1 {
+            true => &stored[..ours.len()],
+            false => &stored[..],
+        };
+        let differ = stored.iter().zip(ours).filter(|(a, b)| a != b).count()
+            + stored.len().abs_diff(ours.len());
+        Some((differ, stored.len()))
     }
 
     /// The scene's width less the stored one, or none when a side is missing.
@@ -131,19 +154,64 @@ impl Session {
         let graph = self.graph()?;
         let texts = stored
             .iter()
-            .map(|text| {
-                let layout = layout_of(graph, text)?;
-                Ok(TextCheck {
-                    comp: text.comp.clone(),
-                    layer: text.layer.clone(),
-                    lines: lines(text, layout),
-                })
-            })
+            .map(|text| Ok(check(text, layout_of(graph, text)?)))
             .collect::<Result<_>>()?;
         Ok(TextGeometry {
             tolerance: TEXT_TOLERANCE,
             texts,
         })
+    }
+}
+
+/// Holds one stored text against `scene`'s layer, set by `typesetter`
+/// alone, without compiling the rest of the scene: how candidate fonts are
+/// held against a project's text before the scene has all its fonts.
+///
+/// # Errors
+/// A missing-value diagnostic when the scene has no such text layer, or the
+/// typesetter's when its fonts lack one the text asks for.
+pub fn check_text(
+    scene: &Scene,
+    text: &StoredText,
+    typesetter: &mut Typesetter,
+) -> Result<TextCheck> {
+    let node = set_text(content_of(scene, text)?, typesetter)?;
+    Ok(check(text, &node.layout))
+}
+
+fn check(text: &StoredText, layout: &TextLayout) -> TextCheck {
+    TextCheck {
+        comp: text.comp.clone(),
+        layer: text.layer.clone(),
+        lines: lines(text, layout),
+    }
+}
+
+/// The text of the layer `text` names, as `scene` writes it.
+pub(crate) fn content_of<'s>(scene: &'s Scene, text: &StoredText) -> Result<&'s TextContent> {
+    let layers: &[Layer] = match &text.comp {
+        None => &scene.layers,
+        Some(id) => scene
+            .comps
+            .iter()
+            .find(|comp| &comp.id == id)
+            .map(|comp| comp.layers.as_slice())
+            .ok_or_else(|| {
+                Diagnostic::unknown("composition", id, scene.comps.iter().map(|c| c.id.as_str()))
+            })?,
+    };
+    let layer = layers
+        .iter()
+        .find(|layer| layer.id == text.layer)
+        .ok_or_else(|| {
+            Diagnostic::unknown("layer", &text.layer, layers.iter().map(|l| l.id.as_str()))
+        })?;
+    match &layer.content {
+        Content::Text(content) => Ok(content),
+        _ => Err(Diagnostic::new(
+            Kind::Missing,
+            format!("layer `{}` holds no text to check", text.layer),
+        )),
     }
 }
 
@@ -196,6 +264,11 @@ fn lines(text: &StoredText, layout: &TextLayout) -> Vec<LineCheck> {
                     .iter()
                     .flat_map(|s| s.advances.iter().copied())
                     .collect(),
+                glyphs: line
+                    .segments
+                    .iter()
+                    .flat_map(|s| s.glyphs.iter().copied())
+                    .collect(),
             }
         })
         .collect();
@@ -214,6 +287,12 @@ fn lines(text: &StoredText, layout: &TextLayout) -> Vec<LineCheck> {
                 baseline: line.baseline,
                 width: line.width,
                 advances: line.advances.clone(),
+                glyphs: layout
+                    .runs
+                    .iter()
+                    .filter(|run| run.line == i)
+                    .flat_map(|run| run.glyphs.iter().map(|glyph| glyph.id))
+                    .collect(),
             }
         })
         .collect();

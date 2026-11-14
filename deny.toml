@@ -14,6 +14,9 @@ version = 2
 # Permissive licences only: copyleft is not allowed (D13 in docs/design/decisions.md).
 allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib"]
 confidence-threshold = 0.93
+# Mozilla's root certificates, which the font fetcher's HTTP client trusts
+# (D39), are data under a permissive data licence.
+exceptions = [{ crate = "webpki-roots", allow = ["CDLA-Permissive-2.0"] }]
 
 [bans]
 multiple-versions = "warn"

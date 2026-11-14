@@ -1,0 +1,30 @@
+[package]
+name = "motion-fonts"
+description = "Resolves the fonts of motion scenes to exact, open-licensed files, pins them in a lock file and keeps them in a content-addressed cache, so renders never reach the network."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# Finding and downloading fonts. Only the CLI turns it on: nothing that
+# renders links a network client (D39).
+fetch = ["dep:base64", "dep:motion-text", "dep:ureq"]
+
+[dependencies]
+motion-format = { path = "../motion-format" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+base64 = { workspace = true, optional = true }
+motion-text = { path = "../motion-text", optional = true }
+ureq = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+rstest.workspace = true
+
+[lints]
+workspace = true

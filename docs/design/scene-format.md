@@ -233,7 +233,7 @@ Layout is resolved before anything moves. Every animation is therefore relative 
 
 ## Text
 
-A text layer sets its words (`text`, where `\n` ends a paragraph) from font assets ([D33](decisions.md#d33-text-is-shaped-from-font-assets)). `fonts` at the top of the scene lists font files and folders, relative to the scene file; Inter ships built in as the family `Inter Variable`. `font` names a family or a PostScript name, a size and a weight: `"Inter Variable 96 700"` or `"Lato-Black 55"`. A font the scene does not have is an error that lists the faces there are, never a silent fallback.
+A text layer sets its words (`text`, where `\n` ends a paragraph) from font assets ([D33](decisions.md#d33-text-is-shaped-from-font-assets)). `fonts` at the top of the scene lists font files, folders and locks, relative to the scene file; Inter ships built in as the family `Inter Variable`. `font` names a family or a PostScript name, a size and a weight: `"Inter Variable 96 700"` or `"Lato-Black 55"`. A font the scene does not have is an error that lists the faces there are, never a silent fallback.
 
 ```json
 "fonts":["fonts/lato"],
@@ -321,7 +321,8 @@ motion never goes to the network while rendering. A render depends only on the s
 
 - **Inter** is built in.
 - **Other fonts, images and audio** are referenced by file path.
-- **`motion fonts add <family>`** downloads an open-licensed font, such as a Google Font or a colour emoji font, into a project folder. It is a separate, explicit step.
+- **`motion fonts fetch <scene>`** finds every face the scene's text uses and its `fonts` lack, in open-licensed sources, and pins each to an exact file in a lock beside the scene (`story.fonts.lock` for `story.json`). It adds the lock to `fonts` and downloads the files into the font cache (`$MOTION_CACHE`, or the platform's cache folder). It is a separate, explicit step; `motion import --fetch-fonts` runs it for an imported project ([D39](decisions.md#d39-fonts-are-resolved-before-a-render)).
+- **A lock in `fonts`** loads each face it pins from the cache and checks the file's hash. A face the cache lacks is an error that names `motion fonts fetch`.
 - **System fonts** work, but the checker warns about them, because the result then depends on the machine.
 - **A missing font or glyph** is an error, never a silent fallback.
 

@@ -1,5 +1,61 @@
 {
   "samples": {
+    "s553": {
+      "unsupported": {
+        "`ADBE Stroke`": 2,
+        "`ADBE Text Expressible Selector`": 1,
+        "expressions (the keys under them are kept)": 9,
+        "masks": 3,
+        "time remapping": 1
+      },
+      "texts": 4,
+      "texts_within": 1,
+      "text_worst": 15.004835,
+      "all": {
+        "from": 0.0,
+        "frames": 302,
+        "drawn_error": 0.3449,
+        "drawn_failing": 0.956004,
+        "union_error": 0.391816,
+        "union_failing": 0.965767
+      },
+      "settled": {
+        "from": 3.0,
+        "frames": 122,
+        "drawn_error": 0.338053,
+        "drawn_failing": 0.934282,
+        "union_error": 0.380514,
+        "union_failing": 0.952303
+      }
+    },
+    "s611": {
+      "unsupported": {
+        "`ADBE AudSpect`": 2,
+        "`ADBE Drop Shadow`": 2,
+        "`ADBE Mirror`": 2,
+        "adjustment layers (drawn as nothing)": 1,
+        "expressions (the keys under them are kept)": 6
+      },
+      "texts": 1,
+      "texts_within": 1,
+      "text_worst": 0.117198,
+      "all": {
+        "from": 0.0,
+        "frames": 900,
+        "drawn_error": 0.43035,
+        "drawn_failing": 1.0,
+        "union_error": 0.43035,
+        "union_failing": 1.0
+      },
+      "settled": {
+        "from": 3.0,
+        "frames": 720,
+        "drawn_error": 0.430411,
+        "drawn_failing": 1.0,
+        "union_error": 0.430411,
+        "union_failing": 1.0
+      }
+    },
     "s737": {
       "unsupported": {
         "expressions (the keys under them are kept)": 15

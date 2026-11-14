@@ -12,6 +12,8 @@ use motion_engine::{
 };
 use serde::Serialize;
 
+use super::fonts::{self, Fetched};
+
 /// The text check's outcome: the geometry, or why the scene's text could
 /// not be laid out, such as fonts the import was not given.
 #[derive(Serialize)]
@@ -28,16 +30,32 @@ enum TextOutcome {
 struct Report<'a> {
     /// What the import mapped.
     mapping: &'a Mapping,
+    /// What the font fetch did, with `--fetch-fonts`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fonts: Option<&'a Fetched>,
     /// The text check.
     text: TextOutcome,
 }
 
-/// Imports `project` with `options`, writes the scene to `out`, checks its
-/// text against the stored layout, and prints the report, as JSON when
-/// `json` is set.
-pub fn run(project: &Path, options: &ImportOptions, out: &Path, json: bool) -> Result<ExitCode> {
-    let import = motion_engine::import_scene(project, options)?;
+/// How `motion import` runs.
+pub struct Args {
+    /// Fetch and lock the fonts the scene lacks.
+    pub fetch_fonts: bool,
+    /// Print the report as JSON.
+    pub json: bool,
+}
+
+/// Imports `project` with `options`, writes the scene to `out`, fetches its
+/// fonts when asked, checks its text against the stored layout, and prints
+/// the report, as JSON when asked.
+pub fn run(project: &Path, options: &ImportOptions, out: &Path, args: &Args) -> Result<ExitCode> {
+    let mut import = motion_engine::import_scene(project, options)?;
     fs::write(out, write_document(&import.json)).map_err(|e| Diagnostic::io("write", out, &e))?;
+    let fonts = match args.fetch_fonts {
+        true => Some(fonts::for_import(out, &mut import.json, &import.texts)?),
+        false => None,
+    };
+    let json = args.json;
     // Opened from where it was written, so `fonts` resolve as they will.
     let text = match Session::open(out).and_then(|s| s.text_geometry(&import.texts)) {
         Ok(geometry) => TextOutcome::Checked(geometry),
@@ -46,6 +64,7 @@ pub fn run(project: &Path, options: &ImportOptions, out: &Path, json: bool) -> R
     if json {
         let report = Report {
             mapping: &import.mapping,
+            fonts: fonts.as_ref(),
             text,
         };
         let text = serde_json::to_string_pretty(&report).map_err(|e| {
@@ -57,6 +76,9 @@ pub fn run(project: &Path, options: &ImportOptions, out: &Path, json: bool) -> R
         println!("{text}");
     } else {
         print!("{}", import.mapping);
+        if let Some(fonts) = &fonts {
+            fonts::print(fonts);
+        }
         print_text(&text);
         println!("  wrote {}", out.display());
     }
@@ -89,8 +111,19 @@ fn print_text(text: &TextOutcome) {
             .filter(|_| check.off() > geometry.tolerance)
             .map(|i| format!(", line {}: {}", i + 1, describe(&check.lines[i])))
             .unwrap_or_default();
+        let (differ, glyphs) = check
+            .lines
+            .iter()
+            .filter_map(LineCheck::glyphs_differ)
+            .fold((0, 0), |(d, g), (differ, compared)| {
+                (d + differ, g + compared)
+            });
+        let glyphs = match differ {
+            0 => String::new(),
+            _ => format!(", {differ} of {glyphs} glyphs differ (another version of the font?)"),
+        };
         println!(
-            "    {place}: {lines} line{plural}, off {}{worst}",
+            "    {place}: {lines} line{plural}, off {}{worst}{glyphs}",
             px(check.off())
         );
     }

@@ -183,9 +183,19 @@ enum Command {
         /// scene file; repeat for more.
         #[arg(long = "font", value_name = "PATH")]
         fonts: Vec<String>,
+        /// Find the fonts the project's text uses and the scene's `fonts`
+        /// lack, pick each family's release by the glyphs and lines the
+        /// project stored, and lock them beside the scene.
+        #[arg(long)]
+        fetch_fonts: bool,
         /// Print the report as JSON.
         #[arg(long)]
         json: bool,
+    },
+    /// Fonts: find the ones a scene uses and lock them.
+    Fonts {
+        #[command(subcommand)]
+        command: FontsCommand,
     },
     /// Print an `.aep` project: its items, layers and properties, then what
     /// the reader could not decode yet.
@@ -195,6 +205,24 @@ enum Command {
         /// Print the model and the report as JSON.
         #[arg(long)]
         json: bool,
+    },
+}
+
+/// The `motion fonts` commands.
+#[derive(Subcommand)]
+enum FontsCommand {
+    /// Lock every font the scene's text uses and its `fonts` lack, from
+    /// open-licensed sources, and download the locked files into the cache.
+    /// A face already locked keeps its file.
+    Fetch {
+        /// Path to the scene file.
+        scene: PathBuf,
+        /// Resolve every face again, not only the new ones.
+        #[arg(long)]
+        update: bool,
+        /// Only take releases whose tag or commit starts with this.
+        #[arg(long, value_name = "REF")]
+        release: Option<String>,
     },
 }
 
@@ -209,6 +237,9 @@ impl Command {
             | Command::Diff { scene, .. } => scene,
             Command::Import { project, .. } | Command::Inspect { project, .. } => project,
             Command::Fidelity { manifest, .. } => manifest,
+            Command::Fonts {
+                command: FontsCommand::Fetch { scene, .. },
+            } => scene,
         }
     }
 }
@@ -284,13 +315,22 @@ fn main() -> ExitCode {
             out,
             comp,
             fonts,
+            fetch_fonts,
             json,
         } => commands::import::run(
             &project,
             &motion_engine::ImportOptions { comp, fonts },
             &out,
-            json,
+            &commands::import::Args { fetch_fonts, json },
         ),
+        Command::Fonts {
+            command:
+                FontsCommand::Fetch {
+                    scene,
+                    update,
+                    release,
+                },
+        } => commands::fonts::fetch(&scene, update, release.as_deref()),
         Command::Inspect { project, json } => commands::inspect::run(&project, json),
     };
     let code = match result {

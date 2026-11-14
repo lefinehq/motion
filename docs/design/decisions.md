@@ -308,6 +308,20 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Most template expressions are easing and wiggle scripts over fixed keys. Baked, they lose nothing.
 - **Not now:** live expressions in the format. They would be a separate decision, made only if a real template needs a value to follow an edit.
 
+### D39. Fonts are resolved before a render
+
+- **Decision:** a scene's fonts are resolved by a separate command, `motion fonts fetch` (or `motion import --fetch-fonts`), never by a render.
+  - The command writes a lock beside the scene, `<scene>.fonts.lock`, and the scene names it in `fonts`. For every face the lock records the source repository, the exact tag or commit, the path, the version, the licence, and the file's SHA-256 and size.
+  - Files are kept in a cache by their hash. A render loads each locked face from the cache and checks the hash. A missing or changed file is an error that names the command to run.
+  - Sources are data: each family's own repository, whose tags are its releases, and Google Fonts' folder for it, whose commits are. Only open licences are fetched (OFL, Apache, UFL). Other fonts are reported, never fetched.
+  - With a project's stored layout as evidence, each family takes the release whose glyph ids and line widths match it best. Otherwise it takes the newest release that has its faces.
+  - Fetching lives behind the `fetch` feature of `motion-fonts`. Only the CLI turns it on, and a test fails if any other crate depends on a network client.
+- **Why:**
+  - Renders stay repeatable and offline ([D12](#d12-what-repeatable-means)). The same lock always draws with the same bytes, on any machine.
+  - The version matters. One sample's template was made with Montserrat 3.100 from the family's repository, a release Google Fonts never shipped. Every later version, and every Google Fonts one, gives its words other glyphs.
+  - Hashes make the cache safe to share, and the lock makes a scene portable without carrying font files.
+- **Not now:** substitutes for licensed fonts, such as a metric-compatible face standing in for Arial. That needs a face to answer to another name, and is a separate decision.
+
 ## Open questions
 
 ### Q1. Name and packages (deferred)

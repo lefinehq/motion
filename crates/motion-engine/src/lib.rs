@@ -14,6 +14,7 @@
 
 mod diff;
 mod fidelity;
+mod fonts;
 mod geometry;
 mod import;
 mod render;
@@ -27,7 +28,10 @@ mod test_support;
 
 pub use diff::{Diff, DiffOptions, Error as DiffError, FrameDiff, Pooled};
 pub use fidelity::{Change, Ledger, Manifest, Measure, NOISE, Sample, Window, compare, measure};
-pub use geometry::{LineCheck, LineGeometry, TEXT_TOLERANCE, TextCheck, TextGeometry};
+pub use fonts::{
+    LOCK_EXTENSION, LayoutJudge, add_fonts_entry, font_names, lock_path, missing_fonts,
+};
+pub use geometry::{LineCheck, LineGeometry, TEXT_TOLERANCE, TextCheck, TextGeometry, check_text};
 pub use import::{import, import_scene};
 pub use session::Session;
 

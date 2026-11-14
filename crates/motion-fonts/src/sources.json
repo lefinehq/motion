@@ -1,0 +1,28 @@
+{
+  "comment": "Where each family's releases live, newest source first. A family not listed is looked up in Google Fonts' ofl, apache and ufl folders. GitHub sources name their licence; a Google Fonts folder's licence is its first segment.",
+  "families": [
+    {
+      "prefix": "Lato",
+      "sources": [{ "google": "ofl/lato" }]
+    },
+    {
+      "prefix": "Montserrat",
+      "sources": [
+        { "github": "JulietaUla/Montserrat", "licence": "OFL-1.1" },
+        { "google": "ofl/montserrat" }
+      ]
+    },
+    {
+      "prefix": "OpenSans",
+      "sources": [{ "google": "ofl/opensans" }, { "google": "apache/opensans" }]
+    },
+    {
+      "prefix": "Roboto",
+      "sources": [
+        { "github": "googlefonts/roboto", "licence": "Apache-2.0" },
+        { "google": "ofl/roboto" },
+        { "google": "apache/roboto" }
+      ]
+    }
+  ]
+}

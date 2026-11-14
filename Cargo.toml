@@ -58,6 +58,13 @@ parlance = { version = "0.1", default-features = false, features = ["std"] }
 skrifa = "0.49"
 # The font bytes type the shaper and the rasteriser share (D37: vocabulary).
 linebender_resource_handle = "0.1"
+# Content hashes of font files (D39).
+sha2 = "0.10"
+# jsDelivr lists file hashes in base64.
+base64 = "0.23"
+# The font fetcher's HTTP client, with Mozilla's root certificates so a
+# fetch does not depend on the machine's trust store (D39).
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 # The CPU rasteriser (D2, D34); here only to check that font data types agree.
 vello_cpu = "0.4"
 
