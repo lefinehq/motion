@@ -710,6 +710,90 @@ mod effects {
     }
 }
 
+/// The scene layer called `name` of `import`.
+fn scene_layer<'i>(import: &'i Import, name: &str) -> &'i serde_json::Value {
+    import.json["layers"]
+        .as_array()
+        .expect("layers")
+        .iter()
+        .find(|l| l["id"] == name)
+        .unwrap_or_else(|| panic!("no layer {name}"))
+}
+
+#[test]
+fn a_layer_with_a_source_keeps_its_anchor_in_fractions_of_it() {
+    use crate::model::{Ease, Interpolation, Keyframe, LayerKind, Spatial, Stream, Value};
+    use crate::test_support::build::{comp, layer, project, property, solid, transform};
+    use serde_json::json;
+    let anchor = |stream| transform(vec![property("ADBE Anchor Point", stream)]);
+    let at = |x, y| Stream::Static(Value::Vector3([x, y, 0.0]));
+    let key = |time, x, y, tangent: [f64; 2]| Keyframe {
+        time,
+        value: Value::Vector3([x, y, 0.0]),
+        in_interpolation: Interpolation::Linear,
+        out_interpolation: Interpolation::Linear,
+        in_ease: vec![Ease {
+            speed: 0.0,
+            influence: 0.0,
+        }],
+        out_ease: vec![Ease {
+            speed: 0.0,
+            influence: 0.0,
+        }],
+        spatial: Some(Spatial {
+            in_tangent: vec![-tangent[0], -tangent[1], 0.0],
+            out_tangent: vec![tangent[0], tangent[1], 0.0],
+            continuous: false,
+            auto_bezier: false,
+        }),
+        continuous: false,
+        auto_bezier: false,
+        roving: false,
+    };
+    // A 300 by 200 solid anchored at a quarter of its width and its foot,
+    // the same solid with keys and a bent path, a null over a 100 by 100
+    // solid at its middle, and a shape layer, whose anchor is in pixels.
+    let mut sized = layer(1, "Sized", vec![anchor(at(0.25, 1.0))]);
+    sized.source = Some(9);
+    let mut keyed = layer(
+        2,
+        "Keyed",
+        vec![anchor(Stream::Animated(vec![
+            key(0.0, 0.0, 0.0, [0.1, 0.0]),
+            key(1.0, 1.0, 1.0, [0.0, 0.5]),
+        ]))],
+    );
+    keyed.source = Some(9);
+    let mut null = layer(3, "Null", vec![anchor(at(0.5, 0.5))]);
+    null.source = Some(8);
+    null.switches.null = true;
+    let mut shape = layer(4, "Shape", vec![anchor(at(10.0, 20.0))]);
+    shape.kind = LayerKind::Shape;
+    let mut left_out = layer(5, "Left out", vec![]);
+    left_out.source = Some(9);
+    let mut project = project(vec![(
+        2,
+        "Main",
+        comp(vec![sized, keyed, null, shape, left_out], 2.0),
+    )]);
+    project
+        .items
+        .extend([solid(9, 300, 200), solid(8, 100, 100)]);
+    let import = import(&project, &Options::default()).expect("imports");
+    assert_eq!(scene_layer(&import, "sized")["anchor"], json!([75, 200]));
+    assert_eq!(scene_layer(&import, "null")["anchor"], json!([50, 50]));
+    assert_eq!(scene_layer(&import, "shape")["anchor"], json!([10, 20]));
+    assert_eq!(
+        scene_layer(&import, "left-out")["anchor"],
+        json!([150, 100])
+    );
+    let keys = &scene_layer(&import, "keyed")["anim"]["anchor"];
+    assert_eq!(keys[0]["v"], json!([0, 0]));
+    assert_eq!(keys[1]["v"], json!([300, 200]));
+    // The path's handles are in pixels of the source too.
+    assert_eq!(keys[0]["path"], json!([[30, 0], [0, -100]]));
+}
+
 #[test]
 fn a_blend_mode_the_scene_has_is_written_and_another_reported() {
     use crate::BlendMode;

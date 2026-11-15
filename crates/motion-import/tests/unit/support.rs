@@ -519,6 +519,30 @@ pub(crate) mod build {
         }
     }
 
+    /// A white solid `width` by `height`, item `id`.
+    pub(crate) fn solid(id: u32, width: u32, height: u32) -> Item {
+        Item {
+            id,
+            name: format!("Solid {id}"),
+            folder: None,
+            kind: ItemKind::Footage(crate::model::Footage {
+                width,
+                height,
+                pixel_aspect: 1.0,
+                frame_rate: 0.0,
+                duration: 0.0,
+                source: crate::model::Source::Solid {
+                    color: Color {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: 1.0,
+                    },
+                },
+            }),
+        }
+    }
+
     /// A 200 by 100 comp of `layers`, at 10 frames a second, `duration` long.
     pub(crate) fn comp(layers: Vec<Layer>, duration: f64) -> Composition {
         Composition {

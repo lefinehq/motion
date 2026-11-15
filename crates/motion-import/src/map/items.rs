@@ -33,8 +33,10 @@ pub(super) struct Place<'p> {
     /// The frame rate of the layer's composition, at which what the scene
     /// cannot key exactly is keyed at every frame.
     pub frame_rate: f64,
-    /// The centre of the layer's source, or the origin.
-    pub source_centre: [f64; 2],
+    /// Where the layer's anchor point rests when the project leaves it out,
+    /// in the project's units ([`Place::source_unit`]): the middle of its
+    /// source, the top-left corner of a null's, or the origin.
+    pub anchor_rest: [f64; 2],
     /// The layer's size: its source's, else its composition's, which an
     /// effect's points are stored in fractions of.
     pub size: [f64; 2],
@@ -43,9 +45,11 @@ pub(super) struct Place<'p> {
     /// middle for a shape or text layer, whose content is drawn about its
     /// origin in a box the size of its composition.
     pub origin: [f64; 2],
-    /// What one unit of the layer's mask paths spans, in px: its source's
-    /// size, or 1 on a layer without a source, whose masks are in px.
-    pub mask_space: [f64; 2],
+    /// What one unit of the geometry the project stores in the layer's own
+    /// space spans, in px: its source's size, as the project keeps a
+    /// layer's mask paths and anchor point in fractions of its source, or
+    /// 1 on a layer without a source, whose masks and anchor are in px.
+    pub source_unit: [f64; 2],
     /// The definition of the effect being mapped, if any.
     pub effect: Option<&'p EffectDefinition>,
 }
@@ -740,7 +744,9 @@ fn rest_json(target: Target) -> Option<Json> {
 
 /// How `row`'s values become the scene's at `place`: an effect's point
 /// parameter is stored in fractions of the layer's effect space, so it
-/// becomes pixels of that space, measured from the layer's origin.
+/// becomes pixels of that space, measured from the layer's origin; a value
+/// the row keeps in fractions of the layer's source (a mask's path, a
+/// layer's anchor point) becomes pixels of the source.
 fn convert(row: &Row, place: &Place<'_>) -> Convert {
     let point = place
         .effect
@@ -751,7 +757,11 @@ fn convert(row: &Row, place: &Place<'_>) -> Convert {
             size: place.size,
             origin: place.origin,
         },
-        (false, Convert::PathIn(_)) => Convert::PathIn(place.mask_space),
+        (false, Convert::PathIn(_)) => Convert::PathIn(place.source_unit),
+        (false, Convert::Sized { origin, .. }) => Convert::Sized {
+            size: place.source_unit,
+            origin,
+        },
         (false, convert) => convert,
     }
 }
@@ -769,7 +779,7 @@ fn default_value(row: &Row, place: &Place<'_>) -> Option<Value> {
             let [width, height] = place.comp_size;
             Value::Vector3([width / 2.0, height / 2.0, -default_zoom(width)])
         }
-        Missing::SourceCentre => Value::Vector2(place.source_centre),
+        Missing::SourceCentre => Value::Vector2(place.anchor_rest),
         Missing::Parameter => {
             let parameter = place.effect?.parameter(row.match_name)?;
             match &parameter.control {

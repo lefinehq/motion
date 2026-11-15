@@ -1,4 +1,4 @@
-Status: Living · 2026-11-14
+Status: Living · 2026-11-16
 
 # What we know about `.aep` by inference
 
@@ -59,3 +59,16 @@ Other things we take without evidence:
 - **Fractional points.** Every stored point count is a whole number and none is animated in the corpus; the `Benchmark` and `Star` fixtures animate it (5 to 6, 6 to 8) but have no reference frames. The scene counts the whole part of `points`, so a star animating from 5 to 6 points gains its sixth at the last key.
 - **Ranges.** The project stores 0 to 100 as the bounds of the point count, the radii and the roundnesses, yet m619 stores an outer radius of 588: these are the bounds of the slider, not of the value. The scene takes 0 to 100 points (m562 stores 100), radii from 0 and roundness of any sign and size.
 - **m625, m778 and m801.** Their stars are the only thing the import reported, but their references show other compositions: m778 and m801 show the title of the root composition `Neon Title 03`, not the three hexagons of the root composition `Frames` the manifest picks, and m625 shows a promotional reel, not `Pano 2`. Drawing the stars therefore makes them err more, not less, until the manifest picks the composition the preview shows.
+
+## Anchor points
+
+A layer's anchor point is where its own space is pinned to its position, and its children's positions are measured in that space. These beliefs were measured once, by hand, over the 198 corpus projects and their reference frames; the sweep does not check them yet.
+
+| Belief | Evidence | Held, 2026-11-16 |
+|---|---|---|
+| A1. A layer with a source (a composition, footage, a solid or a null) stores its anchor point in fractions of its source's size, as it stores its masks; a layer without one (shape, text, camera) stores it in px. | The fixture `HamburgerArrow.aep` stores `[0.5, 0.5]` for a null over a 120 by 120 solid, and an export of the same project made through the host's scripting API reads `[60, 60]`. m650 stores `[0.5, 0.5]` on two nested nulls over 100 by 100 solids; read as px, its logo sits 98.5 and 99 px right and down of the reference and its text 49 and 50 px; read as fractions, the failing content falls from 3.16 % to 0.96 %. m640 stores `[6.12, 3.45]` on a null: as fractions, its frame moves onto the reference's (36.54 % to 17.20 % failing). Templates that drive such a null's anchor by an expression write `[50, 50]` over a stored `[0.5, 0.5]`: the same point. | 694 stored anchors on layers with a source, in 64 projects: none beyond 8.25 in x or y. 2,547 on layers without one: 2,434 beyond 10. |
+| A2. A null that leaves its anchor out rests it at its top-left corner; another layer with a source, at its middle. | The null half: see the change of 2026-11-15 in the changelog (10 samples closer). The middle: 7,005 layers over compositions leave it out, and the corpus's passing samples draw them centred. | |
+
+What is left open:
+- **Depth.** A 3D layer with a source stores its anchor's depth too. Only one template family stores one that is not 0 (`Null 33`, `[-3.33, 8.25, -1.32]`, in m571 to m575, m779 and m783), so its unit is unmeasured; the import keeps the depth in px.
+

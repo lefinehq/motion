@@ -120,3 +120,42 @@ fn a_property_under_an_expression_waits_until_baked() {
         Ok(Val::Vector(vec![1.0, 2.0]))
     );
 }
+
+#[test]
+fn a_sourced_layers_anchor_reads_in_pixels_of_its_source() {
+    use crate::test_support::build::solid;
+    // A null over a 100 by 100 solid stores its middle as [0.5, 0.5]; a
+    // layer without a source stores its anchor in pixels.
+    let anchored = |id, name| {
+        layer(
+            id,
+            name,
+            vec![transform(vec![property(
+                "ADBE Anchor Point",
+                point(0.5, 0.25),
+            )])],
+        )
+    };
+    let null = Layer {
+        source: Some(9),
+        ..anchored(1, "Null")
+    };
+    let mut project = project(vec![(
+        5,
+        "Main",
+        comp(vec![null, anchored(2, "Free")], 2.0),
+    )]);
+    project.items.push(solid(9, 100, 100));
+    let (host, _) = ProjectHost::new(&project);
+    let main = child(&host, PROJECT, Select::Name("Main"));
+    let anchor = |name| {
+        let layer = child(&host, main, Select::Name(name));
+        host.value_at(
+            child(&host, layer, Select::Attribute("anchorPoint")),
+            0.0,
+            false,
+        )
+    };
+    assert_eq!(anchor("Null"), Ok(Val::Vector(vec![50.0, 25.0, 0.0])));
+    assert_eq!(anchor("Free"), Ok(Val::Vector(vec![0.5, 0.25, 0.0])));
+}

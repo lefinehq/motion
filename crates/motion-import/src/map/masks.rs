@@ -22,7 +22,7 @@ impl Walk<'_> {
         place: &Place<'_>,
     ) {
         if keys.get("mask").is_none_or(Json::is_null) {
-            keys.insert("mask".into(), json!(svg(&whole(place.mask_space))));
+            keys.insert("mask".into(), json!(svg(&whole(place.source_unit))));
         }
         match MASK_MODES.iter().find(|(mode, _)| *mode == settings.mode) {
             Some((_, "add")) => {}
