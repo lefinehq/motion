@@ -11,6 +11,7 @@ mod shape;
 mod state;
 mod text;
 mod track;
+mod trim;
 mod walk;
 
 pub use animate::{COUNTS, GlyphParts, GlyphState, Parts};

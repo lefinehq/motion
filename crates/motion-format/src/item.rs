@@ -23,6 +23,9 @@ pub enum Role {
     Geometry,
     /// Draws the outlines before it in its group and in the groups inside it.
     Paint,
+    /// Changes the outlines before it in its group and in the groups inside
+    /// it, for every paint that draws them.
+    Modifier,
     /// Changes the pixels of the layer it is on, after its content is drawn.
     Effect,
     /// Moves, scales, turns, fades or recolours the parts of a text its
@@ -341,8 +344,33 @@ pub static FILL_EFFECT: Registry = Registry {
     ],
 };
 
+/// The properties of a trim.
+pub static TRIM: Registry = Registry {
+    kind: "trim",
+    rows: &[
+        number(
+            "end",
+            1.0,
+            Some((0.0, 1.0)),
+            "where the drawn stretch ends, as a share of the outline's length",
+        ),
+        number(
+            "start",
+            0.0,
+            Some((0.0, 1.0)),
+            "where the drawn stretch starts, as a share of the outline's length",
+        ),
+        number(
+            "offset",
+            0.0,
+            None,
+            "how far the stretch is shifted along the outline, in degrees; 360 is once around",
+        ),
+    ],
+};
+
 /// Every kind of shape item.
-pub static SHAPES: [ItemKind; 6] = [
+pub static SHAPES: [ItemKind; 7] = [
     ItemKind {
         name: "group",
         role: Role::Group,
@@ -409,6 +437,21 @@ pub static SHAPES: [ItemKind; 6] = [
             },
         ],
         doc: "paints a line along the outlines above it",
+    },
+    ItemKind {
+        name: "trim",
+        role: Role::Modifier,
+        registry: &TRIM,
+        primary: Primary::Property("end"),
+        settings: &[SettingSpec {
+            name: "mode",
+            choices: &["each", "joined"],
+            default: "each",
+            doc: "`each` cuts every outline the same way on its own; `joined` cuts them as one \
+                  line, in order",
+        }],
+        doc: "cuts the outlines above it, and those in the groups above it, down to a stretch \
+              of their length, for every paint that draws them",
     },
 ];
 
@@ -599,7 +642,7 @@ pub fn effect_kind(name: &str) -> Option<&'static ItemKind> {
 
 /// The properties code depends on, for the drawing and measuring of items.
 pub mod props {
-    use super::{ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, PATH, Prop, RANGE, RECT, STROKE};
+    use super::{ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, PATH, Prop, RANGE, RECT, STROKE, TRIM};
 
     /// A rectangle's width and height.
     pub const RECT_SIZE: Prop = Prop::of(&RECT, 0);
@@ -625,6 +668,12 @@ pub mod props {
     pub const STROKE_WIDTH: Prop = Prop::of(&STROKE, 2);
     /// How far a stroke's miter joins reach.
     pub const STROKE_MITER: Prop = Prop::of(&STROKE, 3);
+    /// Where a trim's stretch ends.
+    pub const TRIM_END: Prop = Prop::of(&TRIM, 0);
+    /// Where a trim's stretch starts.
+    pub const TRIM_START: Prop = Prop::of(&TRIM, 1);
+    /// How far a trim's stretch is shifted, in degrees.
+    pub const TRIM_OFFSET: Prop = Prop::of(&TRIM, 2);
     /// The fill effect's colour.
     pub const FILL_EFFECT_COLOR: Prop = Prop::of(&FILL_EFFECT, 0);
     /// The fill effect's opacity.

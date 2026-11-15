@@ -5,6 +5,10 @@
 //! listed before it in its group, those inside earlier groups included,
 //! through those groups' transforms. It strokes and fills in its own group's
 //! space and takes the opacity of every group around it.
+//!
+//! A modifier changes the outlines listed before it the same way, in place:
+//! every paint that draws them draws them changed, wherever it sits. Inner
+//! groups' modifiers act before those of the groups around them.
 
 use kurbo::{Affine, BezPath, Point, Rect, Shape, Vec2};
 use motion_format::item::{Role, props};
@@ -12,6 +16,7 @@ use motion_format::property::GROUP;
 
 use crate::evaluate::local_transform;
 use crate::state::ItemState;
+use crate::trim;
 
 /// The share of a quarter circle's radius at which a cubic's handles sit so
 /// that it follows the arc: `4/3 (√2 − 1)`.
@@ -69,49 +74,92 @@ pub fn outline(item: &ItemState) -> Option<BezPath> {
 
 /// Every draw of `items`, back to front.
 pub(crate) fn draws(items: &[ItemState]) -> Vec<ShapeDraw> {
-    let mut top_down = Vec::new();
-    group_draws(items, Affine::IDENTITY, 1.0, &mut top_down);
-    top_down.reverse();
-    top_down
-}
-
-/// The draws of one group's `items`, top first, into `out`: `transform` takes
-/// the group's space to the layer's and `opacity` is the groups' product.
-fn group_draws(items: &[ItemState], transform: Affine, opacity: f64, out: &mut Vec<ShapeDraw>) {
-    let mut above = BezPath::new();
-    for item in items {
-        match item.kind.role {
-            Role::Geometry => above.extend(outline(item).expect("a geometry item")),
-            Role::Group => {
-                let (own, own_opacity) = group_transform(item);
-                group_draws(&item.items, transform * own, opacity * own_opacity, out);
-                above.extend(own * geometry(&item.items));
+    let mut walk = Walk::default();
+    walk.group(items, Affine::IDENTITY, 1.0);
+    // Paints draw the outlines as every modifier left them, so they are
+    // built only once the walk is done.
+    let mut draws: Vec<ShapeDraw> = walk
+        .paints
+        .into_iter()
+        .filter_map(|paint| {
+            let mut outline = BezPath::new();
+            for &(at, into) in &paint.covers {
+                outline.extend(into * &walk.outlines[at]);
             }
-            Role::Paint if !above.elements().is_empty() => out.push(ShapeDraw {
-                paint: ItemState {
-                    items: Vec::new(),
-                    ..item.clone()
-                },
-                outline: above.clone(),
-                transform,
-                opacity,
-            }),
-            Role::Paint | Role::Effect | Role::Animator | Role::Selector => {}
-        }
-    }
+            (!outline.elements().is_empty()).then_some(ShapeDraw {
+                paint: paint.paint,
+                outline,
+                transform: paint.transform,
+                opacity: paint.opacity,
+            })
+        })
+        .collect();
+    draws.reverse();
+    draws
 }
 
-/// Every outline in `items` and their groups, in the space they sit in.
-fn geometry(items: &[ItemState]) -> BezPath {
-    let mut all = BezPath::new();
-    for item in items {
-        match item.kind.role {
-            Role::Geometry => all.extend(outline(item).expect("a geometry item")),
-            Role::Group => all.extend(group_transform(item).0 * geometry(&item.items)),
-            Role::Paint | Role::Effect | Role::Animator | Role::Selector => {}
+/// The outlines and paints of a layer's items, gathered in one walk.
+#[derive(Default)]
+struct Walk {
+    /// Every outline, each in the space of the group it sits in.
+    outlines: Vec<BezPath>,
+    /// Every paint, top first.
+    paints: Vec<Paint>,
+}
+
+/// A paint and the outlines it covers.
+struct Paint {
+    /// The fill or stroke, without items.
+    paint: ItemState,
+    /// Each outline it covers and the transform from that outline's space
+    /// into the paint's.
+    covers: Vec<(usize, Affine)>,
+    /// From the paint's group space to the layer's.
+    transform: Affine,
+    /// The product of the opacities of the groups around the paint.
+    opacity: f64,
+}
+
+impl Walk {
+    /// Walks one group's `items` in order and returns the outlines they hold,
+    /// with each one's transform into the group's space: `transform` takes
+    /// the group's space to the layer's and `opacity` is the groups' product.
+    fn group(
+        &mut self,
+        items: &[ItemState],
+        transform: Affine,
+        opacity: f64,
+    ) -> Vec<(usize, Affine)> {
+        let mut above: Vec<(usize, Affine)> = Vec::new();
+        for item in items {
+            match item.kind.role {
+                Role::Geometry => {
+                    above.push((self.outlines.len(), Affine::IDENTITY));
+                    self.outlines.push(outline(item).expect("a geometry item"));
+                }
+                Role::Group => {
+                    let (own, own_opacity) = group_transform(item);
+                    let inner = self.group(&item.items, transform * own, opacity * own_opacity);
+                    above.extend(inner.into_iter().map(|(at, into)| (at, own * into)));
+                }
+                Role::Modifier => {
+                    let at: Vec<usize> = above.iter().map(|&(at, _)| at).collect();
+                    trim::apply(item, &at, &mut self.outlines);
+                }
+                Role::Paint if !above.is_empty() => self.paints.push(Paint {
+                    paint: ItemState {
+                        items: Vec::new(),
+                        ..item.clone()
+                    },
+                    covers: above.clone(),
+                    transform,
+                    opacity,
+                }),
+                Role::Paint | Role::Effect | Role::Animator | Role::Selector => {}
+            }
         }
+        above
     }
-    all
 }
 
 /// A group's transform into the space around it, and its opacity. Its rows

@@ -10,7 +10,7 @@ use motion_format::{Curve, Value, ValueType};
 use crate::curve::Ease;
 
 /// How close an arc length must come, in pixels.
-const ARC_ACCURACY: f64 = 1e-6;
+pub(crate) const ARC_ACCURACY: f64 = 1e-6;
 
 /// One key as the compiler hands it over: a value at a frame, how the span
 /// after it eases, and on a spatial track how the path bends.

@@ -4,6 +4,7 @@
       "unsupported": {
         "`ADBE Stroke`": 2,
         "`ADBE Text Expressible Selector`": 1,
+        "collapsed transformations (drawn as a clipped composition)": 15,
         "masks": 3,
         "time remapping": 1
       },
@@ -29,6 +30,41 @@
         "drawn_failing": 0.929699,
         "union_error": 0.375918,
         "union_failing": 0.949878
+      }
+    },
+    "s562": {
+      "unsupported": {
+        "`ADBE Drop Shadow`": 2,
+        "`ADBE Vector Filter - Zigzag`": 2,
+        "`ADBE Vector Shape - Star`": 4,
+        "collapsed transformations (drawn as a clipped composition)": 2,
+        "footage in a format it cannot read (drawn as nothing)": 1,
+        "missing fonts, substituted (`ArialMT → InterVariable`)": 1,
+        "motion blur": 22,
+        "scaled characters": 1
+      },
+      "texts": 1,
+      "texts_within": 0,
+      "text_worst": 60.634278,
+      "all": {
+        "from": 0.0,
+        "frames": 361,
+        "content_error": 0.016371,
+        "content_failing": 0.042215,
+        "drawn_error": 0.009761,
+        "drawn_failing": 0.030169,
+        "union_error": 0.006642,
+        "union_failing": 0.019772
+      },
+      "settled": {
+        "from": 4.0,
+        "frames": 121,
+        "content_error": 0.002601,
+        "content_failing": 0.002663,
+        "drawn_error": 0.002601,
+        "drawn_failing": 0.002663,
+        "union_error": 0.002601,
+        "union_failing": 0.002663
       }
     },
     "s611": {

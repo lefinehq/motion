@@ -111,6 +111,7 @@ How items combine:
 
 - **Order.** The first item draws on top.
 - **Paints.** A fill or stroke draws every outline listed before it in its group, including the outlines inside earlier groups, seen through those groups' transforms. Above, the stroke outlines both the rounded rectangle and the dot; the fill paints only the rectangle.
+- **Trims.** A `trim` cuts every outline listed before it in its group, the outlines inside earlier groups included, down to a stretch of its length. It changes the outline itself, so every fill and stroke that draws the outline draws the cut one, wherever it sits in the list. Trims inside a group cut before those of the groups around it, and those in one group cut in order.
 - **Space.** A paint fills and strokes in its own group's space, so a stroke's width scales with the groups around it, not with the groups it reaches into.
 - **Fill rule.** All the outlines one fill covers count as one path for its `rule`, so `evenodd` cuts holes where they overlap.
 - **Groups.** A group has a layer's transform (`position`, `anchor`, `scale`, `rotate`, `opacity`), resting at the origin. Its opacity multiplies the paints inside it.
@@ -127,8 +128,11 @@ Each kind lists its properties in `crates/motion-format/src/item.rs`; this table
 | `path` | `path` | `path` | |
 | `fill` | `color` | `color`, `opacity` | `rule`: `nonzero`, `evenodd` |
 | `stroke` | `color` | `color`, `opacity`, `width`, `miter` | `cap`: `butt`, `round`, `square`; `join`: `miter`, `round`, `bevel` |
+| `trim` | `end` | `end`, `start`, `offset` | `mode`: `each`, `joined` |
 
 `size` splits into `width` and `height`, and `position` into `x` and `y`, for tracks. A rectangle's `round` is capped at half its shorter side. A `path` is SVG path data with absolute `M`, `L`, `C` and `Z` (`"M0,0 C40,0 80,40 80,80 Z"`); a track on it uses a key list, and every key keeps the same number of vertices and the same closure, so the outline moves vertex by vertex.
+
+A `trim` keeps the stretch from `start` to `end`, shares of the length from 0 to 1 (`{"trim":0.5}` keeps the first half), swapped if `start` is after `end`. `offset` moves the stretch along in degrees, 360 once around; a stretch that runs past the end goes on around a closed outline as one line and continues an open one as a second piece. `each` cuts every outline the same way, `joined` cuts them as one line in order. Equal `start` and `end` draw nothing, not even a cap. A cut closed outline is open: a stroke ends in its caps, and a fill closes it with a straight line. Lengths are arc lengths in the space each outline sits in.
 
 **Effects.** `fx` is a list in the same item form, applied in order to what the layer draws:
 
