@@ -171,15 +171,52 @@ fn nothing_that_renders_links_the_script_engine() {
 /// draws a scene links the encoder; frames reach it through the CLI.
 #[test]
 fn nothing_that_renders_links_the_encoder() {
-    let found = linking(
-        &["motion-encode", "motion-videotoolbox"],
-        &["motion-cli", "motion-encode", "motion-videotoolbox"],
-    );
+    let found = linking(&["motion-encode"], &["motion-cli", "motion-encode"]);
     assert!(
         found.is_empty(),
         "only the CLI may link the encoder (D46):\n{}",
         found.join("\n")
     );
+}
+
+/// D46 and D60: the binding to the system's codecs is reached only through
+/// the crates that put it behind their codec traits, `motion-encode` for
+/// encoding and `motion-video` for decoding, so nothing that draws a scene
+/// calls its encoder.
+#[test]
+fn the_system_codecs_are_reached_only_through_the_codec_crates() {
+    let through = ["motion-encode", "motion-video", "motion-videotoolbox"];
+    let found: Vec<String> = crates()
+        .into_iter()
+        .filter(|krate| !through.contains(&krate.as_str()))
+        .filter(|krate| direct(krate).iter().any(|d| d == "motion-videotoolbox"))
+        .collect();
+    assert!(
+        found.is_empty(),
+        "crates that depend on motion-videotoolbox directly (D46, D60): {}",
+        found.join(", ")
+    );
+}
+
+/// The packages `krate` depends on directly, dev-dependencies left out.
+fn direct(krate: &str) -> Vec<String> {
+    let out = Command::new(env!("CARGO"))
+        .args(["tree", "--offline", "--quiet", "-p", krate, "--depth", "1"])
+        .args(["-e", "normal", "--prefix", "none", "--format", "{p}"])
+        .current_dir(CRATES)
+        .output()
+        .expect("run cargo tree");
+    assert!(
+        out.status.success(),
+        "cargo tree -p {krate}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .skip(1)
+        .filter_map(|line| line.split(' ').next())
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Encoders under the GPL, or software encoders of patented codecs
