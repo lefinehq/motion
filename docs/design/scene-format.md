@@ -194,7 +194,7 @@ We store the highest level that fits. A delay or a stagger therefore stays a sin
 
 ### Curves
 
-A curve is a cubic bézier, as in CSS, or `hold`. The names are shortcuts from one table:
+A curve is a cubic bézier, as in CSS, a family's curve, steps, or `hold`. The names are shortcuts from one table:
 
 | Name | What it does |
 |---|---|
@@ -208,6 +208,33 @@ A curve is a cubic bézier, as in CSS, or `hold`. The names are shortcuts from o
 `cubic(x1,y1,x2,y2)` sets the curve exactly, for example `cubic(.2,0,0,1)`. The x values must be between 0 and 1, so time only moves forward. The y values may go outside 0 to 1, which makes the value overshoot (`cubic(.3,1.6,.5,1)`) or wind up first.
 
 `speed(out,out-reach,in,in-reach)` sets the speed leaving the key and arriving at the next, in the value's units per second (pixels per second along the path for a moving point), each with how far into the span its handle reaches, 0 to 1. `speed(0,.33,0,.33)` eases in and out over a third of the span on each side. Unlike `cubic`, it can hold a span whose two keys are equal, where the value leaves and comes back.
+
+**Families.** `<shape>-<family>` names one of the classic curves, such as `out-expo` or `in-out-quint`. Each starts at exactly 0 and ends at exactly 1, and is evaluated exactly at every frame.
+
+- **Shapes** run a family's curve `f` four ways:
+  - `in` starts slowly;
+  - `out` ends slowly (`1 - f(1 - t)`);
+  - `in-out` does `in` over the first half and `out` over the second;
+  - `out-in` does the reverse.
+- **Families:**
+
+  | Family | Curve |
+  |---|---|
+  | `quad`, `cubic`, `quart`, `quint` | Powers 2 to 5 of time. |
+  | `sine` | A quarter of a cosine. |
+  | `circ` | A quarter circle. |
+  | `expo` | Exponential, `(2^(10t) - 1) / 1023`. |
+  | `back` | Winds up before it goes, or overshoots on the way out. |
+  | `elastic` | Swings past the end and settles, like a spring. |
+  | `bounce` | Bounces up to the end four times. |
+
+- **Parameters:**
+  - Any power: `in-out(2.5)`.
+  - Back's overshoot: `out-back(2)`; 1.70158 by default, about 10%.
+  - Elastic's amplitude (at least 1) and period (above 0, at most 2): `out-elastic(1.2,.4)`; `1` and `.3` by default.
+- **Overshoot:** back and elastic go past the end value as a `cubic` with `y` beyond 1 does. A moving point carries on along the path's direction, and a property's range still clamps the value.
+
+**Steps.** `steps(n)` moves in `n` equal steps, jumping at the end of each, and reaches the end value at the next key. `steps(n,start)` jumps at the start of each. At the key itself a property is always that key's value. `hold` is `steps(1)`.
 
 ### Presets
 

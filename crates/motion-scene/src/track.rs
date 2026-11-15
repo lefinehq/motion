@@ -216,10 +216,7 @@ impl Segment {
     /// Whether the span never leaves its first value when both keys are equal.
     fn is_still(&self) -> bool {
         match self {
-            Segment::Components(eases) => eases.iter().all(|e| match e {
-                Ease::Bezier { out, into } => out.1 == 0.0 && into.1 == 0.0,
-                Ease::Linear | Ease::Hold => true,
-            }),
+            Segment::Components(eases) => eases.iter().all(|e| e.is_still()),
             Segment::Path(span) => span.length == 0.0,
         }
     }

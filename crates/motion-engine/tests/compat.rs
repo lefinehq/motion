@@ -21,7 +21,7 @@ use motion_engine::Session;
 use motion_format::item::{ANIMATORS, EFFECTS, ItemKind, Primary, SELECTORS, SHAPES};
 use motion_format::property::PROPERTIES;
 use motion_format::text::STYLE_KEYS;
-use motion_format::{COMP_KEYS, LAYER_KEYS, NAMED_CURVES, SCENE_KEYS};
+use motion_format::{COMP_KEYS, Curve, FAMILIES, LAYER_KEYS, NAMED_CURVES, SCENE_KEYS};
 use serde_json::{Map, Value as Json};
 
 mod common;
@@ -110,7 +110,13 @@ fn expected() -> BTreeSet<String> {
     }
     names.extend(STYLE_KEYS.iter().map(|k| format!("style {}", k.name)));
     names.extend(NAMED_CURVES.iter().map(|(n, _)| format!("curve {n}")));
-    names.extend(["curve cubic()", "curve speed()"].map(str::to_owned));
+    names.extend(["curve cubic()", "curve speed()", "curve steps()"].map(str::to_owned));
+    names.extend(
+        motion_format::SHAPES
+            .iter()
+            .map(|(n, _)| format!("curve shape {n}")),
+    );
+    names.extend(FAMILIES.iter().map(|(n, _)| format!("curve family {n}")));
     names
 }
 
@@ -276,6 +282,28 @@ impl Used {
                         if word.starts_with(&format!("{form}(")) {
                             self.note(format!("curve {form}()"));
                         }
+                    }
+                }
+                // A family's curve or steps, its parameters and all.
+                for word in text.split_whitespace() {
+                    match word.parse::<Curve>() {
+                        Ok(Curve::Shaped(shape, family)) => {
+                            let shape = motion_format::SHAPES.iter().find(|(_, s)| *s == shape);
+                            // By value first, so `out-cubic` is cubic and not
+                            // the first power; a parameter then names its kind.
+                            let family =
+                                FAMILIES.iter().find(|(_, f)| *f == family).or_else(|| {
+                                    FAMILIES.iter().find(|(_, f)| {
+                                        std::mem::discriminant(f) == std::mem::discriminant(&family)
+                                    })
+                                });
+                            if let (Some((shape, _)), Some((family, _))) = (shape, family) {
+                                self.note(format!("curve shape {shape}"));
+                                self.note(format!("curve family {family}"));
+                            }
+                        }
+                        Ok(Curve::Steps { .. }) => self.note("curve steps()".into()),
+                        _ => {}
                     }
                 }
             }

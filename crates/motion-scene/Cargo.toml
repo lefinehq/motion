@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 kurbo.workspace = true
+libm.workspace = true
 motion-format = { path = "../motion-format" }
 motion-text = { path = "../motion-text" }
 tracing.workspace = true

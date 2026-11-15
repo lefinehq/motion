@@ -1404,6 +1404,7 @@ name = "motion-scene"
 version = "0.0.0"
 dependencies = [
  "kurbo",
+ "libm",
  "motion-format",
  "motion-text",
  "pretty_assertions",
