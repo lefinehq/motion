@@ -185,6 +185,20 @@ All three levels compile to the same thing inside the engine: a **track** of key
 
 The range after `@` takes `f` (frames) or `s` (seconds). The curve is optional and defaults to `linear`. Values outside the property's range are rejected.
 
+The string form may chain values, which split the span evenly; each step takes the curve. A value between the first and the last may say where it falls, as a percentage of the span, and the others share what is left:
+
+```json
+"anim":{"x":"0 -> 200 -> 150 @0-30f out-quad","y":"0 -> 80@25% -> 40 -> 0 @0-1s"}
+```
+
+A value may be written against the property's resting value on its layer or item: `rest`, `rest+<value>`, `rest-<value>` (a value of the property's type, such as `rest+0,-40` for a point) or `rest*<factor>`. It works on numbers and points, in the string form and in key lists, and resolves against the rest after layout, so a move written from `rest` follows the layer when `at`, its parent or its text changes:
+
+```json
+"anim":{"y":"rest+60 -> rest @0-12f out-cubic","scale":"rest*0.8 -> rest @0-12f"}
+```
+
+A relative value is not range-checked when the scene is read, since the rest may be known only once text is measured; the property's range clamps it when it is drawn.
+
 **3. Keyframes.** These give exact values at exact times, as a list of `[time, value]` or `[time, value, curve]`:
 
 ```json

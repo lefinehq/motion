@@ -366,3 +366,144 @@ mod props {
         })
     }
 }
+
+/// The frames and values of the keys of the one track `track` of [`anim`].
+fn keys(track: Value) -> Vec<(Time, KeyValue)> {
+    anim(track).unwrap()[0]
+        .keys
+        .iter()
+        .map(|k| (k.time, k.value.clone()))
+        .collect()
+}
+
+fn set(n: f64) -> KeyValue {
+    KeyValue::Set(crate::Value::Number(n))
+}
+
+#[test]
+fn a_value_list_splits_the_span_evenly() {
+    assert_eq!(
+        keys(json!({"x": "0 -> 200 -> 150 @0-30f out-quad"})),
+        [
+            (Time::Frames(0.0), set(0.0)),
+            (Time::Frames(15.0), set(200.0)),
+            (Time::Frames(30.0), set(150.0))
+        ]
+    );
+    let t = anim(json!({"x": "0 -> 200 -> 150 @0-30f out-quad"})).unwrap();
+    let curves: Vec<Curve> = t[0].keys.iter().map(|k| k.easing.of(0)).collect();
+    let out_quad: Curve = "out-quad".parse().unwrap();
+    assert_eq!(curves, [out_quad, out_quad, Curve::Linear]);
+}
+
+#[test]
+fn positions_place_values_and_the_rest_share_what_is_left() {
+    let times: Vec<Time> = keys(json!({"x": "0 -> 300@25% -> 100 -> 200 @0-12f"}))
+        .into_iter()
+        .map(|(t, _)| t)
+        .collect();
+    assert_eq!(
+        times,
+        [
+            Time::Frames(0.0),
+            Time::Frames(3.0),
+            Time::Frames(7.5),
+            Time::Frames(12.0)
+        ]
+    );
+    // Seconds stay seconds; mixed units fall back to frames.
+    let times: Vec<Time> = keys(json!({"x": "0 -> 1@50% -> 2 @1-2s"}))
+        .into_iter()
+        .map(|(t, _)| t)
+        .collect();
+    assert_eq!(times[1], Time::Seconds(1.5));
+}
+
+#[test]
+fn positions_run_forward_inside_the_span() {
+    for text in [
+        "0 -> 1@50% -> 2@40% -> 3 @0-10f",
+        "0 -> 1@0% -> 2 @0-10f",
+        "0 -> 1@100% -> 2 @0-10f",
+        "0@10% -> 1 -> 2 @0-10f",
+        "0 -> 1 -> 2@90% @0-10f",
+        "0 -> 1@half -> 2 @0-10f",
+    ] {
+        let e = line_err(text);
+        assert_eq!(e.kind, Kind::Syntax, "{text}");
+        assert!(e.message.contains('`'), "{text}: {}", e.message);
+    }
+    assert!(
+        line_err("0 -> 1@50% -> 2@40% -> 3 @0-10f")
+            .message
+            .contains("run forward")
+    );
+    assert!(
+        line_err("0@10% -> 1 @0-10f")
+            .message
+            .contains("first value")
+    );
+}
+
+#[test]
+fn values_against_the_rest_read_on_numbers_and_points() {
+    let k = keys(json!({"y": "rest+60 -> rest-5 -> rest*1.5 -> rest @0-12f"}));
+    let values: Vec<KeyValue> = k.into_iter().map(|(_, v)| v).collect();
+    assert_eq!(
+        values,
+        [
+            KeyValue::Rest(Change::Plus(crate::Value::Number(60.0))),
+            KeyValue::Rest(Change::Plus(crate::Value::Number(-5.0))),
+            KeyValue::Rest(Change::Times(1.5)),
+            KeyValue::Rest(Change::Same),
+        ]
+    );
+    let k = keys(json!({"position": [{"t": 0, "v": "rest-0,40"}, {"t": 10, "v": "rest"}]}));
+    assert_eq!(
+        k[0].1,
+        KeyValue::Rest(Change::Plus(crate::Value::Point([0.0, -40.0])))
+    );
+    // A broadcast number moves both components of a point.
+    let k = keys(json!({"scale": "rest+0.5 -> rest @0-5f"}));
+    assert_eq!(
+        k[0].1,
+        KeyValue::Rest(Change::Plus(crate::Value::Point([0.5, 0.5])))
+    );
+}
+
+#[test]
+fn a_rest_value_resolves_against_the_rest() {
+    let rest = crate::Value::Point([100.0, 50.0]);
+    let resolve = |v: KeyValue| v.resolve(&rest);
+    assert_eq!(resolve(KeyValue::Rest(Change::Same)), rest);
+    assert_eq!(
+        resolve(KeyValue::Rest(Change::Plus(crate::Value::Point([
+            0.0, -40.0
+        ])))),
+        crate::Value::Point([100.0, 10.0])
+    );
+    assert_eq!(
+        resolve(KeyValue::Rest(Change::Times(1.5))),
+        crate::Value::Point([150.0, 75.0])
+    );
+    assert_eq!(resolve(set(3.0)), crate::Value::Number(3.0));
+}
+
+#[test]
+fn colours_paths_and_malformed_changes_have_no_rest_form() {
+    let e = err(json!({"opacity": "rest*x -> rest @0-5f"}));
+    assert_eq!(
+        (e.kind, e.expected.as_deref()),
+        (Kind::Syntax, Some(REST_EXPECTED))
+    );
+    let e = err(json!({"opacity": "rest/2 -> rest @0-5f"}));
+    assert_eq!(e.kind, Kind::Syntax);
+    let e = err(json!({"opacity": "rest+inf -> rest @0-5f"}));
+    assert_eq!(e.kind, Kind::Syntax);
+    // A colour lives on a fill item; its rest has no relative form.
+    let scene = json!({"motion": 1, "dur": "1s", "layers": [{"id": "s", "shapes": [
+        {"rect": [10, 10]}, {"fill": "#FF0000", "anim": {"color": "rest -> #00FF00 @0-5f"}}]}]});
+    let e = scene_from_value(&scene).unwrap_err();
+    assert_eq!(e.kind, Kind::Invalid, "{e:?}");
+    assert!(e.message.contains("only a number or a point"));
+}

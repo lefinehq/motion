@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use serde_json::{Map, Value as Json};
 
-use crate::anim::{AnimKey, AnimTrack, Easing};
+use crate::anim::{AnimKey, AnimTrack, Easing, KeyValue};
 use crate::doc::{AnimDoc, PresetsDoc};
 use crate::fmt_num;
 use crate::item::{ANIMATOR, ANIMATORS, Item, SELECTORS, props};
@@ -161,13 +161,13 @@ pub fn parts_animator(spec: &PresetSpec, behaviour: &Behaviour, fps: f64) -> Opt
                 keys: vec![
                     AnimKey {
                         time: Time::Frames(start),
-                        value: from.resolve(&rest, behaviour.distance),
+                        value: KeyValue::Set(from.resolve(&rest, behaviour.distance)),
                         easing: Easing::All(behaviour.curve),
                         path: None,
                     },
                     AnimKey {
                         time: Time::Frames(end),
-                        value: rest,
+                        value: KeyValue::Set(rest),
                         easing: Easing::All(crate::Curve::Linear),
                         path: None,
                     },
