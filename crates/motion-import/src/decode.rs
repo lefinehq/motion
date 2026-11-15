@@ -11,7 +11,7 @@ use motion_format::{Diagnostic, Kind, Place, Result};
 
 use crate::model::{
     Color, Composition, EffectDefinition, ExpressionEngine, Footage, Item, ItemKind, Layer,
-    Project, Source, Span, Switches, Version,
+    MotionBlur, Project, Source, Span, Switches, Version,
 };
 use crate::record::{
     self, Alias, Cdta, Head, Idta, Ldta, Nhed, PlaceholderOpti, Ratio, Record, SolidOpti, Sspc,
@@ -213,6 +213,18 @@ impl Decoder {
             frame_rate: cdta.frame_rate,
             duration,
             background: Color { r, g, b, a: 1.0 },
+            motion_blur: match &cdta.shutter {
+                Some(shutter) => MotionBlur {
+                    on: cdta.flags & 0x08 != 0,
+                    angle: f64::from(shutter.angle),
+                    phase: f64::from(shutter.phase),
+                    samples: u32::try_from(shutter.samples).unwrap_or(16),
+                },
+                None => MotionBlur {
+                    on: cdta.flags & 0x08 != 0,
+                    ..MotionBlur::default()
+                },
+            },
             work_area: Span {
                 start: cdta.work_start.value(),
                 end: match cdta.work_end.num {

@@ -113,6 +113,8 @@ pub struct Composition {
     pub background: Color,
     /// The part of the composition that renders by default.
     pub work_area: Span,
+    /// Its motion blur: whether it is on, and its shutter.
+    pub motion_blur: MotionBlur,
     /// The layers, top first.
     pub layers: Vec<Layer>,
     /// The controls of the template panel made from it, in a `.mogrt`'s
@@ -121,6 +123,32 @@ pub struct Composition {
     /// [D53]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d53-a-mogrt-imports-as-its-project-with-its-controls-as-slots
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub panel: Vec<PanelControl>,
+}
+
+/// A composition's motion blur
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#cdta)).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct MotionBlur {
+    /// Its layers with the motion blur switch are blurred.
+    pub on: bool,
+    /// How long the shutter stays open, in degrees of a frame.
+    pub angle: f64,
+    /// Where it opens, in degrees from the frame's time.
+    pub phase: f64,
+    /// How many samples a frame takes.
+    pub samples: u32,
+}
+
+impl Default for MotionBlur {
+    /// Off, with the shutter a new composition has.
+    fn default() -> MotionBlur {
+        MotionBlur {
+            on: false,
+            angle: 180.0,
+            phase: -90.0,
+            samples: 16,
+        }
+    }
 }
 
 /// One control of a template's panel, as the project keeps it: the id the

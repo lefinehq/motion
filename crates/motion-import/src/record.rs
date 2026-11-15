@@ -211,6 +211,9 @@ pub(crate) struct Cdta {
     pub duration: Ratio<u32>,
     /// Background red, green and blue, 0 to 255.
     pub background: [u8; 3],
+    /// Flags: bit 3 turns motion blur on for the composition.
+    #[br(seek_before = at(0x88))]
+    pub flags: u32,
     /// Width in pixels.
     #[br(seek_before = at(0x8C))]
     pub width: u16,
@@ -221,6 +224,23 @@ pub(crate) struct Cdta {
     /// Frames per second.
     #[br(seek_before = at(0x9C), map = fixed)]
     pub frame_rate: f64,
+    /// The shutter, where the record is long enough to hold it.
+    #[br(try)]
+    pub shutter: Option<CdtaShutter>,
+}
+
+/// The motion blur settings at the end of a `cdta`.
+#[derive(BinRead, Debug)]
+pub(crate) struct CdtaShutter {
+    /// The shutter angle, in degrees.
+    #[br(seek_before = at(0xAC))]
+    pub angle: u32,
+    /// The shutter phase, in degrees.
+    #[br(seek_before = at(0xB4))]
+    pub phase: i32,
+    /// The samples per frame.
+    #[br(seek_before = at(0xC8))]
+    pub samples: i32,
 }
 
 impl Record for Cdta {
