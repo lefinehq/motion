@@ -66,6 +66,24 @@ A target written `@role` is what the scene's role names ([D50](decisions.md#d50-
 
 An edit that touches what the scene's `locks` hold is refused, and the scene is left as it was ([D51](decisions.md#d51-locks-are-refused-in-the-edit)). A locked layer cannot be edited, nor anything inside it, nor reached from outside: an override into it, the composition one of the layers on the way to it draws, or the scene's `layers`. A locked slot cannot be set. With `palette` locked, an edit may only set colours the scene already has, compared as 8-bit colours; with `typefaces` locked, only font families it already uses. The message names the lock, `` `logo` is locked by `@logo` ``. `locks` and `roles` are scene keys like any other, which the designer edits; a batch cannot.
 
+### Batches of variants
+
+`motion batch variants.json` makes every variant of one master ([D52](decisions.md#d52-a-batch-makes-every-variant-from-one-master)). The file names the master and an output folder, relative to itself, and lists the variants, each an `id`, its `edits` and optional `render` settings (`codec`, `quality`, `frames`, as `motion render` takes them):
+
+```json
+{"master":"launch.json","out":"out","variants":[
+  {"id":"de-sale","edits":["@headline text=\"Sommerschluss\"","@accent=#2A9D8F"]},
+  {"id":"fr-sale","edits":["@headline text=\"Fin de l'été\""],"render":{"codec":"hevc"}}]}
+```
+
+Each variant starts from the master. Its edits are applied in order, through the locks, then the scene is checked. A refused edit or a check error is reported and the variant is not rendered; the others render, one at a time, to `out/<id>.mp4` (`.mov` for a codec that keeps alpha), with the variant's scene beside it as `out/<id>.json`. A variant cannot edit `roles` or `locks`. The report is one line per variant and a count; `--json` gives each variant's outcome as data, and `--check` applies and checks without writing anything. The command exits 1 when any variant is refused or fails its check.
+
+```text
+de-sale   2 edits  check OK  out/de-sale.mp4  2.1 s
+fr-sale    1 edit  refused: `#00FF00` is not one of the scene's colours, which are locked by `palette` (edit 1)
+1 rendered, 1 refused, 0 failed their check
+```
+
 ### Editing one copy in a repeat
 
 `card3 fill=red` does not split the five cards into five separate layers. It stores a small override on card 3, and the repeat stays one compact layer.

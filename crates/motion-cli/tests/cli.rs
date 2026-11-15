@@ -91,7 +91,9 @@ fn help_describes_the_tool_and_lists_its_commands() {
         ),
         "{text}"
     );
-    for command in ["check", "at", "roles", "slots", "edit", "render", "inspect"] {
+    for command in [
+        "check", "at", "roles", "slots", "edit", "render", "batch", "inspect",
+    ] {
         assert!(
             text.lines().any(|l| l.trim_start().starts_with(command)),
             "{command}: {text}"
@@ -192,6 +194,40 @@ fn roles_list_what_each_holds_and_an_edit_goes_through_one() {
     let out = motion(&["roles", &path, "--json"]);
     let roles: serde_json::Value = serde_json::from_str(&stdout(&out)).expect("JSON");
     assert_eq!(roles[2]["value"], "#2A9D8F");
+}
+
+#[test]
+fn a_batch_renders_the_variants_that_pass_and_names_why_the_others_do_not() {
+    let dir = scratch("batch");
+    fs::copy(SLOTS, dir.join("master.json")).expect("copy the master");
+    let manifest = dir.join("variants.json");
+    let variants = serde_json::json!({"master":"master.json","out":"out","variants":[
+        {"id":"teal","edits":["@accent=#2A9D8F","@headline text=\"Sale\""],"render":{"frames":"0-1"}},
+        {"id":"plate","edits":["plate fill=#2A9D8F"]},
+        {"id":"unlock","edits":["scene locks=[]"]}]});
+    fs::write(&manifest, variants.to_string()).expect("write the manifest");
+    let manifest = manifest.to_string_lossy().into_owned();
+    let out = motion(&["batch", &manifest, "--check"]);
+    assert_eq!(out.status.code(), Some(1));
+    let text = stdout(&out);
+    assert!(text.contains("teal     2 edits  check OK\n"), "{text}");
+    assert!(
+        text.contains("refused: `plate` is locked by `@plate` (edit 1)"),
+        "{text}"
+    );
+    assert!(
+        text.ends_with("1 checked, 2 refused, 0 failed their check\n"),
+        "{text}"
+    );
+    assert!(!dir.join("out").exists(), "--check writes nothing");
+    let out = motion(&["batch", &manifest, "--json"]);
+    let made: serde_json::Value = serde_json::from_str(&stdout(&out)).expect("JSON");
+    assert_eq!(made[0]["outcome"], "rendered");
+    assert_eq!(made[0]["frames"], 2);
+    assert_eq!(made[2]["outcome"], "refused");
+    let teal = fs::read_to_string(dir.join("out/teal.json")).expect("the variant's scene");
+    assert!(teal.contains("\"Sale\""), "{teal}");
+    assert!(dir.join("out/teal.mp4").exists());
 }
 
 #[test]

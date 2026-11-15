@@ -94,6 +94,18 @@ enum Command {
         /// every layer at any depth when none are given.
         ids: Vec<String>,
     },
+    /// Make every variant of one master: apply each variant's edits through
+    /// the locks, check it, and render those that pass.
+    Batch {
+        /// Path to the batch file: the master, the output folder and the variants.
+        manifest: PathBuf,
+        /// Apply and check every variant, and render none.
+        #[arg(long)]
+        check: bool,
+        /// Print the outcomes as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// List what a scene's layers and slots do, with what each role holds.
     Roles {
         /// Path to the scene file.
@@ -294,7 +306,7 @@ impl Command {
             | Command::Diff { scene, .. }
             | Command::Export { scene, .. } => scene,
             Command::Import { project, .. } | Command::Inspect { project, .. } => project,
-            Command::Fidelity { manifest, .. } => manifest,
+            Command::Fidelity { manifest, .. } | Command::Batch { manifest, .. } => manifest,
             Command::Fonts {
                 command: FontsCommand::Fetch { scene, .. },
             } => scene,
@@ -320,6 +332,11 @@ fn main() -> ExitCode {
         Command::Check { scene } => commands::check::run(&scene),
         Command::Slots { scene, json } => commands::slots::run(&scene, json),
         Command::Roles { scene, json } => commands::roles::run(&scene, json),
+        Command::Batch {
+            manifest,
+            check,
+            json,
+        } => commands::batch::run(&manifest, check, json),
         Command::At { scene, time, ids } => commands::at::run(&scene, &time, &ids),
         Command::Edit { scene, line } => commands::edit::run(&scene, &line),
         Command::Render {

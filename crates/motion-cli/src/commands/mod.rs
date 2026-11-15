@@ -2,6 +2,7 @@
 //! [`Session`](motion_engine::Session) and prints what it returns.
 
 pub mod at;
+pub mod batch;
 pub mod check;
 pub mod diff;
 pub mod edit;
