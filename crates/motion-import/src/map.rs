@@ -24,6 +24,7 @@ mod ids;
 mod items;
 pub(crate) mod keys;
 mod layer;
+mod panel;
 mod report;
 mod roles;
 mod rows;
@@ -32,14 +33,16 @@ pub(crate) mod sources;
 mod text;
 
 pub use footage::{STILL_EXTENSIONS, file_name};
-pub use report::{ControlReport, Counts, ExpressionReport, Finding, Mapping, Named, Outcome};
+pub use report::{
+    ControlReport, Counts, ExpressionReport, Finding, Mapping, Named, Outcome, PanelReport,
+};
 pub use sources::Sources;
 
 use ids::Ids;
 use keys::num;
 
 /// What to import.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Options {
     /// The composition that becomes the scene, by name, or by item id when
     /// no composition has that name; by default the one composition no
@@ -58,6 +61,11 @@ pub struct Options {
     /// in another is reported by its codec, and one missing here is
     /// reported as video footage.
     pub videos: BTreeMap<String, Video>,
+    /// The panel of the template the project came from, for a `.mogrt`
+    /// ([`crate::template`]): its controls become slots, and the
+    /// composition it was made from is the scene unless `comp` names
+    /// another.
+    pub panel: Vec<crate::template::Control>,
 }
 
 /// What a found clip is, as the caller read it from the file.
@@ -109,7 +117,14 @@ pub struct StoredText {
 /// several draw no other, or `options.comp` names none), or, as a bug in
 /// the import, when the scene it wrote is not a valid scene.
 pub fn import(project: &Project, options: &Options) -> Result<Import> {
-    let root = root(project, options.comp.as_deref())?;
+    let made_from = match (&options.comp, options.panel.is_empty()) {
+        (None, false) => panel_composition(project),
+        _ => None,
+    };
+    let root = match made_from {
+        Some(root) => root,
+        None => root(project, options.comp.as_deref())?,
+    };
     let bakes = crate::bake::bake(project, Some(root.0.id));
     let mut walk = Walk::new(project, &options.footage, &options.videos, &bakes);
     let mut json = walk.scene(root, options);
@@ -141,6 +156,17 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
         fonts: walk.fonts,
         sources,
     })
+}
+
+/// The one composition with a template panel, which the template was made
+/// from.
+fn panel_composition(project: &Project) -> Option<(&Item, &Composition)> {
+    let mut with_panel = project.items.iter().filter_map(|item| match &item.kind {
+        ItemKind::Composition(c) if !c.panel.is_empty() => Some((item, c)),
+        _ => None,
+    });
+    let found = with_panel.next()?;
+    with_panel.next().is_none().then_some(found)
 }
 
 /// The scene the import wrote, read back.
@@ -295,6 +321,9 @@ struct Walk<'p> {
     slots: slots::Slots,
     /// The layers named for a role so far.
     named_roles: Vec<roles::Named>,
+    /// The slot of the panel control that drives each property, by what
+    /// holds it.
+    offered: HashMap<slots::Held, usize>,
 }
 
 impl<'p> Walk<'p> {
@@ -325,6 +354,7 @@ impl<'p> Walk<'p> {
             writing: None,
             slots: slots::Slots::default(),
             named_roles: Vec::new(),
+            offered: HashMap::new(),
         }
     }
 
@@ -358,6 +388,9 @@ impl<'p> Walk<'p> {
         scene.insert("bg".into(), json!(format!("#{r:02X}{g:02X}{b:02X}")));
         if !options.fonts.is_empty() {
             scene.insert("fonts".into(), json!(options.fonts));
+        }
+        if !options.panel.is_empty() {
+            self.offer_panel(&options.panel);
         }
         let layers = self.layers(root, &item.name);
         let mut comps = BTreeMap::new();
