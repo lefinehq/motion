@@ -359,6 +359,214 @@ pub static TINT: Registry = Registry {
     ],
 };
 
+/// The properties of the gradient ramp.
+pub static RAMP: Registry = Registry {
+    kind: "ramp",
+    rows: &[
+        point(
+            "start",
+            [0.0, 0.0],
+            &[],
+            false,
+            "where the ramp starts, in px of the layer",
+        ),
+        color("start-color", [0.0, 0.0, 0.0, 1.0], "the colour at `start`"),
+        point(
+            "end",
+            [0.0, 100.0],
+            &[],
+            false,
+            "where the ramp ends, in px of the layer",
+        ),
+        color("end-color", [1.0, 1.0, 1.0, 1.0], "the colour at `end`"),
+        number(
+            "blend",
+            0.0,
+            Some((0.0, 1.0)),
+            "how much of the layer's own colour stays, 0 to 1",
+        ),
+    ],
+};
+
+/// The properties of the four-colour gradient.
+pub static FOUR_COLOR: Registry = Registry {
+    kind: "four-color",
+    rows: &[
+        point(
+            "point-1",
+            [0.0, 0.0],
+            &[],
+            false,
+            "where `color-1` is, in px of the layer",
+        ),
+        color("color-1", [1.0, 1.0, 0.0, 1.0], "the first colour"),
+        point("point-2", [100.0, 0.0], &[], false, "where `color-2` is"),
+        color("color-2", [0.0, 1.0, 0.0, 1.0], "the second colour"),
+        point("point-3", [0.0, 100.0], &[], false, "where `color-3` is"),
+        color("color-3", [1.0, 0.0, 1.0, 1.0], "the third colour"),
+        point("point-4", [100.0, 100.0], &[], false, "where `color-4` is"),
+        color("color-4", [0.0, 0.0, 1.0, 1.0], "the fourth colour"),
+        number(
+            "blend",
+            100.0,
+            Some((1.0, 10_000.0)),
+            "how far the colours mix; the weights fall with distance to the power 2 × 100 / `blend`",
+        ),
+        opacity("how much of the gradient shows, 0 to 1"),
+    ],
+};
+
+/// The properties of the grid.
+pub static GRID: Registry = Registry {
+    kind: "grid",
+    rows: &[
+        point(
+            "anchor",
+            [0.0, 0.0],
+            &[],
+            false,
+            "where a corner of the cells is, in px of the layer",
+        ),
+        point(
+            "corner",
+            [32.0, 24.0],
+            &[],
+            false,
+            "the opposite corner of the first cell, when `size` is `corner`",
+        ),
+        number("width", 32.0, Some((1.0, 4_000.0)), "a cell's width, in px"),
+        number(
+            "height",
+            24.0,
+            Some((1.0, 4_000.0)),
+            "a cell's height, in px, when `size` is `width-height`",
+        ),
+        number(
+            "border",
+            5.0,
+            Some((0.0, 2_000.0)),
+            "how wide the lines are, in px",
+        ),
+        color("color", [1.0, 1.0, 1.0, 1.0], "the lines' colour"),
+        opacity("how much of the grid shows, 0 to 1"),
+    ],
+};
+
+/// The properties of the venetian blinds.
+pub static VENETIAN_BLINDS: Registry = Registry {
+    kind: "venetian-blinds",
+    rows: &[
+        number(
+            "completion",
+            0.0,
+            Some((0.0, 1.0)),
+            "how much of each stripe is hidden, 0 to 1",
+        ),
+        number(
+            "direction",
+            0.0,
+            None,
+            "which way the stripes run, in degrees; 0 is horizontal",
+        ),
+        number(
+            "width",
+            20.0,
+            Some((1.0, 32_000.0)),
+            "how wide each stripe is, in px",
+        ),
+        number(
+            "feather",
+            0.0,
+            Some((0.0, 32_000.0)),
+            "how soft a stripe's edge is, in px",
+        ),
+    ],
+};
+
+/// The properties of fractal noise.
+pub static FRACTAL_NOISE: Registry = Registry {
+    kind: "fractal-noise",
+    rows: &[
+        number(
+            "contrast",
+            1.0,
+            Some((0.0, 100.0)),
+            "how far levels spread from mid grey, 1 as they are",
+        ),
+        number(
+            "brightness",
+            0.0,
+            Some((-100.0, 100.0)),
+            "what is added to every level",
+        ),
+        number("rotation", 0.0, None, "how far the noise turns, in degrees"),
+        number(
+            "scale",
+            1.0,
+            Some((0.01, 100.0)),
+            "the noise's size; at 1 a cell is 100 px",
+        ),
+        number(
+            "scale-width",
+            1.0,
+            Some((0.01, 100.0)),
+            "the noise's width, times `scale`",
+        ),
+        number(
+            "scale-height",
+            1.0,
+            Some((0.01, 100.0)),
+            "the noise's height, times `scale`",
+        ),
+        point(
+            "offset",
+            [0.0, 0.0],
+            &[],
+            false,
+            "where the noise is centred, in px of the layer",
+        ),
+        number(
+            "complexity",
+            6.0,
+            Some((1.0, 20.0)),
+            "how many octaves it sums",
+        ),
+        number(
+            "sub-influence",
+            0.7,
+            Some((0.0, 100.0)),
+            "each octave's weight against the one before",
+        ),
+        number(
+            "sub-scaling",
+            0.56,
+            Some((0.1, 100.0)),
+            "each octave's size against the one before",
+        ),
+        number(
+            "sub-rotation",
+            0.0,
+            None,
+            "how far each octave turns against the one before, in degrees",
+        ),
+        point(
+            "sub-offset",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far each octave moves against the one before, in px",
+        ),
+        number(
+            "evolution",
+            0.0,
+            None,
+            "how far the noise has evolved, in degrees; a turn is a cell",
+        ),
+        number("seed", 0.0, Some((0.0, 100_000.0)), "which noise it is"),
+        opacity("how much of the noise shows, 0 to 1"),
+    ],
+};
+
 /// The properties of the Gaussian blur.
 pub static GAUSSIAN_BLUR: Registry = Registry {
     kind: "gaussian-blur",
@@ -783,7 +991,7 @@ pub static SHAPES: [ItemKind; 7] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 14] = [
+pub static EFFECTS: [ItemKind; 19] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -851,6 +1059,111 @@ pub static EFFECTS: [ItemKind; 14] = [
         }],
         doc: "maps the levels from `input-black`–`input-white` to `output-black`–`output-white` \
               through `gamma`, clipped to 0 to 1",
+    },
+    ItemKind {
+        name: "ramp",
+        role: Role::Effect,
+        registry: &RAMP,
+        primary: Primary::Property("blend"),
+        settings: &[SettingSpec {
+            name: "shape",
+            choices: &["linear", "radial"],
+            default: "linear",
+            doc: "`linear` along the line from `start` to `end`; `radial` around `start`",
+        }],
+        doc: "fills the layer with a gradient between two colours",
+    },
+    ItemKind {
+        name: "four-color",
+        role: Role::Effect,
+        registry: &FOUR_COLOR,
+        primary: Primary::Property("opacity"),
+        settings: &[SettingSpec {
+            name: "mode",
+            choices: &["replace", "over"],
+            default: "replace",
+            doc: "`replace` draws it alone where the layer is; `over` lays it over the layer",
+        }],
+        doc: "fills the layer with four colours at four points, blended",
+    },
+    ItemKind {
+        name: "grid",
+        role: Role::Effect,
+        registry: &GRID,
+        primary: Primary::Property("border"),
+        settings: &[
+            SettingSpec {
+                name: "size",
+                choices: &["corner", "width", "width-height"],
+                default: "corner",
+                doc: "what sets a cell's size: `corner`, `width` alone, or `width` and `height`",
+            },
+            SettingSpec {
+                name: "draw",
+                choices: &["lines", "cells"],
+                default: "lines",
+                doc: "whether the lines or the cells between them are drawn",
+            },
+            SettingSpec {
+                name: "mode",
+                choices: &["replace", "over"],
+                default: "replace",
+                doc: "`replace` draws it alone where the layer is; `over` lays it over the layer",
+            },
+        ],
+        doc: "draws a grid of lines",
+    },
+    ItemKind {
+        name: "venetian-blinds",
+        role: Role::Effect,
+        registry: &VENETIAN_BLINDS,
+        primary: Primary::Property("completion"),
+        settings: &[],
+        doc: "hides the layer in stripes, from one side of each",
+    },
+    ItemKind {
+        name: "fractal-noise",
+        role: Role::Effect,
+        registry: &FRACTAL_NOISE,
+        primary: Primary::Property("evolution"),
+        settings: &[
+            SettingSpec {
+                name: "fractal",
+                choices: &[
+                    "basic",
+                    "turbulent-smooth",
+                    "turbulent-basic",
+                    "turbulent-sharp",
+                ],
+                default: "basic",
+                doc: "how octaves sum: as they are, or folded about mid grey",
+            },
+            SettingSpec {
+                name: "noise",
+                choices: &["spline", "soft-linear", "linear", "block"],
+                default: "spline",
+                doc: "how values between lattice points blend",
+            },
+            SettingSpec {
+                name: "overflow",
+                choices: &["clip", "soft-clamp", "wrap-back"],
+                default: "clip",
+                doc: "how levels outside 0 to 1 come back",
+            },
+            SettingSpec {
+                name: "polarity",
+                choices: &["normal", "inverted"],
+                default: "normal",
+                doc: "whether the levels are inverted",
+            },
+            SettingSpec {
+                name: "mode",
+                choices: &["over", "replace"],
+                default: "over",
+                doc: "`over` lays it over the layer; `replace` draws it alone where the layer is",
+            },
+        ],
+        doc: "fills the layer with grey noise in octaves",
     },
     ItemKind {
         name: "gaussian-blur",

@@ -175,6 +175,30 @@ const MODES: &[(i64, &str)] = &[
 ];
 const COLORIZE: &[(i64, &str)] = &[(0, "adjust"), (1, "colorize")];
 const EXPOSURE_SPACES: &[(i64, &str)] = &[(0, "linear"), (1, "gamma")];
+const RAMP_SHAPES: &[(i64, &str)] = &[(1, "linear"), (2, "radial")];
+const GENERATOR_MODES: &[(i64, &str)] = &[(1, "replace"), (2, "over")];
+const GRID_SIZES: &[(i64, &str)] = &[(1, "corner"), (2, "width"), (3, "width-height")];
+const GRID_DRAWS: &[(i64, &str)] = &[(0, "lines"), (1, "cells")];
+const FRACTALS: &[(i64, &str)] = &[
+    (1, "basic"),
+    (3, "turbulent-smooth"),
+    (4, "turbulent-basic"),
+    (5, "turbulent-sharp"),
+];
+const NOISES: &[(i64, &str)] = &[
+    (1, "block"),
+    (2, "linear"),
+    (3, "soft-linear"),
+    (4, "spline"),
+];
+const INVERTED: &[(i64, &str)] = &[(0, "normal"), (1, "inverted")];
+// A result beyond 0 to 1 has nowhere to go in 8 bits, so it clips.
+const OVERFLOWS: &[(i64, &str)] = &[
+    (1, "clip"),
+    (2, "soft-clamp"),
+    (3, "wrap-back"),
+    (4, "clip"),
+];
 const DIMENSIONS: &[(i64, &str)] = &[(1, "both"), (2, "horizontal"), (3, "vertical")];
 const EDGES: &[(i64, &str)] = &[(0, "transparent"), (1, "repeat")];
 const SHADOW_ONLY: &[(i64, &str)] = &[(0, "shown"), (1, "hidden")];
@@ -250,6 +274,238 @@ macro_rules! transform_effect_rows {
         ]
     };
 }
+
+macro_rules! fractal_noise_rows {
+    ($($scale:expr),+) => {
+        [
+            row(
+                "ADBE Fractal Noise-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fractal Noise-0001",
+                To::Setting("fractal", FRACTALS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fractal Noise-0002",
+                To::Setting("noise", NOISES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fractal Noise-0003",
+                To::Setting("polarity", INVERTED),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fractal Noise-0004",
+                To::Prop("contrast"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0005",
+                To::Prop("brightness"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0006",
+                To::Setting("overflow", OVERFLOWS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fractal Noise-0007",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fractal Noise-0008",
+                To::Prop("rotation"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0009",
+                To::Ignore("whether the scale is uniform, which decides where it goes"),
+                Number,
+                Absent,
+            ),
+            $($scale,)+
+            row(
+                "ADBE Fractal Noise-0013",
+                To::Prop("offset"),
+                Point,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0031",
+                To::OnlyDefault("a perspective offset"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0014",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fractal Noise-0015",
+                To::Prop("complexity"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0016",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fractal Noise-0017",
+                To::Prop("sub-influence"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0018",
+                To::Prop("sub-scaling"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0019",
+                To::Prop("sub-rotation"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0020",
+                To::Prop("sub-offset"),
+                Point,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0021",
+                To::OnlyDefault("a sub-scale about the centre"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0022",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fractal Noise-0023",
+                To::Prop("evolution"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0024",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fractal Noise-0025",
+                To::OnlyDefault("a cycled evolution"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0026",
+                To::Ignore("the cycle of a cycled evolution, which is reported on its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fractal Noise-0027",
+                To::Prop("seed"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0028",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fractal Noise-0029",
+                To::Prop("opacity"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Fractal Noise-0030",
+                To::Setting("mode", GENERATOR_MODES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ]
+    };
+}
+
+/// Fractal noise with a uniform scale.
+static FRACTAL_NOISE_UNIFORM: [Row; 33] = fractal_noise_rows!(
+    row(
+        "ADBE Fractal Noise-0010",
+        To::Prop("scale"),
+        Percent,
+        Parameter,
+    ),
+    row(
+        "ADBE Fractal Noise-0011",
+        To::Ignore("the width of a uniform scale"),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Fractal Noise-0012",
+        To::Ignore("the height of a uniform scale"),
+        Number,
+        Absent,
+    )
+);
+
+/// Fractal noise with a width and height apart.
+static FRACTAL_NOISE_APART: [Row; 33] = fractal_noise_rows!(
+    row(
+        "ADBE Fractal Noise-0010",
+        To::Ignore("the scale of a scale apart on each axis"),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Fractal Noise-0011",
+        To::Prop("scale-width"),
+        Percent,
+        Parameter,
+    ),
+    row(
+        "ADBE Fractal Noise-0012",
+        To::Prop("scale-height"),
+        Percent,
+        Parameter,
+    )
+);
 
 /// The transform effect with a uniform scale: its height scales both axes.
 static TRANSFORM_EFFECT_UNIFORM: [Row; 13] = transform_effect_rows!(
@@ -351,7 +607,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 24] = [
+pub(super) static KINDS: [Kind; 29] = [
     Kind {
         match_name: "ADBE Vector Group",
         item: "group",
@@ -1092,6 +1348,282 @@ pub(super) static KINDS: [Kind; 24] = [
         switch: None,
     },
     Kind {
+        match_name: "ADBE Ramp",
+        item: "ramp",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Ramp-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Ramp-0001", To::Prop("start"), Point, Parameter),
+            row("ADBE Ramp-0002", To::Prop("start-color"), Color, Parameter),
+            row("ADBE Ramp-0003", To::Prop("end"), Point, Parameter),
+            row("ADBE Ramp-0004", To::Prop("end-color"), Color, Parameter),
+            row(
+                "ADBE Ramp-0005",
+                To::Setting("shape", RAMP_SHAPES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Ramp-0006",
+                To::OnlyDefault("ramp scatter, a dither of the gradient"),
+                Number,
+                Parameter,
+            ),
+            row("ADBE Ramp-0007", To::Prop("blend"), Number, Parameter),
+            row(
+                "ADBE Ramp-0008",
+                To::Ignore("a button that swaps the colours"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE 4ColorGradient",
+        item: "four-color",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE 4ColorGradient-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE 4ColorGradient-0011",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE 4ColorGradient-0001",
+                To::Prop("point-1"),
+                Point,
+                Parameter,
+            ),
+            row(
+                "ADBE 4ColorGradient-0002",
+                To::Prop("color-1"),
+                Color,
+                Parameter,
+            ),
+            row(
+                "ADBE 4ColorGradient-0003",
+                To::Prop("point-2"),
+                Point,
+                Parameter,
+            ),
+            row(
+                "ADBE 4ColorGradient-0004",
+                To::Prop("color-2"),
+                Color,
+                Parameter,
+            ),
+            row(
+                "ADBE 4ColorGradient-0005",
+                To::Prop("point-3"),
+                Point,
+                Parameter,
+            ),
+            row(
+                "ADBE 4ColorGradient-0006",
+                To::Prop("color-3"),
+                Color,
+                Parameter,
+            ),
+            row(
+                "ADBE 4ColorGradient-0007",
+                To::Prop("point-4"),
+                Point,
+                Parameter,
+            ),
+            row(
+                "ADBE 4ColorGradient-0008",
+                To::Prop("color-4"),
+                Color,
+                Parameter,
+            ),
+            row(
+                "ADBE 4ColorGradient-0012",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE 4ColorGradient-0009",
+                To::Prop("blend"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE 4ColorGradient-0010",
+                To::OnlyDefault("jitter, a dither of the gradient"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE 4ColorGradient-0013",
+                To::Prop("opacity"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE 4ColorGradient-0014",
+                To::Setting("mode", GENERATOR_MODES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Grid",
+        item: "grid",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Grid-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Grid-0001", To::Prop("anchor"), Point, Parameter),
+            row(
+                "ADBE Grid-0002",
+                To::Setting("size", GRID_SIZES),
+                Number,
+                Absent,
+            ),
+            row("ADBE Grid-0003", To::Prop("corner"), Point, Parameter),
+            row("ADBE Grid-0004", To::Prop("width"), Number, Parameter),
+            row("ADBE Grid-0005", To::Prop("height"), Number, Parameter),
+            row("ADBE Grid-0006", To::Prop("border"), Number, Parameter),
+            row(
+                "ADBE Grid-0007",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Grid-0008",
+                To::OnlyDefault("a feathered grid"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Grid-0009",
+                To::OnlyDefault("a feathered grid"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Grid-0010",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Grid-0011",
+                To::Setting("draw", GRID_DRAWS),
+                Number,
+                Absent,
+            ),
+            row("ADBE Grid-0012", To::Prop("color"), Color, Parameter),
+            row("ADBE Grid-0013", To::Prop("opacity"), Percent, Parameter),
+            row(
+                "ADBE Grid-0014",
+                To::Setting("mode", GENERATOR_MODES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Venetian Blinds",
+        item: "venetian-blinds",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Venetian Blinds-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Venetian Blinds-0001",
+                To::Prop("completion"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Venetian Blinds-0002",
+                To::Prop("direction"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Venetian Blinds-0003",
+                To::Prop("width"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Venetian Blinds-0004",
+                To::Prop("feather"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Fractal Noise",
+        item: "fractal-noise",
+        table: &EFFECTS,
+        rows: &FRACTAL_NOISE_UNIFORM,
+        parts: &[],
+        switch: Some(Switch {
+            match_name: "ADBE Fractal Noise-0009",
+            on: true,
+            off_rows: &FRACTAL_NOISE_APART,
+        }),
+    },
+    Kind {
         match_name: "ADBE Gaussian Blur 2",
         item: "gaussian-blur",
         table: &EFFECTS,
@@ -1542,7 +2074,6 @@ pub(super) static POLICIES: [(&str, Policy); 28] = [
 /// gradients and noise, are left out: until the scene draws them, their
 /// solid stands closer to what they draw than nothing does.
 pub(super) const REPLACING: &[&str] = &[
-    "ADBE Grid",
     "ADBE AudSpect",
     "ADBE AudWave",
     "ADBE Laser",

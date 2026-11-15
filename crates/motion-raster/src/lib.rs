@@ -18,6 +18,7 @@ mod blend;
 mod blur;
 mod colour;
 mod effect;
+mod generate;
 mod image;
 mod list;
 mod picture;

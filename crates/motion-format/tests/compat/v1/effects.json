@@ -24,5 +24,14 @@
 {"id":"shadowed","rect":"60x60","fill":"#FFFFFF","at":"220 260","fx":[{"drop-shadow":6,"color":"#202020","opacity":0.6,"direction":120,"softness":8,"layer":"shown"},{"drop-shadow":2,"layer":"hidden"}]},
 {"id":"glowing","rect":"60x60","fill":"#FFE000","at":"300 260","fx":[{"glow":12,"threshold":0.5,"intensity":1.5,"dimensions":"both","composite":"with-original"},{"glow":4,"composite":"glow-only","dimensions":"horizontal"},{"glow":2,"dimensions":"vertical"}]},
 {"id":"sharp","rect":"60x60","fill":"#40A060","at":"380 260","fx":[{"sharpen":50}]},
+{"id":"ramped","rect":"80x80","at":"60 160","fx":[{"ramp":0,"start":[0,0],"start-color":"#3B82F6","end":[80,80],"end-color":"#E4572E","shape":"linear"},{"ramp":0.5,"shape":"radial","start":[40,40],"end":[80,40]}]},
+{"id":"quad","rect":"80x80","at":"160 160","fx":[{"four-color":1,"point-1":[0,0],"color-1":"#FF0000","point-2":[80,0],"color-2":"#00FF00","point-3":[0,80],"color-3":"#0000FF","point-4":[80,80],"color-4":"#FFFFFF","blend":150,"mode":"replace"},{"four-color":0.3,"mode":"over"}]},
+{"id":"lined","rect":"80x80","fill":"#202020","at":"260 160","fx":[{"grid":2,"anchor":[0,0],"corner":[20,20],"size":"corner","draw":"lines","color":"#FFFFFF","opacity":0.8,"mode":"over"},{"grid":1,"size":"width","width":10,"draw":"cells","mode":"replace"},{"grid":1,"size":"width-height","width":10,"height":5}]},
+{"id":"blinds","rect":"80x80","fill":"#40A060","at":"360 160","fx":[{"venetian-blinds":0.3,"direction":45,"width":12,"feather":2,"anim":{"completion":"0 -> 1 @0-1s"}}]},
+{"id":"noisy","rect":"80x80","at":"440 160","fx":[
+ {"fractal-noise":0,"fractal":"basic","noise":"spline","overflow":"clip","polarity":"normal","mode":"over","contrast":1.2,"brightness":0.05,"rotation":10,"scale":0.5,"offset":[40,40],"complexity":4,"sub-influence":0.6,"sub-scaling":0.5,"sub-rotation":5,"sub-offset":[2,2],"seed":3,"opacity":0.9,"anim":{"evolution":"0 -> 360 @0-1s"}},
+ {"fractal-noise":0,"fractal":"turbulent-smooth","noise":"soft-linear","overflow":"soft-clamp","polarity":"inverted","mode":"replace","scale-width":1.5,"scale-height":0.5},
+ {"fractal-noise":0,"fractal":"turbulent-basic","noise":"linear","overflow":"wrap-back"},
+ {"fractal-noise":0,"fractal":"turbulent-sharp","noise":"block"}]},
 {"id":"tilt","rect":"240x240","at":"240 240","adjust":true,"fx":[{"transform":1,"anchor":[120,120],"position":[120,120],"rotate":10}]}
 ]}
