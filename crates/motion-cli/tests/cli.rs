@@ -804,3 +804,62 @@ fn a_mogrt_is_opened_as_a_template_and_cannot_be_exported_into() {
         stderr(&out)
     );
 }
+
+#[test]
+fn bench_runs_the_agent_on_each_brief_and_records_what_check_finds() {
+    let dir = scratch("bench");
+    let briefs = dir.join("briefs");
+    fs::create_dir_all(briefs.join("social")).unwrap();
+    fs::write(briefs.join("social/01-card.md"), "# A card\n").unwrap();
+    fs::write(briefs.join("social/02-nothing.md"), "# Nothing\n").unwrap();
+    // The fake agent writes a small scene for the card brief only, then its cost.
+    let agent = r##"grep -q card "$MOTION_BRIEF" && printf '%s' '{"motion":1,"size":"320x180","dur":"10f","layers":[{"id":"card","rect":"100x60","at":"center 175"}]}' > scene.json; echo '{"tokens":42,"steps":3}'"##;
+    let out = dir.join("runs");
+    let run = motion(&[
+        "bench",
+        briefs.to_str().unwrap(),
+        "--agent",
+        agent,
+        "--out",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(run.status.code(), Some(0), "{}", stderr(&run));
+    let lines: Vec<serde_json::Value> = fs::read_to_string(out.join("results.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    let [card, nothing] = &lines[..] else {
+        panic!("two records: {lines:?}");
+    };
+    assert_eq!(
+        (
+            &card["brief"],
+            &card["tokens"],
+            &card["steps"],
+            &card["scene"],
+            &card["errors"],
+            &card["findings"],
+            &card["video_seconds"],
+        ),
+        (
+            &serde_json::json!("social/01-card"),
+            &serde_json::json!(42),
+            &serde_json::json!(3),
+            &serde_json::json!(true),
+            &serde_json::json!(1),
+            &serde_json::json!({"offscreen": 1}),
+            &serde_json::json!(0.33),
+        )
+    );
+    assert!(out.join("social/01-card/video.mp4").is_file());
+    assert_eq!(
+        (&nothing["scene"], &nothing["errors"]),
+        (&serde_json::json!(false), &serde_json::Value::Null)
+    );
+    assert!(
+        stdout(&run).contains("social/02-nothing  agent "),
+        "{}",
+        stdout(&run)
+    );
+}

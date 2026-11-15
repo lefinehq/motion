@@ -54,6 +54,6 @@ pub use motion_format::{
 };
 pub use motion_import::map::{Import, Mapping, Options as ImportOptions, StoredText};
 pub use motion_import::{Project, Report as ImportReport};
-pub use motion_query::Report;
+pub use motion_query::{Report, Severity};
 pub use motion_raster::{Frame, Image, Quality, RenderOptions, Simd};
 pub use motion_scene::{FrameState, SceneGraph};
