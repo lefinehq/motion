@@ -60,11 +60,15 @@ The words we use in motion, and what they mean.
 
 **Reference clip.** A clip made by the lead motion designer in a professional tool, rebuilt in motion to measure how close we get.
 
+**Reference.** A value written `"$id"`, which takes the value of slot `id`: of its own composition, else of the scene. `$$` writes a literal dollar. See [Scene format](design/scene-format.md#slots).
+
 **Repeat.** One layer that produces several numbered copies of an item, filled in from `data`.
 
 **Scene.** The JSON file that describes a video.
 
 **Shutter angle.** How much motion blur a frame gets, named after the film-camera setting.
+
+**Slot.** A named, typed value a scene or a composition declares for change, such as `accent` or `title`. Values that follow it are written `"$id"`; an instance can give it its own value in `overrides`. See [D44](design/decisions.md#d44-slots-are-named-values-that-layers-follow).
 
 **Track.** The keys of one property over time. Presets, `anim` strings and keyframe lists all become tracks.
 
