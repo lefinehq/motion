@@ -256,6 +256,10 @@ fn pen<'a>(
     }
 }
 
+/// How far a band must reach, in px, to draw: below it is the rounding
+/// of silence.
+const SILENT: f64 = 1e-3;
+
 /// `audio-spectrum`.
 pub(crate) fn spectrum(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
     let composite = choice(values, 18) == 1;
@@ -303,6 +307,11 @@ pub(crate) fn spectrum(pixels: &mut Pixels, values: &[ParamValue], space: &Space
             false => 0.0,
         };
         let reach = amplitude * height;
+        // A silent band draws nothing, as in the original: no dot or
+        // square stands on the line.
+        if reach < SILENT {
+            continue;
+        }
         let sides: &[f64] = match side {
             1 => &[1.0],
             2 => &[-1.0],

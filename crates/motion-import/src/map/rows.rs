@@ -250,6 +250,10 @@ const PINNINGS: &[(i64, &str)] = &[
     (5, "left-right"),
 ];
 const RAMP_SHAPES: &[(i64, &str)] = &[(1, "linear"), (2, "radial")];
+const OFF_ON: &[(i64, &str)] = &[(0, "off"), (1, "on")];
+const AUDIO_PATHS: &[(i64, &str)] = &[(0, "line"), (1, "circle")];
+const AUDIO_DISPLAYS: &[(i64, &str)] = &[(1, "digital"), (2, "lines"), (3, "dots")];
+const AUDIO_SIDES: &[(i64, &str)] = &[(1, "a"), (2, "b"), (3, "both")];
 const GENERATOR_MODES: &[(i64, &str)] = &[(1, "replace"), (2, "over")];
 const GRID_SIZES: &[(i64, &str)] = &[(1, "corner"), (2, "width"), (3, "width-height")];
 const GRID_DRAWS: &[(i64, &str)] = &[(0, "lines"), (1, "cells")];
@@ -681,7 +685,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 35] = [
+pub(super) static KINDS: [Kind; 36] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -1713,6 +1717,120 @@ pub(super) static KINDS: [Kind; 35] = [
         switch: None,
     },
     Kind {
+        match_name: "ADBE AudSpect",
+        item: "audio-spectrum",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE AudSpect-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE AudSpect-0001", To::Input, Number, Absent),
+            row("ADBE AudSpect-0002", To::Prop("start"), Point, Parameter),
+            row("ADBE AudSpect-0003", To::Prop("end"), Point, Parameter),
+            row(
+                "ADBE AudSpect-0004",
+                To::OnlyDefault("drawing along a mask's path"),
+                Number,
+                Missing::Number(0.0),
+            ),
+            row(
+                "ADBE AudSpect-0005",
+                To::Setting("path", AUDIO_PATHS),
+                Number,
+                Absent,
+            ),
+            row("ADBE AudSpect-0006", To::Prop("from"), Number, Parameter),
+            row("ADBE AudSpect-0007", To::Prop("to"), Number, Parameter),
+            row("ADBE AudSpect-0008", To::Prop("bands"), Number, Parameter),
+            row("ADBE AudSpect-0009", To::Prop("height"), Number, Parameter),
+            row(
+                "ADBE AudSpect-0010",
+                To::Prop("duration"),
+                Number,
+                Parameter,
+            ),
+            row("ADBE AudSpect-0011", To::Prop("offset"), Number, Parameter),
+            row(
+                "ADBE AudSpect-0012",
+                To::Prop("thickness"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE AudSpect-0013",
+                To::Prop("softness"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE AudSpect-0014",
+                To::Prop("inside-color"),
+                Color,
+                Parameter,
+            ),
+            row(
+                "ADBE AudSpect-0015",
+                To::Prop("outside-color"),
+                Color,
+                Parameter,
+            ),
+            row(
+                "ADBE AudSpect-0016",
+                To::OnlyDefault("blending where bands overlap"),
+                Number,
+                Missing::Number(0.0),
+            ),
+            row("ADBE AudSpect-0017", To::Prop("hue"), Number, Parameter),
+            row(
+                "ADBE AudSpect-0018",
+                To::OnlyDefault("a hue that starts at the loudest band"),
+                Number,
+                Missing::Number(0.0),
+            ),
+            row(
+                "ADBE AudSpect-0019",
+                To::Setting("symmetry", OFF_ON),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE AudSpect-0020",
+                To::Setting("display", AUDIO_DISPLAYS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE AudSpect-0021",
+                To::Setting("side", AUDIO_SIDES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE AudSpect-0022",
+                To::Setting("average", OFF_ON),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE AudSpect-0023",
+                To::Setting("composite", OFF_ON),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
         match_name: "ADBE Tile",
         item: "motion-tile",
         table: &EFFECTS,
@@ -2621,7 +2739,7 @@ pub(super) static POLICIES: [(&str, Policy); 28] = [
 /// gradients and noise, are left out: until the scene draws them, their
 /// solid stands closer to what they draw than nothing does.
 pub(super) const REPLACING: &[&str] = &[
-    "ADBE AudSpect",
+    // Mapped once a project shows its parameters.
     "ADBE AudWave",
     "ADBE Laser",
     "CC Particle World",

@@ -16,7 +16,7 @@ use super::rows::{LAYER_ROOT, TRANSFORM};
 use super::{StoredText, Walk};
 use crate::model::{
     BlendMode, Child, Composition, Footage, Group, Item, ItemKind, Layer, LayerKind, Property,
-    Source, TrackMatte,
+    Source, Stream, TrackMatte, Value,
 };
 use motion_format::shorthand::MatteMode;
 
@@ -68,6 +68,14 @@ const VECTORS: &str = "ADBE Root Vectors Group";
 const TEXT: &str = "ADBE Text Properties";
 const EFFECTS: &str = "ADBE Effect Parade";
 const MASKS: &str = "ADBE Mask Parade";
+const AUDIO_GROUP: &str = "ADBE Audio Group";
+const AUDIO_LEVELS: &str = "ADBE Audio Levels";
+
+/// The scene key of an audio layer's file.
+const AUDIO: &str = "audio";
+
+/// The loudest a `volume` plays, as a gain: +12 dB.
+const LOUDEST: f64 = 4.0;
 
 impl<'p> Walk<'p> {
     /// The scene layer for `layer`, in `composition` called `comp_name`,
@@ -126,6 +134,10 @@ impl<'p> Walk<'p> {
         out.keys.insert("id".into(), json!(ids[&layer.id]));
         let replaced = replacing_effect(layer);
         self.content(layer, source, replaced, &mut out, &place);
+        // A layer that plays a file, and one that may play its
+        // composition's sound.
+        let plays = out.keys.contains_key(AUDIO);
+        let hears = plays || out.keys.contains_key("comp");
         let sink = Sink {
             registry: &LAYER,
             kind: None,
@@ -142,14 +154,23 @@ impl<'p> Walk<'p> {
             })
             .flat_map(Group::properties)
             .collect();
-        self.mapping.count(TRANSFORM_GROUP, Fate::Mapped);
-        self.rows(
-            &transform,
-            &TRANSFORM,
-            sink,
-            &mut out,
-            &place.inside(TRANSFORM_GROUP),
-        );
+        // A sound has no picture to place.
+        match plays {
+            true => self.mapping.ignore(
+                TRANSFORM_GROUP,
+                "the transform of a layer that only plays a sound",
+            ),
+            false => {
+                self.mapping.count(TRANSFORM_GROUP, Fate::Mapped);
+                self.rows(
+                    &transform,
+                    &TRANSFORM,
+                    sink,
+                    &mut out,
+                    &place.inside(TRANSFORM_GROUP),
+                );
+            }
+        }
         let mut root = Vec::new();
         layer
             .properties
@@ -178,6 +199,16 @@ impl<'p> Walk<'p> {
                                 out.keys.insert("mask".into(), Json::Array(masks));
                             }
                         }
+                        EFFECTS if plays => {
+                            if !group.children.is_empty() {
+                                self.mapping.count(EFFECTS, Fate::Unsupported);
+                                self.mapping.unsupported(
+                                    &here.at,
+                                    "effects on a sound (played without them)",
+                                );
+                            }
+                        }
+                        AUDIO_GROUP if hears => self.levels(group, composition, &mut out, &here),
                         EFFECTS => {
                             self.mapping.count(EFFECTS, Fate::Mapped);
                             let effects = self.items(group, &here);
@@ -199,6 +230,7 @@ impl<'p> Walk<'p> {
             self.mapping.count("layer: adjustment", Fate::Mapped);
         }
         self.switches(layer, composition, ids, &mut out, &place);
+        self.audio_switch(layer, source, plays, &mut out);
         self.timing(layer, composition, &mut out);
         if let Some(lines) = out.lines.take() {
             let id = ids[&layer.id].parse().expect("the import writes valid ids");
@@ -275,9 +307,9 @@ impl<'p> Walk<'p> {
     }
 
     /// A footage layer: a solid is a rectangle of its colour, a still
-    /// picture that was found an image filling the footage's size, and a
-    /// found clip with a decoder a video filling it. Other footage is a
-    /// pivot, reported with why.
+    /// picture that was found an image filling the footage's size, a found
+    /// clip with a decoder a video filling it, and a found sound with a
+    /// decoder an audio layer. Other footage is a pivot, reported with why.
     fn footage(
         &mut self,
         footage: &Footage,
@@ -296,11 +328,20 @@ impl<'p> Walk<'p> {
                 self.mapping.count("footage: solid", Fate::Mapped);
             }
             Source::File { path: Some(stored) } => {
-                let (key, path) = match media(footage, stored, self.found, self.videos) {
+                let (key, path) = match media(footage, stored, self.files) {
                     Media::Still(path) => ("image", path),
                     Media::Clip(path) => ("video", path),
+                    // A sound draws nothing, so it has no box.
+                    Media::Sound(path) => {
+                        out.keys.insert(AUDIO.into(), json!(path));
+                        self.mapping.count("footage: audio", Fate::Mapped);
+                        return;
+                    }
                     Media::Codec(codec) => {
                         return pivot(self, out, Some(&format!("video footage in {codec}")));
+                    }
+                    Media::SoundFormat(format) => {
+                        return pivot(self, out, Some(&format!("audio footage in {format}")));
                     }
                     Media::Unsupported(why) => return pivot(self, out, Some(why)),
                 };
@@ -318,6 +359,119 @@ impl<'p> Walk<'p> {
             }
             Source::Placeholder => pivot(self, out, Some("missing footage")),
         }
+    }
+
+    /// The layer's audio levels as its `volume`, a gain of 10^(dB/20) for
+    /// the levels in decibels the project keeps for left and right. The
+    /// original moves between keys in decibels, which a gain does not, so
+    /// moving levels are keyed every frame of the composition from the
+    /// first key to the last.
+    fn levels(
+        &mut self,
+        group: &Group,
+        composition: &Composition,
+        out: &mut Out,
+        place: &Place<'_>,
+    ) {
+        let Some(levels) = group.properties().find(|p| p.match_name == AUDIO_LEVELS) else {
+            return self.mapping.count(AUDIO_GROUP, Fate::Mapped);
+        };
+        self.mapping.count(AUDIO_LEVELS, Fate::Mapped);
+        let mut uneven = false;
+        let mut loud = false;
+        let mut gain = |value: &Value| {
+            let (left, right) = match value {
+                Value::Vector2([l, r]) | Value::Vector3([l, r, _]) => (*l, *r),
+                Value::Number(n) => (*n, *n),
+                _ => (0.0, 0.0),
+            };
+            uneven |= (left - right).abs() > 1e-6;
+            let gain = 10_f64.powf(f64::midpoint(left, right) / 20.0);
+            loud |= gain > LOUDEST + 1e-9;
+            gain.min(LOUDEST)
+        };
+        match &levels.value {
+            Stream::Static(value) => {
+                let gain = gain(value);
+                if (gain - 1.0).abs() > 1e-6 {
+                    out.keys.insert("volume".into(), num(gain));
+                }
+            }
+            Stream::Animated(keys) => {
+                let (Some(first), Some(last)) = (keys.first(), keys.last()) else {
+                    return;
+                };
+                let step = 1.0 / composition.frame_rate.max(1.0);
+                let count = ((last.time - first.time) / step).ceil().max(0.0) as usize;
+                let times = (0..count)
+                    .map(|k| first.time + k as f64 * step)
+                    .chain(std::iter::once(last.time));
+                let written: Vec<Json> = times
+                    .map(|t| {
+                        json!({
+                            "t": place.clock.time(t),
+                            "v": num(gain(&levels.value.value_at(t))),
+                        })
+                    })
+                    .collect();
+                out.anim.insert("volume".into(), Json::Array(written));
+            }
+        }
+        if levels.expression.is_some() {
+            self.mapping
+                .unsupported(&place.at, "an expression on audio levels (its keys play)");
+        }
+        if uneven {
+            self.mapping.unsupported(
+                &place.at,
+                "different levels for left and right (both play at their mean)",
+            );
+        }
+        if loud {
+            self.mapping
+                .unsupported(&place.at, "levels above +12 dB (played at +12 dB)");
+        }
+    }
+
+    /// The layer's audio switch: an audio layer plays when it is on,
+    /// whatever its video switch says, and a composition layer that would
+    /// play a sound is muted when it is off.
+    fn audio_switch(&mut self, layer: &Layer, source: Option<&Item>, plays: bool, out: &mut Out) {
+        let on = layer.switches.audio;
+        if plays {
+            match on {
+                true => out.keys.remove("hidden"),
+                false => out.keys.insert("hidden".into(), json!(true)),
+            };
+            return;
+        }
+        let composition = source.and_then(|item| match &item.kind {
+            ItemKind::Composition(c) => Some(c),
+            _ => None,
+        });
+        if !on && composition.is_some_and(|c| self.sounds_in(c, 0)) {
+            out.anim.remove("volume");
+            out.keys.insert("volume".into(), json!(0));
+        }
+    }
+
+    /// Whether `composition` plays a sound: a layer of audio footage, or of
+    /// a composition that plays one, with its audio switch on.
+    fn sounds_in(&self, composition: &Composition, depth: usize) -> bool {
+        // Projects do not nest compositions in a loop, but a broken one
+        // must not overflow the stack.
+        if depth > 64 {
+            return false;
+        }
+        composition.layers.iter().any(|layer| {
+            let source = layer.source.and_then(|id| self.items.get(&id));
+            layer.switches.audio
+                && match source.map(|item| &item.kind) {
+                    Some(ItemKind::Footage(footage)) => footage.width == 0 || footage.height == 0,
+                    Some(ItemKind::Composition(c)) => self.sounds_in(c, depth + 1),
+                    _ => false,
+                }
+        })
     }
 
     /// The layer's switches, parent, blending and matte.

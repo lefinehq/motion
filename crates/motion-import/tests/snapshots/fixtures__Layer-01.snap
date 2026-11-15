@@ -4,7 +4,7 @@ expression: "format!(\"{project}{}\", project.report())"
 ---
 project 93.4, 8 bits per channel, expressions in javascript-1.0
 composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
-  layer 53 "Transformations Collapsed" shape, 0s-60s, solo, collapse
+  layer 53 "Transformations Collapsed" shape, 0s-60s, audio, solo, collapse
     ADBE Transform Group
       ADBE Position_0 = 0
       ADBE Position_1 = 0
@@ -22,7 +22,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 37 "Effects Enabled" av, 0s-60s, source 16, null
+  layer 37 "Effects Enabled" av, 0s-60s, source 16, audio, null
     ADBE Time Remapping = 0
     ADBE Effect Parade
       ADBE Fill
@@ -44,7 +44,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 35 "Motion Blur" av, 0s-60s, source 16, motion blur, null
+  layer 35 "Motion Blur" av, 0s-60s, source 16, audio, motion blur, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -63,7 +63,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 34 "Locked" av, 0s-60s, source 16, null
+  layer 34 "Locked" av, 0s-60s, source 16, audio, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -82,7 +82,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 32 "Shy" av, 0s-60s, source 16, shy, null
+  layer 32 "Shy" av, 0s-60s, source 16, audio, shy, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -101,7 +101,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 30 "Adjustment" av, 0s-60s, source 16, null, adjustment
+  layer 30 "Adjustment" av, 0s-60s, source 16, audio, null, adjustment
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -120,7 +120,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 29 "3D" av, 0s-60s, source 16, 3d, null
+  layer 29 "3D" av, 0s-60s, source 16, audio, 3d, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -137,7 +137,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 28 "Solo" av, 0s-60s, source 16, solo, null
+  layer 28 "Solo" av, 0s-60s, source 16, audio, solo, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -156,7 +156,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 27 "Guide" av, 0s-60s, source 16, guide, null
+  layer 27 "Guide" av, 0s-60s, source 16, audio, guide, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -175,7 +175,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 26 "Pixel Motion" av, 0s-60s, source 16, null
+  layer 26 "Pixel Motion" av, 0s-60s, source 16, audio, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -194,7 +194,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 25 "Frame Mix" av, 0s-60s, source 16, null
+  layer 25 "Frame Mix" av, 0s-60s, source 16, audio, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -213,7 +213,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 22 "Wireframe Quality" av, 0s-60s, source 16, null
+  layer 22 "Wireframe Quality" av, 0s-60s, source 16, audio, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -232,7 +232,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 21 "Draft Quality" av, 0s-60s, source 16, null
+  layer 21 "Draft Quality" av, 0s-60s, source 16, audio, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -251,7 +251,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 20 "Best Quality" av, 0s-60s, source 16, null
+  layer 20 "Best Quality" av, 0s-60s, source 16, audio, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -270,7 +270,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 18 "Bilinear Sampling" av, 0s-60s, source 16, null
+  layer 18 "Bilinear Sampling" av, 0s-60s, source 16, audio, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -289,7 +289,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 17 "BIcubic Sampling" av, 0s-60s, source 16, null
+  layer 17 "BIcubic Sampling" av, 0s-60s, source 16, audio, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0
@@ -308,7 +308,7 @@ composition 1 "Comp 01" 1920x1080, 60 fps, 60s, work area 0s-60s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 24 "Default" av, 0s-60s, source 16, null
+  layer 24 "Default" av, 0s-60s, source 16, audio, null
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0

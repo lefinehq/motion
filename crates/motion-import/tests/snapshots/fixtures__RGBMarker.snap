@@ -4,7 +4,7 @@ expression: "format!(\"{project}{}\", project.report())"
 ---
 project 93.9, 8 bits per channel, expressions in javascript-1.0
 composition 1 "Marker" 400x400, 29.97 fps, 6.04s, work area 0s-6.04s
-  layer 12 "Shape Layer 1" shape, 0s-6.04s, collapse
+  layer 12 "Shape Layer 1" shape, 0s-6.04s, audio, collapse
     ADBE Marker: 2 keyframes 2s-2.87s, first opaque markers
     ADBE Root Vectors Group
       ADBE Vector Group "Rectangle 1"

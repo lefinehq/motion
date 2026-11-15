@@ -189,6 +189,14 @@ fn a_loud_band_rises_from_the_line_on_its_side() {
     assert_eq!(drawn(&pixels, 30, 52, 100), 0);
     // A quiet band hardly rises.
     assert!(drawn(&pixels, 80, 20, 47) <= 2);
+    // Silence draws nothing at all.
+    let mut silent = Pixels::transparent(100, 100);
+    spectrum(
+        &mut silent,
+        &values,
+        &space(100.0, 100.0, Some(heard(vec![0.0; 4320]))),
+    );
+    assert!(silent.data().iter().all(|p| p[3] == 0.0));
     // `both` mirrors it below.
     let values = spectrum_values(100.0, 1_000.0, 10.0, 1, 0, 0);
     let mut pixels = Pixels::transparent(100, 100);

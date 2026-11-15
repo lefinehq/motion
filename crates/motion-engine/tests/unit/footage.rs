@@ -121,3 +121,32 @@ fn a_found_clip_is_read_for_its_codec_and_a_still_is_not() {
     assert_eq!(video(&root.join("Footage/broken.mov")), None);
     assert_eq!(video(&root.join("Footage/photo.png")), None);
 }
+
+#[test]
+fn a_found_sound_is_read_for_its_format_by_its_first_bytes() {
+    let root = scratch("sounds");
+    let data = Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../motion-audio/tests/data"
+    ));
+    // Named for another format: the first bytes decide.
+    fs::copy(data.join("s16.mp3"), root.join("song.wav")).unwrap();
+    fs::write(root.join("song.m4a"), b"\0\0\0\x20ftypM4A \0\0\0\0").unwrap();
+    touch(&root, "empty.wav");
+    let sound = |name: &str| super::sound(&root.join(name));
+    assert_eq!(
+        sound("song.wav"),
+        Some(Sound {
+            format: "MP3".into(),
+            decodes: true
+        })
+    );
+    assert_eq!(
+        sound("song.m4a"),
+        Some(Sound {
+            format: "an MP4 container (AAC)".into(),
+            decodes: false
+        })
+    );
+    assert_eq!(sound("empty.wav"), None);
+}

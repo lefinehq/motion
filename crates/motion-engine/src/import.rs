@@ -88,6 +88,11 @@ pub fn import_scene(
             .into_iter()
             .chain(options.videos.clone())
             .collect(),
+        sounds: found
+            .sounds
+            .into_iter()
+            .chain(options.sounds.clone())
+            .collect(),
         // A template's panel becomes the scene's slots (D53).
         panel: match options.panel.is_empty() {
             true => panel,

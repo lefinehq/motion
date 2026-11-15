@@ -231,6 +231,15 @@ pub fn format_name(bytes: &[u8]) -> Option<&'static str> {
     FORMATS.iter().find(|f| (f.sniff)(bytes)).map(|f| f.name)
 }
 
+/// What a file starting with `bytes` is, as far as its first bytes tell:
+/// the name of its sound format and whether there is a decoder for it, or
+/// `None` when it is in no sound format motion knows.
+pub fn recognise(bytes: &[u8]) -> Option<(&'static str, bool)> {
+    format_name(bytes)
+        .map(|name| (name, true))
+        .or_else(|| unsupported(bytes).map(|name| (name, false)))
+}
+
 /// Decodes a whole sound file held in `bytes`, by the format its first
 /// bytes say.
 ///

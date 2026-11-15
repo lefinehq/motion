@@ -4,7 +4,7 @@ expression: "format!(\"{project}{}\", project.report())"
 ---
 project 94.4, 8 bits per channel, expressions in javascript-1.0
 composition 28 "Benchmark" 400x400, 60 fps, 1s, work area 0s-1s
-  layer 53 "Benchmark" text, 0s-1s, collapse
+  layer 53 "Benchmark" text, 0s-1s, audio, collapse
     ADBE Text Properties
       ADBE Text Document = text "Benchmark" (1 line), Helvetica 72, fill [0, 0, 0, 1], stroke [1, 0, 0, 1], center
     ADBE Transform Group
@@ -25,7 +25,7 @@ composition 28 "Benchmark" 400x400, 60 fps, 1s, work area 0s-1s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 47 "Shape Layer 2" shape, 0s-1s, off, collapse
+  layer 47 "Shape Layer 2" shape, 0s-1s, off, audio, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Ellipse 1"
         ADBE Vectors Group
@@ -51,7 +51,7 @@ composition 28 "Benchmark" 400x400, 60 fps, 1s, work area 0s-1s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 44 "Shape Layer 1" shape, 0s-1s, parent 47, matte 47, collapse
+  layer 44 "Shape Layer 1" shape, 0s-1s, parent 47, matte 47, audio, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Polystar 2"
         ADBE Vectors Group
@@ -111,7 +111,7 @@ composition 28 "Benchmark" 400x400, 60 fps, 1s, work area 0s-1s
       ADBE Transparency Coefficient = 0
       ADBE Transp Rolloff = 0
       ADBE Index of Refraction = 1
-  layer 52 "Heart-80.png" av, 0s-1s, source 51
+  layer 52 "Heart-80.png" av, 0s-1s, source 51, audio
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position = [352, 357, 0]
@@ -133,7 +133,7 @@ composition 28 "Benchmark" 400x400, 60 fps, 1s, work area 0s-1s
       ADBE Index of Refraction = 1
     ADBE Source Options Group
       ADBE Layer Source Alternate = opaque other_body
-  layer 50 "Yellow Solid 1" av, 0s-1s, source 49
+  layer 50 "Yellow Solid 1" av, 0s-1s, source 49, audio
     ADBE Time Remapping = 0
     ADBE Transform Group
       ADBE Position_0 = 0

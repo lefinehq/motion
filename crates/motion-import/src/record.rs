@@ -290,6 +290,8 @@ impl Ldta {
     pub const NULL: (usize, u8) = (1, 0x80);
     /// Video enabled, in flags C.
     pub const ENABLED: (usize, u8) = (2, 0x01);
+    /// Audio enabled, in flags C.
+    pub const AUDIO: (usize, u8) = (2, 0x02);
     /// Motion blur, in flags C.
     pub const MOTION_BLUR: (usize, u8) = (2, 0x08);
     /// Shy, in flags C.

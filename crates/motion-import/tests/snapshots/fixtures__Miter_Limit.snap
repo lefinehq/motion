@@ -4,7 +4,7 @@ expression: "format!(\"{project}{}\", project.report())"
 ---
 project 92.6, 8 bits per channel, expressions in extendscript
 composition 949 "miter" 300x300, 60 fps, 3s, work area 0s-3s
-  layer 960 "Shape Layer 1" shape, 0s-3s, collapse
+  layer 960 "Shape Layer 1" shape, 0s-3s, audio, collapse
     ADBE Root Vectors Group
       ADBE Vector Group "Shape 2"
         ADBE Vectors Group

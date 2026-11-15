@@ -1,7 +1,8 @@
 //! Finding a project's footage files on this machine (step `footage`), so
-//! an import can draw its still pictures as image layers ([D41]) and its
-//! clips as video layers; each clip found is read far enough to know its
-//! codec.
+//! an import can draw its still pictures as image layers ([D41]), its
+//! clips as video layers and play its sounds as audio layers; each clip
+//! found is read far enough to know its codec, and each other file by its
+//! first bytes for the sound format it is in.
 //!
 //! A project stores each file's absolute path on the machine it was made
 //! on, which rarely exists here. Templates ship their footage beside the
@@ -18,7 +19,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use motion_import::map::{STILL_EXTENSIONS, Video, file_name};
+use motion_import::map::{STILL_EXTENSIONS, Sound, Video, file_name};
 use motion_import::{ItemKind, Project, Source};
 
 /// How many folders deep under the project's folder footage is looked for,
@@ -32,6 +33,8 @@ pub(crate) struct Found {
     pub(crate) files: BTreeMap<String, String>,
     /// Each found file that is a clip, and its codec.
     pub(crate) videos: BTreeMap<String, Video>,
+    /// Each found file that is a sound, and its format.
+    pub(crate) sounds: BTreeMap<String, Sound>,
 }
 
 /// The footage files of `project`, read from `project_path`, found on this
@@ -65,8 +68,15 @@ pub(crate) fn find(project: &Project, project_path: &Path, scene: Option<&Path>)
         let Some(written) = written(&file, base.as_deref()) else {
             continue;
         };
-        if let Some(video) = video(&file) {
-            found.videos.insert(path.to_owned(), video);
+        match video(&file) {
+            Some(video) => {
+                found.videos.insert(path.to_owned(), video);
+            }
+            None => {
+                if let Some(sound) = sound(&file) {
+                    found.sounds.insert(path.to_owned(), sound);
+                }
+            }
         }
         found.files.insert(path.to_owned(), written);
     }
@@ -91,6 +101,27 @@ fn video(file: &Path) -> Option<Video> {
     Some(Video {
         codec: motion_video::codec_name(track.codec),
         decodes: motion_video::decodes(track.codec),
+    })
+}
+
+/// The sound format of `file`, by its first bytes, or `None` for a file in
+/// no sound format motion knows.
+fn sound(file: &Path) -> Option<Sound> {
+    use std::io::Read;
+    // Enough for an MP3 stream to show consecutive frames.
+    let mut head = vec![0_u8; 16 * 1024];
+    let mut reader = fs::File::open(file).ok()?;
+    let mut read = 0;
+    // A short read is not the end of the file.
+    while read < head.len() {
+        match reader.read(&mut head[read..]) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => read += n,
+        }
+    }
+    motion_audio::recognise(&head[..read]).map(|(format, decodes)| Sound {
+        format: format.to_owned(),
+        decodes,
     })
 }
 

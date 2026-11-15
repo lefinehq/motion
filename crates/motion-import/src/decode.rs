@@ -259,6 +259,7 @@ impl Decoder {
             stretch,
             switches: Switches {
                 enabled: ldta.is_on(Ldta::ENABLED),
+                audio: ldta.is_on(Ldta::AUDIO),
                 three_d: ldta.is_on(Ldta::THREE_D),
                 solo: ldta.is_on(Ldta::SOLO),
                 shy: ldta.is_on(Ldta::SHY),

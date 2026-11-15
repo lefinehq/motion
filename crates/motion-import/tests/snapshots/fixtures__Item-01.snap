@@ -5,7 +5,7 @@ expression: "format!(\"{project}{}\", project.report())"
 project 93.4, 8 bits per channel, expressions in javascript-1.0
 folder 46 "Folder 01"
   composition 48 "Comp 01" 351x856, 21 fps, 31s, work area 0s-31s
-    layer 79 "Null 1" av, 0s-31s, source 78, null
+    layer 79 "Null 1" av, 0s-31s, source 78, audio, null
       ADBE Time Remapping = 0
       ADBE Transform Group
         ADBE Position_0 = 0
@@ -24,7 +24,7 @@ folder 46 "Folder 01"
         ADBE Transparency Coefficient = 0
         ADBE Transp Rolloff = 0
         ADBE Index of Refraction = 1
-    layer 76 "Shape Layer 1" shape, 0s-31s, collapse
+    layer 76 "Shape Layer 1" shape, 0s-31s, audio, collapse
       ADBE Transform Group
         ADBE Position_0 = 0
         ADBE Position_1 = 0
