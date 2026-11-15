@@ -229,6 +229,55 @@ fn a_transform_value_left_out_at_its_default_follows_its_slot() {
     assert_eq!(import.json["layers"][0]["position"], json!("$place"));
 }
 
+#[test]
+fn a_text_control_named_for_a_role_proposes_it() {
+    use crate::model::{Child, LayerKind, Stream, Value};
+    use crate::test_support::{build::group, sample_document};
+    let document = property(
+        "ADBE Text Document",
+        Stream::Static(Value::Text(Box::new(sample_document()))),
+    );
+    let text = crate::model::Layer {
+        kind: LayerKind::Text,
+        ..layer(
+            4,
+            "Line 1",
+            vec![Child::Group(group(
+                "ADBE Text Properties",
+                vec![Child::Property(document)],
+            ))],
+        )
+    };
+    let mut main = comp(vec![text], 2.0);
+    main.panel = vec![PanelControl {
+        id: "t".into(),
+        kind: ControlKind::Text,
+        targets: vec![ControlTarget {
+            composition: 5,
+            layer: 4,
+            path: vec![
+                step("ADBE Text Properties", None),
+                step("ADBE Text Document", None),
+            ],
+        }],
+    }];
+    let import = import(
+        &project(vec![(5, "Main", main)]),
+        &Options {
+            panel: vec![offered("t", ControlKind::Text, "Title", json!({}))],
+            ..Options::default()
+        },
+    )
+    .expect("it imports");
+    assert_eq!(import.json["layers"][0]["text"], json!("$title"));
+    assert_eq!(import.json["roles"], json!({"headline": "$title"}));
+    let report = import.mapping.to_string();
+    assert!(
+        report.contains("roles, to confirm: headline $title (from its control's name)"),
+        "{report}"
+    );
+}
+
 /// The local sweep: every sample template imports with its panel. Prints
 /// counts and the reasons controls are left out, never their names.
 ///

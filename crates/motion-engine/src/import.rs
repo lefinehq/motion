@@ -1,4 +1,5 @@
-//! Reading an `.aep` project (steps `read` and `decode`), finding its
+//! Reading an `.aep` project, or the project inside a `.mogrt` template
+//! (steps `read` and `decode`), finding its
 //! footage files (step `footage`), importing it as a scene (step `map`), and
 //! setting the text of fonts the import was not given in the closest faces
 //! it has (step `substitute`, [D40]): the entry points for tools that
@@ -11,32 +12,52 @@ use std::fs;
 use std::path::Path;
 
 use motion_format::{Diagnostic, Result};
-use motion_import::Project;
 use motion_import::map::{self, Import, Options};
+use motion_import::{Project, template};
 use motion_text::FontSet;
 
 use crate::fonts::has_face;
 use crate::footage;
 use crate::stage::{stage, stage_ok};
 
-/// Reads the `.aep` project at `path` into its typed model (steps `read`
-/// and `decode`).
+/// Reads the `.aep` project at `path`, or the project inside the `.mogrt`
+/// template at `path`, into its typed model (steps `read` and `decode`).
 ///
 /// # Errors
 /// A [`Kind::Io`](motion_format::Kind::Io) diagnostic when the file cannot be
-/// read, or the decoder's diagnostic, with its chunk path, when the file is
-/// not a project it can follow.
+/// read, the template's diagnostic when it holds no project to read, or the
+/// decoder's diagnostic, with its chunk path, when the file is not a project
+/// it can follow.
 pub fn import(path: impl AsRef<Path>) -> Result<Project> {
-    let path = path.as_ref();
+    read(path.as_ref()).map(|(project, _)| project)
+}
+
+/// Whether `path` names a `.mogrt` template.
+#[must_use]
+pub fn is_template(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("mogrt"))
+}
+
+/// The project at `path`, with the panel of the template it came from: none
+/// for an `.aep` project.
+fn read(path: &Path) -> Result<(Project, Vec<template::Control>)> {
     let bytes = stage("read", || {
         fs::read(path).map_err(|e| Diagnostic::io("read", path, &e))
     })?;
-    stage("decode", || motion_import::decode(&bytes))
+    stage("decode", || match is_template(path) {
+        true => {
+            let template = template::open(&bytes)?;
+            Ok((motion_import::decode(&template.project)?, template.panel))
+        }
+        false => Ok((motion_import::decode(&bytes)?, Vec::new())),
+    })
 }
 
-/// Reads the `.aep` project at `path` and imports it as a scene (steps
-/// `read`, `decode`, `footage` and `map`), with what the import mapped,
-/// defaulted, ignored or could not support.
+/// Reads the `.aep` project, or `.mogrt` template, at `path` and imports
+/// it as a scene (steps `read`, `decode`, `footage` and `map`), with what
+/// the import mapped, defaulted, ignored or could not support. A
+/// template's panel becomes the scene's slots, unless `options` gives one.
 ///
 /// Footage files are looked for where the project stores them, then by name
 /// under the project's folder, and named relative to the folder of `scene`,
@@ -54,7 +75,7 @@ pub fn import_scene(
     scene: Option<&Path>,
 ) -> Result<Import> {
     let path = path.as_ref();
-    let project = import(path)?;
+    let (project, panel) = read(path)?;
     let found = stage_ok("footage", || footage::find(&project, path, scene));
     let options = Options {
         footage: found
@@ -67,6 +88,11 @@ pub fn import_scene(
             .into_iter()
             .chain(options.videos.clone())
             .collect(),
+        // A template's panel becomes the scene's slots (D53).
+        panel: match options.panel.is_empty() {
+            true => panel,
+            false => options.panel.clone(),
+        },
         ..options.clone()
     };
     stage("map", || map::import(&project, &options))

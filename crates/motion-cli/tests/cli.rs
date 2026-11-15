@@ -734,3 +734,39 @@ fn export_writes_an_unedited_scene_back_unchanged_and_an_edit_into_the_project()
         .unwrap();
     assert_eq!(rotator["anchor"], serde_json::json!([0.25, 0.75]));
 }
+
+#[test]
+fn a_mogrt_is_opened_as_a_template_and_cannot_be_exported_into() {
+    let dir = scratch("mogrt");
+    let template = dir.join("bad.mogrt");
+    fs::write(&template, b"RIFX, not an archive").unwrap();
+    let scene = dir.join("scene.json");
+    let out = motion(&[
+        "import",
+        template.to_str().unwrap(),
+        "--out",
+        scene.to_str().unwrap(),
+    ]);
+    assert_eq!(out.status.code(), Some(2), "{}", stdout(&out));
+    assert!(
+        stderr(&out).contains("the file is not a zip archive"),
+        "{}",
+        stderr(&out)
+    );
+    let out = motion(&["import", HAMBURGER, "--out", scene.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
+    let out = motion(&[
+        "export",
+        scene.to_str().unwrap(),
+        "--project",
+        template.to_str().unwrap(),
+        "--out",
+        dir.join("out.mogrt").to_str().unwrap(),
+    ]);
+    assert_eq!(out.status.code(), Some(2), "{}", stdout(&out));
+    assert!(
+        stderr(&out).contains("cannot be written back into a `.mogrt` template yet"),
+        "{}",
+        stderr(&out)
+    );
+}

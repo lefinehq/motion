@@ -214,10 +214,11 @@ enum Command {
         #[arg(long, value_name = "ID")]
         only: Vec<String>,
     },
-    /// Import an `.aep` project as a scene, and print what the import mapped,
-    /// defaulted, ignored or could not support yet.
+    /// Import an `.aep` project or a `.mogrt` template as a scene, and print
+    /// what the import mapped, defaulted, ignored or could not support yet.
+    /// A template's controls become the scene's slots.
     Import {
-        /// Path to the `.aep` file.
+        /// Path to the `.aep` or `.mogrt` file.
         project: PathBuf,
         /// The scene file to write.
         #[arg(long, short, value_name = "FILE")]
@@ -264,10 +265,11 @@ enum Command {
         #[command(subcommand)]
         command: FontsCommand,
     },
-    /// Print an `.aep` project: its items, layers and properties, then what
-    /// the reader could not decode yet.
+    /// Print an `.aep` project, or the one inside a `.mogrt` template: its
+    /// items, layers and properties, then what the reader could not decode
+    /// yet.
     Inspect {
-        /// Path to the `.aep` file.
+        /// Path to the `.aep` or `.mogrt` file.
         project: PathBuf,
         /// Print the model and the report as JSON.
         #[arg(long)]

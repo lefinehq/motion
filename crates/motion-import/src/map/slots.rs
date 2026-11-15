@@ -280,7 +280,10 @@ impl Slots {
                 .or_default()
                 .insert(id.clone(), Json::Object(written));
             match (control.panel, mapping.panel.as_mut()) {
-                (true, Some(panel)) => panel.slots += 1,
+                (true, Some(panel)) => {
+                    panel.slots += 1;
+                    panel.ids.push(id.clone());
+                }
                 _ => mapping.slots += 1,
             }
             let followers = control

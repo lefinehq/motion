@@ -1,7 +1,10 @@
 //! Roles the import proposes ([D50]): a layer named `@headline Title`
-//! takes the role `headline`, and otherwise a role whose name only one
-//! layer has, `logo` or `title`, takes that layer. Each proposal is in the
-//! report, for the designer to confirm.
+//! takes the role `headline`; then a role of text whose name only one text
+//! slot of a template's panel has takes that slot ([D53]); and otherwise a role whose
+//! name only one layer has, `logo` or `title`, takes that layer. Each
+//! proposal is in the report, for the designer to confirm.
+//!
+//! [D53]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d53-a-mogrt-imports-as-its-project-with-its-controls-as-slots
 //!
 //! [D50]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d50-roles-name-what-a-masters-layers-do
 
@@ -24,6 +27,9 @@ const VOCABULARY: [(&str, &[&str]); 9] = [
     ("price", &["price"]),
     ("date", &["date"]),
 ];
+
+/// The roles a text holds, which a template's text control may take.
+const TEXT_ROLES: [&str; 6] = ["headline", "subhead", "body", "cta", "price", "date"];
 
 /// The locks a master with a logo gets ([D51]).
 ///
@@ -63,10 +69,11 @@ pub(super) fn named(name: &str) -> (Option<String>, &str) {
 pub(super) type Named = (String, Option<String>, String);
 
 /// The roles to propose for `doc`: those its layers are named for, then
-/// each role of the vocabulary that one layer alone matches. A layer in a
+/// each role of text that one of the `offered` text slots alone matches,
+/// then each role that one layer alone matches. A layer in a
 /// composition is named through the `comp` layer that draws it, the first
 /// when several do.
-pub(super) fn propose(doc: &Document, named: &[Named]) -> Vec<ProposedRole> {
+pub(super) fn propose(doc: &Document, named: &[Named], offered: &[String]) -> Vec<ProposedRole> {
     let scene = doc.scene();
     let addresses = scene.addresses();
     // Where the layer `id` of composition `comp` is drawn.
@@ -94,6 +101,21 @@ pub(super) fn propose(doc: &Document, named: &[Named]) -> Vec<ProposedRole> {
                 role: role.clone(),
                 address: address.to_string(),
                 from: "named for it",
+            });
+        }
+    }
+    // The designer named a template's controls for what they change; a
+    // control's name only says which text it is.
+    for (role, words) in VOCABULARY {
+        if !TEXT_ROLES.contains(&role) || proposed.iter().any(|p| p.role == role) {
+            continue;
+        }
+        let matching: Vec<&String> = offered.iter().filter(|id| matches(id, words)).collect();
+        if let [id] = matching.as_slice() {
+            proposed.push(ProposedRole {
+                role: role.to_owned(),
+                address: format!("${id}"),
+                from: "from its control's name",
             });
         }
     }
