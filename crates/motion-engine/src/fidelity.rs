@@ -58,6 +58,11 @@ pub struct Sample {
     /// on are kept apart from the entrance's.
     #[serde(default)]
     pub settled: Option<f64>,
+    /// Why the sample cannot pass however well motion draws it, such as a
+    /// reference rendered from other footage than the project names. It is
+    /// still measured, so a change to it shows, but kept out of the score.
+    #[serde(default)]
+    pub excluded: Option<String>,
 }
 
 impl Manifest {
@@ -120,6 +125,17 @@ pub struct Window {
     /// its background: the headline number.
     #[serde(default)]
     pub content_failing: Option<f64>,
+    /// How many frames pass over the content: no more than
+    /// [`DiffOptions::PASSING`] of its pixels past the tolerance. None in a
+    /// ledger written before it was counted.
+    #[serde(default)]
+    pub frames_passing: Option<usize>,
+    /// How many frames have no content at all: the scene draws nothing and
+    /// the reference is its background. They pass without showing anything,
+    /// so a window of only these proves nothing. None in a ledger written
+    /// before it was counted.
+    #[serde(default)]
+    pub frames_empty: Option<usize>,
     /// Colour error where the scene draws, 0 to 1.
     pub drawn_error: f64,
     /// Failing fraction where the scene draws.
@@ -264,10 +280,113 @@ fn window(frames: &[FrameDiff], from: f64) -> Window {
         frames: frames.len(),
         content_error: Some(mean(|f| f.content.mean)),
         content_failing: Some(mean(|f| f.content.failing)),
+        frames_passing: Some(frames.iter().filter(|f| f.content.passes()).count()),
+        frames_empty: Some(frames.iter().filter(|f| f.content.pixels == 0).count()),
         drawn_error: mean(|f| f.drawn.mean),
         drawn_failing: mean(|f| f.drawn.failing),
         union_error: mean(|f| f.union.mean),
         union_failing: mean(|f| f.union.failing),
+    }
+}
+
+/// Where one sample stands against the fidelity limit: every compared
+/// frame within [`DiffOptions::TOLERANCE`] on all but
+/// [`DiffOptions::PASSING`] of its content, and at least one frame with
+/// content to show it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Verdict {
+    /// Every compared frame passes.
+    Passes,
+    /// Every frame from when it has settled passes, and one of them has
+    /// content, but not every frame of its entrance passes.
+    Settles,
+    /// It fails, and the import named what it could not support: the gaps,
+    /// by what.
+    Blocked(Vec<String>),
+    /// It fails with nothing named unsupported: something is drawn wrong or
+    /// lost without a word, which is the first thing to look at.
+    Unexplained,
+    /// Its manifest says it cannot pass, and why.
+    Excluded(String),
+    /// Its numbers were written before frames were counted.
+    Unscored,
+}
+
+impl Measure {
+    /// The sample's verdict; `excluded` is its manifest's reason, if any.
+    pub fn verdict(&self, excluded: Option<&str>) -> Verdict {
+        if let Some(reason) = excluded {
+            return Verdict::Excluded(reason.to_owned());
+        }
+        // A window passes when all its frames do and one has content: no
+        // frame, or only empty ones, shows nothing either way.
+        let passes = |w: &Window| {
+            let (passing, empty) = (w.frames_passing?, w.frames_empty?);
+            Some(passing == w.frames && empty < w.frames)
+        };
+        match (passes(&self.all), self.settled.as_ref().and_then(passes)) {
+            (None, _) => Verdict::Unscored,
+            (Some(true), _) => Verdict::Passes,
+            (Some(false), Some(true)) => Verdict::Settles,
+            (Some(false), _) if self.unsupported.is_empty() => Verdict::Unexplained,
+            (Some(false), _) => Verdict::Blocked(self.unsupported.keys().cloned().collect()),
+        }
+    }
+}
+
+/// Every measured sample's verdict, in the manifest's order: the score
+/// the fidelity work is steered by, one sample at a time rather than one
+/// feature at a time, since a sample passes only once all its gaps close.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Scoreboard {
+    /// Each sample's id and verdict.
+    pub samples: Vec<(String, Verdict)>,
+}
+
+impl Scoreboard {
+    /// The verdicts of `samples` that `ledger` has numbers for.
+    pub fn new<'a>(samples: impl IntoIterator<Item = &'a Sample>, ledger: &Ledger) -> Scoreboard {
+        let samples = samples
+            .into_iter()
+            .filter_map(|sample| {
+                let measure = ledger.samples.get(&sample.id)?;
+                let verdict = measure.verdict(sample.excluded.as_deref());
+                Some((sample.id.clone(), verdict))
+            })
+            .collect();
+        Scoreboard { samples }
+    }
+
+    /// The ids whose verdict `matches`.
+    pub fn ids(&self, matches: impl Fn(&Verdict) -> bool) -> Vec<&str> {
+        self.samples
+            .iter()
+            .filter(|(_, verdict)| matches(verdict))
+            .map(|(id, _)| id.as_str())
+            .collect()
+    }
+
+    /// How many samples count: all but the excluded and the unscored.
+    pub fn scored(&self) -> usize {
+        self.ids(|v| !matches!(v, Verdict::Excluded(_) | Verdict::Unscored))
+            .len()
+    }
+
+    /// The failing samples one gap away from the limit, by that gap, the
+    /// gap that blocks the most first: what closing one feature would
+    /// bring nearest to passing.
+    pub fn single_gaps(&self) -> Vec<(&str, Vec<&str>)> {
+        let mut by_gap: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+        for (id, verdict) in &self.samples {
+            if let Verdict::Blocked(gaps) = verdict
+                && let [gap] = gaps.as_slice()
+            {
+                by_gap.entry(gap.as_str()).or_default().push(id.as_str());
+            }
+        }
+        let mut gaps: Vec<_> = by_gap.into_iter().collect();
+        gaps.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(b.0)));
+        gaps
     }
 }
 
@@ -320,7 +439,7 @@ pub fn compare(before: &Ledger, after: &Ledger) -> Vec<Change> {
 
 /// Whether more of `metric` is better.
 fn higher_is_better(metric: &str) -> bool {
-    metric == "texts_within"
+    metric == "texts_within" || metric.ends_with("frames_passing")
 }
 
 /// A measure's numbers by name; a text line that is wholly off counts as
@@ -349,6 +468,12 @@ fn metrics(measure: &Measure) -> BTreeMap<String, f64> {
             if let Some(value) = value {
                 out.insert(format!("{name} {metric}"), value);
             }
+        }
+        if let Some(passing) = w.frames_passing {
+            out.insert(format!("{name} frames_passing"), passing as f64);
+        }
+        if let Some(empty) = w.frames_empty {
+            out.insert(format!("{name} frames_empty"), empty as f64);
         }
         out.insert(format!("{name} drawn_error"), w.drawn_error);
         out.insert(format!("{name} drawn_failing"), w.drawn_failing);
