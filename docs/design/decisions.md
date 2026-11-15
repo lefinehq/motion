@@ -344,7 +344,7 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Reusing `box` keeps one way to say "this layer's box" across kinds, and its four-number form already covers a box that does not start at the origin.
   - Stretching to the box keeps a render exact when a file is swapped for a smaller or larger one (a proxy, a variant's photo): the layout does not move.
   - A shorthand such as `"photo.jpg 1920x1080"` was rejected: file names hold spaces, so splitting the string is guesswork.
-- **Not now:** video and image sequences (phase 2), fit modes other than stretch (`contain`, `cover`), colour profiles other than sRGB, and filtering beyond bilinear for strong reductions.
+- **Not now:** video (since [D47](#d47-video-layers-play-their-clip-in-their-own-time)) and image sequences, fit modes other than stretch (`contain`, `cover`), colour profiles other than sRGB, and filtering beyond bilinear for strong reductions.
 
 ### D42. Fidelity is headlined over the reference content
 
@@ -388,6 +388,17 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Behind the traits, a codec or container can be added or replaced without touching the others or the renderer, and the render crates never link an encoder.
   - Colour conversion in one place means every codec gets the same planes, so codecs differ only in compression.
 - **Not now:** audio, WebM, and the Windows and Linux GPU encoders. Each is a later step of the plan.
+
+### D47. Video layers play their clip in their own time
+
+- **Decision:** a layer draws a video clip with `"video":"<file>"`, an `.mov` or `.mp4` file relative to the scene file, stretched over the layer's required `box`, as an image is ([D41](#d41-image-layers-name-their-file-and-carry-their-box)). At its own time `t` the layer draws the frame showing `t` seconds into the clip, and nothing before the clip starts or from its end on. Clips are read by `motion-video`, with our own reader of the MP4 and QuickTime containers and one `Decoder` trait a codec implements; QuickTime Animation and Photo JPEG are the first. The engine opens each clip once per session and keeps its decoder and last frames, so a render going forward decodes each frame once. H.264 comes later under [D13](#d13-codec-licence-policy): from the operating system, or a decoder loaded at run time, never compiled in. See the [plan](../plans/2026-11-16-video.md).
+- **Why:**
+  - The layer's own time is the time every other layer already has, so `offset`, `stretch` and the span place and retime a clip with no new keys, and an import's start time and stretch carry over unchanged.
+  - A required `box` keeps the scene checkable without its files, for the reason D41 gives.
+  - The crates that read MP4 and QuickTime together are copyleft or pull in system libraries; the sample table is a few hundred lines of our own.
+  - QuickTime Animation and Photo JPEG are the corpus's overlays and mattes, with alpha, and decode in pure Rust under our licences; they draw in 10 of the local samples today (72 layers).
+  - Decoding behind one trait, as encoding is ([D46](#d46-video-is-encoded-in-a-crate-of-its-own-behind-one-codec-trait)), lets H.264 land as a module without touching the layer or the engine.
+- **Not now:** H.264 and other codecs, image sequences, footage loops and frame-rate overrides from a project's interpretation, fit modes other than stretch, and sound.
 
 ## Open questions
 

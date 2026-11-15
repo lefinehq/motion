@@ -3,13 +3,14 @@
 extend-exclude = ["crates/motion-import/tests/fixtures/", "*.snap"]
 
 [default.extend-words]
-# Four-character chunk tags and short codes, not words.
+# Four-character chunk and box tags and short codes, not words.
 als = "als"
 fo = "fo"
 jod = "jod"
 pard = "pard"
 pn = "pn"
 rin = "rin"
+trak = "trak"
 
 [default]
 # The curve fitting library `curve_fit_nd` (N-dimensional).

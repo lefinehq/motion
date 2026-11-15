@@ -164,6 +164,7 @@ impl Build<'_> {
                 Rect::new(0.0, 0.0, width, height)
             }
             NodeContent::Image(image) => image.frame,
+            NodeContent::Video(video) => video.frame,
             NodeContent::Shapes(_) | NodeContent::Pivot => Rect::ZERO,
         }
     }
@@ -200,6 +201,7 @@ impl Build<'_> {
                 }
             }
             Content::Image(image) => NodeContent::Image(Arc::new(image.clone())),
+            Content::Video(video) => NodeContent::Video(Arc::new(video.clone())),
             Content::Pivot => NodeContent::Pivot,
         })
     }

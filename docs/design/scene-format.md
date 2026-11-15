@@ -24,7 +24,7 @@ Here is what each layer does:
 - **`cards`** is five cards in a row, one per label. They fade up one after another, starting at frame 15 and six frames apart.
 - **`bloom`** has no content, only an effect. It adds a soft glow to everything below it.
 
-The syntax shown here is illustrative, and `repeat`, `layout`, `data`, `item` and `fx` are designed but not built yet. What is built today is the canvas, `text`, `rect` and `image` layers, `fill`, `at`, `in`, `anim` and `presets`; the sections below say what is still planned.
+The syntax shown here is illustrative, and `repeat`, `layout`, `data`, `item` and `fx` are designed but not built yet. What is built today is the canvas, `text`, `rect`, `image` and `video` layers, `fill`, `at`, `in`, `anim` and `presets`; the sections below say what is still planned.
 
 ## The canvas
 
@@ -50,6 +50,7 @@ Every layer has an `id`: lowercase letters, digits, `-` and `_`, starting with a
 | `shapes` | Shape items: groups, rectangles, ellipses and free paths, drawn by fills and strokes (see [Shapes](#shapes-effects-and-compositions)) |
 | `svg` | An SVG file as shapes |
 | `image` | A PNG or JPEG file stretched over the layer's `box` (see [Images](#images)) |
+| `video` | A video clip played in the layer's own time and stretched over its `box` (see [Videos](#videos)) |
 | `solid` | A flat colour |
 | `comp` | A composition from `comps`, drawn in the layer's box at the layer's own time; `overrides` changes its layers for this layer alone |
 | `pivot` | An invisible layer (`"pivot":true`) that only carries a position, rotation and scale. Other layers can use it as a parent. |
@@ -57,7 +58,7 @@ Every layer has an `id`: lowercase letters, digits, `-` and `_`, starting with a
 | `camera` | The viewpoint for 2.5D layers |
 | `audio` | A sound file placed on the timeline |
 
-Video layers, lights and 3D models come in phase 2. See [Features](features.md).
+Lights and 3D models come in phase 2. See [Features](features.md).
 
 Every layer can also have:
 
@@ -185,7 +186,20 @@ An image layer draws a picture file: `image` names a PNG or JPEG file, relative 
 - **Box.** `box` is required: the scene is read, checked and laid out without opening its files, so the layer's size is in the scene. `anchor` rests at the box's centre, and `check` measures the box.
 - **Files.** A render reads and decodes each file once, the first time a frame shows it, and draws every later frame from that. A file that is missing, or is not a PNG or JPEG file, is an error that names the file; a file no frame shows is never read. The format is recognised by the file's first bytes, not its name.
 - **Colour.** PNG keeps its transparency; JPEG is opaque. Pixels are read as sRGB, and sampled bilinearly.
-- Like any layer, an image has a transform, parent, opacity, span and time, can be a matte, and can be matted. Video files are not image layers; they come with video layers in phase 2.
+- Like any layer, an image has a transform, parent, opacity, span and time, can be a matte, and can be matted. Video files are not image layers; they are [video layers](#videos).
+
+## Videos
+
+A video layer plays a clip: `video` names an `.mov` or `.mp4` file, relative to the scene file, and `box` says where its frames go, as for an image ([D47](decisions.md#d47-video-layers-play-their-clip-in-their-own-time)).
+
+```json
+{"id":"sparks","video":"footage/sparks.mov","box":[1920,1080],"offset":"2s","opacity":0.8}
+```
+
+- **Time.** The clip plays in the layer's own time: at its own time `t`, the layer draws the frame showing `t` seconds into the clip. So `offset` starts it later and `stretch` slows it (`2`) or speeds it (`0.5`). Before the clip starts and from its end on, the layer draws nothing.
+- **Codecs.** QuickTime Animation (`rle `, RGB, or ARGB with its alpha) and Photo JPEG decode today; a clip in any other codec is an error that names the file and the codec. The container is read by motion itself, with no system library.
+- **Files.** A render opens each clip once and decodes frames as they are shown, keeping the last ones, so a render going forward decodes each frame once. A file no frame shows is never read.
+- Like any layer, a video has a transform, parent, opacity, span and time, can be a matte, and can be matted. Its sound is not played: scenes have no audio yet.
 
 ## Animation, at three levels of detail
 

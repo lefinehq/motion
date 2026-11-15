@@ -20,8 +20,9 @@ use motion_scene::{FrameState, evaluate};
 use motion_scene::{SceneGraph, compile};
 use motion_text::{FontSet, Typesetter};
 
+use crate::clips::Clips;
 use crate::pictures::Pictures;
-use crate::render::display_list;
+use crate::render::{Sources, display_list};
 use crate::stage::{stage, stage_ok};
 
 /// One scene and the results of the steps run on it. Methods run their steps
@@ -42,6 +43,9 @@ pub struct Session {
     /// The pictures image layers draw, each decoded once, on first use, and
     /// dropped by an edit.
     pictures: Pictures,
+    /// The clips video layers play, each opened once, on first use, and
+    /// dropped by an edit.
+    clips: Clips,
 }
 
 impl Session {
@@ -206,8 +210,14 @@ impl Session {
         let state = self.frame(frame)?;
         let graph = self.graph()?;
         let base = self.base();
-        let picture = |path: &str| self.pictures.get(&base.join(path));
-        stage("display", || display_list(graph, &state, &picture))
+        let pictures = |path: &str| self.pictures.get(&base.join(path));
+        let clips = |path: &str, seconds: f64| self.clips.frame(&base.join(path), seconds);
+        let sources = Sources {
+            graph,
+            pictures: &pictures,
+            clips: &clips,
+        };
+        stage("display", || display_list(sources, &state))
     }
 
     /// Draws `frame`, possibly fractional, with the default options: precise
@@ -352,6 +362,7 @@ impl Session {
         self.fonts = OnceLock::new();
         self.graph = OnceLock::new();
         self.pictures = Pictures::default();
+        self.clips = Clips::default();
         self.check()
     }
 
@@ -369,6 +380,7 @@ impl Session {
             graph: OnceLock::new(),
             font_cache: self.font_cache.clone(),
             pictures: Pictures::default(),
+            clips: Clips::default(),
         };
         for address in addresses {
             hidden.edit(&format!("{address} hidden=true"))?;
@@ -413,6 +425,7 @@ impl FromStr for Session {
             graph: OnceLock::new(),
             font_cache: None,
             pictures: Pictures::default(),
+            clips: Clips::default(),
         })
     }
 }

@@ -6,7 +6,7 @@ use motion_format::property::Prop;
 use std::sync::Arc;
 
 use motion_format::shorthand::RectShape;
-use motion_format::{ImageContent, Path, Value};
+use motion_format::{ImageContent, Path, Value, VideoContent};
 
 use crate::animate::GlyphState;
 use crate::shape::ShapeDraw;
@@ -60,6 +60,14 @@ pub enum ContentState {
     Comp(usize, Option<Box<FrameState>>),
     /// A picture file stretched over the node's box.
     Image(Arc<ImageContent>),
+    /// A video clip over the node's box, at `seconds` of the node's own
+    /// time: the frame showing then, or nothing outside the clip.
+    Video {
+        /// The clip and its box.
+        video: Arc<VideoContent>,
+        /// The node's own time, in seconds, which is the clip's.
+        seconds: f64,
+    },
     /// Nothing.
     Pivot,
 }

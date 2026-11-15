@@ -1,5 +1,7 @@
 //! Finding a project's footage files on this machine (step `footage`), so
-//! an import can draw its still pictures as image layers ([D41]).
+//! an import can draw its still pictures as image layers ([D41]) and its
+//! clips as video layers; each clip found is read far enough to know its
+//! codec.
 //!
 //! A project stores each file's absolute path on the machine it was made
 //! on, which rarely exists here. Templates ship their footage beside the
@@ -16,22 +18,28 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use motion_import::map::file_name;
+use motion_import::map::{STILL_EXTENSIONS, Video, file_name};
 use motion_import::{ItemKind, Project, Source};
 
 /// How many folders deep under the project's folder footage is looked for,
 /// so a project saved in a large folder does not walk all of it.
 const DEPTH: usize = 8;
 
+/// What was found of a project's footage, by the path the project stores.
+#[derive(Debug, Default)]
+pub(crate) struct Found {
+    /// Each file found, as a layer names it.
+    pub(crate) files: BTreeMap<String, String>,
+    /// Each found file that is a clip, and its codec.
+    pub(crate) videos: BTreeMap<String, Video>,
+}
+
 /// The footage files of `project`, read from `project_path`, found on this
-/// machine: for each stored path, the found file as an image layer names
-/// it. Paths are relative to the folder of `scene`, where the scene will be
-/// saved, or absolute without one. A file not found is left out.
-pub(crate) fn find(
-    project: &Project,
-    project_path: &Path,
-    scene: Option<&Path>,
-) -> BTreeMap<String, String> {
+/// machine: for each stored path, the found file as a layer names it, and
+/// for each found clip its codec. Paths are relative to the folder of
+/// `scene`, where the scene will be saved, or absolute without one. A file
+/// not found is left out, and so is a clip whose codec cannot be read.
+pub(crate) fn find(project: &Project, project_path: &Path, scene: Option<&Path>) -> Found {
     let stored: Vec<&str> = project
         .items
         .iter()
@@ -43,19 +51,47 @@ pub(crate) fn find(
             _ => None,
         })
         .collect();
+    let mut found = Found::default();
     if stored.is_empty() {
-        return BTreeMap::new();
+        return found;
     }
     let root = folder_of(project_path);
     let index = Index::of(&root);
     let base = scene.map(folder_of);
-    stored
-        .into_iter()
-        .filter_map(|path| {
-            let found = locate(path, &root, &index)?;
-            Some((path.to_owned(), written(&found, base.as_deref())?))
-        })
-        .collect()
+    for path in stored {
+        let Some(file) = locate(path, &root, &index) else {
+            continue;
+        };
+        let Some(written) = written(&file, base.as_deref()) else {
+            continue;
+        };
+        if let Some(video) = video(&file) {
+            found.videos.insert(path.to_owned(), video);
+        }
+        found.files.insert(path.to_owned(), written);
+    }
+    found
+}
+
+/// The codec of the clip `file`, or `None` for a still picture or a file
+/// that is not a clip this crate's reader understands.
+fn video(file: &Path) -> Option<Video> {
+    let still = file
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|extension| {
+            STILL_EXTENSIONS
+                .iter()
+                .any(|still| extension.eq_ignore_ascii_case(still))
+        });
+    if still {
+        return None;
+    }
+    let track = motion_video::container::read(&mut fs::File::open(file).ok()?).ok()?;
+    Some(Video {
+        codec: motion_video::codec_name(track.codec),
+        decodes: motion_video::decodes(track.codec),
+    })
 }
 
 /// The file `stored` names: itself when it exists, else the best file of

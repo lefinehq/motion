@@ -20,7 +20,7 @@ mod effect;
 mod shape;
 mod text;
 
-use motion_format::key::IMAGE;
+use motion_format::key::{IMAGE, VIDEO};
 use motion_format::property::Prop;
 use motion_format::shorthand::{MatteMode, RectShape};
 use motion_format::{ImageContent, Place, Result};
@@ -38,28 +38,32 @@ const TOLERANCE: f64 = 0.01;
 /// Finds the picture an image layer's `image` names.
 pub(crate) type Pictures<'a> = dyn Fn(&str) -> Result<Picture> + 'a;
 
+/// Finds the frame a video layer's `video` shows at a time in seconds, or
+/// `None` outside the clip.
+pub(crate) type Clips<'a> = dyn Fn(&str, f64) -> Result<Option<Picture>> + 'a;
+
 /// What drawing one frame reads besides the frame's state: the compiled
-/// scene, and the pictures its image layers name.
+/// scene, and the pictures and clips its image and video layers name.
 #[derive(Clone, Copy)]
-struct Sources<'a> {
-    graph: &'a SceneGraph,
-    pictures: &'a Pictures<'a>,
+pub(crate) struct Sources<'a> {
+    /// The compiled scene.
+    pub(crate) graph: &'a SceneGraph,
+    /// The pictures of image layers.
+    pub(crate) pictures: &'a Pictures<'a>,
+    /// The frames of video layers.
+    pub(crate) clips: &'a Clips<'a>,
 }
 
-/// The display list of `state`, one frame of `graph`'s scene, drawn over
-/// the root composition's background (a clear one draws nothing), with the
-/// image layers' pictures from `pictures`.
+/// The display list of `state`, one frame of `sources.graph`'s scene, drawn
+/// over the root composition's background (a clear one draws nothing), with
+/// the image layers' pictures and the video layers' frames from `sources`.
 ///
 /// # Errors
 /// A diagnostic for an effect the rasteriser has no row for, or a parameter
 /// it rejects, at the effect's place in the layer's `fx`; or the one
-/// `pictures` returns, at the layer's `image`.
-pub(crate) fn display_list(
-    graph: &SceneGraph,
-    state: &FrameState,
-    pictures: &Pictures<'_>,
-) -> Result<Frame> {
-    let sources = Sources { graph, pictures };
+/// `sources` returns, at the layer's `image` or `video`.
+pub(crate) fn display_list(sources: Sources<'_>, state: &FrameState) -> Result<Frame> {
+    let graph = sources.graph;
     let background = graph.root.background;
     Ok(Frame {
         background: opaque_enough(background).then(|| color(background)),
@@ -126,6 +130,19 @@ fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
         ContentState::Text { text, glyphs } => text::draws(text, glyphs),
         ContentState::Image(content) => {
             vec![image(content, sources.pictures).map_err(|e| e.under(Place::of_layer(&node.id)))?]
+        }
+        ContentState::Video { video, seconds } => {
+            let frame = (sources.clips)(&video.path, *seconds)
+                .map_err(|e| e.at(VIDEO).under(Place::of_layer(&node.id)))?;
+            frame
+                .map(|picture| {
+                    Node::Image(ImageDraw {
+                        picture,
+                        rect: video.frame,
+                    })
+                })
+                .into_iter()
+                .collect()
         }
         ContentState::Comp(index, Some(inner)) => {
             let comp = &sources.graph.comps[*index];

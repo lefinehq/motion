@@ -41,8 +41,9 @@ pub fn import(path: impl AsRef<Path>) -> Result<Project> {
 /// Footage files are looked for where the project stores them, then by name
 /// under the project's folder, and named relative to the folder of `scene`,
 /// the file the scene will be saved to, or absolute without one. Still
-/// pictures found become image layers. Entries of `options.footage` win
-/// over what is found.
+/// pictures found become image layers, and clips found in a codec with a
+/// decoder video layers. Entries of `options.footage` and `options.videos`
+/// win over what is found.
 ///
 /// # Errors
 /// The diagnostics of [`import`], or a diagnostic when the composition to
@@ -56,7 +57,16 @@ pub fn import_scene(
     let project = import(path)?;
     let found = stage_ok("footage", || footage::find(&project, path, scene));
     let options = Options {
-        footage: found.into_iter().chain(options.footage.clone()).collect(),
+        footage: found
+            .files
+            .into_iter()
+            .chain(options.footage.clone())
+            .collect(),
+        videos: found
+            .videos
+            .into_iter()
+            .chain(options.videos.clone())
+            .collect(),
         ..options.clone()
     };
     stage("map", || map::import(&project, &options))

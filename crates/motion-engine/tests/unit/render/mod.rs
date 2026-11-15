@@ -233,3 +233,82 @@ fn moving_by_the_identity_adds_no_layer() {
         })]
     );
 }
+
+const CLIPS: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../motion-video/tests/fixtures"
+);
+
+/// The mean difference between `scene` drawn at `frame` and frame `i` of
+/// the 32x16 test clip `rgb.mov`, per channel.
+fn off_clip_frame(layer: &str, frame: f64, i: usize) -> f64 {
+    let scene = format!(
+        r##"{{"motion":1,"size":"32x16","fps":10,"dur":"3s","bg":"#000000","layers":[{layer}]}}"##
+    );
+    let drawn = session(&scene)
+        .render_with(frame, motion_raster::RenderOptions::GOLDEN)
+        .unwrap();
+    let all = std::fs::read(format!("{CLIPS}/rgb.rgba")).unwrap();
+    let want = &all[i * 2048..(i + 1) * 2048];
+    drawn
+        .pixels()
+        .iter()
+        .zip(want)
+        .map(|(a, b)| f64::from(a.abs_diff(*b)))
+        .sum::<f64>()
+        / 2048.0
+}
+
+#[test]
+fn a_video_layer_shows_the_clip_frame_of_its_own_time() {
+    let plain = format!(r#"{{"id":"v","video":"{CLIPS}/rgb.mov","box":[32,16],"at":"16 8"}}"#);
+    for f in [0, 3, 9] {
+        assert!(off_clip_frame(&plain, f as f64, f) < 0.5, "frame {f}");
+        assert!(
+            off_clip_frame(&plain, f as f64, (f + 1) % 10) > 2.0,
+            "frame {f}"
+        );
+    }
+    // Moved later, the clip starts later.
+    let late = plain.replace(r#""at""#, r#""offset":"0.3s","at""#);
+    assert!(off_clip_frame(&late, 5.0, 2) < 0.5);
+    // Stretched, it plays at half speed.
+    let slow = plain.replace(r#""at""#, r#""stretch":2,"at""#);
+    assert!(off_clip_frame(&slow, 8.0, 4) < 0.5);
+}
+
+#[test]
+fn a_video_layer_draws_nothing_outside_its_clip() {
+    let layer = format!(
+        r#"{{"id":"v","video":"{CLIPS}/rgb.mov","box":[32,16],"at":"16 8","offset":"0.5s"}}"#
+    );
+    let scene = format!(r#"{{"motion":1,"size":"32x16","fps":10,"dur":"3s","layers":[{layer}]}}"#);
+    let s = session(&scene);
+    assert!(s.display_list(4.0).unwrap().nodes.is_empty());
+    assert!(!s.display_list(5.0).unwrap().nodes.is_empty());
+    assert!(!s.display_list(14.0).unwrap().nodes.is_empty());
+    assert!(s.display_list(15.0).unwrap().nodes.is_empty());
+}
+
+#[test]
+fn a_clip_without_a_decoder_is_an_error_at_its_layers_video() {
+    let e = session(&scene(&format!(
+        r#"{{"id":"v","video":"{CLIPS}/bframes.mp4","box":[32,16]}}"#
+    )))
+    .display_list(0.0)
+    .unwrap_err();
+    assert_eq!(e.path_text().as_deref(), Some("v.video"));
+    assert!(
+        e.message.contains("H.264") && e.message.contains("bframes.mp4"),
+        "{e}"
+    );
+    let e = session(&scene(
+        r#"{"id":"v","video":"no/such/clip.mov","box":[32,16]}"#,
+    ))
+    .display_list(0.0)
+    .unwrap_err();
+    assert_eq!(
+        (e.kind, e.path_text().as_deref()),
+        (motion_format::Kind::Io, Some("v.video"))
+    );
+}

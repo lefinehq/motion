@@ -191,9 +191,10 @@ impl<'p> Walk<'p> {
         }
     }
 
-    /// A footage layer: a solid is a rectangle of its colour, and a still
-    /// picture that was found an image filling the footage's size. Other
-    /// footage is a pivot, reported with why.
+    /// A footage layer: a solid is a rectangle of its colour, a still
+    /// picture that was found an image filling the footage's size, and a
+    /// found clip with a decoder a video filling it. Other footage is a
+    /// pivot, reported with why.
     fn footage(
         &mut self,
         footage: &Footage,
@@ -211,19 +212,24 @@ impl<'p> Walk<'p> {
                     .insert("fill".into(), super::keys::color_json(color));
                 self.mapping.count("footage: solid", Fate::Mapped);
             }
-            Source::File { path: Some(stored) } => match media(footage, stored, self.found) {
-                Media::Still(path) => {
-                    out.keys.insert("image".into(), json!(path));
-                    out.keys
-                        .insert("box".into(), json!([footage.width, footage.height]));
-                    self.mapping.count("footage: image", Fate::Mapped);
-                    if footage.pixel_aspect != 1.0 {
-                        self.mapping
-                            .unsupported(&place.at, "non-square pixels (drawn square)");
+            Source::File { path: Some(stored) } => {
+                let (key, path) = match media(footage, stored, self.found, self.videos) {
+                    Media::Still(path) => ("image", path),
+                    Media::Clip(path) => ("video", path),
+                    Media::Codec(codec) => {
+                        return pivot(self, out, Some(&format!("video footage in {codec}")));
                     }
+                    Media::Unsupported(why) => return pivot(self, out, Some(why)),
+                };
+                out.keys.insert(key.into(), json!(path));
+                out.keys
+                    .insert("box".into(), json!([footage.width, footage.height]));
+                self.mapping.count(&format!("footage: {key}"), Fate::Mapped);
+                if footage.pixel_aspect != 1.0 {
+                    self.mapping
+                        .unsupported(&place.at, "non-square pixels (drawn square)");
                 }
-                Media::Unsupported(why) => pivot(self, out, Some(why)),
-            },
+            }
             Source::File { path: None } => {
                 pivot(self, out, Some("footage whose file path it cannot read"))
             }

@@ -26,7 +26,7 @@ use crate::item::{EFFECTS, SHAPES};
 use crate::parse::key::{
     ANIM, ANIMATE, AT, BG, BOX, COMP, COMPS, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN, LABELS,
     LAYERS, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS,
-    SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, comp_path, layer_path,
+    SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, VIDEO, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -35,7 +35,9 @@ use crate::shorthand::{Behaviour, Coord, Font, Position};
 use crate::units::{Color, SPAN_EXPECTED, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
 use crate::when::{Base, Moment, Moments, add, label_name};
-use crate::{Address, Comp, CompContent, Content, Curve, ImageContent, Layer, Scene, fmt_num};
+use crate::{
+    Address, Comp, CompContent, Content, Curve, ImageContent, Layer, Scene, VideoContent, fmt_num,
+};
 
 use crate::Place;
 use crate::address::{ID_RULE, Id, SCENE};
@@ -692,7 +694,7 @@ fn layer_id(id: &str) -> Result<()> {
 }
 
 /// The keys that say what a layer draws, of which it has exactly one.
-const CONTENT_KEYS: [&str; 6] = [TEXT, RECT, SHAPES_KEY, COMP, IMAGE, PIVOT];
+const CONTENT_KEYS: [&str; 7] = [TEXT, RECT, SHAPES_KEY, COMP, IMAGE, VIDEO, PIVOT];
 
 /// A layer draws exactly one of [`CONTENT_KEYS`]. None is `Missing` and two
 /// is a `Conflict`, at the second, with the same message since the fix is the same.
@@ -703,6 +705,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         doc.shapes.is_some(),
         doc.comp.is_some(),
         doc.image.is_some(),
+        doc.video.is_some(),
         doc.pivot.is_some(),
     ];
     let mut keys = CONTENT_KEYS
@@ -715,7 +718,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         let (last, rest) = quoted.split_last().expect("content keys");
         format!("needs exactly one of {} or {last}", rest.join(", "))
     };
-    const EXAMPLE: &str = r#"e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg" or "pivot":true"#;
+    const EXAMPLE: &str = r#"e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true"#;
     let key = match (keys.next(), keys.next()) {
         (Some(key), None) => key,
         (None, _) => return Err(Diagnostic::new(Kind::Missing, one_of()).expected(EXAMPLE)),
@@ -727,7 +730,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
     };
     only_on(doc.fill.is_some(), FILL, key, &[TEXT, RECT])?;
     only_on(!doc.overrides.0.is_empty(), OVERRIDES, key, &[COMP])?;
-    only_on(doc.frame.is_some(), BOX, key, &[TEXT, IMAGE])?;
+    only_on(doc.frame.is_some(), BOX, key, &[TEXT, IMAGE, VIDEO])?;
     let Object(style) = &doc.style;
     for (written, name) in [
         (doc.font.is_some(), FONT),
@@ -782,6 +785,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
             Ok(Content::Comp(CompContent { id, instance }))
         }
         IMAGE => image(doc.image.as_deref().expect("written"), doc.frame.as_ref()),
+        VIDEO => video(doc.video.as_deref().expect("written"), doc.frame.as_ref()),
         _ => match *doc.pivot {
             Some(true) => Ok(Content::Pivot),
             _ => Err(
@@ -873,6 +877,27 @@ fn image(path: &str, frame: Option<&ValueDoc>) -> Result<Content> {
             .expected(r#"the picture's size in px, e.g. "box":[1920,1080]"#)
     })?;
     Ok(Content::Image(ImageContent {
+        path: path.to_owned(),
+        frame: text::frame(frame).map_err(|e| e.under(BOX))?,
+    }))
+}
+
+/// A video layer: a clip file, relative to the scene file, filling the
+/// layer's `box`, which it must have since the scene is read without
+/// opening its files.
+fn video(path: &str, frame: Option<&ValueDoc>) -> Result<Content> {
+    if path.trim().is_empty() {
+        return Err(Diagnostic::new(Kind::Invalid, "an empty video path")
+            .at(VIDEO)
+            .expected(
+                "an MP4 or QuickTime clip, relative to the scene file, e.g. `clips/sea.mov`",
+            ));
+    }
+    let frame = frame.ok_or_else(|| {
+        Diagnostic::new(Kind::Missing, "missing `box`: a video layer fills its box")
+            .expected(r#"the clip's size in px, e.g. "box":[1920,1080]"#)
+    })?;
+    Ok(Content::Video(VideoContent {
         path: path.to_owned(),
         frame: text::frame(frame).map_err(|e| e.under(BOX))?,
     }))
@@ -1357,6 +1382,7 @@ fn known_box(layer: &Layer, context: &Context) -> Option<Rect> {
             .find(|c| c.id == comp.id)
             .map(|c| Rect::new(0.0, 0.0, f64::from(c.size.width), f64::from(c.size.height))),
         Content::Image(image) => Some(image.frame),
+        Content::Video(video) => Some(video.frame),
         Content::Shapes(_) | Content::Pivot => Some(Rect::ZERO),
         Content::Text { .. } => None,
     }

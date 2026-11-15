@@ -1,0 +1,7 @@
+{"motion":1,"size":"160x90","fps":12,"dur":"2s","bg":"#F4F1EA",
+"layers":[
+{"id":"clip","video":"videos/photo.mov","box":[32,16],"at":"center center","scale":4},
+{"id":"overlay","video":"videos/argb.mov","box":[32,16],"at":"center center","scale":2,"offset":"0.5s","stretch":0.5,
+ "anim":{"rotate":"0 -> 10 @0-1s"}},
+{"id":"late","video":"videos/argb.mov","box":[-16,-8,32,16],"position":[30,20],"parent":"clip","offset":"1.5s"}
+]}

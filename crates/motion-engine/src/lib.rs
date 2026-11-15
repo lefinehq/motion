@@ -12,6 +12,7 @@
 //! assert!(report.has_errors());
 //! ```
 
+mod clips;
 mod diff;
 mod export;
 mod fidelity;

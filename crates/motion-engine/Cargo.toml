@@ -21,6 +21,7 @@ motion-query = { path = "../motion-query" }
 motion-edit = { path = "../motion-edit" }
 motion-import = { path = "../motion-import" }
 motion-raster = { path = "../motion-raster" }
+motion-video = { path = "../motion-video" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 serde.workspace = true

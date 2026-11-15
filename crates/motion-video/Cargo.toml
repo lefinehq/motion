@@ -1,0 +1,20 @@
+[package]
+name = "motion-video"
+description = "Reads video clips without system libraries: the MP4 and QuickTime containers, and decoders for the codecs footage uses, frame by frame with seeking."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+motion-format = { path = "../motion-format" }
+# Photo JPEG frames; the same decoder pictures use.
+zune-jpeg = "0.5"
+
+[dev-dependencies]
+rstest.workspace = true
+
+[lints]
+workspace = true
