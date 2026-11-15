@@ -11,6 +11,7 @@ use crate::parse::scene_from_value;
 use crate::preset::{PresetSpec, lookup, names};
 use crate::property::Prop;
 use crate::shorthand::{Behaviour, Matte, Position, RectShape};
+use crate::slots::Slot;
 use crate::text::TextContent;
 use crate::units::{Color, Size, Time, TimeSpan};
 use crate::value::Value;
@@ -52,6 +53,9 @@ pub struct Comp {
     pub layers: Vec<Layer>,
     /// Its named moments, resolved, in the order written.
     pub labels: Vec<(String, Time)>,
+    /// The named values it declares, which its layers' values may follow
+    /// (D44). The values are already resolved in `layers`.
+    pub slots: Vec<Slot>,
 }
 
 impl Scene {

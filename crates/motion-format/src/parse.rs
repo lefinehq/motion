@@ -6,7 +6,7 @@ use serde_json::Value;
 use tracing::{Span, debug, field, instrument};
 
 use crate::doc::{Form, Object, SceneDoc};
-use crate::{Document, Scene, de, validate};
+use crate::{Document, Scene, de, slots, validate};
 
 /// The spelling of every scene and layer key, so no code can name a key the
 /// format does not have.
@@ -29,6 +29,8 @@ pub mod key {
     pub const LABELS: &str = "labels";
     /// The font files and folders a scene uses.
     pub const FONTS: &str = "fonts";
+    /// The named values a scene or a composition declares (D44).
+    pub const SLOTS: &str = "slots";
     /// The layers.
     pub const LAYERS: &str = "layers";
     /// A layer's id.
@@ -107,7 +109,7 @@ pub mod key {
 }
 
 /// The keys allowed at the top level, in the order of `SceneDoc`'s fields.
-pub const SCENE_KEYS: [&str; 10] = [
+pub const SCENE_KEYS: [&str; 11] = [
     key::MOTION,
     key::SIZE,
     key::FPS,
@@ -116,16 +118,18 @@ pub const SCENE_KEYS: [&str; 10] = [
     key::LABELS,
     key::PRESETS,
     key::FONTS,
+    key::SLOTS,
     key::COMPS,
     key::LAYERS,
 ];
 /// The keys allowed on a composition, in the order of `CompDoc`'s fields.
-pub const COMP_KEYS: [&str; 6] = [
+pub const COMP_KEYS: [&str; 7] = [
     key::SIZE,
     key::FPS,
     key::DUR,
     key::BG,
     key::LABELS,
+    key::SLOTS,
     key::LAYERS,
 ];
 /// The keys allowed on a layer besides property names, in the order of
@@ -184,12 +188,19 @@ pub fn parse_document(json: &str) -> Result<Document> {
 }
 
 /// Validates a JSON value into a typed [`Scene`], with the defaults of the keys left out.
+///
+/// Slot references are resolved first, on a copy, so the values read are
+/// the slots' (D44).
 pub(crate) fn scene_from_value(value: &Value) -> Result<Scene> {
-    let read = de::from_value(value).map_err(|mut d| {
-        d.path = d.path.map(|place| place.by_layer_ids(value));
-        d
+    let checked = slots::declared(value).and_then(|declared| {
+        let (value, resolved) = slots::resolve(value, &declared)?;
+        let read = de::from_value(&value).map_err(|mut d| {
+            d.path = d.path.map(|place| place.by_layer_ids(&value));
+            d
+        });
+        read.and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc, &value, &declared))
+            .map_err(|d| resolved.explain(d))
     });
-    let checked = read.and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc, value));
     // Validation stops at the first rule that fails, so this is that rule.
     checked.inspect_err(|d| {
         debug!(kind = ?d.kind, path = d.path_text().as_deref(), "rejected: {}", d.message);

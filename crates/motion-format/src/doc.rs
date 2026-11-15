@@ -41,6 +41,8 @@ pub(crate) struct SceneDoc {
     pub(crate) labels: Object<LabelsDoc>,
     pub(crate) presets: Object<PresetsDoc>,
     pub(crate) fonts: Present<List<FontsDoc>>,
+    /// Read by `crate::slots` before the document is; kept so the key is known.
+    pub(crate) slots: Present<serde_json::Value>,
     pub(crate) comps: Object<CompsDoc>,
     pub(crate) layers: Present<List<LayersDoc>>,
 }
@@ -158,6 +160,8 @@ pub(crate) struct CompDoc {
     pub(crate) dur: Present<Shorthand<Time>>,
     pub(crate) bg: Present<Shorthand<Color>>,
     pub(crate) labels: Object<LabelsDoc>,
+    /// Read by `crate::slots` before the document is; kept so the key is known.
+    pub(crate) slots: Present<serde_json::Value>,
     pub(crate) layers: Present<List<LayersDoc>>,
 }
 
