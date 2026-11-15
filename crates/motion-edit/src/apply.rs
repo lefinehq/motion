@@ -9,8 +9,8 @@ use serde_json::Map;
 use serde_json::Value;
 use tracing::{Span, field, instrument};
 
-use crate::path;
 use crate::{Edit, EditValue, KeyPath};
+use crate::{path, slot};
 
 /// Applies `edit` to a copy of `doc` and returns the re-validated result.
 ///
@@ -140,6 +140,7 @@ fn apply_changes(doc: &Document, edit: &Edit) -> Result<(Value, Target)> {
     check_keys(edit)?;
     let target = Target::find(doc, &edit.target)?;
     let mut raw = doc.raw().clone();
+    let changes = slot::split(doc, edit, &mut raw)?;
     // An override replaces whole keys, so a change inside one starts from
     // the key as the instance draws it.
     let drawn = match &target {
@@ -147,7 +148,7 @@ fn apply_changes(doc: &Document, edit: &Edit) -> Result<(Value, Target)> {
         _ => None,
     };
     let object = target.object(&mut raw);
-    for change in &edit.changes {
+    for change in &changes {
         if let (Some(drawn), Some(object)) = (&drawn, object.as_object_mut()) {
             let first = change.key.first();
             let inside = change.key.steps().len() > 1;
@@ -267,6 +268,7 @@ fn check_keys(edit: &Edit) -> Result<()> {
     match edit
         .changes
         .iter()
+        .filter(|change| !slot::is_slot(change))
         .map(|change| change.key.first())
         .find(|first| !allowed.contains(first))
     {

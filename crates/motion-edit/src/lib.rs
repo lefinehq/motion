@@ -13,6 +13,7 @@ mod key_path;
 mod parse;
 mod path;
 mod problem;
+mod slot;
 
 pub use apply::apply_edit;
 pub use key_path::KeyPath;

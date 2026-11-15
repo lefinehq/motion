@@ -12,6 +12,7 @@ const LINE_FORM: &str = "`<target> <key>=<value>`";
 const CHANGE_FORM: &str = "`<key>=<value>`";
 const PATH_FORM: &str =
     "`<key>[.<key>…]=<value>`, a list element as `<key>[<id>]` or `<key>[<index>]`";
+const SLOT_FORM: &str = "`$<id>=<value>`, such as `$accent=#E63946`";
 const JSON_FORM: &str = "`<key>=[…]` or `<key>={…}`, valid JSON";
 
 /// A syntax problem the edit grammar names where it fails, with its text.
@@ -39,6 +40,8 @@ pub(crate) enum Problem<'s> {
     MissingKey(&'s str),
     /// A key that is not a path of names and selectors.
     InvalidKey(&'s str),
+    /// A key that starts with `$` without an id after it.
+    InvalidSlot(&'s str),
     /// A target that is neither `scene` nor a layer address.
     InvalidTarget(&'s str),
     /// A change with nothing after its `=`.
@@ -102,6 +105,10 @@ impl Problem<'_> {
             Problem::MissingKey(word) => (
                 format!("missing key before `=` in `{word}`"),
                 CHANGE_FORM.into(),
+            ),
+            Problem::InvalidSlot(key) => (
+                format!("invalid slot `{key}`: a slot is `$` and an id, lower-case letters, digits, `-` or `_`"),
+                SLOT_FORM.into(),
             ),
             Problem::InvalidKey(key) => (
                 format!(

@@ -888,7 +888,7 @@ fn instance(canvas: &Canvas, overrides: &OverridesDoc, shared: &Shared) -> Resul
     crate::slots::resolve_layers(
         &mut written,
         &scopes,
-        Some(&comp_path(&canvas.id)),
+        Some(&canvas.id),
         &mut Default::default(),
     )?;
     let serde_json::Value::Array(mut written) = written else {

@@ -11,6 +11,7 @@ pub mod fonts;
 pub mod import;
 pub mod inspect;
 pub mod render;
+pub mod slots;
 
 use std::process::ExitCode;
 

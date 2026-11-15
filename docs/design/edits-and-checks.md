@@ -52,6 +52,12 @@ A key can be a dotted path, such as `anim.opacity`, and a list element is chosen
 
 `none` on an instance takes back the instance's own value. A key the composition itself gives the layer cannot be removed through one instance; the error says so and shows the edit of the composition, which changes every instance: `scene comps.label.layers[title].fill=none`.
 
+### Editing a slot
+
+A key written `$id` edits a slot ([D44](decisions.md#d44-slots-are-named-values-that-layers-follow)). On the scene it sets the value the scene's slot declares, and a line that starts with one needs no target: `$accent=#2A9D8F` is `scene $accent=#2A9D8F`. The slot keeps the form it is written in, its label too; a value of another type is written out, `{"number":"Sale"}`, so the check names the slot's type. On a `comp` layer, `card-2 $title=Sale` gives that instance its own value, written as `overrides["$title"]`, and `card-2 $title=none` takes it back. `$accent=none` removes a slot only when no value follows it; otherwise the error lists the values that do. A composition's own slots are keys like any other: `scene comps.card.slots.title.text=Hi`.
+
+`motion slots scene.json` lists every slot of the scene and of each composition, with its type, value and label, and how many values follow it. `--json` prints the same as data, with the place of each value that follows, such as `plate.fill`.
+
 ### Editing one copy in a repeat
 
 `card3 fill=red` does not split the five cards into five separate layers. It stores a small override on card 3, and the repeat stays one compact layer.

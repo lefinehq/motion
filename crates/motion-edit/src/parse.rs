@@ -15,10 +15,10 @@
 //! bare    = text up to the next space: `none`, `true`, `false`, a number, or a string
 //! ```
 
-use motion_format::address::{key_path, target as layers};
+use motion_format::address::{id, key_path, target as layers};
 use motion_format::edit_word::{FALSE, NONE, TRUE};
 use motion_format::grammar::{Failure, Parsed, blank0, blank1, ends_with, parse_all, word};
-use motion_format::{Address, Diagnostic, Kind, Result};
+use motion_format::{Address, Diagnostic, Kind, Result, Step};
 use serde_json::{Number, Value};
 use winnow::combinator::{
     alt, cut_err, delimited, dispatch, empty, eof, fail, opt, peek, preceded, repeat, terminated,
@@ -65,6 +65,16 @@ pub enum EditValue {
 /// A [`Kind::Syntax`] diagnostic for a line that does not follow the grammar,
 /// or a [`Kind::Conflict`] one for two changes that write the same place.
 pub fn parse_edit(line: &str) -> Result<Edit> {
+    // A line that starts with a slot edits the scene's: `$accent=#fff` is
+    // `scene $accent=#fff`.
+    let scened;
+    let line = match line.trim_start().starts_with('$') {
+        true => {
+            scened = format!("scene {line}");
+            &scened
+        }
+        false => line,
+    };
     // Only an empty line fails without naming a problem.
     let edit = parse_all(line, edit, |problem| {
         problem.unwrap_or(Problem::Empty).diagnostic()
@@ -176,6 +186,13 @@ fn change<'s>(input: &mut &'s str) -> Parsed<Change, Problem<'s>> {
 /// name may otherwise contain.
 pub(crate) fn path<'s>(input: &mut &'s str) -> Parsed<KeyPath, Problem<'s>> {
     let text = *input;
+    if text.starts_with('$') {
+        // A slot is one key of its own: `$accent`, never `$accent.x`.
+        return terminated(('$', id).take(), eof)
+            .context(Problem::InvalidSlot(text))
+            .map(|slot: &str| KeyPath::new(slot, vec![Step::Key(slot.to_owned())]))
+            .parse_next(input);
+    }
     preceded(
         peek(opt(ends_with(one_of(OPERATORS)))).try_map(|op| match op {
             Some(op) => Err(Problem::Operator(op)),

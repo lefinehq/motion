@@ -260,6 +260,8 @@ pub(crate) struct Followed {
     pub(crate) place: String,
     /// The slot it follows.
     pub(crate) slot: Id,
+    /// The composition that declares the slot; none for the scene.
+    pub(crate) comp: Option<String>,
 }
 
 /// Every reference followed while resolving, so a value that does not fit
@@ -304,7 +306,7 @@ pub(crate) fn resolve<'j>(raw: &'j Json, declared: &Declared) -> Result<(Cow<'j,
         for (id, comp) in comps {
             if let Some(layers) = comp.get_mut(LAYERS) {
                 let scopes = [declared.of_comp(id), declared.scene.as_slice()];
-                resolve_layers(layers, &scopes, Some(&comp_path(id)), &mut resolved)?;
+                resolve_layers(layers, &scopes, Some(id), &mut resolved)?;
             }
         }
     }
@@ -321,15 +323,16 @@ fn has_dollar(json: &Json) -> bool {
     }
 }
 
-/// Resolves the references in a list of layers, `owner` being the place of
-/// their composition, none for the scene's own; the scopes are searched in
-/// order.
+/// Resolves the references in a list of layers of composition `comp`, none
+/// for the scene's own. The scopes are searched in order, and the last is
+/// the scene's slots: a slot found in any other is the composition's.
 pub(crate) fn resolve_layers(
     layers: &mut Json,
     scopes: &[&[Slot]],
-    owner: Option<&Place>,
+    comp: Option<&str>,
     resolved: &mut Resolved,
 ) -> Result<()> {
+    let owner = comp.map(comp_path);
     let Some(layers) = layers.as_array_mut() else {
         return Ok(());
     };
@@ -339,7 +342,7 @@ pub(crate) fn resolve_layers(
             .and_then(Json::as_str)
             .unwrap_or_default()
             .to_owned();
-        let place = match owner {
+        let place = match &owner {
             Some(owner) => owner.clone().join(Place::layer(&id, index)),
             None => Place::layer(&id, index),
         };
@@ -348,7 +351,7 @@ pub(crate) fn resolve_layers(
         };
         for (key, value) in fields.iter_mut().filter(|(key, _)| *key != ID) {
             let mut steps = vec![Step::Key(key.clone())];
-            resolve_value(value, scopes, &place, &mut steps, resolved)?;
+            resolve_value(value, (scopes, comp), &place, &mut steps, resolved)?;
         }
     }
     Ok(())
@@ -357,7 +360,7 @@ pub(crate) fn resolve_layers(
 /// Resolves the references in one value, at `steps` within `layer`.
 fn resolve_value(
     value: &mut Json,
-    scopes: &[&[Slot]],
+    (scopes, comp): (&[&[Slot]], Option<&str>),
     layer: &Place,
     steps: &mut Vec<Step>,
     resolved: &mut Resolved,
@@ -371,11 +374,13 @@ fn resolve_value(
                     layers: Vec::new(),
                     keys: steps.clone(),
                 }));
-                let Some(slot) = scopes
-                    .iter()
-                    .flat_map(|slots| slots.iter())
-                    .find(|s| &*s.id == id)
-                else {
+                let found = scopes.iter().enumerate().find_map(|(scope, slots)| {
+                    slots
+                        .iter()
+                        .find(|s| &*s.id == id)
+                        .map(|slot| (scope, slot))
+                });
+                let Some((scope, slot)) = found else {
                     let known = scopes
                         .iter()
                         .flat_map(|slots| slots.iter())
@@ -385,6 +390,7 @@ fn resolve_value(
                 resolved.followed.push(Followed {
                     place: place.to_string(),
                     slot: slot.id.clone(),
+                    comp: comp.filter(|_| scope + 1 < scopes.len()).map(str::to_owned),
                 });
                 *value = slot.value.clone();
             }
@@ -392,20 +398,59 @@ fn resolve_value(
         Json::Array(items) => {
             for (index, item) in items.iter_mut().enumerate() {
                 steps.push(Step::Index(index));
-                resolve_value(item, scopes, layer, steps, resolved)?;
+                resolve_value(item, (scopes, comp), layer, steps, resolved)?;
                 steps.pop();
             }
         }
         Json::Object(fields) => {
             for (key, item) in fields.iter_mut() {
                 steps.push(Step::Key(key.clone()));
-                resolve_value(item, scopes, layer, steps, resolved)?;
+                resolve_value(item, (scopes, comp), layer, steps, resolved)?;
                 steps.pop();
             }
         }
         _ => {}
     }
     Ok(())
+}
+
+/// A slot as `motion slots` lists it: where it is declared, and every value
+/// that follows it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Listed {
+    /// The composition that declares it; none for the scene.
+    pub comp: Option<String>,
+    /// The slot.
+    pub slot: Slot,
+    /// The place of each value written `"$id"` that takes its value, such
+    /// as `plate.fill` or `comps.card.title.text`.
+    pub followers: Vec<String>,
+}
+
+/// Every slot of a valid scene's JSON, the scene's first and then each
+/// composition's, with the values that follow it.
+pub(crate) fn listed(raw: &Json) -> Vec<Listed> {
+    let Ok(declared) = declared(raw) else {
+        return Vec::new();
+    };
+    let followed = resolve(raw, &declared).map_or_else(|_| Vec::new(), |(_, r)| r.followed);
+    let owned = declared.scene.iter().map(|slot| (None, slot)).chain(
+        declared
+            .comps
+            .iter()
+            .flat_map(|(comp, slots)| slots.iter().map(move |slot| (Some(comp.clone()), slot))),
+    );
+    owned
+        .map(|(comp, slot)| Listed {
+            followers: followed
+                .iter()
+                .filter(|f| f.slot == slot.id && f.comp == comp)
+                .map(|f| f.place.clone())
+                .collect(),
+            comp,
+            slot: slot.clone(),
+        })
+        .collect()
 }
 
 impl fmt::Display for Slot {

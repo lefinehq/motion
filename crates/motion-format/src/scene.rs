@@ -278,6 +278,14 @@ impl Document {
         &self.scene
     }
 
+    /// Every slot of the scene, its own first and then each composition's,
+    /// with the place of each value that follows it ([D44]).
+    ///
+    /// [D44]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d44-slots-are-named-values-that-layers-follow
+    pub fn slots(&self) -> Vec<crate::Listed> {
+        crate::slots::listed(&self.raw)
+    }
+
     /// The JSON of the layer `ids` lead to from the root, as it is drawn
     /// there: its composition's own layer with every override on the way
     /// set over it. `None` when there is no such layer.

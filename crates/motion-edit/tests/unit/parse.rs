@@ -375,6 +375,10 @@ fn every_error_message() {
         "card in.opacity=1",
         "title text=2024",
         "title text=true",
+        "$Accent=#FFF",
+        "$accent.x=1",
+        "$accent=#FFF",
+        "title $accent=#FFF",
     ];
     let report: Vec<String> = samples
         .iter()
