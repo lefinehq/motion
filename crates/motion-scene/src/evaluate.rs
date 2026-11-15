@@ -117,6 +117,10 @@ fn evaluate_nodes(graph: &SceneGraph, comp: &CompGraph, frame: f64) -> FrameStat
                 values,
                 transform: world.flat,
                 space: world.space,
+                plane: match &node.content {
+                    NodeContent::Camera { .. } => None,
+                    _ => world.space.map(|space| view.plane(space)),
+                },
                 shown,
                 hidden: node.hidden,
                 content,

@@ -13,6 +13,7 @@ publish.workspace = true
 bake = ["motion-import/bake"]
 
 [dependencies]
+glam.workspace = true
 motion-format = { path = "../motion-format" }
 motion-fonts = { path = "../motion-fonts" }
 motion-scene = { path = "../motion-scene" }

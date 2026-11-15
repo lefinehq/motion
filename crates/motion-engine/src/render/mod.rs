@@ -30,14 +30,15 @@ use motion_format::{ImageContent, Place, Result};
 use motion_format::{Input, Reads, Value};
 use motion_raster::kurbo::{Affine, Rect, RoundedRect, Shape};
 use motion_raster::{
-    BlendMode, Blending, Clip, Color, DrawStyle, Effect, FillRule, Frame, Heard, ImageDraw, Layer,
-    Matte, MatteMode as RasterMatte, Node, Paint, PathDraw, Picture,
+    BlendMode, Blending, Clip, Color, DrawStyle, Effect, FillRule, Frame, Heard, Homography,
+    ImageDraw, Layer, Matte, MatteMode as RasterMatte, Node, Paint, PathDraw, Picture, Projection,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use motion_format::shorthand::Shutter;
+use motion_scene::space::{self, View};
 use motion_scene::{CompGraph, ContentState, FrameState, Node as GraphNode, NodeState, SceneGraph};
 
 /// How closely curves are flattened into the outlines this module builds
@@ -132,10 +133,51 @@ pub(crate) fn display_list(sources: Sources<'_>, state: &FrameState) -> Result<F
 /// The layers of one canvas's nodes, back to front: `list` is the canvas's
 /// compiled nodes, `area` the canvas, `state` their state at this frame.
 fn nodes(sources: Sources<'_>, at: Canvas, area: Rect, state: &FrameState) -> Result<Vec<Node>> {
-    (0..state.nodes.len())
-        .filter(|&i| state.nodes[i].visible())
+    paint_order(state)
+        .into_iter()
         .filter_map(|i| matted(sources, at, area, state, i).transpose())
         .collect()
+}
+
+/// The visible nodes of `state` that draw, in the order they draw ([D58]): list
+/// order, except that each run of adjacent 3D nodes draws back to front by
+/// how deep the centre of each one's box sits in front of the camera; a
+/// flat node between two runs keeps them apart. Equally deep nodes keep
+/// their list order.
+///
+/// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+pub(crate) fn paint_order(state: &FrameState) -> Vec<usize> {
+    // A node that draws nothing, such as a pivot, splits no run.
+    let visible: Vec<usize> = (0..state.nodes.len())
+        .filter(|&i| state.nodes[i].visible())
+        .filter(|&i| {
+            !matches!(
+                state.nodes[i].content,
+                ContentState::Pivot
+                    | ContentState::Audio
+                    | ContentState::Camera
+                    | ContentState::Comp(_, None)
+            )
+        })
+        .collect();
+    let depth = |i: usize| {
+        let node = &state.nodes[i];
+        node.space
+            .map(|space| state.view.depth(space, node.local_bounds.center()))
+    };
+    let mut order = Vec::with_capacity(visible.len());
+    for run in visible.chunk_by(|&a, &b| depth(a).is_some() == depth(b).is_some()) {
+        let mut run = run.to_vec();
+        if depth(run[0]).is_some() {
+            // The farthest first; a stable sort keeps list order for ties.
+            run.sort_by(|&a, &b| {
+                let (a, b) = (depth(a).expect("3D"), depth(b).expect("3D"));
+                b.total_cmp(&a)
+            });
+        }
+        order.extend(run);
+    }
+    order
 }
 
 /// The canvas of `comp`, from its top left.
@@ -155,7 +197,7 @@ fn matted(
     let list = &at.graph(sources.graph).nodes;
     let drawn = match blurs(&list[i]) {
         true => blurred(sources, at, area, state, i)?,
-        false => layer(sources, &list[i], area, &state.nodes[i])?,
+        false => layer(sources, &list[i], area, &state.view, &state.nodes[i])?,
     };
     let Some(Node::Layer(mut drawn)) = drawn else {
         return Ok(None);
@@ -174,12 +216,19 @@ fn matted(
             continue;
         };
         let read = match state.nodes[source].shown {
-            true => layer(sources, &list[source], area, &state.nodes[source])?,
+            true => layer(
+                sources,
+                &list[source],
+                area,
+                &state.view,
+                &state.nodes[source],
+            )?,
             false => None,
         };
         let read = match read {
             Some(Node::Layer(read)) => Layer {
                 transform: Affine::IDENTITY,
+                projection: None,
                 opacity: 1.0,
                 ..read
             },
@@ -310,7 +359,7 @@ fn blurred(
     let node = &comp.nodes[i];
     let shutter = comp.shutter;
     if !shutter.open() {
-        return layer(sources, node, area, &state.nodes[i]);
+        return layer(sources, node, area, &state.view, &state.nodes[i]);
     }
     let moment = |frame: f64| sources.moments.at(graph, at, frame);
     let opens = moment(state.frame + shutter.phase / 360.0);
@@ -328,9 +377,24 @@ fn blurred(
         false => most,
     };
     if moved {
-        let Some(Node::Layer(drawn)) = layer(sources, node, area, frame_node)? else {
+        let Some(Node::Layer(drawn)) = layer(sources, node, area, &state.view, frame_node)? else {
             return Ok(None);
         };
+        // A 3D node is laid through its plane at each moment, as a whole
+        // map: its plane at the frame may be edge-on and have no inverse.
+        if let Some(projection) = drawn.projection.clone() {
+            let samples = shutter
+                .moments(state.frame, n)
+                .filter_map(|frame| moment(frame).nodes[i].plane.map(homography))
+                .collect();
+            return Ok(Some(Node::Layer(Layer {
+                projection: Some(Projection {
+                    samples,
+                    ..projection
+                }),
+                ..drawn
+            })));
+        }
         let back = frame_node.transform.inverse();
         let motion = shutter
             .moments(state.frame, n)
@@ -353,7 +417,7 @@ fn blurred(
                 &outside
             }
         };
-        if let Some(Node::Layer(drawn)) = layer(sources, node, area, sampled)? {
+        if let Some(Node::Layer(drawn)) = layer(sources, node, area, &at_moment.view, sampled)? {
             samples.push(Node::Layer(Layer {
                 opacity: drawn.opacity / n as f32,
                 blend: BlendMode::Add,
@@ -372,10 +436,19 @@ fn blurred(
 /// How far, in px of the canvas, the corners of a node's box move from
 /// `from` to `to`: the most any of them moves.
 fn travel(from: &NodeState, to: &NodeState) -> f64 {
+    // A 3D node's corners as the camera sees them; one behind the camera
+    // counts as far, so the layer takes the most samples.
     let corners = |node: &NodeState| {
         let b = node.local_bounds;
-        [(b.x0, b.y0), (b.x1, b.y0), (b.x1, b.y1), (b.x0, b.y1)]
-            .map(|(x, y)| node.transform * motion_raster::kurbo::Point::new(x, y))
+        [(b.x0, b.y0), (b.x1, b.y0), (b.x1, b.y1), (b.x0, b.y1)].map(|(x, y)| {
+            let p = motion_raster::kurbo::Point::new(x, y);
+            match node.plane {
+                None => node.transform * p,
+                Some(plane) => space::project(plane, p).unwrap_or(
+                    motion_raster::kurbo::Point::new(f64::INFINITY, f64::INFINITY),
+                ),
+            }
+        })
     };
     corners(from)
         .into_iter()
@@ -390,6 +463,7 @@ fn layer(
     sources: Sources<'_>,
     compiled: &GraphNode,
     area: Rect,
+    view: &View,
     node: &NodeState,
 ) -> Result<Option<Node>> {
     let opacity = node.number(Prop::OPACITY) as f32;
@@ -426,7 +500,8 @@ fn layer(
         }
         ContentState::Comp(index, Some(inner)) if compiled.collapse => {
             let comp = &sources.graph.comps[*index];
-            let children = nodes(sources, Canvas::Comp(*index), canvas(comp), inner)?;
+            let inner = joined(inner, view, node);
+            let children = nodes(sources, Canvas::Comp(*index), canvas(comp), &inner)?;
             if children.is_empty() {
                 return Ok(None);
             }
@@ -467,6 +542,7 @@ fn layer(
                 effect::effects(&node.fx).map_err(|e| e.under(Place::of_layer(&node.id)))?;
             return Ok(Some(Node::Layer(Layer {
                 transform: node.transform,
+                projection: projection(node),
                 opacity: opacity.min(1.0),
                 masks: mask::masks(&node.mask),
                 effects,
@@ -484,6 +560,7 @@ fn layer(
     let effects = effect::effects(&node.fx).map_err(|e| e.under(Place::of_layer(&node.id)))?;
     Ok(Some(Node::Layer(Layer {
         transform: node.transform,
+        projection: projection(node),
         opacity: opacity.min(1.0),
         clip,
         masks: mask::masks(&node.mask),
@@ -493,6 +570,43 @@ fn layer(
         time: node.seconds,
         ..Layer::new(children)
     })))
+}
+
+/// The state of a collapsed composition's nodes as they join the canvas
+/// the `comp` node `node` sits in, seen through that canvas's `view`
+/// ([D58]): each 3D node's matrix of space continues the node's own (its
+/// matrix when it is 3D, else its transform at depth 0), and its plane is
+/// the outer camera's, in the coordinates of the group `node`'s transform
+/// moves.
+///
+/// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+fn joined(inner: &FrameState, view: &View, node: &NodeState) -> FrameState {
+    let outer = node.space.unwrap_or_else(|| space::lift(node.transform));
+    let back = space::projective(node.transform).inverse();
+    let mut joined = inner.clone();
+    joined.view = *view;
+    for inside in &mut joined.nodes {
+        let Some(own) = inside.space else {
+            continue;
+        };
+        let world = outer * own;
+        inside.space = Some(world);
+        inside.plane = inside.plane.map(|_| back * view.plane(world));
+    }
+    joined
+}
+
+/// How a 3D node's drawing is laid onto its canvas: its plane through the
+/// camera ([D58]); `None` for a flat node, which its transform places.
+///
+/// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+fn projection(node: &NodeState) -> Option<Projection> {
+    node.plane.map(|plane| Projection::new(homography(plane)))
+}
+
+/// A scene's projective matrix as the rasteriser's.
+fn homography(plane: glam::DMat3) -> Homography {
+    Homography::new(plane.transpose().to_cols_array_2d())
 }
 
 /// A rect node: its box, with rounded corners, filled with its colour.

@@ -98,6 +98,8 @@ A layer with `"3d":true` is a flat plane that moves and turns in its composition
   - It looks along its own Z axis from its position. A camera that sets or animates `target` turns to look at that point first, then takes its `orient` and rotations.
   - `zoom` is the distance at which a plane facing it shows at 100 %. A camera's scale and anchor do not apply.
   - Without a `z`, a camera sits at minus its zoom, so it sees the plane at depth 0 as a flat layer would be drawn.
+- **Order.** Layers draw in list order, except that each run of adjacent 3D layers draws back to front by how deep the centre of each one's box is in front of the camera; equally deep ones keep list order. A flat layer that draws ends a run; one that draws nothing, such as a pivot, a camera or an audio layer, does not. Planes that cross each other are drawn whole, in that order, not cut where they meet.
+- **Compositions.** A `comp` layer draws its composition through that composition's own camera. A collapsed one's 3D layers join the outer composition's space under the layer's transform, and are seen through the outer camera, sorted among themselves.
 - **The default camera.** A composition without a camera that shows is seen through one centred on its canvas, at `z` minus its zoom, with a zoom of `width · 50/36`: a 50 mm lens on 36 mm film, a 39.6° horizontal view.
 
 ## Properties

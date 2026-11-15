@@ -1558,6 +1558,7 @@ dependencies = [
 name = "motion-engine"
 version = "0.0.0"
 dependencies = [
+ "glam",
  "insta",
  "motion-audio",
  "motion-edit",

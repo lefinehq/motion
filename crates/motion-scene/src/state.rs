@@ -29,6 +29,10 @@ pub struct NodeState {
     ///
     /// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
     pub space: Option<glam::DMat4>,
+    /// For a 3D node that draws, the projective matrix from its own
+    /// coordinates to its composition's canvas through the frame's
+    /// [`view`](FrameState::view); `None` for a flat node or a camera.
+    pub plane: Option<glam::DMat3>,
     /// Whether the frame falls in the node's span and, for a composition,
     /// in the composition's length.
     pub shown: bool,
@@ -172,6 +176,7 @@ impl NodeState {
             id: id.into(),
             transform: crate::local_transform(&values),
             space: None,
+            plane: None,
             values,
             shown: true,
             hidden: false,
@@ -213,8 +218,18 @@ impl NodeState {
 
     /// The axis-aligned box the node covers on the canvas: what its content
     /// covers through its transform.
+    ///
+    /// A 3D node covers what its plane shows through the camera; one wholly
+    /// behind the camera covers an empty box at its origin's flat place.
     pub fn bounds(&self) -> Rect {
-        box_through(self.transform, self.local_bounds)
+        match self.plane {
+            None => box_through(self.transform, self.local_bounds),
+            Some(plane) => crate::space::bbox(&crate::space::outline(plane, self.local_bounds))
+                .unwrap_or_else(|| {
+                    let origin = self.transform * kurbo::Point::ZERO;
+                    Rect::from_points(origin, origin)
+                }),
+        }
     }
 
     /// The left edge of [`NodeState::bounds`].
