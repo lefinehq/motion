@@ -4,11 +4,7 @@
 use rstest::rstest;
 
 use super::*;
-
-/// The raster crate's fixture font, an OFL subset of Lato Black whose
-/// PostScript name is `FixtureSans-Black`.
-const FIXTURE: &[u8] =
-    include_bytes!("../../../motion-raster/tests/fixtures/FixtureSans-Black.ttf");
+use crate::test_support::FIXTURE;
 
 /// The built-in faces and the fixture's.
 fn with_fixture() -> FontSet {

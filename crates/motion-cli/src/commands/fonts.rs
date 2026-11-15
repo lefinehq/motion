@@ -11,7 +11,7 @@ use std::process::ExitCode;
 
 use motion_engine::{
     Diagnostic, Kind, LayoutJudge, Result, Session, StoredText, add_fonts_entry, lock_path,
-    missing_fonts, write_document,
+    missing_fonts, unnamed_fonts, write_document,
 };
 use motion_fonts::fetch::{Choice, Fetcher, Request, Resolution, Sources, Unresolved};
 use motion_fonts::{Cache, Lock};
@@ -106,7 +106,7 @@ pub fn fetch(scene: &Path, update: bool, release: Option<&str>) -> Result<ExitCo
 pub fn for_import(scene: &Path, json: &mut Value, texts: &[StoredText]) -> Result<Fetched> {
     let session = Session::open(scene)?;
     let base = session.unlocked_fonts()?;
-    let wanted = missing_fonts(session.scene(), &base);
+    let wanted = unnamed_fonts(session.scene(), &base);
     if wanted.is_empty() {
         return Ok(Fetched::default());
     }

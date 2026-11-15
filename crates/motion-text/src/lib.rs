@@ -5,7 +5,8 @@
 //! - [`FontSet`] holds the faces text may use. They come from explicit files
 //!   and folders, or the built-in Inter; never from the system or the
 //!   network. A face is found by its PostScript name or by family, weight
-//!   and slant.
+//!   and slant; an import also finds it by the other names its font gives
+//!   it ([`FontSet::named`]).
 //! - [`StyledText`] is the input: text split into paragraphs by `\n`, runs of
 //!   [`CharacterStyle`], a [`ParagraphStyle`] per paragraph and a
 //!   [`TextFrame`] (point or box text).
@@ -28,6 +29,10 @@ mod layout;
 mod set;
 mod style;
 mod typeset;
+
+#[cfg(test)]
+#[path = "../tests/unit/support.rs"]
+mod test_support;
 
 pub use font::{Face, Slant};
 pub use layout::{Glyph, GlyphRun, Line, TextLayout};

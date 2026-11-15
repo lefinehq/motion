@@ -5,7 +5,7 @@
 //!
 //! [D40]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d40-missing-fonts-are-substituted-at-import
 
-use crate::font::{Face, Slant};
+use crate::font::{Face, Slant, name_key};
 use crate::set::FontSet;
 
 /// The family of the built-in faces.
@@ -99,13 +99,13 @@ impl FontSet {
     /// `None` when the set has neither.
     pub fn fallback(&self, postscript: &str) -> Option<&Face> {
         let wanted = Named::read(postscript);
-        let family = squash(wanted.family);
+        let family = name_key(wanted.family);
         let faces = self.faces().iter();
         let mut candidates: Vec<&Face> = faces
             .clone()
             .filter(|face| {
-                squash(&face.family) == family
-                    || squash(Named::read(&face.postscript_name).family) == family
+                name_key(&face.family) == family
+                    || name_key(Named::read(&face.postscript_name).family) == family
             })
             .collect();
         if candidates.is_empty() {
@@ -134,14 +134,6 @@ fn ends_with_ignoring_case(text: &str, suffix: &str) -> bool {
     text.len() >= suffix.len()
         && text.is_char_boundary(text.len() - suffix.len())
         && text[text.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
-}
-
-/// `name` in lower case without spaces or punctuation, to compare families.
-fn squash(name: &str) -> String {
-    name.chars()
-        .filter(char::is_ascii_alphanumeric)
-        .map(|c| c.to_ascii_lowercase())
-        .collect()
 }
 
 #[cfg(test)]

@@ -19,7 +19,7 @@ The manifest is a JSON file, with paths relative to it:
 ]}
 ```
 
-- `fonts` lists font folders, files or locks. A lock (`motion import --fetch-fonts` writes one) needs its files in the font cache.
+- `fonts` lists font folders, files or locks. A lock (`motion import --fetch-fonts` writes one) needs its files in the font cache. A font the project names by another name of a face given here is that face ([D61](../../design/decisions.md#d61-a-font-is-found-by-the-names-its-face-gives-itself)) and is not counted. A font not given is set in a substitute ([D40](../../design/decisions.md#d40-missing-fonts-are-substituted-at-import)), and each use counts as unsupported, so the gap stays measured.
 - `reference` is a folder of PNG frames. Decode an untagged HD video as BT.709 limited range ([why](../2026-11-14-fidelity-first-sample.md#reading-a-reference-correctly)). Take exact frames of the video: every k-th one (`select=not(mod(n\,k))`), with `fps` the video's rate over k, such as 23.976/12. ffmpeg's `fps` filter keeps the last frame of each slot, so at 2 a second from 25 its frame for 0.5 s shows 0.74 s; on the local corpus, references taken that way made every entrance fail.
 - `ignore` leaves out layers the reference fills with footage we do not have.
 - `settled` is when the entrance is over, so the layout's own error is not hidden by the motion's.

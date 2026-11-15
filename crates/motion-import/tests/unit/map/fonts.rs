@@ -1,5 +1,5 @@
-//! Unit tests for `src/map/fonts.rs`: substituting a font the import was
-//! not given, and reporting it.
+//! Unit tests for `src/map/fonts.rs`: naming a font by its face's own name,
+//! substituting a font the import was not given, and reporting both.
 
 use pretty_assertions::assert_eq;
 
@@ -78,5 +78,44 @@ fn a_font_the_scene_does_not_use_or_keeps_changes_nothing() {
         import.substitute_fonts(&substitutes).expect("valid");
         assert_eq!(import.json, before.json);
         assert_eq!(import.mapping, before.mapping);
+        import.rename_fonts(&substitutes).expect("valid");
+        assert_eq!(import.json, before.json);
+        assert_eq!(import.mapping, before.mapping);
     }
+}
+
+#[test]
+fn a_font_named_by_another_name_of_its_face_is_renamed_and_listed_not_counted() {
+    let mut import = imported();
+    let unsupported = import.mapping.unsupported.clone();
+    import
+        .rename_fonts(&swap("Inter-Bold", "InterVariable-Bold"))
+        .expect("the scene stays valid");
+    assert_eq!(import.json["layers"][1]["font"], "InterVariable-Bold 44");
+    let title = &import.document.scene().root.layers[1];
+    let motion_format::Content::Text(text) = &title.content else {
+        panic!("the title is text");
+    };
+    assert_eq!(text.base.font.family, "InterVariable-Bold");
+    assert_eq!(import.mapping.unsupported, unsupported);
+    assert_eq!(
+        import.mapping.renamed_fonts,
+        swap("Inter-Bold", "InterVariable-Bold")
+    );
+    assert_eq!(
+        import.fonts.keys().collect::<Vec<_>>(),
+        ["InterVariable-Bold"]
+    );
+    assert!(import.mapping.to_string().contains(
+        "  fonts under another name of their face: `Inter-Bold` is `InterVariable-Bold`\n"
+    ));
+    let json = serde_json::to_value(&import.mapping).expect("a report");
+    assert_eq!(json["renamed_fonts"]["Inter-Bold"], "InterVariable-Bold");
+}
+
+#[test]
+fn a_report_without_renamed_fonts_leaves_them_out() {
+    let json = serde_json::to_value(&imported().mapping).expect("a report");
+    assert!(json.get("renamed_fonts").is_none());
+    assert!(!imported().mapping.to_string().contains("another name"));
 }

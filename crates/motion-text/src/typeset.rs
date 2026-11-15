@@ -7,15 +7,20 @@
 //! previous baseline, so the result does not depend on how a line box splits
 //! its leading. Every face is registered under a family name of its own, so a
 //! run gets exactly the face it asks for; a run that Parley had to fall back
-//! from, or a glyph the font lacks, is an error.
+//! from, or a glyph the font lacks, is an error. A face of a font collection
+//! is registered as a collection of that face alone, since registering a
+//! collection registers all its faces.
 
 use std::borrow::Cow;
 use std::ops::Range;
+use std::sync::Arc;
 
 use kurbo::Size;
 use motion_format::{Diagnostic, Kind, Result};
+use parley::FontData;
 use parley::fontique::{
-    Collection, CollectionOptions, FontInfoOverride, FontStyle as Style, FontWeight, SourceCache,
+    Blob, Collection, CollectionOptions, FontInfoOverride, FontStyle as Style, FontWeight,
+    SourceCache,
 };
 use parley::{
     Alignment, AlignmentOptions, FontContext, FontFamily, FontVariation, FontVariations,
@@ -105,6 +110,9 @@ pub struct Typesetter {
     families: Vec<String>,
     /// The axis values each face is set at, parallel to the set's faces.
     variations: Vec<Vec<FontVariation>>,
+    /// The font data each face is registered with, parallel to the set's
+    /// faces, once text first asks for it ([`Typesetter::register`]).
+    registered: Vec<Option<FontData>>,
 }
 
 impl std::fmt::Debug for Typesetter {
@@ -118,25 +126,9 @@ impl std::fmt::Debug for Typesetter {
 impl Typesetter {
     /// A typesetter that sets text in `fonts` and nothing else.
     pub fn new(fonts: FontSet) -> Typesetter {
-        let mut collection = Collection::new(CollectionOptions {
-            shared: false,
-            system_fonts: false,
-        });
         let families = (0..fonts.faces().len())
             .map(|i| format!("motion-face-{i}"))
             .collect::<Vec<_>>();
-        for (face, family) in fonts.faces().iter().zip(&families) {
-            collection.register_fonts(
-                face.data.data.clone(),
-                Some(FontInfoOverride {
-                    family_name: Some(family),
-                    weight: Some(FontWeight::new(face.weight)),
-                    style: Some(font_style(face.slant)),
-                    axes: None,
-                    width: None,
-                }),
-            );
-        }
         // A named instance is set at its own axis values, not where the font's
         // weight and slant would place it.
         let variations = fonts
@@ -152,15 +144,42 @@ impl Typesetter {
             })
             .collect();
         Typesetter {
+            registered: vec![None; fonts.faces().len()],
             fonts,
             font_cx: FontContext {
-                collection,
+                collection: Collection::new(CollectionOptions {
+                    shared: false,
+                    system_fonts: false,
+                }),
                 source_cache: SourceCache::default(),
             },
             layout_cx: LayoutContext::new(),
             families,
             variations,
         }
+    }
+
+    /// Registers face `index` under its own family, once: its font's data
+    /// for a lone font, else a copy of its collection that lists only it
+    /// ([`alone`]). Faces are registered when text first asks for them, so
+    /// a large collection is copied only for the faces set.
+    fn register(&mut self, index: usize) {
+        if self.registered[index].is_some() {
+            return;
+        }
+        let face = &self.fonts.faces()[index];
+        let data = alone(&face.data);
+        self.font_cx.collection.register_fonts(
+            data.data.clone(),
+            Some(FontInfoOverride {
+                family_name: Some(&self.families[index]),
+                weight: Some(FontWeight::new(face.weight)),
+                style: Some(font_style(face.slant)),
+                axes: None,
+                width: None,
+            }),
+        );
+        self.registered[index] = Some(data);
     }
 
     /// The fonts it sets text in.
@@ -193,6 +212,9 @@ impl Typesetter {
                     .map_err(|d| d.at(format!("runs[{i}].style.font")))
             })
             .collect::<Result<Vec<usize>>>()?;
+        for &face in &faces {
+            self.register(face);
+        }
         let cased = caps::apply(text);
         let mut out = TextLayout {
             lines: Vec::new(),
@@ -261,6 +283,7 @@ impl Typesetter {
             cased,
             faces,
             fonts: &self.fonts,
+            registered: &self.registered,
             base: paragraph.set.start,
         };
         for line in layout.lines() {
@@ -375,6 +398,29 @@ impl<'a> Styler<'a> {
             StyleProperty::LineHeight(leading),
         ]
     }
+}
+
+/// The tag a font collection's file starts with.
+const COLLECTION_TAG: &[u8; 4] = b"ttcf";
+
+/// `data` as a font of one face: as it is when its bytes are a lone font,
+/// else a copy of its collection whose header lists only its face, as
+/// face 0. The copy keeps every other byte, so the face's tables are where
+/// its table directory says.
+fn alone(data: &FontData) -> FontData {
+    let bytes = data.data.data();
+    let index = data.index as usize;
+    // The header: tag, version, the number of faces, then each face's offset.
+    let offset = 12 + 4 * index;
+    if !bytes.starts_with(COLLECTION_TAG) || bytes.len() < offset + 4 {
+        return data.clone();
+    }
+    let mut copy = bytes.to_vec();
+    // Version 1 has no signature fields after the offsets.
+    copy[4..8].copy_from_slice(&0x0001_0000u32.to_be_bytes());
+    copy[8..12].copy_from_slice(&1u32.to_be_bytes());
+    copy.copy_within(offset..offset + 4, 12);
+    FontData::new(Blob::new(Arc::new(copy)), 0)
 }
 
 /// The space after each character of `style`, in thousandths of an em.
@@ -537,6 +583,8 @@ struct Reader<'a> {
     cased: &'a Cased,
     faces: &'a [usize],
     fonts: &'a FontSet,
+    /// The font data each face is registered with.
+    registered: &'a [Option<FontData>],
     /// Where the paragraph starts in the set text.
     base: usize,
 }
@@ -636,7 +684,9 @@ impl Reader<'_> {
             let face = &self.fonts.faces()[face_index];
             let run = glyph_run.run();
             let font = run.font();
-            let same_face = font.data.id() == face.data.data.id() && font.index == face.data.index;
+            let same_face = self.registered[face_index]
+                .as_ref()
+                .is_some_and(|own| font.data.id() == own.data.id() && font.index == own.index);
             let shift = self.text.runs[style_run].style.baseline_shift;
             let positioned: Vec<parley::Glyph> = glyph_run.positioned_glyphs().collect();
             let mut glyphs: Vec<Glyph> = Vec::with_capacity(positioned.len());

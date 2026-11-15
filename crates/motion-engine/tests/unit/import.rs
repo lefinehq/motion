@@ -136,6 +136,40 @@ fn a_font_the_set_has_is_kept() {
     assert_eq!(import.json, before);
 }
 
+#[test]
+fn a_font_named_by_another_name_of_a_face_is_renamed_not_substituted() {
+    let mut import = imported_text();
+    let mut fonts = FontSet::builtin();
+    fonts
+        .add_bytes(
+            include_bytes!("../../../motion-raster/tests/fixtures/FixtureSans-Black.ttf").to_vec(),
+            "fixture",
+        )
+        .expect("a font");
+    // The project's font as an earlier build of the fixture might name it.
+    import
+        .rename_fonts(&BTreeMap::from([(
+            "BritannicBold".to_owned(),
+            "FixtureSans-black".to_owned(),
+        )]))
+        .expect("renamed");
+    import.mapping.renamed_fonts.clear();
+    substitute_fonts(&mut import, &fonts).expect("renamed");
+    let layer = import.json["layers"]
+        .as_array()
+        .and_then(|layers| layers.iter().find(|l| l["text"].is_string()))
+        .expect("a text layer");
+    assert_eq!(layer["font"], "FixtureSans-Black 185");
+    assert!(import.mapping.unsupported.is_empty());
+    assert_eq!(
+        import.mapping.renamed_fonts,
+        BTreeMap::from([(
+            "FixtureSans-black".to_owned(),
+            "FixtureSans-Black".to_owned()
+        )])
+    );
+}
+
 /// A committed fixture with one still footage layer, `Heart-80.png`, whose
 /// stored path is on its author's machine, under `…/assets/Images/`.
 const FOOTAGE_FIXTURE: &str = concat!(
