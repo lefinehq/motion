@@ -24,13 +24,12 @@ expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ]}
 
 imported `Comp 01`
-  20 mapped, 86 defaulted, 250 ignored, 1 unsupported, over 28 match names
+  20 mapped, 86 defaulted, 250 ignored, 0 unsupported, over 27 match names
   ignored, drawing nothing:
     empty (1)
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (248)
     materials of 3D layers (1)
   unsupported:
     3D layers (drawn flat) (1): Comp 01/3D
-    adjustment layers (drawn as nothing) (1): Comp 01/Adjustment
     motion blur (1): Comp 01/Motion Blur
     solo layers (2): Comp 01/Solo; Comp 01/Transformations Collapsed

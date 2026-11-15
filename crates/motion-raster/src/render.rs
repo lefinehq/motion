@@ -3,16 +3,19 @@
 //! threads at once.
 
 use motion_format::{Diagnostic, Kind, Result};
+use std::sync::Arc;
 use vello_cpu::kurbo::{Affine, Rect};
-use vello_cpu::peniko::ImageAlphaType;
+
+use vello_cpu::peniko::{ImageAlphaType, ImageQuality, ImageSampler};
 use vello_cpu::{
-    Level, Mask, Pixmap, RasterizerSettings, RenderContext, RenderMode, RenderSettings, Resources,
-    TargetInit,
+    ImageSource, Level, Mask, Pixmap, RasterizerSettings, RenderContext, RenderMode,
+    RenderSettings, Resources, TargetInit,
 };
 
-use crate::effect::{Effect, EffectContext, Move};
+use crate::effect::{Effect, EffectContext, Move, Space};
 use crate::image::Image;
 use crate::list::{Blending, Frame, GlyphDraw, ImageDraw, Layer, Matte, MatteMode, Node, PathDraw};
+use crate::pixels::Pixels;
 use crate::style::{Color, DrawStyle};
 
 /// How the rasteriser computes colours.
@@ -173,6 +176,12 @@ impl Painter {
     /// The mask `matte` makes: its source drawn on its own, in coordinates
     /// `parent` maps to the frame, each pixel read as `matte.mode` says.
     fn mask(&self, matte: &Matte, parent: Affine) -> Result<Mask> {
+        let data = self.matte_values(matte, parent)?;
+        Ok(Mask::from_parts(data, self.width, self.height))
+    }
+
+    /// How much of a layer `matte` lets show at each pixel, 0 to 255.
+    fn matte_values(&self, matte: &Matte, parent: Affine) -> Result<Vec<u8>> {
         let mut painter = Painter::new(self.width, self.height, self.options);
         painter.nodes(std::slice::from_ref(&*matte.source), parent)?;
         let pixmap = painter.finish();
@@ -196,11 +205,48 @@ impl Painter {
                 }
             })
             .collect();
-        Ok(Mask::from_parts(data, self.width, self.height))
+        Ok(data)
     }
 
-    /// Draws `nodes` back to front, in coordinates `transform` maps to the frame.
+    /// Draws `nodes` on a canvas of their own and returns its pixels.
+    fn drawn_alone(&self, nodes: &[Node], transform: Affine) -> Result<Pixels> {
+        let mut painter = Painter::new(self.width, self.height, self.options);
+        painter.nodes(nodes, transform)?;
+        Ok(Pixels::from_pixmap(&painter.finish()))
+    }
+
+    /// Lays `pixels`, the size of the frame, over what is drawn so far.
+    fn draw_pixels(&mut self, pixels: &Pixels) {
+        let paint = vello_cpu::Image {
+            image: ImageSource::Pixmap(Arc::new(pixels.to_pixmap())),
+            // Pixel for pixel: the grid lines up with the frame's.
+            sampler: ImageSampler::new().with_quality(ImageQuality::Low),
+        };
+        self.ctx.set_transform(Affine::IDENTITY);
+        self.ctx.reset_paint_transform();
+        self.ctx.set_paint(paint);
+        self.ctx.fill_rect(&Rect::new(
+            0.0,
+            0.0,
+            f64::from(self.width),
+            f64::from(self.height),
+        ));
+    }
+
+    /// Draws `nodes` back to front, in coordinates `transform` maps to the
+    /// frame. A filter layer among them applies its effects to what the
+    /// nodes before it drew.
     fn nodes(&mut self, nodes: &[Node], transform: Affine) -> Result<()> {
+        let filter = nodes
+            .iter()
+            .rposition(|node| matches!(node, Node::Layer(layer) if layer.adjust));
+        if let Some(at) = filter {
+            let Node::Layer(filter) = &nodes[at] else {
+                unreachable!("the position of a filter layer");
+            };
+            self.filter(&nodes[..at], filter, transform)?;
+            return self.nodes(&nodes[at + 1..], transform);
+        }
         nodes.iter().try_for_each(|node| match node {
             Node::Layer(layer) => self.layer(layer, transform),
             Node::Path(path) => {
@@ -215,12 +261,68 @@ impl Painter {
         })
     }
 
+    /// Draws `below`, then `filter`'s effects on it: what they give is
+    /// mixed in by the filter's opacity, its matte, and the alpha of what
+    /// its children draw, its region; without children, everywhere.
+    fn filter(&mut self, below: &[Node], filter: &Layer, parent: Affine) -> Result<()> {
+        let drawn = self.drawn_alone(below, parent)?;
+        if filter.opacity <= 0.0 || filter.effects.is_empty() {
+            self.draw_pixels(&drawn);
+            return Ok(());
+        }
+        let space = Space {
+            transform: parent * filter.transform,
+        };
+        let mut changed = drawn.clone();
+        for effect in &filter.effects {
+            effect.apply(&mut changed, &space);
+        }
+        let matte = filter
+            .matte
+            .as_ref()
+            .map(|matte| self.matte_values(matte, parent))
+            .transpose()?;
+        // Where it draws, by its alpha; a filter layer drawing nothing
+        // applies everywhere.
+        let region = match filter.children.is_empty() {
+            true => None,
+            false => Some(self.drawn_alone(&filter.children, space.transform)?),
+        };
+        let mut mixed = drawn;
+        mixed.mix(&changed, |i| {
+            filter.opacity
+                * matte.as_ref().map_or(1.0, |m| f32::from(m[i]) / 255.0)
+                * region.as_ref().map_or(1.0, |r| r.data()[i][3])
+        });
+        self.draw_pixels(&mixed);
+        Ok(())
+    }
+
     /// Draws a layer: its children, in a buffer of their own when it is
-    /// isolated, then its effects on that buffer.
+    /// isolated, then its effects on that buffer. Moves before the first
+    /// effect that reads pixels apply as the children are drawn; from that
+    /// effect on, the children are drawn on a canvas of their own and every
+    /// effect runs in order on its pixels.
     fn layer(&mut self, layer: &Layer, parent: Affine) -> Result<()> {
+        let reads = layer
+            .effects
+            .iter()
+            .position(Effect::reads_pixels)
+            .unwrap_or(layer.effects.len());
+        let (drawing, on_pixels) = match reads < layer.effects.len() {
+            // Only moves before the first effect that reads pixels.
+            true => {
+                let moves = layer.effects[..reads]
+                    .iter()
+                    .take_while(|e| e.movement().is_some())
+                    .count();
+                layer.effects.split_at(moves)
+            }
+            false => (layer.effects.as_slice(), &[][..]),
+        };
         // Moving effects apply as the content is drawn, in the order they
         // stand: each moves what the ones before it moved.
-        let moved = layer.effects.iter().filter_map(Effect::movement).fold(
+        let moved = drawing.iter().filter_map(Effect::movement).fold(
             Move {
                 transform: Affine::IDENTITY,
                 opacity: 1.0,
@@ -258,15 +360,29 @@ impl Painter {
             mask,
             None,
         );
-        let drawn = self.nodes(&layer.children, transform * moved.transform);
-        let mut effects = EffectContext {
-            ctx: &mut self.ctx,
-            width: self.width,
-            height: self.height,
+        let drawn = match on_pixels.is_empty() {
+            true => {
+                let drawn = self.nodes(&layer.children, transform * moved.transform);
+                let mut effects = EffectContext {
+                    ctx: &mut self.ctx,
+                    width: self.width,
+                    height: self.height,
+                };
+                for effect in drawing {
+                    effect.paint_over(&mut effects);
+                }
+                drawn
+            }
+            false => self
+                .drawn_alone(&layer.children, transform * moved.transform)
+                .map(|mut pixels| {
+                    let space = Space { transform };
+                    for effect in on_pixels {
+                        effect.apply(&mut pixels, &space);
+                    }
+                    self.draw_pixels(&pixels);
+                }),
         };
-        for effect in &layer.effects {
-            effect.paint(&mut effects);
-        }
         // Pop even after a failure, so the context's layers stay balanced.
         self.ctx.pop_layer();
         drawn

@@ -65,6 +65,8 @@ pub enum NodeContent {
     Video(Arc<VideoContent>),
     /// Nothing; other nodes move with it.
     Pivot,
+    /// Nothing of its own; its effects apply to what is below it.
+    Filter,
 }
 
 /// A compiled shape item or effect: its kind, a track per property of the
@@ -176,6 +178,8 @@ pub struct Node {
     pub fx: Vec<ItemNode>,
     /// Left out of the frame; its children still move with it.
     pub hidden: bool,
+    /// Its effects apply to what is below it, where it draws.
+    pub adjust: bool,
     /// The node of its own list whose drawing decides where it shows, and how.
     pub matte: Option<(usize, MatteMode)>,
 }

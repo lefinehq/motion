@@ -367,4 +367,68 @@ mod effects {
             "{what:?}"
         );
     }
+
+    /// A 200 by 100 comp holding a 300 by 200 adjustment solid with the
+    /// effect groups `effects`, imported.
+    fn adjusting(effects: Vec<Group>) -> Import {
+        let mut adjustment = layer(1, "Adjust", vec![]);
+        adjustment.source = Some(9);
+        adjustment.switches.adjustment = true;
+        adjustment.properties.children = vec![Child::Group(group(
+            "ADBE Effect Parade",
+            effects.into_iter().map(Child::Group).collect(),
+        ))];
+        let mut project = project(vec![(2, "Main", comp(vec![adjustment], 2.0))]);
+        project.effects.insert("ADBE Geometry2".into(), geometry());
+        project.items.push(crate::model::Item {
+            id: 9,
+            name: "Adjustment Layer 1".into(),
+            folder: None,
+            kind: crate::model::ItemKind::Footage(crate::model::Footage {
+                width: 300,
+                height: 200,
+                pixel_aspect: 1.0,
+                frame_rate: 0.0,
+                duration: 0.0,
+                source: crate::model::Source::Solid {
+                    color: crate::model::Color {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: 1.0,
+                    },
+                },
+            }),
+        });
+        import(&project, &Options::default()).expect("imports")
+    }
+
+    #[test]
+    fn an_adjustment_layer_adjusts_where_its_solid_is() {
+        let import = adjusting(vec![transform(vec![number("ADBE Geometry2-0007", 90.0)])]);
+        let layer = &import.json["layers"][0];
+        assert_eq!(layer["adjust"], true);
+        assert_eq!(layer["rect"], "300x200");
+        assert_eq!(layer["fx"][0]["rotate"], 90);
+        // Its points are in pixels of the solid, not the composition.
+        assert_eq!(layer["fx"][0]["position"], json!([150, 100]));
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
+    #[test]
+    fn an_adjustment_layer_without_an_effect_the_scene_draws_draws_nothing() {
+        let import = adjusting(vec![group("ADBE Glo2", vec![])]);
+        let layer = &import.json["layers"][0];
+        assert_eq!(layer["pivot"], true);
+        assert!(
+            layer.get("rect").is_none() && layer.get("adjust").is_none(),
+            "{layer}"
+        );
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert_eq!(what, ["`ADBE Glo2`"]);
+    }
 }

@@ -1,8 +1,12 @@
 //! Effects as a registry ([D34]): each is a row of [`EFFECTS`] with a name,
-//! typed parameters and what it does to a layer, as an [`Apply`]: paint over
-//! the layer's isolated content once it is drawn, or move that content
-//! before it is drawn. Adding an effect is adding a row and its function;
-//! the renderer never names an effect.
+//! typed parameters and what it does to a layer, as an [`Apply`]: move the
+//! layer's content as it is drawn, or change the pixels it drew. Adding an
+//! effect is adding a row and its function; the renderer never names an
+//! effect.
+//!
+//! A layer whose effects all move it, or can paint their change over its
+//! content without reading it, is drawn as it is. Any other is drawn on a
+//! canvas of its own, and its effects run in order over the pixels.
 //!
 //! An [`Effect`] in a display list is built with [`Effect::new`], which checks
 //! its parameters against the row, so drawing it cannot fail.
@@ -16,6 +20,7 @@ use vello_cpu::RenderContext;
 use vello_cpu::kurbo::{Affine, Rect, Vec2};
 use vello_cpu::peniko::{BlendMode, Compose, Mix};
 
+use crate::pixels::Pixels;
 use crate::style::Color;
 
 /// The type of one effect parameter.
@@ -80,13 +85,27 @@ pub struct EffectSpec {
 /// What an effect does to the layer it is on.
 #[derive(Debug, Clone, Copy)]
 pub enum Apply {
-    /// Paints over the layer's isolated content once it is drawn.
-    Paint(fn(&mut EffectContext<'_>, &[ParamValue])),
     /// Moves the layer's content: a transform in the layer's own
-    /// coordinates and an opacity, applied as the content is drawn. Every
-    /// painting effect so far changes each pixel on its own, so a move
-    /// commutes with them, and applies first wherever it stands in the list.
+    /// coordinates and an opacity. Before any effect that reads pixels, it
+    /// applies as the content is drawn; after one, it moves the pixels.
     Move(fn(&[ParamValue]) -> Move),
+    /// Changes the pixels the layer drew.
+    Pixels {
+        /// The same change painted over the content without reading it,
+        /// for a layer drawn as it is; `None` when the change needs the
+        /// pixels.
+        over: Option<fn(&mut EffectContext<'_>, &[ParamValue])>,
+        /// The change, in place.
+        pixels: fn(&mut Pixels, &[ParamValue], &Space),
+    },
+}
+
+/// Where an effect's pixels are: lengths and points of its parameters are
+/// in the layer's own coordinates, which `transform` takes to pixels.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Space {
+    /// From the layer's own coordinates to pixels of the grid.
+    pub transform: Affine,
 }
 
 /// How a moving effect moves the layer's content.
@@ -131,7 +150,10 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "recolours the content with one colour, keeping its alpha",
-        apply: Apply::Paint(fill),
+        apply: Apply::Pixels {
+            over: Some(fill),
+            pixels: fill_pixels,
+        },
     },
     EffectSpec {
         name: "transform",
@@ -222,18 +244,46 @@ impl Effect {
     }
 
     /// Paints the effect over the content drawn so far in `ctx`'s layer, if
-    /// it is a painting one.
-    pub(crate) fn paint(&self, ctx: &mut EffectContext<'_>) {
-        if let Apply::Paint(paint) = self.spec.apply {
-            paint(ctx, &self.values);
+    /// it can without reading it.
+    pub(crate) fn paint_over(&self, ctx: &mut EffectContext<'_>) {
+        if let Apply::Pixels {
+            over: Some(over), ..
+        } = self.spec.apply
+        {
+            over(ctx, &self.values);
         }
+    }
+
+    /// Whether it needs the pixels its layer drew.
+    pub fn reads_pixels(&self) -> bool {
+        matches!(self.spec.apply, Apply::Pixels { over: None, .. })
     }
 
     /// How it moves the content, if it is a moving one.
     pub fn movement(&self) -> Option<Move> {
         match self.spec.apply {
             Apply::Move(movement) => Some(movement(&self.values)),
-            Apply::Paint(_) => None,
+            Apply::Pixels { .. } => None,
+        }
+    }
+
+    /// Applies the effect to `pixels`, a layer's drawn in `space`: a move
+    /// resamples them, any other changes them in place.
+    pub fn apply(&self, pixels: &mut Pixels, space: &Space) {
+        match self.spec.apply {
+            Apply::Move(movement) => {
+                let Move { transform, opacity } = movement(&self.values);
+                let inside = space.transform * transform * space.transform.inverse();
+                if inside != Affine::IDENTITY {
+                    *pixels = pixels.transformed(inside);
+                }
+                if opacity < 1.0 {
+                    for pixel in pixels.data_mut() {
+                        *pixel = pixel.map(|c| c * opacity);
+                    }
+                }
+            }
+            Apply::Pixels { pixels: change, .. } => change(pixels, &self.values, space),
         }
     }
 }
@@ -307,6 +357,22 @@ fn fill(ctx: &mut EffectContext<'_>, values: &[ParamValue]) {
         unreachable!("`Effect::new` checks the fill parameters");
     };
     ctx.cover(color.with_opacity(*opacity), Compose::SrcAtop);
+}
+
+/// The `fill` effect on pixels: the colour, at its alpha times `opacity`,
+/// laid "source-atop" each pixel, as [`fill`] paints it.
+fn fill_pixels(pixels: &mut Pixels, values: &[ParamValue], _: &Space) {
+    let [ParamValue::Color(color), ParamValue::Number(opacity)] = values else {
+        unreachable!("`Effect::new` checks the fill parameters");
+    };
+    let share = color.a * opacity;
+    let rgb = [color.r, color.g, color.b];
+    for pixel in pixels.data_mut() {
+        let alpha = pixel[3];
+        for c in 0..3 {
+            pixel[c] = rgb[c] * share * alpha + pixel[c] * (1.0 - share);
+        }
+    }
 }
 
 /// The `transform` effect: the content's anchor goes to `position`, scaled

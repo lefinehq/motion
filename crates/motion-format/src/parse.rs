@@ -79,6 +79,8 @@ pub mod key {
     pub const STRETCH: &str = "stretch";
     /// A layer's effects.
     pub const FX: &str = "fx";
+    /// A layer whose effects apply to what is below it, where it draws.
+    pub const ADJUST: &str = "adjust";
     /// Left out of the frame, yet kept in the scene.
     pub const HIDDEN: &str = "hidden";
     /// Layer key: the layer whose drawing decides where this one shows.
@@ -129,7 +131,7 @@ pub const COMP_KEYS: [&str; 6] = [
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 26] = [
+pub const LAYER_KEYS: [&str; 27] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -154,6 +156,7 @@ pub const LAYER_KEYS: [&str; 26] = [
     key::OFFSET,
     key::STRETCH,
     key::FX,
+    key::ADJUST,
     key::HIDDEN,
     key::MATTE,
 ];

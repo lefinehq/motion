@@ -19,18 +19,21 @@ mod effect;
 mod image;
 mod list;
 mod picture;
+mod pixels;
 mod render;
 mod style;
 
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use effect::{
     Apply, EFFECTS, Effect, EffectContext, EffectSpec, Move, ParamSpec, ParamType, ParamValue,
+    Space,
 };
 pub use image::Image;
 pub use list::{
     Blending, Clip, Frame, Glyph, GlyphDraw, ImageDraw, Layer, Matte, MatteMode, Node, PathDraw,
 };
 pub use picture::Picture;
+pub use pixels::{Pixel, Pixels};
 pub use render::{Quality, RenderOptions, Simd, render, render_with};
 pub use style::{
     CAPS, Cap, Color, Dashes, DrawStyle, FILL_RULES, FillRule, JOINS, Join, Paint, StrokeStyle,

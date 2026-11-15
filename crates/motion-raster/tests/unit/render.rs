@@ -220,6 +220,133 @@ fn transform_effects_apply_in_order_each_moving_what_the_last_moved() {
     );
 }
 
+/// A filter layer applying `effects` at `opacity`.
+fn filter(effects: Vec<Effect>, opacity: f32) -> Node {
+    Node::Layer(Layer {
+        effects,
+        opacity,
+        adjust: true,
+        ..Layer::new(Vec::new())
+    })
+}
+
+#[test]
+fn a_filter_layer_changes_what_is_below_it_and_not_what_is_above() {
+    let white = Effect::new("fill", &[("color", ParamValue::Color(Color::WHITE))]).unwrap();
+    let red = cover(8.0, Color::rgba(1.0, 0.0, 0.0, 1.0));
+    let half_blue = Node::Path(PathDraw {
+        path: Rect::new(4.0, 0.0, 8.0, 8.0).to_path(0.1),
+        paint: Paint::Solid(Color::rgba(0.0, 0.0, 1.0, 1.0)),
+        style: DrawStyle::Fill(FillRule::NonZero),
+    });
+    let frame = |opacity| Frame {
+        background: Some(Color::BLACK),
+        nodes: vec![
+            red.clone(),
+            filter(vec![white.clone()], opacity),
+            half_blue.clone(),
+        ],
+        ..Frame::default()
+    };
+    let image = render_with(&frame(1.0), 8, 8, RenderOptions::GOLDEN).unwrap();
+    // The red below turned white; the blue above stays.
+    assert!(
+        near(image.pixel(1, 4).unwrap(), [255, 255, 255, 255]),
+        "{:?}",
+        image.pixel(1, 4)
+    );
+    assert!(
+        near(image.pixel(6, 4).unwrap(), [0, 0, 255, 255]),
+        "{:?}",
+        image.pixel(6, 4)
+    );
+    // At half opacity, half of the change.
+    let image = render_with(&frame(0.5), 8, 8, RenderOptions::GOLDEN).unwrap();
+    assert!(
+        near(image.pixel(1, 4).unwrap(), [255, 128, 128, 255]),
+        "{:?}",
+        image.pixel(1, 4)
+    );
+}
+
+#[test]
+fn an_adjusting_layer_applies_only_where_its_children_draw() {
+    let white = Effect::new("fill", &[("color", ParamValue::Color(Color::WHITE))]).unwrap();
+    let left = Node::Path(PathDraw {
+        path: Rect::new(0.0, 0.0, 4.0, 8.0).to_path(0.1),
+        paint: Paint::Solid(Color::rgba(0.0, 1.0, 0.0, 0.5)),
+        style: DrawStyle::Fill(FillRule::NonZero),
+    });
+    let adjusting = Node::Layer(Layer {
+        effects: vec![white],
+        adjust: true,
+        ..Layer::new(vec![left])
+    });
+    let frame = Frame {
+        nodes: vec![cover(8.0, Color::BLACK), adjusting],
+        ..Frame::default()
+    };
+    let image = render_with(&frame, 8, 8, RenderOptions::GOLDEN).unwrap();
+    // Half the change where it draws at half alpha; its own colour never shows.
+    assert!(
+        near(image.pixel(1, 4).unwrap(), [128, 128, 128, 255]),
+        "{:?}",
+        image.pixel(1, 4)
+    );
+    assert_eq!(image.pixel(6, 4).unwrap(), [0, 0, 0, 255]);
+}
+
+#[test]
+fn a_filter_layer_moves_what_is_below_and_its_matte_limits_it() {
+    let square = Node::Path(PathDraw {
+        path: Rect::new(0.0, 0.0, 2.0, 2.0).to_path(0.1),
+        paint: Paint::Solid(Color::BLACK),
+        style: DrawStyle::Fill(FillRule::NonZero),
+    });
+    let moved = transform([4.0, 4.0], [0.0, 0.0], [1.0, 1.0], 1.0);
+    let image = render_with(
+        &Frame {
+            nodes: vec![square.clone(), filter(vec![moved.clone()], 1.0)],
+            ..Frame::default()
+        },
+        8,
+        8,
+        RenderOptions::GOLDEN,
+    )
+    .unwrap();
+    assert_eq!(image.pixel(0, 0).unwrap(), [0, 0, 0, 0]);
+    assert_eq!(image.pixel(5, 5).unwrap(), [0, 0, 0, 255]);
+    // A matte over the left half: there the square moves away, elsewhere
+    // nothing changes, so the moved copy on the right does not appear.
+    let left = Node::Path(PathDraw {
+        path: Rect::new(0.0, 0.0, 4.0, 8.0).to_path(0.1),
+        paint: Paint::Solid(Color::WHITE),
+        style: DrawStyle::Fill(FillRule::NonZero),
+    });
+    let Node::Layer(matted) = filter(vec![moved], 1.0) else {
+        unreachable!()
+    };
+    let matted = Node::Layer(Layer {
+        matte: Some(Matte {
+            source: Box::new(left),
+            mode: MatteMode::Alpha,
+        }),
+        ..matted
+    });
+    let image = render_with(
+        &Frame {
+            nodes: vec![square, matted],
+            ..Frame::default()
+        },
+        8,
+        8,
+        RenderOptions::GOLDEN,
+    )
+    .unwrap();
+    assert_eq!(image.pixel(0, 0).unwrap(), [0, 0, 0, 0]);
+    assert_eq!(image.pixel(5, 5).unwrap(), [0, 0, 0, 0]);
+}
+
 #[test]
 fn a_clip_hides_what_lies_outside_it() {
     let clipped = Layer {

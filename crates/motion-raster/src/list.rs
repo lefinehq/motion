@@ -77,6 +77,12 @@ pub struct Layer {
     pub isolate: bool,
     /// What another layer draws, read as a stencil for this one.
     pub matte: Option<Matte>,
+    /// An adjusting layer: its children are not drawn but say where it
+    /// applies, by their alpha (everywhere when it has none), and its
+    /// effects apply to everything drawn before it among its siblings, mixed
+    /// in by its opacity and matte. Its parent is isolated, so that is all
+    /// its composition drew below it.
+    pub adjust: bool,
 }
 
 /// A layer's matte: a node drawn in the layer's parent's coordinates, whose
@@ -117,6 +123,7 @@ impl Layer {
             children,
             isolate: false,
             matte: None,
+            adjust: false,
         }
     }
 
@@ -128,6 +135,10 @@ impl Layer {
             || self.clip.is_some()
             || !self.effects.is_empty()
             || self.matte.is_some()
+            || self
+                .children
+                .iter()
+                .any(|child| matches!(child, Node::Layer(layer) if layer.adjust))
     }
 }
 

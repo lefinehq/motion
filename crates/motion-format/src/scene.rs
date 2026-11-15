@@ -158,6 +158,10 @@ pub struct Layer {
     pub stretch: f64,
     /// Effects on what it draws, applied in order.
     pub fx: Vec<Item>,
+    /// Its effects apply to what is below it in its composition instead,
+    /// where it draws (everywhere for a filter layer, which draws nothing),
+    /// and it does not draw itself.
+    pub adjust: bool,
     /// Left out of the frame, yet kept in the scene; its children still move with it.
     pub hidden: bool,
     /// The layer of its own list whose drawing decides where it shows.
@@ -199,6 +203,9 @@ pub enum Content {
     Video(VideoContent),
     /// Nothing: a point that other layers move with.
     Pivot,
+    /// Nothing of its own: its effects apply to what is below it in its
+    /// composition, mixed in by its opacity and matte.
+    Filter,
 }
 
 /// What a `comp` layer draws: a composition, as it is or with the layer's
