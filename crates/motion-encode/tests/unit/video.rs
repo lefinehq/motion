@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use mp4_atom::{Decode, Ftyp, Moov, StszSamples};
+use mp4_atom::{Decode, Ftyp, Moov};
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 
@@ -309,7 +309,7 @@ fn an_mp4_file_holds_aac_with_its_priming_edited_out() {
     let edit = &elst.entries[0];
     assert!(edit.media_time.is_some_and(|t| t > 0), "{edit:?}");
     assert_eq!(edit.segment_duration, 30_000);
-    let StszSamples::Different { sizes } = &stbl.stsz.samples else {
+    let mp4_atom::StszSamples::Different { sizes } = &stbl.stsz.samples else {
         panic!("packets of their own sizes");
     };
     let start = stbl.stco.as_ref().unwrap().entries[0] as usize;
