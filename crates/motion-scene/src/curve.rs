@@ -5,6 +5,7 @@
 //!
 //! [D31]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d31-typed-values-and-value-space-keys
 
+use motion_format::spring::Motion;
 use motion_format::{Curve, Family, Shape};
 
 /// How one number moves across a span between two keys.
@@ -25,6 +26,8 @@ pub enum Ease {
     },
     /// `v0 + (v1 - v0)·g(p)` for a family's curve `g` run in a shape.
     Shaped(Shape, Family),
+    /// A spring's motion, scaled to the span.
+    Spring(Motion),
     /// `count` equal steps, jumping at the end of each, or at the start with
     /// `start`.
     Steps {
@@ -58,6 +61,7 @@ impl Ease {
             },
             Curve::Shaped(shape, family) => Ease::Shaped(shape, family),
             Curve::Steps { count, start } => Ease::Steps { count, start },
+            Curve::Spring(spring) => Ease::Spring(spring.motion()),
         }
     }
 
@@ -80,6 +84,7 @@ impl Ease {
             }
             Ease::Shaped(shape, family) => v0 + (v1 - v0) * shaped(shape, family, p),
             Ease::Steps { count, start } => v0 + (v1 - v0) * steps(count, start, p),
+            Ease::Spring(motion) => v0 + (v1 - v0) * motion.progress(p),
         }
     }
 
@@ -88,7 +93,9 @@ impl Ease {
     pub fn is_still(self) -> bool {
         match self {
             Ease::Bezier { out, into } => out.1 == 0.0 && into.1 == 0.0,
-            Ease::Linear | Ease::Hold | Ease::Shaped(..) | Ease::Steps { .. } => true,
+            Ease::Linear | Ease::Hold | Ease::Shaped(..) | Ease::Steps { .. } | Ease::Spring(_) => {
+                true
+            }
         }
     }
 }

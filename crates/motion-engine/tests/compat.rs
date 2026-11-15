@@ -110,7 +110,15 @@ fn expected() -> BTreeSet<String> {
     }
     names.extend(STYLE_KEYS.iter().map(|k| format!("style {}", k.name)));
     names.extend(NAMED_CURVES.iter().map(|(n, _)| format!("curve {n}")));
-    names.extend(["curve cubic()", "curve speed()", "curve steps()"].map(str::to_owned));
+    names.extend(
+        [
+            "curve cubic()",
+            "curve speed()",
+            "curve steps()",
+            "curve spring()",
+        ]
+        .map(str::to_owned),
+    );
     names.extend(
         motion_format::SHAPES
             .iter()
@@ -303,6 +311,7 @@ impl Used {
                             }
                         }
                         Ok(Curve::Steps { .. }) => self.note("curve steps()".into()),
+                        Ok(Curve::Spring(_)) => self.note("curve spring()".into()),
                         _ => {}
                     }
                 }

@@ -18,7 +18,9 @@ use winnow::token::rest;
 
 use crate::doc::Form;
 use crate::fmt_num;
+use crate::spring::Spring;
 use crate::table;
+use crate::units::{Time, time};
 
 /// The accepted forms of a curve, for a value that is not a string.
 const EXPECTED: &str = "a curve name such as `ease-out` or `out-expo`, `cubic(x1,y1,x2,y2)`, `speed(out,out-reach,in,in-reach)` or `steps(n)`";
@@ -26,18 +28,21 @@ const CUBIC_EXPECTED: &str =
     "`cubic(x1,y1,x2,y2)` (no spaces) with x1 and x2 between 0 and 1, e.g. `cubic(.2,0,0,1)`";
 const SPEED_EXPECTED: &str = "`speed(out,out-reach,in,in-reach)` (no spaces): the speed leaving the key and arriving at the next, in value units per second, each with how far into the span it reaches, 0 to 1, e.g. `speed(0,.33,0,.33)`";
 const FAMILY_EXPECTED: &str = "`<shape>-<family>` such as `out-expo`, with a shape of `in`, `out`, `in-out` or `out-in` and a family of `quad`, `cubic`, `quart`, `quint`, `sine`, `circ`, `expo`, `back`, `elastic` or `bounce`; `<shape>(power)` such as `in-out(2.5)`; `<shape>-back(overshoot)`; or `<shape>-elastic(amplitude,period)`";
+const SPRING_EXPECTED: &str = "`spring(bounce)` or `spring(bounce,perceived)` with a bounce above -1 and below 1 and a perceived duration such as `12f` or `.5s`, e.g. `spring(.3)`";
 const STEPS_EXPECTED: &str =
     "`steps(n)` or `steps(n,start)` with a whole number of steps of at least 1, e.g. `steps(4)`";
 /// The custom forms, as listed after the curve names.
-const CUSTOM_FORMS: [&str; 4] = [
+const CUSTOM_FORMS: [&str; 5] = [
     "<shape>-<family> (e.g. out-expo)",
     "cubic(x1,y1,x2,y2)",
     "speed(out,out-reach,in,in-reach)",
     "steps(n)",
+    "spring(bounce)",
 ];
 pub(crate) const CUBIC_PREFIX: &str = "cubic(";
 const SPEED_PREFIX: &str = "speed(";
 const STEPS_PREFIX: &str = "steps(";
+const SPRING_PREFIX: &str = "spring(";
 
 /// The overshoot of `back` by default: the classic constant, about 10%.
 pub const BACK_OVERSHOOT: f64 = 1.70158;
@@ -57,6 +62,10 @@ pub enum Curve {
     /// A family's curve run in a shape: `out-expo`, `in-out-quint`,
     /// `out-back(2)`. Each starts at exactly 0 and ends at exactly 1.
     Shaped(Shape, Family),
+    /// A spring released from rest that settles on the end: overshooting
+    /// with a bounce above 0. In a span it is scaled to the span; a
+    /// behaviour without a duration lasts its settle time.
+    Spring(Spring),
     /// `count` equal steps, jumping at the end of each (`floor`), or at the
     /// start of each with `start` (`ceil`), as CSS `steps()`.
     Steps {
@@ -198,6 +207,8 @@ enum Problem {
     FamilyValue,
     /// `steps(…)` is not a whole number of at least 1, optionally with `start`.
     StepsForm,
+    /// `spring(…)` is not a bounce in (-1, 1), optionally with a duration.
+    SpringForm,
 }
 
 impl Problem {
@@ -228,6 +239,12 @@ impl Problem {
                 };
                 return Diagnostic::syntax(format!("`{token}`: {why}")).expected(FAMILY_EXPECTED);
             }
+            Problem::SpringForm => {
+                return Diagnostic::syntax(format!(
+                    "`{token}` needs a bounce above -1 and below 1, and may add a perceived duration"
+                ))
+                .expected(SPRING_EXPECTED);
+            }
             Problem::StepsForm => {
                 return Diagnostic::syntax(format!(
                     "`{token}` needs a whole number of steps of at least 1"
@@ -249,6 +266,7 @@ fn curve(input: &mut &str) -> Parsed<Curve, Problem> {
         preceded(CUBIC_PREFIX, cut_err(cubic_arguments)),
         preceded(SPEED_PREFIX, cut_err(speed_arguments)),
         preceded(STEPS_PREFIX, cut_err(steps_arguments)),
+        preceded(SPRING_PREFIX, cut_err(spring_arguments)),
         named,
         shaped,
     ))
@@ -272,6 +290,25 @@ fn speed_arguments(input: &mut &str) -> Parsed<Curve, Problem> {
             },
         )
         .parse_next(input)
+}
+
+/// `bounce)` or `bounce,perceived)`, the bounce in (-1, 1).
+fn spring_arguments(input: &mut &str) -> Parsed<Curve, Problem> {
+    terminated(
+        (
+            coordinate,
+            opt(preceded(',', delimited(blank0, time, blank0))),
+        ),
+        (')', eof),
+    )
+    .verify(|(bounce, perceived): &(f64, Option<Time>)| {
+        *bounce > -1.0
+            && *bounce < 1.0
+            && perceived.is_none_or(|t| matches!(t, Time::Frames(x) | Time::Seconds(x) if x > 0.0))
+    })
+    .map(|(bounce, perceived)| Curve::Spring(Spring { bounce, perceived }))
+    .context(Problem::SpringForm)
+    .parse_next(input)
 }
 
 /// `n)` or `n,start)`, `n` a whole number of at least 1.
@@ -421,6 +458,10 @@ impl fmt::Display for Curve {
                     }
                 }
             }
+            Curve::Spring(Spring { bounce, perceived }) => match perceived {
+                Some(time) => write!(f, "spring({},{time})", fmt_num(*bounce)),
+                None => write!(f, "spring({})", fmt_num(*bounce)),
+            },
             Curve::Steps { count, start } => match start {
                 true => write!(f, "steps({count},start)"),
                 false => write!(f, "steps({count})"),

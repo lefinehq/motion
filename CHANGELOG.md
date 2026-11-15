@@ -59,6 +59,7 @@ All notable changes to this project are documented here. The format is based on 
 - `motion export <scene> --project <file.aep> --out <file.aep>` writes an edited scene back into the project it was imported from (D45): each changed static value the project stores (numbers, points, scales, opacities, colours, effect parameters) is patched into its bytes, every other byte is kept, and the patched project is read back and imported before it is saved. An unedited scene exports to the original file byte for byte. Every other change is reported with why it is not written back (a default, an expression, keys, text, a new layer).
 - The import report keeps each expression's whole source, and every expression control with its values, for live links (D44).
 - Curve families: `<shape>-<family>` names, such as `out-expo` or `in-out-quint`, with shapes `in`, `out`, `in-out` and `out-in`, and families `quad`, `cubic`, `quart`, `quint`, `sine`, `circ`, `expo`, `back`, `elastic` and `bounce`. Parameters go in parentheses: `in-out(2.5)`, `out-back(2)`, `out-elastic(1.2,.4)`. Also `steps(n)` and `steps(n,start)`. They are evaluated exactly at every frame, and behaviours take them too (`pop 18f out-back(2)`).
+- Spring curves: `spring(bounce)` and `spring(bounce,perceived)`, a damped spring released from rest that settles on the end value, overshooting for a bounce above 0. In a key span it is scaled to the span. A behaviour without a duration lasts until it rests (`pop spring(.4,10f)`), and that settle time is solved exactly rather than by stepping.
 
 ### Changed
 
