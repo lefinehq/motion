@@ -55,7 +55,7 @@ Everything in the [core tier](features.md#core-tier-v1):
 - motion blur
 - 2.5D depth with a camera
 - the core effects
-- basic audio
+- basic audio, and effects and animation that read it ([D56](decisions.md#d56-audio-layers-mixed-at-48-khz-and-read-by-effects))
 - checks
 
 ### Ways to drive motion
@@ -83,7 +83,6 @@ Everything in the [core tier](features.md#core-tier-v1):
 | GPU acceleration | Only needed for heavy scenes, unless M2 shows otherwise |
 | Lottie import | A route to existing animations, but not core |
 | Caption import (SRT, VTT) | Captions can already be built from text layers |
-| Animation driven by audio (beats, waveforms) | Needs audio analysis |
 | GIF output | Low priority, and a separate encoder |
 | Live preview (a player that reloads as the scene changes) | Agents don't need it, but people will |
 | Browser preview or player (WebAssembly) | The core is kept ready for it (see [D15](decisions.md#d15-webassembly-ready-core)) |

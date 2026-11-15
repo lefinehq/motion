@@ -48,6 +48,7 @@ Words in *italics* are defined in the [glossary](../glossary.md).
 **Audio**
 - Place, trim, volume and fades
 - Mixed into the output file
+- Spectrum and waveform effects, and animation following a sound's level
 
 **Checks**
 - Analytic checks and pixel checks (see [Edits and checks](edits-and-checks.md))
