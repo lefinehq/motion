@@ -355,3 +355,10 @@ fn a_clip_without_a_decoder_is_an_error_at_its_layers_video() {
         (motion_format::Kind::Io, Some("v.video"))
     );
 }
+
+#[test]
+fn every_blend_mode_of_the_format_is_one_the_rasteriser_draws() {
+    for name in motion_format::BLEND_MODES {
+        assert_eq!(BlendMode::named(name).map(BlendMode::name), Ok(name));
+    }
+}

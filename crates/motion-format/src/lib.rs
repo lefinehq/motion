@@ -40,7 +40,9 @@ pub use number::fmt_num;
 pub use parse::{COMP_KEYS, LAYER_KEYS, SCENE_KEYS, key, layer_keys, parse_document};
 pub use path::{Path, Vertex};
 pub use roles::RoleTarget;
-pub use scene::{Comp, CompContent, Content, Document, ImageContent, Layer, Scene, VideoContent};
+pub use scene::{
+    BLEND_MODES, Comp, CompContent, Content, Document, ImageContent, Layer, Scene, VideoContent,
+};
 pub use slots::{Listed, Slot, SlotType};
 
 /// Whether `value` is a colour in any form the scene writes one: `#RGB`,

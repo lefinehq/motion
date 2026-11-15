@@ -187,6 +187,9 @@ pub struct Node {
     pub collapse: bool,
     /// The node of its own list whose drawing decides where it shows, and how.
     pub matte: Option<(usize, MatteMode)>,
+    /// How it blends with what is below it, one of
+    /// [`motion_format::BLEND_MODES`].
+    pub blend: &'static str,
     /// For each of `fx`, the node of its own list whose drawing it reads,
     /// if it reads one.
     pub inputs: Vec<Option<usize>>,

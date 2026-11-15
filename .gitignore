@@ -1,1 +1,4 @@
 /target
+# Snapshots insta wrote for review; accept or reject them, never commit them.
+*.snap.new
+*.pending-snap

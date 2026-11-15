@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Added
 
+- A layer's `blend` key: how it blends with what is below it in its composition. It takes one of 17 modes (`motion_format::BLEND_MODES`), which the rasteriser already drew, and the import writes the project's blend modes that match one instead of reporting them.
 - The import carries masks: each mask of a layer becomes an item of its `mask` list, its path scaled from the mask space to the layer's px, and its mode and side read from its `mkif` (`MaskSettings`). Keys of a mask path that differ in vertex count are matched to the largest, each shorter path repeating its first vertex. Mask motion blur and a linear feather falloff are reported. On the local corpus, 44 samples had masks the import left out:
   - the mean failing share falls from 76.77% to 75.95%;
   - five samples improve, up to 82.6% → 13.5%;

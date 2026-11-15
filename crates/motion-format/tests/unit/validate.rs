@@ -629,3 +629,15 @@ fn relative_times_say_what_they_cannot_find() {
     );
     assert_eq!(e.kind, Kind::UnknownName);
 }
+
+#[test]
+fn a_layer_blends_normally_unless_it_names_a_mode() {
+    let layers = |blend: &str| scene(&format!(r#"{{"id":"a","rect":"1x1"{blend}}}"#));
+    let blend = |json: &str| doc(json).scene().root.layers[0].blend;
+    assert_eq!(blend(&layers("")), "normal");
+    assert_eq!(blend(&layers(r#","blend":"screen""#)), "screen");
+    assert_eq!(
+        fails(&layers(r#","blend":"dissolve""#)),
+        at(Kind::UnknownName, "a.blend")
+    );
+}

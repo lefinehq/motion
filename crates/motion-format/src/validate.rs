@@ -24,9 +24,9 @@ use crate::doc::{
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, MASKS, SHAPES};
 use crate::parse::key::{
-    ADJUST, ANIM, ANIMATE, AT, BG, BOX, COLLAPSE, COMP, COMPS, DUR, FILL, FONT, FPS, FX, ID, IMAGE,
-    IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS,
-    RECT, RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, VIDEO, comp_path,
+    ADJUST, ANIM, ANIMATE, AT, BG, BLEND, BOX, COLLAPSE, COMP, COMPS, DUR, FILL, FONT, FPS, FX, ID,
+    IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT,
+    PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, VIDEO, comp_path,
     layer_path,
 };
 use crate::parse::layer_keys;
@@ -38,8 +38,8 @@ use crate::units::{Color, SPAN_EXPECTED, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
 use crate::when::{Base, Moment, Moments, add, label_name};
 use crate::{
-    Address, Comp, CompContent, Content, Curve, ImageContent, Layer, Scene, Step, VideoContent,
-    fmt_num,
+    Address, BLEND_MODES, Comp, CompContent, Content, Curve, ImageContent, Layer, Scene, Step,
+    VideoContent, fmt_num,
 };
 
 use crate::Place;
@@ -577,6 +577,13 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
         collapse: doc.collapse.unwrap_or(false),
         hidden: doc.hidden.unwrap_or(false),
         matte: optional(doc.matte.as_ref(), MATTE)?,
+        blend: match doc.blend.as_deref() {
+            Some(name) => BLEND_MODES
+                .into_iter()
+                .find(|mode| *mode == name)
+                .ok_or_else(|| Diagnostic::unknown("blend mode", name, BLEND_MODES).at(BLEND))?,
+            None => BLEND_MODES[0],
+        },
     };
     let layer = Layer {
         adjust: adjusts(doc, &layer)?,

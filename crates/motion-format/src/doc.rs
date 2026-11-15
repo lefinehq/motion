@@ -92,6 +92,7 @@ pub(crate) struct LayerDoc {
     pub(crate) collapse: Present<bool>,
     pub(crate) hidden: Present<bool>,
     pub(crate) matte: Present<Shorthand<Matte>>,
+    pub(crate) blend: Present<String>,
     /// Every other key, kept as JSON until its name is checked, so an unknown
     /// key is reported as unknown whatever its value.
     #[serde(flatten)]
