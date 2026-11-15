@@ -369,7 +369,7 @@ pub(super) fn written(
                     object.insert("v".into(), value.clone());
                     if let Some(next) = keys.get(i + 1) {
                         object.insert("curve".into(), curve(key, next, convert, spatial, clock));
-                        if let Some(path) = spatial.then(|| bend(key, next)).flatten() {
+                        if let Some(path) = spatial.then(|| bend(key, next, convert)).flatten() {
                             object.insert("path".into(), path);
                         }
                     }
@@ -455,7 +455,7 @@ fn spatial_split(
             }
             Depth::Level => {
                 let curve = curve(at, next, convert, true, clock);
-                points.push(key(at.time, point, Some(curve), bend(at, next)));
+                points.push(key(at.time, point, Some(curve), bend(at, next, convert)));
                 depths.push(key(at.time, depth, linear(), None));
             }
             Depth::Straight => {
@@ -600,14 +600,15 @@ fn curve_text(curve: Curve) -> String {
 }
 
 /// The motion path's bend from `key` to `next`: the handle leaving `key` and
-/// the one arriving at `next`, each from its key's value, or `None` when both
-/// are zero and the path is straight.
-fn bend(key: &Keyframe, next: &Keyframe) -> Option<Json> {
+/// the one arriving at `next`, each from its key's value, in the scene's
+/// units through `convert`, or `None` when both are zero and the path is
+/// straight.
+fn bend(key: &Keyframe, next: &Keyframe, convert: Convert) -> Option<Json> {
     let handle = |tangent: Option<&Vec<f64>>| {
         let t = tangent.map(Vec::as_slice).unwrap_or_default();
         [
-            t.first().copied().unwrap_or(0.0),
-            t.get(1).copied().unwrap_or(0.0),
+            t.first().copied().unwrap_or(0.0) * convert.factor(0),
+            t.get(1).copied().unwrap_or(0.0) * convert.factor(1),
         ]
     };
     let out = handle(key.spatial.as_ref().map(|s| &s.out_tangent));

@@ -105,11 +105,11 @@ impl<'p> Walk<'p> {
             comp_size: [f64::from(composition.width), f64::from(composition.height)],
             frame_rate: composition.frame_rate,
             // A null's anchor rests at its top-left corner, not its centre,
-            // so the children it moves keep their place.
-            source_centre: match source.map(|item| &item.kind) {
+            // so the children it moves keep their place; the anchor of a
+            // layer with a source is kept in fractions of it.
+            anchor_rest: match source.map(|item| &item.kind) {
                 _ if layer.switches.null => [0.0, 0.0],
-                Some(ItemKind::Composition(c)) => half(f64::from(c.width), f64::from(c.height)),
-                Some(ItemKind::Footage(f)) => half(f64::from(f.width), f64::from(f.height)),
+                Some(ItemKind::Composition(_) | ItemKind::Footage(_)) => [0.5, 0.5],
                 _ => [0.0, 0.0],
             },
             // A collapsed composition's effects run over the composition it
@@ -122,7 +122,7 @@ impl<'p> Walk<'p> {
                 Some(ItemKind::Footage(f)) => [f64::from(f.width), f64::from(f.height)],
                 _ => [f64::from(composition.width), f64::from(composition.height)],
             },
-            mask_space: match source.map(|item| &item.kind) {
+            source_unit: match source.map(|item| &item.kind) {
                 Some(ItemKind::Composition(c)) => [f64::from(c.width), f64::from(c.height)],
                 Some(ItemKind::Footage(f)) => [f64::from(f.width), f64::from(f.height)],
                 _ => [1.0, 1.0],

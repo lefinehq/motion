@@ -53,7 +53,8 @@ pub(super) enum Missing {
     /// it as the default zoom ([`Missing::CameraZoom`]), so it sees the
     /// plane at depth 0 at 100 %.
     CameraPosition,
-    /// The centre of the layer's source, or the origin for a layer without one.
+    /// Where a layer's anchor point rests: the middle of its source, the
+    /// top-left corner of a null's, or the origin for a layer without one.
     SourceCentre,
     /// The default the project's effect definition gives.
     Parameter,
@@ -317,6 +318,15 @@ const SHAPES_OF_RANGE: &[(i64, &str)] = &[
 
 use Convert::{Angles, Color, Level, Number, Path, Percent, Point, PointPercent, Times};
 use Missing::{Absent, CameraPosition, CameraZoom, CompCentre, Parameter, SourceCentre};
+
+/// A point the project keeps in fractions of the layer's source, as it
+/// keeps the anchor point of a layer with a source: the walk turns it into
+/// pixels of the source, or keeps it on a layer without one, whose anchor
+/// is in pixels already.
+const IN_SOURCE: Convert = Convert::Sized {
+    size: [1.0, 1.0],
+    origin: [0.0, 0.0],
+};
 
 /// The rows of the transform effect that do not depend on whether its scale
 /// is uniform. Its points are fractions of the layer's size, which the walk
@@ -701,7 +711,12 @@ const TURN_Y: Row = row(
 /// A flat layer's transform: what holds depth or turns out of the screen
 /// is ignored, as the original ignores it on a flat layer.
 pub(super) static TRANSFORM: [Row; 12] = layer_transform!(
-    row("ADBE Anchor Point", To::Prop("anchor"), Point, SourceCentre),
+    row(
+        "ADBE Anchor Point",
+        To::Prop("anchor"),
+        IN_SOURCE,
+        SourceCentre
+    ),
     row("ADBE Position", To::Prop("position"), Point, CompCentre),
     row("ADBE Position_2", To::Ignore(FLAT), Number, Absent),
     row(
@@ -724,7 +739,7 @@ pub(super) static TRANSFORM_3D: [Row; 12] = layer_transform!(
     row(
         "ADBE Anchor Point",
         To::Split("anchor", "anchor-z"),
-        Point,
+        IN_SOURCE,
         SourceCentre,
     ),
     POSITION_3D,

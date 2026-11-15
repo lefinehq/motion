@@ -116,13 +116,14 @@ pub(super) struct Target<'p> {
 }
 
 /// Where the nodes being added sit: their layer, its comp and the comp's
-/// item id, and the layer's size.
+/// item id, the layer's size, and its source's size if it has a source.
 #[derive(Debug, Clone, Copy)]
 struct At<'p> {
     layer: &'p Layer,
     comp: &'p Composition,
     item: u32,
     size: [f64; 2],
+    source: Option<[f64; 2]>,
 }
 
 /// The [`Host`] over a project.
@@ -187,7 +188,8 @@ impl ProjectHost {
                 .host
                 .add(PROJECT, Node::Comp(info), "", item.name.clone(), n + 1);
             for (i, layer) in comp.layers.iter().enumerate() {
-                let size = layer_size(project, layer, comp);
+                let source = source_size(project, layer);
+                let size = source.unwrap_or([f64::from(comp.width), f64::from(comp.height)]);
                 let info = LayerInfo {
                     in_point: layer.in_point,
                     out_point: layer.out_point,
@@ -209,6 +211,7 @@ impl ProjectHost {
                         comp,
                         item: item.id,
                         size,
+                        source,
                     },
                 );
             }
@@ -303,7 +306,14 @@ impl<'p> Build<'p> {
                             .unwrap_or(&p.match_name)
                             .to_owned()
                     });
-                    self.property(up, p, name, index, at);
+                    let id = self.property(up, p, name, index, at);
+                    // A layer's anchor point is stored in fractions of its
+                    // source, where it has one.
+                    let anchor = group.match_name == "ADBE Transform Group"
+                        && p.match_name == "ADBE Anchor Point";
+                    if let Some([width, height]) = at.source.filter(|_| anchor) {
+                        self.host.entries[id as usize].unit = [width, height, 1.0];
+                    }
                 }
             }
         }
@@ -342,15 +352,15 @@ impl<'p> Build<'p> {
     }
 }
 
-/// A layer's size: its source's, else its comp's.
-fn layer_size(project: &Project, layer: &Layer, comp: &Composition) -> [f64; 2] {
+/// The size of a layer's source, if it has a composition or footage as one.
+fn source_size(project: &Project, layer: &Layer) -> Option<[f64; 2]> {
     let source = layer
         .source
-        .and_then(|id| project.items.iter().find(|item: &&Item| item.id == id));
-    match source.map(|item| &item.kind) {
-        Some(ItemKind::Composition(c)) => [f64::from(c.width), f64::from(c.height)],
-        Some(ItemKind::Footage(f)) => [f64::from(f.width), f64::from(f.height)],
-        _ => [f64::from(comp.width), f64::from(comp.height)],
+        .and_then(|id| project.items.iter().find(|item: &&Item| item.id == id))?;
+    match &source.kind {
+        ItemKind::Composition(c) => Some([f64::from(c.width), f64::from(c.height)]),
+        ItemKind::Footage(f) => Some([f64::from(f.width), f64::from(f.height)]),
+        _ => None,
     }
 }
 
