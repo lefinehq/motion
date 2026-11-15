@@ -415,3 +415,131 @@ fn a_blurred_layer_does_not_fade_in_at_its_start(#[case] fx: &str) {
     };
     assert!((opacity - 1.0).abs() < 1e-4, "opacity {opacity}");
 }
+
+/// The ids of `scene`'s root nodes in the order they draw at frame 0.
+fn painted(scene: &str) -> Vec<String> {
+    let session = session(scene);
+    let state = session.frame(0.0).expect("a frame");
+    paint_order(&state)
+        .into_iter()
+        .map(|i| state.nodes[i].id.clone())
+        .collect()
+}
+
+#[test]
+fn a_run_of_3d_layers_draws_the_farthest_first() {
+    let order = painted(&scene(
+        r#"{"id":"near","rect":"10x10","3d":true,"z":-50},
+           {"id":"far","rect":"10x10","3d":true,"z":200},
+           {"id":"middle","rect":"10x10","3d":true}"#,
+    ));
+    assert_eq!(order, ["far", "middle", "near"]);
+}
+
+#[test]
+fn a_flat_layer_keeps_the_runs_on_each_side_apart() {
+    let order = painted(&scene(
+        r#"{"id":"a","rect":"10x10","3d":true,"z":-50},
+           {"id":"b","rect":"10x10","3d":true,"z":200},
+           {"id":"flat","rect":"10x10"},
+           {"id":"c","rect":"10x10","3d":true,"z":-80},
+           {"id":"d","rect":"10x10","3d":true,"z":300}"#,
+    ));
+    assert_eq!(order, ["b", "a", "flat", "d", "c"]);
+}
+
+#[test]
+fn a_layer_that_draws_nothing_splits_no_run() {
+    let order = painted(&scene(
+        r#"{"id":"a","rect":"10x10","3d":true,"z":-50},
+           {"id":"rig","pivot":true},
+           {"id":"cam","camera":true},
+           {"id":"b","rect":"10x10","3d":true,"z":200}"#,
+    ));
+    assert_eq!(order, ["b", "a"]);
+}
+
+#[test]
+fn equally_deep_3d_layers_keep_their_list_order() {
+    let order = painted(&scene(
+        r#"{"id":"a","rect":"10x10","3d":true},{"id":"b","rect":"10x10","3d":true}"#,
+    ));
+    assert_eq!(order, ["a", "b"]);
+}
+
+#[test]
+fn a_collapsed_composition_joins_the_outer_camera() {
+    // The inner card sits at depth 0 of a 100x50 composition, collapsed into
+    // the 200x100 scene: it is seen through the scene's default camera, not
+    // the composition's own, so it shows at its size where the composition
+    // puts it.
+    let session = session(
+        r#"{"motion":1,"size":"200x100","fps":10,"dur":"1s",
+        "comps":{"inner":{"size":"100x50","dur":"1s","layers":[{"id":"card","rect":"20x10","3d":true,"at":"10 5"}]}},
+        "layers":[{"id":"held","comp":"inner","collapse":true,"at":"100 50"}]}"#,
+    );
+    let state = session.frame(0.0).unwrap();
+    let held = &state.nodes[0];
+    let ContentState::Comp(_, Some(inner)) = &held.content else {
+        panic!("a shown composition");
+    };
+    let inner = joined(inner, &state.view, held);
+    assert_eq!(inner.view, state.view);
+    let plane = inner.nodes[0].plane.unwrap();
+    // Corner (0, 0) of the card: 10 px left and 5 px up of the
+    // composition's (10, 5), in the group the comp node's transform moves.
+    let corner = space::project(plane, motion_raster::kurbo::Point::ZERO).unwrap();
+    let on_canvas = held.transform * corner;
+    assert!(
+        (on_canvas.x - 50.0).abs() < 1e-6 && (on_canvas.y - 25.0).abs() < 1e-6,
+        "{on_canvas:?}"
+    );
+}
+
+/// The columns and rows of `scene`'s frame 0 where something opaque enough
+/// was drawn over its black background, as `(x0, x1, y0, y1)`.
+fn lit_box(scene: &str) -> (usize, usize, usize, usize) {
+    let image = session(scene)
+        .render_with(0.0, crate::RenderOptions::GOLDEN)
+        .expect("a frame");
+    let (w, h) = (image.width() as usize, image.height() as usize);
+    let px = image.pixels();
+    let lit = |x: usize, y: usize| px[(y * w + x) * 4] > 128;
+    let xs: Vec<usize> = (0..w).filter(|&x| (0..h).any(|y| lit(x, y))).collect();
+    let ys: Vec<usize> = (0..h).filter(|&y| (0..w).any(|x| lit(x, y))).collect();
+    (
+        xs[0],
+        *xs.last().unwrap() + 1,
+        ys[0],
+        *ys.last().unwrap() + 1,
+    )
+}
+
+#[test]
+fn a_3d_layer_at_depth_zero_draws_where_a_flat_one_does() {
+    let flat = lit_box(&scene(r##"{"id":"c","rect":"80x40","fill":"#FFFFFF"}"##));
+    let deep = lit_box(&scene(
+        r##"{"id":"c","rect":"80x40","fill":"#FFFFFF","3d":true}"##,
+    ));
+    assert_eq!(flat, deep);
+}
+
+#[test]
+fn a_3d_layer_turned_about_y_is_foreshortened() {
+    // 80 px wide, turned 60°: about 40 px on screen, a little more for the
+    // nearer edge's perspective.
+    let (x0, x1, _, _) = lit_box(&scene(
+        r##"{"id":"c","rect":"80x40","fill":"#FFFFFF","3d":true,"rotate-y":60}"##,
+    ));
+    let width = x1 - x0;
+    assert!((39..=43).contains(&width), "{width}");
+}
+
+#[test]
+fn a_3d_layer_farther_away_draws_smaller() {
+    // One zoom away from the default camera (200 · 50/36 px): half size.
+    let (x0, x1, y0, y1) = lit_box(&scene(
+        r##"{"id":"c","rect":"80x40","fill":"#FFFFFF","3d":true,"z":277.7777777777778}"##,
+    ));
+    assert_eq!((x1 - x0, y1 - y0), (40, 20));
+}

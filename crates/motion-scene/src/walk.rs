@@ -15,8 +15,10 @@ use motion_format::Address;
 use motion_format::address::Id;
 use motion_format::property::Prop;
 
+use crate::space;
 use crate::state::box_through;
 use crate::{CompGraph, ContentState, FrameState, NodeContent, NodeState, SceneGraph};
+use glam::DMat3;
 
 /// One node met on a [`walk`].
 #[derive(Debug, Clone, PartialEq)]
@@ -30,8 +32,17 @@ pub struct Visit<'a> {
     /// Its state at the frame, in its own composition's canvas.
     pub node: &'a NodeState,
     /// From the node's own coordinates to the scene's canvas: its transform,
-    /// then that of each `comp` node around it.
+    /// then that of each `comp` node around it. A 3D node, or one inside a
+    /// 3D `comp` node, is seen straight on here; [`Visit::plane`] sees it
+    /// through the cameras.
     pub transform: Affine,
+    /// From the node's own coordinates to the scene's canvas as drawn: its
+    /// plane through its composition's camera when it is 3D, then each
+    /// `comp` node around it the same way.
+    pub plane: DMat3,
+    /// A camera is on the way: it, or a `comp` node around it, is 3D, so
+    /// [`Visit::plane`] is not [`Visit::transform`].
+    pub projected: bool,
     /// Whether it draws in the frame: it, and every `comp` node around it,
     /// is [visible](NodeState::visible).
     pub visible: bool,
@@ -58,8 +69,17 @@ impl Visit<'_> {
 
     /// The axis-aligned box its content covers on the scene's canvas, before
     /// any clip.
+    ///
+    /// Through cameras, what is behind them is left out; a node wholly
+    /// behind one covers an empty box where its origin is seen straight on.
     pub fn bounds(&self) -> Rect {
-        box_through(self.transform, self.node.local_bounds)
+        if !self.projected {
+            return box_through(self.transform, self.node.local_bounds);
+        }
+        space::bbox(&space::outline(self.plane, self.node.local_bounds)).unwrap_or_else(|| {
+            let origin = self.transform * kurbo::Point::ZERO;
+            Rect::from_points(origin, origin)
+        })
     }
 
     /// The part of [`Visit::bounds`] the `comp` nodes around it let it draw,
@@ -98,6 +118,8 @@ pub fn walk<'a>(graph: &'a SceneGraph, state: &'a FrameState) -> Walk<'a> {
             next: 0,
             ids: Vec::new(),
             transform: Affine::IDENTITY,
+            plane: DMat3::IDENTITY,
+            projected: false,
             visible: true,
             opacity: 1.0,
             clip: None,
@@ -126,6 +148,8 @@ struct Level<'a> {
     next: usize,
     ids: Vec<&'a str>,
     transform: Affine,
+    plane: DMat3,
+    projected: bool,
     visible: bool,
     opacity: f64,
     clip: Option<Rect>,
@@ -151,6 +175,11 @@ impl<'a> Iterator for Walk<'a> {
                 ids,
                 node,
                 transform: level.transform * node.transform,
+                plane: level.plane
+                    * node
+                        .plane
+                        .unwrap_or_else(|| space::projective(node.transform)),
+                projected: level.projected || node.plane.is_some(),
                 visible: level.visible && node.visible(),
                 opacity: level.opacity * node.number(Prop::OPACITY),
                 clip: level.clip,
@@ -161,15 +190,18 @@ impl<'a> Iterator for Walk<'a> {
             }
             if let ContentState::Comp(index, Some(inner)) = &node.content {
                 let comp = &self.graph.comps[*index];
-                let canvas = box_through(
-                    visit.transform,
-                    Rect::new(0.0, 0.0, comp.width, comp.height),
-                );
+                let whole = Rect::new(0.0, 0.0, comp.width, comp.height);
+                let canvas = match visit.projected {
+                    false => box_through(visit.transform, whole),
+                    true => space::bbox(&space::outline(visit.plane, whole)).unwrap_or(Rect::ZERO),
+                };
                 self.stack.push(Level {
                     nodes: &inner.nodes,
                     next: 0,
                     ids: visit.ids.clone(),
                     transform: visit.transform,
+                    plane: visit.plane,
+                    projected: visit.projected,
                     visible: visit.visible,
                     opacity: visit.opacity,
                     clip: Some(visit.clip.map_or(canvas, |outer| outer.intersect(canvas))),

@@ -29,6 +29,8 @@ fn root(node: &NodeState) -> Visit<'_> {
         ids: vec![node.id.as_str()],
         node,
         transform: node.transform,
+        plane: motion_scene::space::projective(node.transform),
+        projected: false,
         visible: node.visible(),
         opacity: node.number(Prop::OPACITY),
         clip: None,

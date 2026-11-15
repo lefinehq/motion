@@ -8,7 +8,7 @@
 //! [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
 
 use glam::{DMat3, DMat4, DQuat, DVec2, DVec3, DVec4, EulerRot};
-use kurbo::{Affine, Point};
+use kurbo::{Affine, Point, Rect};
 use motion_format::Value;
 use motion_format::property::{Prop, default_zoom};
 
@@ -185,6 +185,55 @@ pub fn camera_matrix(values: &[Value], aims: bool) -> DMat4 {
         * DMat4::from_rotation_x(number(Prop::ROTATE_X).to_radians())
         * DMat4::from_rotation_y(number(Prop::ROTATE_Y).to_radians())
         * DMat4::from_rotation_z(number(Prop::ROTATE).to_radians())
+}
+
+/// A flat transform as a projective matrix of the plane.
+pub fn projective(transform: Affine) -> DMat3 {
+    let [a, b, c, d, e, f] = transform.as_coeffs();
+    DMat3::from_cols(
+        DVec3::new(a, b, 0.0),
+        DVec3::new(c, d, 0.0),
+        DVec3::new(e, f, 1.0),
+    )
+}
+
+/// The outline `rect` of a plane shows through the projective matrix
+/// `plane`: its corners, cut where the plane passes behind the camera, so
+/// what is behind is left out. Empty when all of it is behind.
+pub fn outline(plane: DMat3, rect: Rect) -> Vec<Point> {
+    let corners = [
+        (rect.x0, rect.y0),
+        (rect.x1, rect.y0),
+        (rect.x1, rect.y1),
+        (rect.x0, rect.y1),
+    ]
+    .map(|(x, y)| plane * DVec3::new(x, y, 1.0));
+    // The depth is linear over the plane, so each edge that crosses the
+    // camera's plane crosses it once, where a straight blend reaches NEAR.
+    let mut kept = Vec::with_capacity(5);
+    for (i, &a) in corners.iter().enumerate() {
+        let b = corners[(i + 1) % corners.len()];
+        if a.z > NEAR {
+            kept.push(a);
+        }
+        if (a.z > NEAR) != (b.z > NEAR) {
+            let t = (NEAR - a.z) / (b.z - a.z);
+            kept.push(a.lerp(b, t));
+        }
+    }
+    kept.into_iter()
+        .map(|v| Point::new(v.x / v.z, v.y / v.z))
+        .collect()
+}
+
+/// The axis-aligned box of `points`, or `None` for none.
+pub fn bbox(points: &[Point]) -> Option<Rect> {
+    let first = points.first()?;
+    Some(
+        points
+            .iter()
+            .fold(Rect::from_points(*first, *first), |r, p| r.union_pt(*p)),
+    )
 }
 
 /// The point `p` of a plane through the projective matrix `plane`, or
