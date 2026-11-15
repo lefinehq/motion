@@ -492,3 +492,19 @@ D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that t
   - Its effects are measured in the parent's space in the project, which is why the same ramp copied onto a collapsed title and onto a shape lines up there. Measuring them in the composition's own space put the title's ramp out of place.
   - One flag on the existing `comp` layer keeps addresses, overrides and slots working unchanged; flattening the layers into the parent at import would lose the composition as a unit to edit.
 - **Not now:** 3D layers inside a collapsed composition sharing the parent's camera and lights. Masks on the collapsed layer wait for masks.
+### D55. Masks are items that cut a layer's content before its effects
+
+- **Decision:** a layer's `mask` is a list of mask items, as `fx` is a list of effects. Each mask is a closed path in the layer's own px, `{"mask":"M0,0 L200,0 L200,100 Z"}`, with animatable `feather`, `opacity` and `expand`, and the settings `mode` and `keep` (`inside` or `outside`). The masks combine in order into one coverage:
+  - `add` (the default) joins;
+  - `subtract` removes;
+  - `intersect` keeps the overlap;
+  - `lighten` and `darken` keep the larger or smaller coverage;
+  - `difference` keeps where one covers and the other does not;
+  - `none` is skipped.
+
+  The layer starts uncovered when its first mask adds, and covered otherwise. The coverage cuts what the layer draws before its effects and its matte apply.
+- **Why:**
+  - An item list reuses what effects already have: keys per property, tracks, edits by address (`title.mask[0].feather`), and checks per kind.
+  - The modes, their order and the starting coverage are the ones the projects the import reads use, so a mask imports as one item, with no rewriting.
+  - Cutting before the effects lets a glow or a blur spread past the mask's edge, as it does in those projects.
+- **Not now:** mask motion blur, linear feather falloff, and masks on shape groups.
