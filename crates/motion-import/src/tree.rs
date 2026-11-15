@@ -139,9 +139,10 @@ impl fmt::Display for Layer {
 
 /// Each switch of `s` as `inspect` prints it, with whether it shows: one
 /// entry per field of [`Switches`], `enabled` printed as `off`.
-fn printed(s: &Switches) -> [(&'static str, bool); 9] {
+fn printed(s: &Switches) -> [(&'static str, bool); 10] {
     [
         ("off", !s.enabled),
+        ("audio", s.audio),
         ("3d", s.three_d),
         ("solo", s.solo),
         ("shy", s.shy),

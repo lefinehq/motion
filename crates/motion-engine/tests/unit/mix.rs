@@ -148,9 +148,9 @@ fn a_spectrum_hears_the_sound_about_its_layers_time() {
                       "softness":0,"offset":{offset}}}]}}"##
         )
     };
-    // Before the tone starts, the bar is flat; its round ends still show.
+    // Before the tone starts, nothing draws.
     let quiet = lit(&dir, &layers("0"), 2.0);
-    assert!(quiet <= 12, "{quiet} px before the tone");
+    assert_eq!(quiet, 0, "{quiet} px before the tone");
     // Inside it, the bar stands about 20 by 3 px.
     let loud = lit(&dir, &layers("0"), 10.0);
     assert!((55..=80).contains(&loud), "{loud} px inside the tone");

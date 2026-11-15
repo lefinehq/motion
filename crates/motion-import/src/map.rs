@@ -62,6 +62,11 @@ pub struct Options {
     /// in another is reported by its codec, and one missing here is
     /// reported as video footage.
     pub videos: BTreeMap<String, Video>,
+    /// What the caller read of each found sound file, by the path the
+    /// project stores: a sound in a format with a decoder becomes an audio
+    /// layer, one in another is reported by its format, and one missing
+    /// here is reported as a format the import cannot read.
+    pub sounds: BTreeMap<String, Sound>,
     /// The panel of the template the project came from, for a `.mogrt`
     /// ([`crate::template`]): its controls become slots, and the
     /// composition it was made from is the scene unless `comp` names
@@ -75,6 +80,15 @@ pub struct Video {
     /// The name of its codec, as reports say it (`H.264`).
     pub codec: String,
     /// Whether a video layer can decode it.
+    pub decodes: bool,
+}
+
+/// What a found sound file is, as the caller read it from its first bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sound {
+    /// The name of its format, as reports say it (`MP3`).
+    pub format: String,
+    /// Whether an audio layer can decode it.
     pub decodes: bool,
 }
 
@@ -127,7 +141,12 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
         None => root(project, options.comp.as_deref())?,
     };
     let bakes = crate::bake::bake(project, Some(root.0.id));
-    let mut walk = Walk::new(project, &options.footage, &options.videos, &bakes);
+    let files = footage::Files {
+        found: &options.footage,
+        videos: &options.videos,
+        sounds: &options.sounds,
+    };
+    let mut walk = Walk::new(project, files, &bakes);
     let mut json = walk.scene(root, options);
     let sources = Sources(
         sources::extract(&mut json)
@@ -315,10 +334,9 @@ struct Walk<'p> {
     texts: Vec<StoredText>,
     /// The fonts the text written so far is set in, with where.
     fonts: BTreeMap<String, Vec<String>>,
-    /// The footage files found, by the path the project stores.
-    found: &'p BTreeMap<String, String>,
-    /// The found clips, by the path the project stores.
-    videos: &'p BTreeMap<String, Video>,
+    /// The footage files found, and what the clips and sounds among them
+    /// are.
+    files: footage::Files<'p>,
     /// The project's expressions, evaluated.
     bakes: &'p crate::bake::Bakes,
     /// How each value marked in the scene goes back into the project.
@@ -337,12 +355,11 @@ struct Walk<'p> {
 }
 
 impl<'p> Walk<'p> {
-    /// A walk over `project`, with the footage files `found` for it, what
-    /// its clips are, and its expressions evaluated.
+    /// A walk over `project`, with the footage `files` found for it and
+    /// its expressions evaluated.
     fn new(
         project: &'p Project,
-        found: &'p BTreeMap<String, String>,
-        videos: &'p BTreeMap<String, Video>,
+        files: footage::Files<'p>,
         bakes: &'p crate::bake::Bakes,
     ) -> Walk<'p> {
         Walk {
@@ -356,8 +373,7 @@ impl<'p> Walk<'p> {
             scope: None,
             texts: Vec::new(),
             fonts: BTreeMap::new(),
-            found,
-            videos,
+            files,
             bakes,
             sources: Vec::new(),
             root: None,

@@ -486,6 +486,9 @@ pub enum Reason {
 pub struct Switches {
     /// It renders.
     pub enabled: bool,
+    /// Its sound plays: the switch beside the video switch, on a layer
+    /// whose source has sound.
+    pub audio: bool,
     /// It is a 3D layer.
     pub three_d: bool,
     /// It is soloed.
