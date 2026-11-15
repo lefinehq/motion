@@ -94,6 +94,10 @@ All notable changes to this project are documented here. The format is based on 
 - Stagger on text parts: a text animator's `stagger` lets the parts counted by `by` take turns, each seeing the animator, selectors included, as it was its wait earlier, in `order` (`first`, `last`, `center`, `edges`, or `random` by `seed`). A text layer's `in` takes a part word, `stagger <time>` and an order (`"fade-up word 10f out-back stagger 3f"`) and becomes such an animator, so each part makes the whole entrance with its own curve.
 - Trim: a `trim` shape item cuts the outlines listed before it, those in earlier groups included, down to a stretch from `start` to `end`, moved by `offset` in degrees, each on its own or `joined` as one line in order. Every paint that draws a cut outline draws the cut one, and inner groups' trims cut first. The import maps trim paths onto it (65 of the 241 local sample projects use them).
 
+### Fixed
+
+- A template's point control that drives a position kept as separate dimensions no longer writes the composition's centre over the layer's own position: the position stays as it is, and the report names the control as left out.
+
 ### Changed
 
 - Reports name layers by address ([D43](docs/design/decisions.md#d43-one-layer-address-and-edits-per-instance)): `StoredText::layer` and `TextCheck::layer` are an `Address` where the scene writes the layer (`title`, or `scene.comps.card.layers[title]`), replacing `comp` and `layer`. `diff --ignore` and the fidelity manifest's `ignore` take addresses, so `card/photo` hides a layer in one instance. The import's own path `Step` is gone: sources use `motion_format::Step`, `address::json_at` and `address::key_text`, which the edit crate and `Place` share too.
