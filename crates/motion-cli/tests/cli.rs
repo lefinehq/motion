@@ -469,9 +469,14 @@ fn render_to_an_mp4_file_writes_a_video() {
     let file = out.to_str().expect("utf-8 path");
     let run = motion(&["render", &scene, "--frames", "0-5", "--out", file]);
     assert_eq!(run.status.code(), Some(0), "{}", stderr(&run));
+    // The platform's own codec by default.
+    let codec = match cfg!(target_os = "macos") {
+        true => "H.264",
+        false => "AV1",
+    };
     assert_eq!(
         stdout(&run),
-        format!("6 frames written to {file} (AV1, web, 160x90, 30 fps, 0.2 s)\n")
+        format!("6 frames written to {file} ({codec}, web, 160x90, 30 fps, 0.2 s)\n")
     );
     let bytes = fs::read(&out).expect("read the video");
     // The file type, then the index ahead of the samples.

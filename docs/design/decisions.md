@@ -400,6 +400,15 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Decoding behind one trait, as encoding is ([D46](#d46-video-is-encoded-in-a-crate-of-its-own-behind-one-codec-trait)), lets H.264 land as a module without touching the layer or the engine.
 - **Not now:** H.264 and other codecs, image sequences, footage loops and frame-rate overrides from a project's interpretation, fit modes other than stretch, and sound.
 
+### D48. Unsafe code lives only in platform bindings
+
+- **Decision:** every crate takes the workspace's lints, which forbid unsafe code, except `motion-videotoolbox`, which calls macOS's VideoToolbox, CoreMedia and CoreVideo through their generated `objc2` bindings. That crate denies unsafe operations inside unsafe functions, and every unsafe block carries a `SAFETY` comment (Clippy's `undocumented_unsafe_blocks` and `multiple_unsafe_ops_per_block` are errors). Its API is safe and names none of the frameworks' types, and `motion-encode` puts it behind its codec trait ([D46](#d46-video-is-encoded-in-a-crate-of-its-own-behind-one-codec-trait)). A test fails when any other crate leaves the workspace's lints. A binding for another platform (Media Foundation, VA-API) or for the system's decoders ([D47](#d47-video-layers-play-their-clip-in-their-own-time)) gets the same treatment: one crate per platform, small, with each block explained.
+- **Why:**
+  - The system's encoders are fast and their licences cover H.264 and HEVC ([D13](#d13-codec-licence-policy)), but they can only be reached through C and Objective-C calls, which Rust marks unsafe.
+  - Kept to one small crate, the unsafe code can be read in full in review. Everything else keeps the guarantee that it holds none.
+  - With one unsafe operation per block and a reason for each, a wrong assumption is visible where it is made.
+- **Not now:** bindings for Windows and Linux; the system's decoders.
+
 ## Open questions
 
 ### Q1. Name and packages (deferred)

@@ -1,0 +1,30 @@
+[package]
+name = "motion-videotoolbox"
+description = "H.264 and HEVC through the system's VideoToolbox on macOS: the one crate with unsafe code (D48)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# The system's frameworks, through their generated bindings (D48).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = "0.3"
+objc2-core-media = "0.3"
+objc2-core-video = "0.3"
+objc2-video-toolbox = "0.3"
+
+[dev-dependencies]
+rstest.workspace = true
+
+# Not the workspace's lints: this crate alone may hold unsafe code (D48), and
+# each block says why it is sound.
+[lints.rust]
+missing_docs = "warn"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"

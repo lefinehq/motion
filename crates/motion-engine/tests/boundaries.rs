@@ -1,4 +1,4 @@
-//! D37, D38, D39 and D46. Engines stay behind our own types. No crate's public API names an
+//! D37, D38, D39, D46 and D48. Engines stay behind our own types. No crate's public API names an
 //! engine (the shaper, the rasteriser, the parsers): a `pub` line in any
 //! crate's source that names one fails here, with where. Vocabulary crates
 //! (`kurbo`, `peniko`, `linebender_resource_handle`) are allowed.
@@ -27,6 +27,10 @@ const ENGINES: &[&str] = &[
     "boa_interner",
     "rav1e",
     "mp4_atom",
+    "objc2_core_foundation",
+    "objc2_core_media",
+    "objc2_core_video",
+    "objc2_video_toolbox",
 ];
 
 /// The workspace's crates folder.
@@ -167,7 +171,10 @@ fn nothing_that_renders_links_the_script_engine() {
 /// draws a scene links the encoder; frames reach it through the CLI.
 #[test]
 fn nothing_that_renders_links_the_encoder() {
-    let found = linking(&["motion-encode"], &["motion-cli", "motion-encode"]);
+    let found = linking(
+        &["motion-encode", "motion-videotoolbox"],
+        &["motion-cli", "motion-encode", "motion-videotoolbox"],
+    );
     assert!(
         found.is_empty(),
         "only the CLI may link the encoder (D46):\n{}",
@@ -227,5 +234,33 @@ fn no_barred_encoder_is_compiled_in() {
         compiled.is_empty(),
         "OpenH264 compiled in (D13):\n{}",
         compiled.join("\n")
+    );
+}
+
+/// The crates that may hold unsafe code: platform bindings (D48).
+const UNSAFE_ALLOWED: &[&str] = &["motion-videotoolbox"];
+
+/// D48: every other crate takes the workspace's lints, which forbid unsafe
+/// code, so the compiler holds the line.
+#[test]
+fn only_platform_bindings_leave_the_workspace_lints() {
+    let found: Vec<String> = crates()
+        .into_iter()
+        .filter(|krate| !UNSAFE_ALLOWED.contains(&krate.as_str()))
+        .filter(|krate| {
+            let manifest = fs::read_to_string(Path::new(CRATES).join(krate).join("Cargo.toml"))
+                .expect("read a manifest");
+            !manifest.contains("[lints]\nworkspace = true")
+        })
+        .collect();
+    assert!(
+        found.is_empty(),
+        "crates without the workspace's lints (D48): {}",
+        found.join(", ")
+    );
+    let workspace = fs::read_to_string(Path::new(CRATES).join("../Cargo.toml")).expect("read");
+    assert!(
+        workspace.contains("unsafe_code = \"forbid\""),
+        "the workspace forbids unsafe code"
     );
 }

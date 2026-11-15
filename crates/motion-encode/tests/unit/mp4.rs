@@ -100,5 +100,5 @@ fn offsets_past_four_gib_take_64_bits() {
 
 #[test]
 fn a_record_that_does_not_read_is_an_error() {
-    assert!(av1c(&[0x00]).is_err());
+    assert!(record_box::<mp4_atom::Av1c>(b"av1C", &[0x00]).is_err());
 }
