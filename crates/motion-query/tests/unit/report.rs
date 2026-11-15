@@ -7,7 +7,7 @@ fn violation(severity: Severity, fix: Option<&str>) -> Violation {
     Violation {
         severity,
         code: Code::Offscreen,
-        id: "card".into(),
+        address: "card".parse().unwrap(),
         first_frame: 3,
         last_frame: 9,
         amount_px: 12.0,

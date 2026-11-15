@@ -66,7 +66,7 @@ Each step is one pull request, with its tests.
 1. **`Id` and `Address`** in motion-format: the grammar, the printer, the never-panic and print-then-parse proptests, and the reserved `scene`. The import's `Ids` skips `scene`.
 2. **Diagnostics carry an `Address`.** Each crate's error snapshot is updated once.
 3. **The scene as a root comp, and one walker** in motion-scene. The scene and its graph hold a root composition, built by the same code as any other. Render reads its background from it, and its output does not change.
-4. **`at` and `check` over every node,** reported by address, with fixtures that have nested comps.
+4. **`at` and `check` over every node,** reported by address, with fixtures that have nested comps. A node inside a composition is measured by the part its compositions' clips let it draw, at the opacity they give it. Its fix hint waits for step 6, since an `at` edit cannot reach it until then.
 5. **Overrides** in the format: validation, compile, and the error snapshot.
 6. **Edits by address.** Layers at any depth, array selectors in key paths, and overrides through instances. A batch of edit lines with `--out` (audit, workstream 4) follows once edits are typed.
 7. **Every report by address:**

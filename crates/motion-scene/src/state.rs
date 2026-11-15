@@ -183,18 +183,7 @@ impl NodeState {
     /// The axis-aligned box the node covers on the canvas: what its content
     /// covers through its transform.
     pub fn bounds(&self) -> Rect {
-        let drawn = self.transform.transform_rect_bbox(self.local_bounds);
-        // Snap trig dust (cos 90° is 6e-17) so a quarter turn gives exact edges.
-        let snap = |v: f64| {
-            let near = v.round();
-            if (v - near).abs() < 1e-9 { near } else { v }
-        };
-        Rect::new(
-            snap(drawn.x0),
-            snap(drawn.y0),
-            snap(drawn.x1),
-            snap(drawn.y1),
-        )
+        box_through(self.transform, self.local_bounds)
     }
 
     /// The left edge of [`NodeState::bounds`].
@@ -225,6 +214,22 @@ pub struct FrameState {
     pub frame: f64,
     /// One state per node, in the graph's paint order.
     pub nodes: Vec<NodeState>,
+}
+
+/// The axis-aligned box `rect` covers through `transform`, with trig dust
+/// snapped (cos 90° is 6e-17) so a quarter turn gives exact edges.
+pub(crate) fn box_through(transform: Affine, rect: Rect) -> Rect {
+    let drawn = transform.transform_rect_bbox(rect);
+    let snap = |v: f64| {
+        let near = v.round();
+        if (v - near).abs() < 1e-9 { near } else { v }
+    };
+    Rect::new(
+        snap(drawn.x0),
+        snap(drawn.y0),
+        snap(drawn.x1),
+        snap(drawn.y1),
+    )
 }
 
 #[cfg(test)]

@@ -6,11 +6,12 @@ use crate::rules::{EPSILON, Overshoot, RULES, Rule, shift, visible};
 use kurbo::{Affine, Point, Rect, Vec2};
 use motion_format::key::AT;
 use motion_format::shorthand::{Coord, Position};
-use motion_format::{Layer, Scene};
-use motion_scene::{Node, NodeState, SceneGraph, evaluate, local_transform};
+use motion_format::{Address, Layer, Scene};
+use motion_scene::{Node, SceneGraph, Visit, address_of, evaluate, local_transform, walk};
 use tracing::{Span, field, instrument};
 
-/// Runs the standard rules on `scene` over every frame of `graph`, its compiled form.
+/// Runs the standard rules on `scene` over every frame of `graph`, its
+/// compiled form, on every node at any depth, in scene space.
 #[instrument(
     level = "debug",
     skip_all,
@@ -27,11 +28,12 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
     Span::current().record("frames", frame_count);
 
     // One frame at a time: memory grows with layers and rules, not frames.
-    let mut scans: Vec<LayerScan> = graph.root.nodes.iter().map(|_| LayerScan::new()).collect();
+    let paths = graph.paths();
+    let mut scans: Vec<LayerScan> = paths.iter().map(|_| LayerScan::new()).collect();
     for frame in 0..frame_count {
         let state = evaluate(graph, f64::from(frame));
-        for (scan, node) in scans.iter_mut().zip(&state.nodes) {
-            scan.observe(frame, node, graph);
+        for visit in walk(graph, &state) {
+            scans[visit.index].observe(frame, &visit, graph);
         }
     }
 
@@ -40,8 +42,15 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
         passed: 0,
     };
     let mut rules_run = 0;
-    for ((layer, node), scan) in scene.root.layers.iter().zip(&graph.root.nodes).zip(scans) {
-        rules_run += scan.finish(layer, node, graph, &mut report);
+    // A fix hint edits the layer's `at`, which only the scene's own layers
+    // can take until edits reach inside compositions.
+    let mut roots = scene.root.layers.iter().zip(&graph.root.nodes);
+    for (ids, scan) in paths.iter().zip(scans) {
+        let root = match ids.len() {
+            1 => roots.next(),
+            _ => None,
+        };
+        rules_run += scan.finish(&address_of(ids), root, graph, &mut report);
     }
     Span::current()
         .record("rules_run", rules_run)
@@ -102,24 +111,31 @@ impl LayerScan {
     }
 
     /// Feeds the layer's state at `frame` to every rule and to the sweep.
-    fn observe(&mut self, frame: u32, node: &NodeState, graph: &SceneGraph) {
+    fn observe(&mut self, frame: u32, visit: &Visit<'_>, graph: &SceneGraph) {
         for (runs, rule) in self.runs.iter_mut().zip(RULES) {
-            if let Some(found) = (rule.evaluate)(node, graph) {
+            if let Some(found) = (rule.evaluate)(visit, graph) {
                 runs.add(frame, found);
             }
         }
-        if visible(node) {
+        if let Some(b) = visit.drawn().filter(|_| visible(visit)) {
             // Its parents' transform is its own world transform without its local one.
-            let parent = node.transform * local_transform(&node.values).inverse();
+            let parent = visit.transform * local_transform(&visit.node.values).inverse();
             self.frame = self.frame.and(parent);
-            let b = node.bounds();
             self.sweep = Some(self.sweep.map_or(b, |a| a.union(b)));
         }
     }
 
-    /// Adds this layer's findings to `report` and returns how many rules ran. A rule
-    /// whose `suppressed_by` failed here is skipped: it neither runs nor passes.
-    fn finish(self, layer: &Layer, node: &Node, graph: &SceneGraph, report: &mut Report) -> usize {
+    /// Adds the findings on the layer at `address` to `report` and returns
+    /// how many rules ran; `root` is the layer and its node when it is one of
+    /// the scene's own, which a fix hint can move. A rule whose
+    /// `suppressed_by` failed here is skipped: it neither runs nor passes.
+    fn finish(
+        self,
+        address: &Address,
+        root: Option<(&Layer, &Node)>,
+        graph: &SceneGraph,
+        report: &mut Report,
+    ) -> usize {
         let mut failed: Vec<Code> = Vec::new();
         let mut rules_run = 0;
         for (rule, Runs(runs)) in RULES.iter().zip(self.runs) {
@@ -132,12 +148,12 @@ impl LayerScan {
                 continue;
             }
             failed.push(rule.code);
-            let fix = self
-                .sweep
-                .and_then(|sweep| fix_hint(rule, sweep, self.frame, layer, node, graph));
+            let fix = self.sweep.zip(root).and_then(|(sweep, (layer, node))| {
+                fix_hint(rule, sweep, self.frame, layer, node, graph)
+            });
             let violations = runs
                 .into_iter()
-                .map(|run| run.into_violation(rule, &layer.id, fix.clone()));
+                .map(|run| run.into_violation(rule, address, fix.clone()));
             report.violations.extend(violations);
         }
         rules_run
@@ -178,13 +194,13 @@ impl Run {
         }
     }
 
-    fn into_violation(self, rule: &Rule, id: &str, fix: Option<String>) -> Violation {
+    fn into_violation(self, rule: &Rule, address: &Address, fix: Option<String>) -> Violation {
         // Whole pixels, ignoring float noise: 55.000000000000007 reads +55, not +56.
         let amount = (self.worst.amount - EPSILON).ceil();
         Violation {
             severity: rule.severity,
             code: rule.code,
-            id: id.to_owned(),
+            address: address.clone(),
             first_frame: self.first,
             last_frame: self.last,
             amount_px: amount,

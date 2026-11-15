@@ -23,7 +23,7 @@ fn at_prints_resolved_values() {
     assert_eq!(at(&g, 0.0, &[]).unwrap().lines().count(), 2);
     assert_eq!(
         at(&g, 0.0, &["nope".into()]).unwrap_err(),
-        Diagnostic::unknown("layer id", "nope", ["title", "card"])
+        Diagnostic::unknown("layer", "nope", ["title", "card"])
     );
     let empty = motion_scene::compile(
         motion_format::parse_document(r#"{"motion":1,"dur":"1s","layers":[]}"#)
@@ -77,7 +77,7 @@ fn errors_say_what_kind_of_problem_they_are() {
     assert_eq!(at(&g, -1.0, &[]).unwrap_err().kind, Kind::OutOfRange);
     assert_eq!(
         at(&g, 0.0, &["ghost".to_string()]).unwrap_err(),
-        Diagnostic::unknown("layer id", "ghost", ["a"])
+        Diagnostic::unknown("layer", "ghost", ["a"])
     );
 }
 
@@ -96,5 +96,36 @@ fn a_child_prints_where_its_anchor_lands_on_the_canvas() {
     assert_eq!(
         at(&g, 0.0, &["kid".into()]).unwrap(),
         "kid x=500 y=400 w=10 h=10"
+    );
+}
+
+/// A scene whose `card` shows the 400x200 composition `card`, with its
+/// top-left corner at 300,400, and `title` at 395,100 inside it.
+fn nested() -> motion_scene::SceneGraph {
+    let json = r#"{"motion":1,"size":"1000x1000","dur":"1s",
+      "comps":{"card":{"size":"400x200","dur":"1s",
+        "layers":[{"id":"title","rect":"10x10","position":[395,100]}]}},
+      "layers":[{"id":"card","comp":"card","position":[500,500]}]}"#;
+    let s = motion_format::parse_document(json).unwrap().scene().clone();
+    motion_scene::compile(&s, &mut typesetter()).unwrap()
+}
+
+#[test]
+fn at_reaches_inside_comps_by_address_in_scene_space() {
+    let g = nested();
+    assert_eq!(
+        at(&g, 0.0, &["card/title".into()]).unwrap(),
+        "card/title x=695 y=500 w=10 h=10"
+    );
+    let every: Vec<String> = at(&g, 0.0, &[])
+        .unwrap()
+        .lines()
+        .map(|line| line.split(' ').next().unwrap().to_owned())
+        .collect();
+    assert_eq!(every, ["card", "card/title"]);
+    // A layer of a composition is known by its whole address.
+    assert_eq!(
+        at(&g, 0.0, &["title".into()]).unwrap_err(),
+        Diagnostic::unknown("layer", "title", ["card", "card/title"])
     );
 }

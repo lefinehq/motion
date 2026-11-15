@@ -3,7 +3,7 @@
 use super::*;
 use motion_format::Value;
 use motion_format::property::Prop;
-use motion_scene::CompGraph;
+use motion_scene::{CompGraph, NodeState, Visit};
 use rstest::rstest;
 
 fn graph() -> SceneGraph {
@@ -18,6 +18,19 @@ fn graph() -> SceneGraph {
             nodes: vec![],
         },
         comps: vec![],
+    }
+}
+
+/// `node` as the walk meets a node of the scene's root.
+fn root(node: &NodeState) -> Visit<'_> {
+    Visit {
+        index: 0,
+        ids: vec![node.id.as_str()],
+        node,
+        transform: node.transform,
+        visible: node.visible(),
+        opacity: node.number(Prop::OPACITY),
+        clip: None,
     }
 }
 
@@ -60,7 +73,7 @@ fn rotated(x: f64, y: f64, w: f64, h: f64, opacity: f64, scale: f64, rotate: f64
 // makes it 10 px: rotation changes the verdict.
 #[case::a_quarter_turn(rotated(50.0, 250.0, 200.0, 20.0, 1.0, 1.0, 90.0), None)]
 fn offscreen_amount(#[case] node: NodeState, #[case] amount: Option<f64>) {
-    assert_eq!(offscreen(&node, &graph()).map(|o| o.amount), amount);
+    assert_eq!(offscreen(&root(&node), &graph()).map(|o| o.amount), amount);
 }
 
 /// How far `node` leaves the safe area, x 50..950 and y 25..475.
@@ -71,7 +84,10 @@ fn offscreen_amount(#[case] node: NodeState, #[case] amount: Option<f64>) {
 #[case::five_percent_per_side(node(90.0, 250.0, 100.0, 100.0, 1.0), Some(10.0))]
 #[case::on_the_safe_edge(node(100.0, 250.0, 100.0, 100.0, 1.0), None)]
 fn outside_safe_area_amount(#[case] node: NodeState, #[case] amount: Option<f64>) {
-    assert_eq!(outside_safe_area(&node, &graph()).map(|o| o.amount), amount);
+    assert_eq!(
+        outside_safe_area(&root(&node), &graph()).map(|o| o.amount),
+        amount
+    );
 }
 
 #[test]
@@ -92,7 +108,11 @@ fn offscreen_aims_at_the_safe_area_and_unsafe_at_itself() {
 fn a_rotated_box_leaving_the_canvas_is_caught() {
     // 200x20 at 45 degrees reaches about 77.8 px from its centre; the centre
     // is 50 px from the left edge, so the box pokes out by about 27.8 px.
-    let o = offscreen(&rotated(50.0, 250.0, 200.0, 20.0, 1.0, 1.0, 45.0), &graph()).unwrap();
+    let o = offscreen(
+        &root(&rotated(50.0, 250.0, 200.0, 20.0, 1.0, 1.0, 45.0)),
+        &graph(),
+    )
+    .unwrap();
     assert!((o.amount - 27.78).abs() < 0.01, "{}", o.amount);
 }
 
@@ -102,6 +122,32 @@ fn a_node_outside_its_span_is_not_checked() {
         shown: false,
         ..node(-500.0, 250.0, 100.0, 100.0, 1.0)
     };
-    assert_eq!(offscreen(&hidden, &graph()), None);
-    assert!(offscreen(&node(-500.0, 250.0, 100.0, 100.0, 1.0), &graph()).is_some());
+    assert_eq!(offscreen(&root(&hidden), &graph()), None);
+    assert!(offscreen(&root(&node(-500.0, 250.0, 100.0, 100.0, 1.0)), &graph()).is_some());
+}
+
+#[test]
+fn a_node_inside_a_comp_is_measured_by_what_its_clip_lets_draw() {
+    // Past the canvas's right edge, but clipped by a composition that ends at 900.
+    let poking = node(980.0, 250.0, 100.0, 100.0, 1.0);
+    let clipped = Visit {
+        ids: vec!["card", "n"],
+        clip: Some(Rect::new(0.0, 0.0, 900.0, 500.0)),
+        ..root(&poking)
+    };
+    assert_eq!(offscreen(&clipped, &graph()), None);
+    // Clipped away entirely, it draws nothing, so nothing is wrong with it.
+    let gone = Visit {
+        clip: Some(Rect::new(0.0, 0.0, 10.0, 10.0)),
+        ..clipped.clone()
+    };
+    assert_eq!(offscreen(&gone, &graph()), None);
+    // A see-through composition around it hides it too.
+    let faded = Visit {
+        opacity: 0.0,
+        clip: None,
+        ..clipped
+    };
+    assert_eq!(offscreen(&faded, &graph()), None);
+    assert!(offscreen(&root(&poking), &graph()).is_some());
 }
