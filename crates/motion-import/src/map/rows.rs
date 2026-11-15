@@ -87,6 +87,20 @@ pub(super) struct Kind {
     pub rows: &'static [Row],
     /// Its child groups by match name, and what each holds.
     pub parts: &'static [(&'static str, Part)],
+    /// A checkbox that picks other rows when it is off.
+    pub switch: Option<Switch>,
+}
+
+/// A checkbox of a kind that changes where other properties go, such as a
+/// transform's uniform scale.
+#[derive(Debug)]
+pub(super) struct Switch {
+    /// The checkbox's match name.
+    pub match_name: &'static str,
+    /// Whether it is on where the project leaves it out.
+    pub on: bool,
+    /// The kind's rows when it is off.
+    pub off_rows: &'static [Row],
 }
 
 impl Kind {
@@ -96,6 +110,23 @@ impl Kind {
             .iter()
             .find(|kind| kind.name == self.item)
             .expect("a mapping table names a scene kind")
+    }
+
+    /// Its rows for a group whose properties are `properties`: the ones its
+    /// switch picks, if it has one.
+    pub(super) fn rows_for(&self, properties: &[&crate::model::Property]) -> &'static [Row] {
+        let Some(switch) = &self.switch else {
+            return self.rows;
+        };
+        let on = properties
+            .iter()
+            .find(|p| p.match_name == switch.match_name)
+            .and_then(|p| match &p.value {
+                crate::model::Stream::Static(crate::model::Value::Number(n)) => Some(*n != 0.0),
+                _ => None,
+            })
+            .unwrap_or(switch.on);
+        if on { self.rows } else { switch.off_rows }
     }
 
     /// What the child group `match_name` holds, if it is one of the kind's parts.
@@ -150,6 +181,75 @@ const SHAPES_OF_RANGE: &[(i64, &str)] = &[
 
 use Convert::{Color, Number, Path, Percent, Point, PointPercent};
 use Missing::{Absent, CompCentre, Parameter, SourceCentre};
+
+/// The rows of the transform effect that do not depend on whether its scale
+/// is uniform. Its points are fractions of the layer's size, which the walk
+/// turns into pixels, so they are written as points.
+macro_rules! transform_effect_rows {
+    ($($scale:expr),+) => {
+        [
+            row(
+                "ADBE Geometry2-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Geometry2-0001", To::Prop("anchor"), Point, Parameter),
+            row("ADBE Geometry2-0002", To::Prop("position"), Point, Parameter),
+            row(
+                "ADBE Geometry2-0011",
+                To::Ignore("whether the scale is uniform, which decides where it goes"),
+                Number,
+                Absent,
+            ),
+            $($scale,)+
+            row("ADBE Geometry2-0005", To::OnlyDefault("skew"), Number, Absent),
+            row(
+                "ADBE Geometry2-0006",
+                To::Ignore("the axis of a skew of 0"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Geometry2-0007", To::Prop("rotate"), Number, Absent),
+            row("ADBE Geometry2-0008", To::Prop("opacity"), Percent, Absent),
+            row(
+                "ADBE Geometry2-0009",
+                To::Ignore("the shutter of motion blur, which is reported on its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Geometry2-0010",
+                To::Ignore("the shutter of motion blur, which is reported on its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Geometry2-0012",
+                To::Ignore("how pixels are sampled; the scene samples them bilinearly"),
+                Number,
+                Absent,
+            ),
+        ]
+    };
+}
+
+/// The transform effect with a uniform scale: its height scales both axes.
+static TRANSFORM_EFFECT_UNIFORM: [Row; 13] = transform_effect_rows!(
+    row("ADBE Geometry2-0003", To::Prop("scale"), Percent, Absent),
+    row(
+        "ADBE Geometry2-0004",
+        To::Ignore("the width of a uniform scale, which its height sets"),
+        Number,
+        Absent
+    )
+);
+
+/// The transform effect with a scale apart on each axis.
+static TRANSFORM_EFFECT_APART: [Row; 13] = transform_effect_rows!(
+    row("ADBE Geometry2-0003", To::Prop("scale-y"), Percent, Absent),
+    row("ADBE Geometry2-0004", To::Prop("scale-x"), Percent, Absent)
+);
 
 /// A layer's transform, in `ADBE Transform Group`. Layer scale and opacity
 /// are fractions in the project already.
@@ -234,7 +334,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 10] = [
+pub(super) static KINDS: [Kind; 11] = [
     Kind {
         match_name: "ADBE Vector Group",
         item: "group",
@@ -244,6 +344,7 @@ pub(super) static KINDS: [Kind; 10] = [
             ("ADBE Vectors Group", Part::Items),
             ("ADBE Vector Transform Group", Part::Rows),
         ],
+        switch: None,
     },
     Kind {
         match_name: "ADBE Vector Shape - Rect",
@@ -276,6 +377,7 @@ pub(super) static KINDS: [Kind; 10] = [
             ),
         ],
         parts: &[],
+        switch: None,
     },
     Kind {
         match_name: "ADBE Vector Shape - Ellipse",
@@ -302,6 +404,7 @@ pub(super) static KINDS: [Kind; 10] = [
             ),
         ],
         parts: &[],
+        switch: None,
     },
     Kind {
         match_name: "ADBE Vector Shape - Group",
@@ -317,6 +420,7 @@ pub(super) static KINDS: [Kind; 10] = [
             ),
         ],
         parts: &[],
+        switch: None,
     },
     Kind {
         match_name: "ADBE Vector Graphic - Fill",
@@ -355,6 +459,7 @@ pub(super) static KINDS: [Kind; 10] = [
             ),
         ],
         parts: &[],
+        switch: None,
     },
     Kind {
         match_name: "ADBE Vector Graphic - Stroke",
@@ -411,6 +516,7 @@ pub(super) static KINDS: [Kind; 10] = [
             ),
         ],
         parts: &[],
+        switch: None,
     },
     Kind {
         match_name: "ADBE Vector Filter - Trim",
@@ -443,6 +549,7 @@ pub(super) static KINDS: [Kind; 10] = [
             ),
         ],
         parts: &[],
+        switch: None,
     },
     Kind {
         match_name: "ADBE Fill",
@@ -489,6 +596,7 @@ pub(super) static KINDS: [Kind; 10] = [
             row("ADBE Fill-0005", To::Prop("opacity"), Number, Parameter),
         ],
         parts: &[],
+        switch: None,
     },
     Kind {
         match_name: "ADBE Text Animator",
@@ -535,6 +643,7 @@ pub(super) static KINDS: [Kind; 10] = [
             ("ADBE Text Selectors", Part::Items),
             ("ADBE Text Animator Properties", Part::Rows),
         ],
+        switch: None,
     },
     Kind {
         match_name: "ADBE Text Selector",
@@ -639,6 +748,19 @@ pub(super) static KINDS: [Kind; 10] = [
             ),
         ],
         parts: &[("ADBE Text Range Advanced", Part::Rows)],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Geometry2",
+        item: "transform",
+        table: &EFFECTS,
+        rows: &TRANSFORM_EFFECT_UNIFORM,
+        parts: &[],
+        switch: Some(Switch {
+            match_name: "ADBE Geometry2-0011",
+            on: true,
+            off_rows: &TRANSFORM_EFFECT_APART,
+        }),
     },
 ];
 
@@ -710,13 +832,34 @@ pub(super) static POLICIES: [(&str, Policy); 28] = [
     ),
 ];
 
+/// Effects that draw something sparse of their own in place of what their
+/// layer draws: particles, beams, grids and audio shapes. While the scene
+/// cannot draw one, its layer draws nothing rather than the solid the
+/// effect would have covered. Effects that fill their layer, such as
+/// gradients and noise, are left out: until the scene draws them, their
+/// solid stands closer to what they draw than nothing does.
+pub(super) const REPLACING: &[&str] = &[
+    "ADBE Grid",
+    "ADBE AudSpect",
+    "ADBE AudWave",
+    "ADBE Laser",
+    "CC Particle World",
+    "CC Particle Systems II",
+    "tc Particular",
+    "tc Form",
+];
+
 /// The kind for the group `match_name`, if it becomes an item.
 pub(super) fn kind(match_name: &str) -> Option<&'static Kind> {
     KINDS.iter().find(|kind| kind.match_name == match_name)
 }
 
-/// The policy for the group `match_name`, if it has one.
+/// The policy for the group `match_name`, if it has one. Pseudo effects,
+/// made of controls only, are expression controls.
 pub(super) fn policy(match_name: &str) -> Option<Policy> {
+    if match_name.starts_with("Pseudo/") {
+        return Some(Policy::Control);
+    }
     POLICIES
         .iter()
         .find(|(name, _)| *name == match_name)

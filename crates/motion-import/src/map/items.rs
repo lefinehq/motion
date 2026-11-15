@@ -7,7 +7,7 @@ use motion_format::property::{Registry, Rest, Target};
 use serde_json::{Map, Value as Json, json};
 
 use super::Walk;
-use super::keys::{Clock, Written, num, written};
+use super::keys::{Clock, Convert, Written, num, written};
 use super::report::{ControlReport, Fate};
 use super::rows::{self, Kind, Missing, Part, Policy, Row, To};
 use super::sources::{Marks, Writable};
@@ -30,6 +30,9 @@ pub(super) struct Place<'p> {
     pub comp_centre: [f64; 2],
     /// The centre of the layer's source, or the origin.
     pub source_centre: [f64; 2],
+    /// The layer's size: its source's, else its composition's, which an
+    /// effect's points are stored in fractions of.
+    pub size: [f64; 2],
     /// The definition of the effect being mapped, if any.
     pub effect: Option<&'p EffectDefinition>,
 }
@@ -165,6 +168,7 @@ impl Walk<'_> {
                 }
             },
             To::Prop(target) => {
+                let convert = convert(row, place);
                 let spatial = sink
                     .registry
                     .target(target)
@@ -177,7 +181,7 @@ impl Walk<'_> {
                 if let Some(bake) = baked {
                     let found = sink.registry.target(target);
                     if let Some(tracks) =
-                        self.baked_tracks(bake, property, (target, found), row.convert, place)
+                        self.baked_tracks(bake, property, (target, found), convert, place)
                     {
                         let source = self.source(Writable::Expression);
                         for track in tracks {
@@ -187,7 +191,7 @@ impl Walk<'_> {
                         return self.mapping.count(name, Fate::Mapped);
                     }
                 }
-                match written(&property.value, row.convert, spatial, place.clock) {
+                match written(&property.value, convert, spatial, place.clock) {
                     Some(mut written) => {
                         if let Some(range) = sink
                             .registry
@@ -218,7 +222,7 @@ impl Walk<'_> {
                             (Written::Value(_), Stream::Static(value), Some(origin)) => {
                                 Some(Writable::Static {
                                     origin: origin.clone(),
-                                    convert: row.convert,
+                                    convert,
                                     template: value.clone(),
                                 })
                             }
@@ -277,7 +281,7 @@ impl Walk<'_> {
         let Some(value) = default_value(row, place) else {
             return;
         };
-        let Some(json) = row.convert.value(&value) else {
+        let Some(json) = convert(row, place).value(&value) else {
             return;
         };
         self.mapping.count(row.match_name, Fate::Defaulted);
@@ -385,7 +389,13 @@ impl Walk<'_> {
                 None => self.group(child, &place.inside(&child.match_name)),
             },
         });
-        self.rows(&properties, kind.rows, sink, &mut out, &place);
+        self.rows(
+            &properties,
+            kind.rows_for(&properties),
+            sink,
+            &mut out,
+            &place,
+        );
         let primary = match scene_kind.primary {
             Primary::Items(_) => Json::Array(sub_items),
             Primary::Property(name) => out
@@ -577,6 +587,20 @@ fn rest_json(target: Target) -> Option<Json> {
 }
 
 /// A row's default as a project value, if it has one here.
+/// How `row`'s values become the scene's at `place`: an effect's point
+/// parameter is stored in fractions of the layer's size, so it becomes
+/// pixels of that size.
+fn convert(row: &Row, place: &Place<'_>) -> Convert {
+    let point = place
+        .effect
+        .and_then(|effect| effect.parameter(row.match_name))
+        .is_some_and(|parameter| matches!(parameter.control, Control::Point { .. }));
+    match point {
+        true => Convert::Sized(place.size),
+        false => row.convert,
+    }
+}
+
 fn default_value(row: &Row, place: &Place<'_>) -> Option<Value> {
     Some(match row.default {
         Missing::Absent => return None,
@@ -594,7 +618,11 @@ fn default_value(row: &Row, place: &Place<'_>) -> Option<Value> {
                 Control::Checkbox { default } => Value::Number(f64::from(u8::from(*default))),
                 Control::Popup { default, .. } => Value::Number(f64::from(*default)),
                 Control::Color { default } => Value::Color(*default),
-                Control::Layer | Control::Point { .. } | Control::Other { .. } => return None,
+                Control::Point { default } => Value::Vector2([
+                    default.first().copied().unwrap_or(0.5),
+                    default.get(1).copied().unwrap_or(0.5),
+                ]),
+                Control::Layer | Control::Other { .. } => return None,
             }
         }
     })

@@ -212,3 +212,159 @@ fn a_stored_value_outside_the_range_is_clamped_and_reported() {
             .contains("clamped into the scene's range")
     );
 }
+
+/// Effects: the transform effect, points in fractions of the layer's size,
+/// pseudo effects and effects that draw in place of their layer.
+mod effects {
+    use pretty_assertions::assert_eq;
+    use serde_json::json;
+
+    use super::{Import, Options, import};
+    use crate::model::{
+        Child, Control, EffectDefinition, Group, LayerKind, Parameter, Property, Stream, Value,
+    };
+    use crate::test_support::build::{comp, group, layer, project, property};
+
+    /// A parameter of `control`.
+    fn parameter(match_name: &str, control: Control) -> Parameter {
+        Parameter {
+            match_name: match_name.into(),
+            name: String::new(),
+            invisible: false,
+            animatable: true,
+            control,
+        }
+    }
+
+    /// The transform effect's definition, as a project keeps it.
+    fn geometry() -> EffectDefinition {
+        let slider = |default| Control::Slider {
+            default,
+            min: None,
+            max: None,
+            percent: false,
+        };
+        EffectDefinition {
+            name: "Transform".into(),
+            parameters: vec![
+                parameter("ADBE Geometry2-0000", Control::Layer),
+                parameter(
+                    "ADBE Geometry2-0001",
+                    Control::Point {
+                        default: vec![0.5, 0.5],
+                    },
+                ),
+                parameter(
+                    "ADBE Geometry2-0002",
+                    Control::Point {
+                        default: vec![0.5, 0.5],
+                    },
+                ),
+                parameter("ADBE Geometry2-0011", Control::Checkbox { default: true }),
+                parameter("ADBE Geometry2-0003", slider(100.0)),
+                parameter("ADBE Geometry2-0004", slider(100.0)),
+                parameter("ADBE Geometry2-0007", Control::Angle { default: 0.0 }),
+                parameter("ADBE Geometry2-0008", slider(100.0)),
+            ],
+        }
+    }
+
+    /// A 200 by 100 comp holding one shape layer with the effect groups
+    /// `effects`, imported.
+    fn imported(effects: Vec<Group>) -> motion_format::Result<Import> {
+        let mut shape = layer(1, "Shape", vec![]);
+        shape.kind = LayerKind::Shape;
+        shape.properties.children = vec![
+            Child::Group(group(
+                "ADBE Root Vectors Group",
+                vec![Child::Group(group("ADBE Vector Shape - Rect", vec![]))],
+            )),
+            Child::Group(group(
+                "ADBE Effect Parade",
+                effects.into_iter().map(Child::Group).collect(),
+            )),
+        ];
+        let mut project = project(vec![(2, "Main", comp(vec![shape], 2.0))]);
+        project.effects.insert("ADBE Geometry2".into(), geometry());
+        import(&project, &Options::default())
+    }
+
+    /// The transform effect holding `properties`.
+    fn transform(properties: Vec<Property>) -> Group {
+        group(
+            "ADBE Geometry2",
+            properties.into_iter().map(Child::Property).collect(),
+        )
+    }
+
+    fn number(match_name: &str, n: f64) -> Property {
+        property(match_name, Stream::Static(Value::Number(n)))
+    }
+
+    #[test]
+    fn the_transform_effect_takes_its_points_in_pixels_of_the_layer() {
+        let import = imported(vec![transform(vec![
+            property(
+                "ADBE Geometry2-0002",
+                Stream::Static(Value::Vector2([0.25, 0.5])),
+            ),
+            number("ADBE Geometry2-0003", 150.0),
+            // A uniform scale's width is left as it was set apart.
+            number("ADBE Geometry2-0004", 40.0),
+            number("ADBE Geometry2-0007", 30.0),
+            number("ADBE Geometry2-0008", 50.0),
+        ])])
+        .expect("imports");
+        assert_eq!(
+            import.json["layers"][0]["fx"],
+            json!([{"transform":1.5,"anchor":[100,50],"position":[50,50],"rotate":30,"opacity":0.5}])
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
+    #[test]
+    fn a_scale_set_apart_goes_to_each_axis() {
+        let import = imported(vec![transform(vec![
+            number("ADBE Geometry2-0011", 0.0),
+            number("ADBE Geometry2-0003", 150.0),
+            number("ADBE Geometry2-0004", -100.0),
+        ])])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"][0];
+        assert_eq!(fx["transform"], json!([-1, 1.5]), "{fx}");
+    }
+
+    #[test]
+    fn a_pseudo_effect_is_an_expression_control() {
+        let import = imported(vec![group("Pseudo/MHAC PrCtrl", vec![])]).expect("imports");
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+        assert!(import.json["layers"][0].get("fx").is_none());
+    }
+
+    #[test]
+    fn an_effect_drawing_in_place_of_its_layer_leaves_it_drawing_nothing() {
+        let import =
+            imported(vec![transform(vec![]), group("CC Particle World", vec![])]).expect("imports");
+        let layer = &import.json["layers"][0];
+        assert_eq!(layer["pivot"], true);
+        assert!(
+            layer.get("shapes").is_none() && layer.get("fx").is_none(),
+            "{layer}"
+        );
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert!(
+            what.contains(
+                &"layers whose `CC Particle World` draws in their place (drawn as nothing)"
+            ),
+            "{what:?}"
+        );
+    }
+}

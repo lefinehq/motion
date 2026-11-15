@@ -1,0 +1,15 @@
+---
+source: crates/motion-engine/tests/compat.rs
+expression: meaning
+---
+frame 0: c73a9c20ddc266ed
+  moved [1 0 0 1 80 100] 140,140 | 60,40 | 1,1 | 0 | 1
+  faded [1 0 0 1 280 300] 340,340 | 60,40 | 1,1 | 0 | 1
+
+frame 11: dcd10f19d5c2b2fd
+  moved [1 0 0 1 80 100] 140,140 | 60,40 | 1,1 | 0 | 1
+  faded [1 0 0 1 280 300] 340,340 | 60,40 | 1,1 | 0 | 1
+
+frame 23: 184ce064dbf1d165
+  moved [1 0 0 1 80 100] 140,140 | 60,40 | 1,1 | 0 | 1
+  faded [1 0 0 1 280 300] 340,340 | 60,40 | 1,1 | 0 | 1

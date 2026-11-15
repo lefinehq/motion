@@ -9,7 +9,7 @@ use motion_format::Curve;
 use crate::model::{Color, Keyframe, Path, Stream, Value};
 
 /// How a project value becomes a scene value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Convert {
     /// A number, as it is.
     Number,
@@ -19,6 +19,9 @@ pub(crate) enum Convert {
     Point,
     /// A vector in percent, to a point of fractions.
     PointPercent,
+    /// A point in fractions of a layer's size, as an effect stores its
+    /// points, to pixels of a layer that size.
+    Sized([f64; 2]),
     /// A colour, to `[r, g, b, a]`.
     Color,
     /// A bezier path, to SVG path data.
@@ -26,19 +29,22 @@ pub(crate) enum Convert {
 }
 
 impl Convert {
-    /// The factor from the project's units to the scene's, which speeds take too.
-    pub(crate) fn factor(self) -> f64 {
+    /// The factor from the project's units to the scene's for the
+    /// component `dim`, which speeds take too.
+    pub(crate) fn factor(self, dim: usize) -> f64 {
         match self {
             Convert::Percent | Convert::PointPercent => 0.01,
+            Convert::Sized(size) => size[dim.min(1)],
             _ => 1.0,
         }
     }
 
     /// How one component of a value of this kind becomes a scene number.
-    pub(super) fn component(self) -> Convert {
+    pub(super) fn component(self, dim: usize) -> Convert {
         match self {
             Convert::Point => Convert::Number,
             Convert::PointPercent => Convert::Percent,
+            Convert::Sized(size) => Convert::Sized([size[dim.min(1)]; 2]),
             other => other,
         }
     }
@@ -46,20 +52,22 @@ impl Convert {
     /// How many components the scene value has, for eases per component.
     fn dims(self) -> usize {
         match self {
-            Convert::Point | Convert::PointPercent => 2,
+            Convert::Point | Convert::PointPercent | Convert::Sized(_) => 2,
             _ => 1,
         }
     }
 
     /// The scene value of `value`, or `None` when it is not of this kind.
     pub(crate) fn value(self, value: &Value) -> Option<Json> {
-        let factor = self.factor();
+        let factor = |dim| self.factor(dim);
         match (self, value) {
-            (Convert::Number | Convert::Percent, Value::Number(n)) => Some(num(n * factor)),
+            (Convert::Number | Convert::Percent | Convert::Sized(_), Value::Number(n)) => {
+                Some(num(n * factor(0)))
+            }
             (
-                Convert::Point | Convert::PointPercent,
+                Convert::Point | Convert::PointPercent | Convert::Sized(_),
                 Value::Vector2([x, y]) | Value::Vector3([x, y, _]),
-            ) => Some(json!([num(x * factor), num(y * factor)])),
+            ) => Some(json!([num(x * factor(0)), num(y * factor(1))])),
             (Convert::Color, Value::Color(color)) => Some(color_json(color)),
             (Convert::Path, Value::Path(path)) => Some(Json::String(svg(path))),
             _ => None,
@@ -270,9 +278,25 @@ pub(super) fn written(
 /// where the project keeps one per dimension, with speeds per second of the
 /// layer's own time, which a stretch slows.
 fn curve(key: &Keyframe, next: &Keyframe, convert: Convert, spatial: bool, clock: Clock) -> Json {
-    let factor = convert.factor() * clock.stretch.abs();
-    let dims = if spatial { 1 } else { convert.dims() };
-    curves((0..dims).map(|dim| scaled(crate::eval::curve(key, next, dim), factor)))
+    let stretch = clock.stretch.abs();
+    match spatial {
+        // One speed along the path: its components share a factor but for
+        // a point in fractions of a size that is not square, where their
+        // mean stands in.
+        true => {
+            let factor = f64::midpoint(convert.factor(0), convert.factor(1)) * stretch;
+            curves(std::iter::once(scaled(
+                crate::eval::curve(key, next, 0),
+                factor,
+            )))
+        }
+        false => curves((0..convert.dims()).map(|dim| {
+            scaled(
+                crate::eval::curve(key, next, dim),
+                convert.factor(dim) * stretch,
+            )
+        })),
+    }
 }
 
 /// `curve` with its speeds times `factor`.
@@ -363,7 +387,7 @@ pub(super) fn fitted(
     clock: Clock,
 ) -> Option<Written> {
     let count = channels.first()?.keys.len();
-    let factor = convert.factor() * clock.stretch;
+    let factor = |dim: usize| convert.factor(dim) * clock.stretch;
     let scene_dims = match template {
         Value::Color(_) => 4,
         _ => convert.dims(),
@@ -381,15 +405,18 @@ pub(super) fn fitted(
         );
         object.insert("v".into(), value);
         if k + 1 < count {
-            let curve = match channels[0].keys[k].hold {
-                true => curve_text(Curve::Hold).into(),
-                false => curves(channels.iter().take(scene_dims).map(|c| Curve::Speed {
-                    out_speed: c.keys[k].slope_out * factor,
-                    out_reach: FITTED_REACH,
-                    in_speed: c.keys[k + 1].slope_in * factor,
-                    in_reach: FITTED_REACH,
-                })),
-            };
+            let curve =
+                match channels[0].keys[k].hold {
+                    true => curve_text(Curve::Hold).into(),
+                    false => curves(channels.iter().take(scene_dims).enumerate().map(
+                        |(dim, c)| Curve::Speed {
+                            out_speed: c.keys[k].slope_out * factor(dim),
+                            out_reach: FITTED_REACH,
+                            in_speed: c.keys[k + 1].slope_in * factor(dim),
+                            in_reach: FITTED_REACH,
+                        },
+                    )),
+                };
             object.insert("curve".into(), curve);
         }
         written.push(Json::Object(object));

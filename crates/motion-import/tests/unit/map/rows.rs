@@ -44,8 +44,44 @@ fn every_row_targets_a_property_or_setting_the_scene_has() {
     check(&LAYER_ROOT, &LAYER, None, "layer");
     KINDS.iter().for_each(|kind| {
         let scene = kind.scene_kind();
-        check(kind.rows, scene.registry, Some(scene), kind.match_name);
+        for rows in all_rows(kind) {
+            check(rows, scene.registry, Some(scene), kind.match_name);
+        }
     });
+}
+
+/// Every set of rows `kind` has: its own, and those its switch picks.
+fn all_rows(kind: &Kind) -> Vec<&'static [Row]> {
+    std::iter::once(kind.rows)
+        .chain(kind.switch.as_ref().map(|switch| switch.off_rows))
+        .collect()
+}
+
+#[test]
+fn a_switch_is_a_row_of_both_its_sets_and_picks_rows_of_the_same_names() {
+    KINDS
+        .iter()
+        .filter_map(|kind| kind.switch.as_ref().map(|switch| (kind, switch)))
+        .for_each(|(kind, switch)| {
+            let names = |rows: &[Row]| {
+                let mut names: Vec<&str> = rows.iter().map(|row| row.match_name).collect();
+                names.sort_unstable();
+                names
+            };
+            assert_eq!(
+                names(kind.rows),
+                names(switch.off_rows),
+                "{}",
+                kind.match_name
+            );
+            assert!(
+                kind.rows
+                    .iter()
+                    .any(|row| row.match_name == switch.match_name),
+                "{}",
+                kind.match_name
+            );
+        });
 }
 
 #[test]
@@ -63,17 +99,12 @@ fn every_match_name_has_one_fate() {
         all,
         "a group is both an item and a policy, or listed twice"
     );
-    KINDS.iter().for_each(|kind| {
-        let mut rows: Vec<&str> = kind.rows.iter().map(|row| row.match_name).collect();
-        let all = rows.len();
-        rows.sort_unstable();
-        rows.dedup();
-        assert_eq!(
-            rows.len(),
-            all,
-            "{}: a row is listed twice",
-            kind.match_name
-        );
+    KINDS.iter().flat_map(all_rows).for_each(|rows| {
+        let mut names: Vec<&str> = rows.iter().map(|row| row.match_name).collect();
+        let all = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), all, "{names:?}: a row is listed twice");
     });
 }
 
@@ -81,8 +112,9 @@ fn every_match_name_has_one_fate() {
 fn parameter_defaults_are_only_used_by_effects() {
     KINDS.iter().for_each(|kind| {
         let effect = std::ptr::eq(kind.table, EFFECTS.as_slice());
-        kind.rows
-            .iter()
+        all_rows(kind)
+            .into_iter()
+            .flatten()
             .filter(|row| row.default == Missing::Parameter)
             .for_each(|row| assert!(effect, "{}: `{}`", kind.match_name, row.match_name));
     });

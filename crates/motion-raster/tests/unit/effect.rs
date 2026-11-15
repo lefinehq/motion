@@ -41,9 +41,13 @@ fn left_out_parameters_take_their_defaults() {
 
 #[test]
 fn unknown_names_wrong_types_and_ranges_are_reported_at_the_parameter() {
-    let e = Effect::new("glow", &[]).unwrap_err();
+    let e = Effect::new("sparkle", &[]).unwrap_err();
     assert_eq!(e.kind, Kind::UnknownName);
-    assert_eq!(e.expected.as_deref(), Some("one of fill"));
+    let names: Vec<&str> = EFFECTS.iter().map(|spec| spec.name).collect();
+    assert_eq!(
+        e.expected.as_deref(),
+        Some(format!("one of {}", names.join(", ")).as_str())
+    );
 
     let e = Effect::new("fill", &[("colour", ParamValue::Number(1.0))]).unwrap_err();
     assert_eq!(

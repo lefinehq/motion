@@ -23,7 +23,9 @@ mod render;
 mod style;
 
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
-pub use effect::{EFFECTS, Effect, EffectContext, EffectSpec, ParamSpec, ParamType, ParamValue};
+pub use effect::{
+    Apply, EFFECTS, Effect, EffectContext, EffectSpec, Move, ParamSpec, ParamType, ParamValue,
+};
 pub use image::Image;
 pub use list::{
     Blending, Clip, Frame, Glyph, GlyphDraw, ImageDraw, Layer, Matte, MatteMode, Node, PathDraw,

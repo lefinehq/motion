@@ -10,7 +10,7 @@ use vello_cpu::{
     TargetInit,
 };
 
-use crate::effect::EffectContext;
+use crate::effect::{Effect, EffectContext, Move};
 use crate::image::Image;
 use crate::list::{Blending, Frame, GlyphDraw, ImageDraw, Layer, Matte, MatteMode, Node, PathDraw};
 use crate::style::{Color, DrawStyle};
@@ -218,8 +218,21 @@ impl Painter {
     /// Draws a layer: its children, in a buffer of their own when it is
     /// isolated, then its effects on that buffer.
     fn layer(&mut self, layer: &Layer, parent: Affine) -> Result<()> {
+        // Moving effects apply as the content is drawn, in the order they
+        // stand: each moves what the ones before it moved.
+        let moved = layer.effects.iter().filter_map(Effect::movement).fold(
+            Move {
+                transform: Affine::IDENTITY,
+                opacity: 1.0,
+            },
+            |done, next| Move {
+                transform: next.transform * done.transform,
+                opacity: done.opacity * next.opacity,
+            },
+        );
         // A transparent layer draws nothing, effects included.
-        if layer.opacity <= 0.0 {
+        let opacity = layer.opacity * moved.opacity;
+        if opacity <= 0.0 {
             return Ok(());
         }
         let transform = parent * layer.transform;
@@ -241,18 +254,18 @@ impl Painter {
         self.ctx.push_layer(
             clip.as_ref().map(|(path, _)| path),
             Some(layer.blend.to_vello()),
-            Some(layer.opacity),
+            Some(opacity),
             mask,
             None,
         );
-        let drawn = self.nodes(&layer.children, transform);
+        let drawn = self.nodes(&layer.children, transform * moved.transform);
         let mut effects = EffectContext {
             ctx: &mut self.ctx,
             width: self.width,
             height: self.height,
         };
         for effect in &layer.effects {
-            effect.draw(&mut effects);
+            effect.paint(&mut effects);
         }
         // Pop even after a failure, so the context's layers stay balanced.
         self.ctx.pop_layer();
