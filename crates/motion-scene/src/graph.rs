@@ -5,8 +5,8 @@ use motion_format::property::Prop;
 use std::sync::Arc;
 
 use kurbo::Rect;
-use motion_format::ImageContent;
 use motion_format::shorthand::{MatteMode, RectShape};
+use motion_format::{ImageContent, VideoContent};
 
 use crate::text::TextNode;
 use motion_format::{Value, ValueType};
@@ -61,6 +61,8 @@ pub enum NodeContent {
     Comp(usize),
     /// A picture file stretched over the node's box.
     Image(Arc<ImageContent>),
+    /// A video clip played in the node's own time over its box.
+    Video(Arc<VideoContent>),
     /// Nothing; other nodes move with it.
     Pivot,
 }

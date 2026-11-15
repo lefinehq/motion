@@ -1,12 +1,15 @@
-//! Footage files: which ones a scene draws as image layers ([D41]), and
-//! why it draws the others as nothing. Finding a file on disk is the
-//! caller's job, since the import reads no files; it hands over what it
-//! found in [`Options::footage`](super::Options::footage).
+//! Footage files: which ones a scene draws as image layers ([D41]) or
+//! video layers, and why it draws the others as nothing. Finding a file on
+//! disk and reading which codec a clip is in are the caller's job, since
+//! the import reads no files; it hands over what it found in
+//! [`Options::footage`](super::Options::footage) and
+//! [`Options::videos`](super::Options::videos).
 //!
 //! [D41]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d41-image-layers-name-their-file-and-carry-their-box
 
 use std::collections::BTreeMap;
 
+use super::Video;
 use crate::model::Footage;
 
 /// The file extensions of the still pictures an image layer draws.
@@ -17,16 +20,22 @@ pub const STILL_EXTENSIONS: [&str; 3] = ["png", "jpg", "jpeg"];
 pub(super) enum Media<'a> {
     /// A still picture, found at this path for the scene's `image`.
     Still(&'a str),
+    /// A clip in a codec with a decoder, found at this path for the
+    /// scene's `video`.
+    Clip(&'a str),
+    /// A clip found in a codec without a decoder, by the codec's name.
+    Codec(&'a str),
     /// Something the scene cannot draw yet, and why, as the report says it.
     Unsupported(&'static str),
 }
 
 /// What the footage `footage`, stored at `stored`, becomes, given the files
-/// `found` for stored paths.
+/// `found` for stored paths and what the found clips are.
 pub(super) fn media<'a>(
     footage: &Footage,
     stored: &str,
     found: &'a BTreeMap<String, String>,
+    videos: &'a BTreeMap<String, Video>,
 ) -> Media<'a> {
     let still = extension(stored).is_some_and(|extension| {
         STILL_EXTENSIONS
@@ -41,7 +50,12 @@ pub(super) fn media<'a>(
     ) {
         (true, _, _) => Media::Unsupported("audio footage"),
         (false, true, true) => Media::Unsupported("image sequences"),
-        (false, true, false) => Media::Unsupported("video footage"),
+        (false, true, false) => match (found.get(stored), videos.get(stored)) {
+            (None, _) => Media::Unsupported("video footage it cannot find"),
+            (Some(path), Some(video)) if video.decodes => Media::Clip(path),
+            (Some(_), Some(video)) => Media::Codec(&video.codec),
+            (Some(_), None) => Media::Unsupported("video footage"),
+        },
         (false, false, false) => Media::Unsupported("footage in a format it cannot read"),
         (false, false, true) => match found.get(stored) {
             Some(path) => Media::Still(path),

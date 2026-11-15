@@ -85,3 +85,39 @@ fn a_found_file_is_written_relative_to_the_scene_or_absolute() {
     );
     assert_eq!(written(&file, None).as_deref(), file.to_str());
 }
+
+#[test]
+fn a_found_clip_is_read_for_its_codec_and_a_still_is_not() {
+    let root = scratch("clips");
+    let fixtures = Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../motion-video/tests/fixtures"
+    ));
+    for (name, copied) in [
+        ("argb.mov", "Footage/argb.mov"),
+        ("bframes.mp4", "Footage/movie.mp4"),
+    ] {
+        let path = root.join(copied);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::copy(fixtures.join(name), path).unwrap();
+    }
+    // Not a clip, and a still, which is never opened.
+    touch(&root, "Footage/broken.mov");
+    touch(&root, "Footage/photo.png");
+    assert_eq!(
+        video(&root.join("Footage/argb.mov")),
+        Some(Video {
+            codec: "QuickTime Animation".into(),
+            decodes: true
+        })
+    );
+    assert_eq!(
+        video(&root.join("Footage/movie.mp4")),
+        Some(Video {
+            codec: "H.264".into(),
+            decodes: false
+        })
+    );
+    assert_eq!(video(&root.join("Footage/broken.mov")), None);
+    assert_eq!(video(&root.join("Footage/photo.png")), None);
+}

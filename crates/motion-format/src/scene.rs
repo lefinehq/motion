@@ -195,6 +195,8 @@ pub enum Content {
     Comp(CompContent),
     /// A picture file stretched over the layer's box.
     Image(ImageContent),
+    /// A video clip played in the layer's own time over the layer's box.
+    Video(VideoContent),
     /// Nothing: a point that other layers move with.
     Pivot,
 }
@@ -219,6 +221,17 @@ pub struct ImageContent {
     pub path: String,
     /// The layer's box, which the picture's pixels are stretched to fill,
     /// in the layer's own coordinates.
+    pub frame: kurbo::Rect,
+}
+
+/// What a `video` layer plays: a clip file, and the layer's box its frames
+/// fill.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VideoContent {
+    /// The clip, as written: relative to the scene file's folder, or absolute.
+    pub path: String,
+    /// The layer's box, which the frames are stretched to fill, in the
+    /// layer's own coordinates.
     pub frame: kurbo::Rect,
 }
 

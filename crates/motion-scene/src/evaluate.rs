@@ -88,6 +88,10 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
                     ContentState::Comp(*index, state)
                 }
                 NodeContent::Image(image) => ContentState::Image(Arc::clone(image)),
+                NodeContent::Video(video) => ContentState::Video {
+                    video: Arc::clone(video),
+                    seconds: local / fps,
+                },
                 NodeContent::Pivot => ContentState::Pivot,
             };
             let local_bounds = match &content {
