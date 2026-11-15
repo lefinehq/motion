@@ -369,6 +369,8 @@ impl LayerScan {
             if !scan.ran {
                 continue;
             }
+            let lasting = (rule.lasting * graph.root.fps - EPSILON).ceil() as u32;
+            scan.runs.retain(|run| run.last - run.first + 1 >= lasting);
             rules_run += 1;
             if scan.runs.is_empty() {
                 report.passed += 1;
