@@ -2,6 +2,7 @@
 //! shorthand strings (`"0.4s"`, `"#0B0D12"`, `"1080p"`) and write it back as
 //! the author wrote it. Also home to [`Diagnostic`] and the shared [`grammar`].
 
+pub mod address;
 pub mod anim;
 mod curve;
 mod de;
@@ -24,6 +25,7 @@ mod validate;
 pub mod value;
 mod write;
 
+pub use address::{Address, Id, Step};
 pub use curve::{Curve, NAMED_CURVES};
 pub use diagnostic::{Diagnostic, Kind, Result};
 pub use item::{Item, ItemKind, Role};

@@ -1,11 +1,11 @@
 //! Unit tests for `src/preset.rs`.
 
 use super::*;
+use crate::address::{ID_RULE, Id};
 use crate::doc::AnimDoc;
 use crate::parse::scene_from_value;
 use crate::parse_document;
 use crate::property::{Prop, Target};
-use crate::validate::is_valid_id;
 use crate::{Kind, Result};
 use serde_json::Value;
 
@@ -25,7 +25,7 @@ fn builtin_file_parses_and_names_known_properties() {
     let table = builtin_presets();
     assert!(!table.is_empty());
     for (name, spec) in table {
-        assert!(is_valid_id(name), "{name}");
+        assert!(Id::is_valid(name), "{name}");
         assert!(!spec.props.is_empty(), "{name}");
     }
     // Order of the file is kept.
@@ -82,7 +82,7 @@ fn bad_names_and_shapes_are_rejected() {
         (e.kind, e.path.as_deref()),
         (Kind::Invalid, Some("presets.Bad"))
     );
-    assert_eq!(e.expected.as_deref(), Some(crate::validate::ID_RULE));
+    assert_eq!(e.expected.as_deref(), Some(ID_RULE));
     assert!(presets(r#"{"a":3}"#).is_err());
     assert_eq!(presets_of(Value::Null).unwrap_err().kind, Kind::WrongType);
 }
