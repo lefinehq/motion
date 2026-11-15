@@ -80,6 +80,8 @@ pub struct Mapping {
     pub clamped: Vec<Finding>,
     /// How many slots the controls that expressions read became.
     pub slots: usize,
+    /// The roles proposed for the designer to confirm.
+    pub roles: Vec<super::roles::ProposedRole>,
 }
 
 /// What one expression became.
@@ -245,6 +247,14 @@ impl fmt::Display for Mapping {
                     self.slots
                 )?;
             }
+        }
+        if !self.roles.is_empty() {
+            let shown: Vec<String> = self
+                .roles
+                .iter()
+                .map(|r| format!("{} {} ({})", r.role, r.address, r.from))
+                .collect();
+            writeln!(f, "  roles, to confirm: {}", shown.join(", "))?;
         }
         if !self.clamped.is_empty() {
             let shown: Vec<String> = self

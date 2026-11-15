@@ -25,6 +25,7 @@ mod items;
 pub(crate) mod keys;
 mod layer;
 mod report;
+mod roles;
 mod rows;
 mod slots;
 pub(crate) mod sources;
@@ -121,7 +122,12 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
             })
             .collect(),
     );
-    let document = read_back(&json)?;
+    let mut document = read_back(&json)?;
+    walk.mapping.roles = roles::propose(&document, &walk.named_roles);
+    if !walk.mapping.roles.is_empty() {
+        json["roles"] = roles::written(&walk.mapping.roles);
+        document = read_back(&json)?;
+    }
     Ok(Import {
         json,
         document,
@@ -282,6 +288,8 @@ struct Walk<'p> {
     writing: Option<(&'p Composition, &'p Layer)>,
     /// The slots the controls read so far became, by scope.
     slots: slots::Slots,
+    /// The layers named for a role so far.
+    named_roles: Vec<roles::Named>,
 }
 
 impl<'p> Walk<'p> {
@@ -311,6 +319,7 @@ impl<'p> Walk<'p> {
             root: None,
             writing: None,
             slots: slots::Slots::default(),
+            named_roles: Vec::new(),
         }
     }
 
@@ -421,7 +430,12 @@ impl<'p> Walk<'p> {
             .layers
             .iter()
             .map(|layer| {
-                let id = ids.give(&layer.name, "layer");
+                let (role, named) = roles::named(&layer.name);
+                let id = ids.give(named, "layer");
+                if let Some(role) = role {
+                    self.named_roles
+                        .push((role, self.scope.clone(), id.clone()));
+                }
                 self.mapping.ids.push(Named {
                     comp: Some(name.to_owned()),
                     name: layer.name.clone(),
