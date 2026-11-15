@@ -237,7 +237,12 @@ impl Session {
     /// picture file that cannot be read or is not a PNG or JPEG file, at
     /// its layer's `image`.
     pub fn display_list(&self, frame: f64) -> Result<Frame> {
-        let state = self.frame(frame)?;
+        self.list_of(&self.frame(frame)?)
+    }
+
+    /// The display list of `state`, a frame of the scene, perhaps with
+    /// nodes hidden: as [`Session::display_list`].
+    pub(crate) fn list_of(&self, state: &FrameState) -> Result<Frame> {
         let graph = self.graph()?;
         let base = self.base();
         let pictures = |path: &str| self.pictures.get(&base.join(path));
@@ -251,7 +256,7 @@ impl Session {
             sounds: &sounds,
             moments: &moments,
         };
-        stage("display", || display_list(sources, &state))
+        stage("display", || display_list(sources, state))
     }
 
     /// Draws `frame`, possibly fractional, with the default options: precise
@@ -424,6 +429,18 @@ impl Session {
                 scene.end
             )));
         }
+        self.on_threads(frames, |frame| {
+            each(frame, self.render_with(f64::from(frame), options))
+        })
+    }
+
+    /// Runs `work` on every frame of `frames`, one per processor thread at
+    /// a time, in no set order: as [`Session::render_frames`] fails.
+    pub(crate) fn on_threads(
+        &self,
+        frames: Range<u32>,
+        work: impl Fn(u32) -> std::result::Result<(), (u32, Diagnostic)> + Sync,
+    ) -> Result<()> {
         let next = AtomicU32::new(frames.start);
         let stop = AtomicBool::new(false);
         let failure: Mutex<Option<(u32, Diagnostic)>> = Mutex::new(None);
@@ -435,8 +452,7 @@ impl Session {
                         if frame >= frames.end {
                             break;
                         }
-                        let drawn = each(frame, self.render_with(f64::from(frame), options));
-                        if let Err((frame, mut d)) = drawn {
+                        if let Err((frame, mut d)) = work(frame) {
                             stop.store(true, Ordering::Relaxed);
                             d.message = format!("frame {frame}: {}", d.message);
                             let mut first = failure.lock().unwrap_or_else(PoisonError::into_inner);
@@ -461,6 +477,19 @@ impl Session {
     pub fn check(&self) -> Result<Report> {
         let graph = self.graph()?;
         Ok(stage_ok("check", || check(self.doc.scene(), graph)))
+    }
+
+    /// The report of the pixel gates ([D59]): `contrast` and `flash`, on
+    /// the scene drawn at a quarter of its size (step `gates`). They draw
+    /// every frame, so they take a render's time where [`Session::check`]
+    /// takes milliseconds.
+    ///
+    /// [D59]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d59-craft-lint-measures-motion-from-the-scene-and-reports-numbers
+    ///
+    /// # Errors
+    /// As [`Session::render_frames`].
+    pub fn gates(&self) -> Result<Report> {
+        stage("gates", || crate::gates::gates(self))
     }
 
     /// Where the layers in `ids` (all when empty) are at `time`, such as

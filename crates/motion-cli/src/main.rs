@@ -79,7 +79,7 @@ impl From<QualityArg> for Quality {
 #[derive(Subcommand, strum::IntoStaticStr)]
 #[strum(serialize_all = "lowercase")]
 enum Command {
-    /// Check a scene for problems such as layers leaving the frame; exits 1 on errors.
+    /// Check a scene for problems such as layers leaving the frame, text too faint to read or flashing; exits 1 on errors.
     Check {
         /// Path to the scene file.
         scene: PathBuf,

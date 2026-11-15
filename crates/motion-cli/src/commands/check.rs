@@ -7,7 +7,11 @@ use motion_engine::{Result, Session};
 
 use super::print_report;
 
-/// Checks the scene file; exits 1 when the report has an error line.
+/// Checks the scene file, with the pixel gates after the scene's rules;
+/// exits 1 when the report has an error line.
 pub fn run(path: &Path) -> Result<ExitCode> {
-    Ok(print_report(&Session::open(path)?.check()?))
+    let session = Session::open(path)?;
+    let mut report = session.check()?;
+    report.join(session.gates()?);
+    Ok(print_report(&report))
 }

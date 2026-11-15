@@ -18,6 +18,7 @@ mod export;
 mod fidelity;
 mod fonts;
 mod footage;
+mod gates;
 mod geometry;
 mod import;
 mod level;

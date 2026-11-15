@@ -104,7 +104,7 @@ fn help_describes_the_tool_and_lists_its_commands() {
 #[test]
 fn check_clean_example_exits_zero() {
     let out = motion(&["check", LAUNCH]);
-    assert_eq!(stdout(&out), "OK 10\n");
+    assert_eq!(stdout(&out), "OK 12\n");
     assert_eq!(out.status.code(), Some(0));
 }
 
@@ -386,7 +386,7 @@ fn json_logs_carry_the_step_counts() {
 #[test]
 fn timings_print_one_line_on_stderr() {
     let out = motion(&["--timings", "check", LAUNCH]);
-    assert_eq!(stdout(&out), "OK 10\n");
+    assert_eq!(stdout(&out), "OK 12\n");
     let text = stderr(&out);
     let line = text
         .lines()
