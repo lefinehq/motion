@@ -130,3 +130,7 @@ All notable changes to this project are documented here. The format is based on 
 - Layer `fill` takes any colour form, including `[r, g, b, a]` from 0 to 1.
 - `NodeState` carries what a node draws (`content`, `local_bounds`, `fill`, `fx`, `hidden`); `check` ignores hidden layers.
 - Unit tests moved out of `src/` into `tests/unit`, mirroring the source tree.
+
+### Fixed
+
+- The import measures an effect's points on a shape or text layer from the layer's origin, which sits in the middle of the composition-sized box the project measures them in, not at its top left. Ramps, four-colour gradients, fractal noise, turbulent displacement and the transform effect on such layers now land where the original draws them: mean settled content error over 193 samples 0.2956 → 0.2944, 7 better and 3 worse by at most 0.006 (m647 0.162 → 0.042, m556 0.120 → 0.045).

@@ -213,8 +213,8 @@ fn a_stored_value_outside_the_range_is_clamped_and_reported() {
     );
 }
 
-/// Effects: the transform effect, points in fractions of the layer's size,
-/// pseudo effects and effects that draw in place of their layer.
+/// Effects: the transform effect, points in fractions of the layer's effect
+/// space, pseudo effects and effects that draw in place of their layer.
 mod effects {
     use pretty_assertions::assert_eq;
     use serde_json::json;
@@ -301,6 +301,9 @@ mod effects {
         property(match_name, Stream::Static(Value::Number(n)))
     }
 
+    /// A shape layer's effect space is a box the size of its composition
+    /// with the layer's origin in the middle, so the default anchor, the
+    /// middle of that box, is the origin, the scene's own rest.
     #[test]
     fn the_transform_effect_takes_its_points_in_pixels_of_the_layer() {
         let import = imported(vec![transform(vec![
@@ -317,12 +320,37 @@ mod effects {
         .expect("imports");
         assert_eq!(
             import.json["layers"][0]["fx"],
-            json!([{"transform":1.5,"anchor":[100,50],"position":[50,50],"rotate":30,"opacity":0.5}])
+            json!([{"transform":1.5,"position":[-50,0],"rotate":30,"opacity":0.5}])
         );
         assert!(
             import.mapping.unsupported.is_empty(),
             "{:?}",
             import.mapping.unsupported
+        );
+    }
+
+    /// A layer with a source measures its effects' points from the
+    /// source's top left, in fractions of the source's size.
+    #[test]
+    fn a_layer_with_a_source_takes_its_points_from_the_top_left() {
+        let mut nested = layer(1, "Nested", vec![]);
+        nested.source = Some(3);
+        nested.properties.children = vec![Child::Group(group(
+            "ADBE Effect Parade",
+            vec![Child::Group(transform(vec![property(
+                "ADBE Geometry2-0002",
+                Stream::Static(Value::Vector2([0.25, 0.5])),
+            )]))],
+        ))];
+        let mut project = project(vec![
+            (2, "Main", comp(vec![nested], 2.0)),
+            (3, "Inner", comp(vec![], 2.0)),
+        ]);
+        project.effects.insert("ADBE Geometry2".into(), geometry());
+        let import = import(&project, &Options::default()).expect("imports");
+        assert_eq!(
+            import.json["layers"][0]["fx"],
+            json!([{"transform":[1,1],"anchor":[100,50],"position":[50,50]}])
         );
     }
 

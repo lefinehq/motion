@@ -34,6 +34,11 @@ pub(super) struct Place<'p> {
     /// The layer's size: its source's, else its composition's, which an
     /// effect's points are stored in fractions of.
     pub size: [f64; 2],
+    /// Where the layer's own origin sits in the box of `size` its effects'
+    /// points are measured in: the top left for a layer with a source, the
+    /// middle for a shape or text layer, whose content is drawn about its
+    /// origin in a box the size of its composition.
+    pub origin: [f64; 2],
     /// The definition of the effect being mapped, if any.
     pub effect: Option<&'p EffectDefinition>,
 }
@@ -676,15 +681,18 @@ fn rest_json(target: Target) -> Option<Json> {
 }
 
 /// How `row`'s values become the scene's at `place`: an effect's point
-/// parameter is stored in fractions of the layer's size, so it becomes
-/// pixels of that size.
+/// parameter is stored in fractions of the layer's effect space, so it
+/// becomes pixels of that space, measured from the layer's origin.
 fn convert(row: &Row, place: &Place<'_>) -> Convert {
     let point = place
         .effect
         .and_then(|effect| effect.parameter(row.match_name))
         .is_some_and(|parameter| matches!(parameter.control, Control::Point { .. }));
     match point {
-        true => Convert::Sized(place.size),
+        true => Convert::Sized {
+            size: place.size,
+            origin: place.origin,
+        },
         false => row.convert,
     }
 }
