@@ -474,3 +474,12 @@ The brand can be revisited before 1.0.
 ### Q2. Which 3D
 
 D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that the 3D the maintainers have in mind for v1, or is true 3D (models, lights) needed earlier?
+
+### D53. A `.mogrt` imports as its project, with its controls as slots
+
+- **Decision:** `motion import template.mogrt` opens the archive and reads the project inside it with the `.aep` reader (D30), then imports the composition the template was made from. Each control of the template's panel becomes a slot of the scene ([D44](#d44-slots-are-named-values-that-layers-follow)), typed by the control and labelled with its name, and the property the control drives follows the slot as `"$id"`. A control that drives an expression control is the slot the import already makes from that control's reads, now named by the panel. Slots keep the panel's order, and a group's name prefixes the labels inside it. A template that holds no project, as one made in an editing app does, is refused with that reason.
+- **Why:**
+  - The panel is the designer's own list of what may change, so it is a better slot surface than anything the import can infer, and roles, locks and batches work on it unchanged.
+  - The archive only wraps a project the reader already reads, so a second reader would duplicate it.
+  - A control names its target by composition, layer and property path, ids the reader already keeps, so the binding needs no guessing.
+- **Not now:** templates without a project; the font, size and style a text control may also offer; responsive timing and pinning; writing a `.mogrt` back, which waits until `motion export` has a reason to patch an archive.

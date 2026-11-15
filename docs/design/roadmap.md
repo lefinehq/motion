@@ -73,6 +73,7 @@ Several masters, each turned into a full set of variants. We measure:
 - A roadmap for creating videos from scratch.
 - The extended tier (see [Features](features.md#extended-tier-phase-2)).
 - A direct `.aep` reader.
+- `.mogrt` templates, read as the project inside them ([plan](../plans/2026-11-19-mogrt.md)).
 
 ## Benchmarks
 
