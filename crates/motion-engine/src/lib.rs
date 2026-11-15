@@ -20,6 +20,7 @@ mod fonts;
 mod footage;
 mod geometry;
 mod import;
+mod level;
 mod mix;
 mod pictures;
 mod relocate;

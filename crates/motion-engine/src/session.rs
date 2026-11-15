@@ -181,15 +181,35 @@ impl Session {
         self.graph = OnceLock::new();
     }
 
-    /// The compiled scene (step `compile`), built once per edit.
+    /// The compiled scene (step `compile`), built once per edit. A scene
+    /// whose tracks follow a sound compiles twice, measuring the levels
+    /// between (step `listen`).
     ///
     /// # Errors
-    /// A font that cannot be read, or text whose font or glyphs the fonts lack.
+    /// A font that cannot be read, text whose font or glyphs the fonts
+    /// lack, or a sound a listening track hears that cannot be read.
     pub fn graph(&self) -> Result<&SceneGraph> {
         self.graph
             .get_or_init(|| {
                 let mut typesetter = Typesetter::new(self.fonts()?.clone());
-                stage("compile", || compile(self.doc.scene(), &mut typesetter))
+                let scene = self.doc.scene();
+                let first = stage("compile", || compile(scene, &mut typesetter))?;
+                // Tracks that follow a sound need the first compile's routes.
+                let hearings = motion_scene::hearings(scene);
+                if hearings.is_empty() {
+                    return Ok(first);
+                }
+                let base = self.base();
+                let sound = |route: &motion_scene::Route| {
+                    self.sounds.get(&base.join(route.path())).map_err(|e| {
+                        e.at(motion_format::key::AUDIO)
+                            .under(motion_format::Place::of_layer(route.id(&first)))
+                    })
+                };
+                let levels = stage("listen", || crate::level::levels(&first, &hearings, sound))?;
+                stage("compile", || {
+                    motion_scene::compile_with(scene, &mut typesetter, &levels)
+                })
             })
             .as_ref()
             .map_err(Clone::clone)

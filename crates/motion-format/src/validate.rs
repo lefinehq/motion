@@ -13,8 +13,8 @@ use kurbo::Rect;
 use crate::{Diagnostic, Kind, Result};
 
 use crate::anim::{
-    AnimKey, AnimTrack, EASING_EXPECTED, Easing, KEYS_EXPECTED, KeyValue, PATH_EXPECTED,
-    RANGE_EXPECTED, Span, TrackLine, rest_word,
+    AnimKey, AnimTrack, EASING_EXPECTED, Easing, KEYS_EXPECTED, KeyValue, LevelLine, Listen,
+    PATH_EXPECTED, RANGE_EXPECTED, Span, TrackLine, rest_word,
 };
 use crate::doc::{
     AnimDoc, CompDoc, CompsDoc, EasingDoc, Form, KeyDoc, KeyTime, LabelsDoc, LayerDoc, LayersDoc,
@@ -206,6 +206,7 @@ fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
     )?;
     inputs(&layers)?;
     sounds(&layers)?;
+    listens(&layers)?;
     for (layer, Object(doc)) in layers.iter().zip(docs) {
         let Object(written) = &doc.anim;
         entrance_conflict(layer, &layers, context, written)
@@ -811,6 +812,59 @@ fn links(
 /// Every layer an effect reads (its input) is in the same list and is
 /// not the layer itself, and no layer reaches itself through the layers
 /// its effects read and its matte, which are drawn to draw it.
+/// Every track that follows a sound's level hears an audio or `comp` layer
+/// of the same list: the layer's own tracks and its items', however deep.
+fn listens(layers: &[Layer]) -> Result<()> {
+    for layer in layers {
+        let mut tracks: Vec<(String, &AnimTrack)> = layer
+            .anim
+            .iter()
+            .map(|track| (format!("{ANIM}.{}", track.target.name()), track))
+            .collect();
+        let mut lists: Vec<(String, &[crate::Item])> =
+            vec![("fx".into(), &layer.fx), ("mask".into(), &layer.mask)];
+        match &layer.content {
+            Content::Shapes(items) => lists.push(("shapes".into(), items)),
+            Content::Text(text) => lists.push(("animate".into(), &text.animators)),
+            _ => {}
+        }
+        while let Some((at, items)) = lists.pop() {
+            for (i, item) in items.iter().enumerate() {
+                let here = format!("{at}[{i}]");
+                tracks.extend(
+                    item.anim
+                        .iter()
+                        .map(|track| (format!("{here}.{ANIM}.{}", track.target.name()), track)),
+                );
+                lists.push((format!("{here}.items"), &item.items));
+            }
+        }
+        for (at, track) in tracks {
+            let Some(listen) = &track.listen else {
+                continue;
+            };
+            let place = |d: Diagnostic| d.under(at.clone()).under(Place::of_layer(&layer.id));
+            let Some(heard) = layers.iter().find(|l| l.id == listen.layer) else {
+                return Err(place(Diagnostic::unknown(
+                    "layer id",
+                    &listen.layer,
+                    layers.iter().map(|l| l.id.as_str()),
+                )));
+            };
+            if !matches!(heard.content, Content::Audio(_) | Content::Comp(_)) {
+                return Err(place(
+                    Diagnostic::new(
+                        Kind::Conflict,
+                        format!("`{}` plays no sound to follow", listen.layer),
+                    )
+                    .expected("an `audio` layer, or a `comp` layer for its composition's sound"),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn inputs(layers: &[Layer]) -> Result<()> {
     let index = |id: &str| layers.iter().position(|layer| layer.id == id);
     let mut reads: Vec<Vec<usize>> = Vec::with_capacity(layers.len());
@@ -1273,6 +1327,11 @@ fn one_writer(targets: &[Target]) -> Result<()> {
 /// and, for a path, of one shape.
 fn track(name: &str, doc: &TrackDoc, registry: &'static Registry, fps: f64) -> Result<AnimTrack> {
     let target = known_target(name, registry)?;
+    if let TrackDoc::Line(text) = doc
+        && let Some(level) = LevelLine::read(text)
+    {
+        return listening(&level?, target);
+    }
     let keys = match doc {
         TrackDoc::Line(_) if target.value_type() == ValueType::Path => {
             return Err(Diagnostic::new(
@@ -1285,7 +1344,51 @@ fn track(name: &str, doc: &TrackDoc, registry: &'static Registry, fps: f64) -> R
         TrackDoc::Keys(keys) => key_list(keys, target, fps)?,
     };
     one_shape(&keys)?;
-    Ok(AnimTrack { target, keys })
+    Ok(AnimTrack {
+        target,
+        keys,
+        listen: None,
+    })
+}
+
+/// A track that follows a sound's level: one key, its value at silence,
+/// and what it listens to. `volume` may not listen, since what a level
+/// drives must not change the sound it hears.
+fn listening(level: &LevelLine, target: Target) -> Result<AnimTrack> {
+    let name = target.name();
+    if target.prop.name() == "volume" {
+        return Err(Diagnostic::new(
+            Kind::Conflict,
+            format!("`{name}` cannot follow a sound's level, which it would change"),
+        )
+        .expected("a property other than `volume`"));
+    }
+    if !matches!(
+        target.value_type(),
+        ValueType::Number | ValueType::Point | ValueType::Color
+    ) {
+        return Err(Diagnostic::new(
+            Kind::Invalid,
+            format!("`{name}` is a path, which cannot follow a sound's level"),
+        )
+        .expected("a number, a point or a colour"));
+    }
+    Ok(AnimTrack {
+        target,
+        keys: vec![AnimKey {
+            time: Time::Frames(0.0),
+            value: word_value(&level.from, target)?,
+            easing: Easing::All(Curve::Linear),
+            path: None,
+        }],
+        listen: Some(Listen {
+            layer: level.layer.clone(),
+            band: level.band,
+            smooth: level.smooth,
+            curve: level.curve,
+            to: word_value(&level.to, target)?,
+        }),
+    })
 }
 
 /// The target called `name` among `registry`'s properties and components.

@@ -336,6 +336,7 @@ An audio layer plays a sound file: `audio` names a WAV, MP3, FLAC or Ogg Vorbis 
 - **Muting.** A `hidden` audio or `comp` layer is silent.
 - **What it is not.** An audio layer has no effects and no matte, and is no layer's matte: it draws nothing.
 - **Drawn.** `audio-spectrum` and `audio-waveform` effects on other layers draw its sound, or a composition's through its `comp` layer (see effects).
+- **Followed.** A track written `@level <id>` follows its level (see property tracks).
 - **The mix.** Every audible layer is mixed into one stereo track at 48 kHz. Files are read by their first bytes, not their names, folded down to stereo, and resampled. Volume moves smoothly between keys, and layers are summed without a limiter. `motion render scene.json --out mix.wav` writes the mix, and says when it goes above full scale.
 
 ## Animation, at three levels of detail
@@ -369,6 +370,18 @@ A value may be written against the property's resting value on its layer or item
 ```
 
 A relative value is not range-checked when the scene is read, since the rest may be known only once text is measured; the property's range clamps it when it is drawn.
+
+**Following a sound.** In place of the time range, `@level <id>` makes the track follow the level of a sound: the `audio` layer, or the `comp` layer for its composition's sound, that `<id>` names in the same list. It goes from the first value at silence to the second at full level:
+
+```json
+"anim":{"scale":"rest -> rest*1.25 @level music 30-150Hz smooth 0.06s out-quad"}
+```
+
+- **The level** at a frame is the sound over a frame's window centred on it, as the mix plays it there, volume and fades included. Without a band it is the RMS level, scaled so a full-scale sine reaches 1. With a band (`<low>-<high>Hz`) it is the loudest part of the spectrum within the band, as a spectrum's bands are measured. Above 1 it counts as 1.
+- **`smooth <time>`** lets the level rise and fall towards each frame's with that time constant (a one-pole filter run from the list's first frame), so it does not flicker. It is 0 by default.
+- **The curve** shapes the level: `out-quad` lifts quiet passages, `in-quad` keeps only the peaks.
+- A track that listens takes two values, which may be written against the rest, on a number, a point or a colour. `volume` cannot listen, since its own sound would change what it hears.
+- The engine measures each level once, one a frame of the list's clock, and keys the track every frame, linear between, so any frame evaluates alone.
 
 **3. Keyframes.** These give exact values at exact times, as a list of `[time, value]` or `[time, value, curve]`:
 
@@ -562,6 +575,7 @@ Modifiers add motion that would otherwise need keyframes or code:
 - **`loop`:** repeats an animation.
 - **`link title.y *0.5 +20`:** follows another value.
 - **`follow`:** trails another layer.
+- **`@level`:** follows a sound's level (see property tracks).
 
 Modifiers are declarative and repeatable, so checks and repeatability keep working. motion does not run arbitrary scripts inside scenes (see [D10](decisions.md#d10-modifiers-instead-of-scripts)).
 

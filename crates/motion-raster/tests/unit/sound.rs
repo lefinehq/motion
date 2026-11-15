@@ -260,3 +260,16 @@ fn the_wave_follows_the_sound() {
     assert!((27..=31).contains(&down), "{down} px down");
     assert_eq!(drawn(&pixels, 20, 52, 90), 0);
 }
+
+#[test]
+fn a_level_is_one_for_a_full_scale_sine_and_hears_only_its_band() {
+    let samples = sine(750.0, 1.0, 4096);
+    assert!((level(&samples, RATE, None) - 1.0).abs() < 1e-3);
+    assert!((level(&sine(750.0, 0.25, 4096), RATE, None) - 0.25).abs() < 1e-3);
+    // 750 Hz sits on a bin of the 4096-sample window.
+    assert!((level(&samples, RATE, Some((700.0, 800.0))) - 1.0).abs() < 1e-3);
+    assert!(level(&samples, RATE, Some((100.0, 200.0))) < 1e-3);
+    // A band narrower than a bin reads the bin nearest its middle.
+    assert!((level(&samples, RATE, Some((749.0, 751.0))) - 1.0).abs() < 1e-3);
+    assert_eq!(level(&[], RATE, None), 0.0);
+}
