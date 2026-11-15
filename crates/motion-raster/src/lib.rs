@@ -15,6 +15,7 @@
 //! [D34]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d34-a-layer-tree-renderer-on-vello_cpu
 
 mod blend;
+mod blur;
 mod colour;
 mod effect;
 mod image;

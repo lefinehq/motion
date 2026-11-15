@@ -359,6 +359,99 @@ pub static TINT: Registry = Registry {
     ],
 };
 
+/// The properties of the Gaussian blur.
+pub static GAUSSIAN_BLUR: Registry = Registry {
+    kind: "gaussian-blur",
+    rows: &[number(
+        "blurriness",
+        0.0,
+        Some((0.0, 30_000.0)),
+        "how far it blurs, in px; the Gaussian's standard deviation is 0.3 of it",
+    )],
+};
+
+/// The properties of the box blur.
+pub static BOX_BLUR: Registry = Registry {
+    kind: "box-blur",
+    rows: &[
+        number(
+            "radius",
+            0.0,
+            Some((0.0, 30_000.0)),
+            "the radius of each box, in px",
+        ),
+        number(
+            "iterations",
+            3.0,
+            Some((1.0, 50.0)),
+            "how many boxes it runs, one after another; three come close to a Gaussian",
+        ),
+    ],
+};
+
+/// The properties of the drop shadow.
+pub static DROP_SHADOW: Registry = Registry {
+    kind: "drop-shadow",
+    rows: &[
+        color("color", [0.0, 0.0, 0.0, 1.0], "the shadow's colour"),
+        opacity("the shadow's opacity, 0 to 1"),
+        number(
+            "direction",
+            135.0,
+            None,
+            "where the shadow falls, in degrees clockwise from up",
+        ),
+        number(
+            "distance",
+            5.0,
+            Some((0.0, 4_000.0)),
+            "how far the shadow falls, in px",
+        ),
+        number(
+            "softness",
+            0.0,
+            Some((0.0, 30_000.0)),
+            "how far the shadow blurs, in px, as `blurriness` does",
+        ),
+    ],
+};
+
+/// The properties of the glow.
+pub static GLOW: Registry = Registry {
+    kind: "glow",
+    rows: &[
+        number(
+            "threshold",
+            0.6,
+            Some((0.0, 1.0)),
+            "the luma below which nothing glows, 0 to 1",
+        ),
+        number(
+            "radius",
+            10.0,
+            Some((0.0, 1_000.0)),
+            "how far the glow spreads, in px, as `blurriness` does",
+        ),
+        number(
+            "intensity",
+            1.0,
+            Some((0.0, 255.0)),
+            "what the glow's light is multiplied by",
+        ),
+    ],
+};
+
+/// The properties of the sharpen effect.
+pub static SHARPEN: Registry = Registry {
+    kind: "sharpen",
+    rows: &[number(
+        "amount",
+        0.0,
+        Some((0.0, 4_000.0)),
+        "how far each pixel moves away from its neighbours' mean, in percent of the difference",
+    )],
+};
+
 /// The properties of the black and white effect: how light each of six
 /// hues turns, and a tint.
 pub static BLACK_WHITE: Registry = Registry {
@@ -690,7 +783,7 @@ pub static SHAPES: [ItemKind; 7] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 9] = [
+pub static EFFECTS: [ItemKind; 14] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -758,6 +851,90 @@ pub static EFFECTS: [ItemKind; 9] = [
         }],
         doc: "maps the levels from `input-black`–`input-white` to `output-black`–`output-white` \
               through `gamma`, clipped to 0 to 1",
+    },
+    ItemKind {
+        name: "gaussian-blur",
+        role: Role::Effect,
+        registry: &GAUSSIAN_BLUR,
+        primary: Primary::Property("blurriness"),
+        settings: &[
+            SettingSpec {
+                name: "dimensions",
+                choices: &["both", "horizontal", "vertical"],
+                default: "both",
+                doc: "which way it blurs: both ways, along rows or along columns",
+            },
+            SettingSpec {
+                name: "edges",
+                choices: &["transparent", "repeat"],
+                default: "transparent",
+                doc: "what lies beyond the frame's edges while blurring: nothing, or the edge pixels repeated",
+            },
+        ],
+        doc: "blurs the layer with a Gaussian",
+    },
+    ItemKind {
+        name: "box-blur",
+        role: Role::Effect,
+        registry: &BOX_BLUR,
+        primary: Primary::Property("radius"),
+        settings: &[
+            SettingSpec {
+                name: "dimensions",
+                choices: &["both", "horizontal", "vertical"],
+                default: "both",
+                doc: "which way it blurs: both ways, along rows or along columns",
+            },
+            SettingSpec {
+                name: "edges",
+                choices: &["transparent", "repeat"],
+                default: "transparent",
+                doc: "what lies beyond the frame's edges while blurring: nothing, or the edge pixels repeated",
+            },
+        ],
+        doc: "blurs the layer with boxes run one after another",
+    },
+    ItemKind {
+        name: "drop-shadow",
+        role: Role::Effect,
+        registry: &DROP_SHADOW,
+        primary: Primary::Property("distance"),
+        settings: &[SettingSpec {
+            name: "layer",
+            choices: &["shown", "hidden"],
+            default: "shown",
+            doc: "whether the layer is drawn over its shadow, or only the shadow",
+        }],
+        doc: "draws the layer's shape as a soft shadow behind it",
+    },
+    ItemKind {
+        name: "glow",
+        role: Role::Effect,
+        registry: &GLOW,
+        primary: Primary::Property("radius"),
+        settings: &[
+            SettingSpec {
+                name: "dimensions",
+                choices: &["both", "horizontal", "vertical"],
+                default: "both",
+                doc: "which way it blurs: both ways, along rows or along columns",
+            },
+            SettingSpec {
+                name: "composite",
+                choices: &["with-original", "glow-only"],
+                default: "with-original",
+                doc: "whether the glow is added to the layer, or drawn alone",
+            },
+        ],
+        doc: "adds the blurred light of the layer's bright colours to it",
+    },
+    ItemKind {
+        name: "sharpen",
+        role: Role::Effect,
+        registry: &SHARPEN,
+        primary: Primary::Property("amount"),
+        settings: &[],
+        doc: "sharpens edges by moving pixels away from their neighbours",
     },
     ItemKind {
         name: "black-white",

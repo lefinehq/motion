@@ -10,7 +10,7 @@ use crate::effect::{Curve, ParamValue, Space};
 use crate::pixels::Pixels;
 
 /// Rec. 601 luma weights, which tints and colourising read lightness by.
-const LUMA: [f32; 3] = [0.299, 0.587, 0.114];
+pub(crate) const LUMA: [f32; 3] = [0.299, 0.587, 0.114];
 
 /// Runs `change` on the straight RGBA of every pixel that is not
 /// transparent, and premultiplies the result again.
@@ -27,7 +27,7 @@ fn each(pixels: &mut Pixels, change: impl Fn([f32; 4]) -> [f32; 4]) {
 }
 
 /// The number in `values[i]`.
-fn number(values: &[ParamValue], i: usize) -> f32 {
+pub(crate) fn number(values: &[ParamValue], i: usize) -> f32 {
     match values[i] {
         ParamValue::Number(n) => n,
         _ => unreachable!("`Effect::new` checks the parameter types"),
@@ -35,7 +35,7 @@ fn number(values: &[ParamValue], i: usize) -> f32 {
 }
 
 /// The choice in `values[i]`.
-fn choice(values: &[ParamValue], i: usize) -> usize {
+pub(crate) fn choice(values: &[ParamValue], i: usize) -> usize {
     match values[i] {
         ParamValue::Choice(c) => usize::from(c),
         _ => unreachable!("`Effect::new` checks the parameter types"),
@@ -43,7 +43,7 @@ fn choice(values: &[ParamValue], i: usize) -> usize {
 }
 
 /// The colour in `values[i]`, as straight RGB.
-fn rgb(values: &[ParamValue], i: usize) -> [f32; 3] {
+pub(crate) fn rgb(values: &[ParamValue], i: usize) -> [f32; 3] {
     match values[i] {
         ParamValue::Color(c) => [c.r, c.g, c.b],
         _ => unreachable!("`Effect::new` checks the parameter types"),

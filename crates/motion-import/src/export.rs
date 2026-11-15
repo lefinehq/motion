@@ -284,7 +284,7 @@ fn project_value(
     template: &Value,
 ) -> std::result::Result<Value, String> {
     let (ty, broadcast) = match convert {
-        Convert::Number | Convert::Percent => (ValueType::Number, false),
+        Convert::Number | Convert::Percent | Convert::Level => (ValueType::Number, false),
         Convert::Point | Convert::PointPercent | Convert::Sized(_) => (ValueType::Point, true),
         Convert::Color => (ValueType::Color, false),
         Convert::Path => return Err("a path, which the export does not write yet".into()),

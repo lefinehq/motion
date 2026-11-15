@@ -20,9 +20,9 @@ use vello_cpu::RenderContext;
 use vello_cpu::kurbo::{Affine, Rect, Vec2};
 use vello_cpu::peniko::{BlendMode, Compose, Mix};
 
-use crate::colour;
 use crate::pixels::Pixels;
 use crate::style::Color;
+use crate::{blur, colour};
 
 /// The type of one effect parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -477,6 +477,187 @@ pub const EFFECTS: &[EffectSpec] = &[
         apply: Apply::Pixels {
             over: None,
             pixels: colour::invert,
+        },
+    },
+    EffectSpec {
+        name: "gaussian-blur",
+        params: &[
+            ParamSpec {
+                name: "blurriness",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 30_000.0)),
+                choices: &[],
+                doc: "how far it blurs, in px",
+            },
+            ParamSpec {
+                name: "dimensions",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["both", "horizontal", "vertical"],
+                doc: "which way it blurs",
+            },
+            ParamSpec {
+                name: "edges",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["transparent", "repeat"],
+                doc: "what lies beyond the edges",
+            },
+        ],
+        doc: "blurs with a Gaussian",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: blur::gaussian_blur,
+        },
+    },
+    EffectSpec {
+        name: "box-blur",
+        params: &[
+            ParamSpec {
+                name: "radius",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 30_000.0)),
+                choices: &[],
+                doc: "the radius of each box, in px",
+            },
+            ParamSpec {
+                name: "iterations",
+                default: ParamValue::Number(3.0),
+                range: Some((1.0, 50.0)),
+                choices: &[],
+                doc: "how many boxes it runs",
+            },
+            ParamSpec {
+                name: "dimensions",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["both", "horizontal", "vertical"],
+                doc: "which way it blurs",
+            },
+            ParamSpec {
+                name: "edges",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["transparent", "repeat"],
+                doc: "what lies beyond the edges",
+            },
+        ],
+        doc: "blurs with boxes run one after another",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: blur::box_blur,
+        },
+    },
+    EffectSpec {
+        name: "drop-shadow",
+        params: &[
+            ParamSpec {
+                name: "color",
+                default: ParamValue::Color(Color::rgba(0.0, 0.0, 0.0, 1.0)),
+                range: None,
+                choices: &[],
+                doc: "the shadow's colour",
+            },
+            ParamSpec {
+                name: "opacity",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "the shadow's opacity",
+            },
+            ParamSpec {
+                name: "direction",
+                default: ParamValue::Number(135.0),
+                range: None,
+                choices: &[],
+                doc: "where the shadow falls, in degrees clockwise from up",
+            },
+            ParamSpec {
+                name: "distance",
+                default: ParamValue::Number(5.0),
+                range: Some((0.0, 4_000.0)),
+                choices: &[],
+                doc: "how far the shadow falls, in px",
+            },
+            ParamSpec {
+                name: "softness",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 30_000.0)),
+                choices: &[],
+                doc: "how far the shadow blurs, in px",
+            },
+            ParamSpec {
+                name: "layer",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["shown", "hidden"],
+                doc: "whether the layer is drawn over its shadow",
+            },
+        ],
+        doc: "draws the layer's shape as a soft shadow behind it",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: blur::drop_shadow,
+        },
+    },
+    EffectSpec {
+        name: "glow",
+        params: &[
+            ParamSpec {
+                name: "threshold",
+                default: ParamValue::Number(0.6),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "the luma below which nothing glows",
+            },
+            ParamSpec {
+                name: "radius",
+                default: ParamValue::Number(10.0),
+                range: Some((0.0, 1_000.0)),
+                choices: &[],
+                doc: "how far the glow spreads, in px",
+            },
+            ParamSpec {
+                name: "intensity",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 255.0)),
+                choices: &[],
+                doc: "what the glow's light is multiplied by",
+            },
+            ParamSpec {
+                name: "dimensions",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["both", "horizontal", "vertical"],
+                doc: "which way it blurs",
+            },
+            ParamSpec {
+                name: "composite",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["with-original", "glow-only"],
+                doc: "whether the glow is added to the layer or drawn alone",
+            },
+        ],
+        doc: "adds the blurred light of the bright colours",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: blur::glow,
+        },
+    },
+    EffectSpec {
+        name: "sharpen",
+        params: &[ParamSpec {
+            name: "amount",
+            default: ParamValue::Number(0.0),
+            range: Some((0.0, 4_000.0)),
+            choices: &[],
+            doc: "in percent of the difference from the neighbours' mean",
+        }],
+        doc: "sharpens edges",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: blur::sharpen,
         },
     },
     EffectSpec {

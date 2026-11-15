@@ -384,6 +384,47 @@ mod effects {
     }
 
     #[test]
+    fn blurs_take_their_settings_and_levels() {
+        let import = imported(vec![
+            group(
+                "ADBE Drop Shadow",
+                vec![
+                    Child::Property(number("ADBE Drop Shadow-0002", 51.0)),
+                    Child::Property(number("ADBE Drop Shadow-0004", 12.0)),
+                    Child::Property(number("ADBE Drop Shadow-0006", 1.0)),
+                ],
+            ),
+            group(
+                "ADBE Fast Blur",
+                vec![
+                    Child::Property(number("ADBE Fast Blur-0001", 20.0)),
+                    Child::Property(number("ADBE Fast Blur-0002", 3.0)),
+                    Child::Property(number("ADBE Fast Blur-0003", 1.0)),
+                ],
+            ),
+            group(
+                "ADBE Glo2",
+                vec![
+                    Child::Property(number("ADBE Glo2-0002", 102.0)),
+                    Child::Property(number("ADBE Glo2-0006", 6.0)),
+                ],
+            ),
+        ])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"];
+        assert_eq!(fx[0]["drop-shadow"], 12, "{fx}");
+        assert_eq!(fx[0]["opacity"], 0.2, "{fx}");
+        assert_eq!(fx[0]["layer"], "hidden", "{fx}");
+        assert_eq!(
+            fx[1],
+            json!({"gaussian-blur":20,"dimensions":"vertical","edges":"repeat"})
+        );
+        assert_eq!(fx[2]["threshold"], 0.4, "{fx}");
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert_eq!(what, ["a glow operation other than add"]);
+    }
+
+    #[test]
     fn curves_come_from_the_data_kept_for_them() {
         let straight: &[[u16; 2]] = &[[0, 0], [255, 255]];
         let data = crate::map::curves::tests::data([
@@ -471,7 +512,7 @@ mod effects {
 
     #[test]
     fn an_adjustment_layer_without_an_effect_the_scene_draws_draws_nothing() {
-        let import = adjusting(vec![group("ADBE Glo2", vec![])]);
+        let import = adjusting(vec![group("ADBE Turbulent Displace", vec![])]);
         let layer = &import.json["layers"][0];
         assert_eq!(layer["pivot"], true);
         assert!(
@@ -479,6 +520,6 @@ mod effects {
             "{layer}"
         );
         let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
-        assert_eq!(what, ["`ADBE Glo2`"]);
+        assert_eq!(what, ["`ADBE Turbulent Displace`"]);
     }
 }

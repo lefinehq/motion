@@ -15,6 +15,8 @@ pub(crate) enum Convert {
     Number,
     /// A number in percent, to a fraction.
     Percent,
+    /// An 8-bit level, 0 to 255, to a fraction.
+    Level,
     /// A 2D or 3D vector, to a point; a 3D vector's depth is dropped.
     Point,
     /// A vector in percent, to a point of fractions.
@@ -34,6 +36,7 @@ impl Convert {
     pub(crate) fn factor(self, dim: usize) -> f64 {
         match self {
             Convert::Percent | Convert::PointPercent => 0.01,
+            Convert::Level => 1.0 / 255.0,
             Convert::Sized(size) => size[dim.min(1)],
             _ => 1.0,
         }
@@ -61,9 +64,10 @@ impl Convert {
     pub(crate) fn value(self, value: &Value) -> Option<Json> {
         let factor = |dim| self.factor(dim);
         match (self, value) {
-            (Convert::Number | Convert::Percent | Convert::Sized(_), Value::Number(n)) => {
-                Some(num(n * factor(0)))
-            }
+            (
+                Convert::Number | Convert::Percent | Convert::Level | Convert::Sized(_),
+                Value::Number(n),
+            ) => Some(num(n * factor(0))),
             (
                 Convert::Point | Convert::PointPercent | Convert::Sized(_),
                 Value::Vector2([x, y]) | Value::Vector3([x, y, _]),
