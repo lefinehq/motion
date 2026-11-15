@@ -372,7 +372,7 @@ motion's value lies in the parts the agent touches: the format, the edits and th
 
 ### D44. Slots are named values that layers follow
 
-- **Decision:** a scene and each composition declare `slots`: named values typed by `ValueType`, with an optional label. Any value written `"$id"` follows a slot, resolved in the composition's own slots first, then the scene's; `$$` is a literal dollar. A `comp` layer sets its composition's slots for itself in `overrides` (`"$title":"Sale"`). References resolve at compile, so nothing after compile changes. `motion slots` lists them, and `motion edit` sets one with `$id=value`. The import turns control layers into slots, and expressions that only read a control into references; the rest stay baked ([D38](#d38-expressions-are-baked-at-import)). This refines D38's "not now". See the [plan](../plans/2026-11-17-slots.md).
+- **Decision:** a scene and each composition declare `slots`: named values typed by `ValueType`, with an optional label. Any value written `"$id"` follows a slot, resolved in the composition's own slots first, then the scene's; `$$` is a literal dollar. A `comp` layer sets its composition's slots for itself in `overrides` (`"$title":"Sale"`). References resolve before the scene is read, on a copy, so nothing after that sees one and the file keeps them. `motion slots` lists them, and `motion edit` sets one with `$id=value`. The import turns the controls that expressions only read into slots, and those expressions into references, when the value they read never changes; the rest stay baked ([D38](#d38-expressions-are-baked-at-import)), and a layer of controls only that draws nothing is left out. An export writes a slot back into its control. This refines D38's "not now". See the [plan](../plans/2026-11-17-slots.md).
 - **Why:**
   - Half of the corpus's expressions (3,730 of 7,404, in 125 of 198 templates) read a control and do nothing else. Baked, the one value a designer exposed is copied into every key that read it, and a variant has to find them all.
   - A slot is a value, not a script. Renders stay deterministic and free of JavaScript, and an agent changes a template by setting a handful of typed values it can list.
@@ -431,6 +431,32 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Running effects where the layer lands keeps one canvas per frame size and one place where effects meet the frame. Mapping parameters through the transform keeps them in the layer's units, as a project stores them. This is exact for moves, turns and uniform scales, which is how imported layers are placed.
   - In a project, an adjustment layer applies where its own alpha is: a solid's box, or a shape's. Applying it everywhere was measured to make frames worse where the region was smaller, so the region stays the layer's content.
 - **Not now:** effects on a canvas smaller than the frame (the layer's bounds grown by what the effect reaches). That is a speed-up, measured when blurs land.
+
+### D50. Roles name what a master's layers do
+
+- **Decision:** a scene's `roles` map role names to a layer address or a slot: `{"headline":"title","cta":"end/cta","accent":"$accent"}`. An edit may target a role, `@headline text="Sale"`, and `motion roles` lists them with what each holds. The import proposes roles, from an `@role` prefix in a layer's name or from a vocabulary of names when one layer alone matches, and reports each proposal for the designer to confirm. See the [plan](../plans/2026-11-18-variant-surface.md).
+- **Why:**
+  - A brief speaks of the headline and the call to action, not of `card-2/title`. Edits against roles let one brief run on many masters, and keep the agent's prompt the size of the roles, not of the scene.
+  - Names find a role in a minority of corpus scenes (a logo in 43 of 196, a headline in 27), so roles are data the designer confirms, not a guess made at every run.
+  - Naming a layer by its address, or a value by its slot, reuses the two ways a scene already names things.
+- **Not now:** inferring roles from content and position, and text limits per role.
+
+### D51. Locks are refused in the edit
+
+- **Decision:** a scene's `locks` list what a variant may not change: a role (`@logo`), a layer and everything inside it (`end`), a slot (`$accent`), `palette` (only colours the scene already has) and `typefaces` (only font families it already uses). `apply_edit` refuses an edit that touches a lock and names the lock. The import writes `@logo`, `palette` and `typefaces` when it finds a logo. A batch cannot edit `locks` or `roles`.
+- **Why:**
+  - Refusing at the edit means no variant ever holds a locked change, and the agent learns why at the step that caused it, in the same message an edit already returns.
+  - The named locks compare an edit with the scene it edits, so they need no stored lists, and any number of edits stays inside the master's palette and typefaces.
+  - Locks belong to the designer, who can still change them with an ordinary edit; a batch is the agent's, so it cannot.
+- **Not now:** locks on timing and motion, which wait for beats and the style profile.
+
+### D52. A batch makes every variant from one master
+
+- **Decision:** `motion batch variants.json` reads a master and a list of variants, each an id and edit lines, with optional render settings. Each variant is the master with its edits applied in order through the locks, then checked; one with a refused edit or a check error is reported and not rendered. The others render, one at a time, to `<out>/<id>.mp4`, with their scene beside it. The report is one line per variant, or data with `--json`, and `--check` stops before rendering.
+- **Why:**
+  - Variants differ from the master by a handful of edits. Keeping them as edits, not as copies of the scene, keeps a batch reviewable and its cost in tokens the size of the brief.
+  - Reading the master and loading its fonts once, then rendering in turn, keeps every core on one render, which already uses them all.
+- **Not now:** variants in parallel, and variants of variants.
 
 ## Open questions
 
