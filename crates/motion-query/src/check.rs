@@ -22,12 +22,12 @@ use tracing::{Span, field, instrument};
     )
 )]
 pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
-    debug_assert_eq!(scene.layers.len(), graph.nodes.len());
-    let frame_count = graph.duration_frames.ceil().max(0.0) as u32;
+    debug_assert_eq!(scene.root.layers.len(), graph.root.nodes.len());
+    let frame_count = graph.root.duration_frames.ceil().max(0.0) as u32;
     Span::current().record("frames", frame_count);
 
     // One frame at a time: memory grows with layers and rules, not frames.
-    let mut scans: Vec<LayerScan> = graph.nodes.iter().map(|_| LayerScan::new()).collect();
+    let mut scans: Vec<LayerScan> = graph.root.nodes.iter().map(|_| LayerScan::new()).collect();
     for frame in 0..frame_count {
         let state = evaluate(graph, f64::from(frame));
         for (scan, node) in scans.iter_mut().zip(&state.nodes) {
@@ -40,7 +40,7 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
         passed: 0,
     };
     let mut rules_run = 0;
-    for ((layer, node), scan) in scene.layers.iter().zip(&graph.nodes).zip(scans) {
+    for ((layer, node), scan) in scene.root.layers.iter().zip(&graph.root.nodes).zip(scans) {
         rules_run += scan.finish(layer, node, graph, &mut report);
     }
     Span::current()
@@ -223,10 +223,12 @@ fn fix_hint(
     }
     let only_followed = |delta: f64, follows: bool| if follows { delta } else { 0.0 };
     // `at` keywords resolve in the parent's box, or on the canvas.
-    let extent = node.parent.map_or((graph.width, graph.height), |p| {
-        let parent = graph.nodes[p].bounds;
-        (parent.width(), parent.height())
-    });
+    let extent = node
+        .parent
+        .map_or((graph.root.width, graph.root.height), |p| {
+            let parent = graph.root.nodes[p].bounds;
+            (parent.width(), parent.height())
+        });
     fix(
         &layer.id,
         layer.at,

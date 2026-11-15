@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Added
 
+- `motion_scene::walk`: every node of an evaluated frame at any depth, in paint order, with its address, its transform in scene space and whether it draws.
 - `motion_format::Address` and `Id` ([D43](docs/design/decisions.md#d43-one-layer-address-and-edits-per-instance)): one grammar and printer for a layer at any depth and the keys inside it (`card/title.fx[glow].radius`). The id rule lives in `Id` instead of a hand-written loop. `scene` is reserved: a layer may not take it, and the import gives such a layer `scene-2`.
 - Cargo workspace, repository documents and CI.
 - `motion-format`: time, colour and size shorthand parsing, and `fmt_num`.
@@ -61,6 +62,7 @@ All notable changes to this project are documented here. The format is based on 
 ### Changed
 
 - `motion import` clamps a value outside its property's range into it, as the original draws it, instead of failing: a wiggled opacity past 100%, a negative roundness, colour channels above 1. Expression samples are clamped frame by frame before the fit; the report lists each clamp under `clamped`.
+- The scene's root is a composition ([D43](docs/design/decisions.md#d43-one-layer-address-and-edits-per-instance)): `Scene::root` and `SceneGraph::root` hold its canvas, clock, background and layers, and one function validates and compiles the root and every composition under `comps`.
 - A diagnostic's path is a `Place` ([D43](docs/design/decisions.md#d43-one-layer-address-and-edits-per-instance)): an `Address` inside the scene, or text for places outside it. Errors name a layer by its id, as edits and queries do: `title.in`, not `layers[0].in`. A layer whose id is missing or shared is still named by its index.
 - `motion export` compares what it reads back with the edit in the import's six-decimal steps, allowing one, so a value half a step from both neighbours no longer fails the check.
 - Baking expressions sits behind `motion-import`'s `bake` feature, which only the CLI turns on: `motion-engine` renders and imports without linking the script engine. The D38 and D39 guards check each crate's resolved dependencies (`cargo tree`), not its manifest lines.

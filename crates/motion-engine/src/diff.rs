@@ -163,8 +163,8 @@ impl Session {
     /// scene's size, or falls past the scene's end; or as
     /// [`Session::render_with`].
     pub fn diff(&self, options: &DiffOptions) -> Result<Diff> {
-        let fps = self.scene().fps;
-        let duration = self.graph()?.duration_frames;
+        let fps = self.scene().root.fps;
+        let duration = self.graph()?.root.duration_frames;
         let times: Vec<f64> = (0..options.frames.len())
             .map(|i| options.start + i as f64 / options.fps)
             .collect();
@@ -286,7 +286,7 @@ impl Session {
         let path = &options.frames[index];
         let bytes = fs::read(path).map_err(|e| Diagnostic::io("read", path, &e))?;
         let reference = Image::from_png(&bytes).map_err(|d| d.at(path.display().to_string()))?;
-        let frame = time * self.scene().fps;
+        let frame = time * self.scene().root.fps;
         let list = self.display_list(frame)?;
         let (width, height) = self.canvas()?;
         if (reference.width(), reference.height()) != (width, height) {

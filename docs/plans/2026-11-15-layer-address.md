@@ -57,7 +57,7 @@ The scene becomes a root `Comp` plus its scene-only fields, with one validator a
 - its transform in scene space;
 - whether it is visible.
 
-Render, `check`, `at` and the text geometry all walk the tree with it. `check` runs its rules on every node, in scene space.
+`check`, `at` and the text geometry walk the tree with it. `check` runs its rules on every node, in scene space. The renderer keeps its own descent, because it builds a tree back: a composition is a clipped, isolated layer, and a matte draws inside the layer it masks. Both read the same evaluated frame, so they cannot disagree on what is shown.
 
 ## Steps
 
@@ -65,7 +65,7 @@ Each step is one pull request, with its tests.
 
 1. **`Id` and `Address`** in motion-format: the grammar, the printer, the never-panic and print-then-parse proptests, and the reserved `scene`. The import's `Ids` skips `scene`.
 2. **Diagnostics carry an `Address`.** Each crate's error snapshot is updated once.
-3. **The scene as a root comp, and one walker** in motion-scene. Render uses the walker, and its output does not change.
+3. **The scene as a root comp, and one walker** in motion-scene. The scene and its graph hold a root composition, built by the same code as any other. Render reads its background from it, and its output does not change.
 4. **`at` and `check` over every node,** reported by address, with fixtures that have nested comps.
 5. **Overrides** in the format: validation, compile, and the error snapshot.
 6. **Edits by address.** Layers at any depth, array selectors in key paths, and overrides through instances. A batch of edit lines with `--out` (audit, workstream 4) follows once edits are typed.

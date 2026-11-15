@@ -18,7 +18,8 @@ use crate::anim::{
 };
 use crate::doc::{
     AnimDoc, CompDoc, CompsDoc, EasingDoc, KeyDoc, KeyTime, LayerDoc, LayersDoc, List, Number,
-    Object, PathDoc, PresetDoc, PresetsDoc, SceneDoc, Shorthand, StartDoc, TrackDoc, ValueDoc,
+    Object, PathDoc, Present, PresetDoc, PresetsDoc, SceneDoc, Shorthand, StartDoc, TrackDoc,
+    ValueDoc,
 };
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, SHAPES};
@@ -64,6 +65,21 @@ const DEFAULT_POSITION: Position = Position {
     y: Coord::Center,
 };
 
+/// What every composition reads from the scene: its presets and the
+/// compositions a `comp` layer may draw.
+struct Shared<'a> {
+    presets: &'a [(String, PresetSpec)],
+    /// Every composition's id and size, read before any layer.
+    comps: &'a [(String, Size)],
+}
+
+/// A composition's frames per second, length and background.
+struct Clock {
+    fps: f64,
+    duration: Time,
+    background: Color,
+}
+
 /// What a layer needs from the scene around it.
 struct Context<'a> {
     presets: &'a [(String, PresetSpec)],
@@ -80,8 +96,7 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
     version(required(*doc.motion, MOTION, &VERSION.to_string())?)?;
     let fps = doc.fps.map_or(Ok(DEFAULT_FPS), fps)?;
     let size = optional(doc.size.as_ref(), SIZE)?.unwrap_or(DEFAULT_SIZE);
-    let duration = required(doc.dur.as_ref(), DUR, r#""5s""#)?.parse_at(DUR)?;
-    let background = optional(doc.bg.as_ref(), BG)?.unwrap_or(DEFAULT_BACKGROUND);
+    let clock = clock(fps, &doc.dur, &doc.bg, DEFAULT_BACKGROUND)?;
     let Object(own_presets) = &doc.presets;
     let presets = presets(own_presets).map_err(|e| e.under(PRESETS))?;
     let Object(comp_docs) = &doc.comps;
@@ -91,30 +106,24 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
         None => Vec::new(),
     };
     let List(layer_docs) = required(doc.layers.as_ref(), LAYERS, "[]")?;
-    let context = Context {
+    let shared = Shared {
         presets: &presets,
         comps: &comp_sizes,
-        fps,
-        size,
     };
     let comps = comp_docs
         .iter()
         .map(|(id, Object(comp_doc))| {
-            comp(id, comp_doc, &context).map_err(|e| e.under(comp_path(id)))
+            listed_comp(id, comp_doc, &shared, fps).map_err(|e| e.under(comp_path(id)))
         })
         .collect::<Result<Vec<_>>>()?;
-    let layers = layers(layer_docs, &context)?;
+    let root = comp(SCENE, size, clock, layer_docs, &shared)?;
     no_comp_draws_itself(&comps)?;
     Ok(Scene {
         version: VERSION,
-        size,
-        fps,
-        duration,
-        background,
+        root,
         presets,
         fonts,
         comps,
-        layers,
     })
 }
 
@@ -175,31 +184,57 @@ fn comp_sizes(docs: &CompsDoc) -> Result<Vec<(String, Size)>> {
         .collect()
 }
 
-/// One composition, with paths relative to it: its clock defaults to the
-/// scene's, its background to clear.
-fn comp(id: &str, doc: &CompDoc, scene: &Context) -> Result<Comp> {
-    let size = scene
+/// One composition under `comps`, with paths relative to it: its clock
+/// defaults to the scene's `fps`, its background to clear.
+fn listed_comp(id: &str, doc: &CompDoc, shared: &Shared, scene_fps: f64) -> Result<Comp> {
+    let size = shared
         .comps
         .iter()
         .find(|(c, _)| c == id)
         .map(|(_, size)| *size)
         .expect("comp sizes are read first");
-    let fps = doc.fps.map_or(Ok(scene.fps), fps)?;
-    let duration = required(doc.dur.as_ref(), DUR, r#""5s""#)?.parse_at(DUR)?;
-    let background = optional(doc.bg.as_ref(), BG)?.unwrap_or(CLEAR);
+    let fps = doc.fps.map_or(Ok(scene_fps), fps)?;
+    let clock = clock(fps, &doc.dur, &doc.bg, CLEAR)?;
     let List(layer_docs) = required(doc.layers.as_ref(), LAYERS, "[]")?;
-    let context = Context {
-        presets: scene.presets,
-        comps: scene.comps,
+    comp(id, size, clock, layer_docs, shared)
+}
+
+/// A composition's clock and background, from the keys the scene's root
+/// and every composition under `comps` share.
+fn clock(
+    fps: f64,
+    dur: &Present<Shorthand<Time>>,
+    bg: &Present<Shorthand<Color>>,
+    default_background: Color,
+) -> Result<Clock> {
+    Ok(Clock {
         fps,
+        duration: required(dur.as_ref(), DUR, r#""5s""#)?.parse_at(DUR)?,
+        background: optional(bg.as_ref(), BG)?.unwrap_or(default_background),
+    })
+}
+
+/// One composition, the scene's root or one under `comps`, from its size,
+/// its clock and its layers: the one place either is built.
+fn comp(
+    id: &str,
+    size: Size,
+    clock: Clock,
+    layer_docs: &LayersDoc,
+    shared: &Shared,
+) -> Result<Comp> {
+    let context = Context {
+        presets: shared.presets,
+        comps: shared.comps,
+        fps: clock.fps,
         size,
     };
     Ok(Comp {
         id: id.to_owned(),
         size,
-        fps,
-        duration,
-        background,
+        fps: clock.fps,
+        duration: clock.duration,
+        background: clock.background,
         layers: layers(layer_docs, &context)?,
     })
 }

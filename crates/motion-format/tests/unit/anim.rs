@@ -17,7 +17,7 @@ fn anim(v: Value) -> Result<Vec<AnimTrack>> {
         "dur": "1s",
         "layers": [{"id": "z", "rect": "1x1"}, {"id": "a", "rect": "1x1", "anim": v}],
     });
-    scene_from_value(&scene).map(|mut s| s.layers.remove(1).anim)
+    scene_from_value(&scene).map(|mut s| s.root.layers.remove(1).anim)
 }
 
 fn err(v: Value) -> Diagnostic {
@@ -279,7 +279,7 @@ fn scene(layer: &str) -> Result<crate::Document> {
 #[test]
 fn layer_carries_anim() {
     let d = scene(r#""anim":{"x":"0 -> 5 @0-5f"}"#).unwrap();
-    assert_eq!(d.scene().layers[0].anim.len(), 1);
+    assert_eq!(d.scene().root.layers[0].anim.len(), 1);
     // A property the preset does not touch is fine next to `in`.
     assert!(scene(r#""in":"fade-up","anim":{"rotate":"0 -> 5 @0-5f"}"#).is_ok());
 }

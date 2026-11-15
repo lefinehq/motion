@@ -76,10 +76,10 @@ fn one(extra: &str, top: &str) -> SceneGraph {
 fn resolves_sizes_and_rest_positions() {
     let g = compile(&launch(), &mut Typesetter::new(FontSet::builtin())).unwrap();
     assert_eq!(
-        (g.width, g.height, g.duration_frames),
+        (g.root.width, g.root.height, g.root.duration_frames),
         (1920.0, 1080.0, 150.0)
     );
-    let t = &g.nodes[0];
+    let t = &g.root.nodes[0];
     assert_eq!(track(t, "x").sample(0.0), 960.0);
     assert_eq!(track(t, "y").sample(1e6), 260.0);
     // The title is set in Inter at 96 px: its box is the layout's bounds,
@@ -91,7 +91,7 @@ fn resolves_sizes_and_rest_positions() {
     );
     let anchor = track(t, "anchor-x").sample(0.0);
     assert_eq!(anchor, t.bounds.center().x);
-    let c = &g.nodes[1];
+    let c = &g.root.nodes[1];
     assert_eq!((c.bounds.width(), c.bounds.height()), (300.0, 400.0));
     assert_eq!(track(c, "x").sample(0.0), 960.0);
 }
@@ -101,7 +101,7 @@ fn an_image_node_keeps_its_file_and_its_box_is_the_layers_box() {
     let g = compile_json(
         r#"{"motion":1,"dur":"1s","layers":[{"id":"photo","image":"a.png","box":[-10,0,40,20],"at":"100 50"}]}"#,
     );
-    let node = &g.nodes[0];
+    let node = &g.root.nodes[0];
     let NodeContent::Image(image) = &node.content else {
         panic!("not an image: {:?}", node.content);
     };
@@ -119,6 +119,7 @@ fn an_image_node_keeps_its_file_and_its_box_is_the_layers_box() {
 fn every_node_has_one_track_per_property() {
     for n in &compile(&launch(), &mut Typesetter::new(FontSet::builtin()))
         .unwrap()
+        .root
         .nodes
     {
         assert_eq!(n.tracks.len(), motion_format::property::PROPERTIES.len());
@@ -130,20 +131,20 @@ fn untouched_properties_are_constant_at_their_default() {
     let g = one("", "");
     for (spec, t) in motion_format::property::PROPERTIES
         .iter()
-        .zip(&g.nodes[0].tracks)
+        .zip(&g.root.nodes[0].tracks)
     {
         assert!(t.is_constant(), "{}", spec.name);
     }
-    assert_eq!(track(&g.nodes[0], "opacity").sample(0.0), 1.0);
-    assert_eq!(track(&g.nodes[0], "scale").sample(0.0), 1.0);
-    assert_eq!(track(&g.nodes[0], "x").sample(0.0), 100.0);
-    assert_eq!(g.nodes[0].follows_at, (true, true));
+    assert_eq!(track(&g.root.nodes[0], "opacity").sample(0.0), 1.0);
+    assert_eq!(track(&g.root.nodes[0], "scale").sample(0.0), 1.0);
+    assert_eq!(track(&g.root.nodes[0], "x").sample(0.0), 100.0);
+    assert_eq!(g.root.nodes[0].follows_at, (true, true));
 }
 
 #[test]
 fn fade_up_compiles_to_an_opacity_and_a_y_track() {
     let g = compile(&launch(), &mut Typesetter::new(FontSet::builtin())).unwrap();
-    let c = &g.nodes[1];
+    let c = &g.root.nodes[1];
     assert_eq!(pairs(track(c, "opacity")), [(15.0, 0.0), (27.0, 1.0)]);
     assert_eq!(pairs(track(c, "y")), [(15.0, 760.0), (27.0, 700.0)]);
     assert!(track(c, "x").is_constant());
@@ -162,7 +163,7 @@ fn offsets_point_away_from_the_direction_of_travel(
     #[case] from_x: f64,
     #[case] from_y: f64,
 ) {
-    let n = &one(&format!(r#","in":"{preset}""#), "").nodes[0];
+    let n = &one(&format!(r#","in":"{preset}""#), "").root.nodes[0];
     assert_eq!(track(n, "x").sample(0.0), from_x, "x");
     assert_eq!(track(n, "y").sample(0.0), from_y, "y");
     assert_eq!(track(n, "x").sample(1e6), 100.0, "x end");
@@ -172,18 +173,20 @@ fn offsets_point_away_from_the_direction_of_travel(
 
 #[test]
 fn pop_and_spin_in_produce_scale_and_rotate_tracks() {
-    let n = &one(r#","in":"pop 10f linear""#, "").nodes[0];
+    let n = &one(r#","in":"pop 10f linear""#, "").root.nodes[0];
     assert_eq!(pairs(track(n, "scale-x")), [(0.0, 0.6), (10.0, 1.0)]);
     assert_eq!(pairs(track(n, "scale-y")), [(0.0, 0.6), (10.0, 1.0)]);
     assert!(track(n, "rotate").is_constant());
-    let n = &one(r#","in":"spin-in 10f linear""#, "").nodes[0];
+    let n = &one(r#","in":"spin-in 10f linear""#, "").root.nodes[0];
     assert_eq!(pairs(track(n, "rotate")), [(0.0, -90.0), (10.0, 0.0)]);
     assert!(track(n, "scale").is_constant());
 }
 
 #[test]
 fn seconds_convert_to_frames_at_a_non_default_fps() {
-    let n = &one(r#","in":"fade-up 40px 0.25s @0.5s""#, r#""fps":60,"#).nodes[0];
+    let n = &one(r#","in":"fade-up 40px 0.25s @0.5s""#, r#""fps":60,"#)
+        .root
+        .nodes[0];
     // 0.5 s and 0.25 s at 60 fps.
     let frames: Vec<f64> = track(n, "opacity").pairs().iter().map(|k| k.0).collect();
     assert_eq!(frames, [30.0, 45.0]);
@@ -195,9 +198,9 @@ fn seconds_based_anim_keys_convert_at_60_fps() {
         r#","anim":{"rotate":[["0.5s",0],["1s",90,"ease-out"]]}"#,
         r#""fps":60,"#,
     );
-    let n = &g.nodes[0];
+    let n = &g.root.nodes[0];
     assert_eq!(pairs(track(n, "rotate")), [(30.0, 0.0), (60.0, 90.0)]);
-    assert_eq!(g.fps, 60.0);
+    assert_eq!(g.root.fps, 60.0);
 }
 
 #[test]
@@ -206,6 +209,7 @@ fn anim_and_entrance_drive_different_properties() {
         r#","in":"fade-up","anim":{"scale":"0.2 -> 0.8 @0-10f"}"#,
         "",
     )
+    .root
     .nodes[0];
     assert_eq!(pairs(track(n, "scale-y")), [(0.0, 0.2), (10.0, 0.8)]);
     // The entrance still drives opacity and y.
@@ -223,7 +227,7 @@ fn anim_and_entrance_drive_different_properties() {
 #[case::relative_start(r#","in":"drop""#, (true, true))]
 fn follows_at_per_axis(#[case] extra: &str, #[case] follows: (bool, bool)) {
     let top = r#""presets":{"swoop":{"x":1900},"drop":{"y":"-d"}},"#;
-    assert_eq!(one(extra, top).nodes[0].follows_at, follows);
+    assert_eq!(one(extra, top).root.nodes[0].follows_at, follows);
 }
 
 #[test]
@@ -233,7 +237,7 @@ fn a_scene_preset_overrides_a_built_in() {
         r#","in":"fade 30px""#,
         r#""presets":{"fade":{"opacity":0,"y":"+d"}},"#,
     );
-    let n = &g.nodes[0];
+    let n = &g.root.nodes[0];
     assert_eq!(pairs(track(n, "y")).first(), Some(&(0.0, 230.0)));
     assert!(!track(n, "y").is_constant());
 }
@@ -244,13 +248,17 @@ fn resting_values_set_on_the_layer_are_the_constant_tracks() {
         r#","rotate":45,"scale":[0.8,0.5],"anchor":[0,0],"opacity":0.5"#,
         "",
     )
+    .root
     .nodes[0];
     assert_eq!(track(n, "rotate").sample(0.0), 45.0);
     assert_eq!(track(n, "scale-y").sample(0.0), 0.5);
     assert_eq!(track(n, "anchor-x").sample(0.0), 0.0);
     assert_eq!(track(n, "opacity").sample(0.0), 0.5);
     // Without it the anchor rests at the centre of the box.
-    assert_eq!(track(&one("", "").nodes[0], "anchor-y").sample(0.0), 5.0);
+    assert_eq!(
+        track(&one("", "").root.nodes[0], "anchor-y").sample(0.0),
+        5.0
+    );
 }
 
 #[test]
@@ -259,7 +267,7 @@ fn a_whole_point_track_keeps_its_path_and_speed() {
         r#","anim":{"position":[{"t":0,"v":[0,0],"curve":"speed(0,0.5,0,0.5)","path":[[50,0],[0,-50]]},{"t":"1s","v":[100,100]}]}"#,
         r#""fps":10,"#,
     )
-    .nodes[0];
+    .root.nodes[0];
     let PropertyTrack::Whole(position) = &n.tracks[Prop::POSITION.index()] else {
         panic!("position is animated whole");
     };
@@ -272,7 +280,7 @@ fn a_whole_point_track_keeps_its_path_and_speed() {
 
 #[test]
 fn components_split_a_point_and_rest_where_nothing_drives_them() {
-    let n = &one(r#","anim":{"scale-x":"0 -> 2 @0-10f"}"#, "").nodes[0];
+    let n = &one(r#","anim":{"scale-x":"0 -> 2 @0-10f"}"#, "").root.nodes[0];
     let PropertyTrack::Split(tracks) = &n.tracks[Prop::SCALE.index()] else {
         panic!("scale is split");
     };
@@ -289,9 +297,9 @@ fn parents_and_timing_are_resolved() {
         {"id":"card","rect":"10x10"},
         {"id":"label","rect":"5x5","parent":"card","span":"1s-2s","offset":"1s","stretch":2}]}"#,
     );
-    assert_eq!(g.nodes[0].parent, None);
-    assert_eq!(g.nodes[0].timing, Timing::ALWAYS);
-    let label = &g.nodes[1];
+    assert_eq!(g.root.nodes[0].parent, None);
+    assert_eq!(g.root.nodes[0].timing, Timing::ALWAYS);
+    let label = &g.root.nodes[1];
     assert_eq!(label.parent, Some(0));
     assert_eq!(
         label.timing,
@@ -312,7 +320,7 @@ fn a_code_built_parent_cycle_is_refused() {
     .unwrap()
     .scene()
     .clone();
-    scene.layers[0].parent = Some("b".into());
+    scene.root.layers[0].parent = Some("b".into());
     compile(&scene, &mut Typesetter::new(FontSet::builtin())).unwrap();
 }
 
@@ -322,6 +330,6 @@ fn at_resolves_in_the_parents_box() {
         r#"{"motion":1,"dur":"1s","layers":[{"id":"card","rect":"200x100"},
         {"id":"kid","rect":"10x10","parent":"card","at":"center center"}]}"#,
     );
-    assert_eq!(track(&g.nodes[1], "x").sample(0.0), 100.0);
-    assert_eq!(track(&g.nodes[1], "y").sample(0.0), 50.0);
+    assert_eq!(track(&g.root.nodes[1], "x").sample(0.0), 100.0);
+    assert_eq!(track(&g.root.nodes[1], "y").sample(0.0), 50.0);
 }

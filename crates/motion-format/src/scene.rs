@@ -14,34 +14,30 @@ use crate::text::TextContent;
 use crate::units::{Color, Size, Time, TimeSpan};
 use crate::value::Value;
 
-/// A whole scene: a canvas, a length and the layers drawn on it.
+/// A whole scene: its root composition, which is the canvas the scene
+/// draws, and what every composition shares.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scene {
     /// Format version; always 1 for now.
     pub version: u32,
-    /// Canvas size in pixels.
-    pub size: Size,
-    /// Frames per second, above zero.
-    pub fps: f64,
-    /// Total length, as the author wrote it.
-    pub duration: Time,
-    /// Canvas colour behind every layer.
-    pub background: Color,
+    /// The scene's own canvas, clock and layers, a composition like any
+    /// other, whose id is [`SCENE`](crate::address::SCENE). Its background
+    /// is opaque black unless set.
+    pub root: Comp,
     /// The scene's own presets, which hide built-ins of the same name.
     pub presets: Vec<(String, PresetSpec)>,
     /// Font files and folders, relative to the scene file, besides the built-in Inter.
     pub fonts: Vec<String>,
     /// Compositions that `comp` layers draw, in the order written.
     pub comps: Vec<Comp>,
-    /// Layers in paint order: the first is at the back.
-    pub layers: Vec<Layer>,
 }
 
 /// A composition: a canvas of its own, with its own clock and layers, that
 /// any number of `comp` layers draw as their content.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Comp {
-    /// Its name in `comps`, which `comp` layers write.
+    /// Its name in `comps`, which `comp` layers write, or
+    /// [`SCENE`](crate::address::SCENE) for the scene's root.
     pub id: String,
     /// Its canvas in pixels, which is also the box of a layer that draws it.
     pub size: Size,

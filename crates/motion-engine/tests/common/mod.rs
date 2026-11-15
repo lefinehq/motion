@@ -9,7 +9,7 @@ use motion_format::{Value, fmt_num};
 /// # Errors
 /// A scene that cannot be compiled or drawn.
 pub fn meaning(session: &Session) -> Result<String> {
-    let last = (session.graph()?.duration_frames - 1.0).max(0.0);
+    let last = (session.graph()?.root.duration_frames - 1.0).max(0.0);
     let frames = [0.0, (last / 2.0).floor(), last]
         .iter()
         .map(|&frame| at(session, frame))

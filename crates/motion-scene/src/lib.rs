@@ -1,5 +1,6 @@
 //! Steps 2 and 3: [`compile`] a [`motion_format::Scene`] into a [`SceneGraph`] in pixels
-//! and frames, then [`evaluate`] it at any frame without drawing.
+//! and frames, then [`evaluate`] it at any frame without drawing, and
+//! [`walk`] every node of the frame at any depth.
 
 mod animate;
 mod compile;
@@ -10,6 +11,7 @@ mod shape;
 mod state;
 mod text;
 mod track;
+mod walk;
 
 pub use animate::{COUNTS, GlyphParts, GlyphState, Parts};
 pub use compile::compile;
@@ -20,3 +22,4 @@ pub use shape::{ShapeDraw, outline};
 pub use state::{ContentState, FrameState, ItemState, NodeState};
 pub use text::{TextNode, set as set_text};
 pub use track::{Key, KeySpec, PathSpan, Track};
+pub use walk::{Visit, Walk, walk};

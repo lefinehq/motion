@@ -8,7 +8,7 @@ use motion_text::{FontSet, Justification};
 /// The text content of the one layer of a scene whose layer keys are `keys`.
 fn content(keys: &str) -> TextContent {
     let json = format!(r#"{{"motion":1,"dur":"1s","layers":[{{"id":"t",{keys}}}]}}"#);
-    match &parse_document(&json).unwrap().scene().layers[0].content {
+    match &parse_document(&json).unwrap().scene().root.layers[0].content {
         motion_format::Content::Text(text) => (**text).clone(),
         other => panic!("not text: {other:?}"),
     }

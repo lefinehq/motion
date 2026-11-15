@@ -160,7 +160,7 @@ pub fn parse_document(json: &str) -> Result<Document> {
     let raw: Value = serde_json::from_str(json)
         .map_err(|e| Diagnostic::syntax(format!("invalid JSON: {e}")).expected(SceneDoc::FORM))?;
     let doc = Document::from_value(raw)?;
-    Span::current().record("layers", doc.scene().layers.len());
+    Span::current().record("layers", doc.scene().root.layers.len());
     Ok(doc)
 }
 

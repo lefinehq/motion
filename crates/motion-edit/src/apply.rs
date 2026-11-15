@@ -59,7 +59,7 @@ impl Target {
         if name == SCENE_TARGET {
             return Ok(Target::Scene);
         }
-        let layers = &doc.scene().layers;
+        let layers = &doc.scene().root.layers;
         layers
             .iter()
             .position(|layer| layer.id == name)

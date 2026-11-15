@@ -35,16 +35,16 @@ fn scene(layers: &str) -> String {
 #[test]
 fn parses_minimal_scene_with_defaults() {
     let d = doc(r#"{"motion":1,"dur":"2s","layers":[{"id":"a","rect":"10x10"}]}"#);
-    assert_eq!(d.scene().fps, 30.0);
+    assert_eq!(d.scene().root.fps, 30.0);
     assert_eq!(
-        d.scene().size,
+        d.scene().root.size,
         Size {
             width: 1920,
             height: 1080
         }
     );
     assert_eq!(
-        d.scene().background,
+        d.scene().root.background,
         Color {
             r: 0,
             g: 0,
@@ -52,21 +52,21 @@ fn parses_minimal_scene_with_defaults() {
             a: 255
         }
     );
-    assert_eq!(d.scene().layers[0].fill, [1.0; 4]);
+    assert_eq!(d.scene().root.layers[0].fill, [1.0; 4]);
     assert_eq!(
-        d.scene().layers[0].at,
+        d.scene().root.layers[0].at,
         Position {
             x: Coord::Center,
             y: Coord::Center
         }
     );
-    assert!(d.scene().layers[0].enter.is_none());
+    assert!(d.scene().root.layers[0].enter.is_none());
 }
 
 #[test]
 fn text_layer_gets_the_default_font() {
     let d = doc(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":"Hi"}]}"#);
-    match &d.scene().layers[0].content {
+    match &d.scene().root.layers[0].content {
         Content::Text(text) => {
             assert_eq!(text.text, "Hi");
             let font = &text.first_style().font;
@@ -82,15 +82,15 @@ fn text_layer_gets_the_default_font() {
 fn size_fps_and_bg_overrides_reach_the_scene() {
     let d = doc(r##"{"motion":1,"size":"720p","fps":60,"dur":"1s","bg":"#102030","layers":[]}"##);
     assert_eq!(
-        d.scene().size,
+        d.scene().root.size,
         Size {
             width: 1280,
             height: 720
         }
     );
-    assert_eq!(d.scene().fps, 60.0);
+    assert_eq!(d.scene().root.fps, 60.0);
     assert_eq!(
-        d.scene().background,
+        d.scene().root.background,
         Color {
             r: 0x10,
             g: 0x20,
@@ -171,7 +171,7 @@ fn an_image_layer_names_its_file_and_fills_its_box() {
     let d = doc(&scene(
         r#"{"id":"a","image":"photos/beach.jpg","box":[192,108]},{"id":"b","image":"/abs/b.png","box":[-8,-4,16,8]}"#,
     ));
-    let image = |i: usize| match &d.scene().layers[i].content {
+    let image = |i: usize| match &d.scene().root.layers[i].content {
         Content::Image(image) => image.clone(),
         other => panic!("not an image: {other:?}"),
     };
@@ -278,7 +278,7 @@ fn a_value_that_is_not_finite_is_not_a_number() {
 #[test]
 fn position_sets_an_exact_point_whatever_the_parent_box() {
     let d = doc(&scene(r#"{"id":"a","rect":"10x10","position":[-3.5,12]}"#));
-    let layer = &d.scene().layers[0];
+    let layer = &d.scene().root.layers[0];
     use crate::Value;
     use crate::property::Prop;
     let shifted = kurbo::Rect::new(-40.0, -30.0, 60.0, 70.0);
@@ -297,7 +297,7 @@ fn property_keys_set_resting_values_of_their_type() {
     let d = doc(&scene(
         r#"{"id":"a","rect":"10x10","rotate":45,"scale":0.8,"anchor":[0,0],"opacity":"0.5"}"#,
     ));
-    let layer = &d.scene().layers[0];
+    let layer = &d.scene().root.layers[0];
     use crate::Value;
     use crate::property::Prop;
     assert_eq!(layer.value(Prop::ROTATE), Some(Value::Number(45.0)));
@@ -337,7 +337,7 @@ fn timing_and_parent_default_and_parse() {
     let d = doc(&scene(
         r#"{"id":"a","rect":"10x10"},{"id":"b","rect":"5x5","parent":"a","span":"0.5s-2s","offset":"12f","stretch":-1}"#,
     ));
-    let [a, b] = &d.scene().layers[..] else {
+    let [a, b] = &d.scene().root.layers[..] else {
         panic!("two layers");
     };
     assert_eq!(
@@ -373,7 +373,13 @@ fn a_matte_names_a_layer_of_its_list_and_a_mode() {
     let d = doc(&scene(
         r#"{"id":"a","rect":"1x1","matte":"b"},{"id":"b","rect":"1x1","matte":" c  luma-inverted "},{"id":"c","rect":"1x1","hidden":true}"#,
     ));
-    let mattes: Vec<Option<Matte>> = d.scene().layers.iter().map(|l| l.matte.clone()).collect();
+    let mattes: Vec<Option<Matte>> = d
+        .scene()
+        .root
+        .layers
+        .iter()
+        .map(|l| l.matte.clone())
+        .collect();
     let matte = |layer: &str, mode| {
         Some(Matte {
             layer: layer.into(),
@@ -409,7 +415,7 @@ fn object_keys_carry_a_path_and_curves_per_component() {
         "position":[{"t":0,"v":[0,0],"curve":"speed(0,0.5,0,0.5)","path":[[10,0],[0,-10]]},{"t":"1s","v":"100,100"}],
         "scale":[[0,1,["ease-in","hold"]],[10,[2,3]]]}}"#,
     ));
-    let anim = &d.scene().layers[0].anim;
+    let anim = &d.scene().root.layers[0].anim;
     let position = &anim[0].keys;
     assert_eq!(position[0].path, Some([[10.0, 0.0], [0.0, -10.0]]));
     assert_eq!(position[1].value, Value::Point([100.0, 100.0]));

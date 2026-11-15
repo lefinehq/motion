@@ -20,9 +20,9 @@ pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
     // Reject unknown ids up front so a typo never yields a partial answer.
     if let Some(unknown) = ids
         .iter()
-        .find(|id| !graph.nodes.iter().any(|n| &n.id == *id))
+        .find(|id| !graph.root.nodes.iter().any(|n| &n.id == *id))
     {
-        let ids = graph.nodes.iter().map(|n| &n.id);
+        let ids = graph.root.nodes.iter().map(|n| &n.id);
         return Err(Diagnostic::unknown("layer id", unknown, ids));
     }
     let lines: Vec<String> = evaluate(graph, frame)
