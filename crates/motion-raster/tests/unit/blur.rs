@@ -9,6 +9,7 @@ const ONE: Space = Space {
     transform: Affine::IDENTITY,
     bounds: None,
     input: None,
+    time: 0.0,
 };
 
 /// A `width` by `height` grid, transparent but for one opaque white pixel.
@@ -81,6 +82,7 @@ fn a_blur_scales_with_the_layer() {
         transform: Affine::scale(2.0),
         bounds: None,
         input: None,
+        time: 0.0,
     };
     gaussian_blur(&mut twice, &values, &doubled);
     let (_, _, v1) = row_moments(&once, 0);

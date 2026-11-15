@@ -22,6 +22,7 @@ mod effect;
 mod generate;
 mod image;
 mod list;
+mod particles;
 mod picture;
 mod pixels;
 mod render;

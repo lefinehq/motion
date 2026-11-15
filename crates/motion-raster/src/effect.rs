@@ -23,7 +23,7 @@ use vello_cpu::peniko::{BlendMode, Compose, Mix};
 use crate::list::Node;
 use crate::pixels::Pixels;
 use crate::style::Color;
-use crate::{blur, colour, distort, generate};
+use crate::{blur, colour, distort, generate, particles};
 
 /// The type of one effect parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -187,6 +187,8 @@ pub struct Space {
     pub bounds: Option<Rect>,
     /// The drawing of the layer the effect reads, if it reads one.
     pub input: Option<Input>,
+    /// The layer's own time, in seconds.
+    pub time: f64,
 }
 
 /// The drawing of a layer an effect reads, in that layer's own
@@ -494,6 +496,169 @@ pub const EFFECTS: &[EffectSpec] = &[
         apply: Apply::Pixels {
             over: None,
             pixels: colour::invert,
+        },
+    },
+    EffectSpec {
+        name: "particles",
+        params: &[
+            ParamSpec {
+                name: "rate",
+                default: ParamValue::Number(40.0),
+                range: Some((0.0, 100_000.0)),
+                choices: &[],
+                doc: "how many particles are born a second",
+            },
+            ParamSpec {
+                name: "longevity",
+                default: ParamValue::Number(2.0),
+                range: Some((0.0, 3_000.0)),
+                choices: &[],
+                doc: "how long each lives, in seconds",
+            },
+            ParamSpec {
+                name: "position",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "the producer's centre, in px of the layer",
+            },
+            ParamSpec {
+                name: "radius-x",
+                default: ParamValue::Number(3.0),
+                range: Some((0.0, 10_000.0)),
+                choices: &[],
+                doc: "how far across from `position` particles are born, in px",
+            },
+            ParamSpec {
+                name: "radius-y",
+                default: ParamValue::Number(3.0),
+                range: Some((0.0, 10_000.0)),
+                choices: &[],
+                doc: "how far up or down from `position` particles are born, in px",
+            },
+            ParamSpec {
+                name: "velocity",
+                default: ParamValue::Number(100.0),
+                range: None,
+                choices: &[],
+                doc: "how fast particles leave, in px a second",
+            },
+            ParamSpec {
+                name: "gravity",
+                default: ParamValue::Number(100.0),
+                range: None,
+                choices: &[],
+                doc: "how fast they fall faster, in px a second each second; less than 0 rises",
+            },
+            ParamSpec {
+                name: "resistance",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 1_000.0)),
+                choices: &[],
+                doc: "how much of their speed they lose, a share each second",
+            },
+            ParamSpec {
+                name: "direction",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "where `direction` particles fly, in degrees clockwise from up",
+            },
+            ParamSpec {
+                name: "extra",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 100.0)),
+                choices: &[],
+                doc: "how far speeds and directions vary",
+            },
+            ParamSpec {
+                name: "birth-size",
+                default: ParamValue::Number(4.0),
+                range: Some((0.0, 10_000.0)),
+                choices: &[],
+                doc: "how wide a particle is at birth, in px",
+            },
+            ParamSpec {
+                name: "death-size",
+                default: ParamValue::Number(10.0),
+                range: Some((0.0, 10_000.0)),
+                choices: &[],
+                doc: "how wide it is at death, in px",
+            },
+            ParamSpec {
+                name: "size-variation",
+                default: ParamValue::Number(0.5),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how far sizes vary, as a share",
+            },
+            ParamSpec {
+                name: "max-opacity",
+                default: ParamValue::Number(0.75),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "the most a particle shows",
+            },
+            ParamSpec {
+                name: "birth-color",
+                default: ParamValue::Color(Color::rgba(0.98, 0.98, 0.125, 1.0)),
+                range: None,
+                choices: &[],
+                doc: "its colour at birth",
+            },
+            ParamSpec {
+                name: "death-color",
+                default: ParamValue::Color(Color::rgba(0.784, 0.063, 0.063, 1.0)),
+                range: None,
+                choices: &[],
+                doc: "its colour at death",
+            },
+            ParamSpec {
+                name: "seed",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 100_000.0)),
+                choices: &[],
+                doc: "which particles they are",
+            },
+            ParamSpec {
+                name: "animation",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["explosive", "direction"],
+                doc: "how particles leave: every way, or towards `direction`",
+            },
+            ParamSpec {
+                name: "shape",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["faded", "disc", "bubble"],
+                doc: "what a particle looks like: a soft dot, a solid one, or a ring",
+            },
+            ParamSpec {
+                name: "opacity-map",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "fade-out",
+                    "constant",
+                    "fade-out-sharp",
+                    "fade-in",
+                    "fade-in-out",
+                ],
+                doc: "how a particle's opacity runs over its life",
+            },
+            ParamSpec {
+                name: "transfer",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["over", "screen", "add"],
+                doc: "how particles lay on each other",
+            },
+        ],
+        doc: "draws particles a producer sends out over time",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: particles::particles,
         },
     },
     EffectSpec {

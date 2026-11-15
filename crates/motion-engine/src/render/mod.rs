@@ -196,6 +196,7 @@ fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
                 opacity: opacity.min(1.0),
                 effects,
                 adjust: true,
+                time: node.seconds,
                 ..Layer::new(Vec::new())
             })));
         }
@@ -213,6 +214,7 @@ fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
         effects,
         isolate,
         bounds,
+        time: node.seconds,
         ..Layer::new(children)
     })))
 }

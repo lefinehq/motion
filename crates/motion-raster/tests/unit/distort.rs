@@ -22,6 +22,7 @@ fn stripes() -> (Pixels, Space) {
         transform: Affine::IDENTITY,
         bounds: Some(Rect::new(0.0, 0.0, 4.0, 1.0)),
         input: None,
+        time: 0.0,
     };
     (pixels, space)
 }
@@ -73,6 +74,7 @@ fn turbulent_displacement_moves_pixels_but_keeps_pinned_edges() {
         transform: Affine::IDENTITY,
         bounds: Some(Rect::new(0.0, 0.0, 64.0, 64.0)),
         input: None,
+        time: 0.0,
     };
     let before = pixels.clone();
     let values = [

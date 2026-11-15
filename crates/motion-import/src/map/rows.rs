@@ -177,6 +177,29 @@ const MODES: &[(i64, &str)] = &[
 ];
 const COLORIZE: &[(i64, &str)] = &[(0, "adjust"), (1, "colorize")];
 const EXPOSURE_SPACES: &[(i64, &str)] = &[(0, "linear"), (1, "gamma")];
+// The scene's particle units per one of CC Particle Systems II's: births
+// a second per unit of birth rate, px a second (and a second per second)
+// per unit of velocity and gravity, drag a second per unit of resistance,
+// px per unit of size. Read off the corpus's reference frames.
+const CC_RATE: f64 = 120.0;
+const CC_SPEED: f64 = 250.0;
+const CC_RESISTANCE: f64 = 0.1;
+const CC_SIZE: f64 = 100.0;
+const CC_ANIMATIONS: &[(i64, &str)] = &[
+    (1, "explosive"),
+    (2, "explosive"),
+    (8, "direction"),
+    (9, "direction"),
+];
+const CC_SHAPES: &[(i64, &str)] = &[(4, "disc"), (5, "faded"), (6, "faded"), (7, "bubble")];
+const CC_OPACITY_MAPS: &[(i64, &str)] = &[
+    (1, "constant"),
+    (2, "fade-out-sharp"),
+    (3, "fade-out"),
+    (4, "fade-in"),
+    (5, "fade-in-out"),
+];
+const CC_TRANSFERS: &[(i64, &str)] = &[(1, "over"), (2, "screen"), (3, "add")];
 const MAP_LEVELS: &[(i64, &str)] = &[
     (1, "red"),
     (2, "green"),
@@ -257,7 +280,7 @@ const SHAPES_OF_RANGE: &[(i64, &str)] = &[
     (6, "smooth"),
 ];
 
-use Convert::{Color, Level, Number, Path, Percent, Point, PointPercent};
+use Convert::{Color, Level, Number, Path, Percent, Point, PointPercent, Times};
 use Missing::{Absent, CompCentre, Parameter, SourceCentre};
 
 /// The rows of the transform effect that do not depend on whether its scale
@@ -644,7 +667,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 33] = [
+pub(super) static KINDS: [Kind; 34] = [
     Kind {
         match_name: "ADBE Vector Group",
         item: "group",
@@ -1379,6 +1402,201 @@ pub(super) static KINDS: [Kind; 33] = [
                 To::Ignore("where the original renders it"),
                 Number,
                 Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "CC Particle Systems II",
+        item: "particles",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "CC Particle Systems II-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Particle Systems II-0001",
+                To::Prop("rate"),
+                Times(CC_RATE),
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0002",
+                To::Prop("longevity"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0003",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Particle Systems II-0004",
+                To::Prop("position"),
+                Point,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0005",
+                To::Prop("radius-x"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0006",
+                To::Prop("radius-y"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0007",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Particle Systems II-0008",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Particle Systems II-0009",
+                To::Setting("animation", CC_ANIMATIONS),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Particle Systems II-0010",
+                To::Prop("velocity"),
+                Times(CC_SPEED),
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0011",
+                To::OnlyDefault("particles inheriting the producer's velocity"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0012",
+                To::Prop("gravity"),
+                Times(CC_SPEED),
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0013",
+                To::Prop("resistance"),
+                Times(CC_RESISTANCE),
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0014",
+                To::Prop("direction"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0015",
+                To::Prop("extra"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0016",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Particle Systems II-0017",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Particle Systems II-0018",
+                To::Setting("shape", CC_SHAPES),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Particle Systems II-0019",
+                To::Prop("birth-size"),
+                Times(CC_SIZE),
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0020",
+                To::Prop("death-size"),
+                Times(CC_SIZE),
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0021",
+                To::Prop("size-variation"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0022",
+                To::Setting("opacity-map", CC_OPACITY_MAPS),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Particle Systems II-0023",
+                To::Prop("max-opacity"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0029",
+                To::OnlyDefault("volume shading of particles"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0024",
+                To::OnlyDefault("a colour map other than birth to death"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0025",
+                To::Prop("birth-color"),
+                Color,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0026",
+                To::Prop("death-color"),
+                Color,
+                Parameter,
+            ),
+            row(
+                "CC Particle Systems II-0028",
+                To::Setting("transfer", CC_TRANSFERS),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Particle Systems II-0027",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Particle Systems II-0030",
+                To::Prop("seed"),
+                Number,
+                Parameter,
             ),
         ],
         parts: &[],
@@ -2363,7 +2581,6 @@ pub(super) const REPLACING: &[&str] = &[
     "ADBE AudWave",
     "ADBE Laser",
     "CC Particle World",
-    "CC Particle Systems II",
     "tc Particular",
     "tc Form",
 ];

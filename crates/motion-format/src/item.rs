@@ -364,6 +364,114 @@ pub static TINT: Registry = Registry {
     ],
 };
 
+/// The properties of particles.
+pub static PARTICLES: Registry = Registry {
+    kind: "particles",
+    rows: &[
+        number(
+            "rate",
+            40.0,
+            Some((0.0, 100_000.0)),
+            "how many particles are born a second",
+        ),
+        number(
+            "longevity",
+            2.0,
+            Some((0.0, 3_000.0)),
+            "how long each lives, in seconds",
+        ),
+        point(
+            "position",
+            [0.0, 0.0],
+            &[],
+            false,
+            "the producer's centre, in px of the layer",
+        ),
+        number(
+            "radius-x",
+            3.0,
+            Some((0.0, 10_000.0)),
+            "how far across from `position` particles are born, in px",
+        ),
+        number(
+            "radius-y",
+            3.0,
+            Some((0.0, 10_000.0)),
+            "how far up or down from `position` particles are born, in px",
+        ),
+        number(
+            "velocity",
+            100.0,
+            None,
+            "how fast particles leave, in px a second",
+        ),
+        number(
+            "gravity",
+            100.0,
+            None,
+            "how fast they fall faster, in px a second each second; less than 0 rises",
+        ),
+        number(
+            "resistance",
+            0.0,
+            Some((0.0, 1_000.0)),
+            "how much of their speed they lose, a share each second",
+        ),
+        number(
+            "direction",
+            0.0,
+            None,
+            "where `direction` particles fly, in degrees clockwise from up",
+        ),
+        number(
+            "extra",
+            1.0,
+            Some((0.0, 100.0)),
+            "how far speeds and directions vary",
+        ),
+        number(
+            "birth-size",
+            4.0,
+            Some((0.0, 10_000.0)),
+            "how wide a particle is at birth, in px",
+        ),
+        number(
+            "death-size",
+            10.0,
+            Some((0.0, 10_000.0)),
+            "how wide it is at death, in px",
+        ),
+        number(
+            "size-variation",
+            0.5,
+            Some((0.0, 1.0)),
+            "how far sizes vary, as a share",
+        ),
+        number(
+            "max-opacity",
+            0.75,
+            Some((0.0, 1.0)),
+            "the most a particle shows",
+        ),
+        color(
+            "birth-color",
+            [0.98, 0.98, 0.125, 1.0],
+            "its colour at birth",
+        ),
+        color(
+            "death-color",
+            [0.784, 0.063, 0.063, 1.0],
+            "its colour at death",
+        ),
+        number(
+            "seed",
+            0.0,
+            Some((0.0, 100_000.0)),
+            "which particles they are",
+        ),
+    ],
+};
+
 /// The properties of the displacement map.
 pub static DISPLACEMENT_MAP: Registry = Registry {
     kind: "displacement-map",
@@ -1125,7 +1233,7 @@ pub static SHAPES: [ItemKind; 7] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 23] = [
+pub static EFFECTS: [ItemKind; 24] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -1199,6 +1307,46 @@ pub static EFFECTS: [ItemKind; 23] = [
         input: None,
         doc: "maps the levels from `input-black`–`input-white` to `output-black`–`output-white` \
               through `gamma`, clipped to 0 to 1",
+    },
+    ItemKind {
+        name: "particles",
+        role: Role::Effect,
+        registry: &PARTICLES,
+        primary: Primary::Property("rate"),
+        settings: &[
+            SettingSpec {
+                name: "animation",
+                choices: &["explosive", "direction"],
+                default: "explosive",
+                doc: "how particles leave: every way, or towards `direction`",
+            },
+            SettingSpec {
+                name: "shape",
+                choices: &["faded", "disc", "bubble"],
+                default: "faded",
+                doc: "what a particle looks like: a soft dot, a solid one, or a ring",
+            },
+            SettingSpec {
+                name: "opacity-map",
+                choices: &[
+                    "fade-out",
+                    "constant",
+                    "fade-out-sharp",
+                    "fade-in",
+                    "fade-in-out",
+                ],
+                default: "fade-out",
+                doc: "how a particle's opacity runs over its life",
+            },
+            SettingSpec {
+                name: "transfer",
+                choices: &["over", "screen", "add"],
+                default: "over",
+                doc: "how particles lay on each other",
+            },
+        ],
+        input: None,
+        doc: "draws particles a producer sends out over time, in place of the layer",
     },
     ItemKind {
         name: "displacement-map",
