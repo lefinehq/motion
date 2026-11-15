@@ -1,8 +1,10 @@
-Status: Draft · 2026-11-13
+Status: Draft · 2026-11-15
 
 # Glossary
 
 The words we use in motion, and what they mean.
+
+**Address.** The one way to name a layer anywhere in a scene: the ids down to it joined by `/`, then any keys inside it, such as `card/title.fill`. `scene` names the scene itself. See [D43](design/decisions.md#d43-one-layer-address-and-edits-per-instance).
 
 **Agent.** An AI system that writes and edits scenes, for example a coding assistant or a content pipeline.
 
@@ -20,7 +22,7 @@ The words we use in motion, and what they mean.
 
 **Draw-on.** A path operation that makes a stroke appear to draw itself.
 
-**Edit.** A one-line command that changes a scene, such as `card3 fill=red`.
+**Edit.** A one-line command that changes a scene, such as `card fill=red`, or `card/title text="Sale"` for one instance of a composition.
 
 **Evaluate.** Working out every layer's exact values at a given moment.
 
@@ -40,9 +42,11 @@ The words we use in motion, and what they mean.
 
 **Modifier.** A rule that adds motion without keyframes: jitter, loop, link or follow.
 
+**Instance.** One `comp` layer's use of a composition. Several layers may show the same composition; each is an instance, and overrides change one alone.
+
 **Nested comp.** A whole composition used as a single layer inside another.
 
-**Override.** A change stored on one copy in a repeat, such as card 3 being red. The repeat stays a single layer.
+**Override.** A change stored on one instance of a composition, under its `comp` layer's `overrides`, such as `card-2`'s title reading "Sale". The composition and its other instances stay as they are. A repeat will store a change to one copy the same way.
 
 **Pivot.** An invisible layer that only has a position, rotation and scale. Other layers use it as a parent, so they move together.
 
