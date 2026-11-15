@@ -362,3 +362,56 @@ fn every_blend_mode_of_the_format_is_one_the_rasteriser_draws() {
         assert_eq!(BlendMode::named(name).map(BlendMode::name), Ok(name));
     }
 }
+
+/// A hidden matte source that blurs still draws into the matte: hidden
+/// says it draws nothing of its own, not that it is outside its span at
+/// the shutter's moments.
+#[rstest]
+#[case::drawn_at_each_moment("")]
+#[case::drawn_once_and_moved(r##","fx":[{"fill":"#FFFFFF"}]"##)]
+fn a_hidden_matte_source_that_blurs_still_mattes(#[case] fx: &str) {
+    let frame = list(
+        &scene(&format!(
+            r##"{{"id":"box","rect":"120x60","fill":"#2E7D32","at":"100 50","matte":"m alpha"}},
+            {{"id":"m","rect":"40x20","fill":"#000000","hidden":true,"mblur":true,
+              "anim":{{"x":"60 -> 140 @0-10f"}}{fx}}}"##
+        )),
+        5.0,
+    );
+    let matte = only_layer(&frame).matte.as_ref().expect("a matte");
+    match &*matte.source {
+        Node::Layer(source) => assert!(
+            !source.children.is_empty() || !source.motion.is_empty(),
+            "an empty matte: {source:?}"
+        ),
+        other => panic!("not a layer: {other:?}"),
+    }
+}
+
+/// At the first frame of its span a blurred layer is whole: the shutter opens before
+/// its span, and those moments move it rather than leave it out.
+#[rstest]
+#[case::drawn_at_each_moment("")]
+#[case::drawn_once_and_moved(r##","fx":[{"fill":"#FFFFFF"}]"##)]
+fn a_blurred_layer_does_not_fade_in_at_its_start(#[case] fx: &str) {
+    let frame = list(
+        &scene(&format!(
+            r##"{{"id":"r","rect":"40x20","fill":"#000000","mblur":true,"span":"2f-10f",
+              "anim":{{"x":"60 -> 140 @0-10f"}}{fx}}}"##
+        )),
+        2.0,
+    );
+    let layer = only_layer(&frame);
+    let opacity = match layer.motion.is_empty() {
+        true => layer
+            .children
+            .iter()
+            .map(|child| match child {
+                Node::Layer(sample) => sample.opacity,
+                other => panic!("not a layer: {other:?}"),
+            })
+            .sum(),
+        false => layer.opacity,
+    };
+    assert!((opacity - 1.0).abs() < 1e-4, "opacity {opacity}");
+}

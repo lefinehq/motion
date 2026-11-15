@@ -641,3 +641,24 @@ fn a_layer_blends_normally_unless_it_names_a_mode() {
         at(Kind::UnknownName, "a.blend")
     );
 }
+
+#[test]
+fn compositions_keep_their_own_shutter_and_layers_ask_for_motion_blur() {
+    use crate::shorthand::Shutter;
+    let doc = doc(
+        r#"{"motion":1,"dur":"1s","shutter":"360","comps":{"c":{"size":"10x10","dur":"1s","layers":[{"id":"x","rect":"1x1"}]}},"layers":[{"id":"a","rect":"1x1","mblur":true},{"id":"b","comp":"c"}]}"#,
+    );
+    let scene = doc.scene();
+    assert_eq!(scene.root.shutter.angle, 360.0);
+    assert_eq!(scene.comps[0].shutter, Shutter::DEFAULT);
+    assert!(scene.root.layers[0].mblur && !scene.root.layers[1].mblur);
+    assert_eq!(
+        fails(&scene_with(r#""shutter":"999""#)),
+        at(Kind::OutOfRange, "shutter")
+    );
+}
+
+/// A scene of one rect layer with `keys` at the top level.
+fn scene_with(keys: &str) -> String {
+    format!(r#"{{"motion":1,"dur":"1s",{keys},"layers":[{{"id":"a","rect":"1x1"}}]}}"#)
+}

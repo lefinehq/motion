@@ -99,6 +99,10 @@ pub mod key {
     pub const MATTE: &str = "matte";
     /// Layer key: how a layer blends with what is below it.
     pub const BLEND: &str = "blend";
+    /// Layer key: the layer is blurred along its motion.
+    pub const MBLUR: &str = "mblur";
+    /// Scene and composition key: the shutter its layers blur over.
+    pub const SHUTTER: &str = "shutter";
 
     /// The place of composition `id`'s definition, `comps.card`.
     pub fn comp_path(id: &str) -> crate::Place {
@@ -121,12 +125,13 @@ pub mod key {
 }
 
 /// The keys allowed at the top level, in the order of `SceneDoc`'s fields.
-pub const SCENE_KEYS: [&str; 13] = [
+pub const SCENE_KEYS: [&str; 14] = [
     key::MOTION,
     key::SIZE,
     key::FPS,
     key::DUR,
     key::BG,
+    key::SHUTTER,
     key::LABELS,
     key::PRESETS,
     key::FONTS,
@@ -137,11 +142,12 @@ pub const SCENE_KEYS: [&str; 13] = [
     key::LAYERS,
 ];
 /// The keys allowed on a composition, in the order of `CompDoc`'s fields.
-pub const COMP_KEYS: [&str; 7] = [
+pub const COMP_KEYS: [&str; 8] = [
     key::SIZE,
     key::FPS,
     key::DUR,
     key::BG,
+    key::SHUTTER,
     key::LABELS,
     key::SLOTS,
     key::LAYERS,
@@ -149,7 +155,7 @@ pub const COMP_KEYS: [&str; 7] = [
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 31] = [
+pub const LAYER_KEYS: [&str; 32] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -181,6 +187,7 @@ pub const LAYER_KEYS: [&str; 31] = [
     key::HIDDEN,
     key::MATTE,
     key::BLEND,
+    key::MBLUR,
 ];
 
 /// Every key a layer may hold: [`LAYER_KEYS`], then the names of the

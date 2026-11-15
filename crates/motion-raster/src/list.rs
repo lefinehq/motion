@@ -91,6 +91,10 @@ pub struct Layer {
     pub bounds: Option<Rect>,
     /// Its own time, in seconds, which effects that run over time read.
     pub time: f64,
+    /// Motion blur of a drawing made once: moves in its parent's
+    /// coordinates. The layer is drawn once, with its masks and effects,
+    /// laid at each move and averaged, before it blends.
+    pub motion: Vec<Affine>,
 }
 
 /// A mask: an outline that cuts what a layer draws, before its effects.
@@ -172,6 +176,7 @@ impl Layer {
             adjust: false,
             bounds: None,
             time: 0.0,
+            motion: Vec::new(),
         }
     }
 
@@ -183,6 +188,7 @@ impl Layer {
             || self.clip.is_some()
             || !self.effects.is_empty()
             || !self.masks.is_empty()
+            || !self.motion.is_empty()
             || self.matte.is_some()
             || self
                 .children

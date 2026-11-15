@@ -4,7 +4,7 @@
 
 use motion_format::{Diagnostic, Kind, Result};
 use std::sync::Arc;
-use vello_cpu::kurbo::{Affine, Rect};
+use vello_cpu::kurbo::{Affine, Point, Rect};
 
 use vello_cpu::peniko::{ImageAlphaType, ImageQuality, ImageSampler};
 use vello_cpu::{
@@ -356,8 +356,10 @@ impl Painter {
             .iter()
             .position(Effect::reads_pixels)
             .unwrap_or(layer.effects.len());
-        // Masks cut the content before any effect but moves, on its pixels.
-        let (drawing, on_pixels) = match reads < layer.effects.len() || !layer.masks.is_empty() {
+        // Masks cut the content before any effect but moves, on its pixels,
+        // and a drawing moved for motion blur is made on pixels too.
+        let on_canvas = !layer.masks.is_empty() || !layer.motion.is_empty();
+        let (drawing, on_pixels) = match reads < layer.effects.len() || on_canvas {
             // Only moves before the first effect that reads pixels.
             true => {
                 let moves = layer.effects[..reads]
@@ -409,7 +411,7 @@ impl Painter {
             None,
         );
         let cut = self.cut(&layer.masks, transform * moved.transform);
-        let drawn = match on_pixels.is_empty() && cut.is_none() {
+        let drawn = match on_pixels.is_empty() && cut.is_none() && layer.motion.is_empty() {
             true => {
                 let drawn = self.nodes(&layer.children, transform * moved.transform);
                 let mut effects = EffectContext {
@@ -433,6 +435,9 @@ impl Painter {
                     for effect in on_pixels {
                         let space = self.space(effect, transform, layer)?;
                         effect.apply(&mut pixels, &space);
+                    }
+                    if !layer.motion.is_empty() {
+                        pixels = moved_average(&pixels, &layer.motion, parent);
                     }
                     self.draw_pixels(&pixels);
                     Ok(())
@@ -513,6 +518,57 @@ impl Painter {
                 .expected("glyph ids the font holds")
         })
     }
+}
+
+/// `pixels` laid at each of `moves`, given in the coordinates `parent`
+/// takes to the frame, and averaged: motion blur of a drawing made once.
+/// Only the pixels where a move can bring something are worked out.
+fn moved_average(pixels: &Pixels, moves: &[Affine], parent: Affine) -> Pixels {
+    let (width, height) = (usize::from(pixels.width()), usize::from(pixels.height()));
+    let mut sum = Pixels::transparent(pixels.width(), pixels.height());
+    let Some(drawn) = drawn_box(pixels) else {
+        return sum;
+    };
+    let share = 1.0 / moves.len() as f32;
+    for &step in moves {
+        let to_frame = parent * step * parent.inverse();
+        let back = to_frame.inverse();
+        // Where the drawn box lands, a pixel wider for the bilinear reach.
+        let landed = to_frame.transform_rect_bbox(drawn).inflate(1.0, 1.0);
+        let xs =
+            (landed.x0.floor().max(0.0) as usize)..(landed.x1.ceil().min(width as f64) as usize);
+        let ys =
+            (landed.y0.floor().max(0.0) as usize)..(landed.y1.ceil().min(height as f64) as usize);
+        let data = sum.data_mut();
+        for y in ys {
+            for x in xs.clone() {
+                let from = back * Point::new(x as f64 + 0.5, y as f64 + 0.5);
+                let pixel = pixels.sample(from.x, from.y);
+                let total = &mut data[y * width + x];
+                for c in 0..4 {
+                    total[c] += pixel[c] * share;
+                }
+            }
+        }
+    }
+    sum
+}
+
+/// The box of the pixels of `pixels` that are not clear, in pixels of the
+/// grid, or `None` when every one is.
+fn drawn_box(pixels: &Pixels) -> Option<Rect> {
+    let width = usize::from(pixels.width());
+    let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
+    for (i, pixel) in pixels.data().iter().enumerate() {
+        if pixel[3] > 0.0 {
+            let (x, y) = (i % width, i / width);
+            x0 = x0.min(x);
+            y0 = y0.min(y);
+            x1 = x1.max(x + 1);
+            y1 = y1.max(y + 1);
+        }
+    }
+    (x0 < x1).then(|| Rect::new(x0 as f64, y0 as f64, x1 as f64, y1 as f64))
 }
 
 #[cfg(test)]
