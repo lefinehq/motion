@@ -1,7 +1,7 @@
 //! Unit tests for `src/check.rs`.
 
 use crate::check;
-use crate::report::{Code, Report, Severity, Violation};
+use crate::report::{Code, Measure, Report, Severity, Unit, Violation};
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 use std::ops::RangeInclusive;
@@ -59,7 +59,7 @@ fn violation(
         address: id.parse().unwrap(),
         first_frame: *frames.start(),
         last_frame: *frames.end(),
-        amount_px,
+        measure: Measure::Overshoot(amount_px),
         fix: fix.map(String::from),
     }
 }
@@ -82,7 +82,8 @@ fn has_hint(report: &Report) -> bool {
 #[rstest]
 #[case::clean_scene_reports_ok_count(
     include_str!("../../../../examples/launch.json"),
-    report(vec![], 4)
+    // Bounds on both layers, a judder pass on each entrance, a text hold.
+    report(vec![], 7)
 )]
 #[case::offscreen_reports_range_amount_and_fix(
     r#"{"motion":1,"dur":"5s","layers":[{"id":"card","rect":"300x400","at":"center 1000"}]}"#,
@@ -101,7 +102,28 @@ fn has_hint(report: &Report) -> bool {
 // hint on x would never converge.
 #[case::absolute_preset_start_gets_no_hint_on_that_axis(
     r#"{"motion":1,"dur":"1s","presets":{"swoop":{"x":1900}},"layers":[{"id":"a","rect":"300x100","at":"center center","in":"swoop 12f linear"}]}"#,
-    report(vec![offscreen("a", 0..=1, 130.0, None)], 0)
+    // It swoops in from x 1900 in 12 frames: about 79 px a frame.
+    report(
+        vec![
+            offscreen("a", 0..=1, 130.0, None),
+            Violation {
+                measure: Measure::Above {
+                    value: 79.0,
+                    limit: 11.0,
+                    unit: Unit::PxPerFrame,
+                },
+                ..violation(
+                    Severity::Warning,
+                    Code::Judder,
+                    "a",
+                    1..=12,
+                    0.0,
+                    Some("a mblur=true"),
+                )
+            },
+        ],
+        0,
+    )
 )]
 #[case::empty_scene_is_ok_zero(r#"{"motion":1,"dur":"1s","layers":[]}"#, report(vec![], 0))]
 fn reports(#[case] json: &str, #[case] expected: Report) {
@@ -112,7 +134,8 @@ fn reports(#[case] json: &str, #[case] expected: Report) {
 #[rstest]
 #[case::entrance_overshoot_is_caught_only_while_visible(
     r#"{"id":"card","rect":"300x100","at":"center 1000","in":"fade-up 60px 12f linear @0f"}"#,
-    report(vec![offscreen("card", 1..=5, 25.0, Some(r#"card at="center 921""#))], 0)
+    // The 60 px rise takes 5 px a frame: a judder pass.
+    report(vec![offscreen("card", 1..=5, 25.0, Some(r#"card at="center 921""#))], 1)
 )]
 #[case::left_edge_fix_adds_and_resolves_only_the_moving_axis(
     r#"{"id":"a","rect":"200x100","at":"50 center"}"#,
@@ -231,8 +254,13 @@ fn run_shows_the_worst_overshoot_not_the_first() {
         panic!("one run: {found:?}");
     };
     assert_eq!(
-        (run.code, run.last_frame, run.amount_px, run.fix.as_deref()),
-        (Code::Offscreen, 29, 20.0, Some(r#"card at="center 976""#))
+        (run.code, run.last_frame, run.measure, run.fix.as_deref()),
+        (
+            Code::Offscreen,
+            29,
+            Measure::Overshoot(20.0),
+            Some(r#"card at="center 976""#)
+        )
     );
 }
 
@@ -323,16 +351,26 @@ fn nested_with(card_x: u32, title_x: u32, kv: &str) -> Report {
 fn a_layer_inside_a_comp_is_checked_in_scene_space_by_its_address() {
     // The card runs 650..1050, the title 1040..1050: both 50 px past the edge.
     let r = nested(850, 395);
-    let found: Vec<(String, Code, f64, bool)> = r
+    let found: Vec<(String, Code, Measure, bool)> = r
         .violations
         .iter()
-        .map(|v| (v.address.to_string(), v.code, v.amount_px, v.fix.is_some()))
+        .map(|v| (v.address.to_string(), v.code, v.measure, v.fix.is_some()))
         .collect();
     assert_eq!(
         found,
         [
-            ("card".into(), Code::Offscreen, 50.0, true),
-            ("card/title".into(), Code::Offscreen, 50.0, true),
+            (
+                "card".into(),
+                Code::Offscreen,
+                Measure::Overshoot(50.0),
+                true
+            ),
+            (
+                "card/title".into(),
+                Code::Offscreen,
+                Measure::Overshoot(50.0),
+                true
+            ),
         ]
     );
 }
@@ -365,4 +403,70 @@ fn the_fix_for_an_inner_layer_is_an_edit_of_its_instance() {
             .all(|v| v.address.to_string() != "card/title"),
         "{after}"
     );
+}
+
+/// The craft findings of `report`: everything but the layout rules.
+fn craft(report: &Report) -> Vec<&Violation> {
+    report
+        .violations
+        .iter()
+        .filter(|v| !matches!(v.code, Code::Offscreen | Code::Unsafe))
+        .collect()
+}
+
+#[test]
+fn a_fast_move_judders_until_motion_blur_is_on() {
+    // 1700 px in 10 frames: 170 px a frame, past the 11 px limit.
+    let fast = r#""anim":{"x":"200 -> 1700 @0-10f"}"#;
+    let found = one(&format!(r#"{{"id":"card","rect":"100x100",{fast}}}"#));
+    let measure = Measure::Above {
+        value: 150.0,
+        limit: 11.0,
+        unit: Unit::PxPerFrame,
+    };
+    assert_eq!(
+        craft(&found),
+        [&violation(
+            Severity::Warning,
+            Code::Judder,
+            "card",
+            1..=10,
+            0.0,
+            Some("card mblur=true")
+        )]
+        .map(|v| Violation {
+            measure,
+            ..v.clone()
+        })
+        .iter()
+        .collect::<Vec<_>>()
+    );
+    let blurred = one(&format!(
+        r#"{{"id":"card","rect":"100x100","mblur":true,{fast}}}"#
+    ));
+    assert_eq!(craft(&blurred), Vec::<&Violation>::new());
+}
+
+#[test]
+fn text_shown_too_briefly_is_found_with_its_reading_time() {
+    // 11 characters need 5/6 s; shown for 10 frames, a third of a second.
+    let found = one(r#"{"id":"title","text":"Launch week","span":"0f-10f"}"#);
+    let [hold] = craft(&found)[..] else {
+        panic!("one finding: {found}");
+    };
+    assert_eq!(
+        (hold.code, hold.first_frame, hold.last_frame, hold.measure),
+        (
+            Code::TextHold,
+            0,
+            9,
+            Measure::Below {
+                value: 0.3,
+                limit: 0.9,
+                unit: Unit::Seconds
+            }
+        )
+    );
+    let long_enough = one(r#"{"id":"title","text":"Launch week"}"#);
+    assert_eq!(craft(&long_enough), Vec::<&Violation>::new());
 }

@@ -1,14 +1,16 @@
 //! The `check` query: every rule over every frame, with consecutive failing frames
 //! merged into one [`Violation`] so the report stays short.
 
-use crate::report::{Code, Report, Violation};
-use crate::rules::{EPSILON, Overshoot, RULES, Rule, shift, visible};
+use crate::report::{Code, Measure, Report, Violation};
+use crate::rules::{
+    CRAFT, Craft, EPSILON, Finding, Measured, Overshoot, RULES, Reads, Rule, Sample, shift, visible,
+};
 use kurbo::{Affine, Point, Rect, Vec2};
 use motion_format::key::AT;
 use motion_format::shorthand::{Coord, Position};
 use motion_format::{Address, Layer, Scene};
 use motion_scene::{
-    CompGraph, Node, SceneGraph, Visit, address_of, evaluate, local_transform, walk,
+    CompGraph, ContentState, Node, SceneGraph, Visit, address_of, evaluate, local_transform, walk,
 };
 use tracing::{Span, field, instrument};
 
@@ -31,7 +33,16 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
 
     // One frame at a time: memory grows with layers and rules, not frames.
     let paths = graph.paths();
-    let mut scans: Vec<LayerScan> = paths.iter().map(|_| LayerScan::new()).collect();
+    let mut scans: Vec<LayerScan> = paths
+        .iter()
+        .map(|ids| {
+            // Motion blur smooths its steps where its composition's shutter is open.
+            let blurred = graph
+                .node_at(ids)
+                .is_some_and(|(node, comp)| node.mblur && comp.shutter.open());
+            LayerScan::new(blurred)
+        })
+        .collect();
     for frame in 0..frame_count {
         let state = evaluate(graph, f64::from(frame));
         for visit in walk(graph, &state) {
@@ -68,6 +79,78 @@ struct LayerScan {
     /// Where its `at` lives: the transform from its parent's coordinates to the
     /// canvas over its visible frames.
     frame: Frame,
+    /// What craft rules saw of it at the frame before, if it was walked.
+    previous: Option<Sample>,
+    /// Whether it is drawn with motion blur.
+    blurred: bool,
+    /// Each craft rule's reading of it, parallel to [`CRAFT`].
+    craft: Vec<CraftScan>,
+}
+
+/// What one craft rule has seen of one layer.
+#[derive(Default)]
+struct CraftScan {
+    /// Its failing runs.
+    runs: Vec<Run>,
+    /// The stretch now open, for a stretch rule: its first sample and its
+    /// last frame.
+    open: Option<(Sample, u32)>,
+    /// Whether it measured anything: a step between two shown frames, or a
+    /// whole stretch.
+    ran: bool,
+}
+
+impl CraftScan {
+    /// Reads `now`, given the sample of the frame before when there is one.
+    fn observe(&mut self, rule: &Craft, now: &Sample, before: Option<&Sample>, graph: &SceneGraph) {
+        match rule.reads {
+            Reads::Step(step) => {
+                let Some(before) = before.filter(|b| b.shown && now.shown) else {
+                    return;
+                };
+                match step(before, now, graph) {
+                    Measured::Skipped => {}
+                    Measured::Passed => self.ran = true,
+                    Measured::Found(found) => {
+                        self.ran = true;
+                        add(&mut self.runs, now.frame, found);
+                    }
+                }
+            }
+            Reads::Stretch { holds, judge } => {
+                if before.is_none() {
+                    self.close(judge, graph);
+                }
+                if !holds(now, before, graph) {
+                    self.close(judge, graph);
+                    return;
+                }
+                match &mut self.open {
+                    Some((_, last)) => *last = now.frame,
+                    None => self.open = Some((now.clone(), now.frame)),
+                }
+            }
+        }
+    }
+
+    /// Judges the open stretch, if any, and closes it.
+    fn close(
+        &mut self,
+        judge: fn(u32, &Sample, &SceneGraph) -> Option<Finding>,
+        graph: &SceneGraph,
+    ) {
+        let Some((first, last)) = self.open.take() else {
+            return;
+        };
+        self.ran = true;
+        if let Some(found) = judge(last - first.frame + 1, &first, graph) {
+            self.runs.push(Run {
+                first: first.frame,
+                last,
+                worst: found,
+            });
+        }
+    }
 }
 
 /// The transform a layer's `at` is read through, over the frames seen so far.
@@ -101,11 +184,14 @@ fn same(a: Affine, b: Affine) -> bool {
 }
 
 impl LayerScan {
-    fn new() -> LayerScan {
+    fn new(blurred: bool) -> LayerScan {
         LayerScan {
             runs: RULES.iter().map(|_| Runs::default()).collect(),
             sweep: None,
             frame: Frame::Unseen,
+            previous: None,
+            blurred,
+            craft: CRAFT.iter().map(|_| CraftScan::default()).collect(),
         }
     }
 
@@ -116,11 +202,43 @@ impl LayerScan {
                 runs.add(frame, found);
             }
         }
+        let now = self.sample(frame, visit);
+        let before = self.previous.take().filter(|b| b.frame + 1 == frame);
+        for (scan, rule) in self.craft.iter_mut().zip(CRAFT) {
+            scan.observe(rule, &now, before.as_ref(), graph);
+        }
+        self.previous = Some(now);
         if let Some(b) = visit.drawn().filter(|_| visible(visit)) {
             // Its parents' transform is its own world transform without its local one.
             let parent = visit.transform * local_transform(&visit.node.values).inverse();
             self.frame = self.frame.and(parent);
             self.sweep = Some(self.sweep.map_or(b, |a| a.union(b)));
+        }
+    }
+
+    /// What craft rules see of the layer at `frame`.
+    fn sample(&self, frame: u32, visit: &Visit<'_>) -> Sample {
+        let b = visit.node.own_box;
+        let corners = [(b.x0, b.y0), (b.x1, b.y0), (b.x1, b.y1), (b.x0, b.y1)]
+            .map(|(x, y)| visit.transform * Point::new(x, y));
+        let chars = match &visit.node.content {
+            ContentState::Text { text, .. } => Some(
+                text.content
+                    .text
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .count(),
+            ),
+            _ => None,
+        };
+        Sample {
+            frame,
+            shown: visible(visit),
+            opacity: visit.opacity,
+            corners,
+            local: local_transform(&visit.node.values),
+            chars,
+            blurred: self.blurred,
         }
     }
 
@@ -155,6 +273,31 @@ impl LayerScan {
                 .map(|run| run.into_violation(rule, address, fix.clone()));
             report.violations.extend(violations);
         }
+        for (rule, mut scan) in CRAFT.iter().zip(self.craft) {
+            if let Reads::Stretch { judge, .. } = rule.reads {
+                scan.close(judge, graph);
+            }
+            if !scan.ran {
+                continue;
+            }
+            rules_run += 1;
+            if scan.runs.is_empty() {
+                report.passed += 1;
+                continue;
+            }
+            let fix = placed.and_then(|(_, (node, comp))| (rule.fix)(address, node, comp));
+            report
+                .violations
+                .extend(scan.runs.into_iter().map(|run| Violation {
+                    severity: rule.severity,
+                    code: rule.code,
+                    address: address.clone(),
+                    first_frame: run.first,
+                    last_frame: run.last,
+                    measure: (rule.measure)(run.worst),
+                    fix: fix.clone(),
+                }));
+        }
         rules_run
     }
 }
@@ -166,14 +309,24 @@ struct Runs(Vec<Run>);
 impl Runs {
     /// Records a failure at `frame`, later than any recorded so far.
     fn add(&mut self, frame: u32, found: Overshoot) {
-        match self.0.last_mut() {
-            Some(run) if run.last + 1 == frame => run.extend(frame, found),
-            _ => self.0.push(Run {
-                first: frame,
-                last: frame,
-                worst: found,
-            }),
-        }
+        let found = Finding {
+            value: found.amount,
+            limit: 0.0,
+        };
+        add(&mut self.0, frame, found);
+    }
+}
+
+/// Records `found` at `frame`, later than any frame in `runs`: it extends the
+/// last run when that ends at the frame before.
+fn add(runs: &mut Vec<Run>, frame: u32, found: Finding) {
+    match runs.last_mut() {
+        Some(run) if run.last + 1 == frame => run.extend(frame, found),
+        _ => runs.push(Run {
+            first: frame,
+            last: frame,
+            worst: found,
+        }),
     }
 }
 
@@ -181,28 +334,28 @@ impl Runs {
 struct Run {
     first: u32,
     last: u32,
-    /// The worst overshoot in the stretch.
-    worst: Overshoot,
+    /// The worst finding in the stretch.
+    worst: Finding,
 }
 
 impl Run {
-    fn extend(&mut self, frame: u32, found: Overshoot) {
+    fn extend(&mut self, frame: u32, found: Finding) {
         self.last = frame;
-        if found.amount > self.worst.amount {
+        if found.excess() > self.worst.excess() {
             self.worst = found;
         }
     }
 
     fn into_violation(self, rule: &Rule, address: &Address, fix: Option<String>) -> Violation {
         // Whole pixels, ignoring float noise: 55.000000000000007 reads +55, not +56.
-        let amount = (self.worst.amount - EPSILON).ceil();
+        let amount = (self.worst.value - EPSILON).ceil();
         Violation {
             severity: rule.severity,
             code: rule.code,
             address: address.clone(),
             first_frame: self.first,
             last_frame: self.last,
-            amount_px: amount,
+            measure: Measure::Overshoot(amount),
             fix,
         }
     }

@@ -8,4 +8,4 @@ mod rules;
 
 pub use at::at;
 pub use check::check;
-pub use report::{Code, Report, Severity, Violation};
+pub use report::{Code, Measure, Report, Severity, Unit, Violation};

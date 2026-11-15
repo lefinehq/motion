@@ -6,7 +6,7 @@ Status: Draft · 2026-11-15
 
 ```
 W judder card 12-18f 23px/f >11; fix: card mblur=true
-W text_hold title 30-41f 0.4s <1.3s; fix: title span="1s-3.3s"
+W text_hold title 30-41f 0.4s <1.3
 W easing badge 0-24f 1.0 <1.4; fix: badge anim.x curve=out-cubic
 OK 41
 ```
@@ -26,10 +26,10 @@ Each rule measures one number per layer or per frame and compares it with a limi
 
 ## The report
 
-A craft finding prints the measured value with its unit and the limit it misses, instead of an overshoot in px: `23px/f >11`, `0.4s <1.3s`, `1.0 <1.4`, `6 >4`. Consecutive frames merge into one line, as the layout rules' do. A fix is printed only when one edit clears the finding:
+A craft finding prints the measured value with its unit and the limit it misses, instead of an overshoot in px: `23px/f >11`, `0.4s <1.3`, `1.0 <1.4`, `6 >4`; the unit is printed once, after the value. Consecutive frames merge into one line, as the layout rules' do. A fix is printed only when one edit clears the finding:
 - `judder`: turning on `mblur`;
 - `easing`: a curve on the track that drives the move;
-- `text_hold`: a longer span;
+- `text_hold`: none, since how long a span can grow depends on what follows it;
 - `crowd`: none, since which layers to hold back is a choice.
 
 ## Steps

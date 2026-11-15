@@ -10,7 +10,7 @@ fn violation(severity: Severity, fix: Option<&str>) -> Violation {
         address: "card".parse().unwrap(),
         first_frame: 3,
         last_frame: 9,
-        amount_px: 12.0,
+        measure: Measure::Overshoot(12.0),
         fix: fix.map(String::from),
     }
 }
@@ -18,6 +18,8 @@ fn violation(severity: Severity, fix: Option<&str>) -> Violation {
 #[rstest]
 #[case(Code::Offscreen, "offscreen")]
 #[case(Code::Unsafe, "unsafe")]
+#[case(Code::Judder, "judder")]
+#[case(Code::TextHold, "text_hold")]
 fn codes_display_as_their_names(#[case] code: Code, #[case] name: &str) {
     assert_eq!(code.to_string(), name);
 }
@@ -72,4 +74,18 @@ fn only_errors_count_for_has_errors() {
         }
         .has_errors()
     );
+}
+
+#[rstest]
+#[case::an_overshoot(Measure::Overshoot(12.0), "+12px")]
+#[case::above_a_limit(
+    Measure::Above { value: 24.0, limit: 11.0, unit: Unit::PxPerFrame },
+    "24px/f >11"
+)]
+#[case::below_a_limit(
+    Measure::Below { value: 0.4, limit: 1.3, unit: Unit::Seconds },
+    "0.4s <1.3"
+)]
+fn measures_print_their_value_unit_and_limit(#[case] measure: Measure, #[case] printed: &str) {
+    assert_eq!(measure.to_string(), printed);
 }
