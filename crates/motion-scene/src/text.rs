@@ -82,9 +82,12 @@ fn styled(content: &TextContent, fonts: &FontSet) -> StyledText {
     };
     StyledText {
         text: content.text.clone(),
+        // The format keeps one base run of no character for an empty text,
+        // to carry its style; the typesetter takes no run of no character.
         runs: content
             .runs
             .iter()
+            .filter(|run| !run.range.is_empty())
             .map(|run| StyledRun {
                 range: byte_at(run.range.start)..byte_at(run.range.end),
                 style: character(&run.style, fonts),

@@ -49,6 +49,18 @@ fn runs_count_characters_and_the_typesetter_bytes() {
 }
 
 #[test]
+fn an_empty_text_lays_out_as_nothing() {
+    let text = content(r#""text":"","font":"InterVariable 20""#);
+    assert_eq!(text.runs.len(), 1, "the format keeps a base run");
+    let styled = styled(&text, &FontSet::builtin());
+    assert!(styled.runs.is_empty());
+    let layout = motion_text::Typesetter::new(FontSet::builtin())
+        .layout(&styled)
+        .expect("an empty text lays out");
+    assert!(layout.lines.is_empty());
+}
+
+#[test]
 fn style_paragraphs_and_box_reach_the_typesetter() {
     let text = content(
         r#""text":"a\nb","box":[300,200],"style":{"tracking":50,"caps":"all","leading":30,"baseline":4,"faux-bold":true},"paragraphs":[{"align":"center"},{"align":"justify-all","indent-first":10}]"#,
