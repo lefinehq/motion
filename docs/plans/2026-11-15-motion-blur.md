@@ -1,4 +1,4 @@
-Status: Draft · 2026-11-15
+Status: Done · 2026-11-15
 
 # Motion blur
 

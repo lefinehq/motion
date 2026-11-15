@@ -500,8 +500,9 @@ impl<'p> Walk<'p> {
         if switches.three_d {
             unsupported("3D layers (drawn flat)".into());
         }
-        if switches.motion_blur {
-            unsupported("motion blur".into());
+        // A layer's switch blurs it only where its composition's is on.
+        if switches.motion_blur && composition.motion_blur.on {
+            out.keys.insert("mblur".into(), json!(true));
         }
         if switches.solo {
             unsupported("solo layers".into());

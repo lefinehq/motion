@@ -696,3 +696,34 @@ fn a_blend_mode_the_scene_has_is_written_and_another_reported() {
             .any(|f| f.what == "the blend mode `dissolve`")
     );
 }
+
+#[test]
+fn motion_blur_follows_the_switches_and_the_composition_keeps_its_shutter() {
+    use crate::model::MotionBlur;
+    use crate::test_support::build::{comp, layer, project};
+    let imported = |on: bool| {
+        let mut blurred = layer(1, "Ball", vec![]);
+        blurred.switches.motion_blur = true;
+        let main = crate::model::Composition {
+            motion_blur: MotionBlur {
+                on,
+                angle: 360.0,
+                phase: -180.0,
+                samples: 8,
+            },
+            ..comp(vec![blurred], 2.0)
+        };
+        import(&project(vec![(5, "Main", main)]), &Options::default()).expect("it imports")
+    };
+    let on = imported(true);
+    assert_eq!(on.json["shutter"], "360 -180 8");
+    assert_eq!(on.json["layers"][0]["mblur"], true);
+    let off = imported(false);
+    assert!(off.json.get("shutter").is_none());
+    assert!(off.json["layers"][0].get("mblur").is_none());
+    assert!(
+        off.mapping.unsupported.is_empty(),
+        "{:?}",
+        off.mapping.unsupported
+    );
+}

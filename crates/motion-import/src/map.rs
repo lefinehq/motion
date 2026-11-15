@@ -412,6 +412,9 @@ impl<'p> Walk<'p> {
         let [r, g, b] = [root.background.r, root.background.g, root.background.b]
             .map(|channel| (channel * 255.0).round().clamp(0.0, 255.0) as u8);
         scene.insert("bg".into(), json!(format!("#{r:02X}{g:02X}{b:02X}")));
+        if let Some(written) = shutter(root) {
+            scene.insert("shutter".into(), written);
+        }
         if !options.fonts.is_empty() {
             scene.insert("fonts".into(), json!(options.fonts));
         }
@@ -437,6 +440,9 @@ impl<'p> Walk<'p> {
             comp.insert("dur".into(), json!(seconds(composition.duration)));
             if composition.frame_rate != root.frame_rate {
                 comp.insert("fps".into(), num(composition.frame_rate));
+            }
+            if let Some(written) = shutter(composition) {
+                comp.insert("shutter".into(), written);
             }
             self.scope = Some(self.comp_ids[&id].clone());
             let layers = Json::Array(self.layers(composition, name));
@@ -544,6 +550,20 @@ impl<'p> Walk<'p> {
 /// A time in seconds as the scene writes it.
 fn seconds(value: f64) -> String {
     format!("{}s", num(value))
+}
+
+/// A composition's `shutter`, where its motion blur is on and its shutter
+/// is not the scene's default ([D57]); the samples are clamped into the
+/// scene's range.
+///
+/// [D57]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter
+fn shutter(composition: &Composition) -> Option<Json> {
+    let blur = composition.motion_blur;
+    let default = motion_format::shorthand::Shutter::DEFAULT;
+    let samples = blur.samples.clamp(2, 64);
+    let same =
+        blur.angle == default.angle && blur.phase == default.phase && samples == default.samples;
+    (blur.on && !same).then(|| json!(format!("{} {} {samples}", blur.angle, blur.phase)))
 }
 
 #[cfg(test)]

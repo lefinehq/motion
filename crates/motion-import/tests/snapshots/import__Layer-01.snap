@@ -1,5 +1,6 @@
 ---
 source: crates/motion-import/tests/import.rs
+assertion_line: 88
 expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ---
 {"motion":1,"size":"1920x1080","fps":60,"dur":"60s","bg":"#000000",
@@ -31,5 +32,4 @@ imported `Comp 01`
     materials of 3D layers (1)
   unsupported:
     3D layers (drawn flat) (1): Comp 01/3D
-    motion blur (1): Comp 01/Motion Blur
     solo layers (2): Comp 01/Solo; Comp 01/Transformations Collapsed
