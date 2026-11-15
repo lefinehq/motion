@@ -60,6 +60,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- `motion import` clamps a value outside its property's range into it, as the original draws it, instead of failing: a wiggled opacity past 100%, a negative roundness, colour channels above 1. Expression samples are clamped frame by frame before the fit; the report lists each clamp under `clamped`.
 - `motion export` compares what it reads back with the edit in the import's six-decimal steps, allowing one, so a value half a step from both neighbours no longer fails the check.
 - Baking expressions sits behind `motion-import`'s `bake` feature, which only the CLI turns on: `motion-engine` renders and imports without linking the script engine. The D38 and D39 guards check each crate's resolved dependencies (`cargo tree`), not its manifest lines.
 - The bake eases the values it reads with the scene's own curves and motion paths (`motion_scene::Ease`, `PathSpan`), not a copy of them.

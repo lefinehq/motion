@@ -160,6 +160,70 @@ pub(super) enum Written {
     },
 }
 
+/// What clamping a written value into a range changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct Clamped {
+    /// How many values or keys were outside it.
+    pub count: usize,
+    /// Whether a clamped key's neighbouring motion is a curve, not a hold,
+    /// so the motion between keys can differ from the original's, which
+    /// interpolates first and clamps after.
+    pub between_keys: bool,
+}
+
+impl Written {
+    /// Clamps every value and key into `range` (inclusive), as the original
+    /// draws a value outside its property's range.
+    pub(super) fn clamp(&mut self, range: (f64, f64)) -> Clamped {
+        match self {
+            Written::Value(value) => Clamped {
+                count: usize::from(clamp_json(value, range)),
+                between_keys: false,
+            },
+            Written::Track { keys, first } => {
+                clamp_json(first, range);
+                let Json::Array(keys) = keys else {
+                    return Clamped::default();
+                };
+                let holds: Vec<bool> = keys
+                    .iter()
+                    .map(|k| k.get("curve").and_then(Json::as_str) == Some("hold"))
+                    .collect();
+                let mut clamped = Clamped::default();
+                for (i, key) in keys.iter_mut().enumerate() {
+                    let Some(value) = key.get_mut("v") else {
+                        continue;
+                    };
+                    if clamp_json(value, range) {
+                        clamped.count += 1;
+                        let leaving = i + 1 < holds.len() && !holds[i];
+                        let arriving = i > 0 && !holds[i - 1];
+                        clamped.between_keys |= leaving || arriving;
+                    }
+                }
+                clamped
+            }
+        }
+    }
+}
+
+/// Clamps the numbers of `value` into `range`; whether any was outside it.
+fn clamp_json(value: &mut Json, (lo, hi): (f64, f64)) -> bool {
+    match value {
+        Json::Number(n) => match n.as_f64() {
+            Some(x) if x < lo || x > hi => {
+                *value = num(x.clamp(lo, hi));
+                true
+            }
+            _ => false,
+        },
+        Json::Array(items) => items
+            .iter_mut()
+            .fold(false, |any, item| clamp_json(item, (lo, hi)) | any),
+        _ => false,
+    }
+}
+
 /// `stream` in the scene's units, or `None` when a value is not of the kind
 /// `convert` expects. `spatial` streams take one curve and keep their
 /// motion-path tangents.

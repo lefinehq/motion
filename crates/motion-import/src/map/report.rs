@@ -75,6 +75,9 @@ pub struct Mapping {
     /// Every expression control the import met, with its values: what
     /// expressions read, kept for live links.
     pub controls: Vec<ControlReport>,
+    /// Values outside the range the scene takes, clamped into it as the
+    /// original draws them, and where.
+    pub clamped: Vec<Finding>,
 }
 
 /// What one expression became.
@@ -157,6 +160,14 @@ impl Mapping {
         });
     }
 
+    /// Records that values at `at` were clamped into the scene's range.
+    pub(super) fn clamped(&mut self, at: &str, what: impl Into<String>) {
+        self.clamped.push(Finding {
+            at: at.to_owned(),
+            what: what.into(),
+        });
+    }
+
     /// The findings grouped by what is unsupported, each with where.
     pub fn by_what(&self) -> BTreeMap<&str, Vec<&str>> {
         self.unsupported
@@ -214,6 +225,24 @@ impl fmt::Display for Mapping {
                 baked.iter().map(|b| b.2).sum::<usize>(),
                 baked.iter().map(|b| b.1).sum::<usize>(),
                 self.expressions.len() - baked.len()
+            )?;
+        }
+        if !self.clamped.is_empty() {
+            let shown: Vec<String> = self
+                .clamped
+                .iter()
+                .take(3)
+                .map(|c| format!("{} ({})", c.at, c.what))
+                .collect();
+            let more = match self.clamped.len().saturating_sub(3) {
+                0 => String::new(),
+                n => format!(", and {n} more"),
+            };
+            writeln!(
+                f,
+                "  clamped into the scene's range, as the original draws them ({}): {}{more}",
+                self.clamped.len(),
+                shown.join("; ")
             )?;
         }
         let groups = self.by_what();
