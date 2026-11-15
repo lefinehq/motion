@@ -115,6 +115,90 @@ pub struct Composition {
     pub work_area: Span,
     /// The layers, top first.
     pub layers: Vec<Layer>,
+    /// The controls of the template panel made from it, in a `.mogrt`'s
+    /// project ([D53]); empty otherwise.
+    ///
+    /// [D53]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d53-a-mogrt-imports-as-its-project-with-its-controls-as-slots
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub panel: Vec<PanelControl>,
+}
+
+/// One control of a template's panel, as the project keeps it: the id the
+/// template's `definition.json` names it by, its kind, and the properties
+/// it drives.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PanelControl {
+    /// Its id, a UUID.
+    pub id: String,
+    /// What kind of value it offers.
+    pub kind: ControlKind,
+    /// The properties it drives; none for a group.
+    pub targets: Vec<ControlTarget>,
+}
+
+/// What kind of value a panel control offers, by the code the file stores.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum ControlKind {
+    /// On or off (1).
+    Checkbox,
+    /// A number (2).
+    Slider,
+    /// An angle in degrees (3).
+    Angle,
+    /// A colour (4).
+    Color,
+    /// A point (5).
+    Point,
+    /// A text document (6).
+    Text,
+    /// A scale, with its values linked or not (9).
+    Scale,
+    /// A group of other controls (10).
+    Group,
+    /// A code the reader does not know.
+    Other(u32),
+}
+
+impl ControlKind {
+    /// The kind stored as `code`.
+    #[must_use]
+    pub const fn from_code(code: u32) -> Self {
+        match code {
+            1 => Self::Checkbox,
+            2 => Self::Slider,
+            3 => Self::Angle,
+            4 => Self::Color,
+            5 => Self::Point,
+            6 => Self::Text,
+            9 => Self::Scale,
+            10 => Self::Group,
+            other => Self::Other(other),
+        }
+    }
+}
+
+/// A property a panel control drives: the layer, by composition and layer
+/// id, and the path down to the property.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ControlTarget {
+    /// The id of the composition the layer is in.
+    pub composition: u32,
+    /// The layer's id.
+    pub layer: u32,
+    /// Each group, then the property, below the layer's root.
+    pub path: Vec<PathStep>,
+}
+
+/// One step of a [`ControlTarget`]'s path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PathStep {
+    /// The match name, such as `ADBE Transform Group`.
+    pub match_name: String,
+    /// Its index among its siblings, where the file gives one: which effect
+    /// of the layer's effects, for one.
+    pub index: Option<u32>,
 }
 
 /// One layer of a composition.

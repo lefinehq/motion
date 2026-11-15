@@ -26,6 +26,9 @@ serde.workspace = true
 serde_json.workspace = true
 serde_path_to_error.workspace = true
 winnow.workspace = true
+zip.workspace = true
+# Only to choose the inflate zip uses.
+flate2.workspace = true
 
 [dev-dependencies]
 # The tests bake.
@@ -37,3 +40,7 @@ proptest.workspace = true
 
 [lints]
 workspace = true
+
+# flate2 is a dependency only to choose the inflate zip uses.
+[package.metadata.cargo-machete]
+ignored = ["flate2"]

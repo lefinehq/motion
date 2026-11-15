@@ -30,6 +30,10 @@ clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 # Binary records of `.aep` projects (D30).
 binrw = "0.15"
+# `.mogrt` archives (D53): reading only, and only the deflate method.
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
+# The pure Rust inflate behind it, the one the PNG decoder already uses.
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = [
   "ansi",
   "env-filter",
