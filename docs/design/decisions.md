@@ -409,6 +409,19 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - With one unsafe operation per block and a reason for each, a wrong assumption is visible where it is made.
 - **Not now:** bindings for Windows and Linux; the system's decoders.
 
+### D49. Effects that read pixels run on a canvas of their own
+
+- **Decision:** an effect row either moves its layer's content (`Apply::Move`) or changes the pixels it drew (`Apply::Pixels`). A pixel effect may also give a way to paint the same change without reading anything, such as `fill`.
+  - **Layers drawn as they are.** A layer whose effects all move or paint is drawn in place: moves fold into the content's transform in order.
+  - **Layers drawn on a canvas.** Any other layer is drawn on a canvas the size of the frame. Its effects run in order over the pixels, a move then resampling them. The result is drawn back through the layer's opacity, blend mode, clip and matte.
+  - **Effect space.** Points and lengths in effect parameters are in the layer's own coordinates. They reach the pixels through the layer's transform (`Space`), so an effect sits on the layer as it lands on the frame.
+  - **Adjusting layers.** An `adjust` layer, or a filter layer (`fx` only), applies its effects to what its composition drew below it. The result is mixed back by its opacity, its matte and its content's alpha; a filter layer, having no content, applies everywhere.
+- **Why:**
+  - Colour corrections, blurs, glows, shadows and distortions read neighbouring or current pixels. The rasteriser cannot read its own buffer while drawing, so those layers need their own canvas. Mattes already draw that way.
+  - Running effects where the layer lands keeps one canvas per frame size and one place where effects meet the frame. Mapping parameters through the transform keeps them in the layer's units, as a project stores them. This is exact for moves, turns and uniform scales, which is how imported layers are placed.
+  - In a project, an adjustment layer applies where its own alpha is: a solid's box, or a shape's. Applying it everywhere was measured to make frames worse where the region was smaller, so the region stays the layer's content.
+- **Not now:** effects on a canvas smaller than the frame (the layer's bounds grown by what the effect reaches). That is a speed-up, measured when blurs land.
+
 ## Open questions
 
 ### Q1. Name and packages (deferred)

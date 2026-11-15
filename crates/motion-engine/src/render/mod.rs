@@ -89,9 +89,12 @@ fn matted(
     state: &FrameState,
     i: usize,
 ) -> Result<Option<Node>> {
-    let Some(Node::Layer(drawn)) = layer(sources, &state.nodes[i])? else {
+    let Some(Node::Layer(mut drawn)) = layer(sources, &state.nodes[i])? else {
         return Ok(None);
     };
+    // An adjusting layer applies its effects to what is below it, where it
+    // draws.
+    drawn.adjust |= list[i].adjust;
     let Some((source, mode)) = list[i].matte else {
         return Ok(Some(Node::Layer(drawn)));
     };
@@ -157,6 +160,17 @@ fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
             children
         }
         ContentState::Comp(_, None) | ContentState::Pivot => Vec::new(),
+        ContentState::Filter => {
+            let effects =
+                effect::effects(&node.fx).map_err(|e| e.under(Place::of_layer(&node.id)))?;
+            return Ok(Some(Node::Layer(Layer {
+                transform: node.transform,
+                opacity: opacity.min(1.0),
+                effects,
+                adjust: true,
+                ..Layer::new(Vec::new())
+            })));
+        }
     };
     if children.is_empty() {
         // Effects change what the layer drew, so without content there is

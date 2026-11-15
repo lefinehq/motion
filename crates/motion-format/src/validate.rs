@@ -24,9 +24,9 @@ use crate::doc::{
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, SHAPES};
 use crate::parse::key::{
-    ANIM, ANIMATE, AT, BG, BOX, COMP, COMPS, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN, LABELS,
-    LAYERS, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS,
-    SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, VIDEO, comp_path, layer_path,
+    ADJUST, ANIM, ANIMATE, AT, BG, BOX, COMP, COMPS, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN,
+    LABELS, LAYERS, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT,
+    RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, VIDEO, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -538,8 +538,13 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
                 .map_err(|e| e.under(FX))?,
             None => Vec::new(),
         },
+        adjust: false,
         hidden: doc.hidden.unwrap_or(false),
         matte: optional(doc.matte.as_ref(), MATTE)?,
+    };
+    let layer = Layer {
+        adjust: adjusts(doc, &layer)?,
+        ..layer
     };
     if let Some(span) = layer.span {
         span_runs_forward(span, context.fps).map_err(|e| e.under(SPAN))?;
@@ -548,6 +553,22 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
         parts_entrance(&layer, behaviour, context.shared.presets).map_err(|e| e.at(IN))?;
     }
     Ok(layer)
+}
+
+/// Whether `layer` applies its effects to what is below it: a filter layer
+/// always does, any other when `adjust` says so, and then it needs effects
+/// to apply.
+fn adjusts(doc: &LayerDoc, layer: &Layer) -> Result<bool> {
+    let adjust = matches!(layer.content, Content::Filter) || doc.adjust.unwrap_or(false);
+    if adjust && layer.fx.is_empty() {
+        return Err(Diagnostic::new(
+            Kind::Missing,
+            "`adjust` applies the layer's `fx` to what is below it, and it has none",
+        )
+        .at(ADJUST)
+        .expected(r##""fx":[{"fill":"#FFFFFF"}] next to "adjust":true"##));
+    }
+    Ok(adjust)
 }
 
 /// The layer properties an entrance can move text parts by: those a text
@@ -716,11 +737,20 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
     let one_of = || {
         let quoted: Vec<String> = CONTENT_KEYS.iter().map(|k| format!("`{k}`")).collect();
         let (last, rest) = quoted.split_last().expect("content keys");
-        format!("needs exactly one of {} or {last}", rest.join(", "))
+        format!(
+            "needs exactly one of {} or {last}, or only `fx` for a filter layer",
+            rest.join(", ")
+        )
     };
     const EXAMPLE: &str = r#"e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true"#;
     let key = match (keys.next(), keys.next()) {
         (Some(key), None) => key,
+        // Only effects: a filter layer.
+        (None, _) if doc.fx.as_ref().is_some_and(|List(fx)| !fx.is_empty()) => {
+            only_on(doc.fill.is_some(), FILL, FX, &[TEXT, RECT])?;
+            only_on(doc.frame.is_some(), BOX, FX, &[TEXT, IMAGE, VIDEO])?;
+            return Ok(Content::Filter);
+        }
         (None, _) => return Err(Diagnostic::new(Kind::Missing, one_of()).expected(EXAMPLE)),
         (Some(_), Some(second)) => {
             return Err(Diagnostic::new(Kind::Conflict, one_of())
@@ -1383,7 +1413,7 @@ fn known_box(layer: &Layer, context: &Context) -> Option<Rect> {
             .map(|c| Rect::new(0.0, 0.0, f64::from(c.size.width), f64::from(c.size.height))),
         Content::Image(image) => Some(image.frame),
         Content::Video(video) => Some(video.frame),
-        Content::Shapes(_) | Content::Pivot => Some(Rect::ZERO),
+        Content::Shapes(_) | Content::Pivot | Content::Filter => Some(Rect::ZERO),
         Content::Text { .. } => None,
     }
 }

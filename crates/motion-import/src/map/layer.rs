@@ -140,6 +140,14 @@ impl<'p> Walk<'p> {
                 }
             });
         self.rows(&root, &LAYER_ROOT, sink, &mut out, &place);
+        if layer.kind == LayerKind::Av
+            && layer.switches.adjustment
+            && out.keys.contains_key("fx")
+            && !out.keys.contains_key("pivot")
+        {
+            out.keys.insert("adjust".into(), json!(true));
+            self.mapping.count("layer: adjustment", Fate::Mapped);
+        }
         self.switches(layer, composition, ids, &mut out, &place);
         self.timing(layer, composition, &mut out);
         if let Some(lines) = out.lines.take() {
@@ -185,8 +193,11 @@ impl<'p> Walk<'p> {
             LayerKind::Text => {
                 out.keys.insert("text".into(), json!(""));
             }
-            LayerKind::Av if layer.switches.adjustment => {
-                pivot(self, out, Some("adjustment layers"))
+            // An adjustment layer applies its effects to what is below it,
+            // where its content draws; without an effect the scene draws,
+            // it changes nothing.
+            LayerKind::Av if layer.switches.adjustment && !draws_an_effect(layer) => {
+                pivot(self, out, None)
             }
             LayerKind::Av if layer.switches.null => pivot(self, out, None),
             LayerKind::Av => match source.map(|item| (item, &item.kind)) {
@@ -363,4 +374,21 @@ fn replacing_effect(layer: &Layer) -> Option<&str> {
             }
             _ => None,
         })
+}
+
+/// Whether `layer` has an effect, switched on, that the scene draws.
+fn draws_an_effect(layer: &Layer) -> bool {
+    layer.properties.children.iter().any(|child| match child {
+        Child::Group(parade) if parade.match_name == EFFECTS => {
+            parade.children.iter().any(|effect| match effect {
+                Child::Group(effect) => {
+                    effect.enabled
+                        && !effect.hidden
+                        && super::rows::kind(&effect.match_name).is_some()
+                }
+                Child::Property(_) => false,
+            })
+        }
+        _ => false,
+    })
 }

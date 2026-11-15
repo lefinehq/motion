@@ -4,5 +4,7 @@
  "fx":[{"transform":[1.5,1],"anchor":[60,40],"position":[60,40],"rotate":15,"opacity":0.8,
    "anim":{"x":"60 -> 120 @0-1s","rotate":"15 -> 45 @0-1s"}}]},
 {"id":"faded","rect":"120x80","fill":"#E4572E","at":"340 340",
- "fx":[{"fill":"#101010","opacity":0.5},{"transform":1,"anim":{"opacity":"1 -> 0 @0-1s","scale-y":"1 -> 2 @0-1s"}}]}
+ "fx":[{"fill":"#101010","opacity":0.5},{"transform":1,"anim":{"opacity":"1 -> 0 @0-1s","scale-y":"1 -> 2 @0-1s"}}]},
+{"id":"wash","fx":[{"fill":"#FFE000","opacity":0.4}],"opacity":0.5,"span":"0.5s-1s"},
+{"id":"tilt","rect":"240x240","at":"240 240","adjust":true,"fx":[{"transform":1,"anchor":[120,120],"position":[120,120],"rotate":10}]}
 ]}

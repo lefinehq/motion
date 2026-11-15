@@ -34,8 +34,13 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"Bad Id","rect":"1x1"}` → layers[0].id: invalid id `Bad Id`; expected ids use lowercase letters, digits, `-` and `_`, starting with a letter
 `{"id":"scene","rect":"1x1"}` → layers[0].id: `scene` names the scene itself, so no layer may take it; expected another id, such as `scene-2`
 `{"id":"a","rect":"1x1"},{"id":"a","rect":"1x1"}` → layers[1].id: duplicate id `a`; expected every layer to have its own id
-`{"id":"a"}` → a: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
-`{"id":"a","rect":"1x1","text":"x"}` → a.rect: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
+`{"id":"a"}` → a: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`, or only `fx` for a filter layer; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
+`{"id":"a","fx":[]}` → a: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`, or only `fx` for a filter layer; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
+`{"id":"a","fx":[{"fill":"#FFFFFF"}],"fill":"#000000"}` → a.fill: `fill` only applies to `text` or `rect` layers; expected `fill` only next to `text` or `rect`
+`{"id":"a","fx":[{"fill":"#FFFFFF"}],"box":[1,1]}` → a.box: `box` only applies to `text` or `image` or `video` layers; expected `box` only next to `text` or `image` or `video`
+`{"id":"a","rect":"1x1","adjust":true}` → a.adjust: `adjust` applies the layer's `fx` to what is below it, and it has none; expected "fx":[{"fill":"#FFFFFF"}] next to "adjust":true
+`{"id":"a","rect":"1x1","adjust":1,"fx":[]}` → a.adjust: invalid type: integer `1`; expected a boolean
+`{"id":"a","rect":"1x1","text":"x"}` → a.rect: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`, or only `fx` for a filter layer; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
 `{"id":"a","text":null}` → a.text: invalid type: null; expected a string
 `{"id":"a","text":3}` → a.text: invalid type: integer `3`; expected a string
 `{"id":"a","rect":1}` → a.rect: invalid type: integer `1`; expected `<width>x<height> [r<radius>]`, e.g. `300x400 r24`
@@ -53,7 +58,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","in":"zoom"}` → a.in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in
 `{"id":"a","rect":"1x1","anim":null}` → a.anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
 `{"id":"a","rect":"1x1","anim":[]}` → a.anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
-`{"id":"a","rect":"1x1","x":1}` → a.x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, overrides, image, video, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, matte, position, anchor, scale, rotate, opacity
+`{"id":"a","rect":"1x1","x":1}` → a.x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, overrides, image, video, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, adjust, hidden, matte, position, anchor, scale, rotate, opacity
 `{"id":"a","rect":"1x1","at":"1 2","position":[1,2]}` → a.position: `position` and `at` both place the layer; expected one of them: "at":"540 960" places it in the parent's box, "position":[540,960] at an exact point in the parent's own coordinates
 `{"id":"a","rect":"1x1","rotate":"x"}` → a.rotate: `x` is not a number; expected a number, e.g. `0.5`
 `{"id":"a","rect":"1x1","scale":[1,2,3]}` → a.scale: 3 numbers do not make a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
@@ -82,10 +87,10 @@ expression: "report.join(\"\\n\\n\")"
 `"overrides":{"title.text":{}}` → card.overrides: `title.text` is not the address of a layer; expected a layer of the composition, e.g. `title` or `badge/icon`
 `"overrides":{"title":{"id":"other"}}` → card.overrides: an override of `title` sets its `id`; expected the keys to change; the id stays the layer's own
 `"overrides":{"title":{"text":5}}` → card/title.text: invalid type: integer `5`; expected a string
-`"overrides":{"title":{"rect":"1x1"}}` → card/title.rect: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
+`"overrides":{"title":{"rect":"1x1"}}` → card/title.rect: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`, or only `fx` for a filter layer; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
 `"overrides":{"title":{"fill":"red"}}` → card/title.fill: `red` is not a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
 `"overrides":{"title/x":{"text":"x"}}` → card/title.overrides: `overrides` only applies to `comp` layers; expected `overrides` only next to `comp`
-`"overrides":{"title":{"zoom":1}}` → card/title.zoom: unknown layer key `zoom`; expected one of id, text, rect, shapes, comp, overrides, image, video, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, matte, position, anchor, scale, rotate, opacity
+`"overrides":{"title":{"zoom":1}}` → card/title.zoom: unknown layer key `zoom`; expected one of id, text, rect, shapes, comp, overrides, image, video, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, adjust, hidden, matte, position, anchor, scale, rotate, opacity
 
 ## overrides on a layer that draws no composition
 `"overrides":{"x":{}}` → a.overrides: `overrides` only applies to `comp` layers; expected `overrides` only next to `comp`
@@ -218,7 +223,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","span":"intro"}` → a.span: `intro` is not a span; expected `<start>-<end>`, each a time or a base moved by a time, e.g. `0-30f`, `intro-cta`, `<-<+2s` or `cta-6f-outro`; a bare start takes the end's unit
 
 ## contents
-`{"id":"a","shapes":[],"comp":"x"}` → a.comp: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
+`{"id":"a","shapes":[],"comp":"x"}` → a.comp: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`, or only `fx` for a filter layer; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
 `{"id":"a","pivot":false}` → a.pivot: `pivot` is `true` or left out; expected "pivot":true
 `{"id":"a","pivot":true,"fill":"#fff"}` → a.fill: `fill` only applies to `text` or `rect` layers; expected `fill` only next to `text` or `rect`
 `{"id":"a","shapes":{}}` → a.shapes: invalid type: map; expected a list of item objects, e.g. [{"rect":[300,100]},{"fill":"#FFE000"}]
@@ -307,7 +312,7 @@ expression: "report.join(\"\\n\\n\")"
 `"card":{"size":"1x1","dur":"1s"}` → comps.card: missing `layers`; expected e.g. "layers":[]
 `"card":{"size":"1x1","dur":"1s","fps":0,"layers":[]}` → comps.card.fps: must be a number above zero; expected e.g. `30`
 `"card":{"size":"1x1","dur":"1s","layers":[],"tint":1}` → comps.card.tint: unknown field `tint`; expected one of size, fps, dur, bg, labels, layers
-`"card":{"size":"1x1","dur":"1s","layers":[{"id":"x"}]}` → comps.card.layers[x]: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
+`"card":{"size":"1x1","dur":"1s","layers":[{"id":"x"}]}` → comps.card.layers[x]: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`, or only `fx` for a filter layer; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
 `"card":{"size":"1x1","dur":"1s","layers":[{"id":"x","comp":"card"}]}` → comps.card.layers[x].comp: composition `card` would draw itself through its layers; expected compositions that never lead back to themselves
 `"card":{"size":"1x1","dur":"1s","layers":[{"id":"x","comp":"b"}]},"b":{"size":"1x1","dur":"1s","layers":[{"id":"y","comp":"card"}]}` → comps.card.layers[x].comp: composition `card` would draw itself through its layers; expected compositions that never lead back to themselves
 

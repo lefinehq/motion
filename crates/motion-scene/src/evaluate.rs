@@ -93,6 +93,7 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
                     seconds: local / fps,
                 },
                 NodeContent::Pivot => ContentState::Pivot,
+                NodeContent::Filter => ContentState::Filter,
             };
             let local_bounds = match &content {
                 ContentState::Text { text, glyphs } if !glyphs.is_empty() => {

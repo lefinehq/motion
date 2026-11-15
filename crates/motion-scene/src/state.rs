@@ -70,6 +70,8 @@ pub enum ContentState {
     },
     /// Nothing.
     Pivot,
+    /// Nothing of its own; its effects apply to what is below it.
+    Filter,
 }
 
 /// One shape item or effect at one frame.
