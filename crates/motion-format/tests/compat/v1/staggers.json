@@ -1,0 +1,14 @@
+{"motion":1,"size":"480x480","fps":24,"dur":"2s","bg":"#101010",
+"presets":{"drop":{"opacity":0,"y":"-d","rotate":-20}},
+"layers":[
+{"id":"words","text":"Each word in turn","font":"Inter Variable 36","at":"240 60","in":"fade-up word 30px 10f out-back stagger 3f"},
+{"id":"chars","text":"FROM THE MIDDLE","font":"Inter Variable 36","at":"240 130","in":"pop char spring(.5) stagger 2f center"},
+{"id":"drop","text":"dropping in","font":"Inter Variable 36","at":"240 200","in":"drop char-no-space 20px 8f stagger 1f random"},
+{"id":"lines","text":"first line\nsecond line","font":"Inter Variable 28","at":"240 290","in":"fade line 12f stagger 6f last"},
+{"id":"sweep","text":"edges inward","font":"Inter Variable 32","at":"240 380","animate":[
+ {"animator":[{"range":"char","anim":{"amount":"1 -> 0 @0-12f"}}],"scale":[0.2,0.2],"stagger":2,"by":"char","order":"edges"},
+ {"animator":[{"range":"word"}],"position":[0,-24],"stagger":4,"seed":7,"by":"word","order":"random","anim":{"position":"0,-24 -> 0,0 @0-8f ease-out"}},
+ {"animator":[{"range":"char-no-space"}],"opacity":0.4,"stagger":1,"by":"char-no-space","order":"first","anim":{"opacity":"0.4 -> 1 @0-6f"}},
+ {"animator":[{"range":"line"}],"rotate":10,"stagger":1,"by":"line","order":"last","anim":{"rotate":"10 -> 0 @0-6f"}},
+ {"animator":[{"range":"char"}],"tracking":40,"stagger":1,"order":"center","anim":{"tracking":"40 -> 0 @0-6f"}}]}
+]}

@@ -35,7 +35,10 @@ fn behaviour_uses_defaults() {
             distance: 40.0,
             duration: Time::Frames(12.0),
             curve: Curve::named("ease-out").unwrap(),
-            start: Time::Frames(0.0)
+            start: Time::Frames(0.0),
+            parts: None,
+            stagger: Time::Frames(0.0),
+            order: "first",
         }
     );
 }
@@ -275,4 +278,52 @@ fn a_spring_without_a_duration_lasts_until_it_rests() {
     assert!(matches!(b.duration, Time::Frames(f) if f > 10.0));
     let timed: Behaviour = "pop 12f spring(.3)".parse().unwrap();
     assert_eq!(timed.duration, Time::Frames(12.0), "a duration given wins");
+}
+
+#[test]
+fn parts_stagger_and_order_parse_in_any_order() {
+    let b = "fade-up word 30px stagger 3f out-back center"
+        .parse::<Behaviour>()
+        .unwrap();
+    assert_eq!(
+        (b.parts, b.stagger, b.order, b.distance),
+        (Some("word"), Time::Frames(3.0), "center", 30.0)
+    );
+    let b = "pop stagger 0.1s random char-no-space"
+        .parse::<Behaviour>()
+        .unwrap();
+    assert_eq!(
+        (b.parts, b.stagger, b.order),
+        (Some("char-no-space"), Time::Seconds(0.1), "random")
+    );
+    // Parts alone move each part together.
+    let b = "fade line".parse::<Behaviour>().unwrap();
+    assert_eq!((b.parts, b.stagger), (Some("line"), Time::Frames(0.0)));
+}
+
+#[test]
+fn the_part_and_order_words_are_the_animator_choices() {
+    let animator = &crate::item::ANIMATORS[0];
+    assert_eq!(animator.settings[0].name, "by");
+    assert_eq!(animator.settings[1].name, "order");
+    assert_eq!(animator.settings[1].default, ORDERS[0]);
+    for word in PARTS.iter().chain(ORDERS) {
+        assert!(Curve::named(word).is_none(), "`{word}` is also a curve");
+    }
+}
+
+#[test]
+fn a_stagger_or_order_needs_parts() {
+    assert_fails("fade-up stagger 3f", Kind::Missing);
+    assert_fails("fade-up center", Kind::Missing);
+    let e = "fade-up stagger 3f".parse::<Behaviour>().unwrap_err();
+    assert!(e.message.contains("`stagger 3f`"), "{}", e.message);
+}
+
+#[test]
+fn a_stagger_needs_one_time() {
+    assert_fails("fade-up word stagger", Kind::Syntax);
+    assert_fails("fade-up word stagger soon", Kind::Syntax);
+    assert_fails("fade-up word stagger 3f stagger 2f", Kind::Conflict);
+    assert_fails("fade-up word line", Kind::Conflict);
 }

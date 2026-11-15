@@ -6,11 +6,14 @@ use std::sync::OnceLock;
 
 use serde_json::{Map, Value as Json};
 
+use crate::anim::{AnimKey, AnimTrack, Easing};
 use crate::doc::{AnimDoc, PresetsDoc};
 use crate::fmt_num;
-use crate::property::Target;
+use crate::item::{ANIMATOR, ANIMATORS, Item, SELECTORS, props};
+use crate::property::{Rest, Target};
 use crate::shorthand::Behaviour;
 use crate::table;
+use crate::units::Time;
 use crate::validate;
 use crate::value::Value;
 
@@ -117,6 +120,95 @@ pub(crate) fn expand_as_anim(
         });
     }
     Some(Json::Object(tracks).to_string())
+}
+
+/// The text animator an entrance on the parts of a text makes, ahead of the
+/// layer's own: it moves each part from the preset's start to rest over the
+/// behaviour's frames with its curve, a `range` selector by the same parts
+/// chooses every part, and the parts take turns by the behaviour's stagger
+/// and order. `None` when the behaviour moves the whole layer.
+///
+/// # Panics
+/// If the preset moves a property a text animator does not have, which
+/// validation rules out.
+pub fn parts_animator(spec: &PresetSpec, behaviour: &Behaviour, fps: f64) -> Option<Item> {
+    let parts = behaviour.parts?;
+    let choice = |choices: &[&str], name: &str| {
+        choices
+            .iter()
+            .position(|c| *c == name)
+            .expect("a choice of the setting")
+    };
+    let (start, end) = behaviour.frames(fps);
+    let anim = spec
+        .props
+        .iter()
+        .map(|&(target, from)| {
+            let prop = ANIMATOR
+                .props()
+                .find(|p| p.name() == target.prop.name())
+                .expect("validation allows only properties a text animator has");
+            let target = Target {
+                prop,
+                component: target.component,
+            };
+            let Rest::Value(whole) = &prop.spec().rest else {
+                unreachable!("an animator property rests at a value")
+            };
+            let rest = target.rest_of(whole.clone());
+            AnimTrack {
+                target,
+                keys: vec![
+                    AnimKey {
+                        time: Time::Frames(start),
+                        value: from.resolve(&rest, behaviour.distance),
+                        easing: Easing::All(behaviour.curve),
+                        path: None,
+                    },
+                    AnimKey {
+                        time: Time::Frames(end),
+                        value: rest,
+                        easing: Easing::All(crate::Curve::Linear),
+                        path: None,
+                    },
+                ],
+            }
+        })
+        .collect();
+    let [by, order] = ANIMATORS[0].settings else {
+        unreachable!("an animator has `by` and `order`")
+    };
+    let selector = Item {
+        kind: &SELECTORS[0],
+        id: None,
+        values: Vec::new(),
+        settings: SELECTORS[0]
+            .settings
+            .iter()
+            .map(|s| match s.name {
+                "by" => choice(s.choices, parts),
+                _ => choice(s.choices, s.default),
+            })
+            .collect(),
+        items: Vec::new(),
+        anim: Vec::new(),
+        hidden: false,
+    };
+    Some(Item {
+        kind: &ANIMATORS[0],
+        id: None,
+        values: vec![(
+            props::ANIMATOR_STAGGER,
+            Value::Number(behaviour.stagger.to_frames(fps)),
+        )],
+        settings: vec![
+            choice(by.choices, parts),
+            choice(order.choices, behaviour.order),
+        ],
+        items: vec![selector],
+        anim,
+        hidden: false,
+    })
 }
 
 /// Finds `name` among a scene's own presets first, then the built-ins.

@@ -1,5 +1,6 @@
 //! The behaviour shorthand, a layer's `in`: an entrance preset with optional
-//! tuning, e.g. `"fade-up 60px 12f ease-out @15f"`.
+//! tuning, e.g. `"fade-up 60px 12f ease-out @15f"`, and on a text layer the
+//! parts that enter one after another, e.g. `"fade-up word stagger 3f"`.
 
 use std::str::FromStr;
 
@@ -14,12 +15,22 @@ use crate::Curve;
 use crate::address::{ID_RULE, Id};
 use crate::curve::CUBIC_PREFIX;
 use crate::doc::Form;
+use crate::item::ANIMATORS;
 use crate::units::{Time, time};
 
-pub(crate) const EXPECTED: &str = "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `out-expo` or `hold`, `out-back(2)`, `steps(4)`, `spring(.3)`, or `cubic(x1,y1,x2,y2)`";
+pub(crate) const EXPECTED: &str = "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>] [char|char-no-space|word|line] [stagger <time>] [first|last|center|edges|random]`, e.g. `fade-up 40px 12f ease-out @0f` or `fade-up word stagger 3f`; a curve is a name such as `ease-out`, `out-expo` or `hold`, `out-back(2)`, `steps(4)`, `spring(.3)`, or `cubic(x1,y1,x2,y2)`";
 
 /// Must be in `NAMED_CURVES`.
 const DEFAULT_CURVE: &str = "ease-out";
+
+/// The word that starts a stagger clause.
+const STAGGER: &str = "stagger";
+
+/// The parts a behaviour can move: a text animator's `by` choices.
+static PARTS: &[&str] = ANIMATORS[0].settings[0].choices;
+
+/// The orders of a stagger, `first` the default: a text animator's `order` choices.
+static ORDERS: &[&str] = ANIMATORS[0].settings[1].choices;
 
 /// A parsed behaviour: a preset plus its tuning, with defaults filled in.
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +46,14 @@ pub struct Behaviour {
     pub curve: Curve,
     /// When the motion starts, from the start of the scene; frame 0 by default.
     pub start: Time,
+    /// On a text layer, the parts that each make the motion about their own
+    /// anchor (a `by` choice of a text animator), instead of the whole layer.
+    pub parts: Option<&'static str>,
+    /// How long each part waits after the one before it; none by default.
+    pub stagger: Time,
+    /// Which part goes first (an `order` choice of a text animator); `first`
+    /// by default.
+    pub order: &'static str,
 }
 
 impl Behaviour {
@@ -52,6 +71,9 @@ impl Behaviour {
             duration: Time::Frames(12.0),
             curve: Curve::named(DEFAULT_CURVE).expect("the default curve is in NAMED_CURVES"),
             start: Time::Frames(0.0),
+            parts: None,
+            stagger: Time::Frames(0.0),
+            order: ORDERS[0],
         };
         let timed = tokens
             .iter()
@@ -99,6 +121,10 @@ enum Problem<'s> {
     Malformed(Field, &'s str),
     /// The token has no known shape.
     Unknown(&'s str),
+    /// A stagger or an order is given without the parts it orders.
+    NoParts(&'s str),
+    /// `stagger` is not followed by a time.
+    NoStaggerTime,
     /// Two tokens set the same field: the first and the second.
     Twice(Field, &'s str, &'s str),
     /// The curve token is not a curve, with its own diagnostic.
@@ -119,6 +145,17 @@ impl Problem<'_> {
                 format!("`{token}` is not a valid {}", field.noun()),
             ),
             Problem::Unknown(token) => (Kind::Syntax, format!("unknown token `{token}`")),
+            Problem::NoStaggerTime => (
+                Kind::Syntax,
+                "`stagger` needs the time each part waits, such as `stagger 3f`".to_owned(),
+            ),
+            Problem::NoParts(token) => (
+                Kind::Missing,
+                format!(
+                    "`{token}` orders the parts of a text, so it needs them: add `char`, \
+                     `char-no-space`, `word` or `line`"
+                ),
+            ),
             Problem::Twice(field, first, second) => (
                 Kind::Conflict,
                 format!("{} given twice: `{first}` and `{second}`", field.name()),
@@ -135,6 +172,9 @@ enum Field {
     Duration,
     Curve,
     Start,
+    Parts,
+    Stagger,
+    Order,
 }
 
 impl Field {
@@ -145,6 +185,9 @@ impl Field {
             Field::Duration => "duration",
             Field::Curve => "curve",
             Field::Start => "start",
+            Field::Parts => "parts",
+            Field::Stagger => "stagger",
+            Field::Order => "order",
         }
     }
 
@@ -152,6 +195,7 @@ impl Field {
     fn noun(self) -> &'static str {
         match self {
             Field::Start => "start time",
+            Field::Stagger => "stagger time",
             field => field.name(),
         }
     }
@@ -167,6 +211,9 @@ enum Tuning {
     Duration(Time),
     Curve(Curve),
     Start(Time),
+    Parts(&'static str),
+    Stagger(Time),
+    Order(&'static str),
 }
 
 impl Tuning {
@@ -176,6 +223,9 @@ impl Tuning {
             Tuning::Duration(_) => Field::Duration,
             Tuning::Curve(_) => Field::Curve,
             Tuning::Start(_) => Field::Start,
+            Tuning::Parts(_) => Field::Parts,
+            Tuning::Stagger(_) => Field::Stagger,
+            Tuning::Order(_) => Field::Order,
         }
     }
 
@@ -191,6 +241,15 @@ impl Tuning {
             },
             Tuning::Curve(curve) => Behaviour { curve, ..behaviour },
             Tuning::Start(start) => Behaviour { start, ..behaviour },
+            Tuning::Parts(parts) => Behaviour {
+                parts: Some(parts),
+                ..behaviour
+            },
+            Tuning::Stagger(stagger) => Behaviour {
+                stagger,
+                ..behaviour
+            },
+            Tuning::Order(order) => Behaviour { order, ..behaviour },
         }
     }
 }
@@ -200,11 +259,44 @@ fn behaviour<'s>(input: &mut &'s str) -> Parsed<Behaviour, Problem<'s>> {
         blank0,
         (
             preset,
-            repeat(0.., preceded(blank1, token)).try_fold(Vec::new, once_per_field),
+            repeat(0.., preceded(blank1, alt((stagger, token))))
+                .try_fold(Vec::new, once_per_field)
+                .try_map(ordered_parts),
         ),
         blank0,
     )
     .map(|(preset, tokens)| Behaviour::tuned(preset.to_owned(), tokens))
+    .parse_next(input)
+}
+
+/// The tokens, unless a stagger or an order comes without the parts.
+fn ordered_parts(tokens: Vec<Token<'_>>) -> std::result::Result<Vec<Token<'_>>, Problem<'_>> {
+    let field = |f| tokens.iter().find(|(tuning, _)| tuning.field() == f);
+    match (
+        field(Field::Parts),
+        field(Field::Stagger).or(field(Field::Order)),
+    ) {
+        (None, Some((_, text))) => Err(Problem::NoParts(text)),
+        _ => Ok(tokens),
+    }
+}
+
+/// `stagger <time>`, two words: how long each part waits.
+fn stagger<'s>(input: &mut &'s str) -> Parsed<Token<'s>, Problem<'s>> {
+    preceded(
+        (STAGGER, peek(alt((blank1, eof)))),
+        cut_err(
+            preceded(blank1, word)
+                .context(Problem::NoStaggerTime)
+                .try_map(|given: &'s str| {
+                    whole(time)
+                        .parse(given)
+                        .map_err(|_| Problem::Malformed(Field::Stagger, given))
+                }),
+        ),
+    )
+    .map(Tuning::Stagger)
+    .with_taken()
     .parse_next(input)
 }
 
@@ -249,6 +341,10 @@ fn tuning<'s>(input: &mut &'s str) -> Parsed<Tuning, Problem<'s>> {
     let malformed = |field| Problem::Malformed(field, token);
     alt((
         preceded('@', whole(time).context(malformed(Field::Start))).map(Tuning::Start),
+        rest.verify_map(|w: &str| PARTS.iter().find(|p| **p == w).copied())
+            .map(Tuning::Parts),
+        rest.verify_map(|w: &str| ORDERS.iter().find(|o| **o == w).copied())
+            .map(Tuning::Order),
         preceded(
             peek(ends_with("px")),
             whole(terminated(number, "px")).context(malformed(Field::Distance)),

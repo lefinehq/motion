@@ -537,6 +537,14 @@ pub static ANIMATOR: Registry = Registry {
             None,
             "extra space after each part, in thousandths of an em; the parts after it on its line move along",
         ),
+        number(
+            "stagger",
+            0.0,
+            Some((0.0, f64::INFINITY)),
+            "how many frames each part waits after the one before it in the order, seeing the \
+             animator as it was that much earlier",
+        ),
+        number("seed", 0.0, None, "which shuffle the `random` order takes"),
     ],
 };
 
@@ -585,8 +593,23 @@ pub static ANIMATORS: [ItemKind; 1] = [ItemKind {
     role: Role::Animator,
     registry: &ANIMATOR,
     primary: Primary::Items(&SELECTORS),
-    settings: &[],
-    doc: "applies its properties to the parts of the text its selectors choose",
+    settings: &[
+        SettingSpec {
+            name: "by",
+            choices: &["char", "char-no-space", "word", "line"],
+            default: "char",
+            doc: "which parts take turns when it staggers",
+        },
+        SettingSpec {
+            name: "order",
+            choices: &["first", "last", "center", "edges", "random"],
+            default: "first",
+            doc: "which part goes first when it staggers: in reading order, the reverse, \
+                  outward from the middle, inward from both ends, or shuffled by `seed`",
+        },
+    ],
+    doc: "applies its properties to the parts of the text its selectors choose, each part in \
+          its turn when it staggers",
 }];
 
 /// Every kind of text selector.
@@ -696,6 +719,10 @@ pub mod props {
     pub const ANIMATOR_STROKE_WIDTH: Prop = Prop::of(&ANIMATOR, 7);
     /// The tracking an animator adds after each part.
     pub const ANIMATOR_TRACKING: Prop = Prop::of(&ANIMATOR, 8);
+    /// How many frames each part of a staggered animator waits.
+    pub const ANIMATOR_STAGGER: Prop = Prop::of(&ANIMATOR, 9);
+    /// Which shuffle a staggered animator's `random` order takes.
+    pub const ANIMATOR_SEED: Prop = Prop::of(&ANIMATOR, 10);
     /// Where a range selector starts.
     pub const RANGE_START: Prop = Prop::of(&RANGE, 0);
     /// Where a range selector ends.
