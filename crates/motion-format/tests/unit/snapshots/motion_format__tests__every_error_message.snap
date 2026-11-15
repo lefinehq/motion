@@ -1,6 +1,6 @@
 ---
 source: crates/motion-format/src/../tests/unit/lib.rs
-assertion_line: 528
+assertion_line: 535
 expression: "report.join(\"\\n\\n\")"
 ---
 ## document
@@ -271,14 +271,21 @@ expression: "report.join(\"\\n\\n\")"
 
 ## shapes
 `1` → a.shapes[0]: invalid type: integer `1`; expected an item object keyed by its kind, e.g. {"rect":[300,100],"round":12} or {"fill":"#FFE000"}
-`{}` → a.shapes[0]: needs the key of its kind; expected one kind key: `group`, `rect`, `ellipse`, `path`, `fill`, `stroke`, `trim`
-`{"round":3}` → a.shapes[0]: needs the key of its kind; expected one kind key: `group`, `rect`, `ellipse`, `path`, `fill`, `stroke`, `trim`
-`{"rect":[1,1],"fill":"#fff"}` → a.shapes[0].fill: `rect` and `fill` are both kinds; an item has one; expected one kind key: `group`, `rect`, `ellipse`, `path`, `fill`, `stroke`, `trim`
+`{}` → a.shapes[0]: needs the key of its kind; expected one kind key: `group`, `rect`, `ellipse`, `star`, `path`, `fill`, `stroke`, `trim`
+`{"round":3}` → a.shapes[0]: needs the key of its kind; expected one kind key: `group`, `rect`, `ellipse`, `star`, `path`, `fill`, `stroke`, `trim`
+`{"rect":[1,1],"fill":"#fff"}` → a.shapes[0].fill: `rect` and `fill` are both kinds; an item has one; expected one kind key: `group`, `rect`, `ellipse`, `star`, `path`, `fill`, `stroke`, `trim`
 `{"rect":[1,1],"size":[2,2]}` → a.shapes[0].size: `size` is the value `rect` holds; expected `size` written as the value of `rect`
 `{"rect":[1,1],"colour":1}` → a.shapes[0].colour: unknown rect key `colour`; expected one of rect, id, hidden, anim, position, round
 `{"rect":[-1,1]}` → a.shapes[0].rect: value -1 is outside 0..; expected a number of at least 0
 `{"rect":"wide"}` → a.shapes[0].rect: `wide` is not a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
 `{"rect":[1,1],"round":-2}` → a.shapes[0].round: value -2 is outside 0..; expected a number of at least 0
+`{"star":101}` → a.shapes[0].star: value 101 is outside 0..=100; expected a number from 0 to 100
+`{"star":-1}` → a.shapes[0].star: value -1 is outside 0..=100; expected a number from 0 to 100
+`{"star":5,"outer-radius":-3}` → a.shapes[0].outer-radius: value -3 is outside 0..; expected a number of at least 0
+`{"star":5,"inner-radius":"far"}` → a.shapes[0].inner-radius: `far` is not a number; expected a number, e.g. `0.5`
+`{"star":5,"type":"triangle"}` → a.shapes[0].type: unknown star type `triangle`; expected one of star, polygon
+`{"star":5,"direction":"left"}` → a.shapes[0].direction: unknown star direction `left`; expected one of clockwise, counterclockwise
+`{"star":5,"size":[1,1]}` → a.shapes[0].size: unknown star key `size`; expected one of star, id, hidden, anim, type, direction, position, rotate, outer-radius, inner-radius, outer-roundness, inner-roundness
 `{"group":{}}` → a.shapes[0].group: invalid type: map; expected a list of item objects, e.g. [{"rect":[300,100]},{"fill":"#FFE000"}]
 `{"group":[{"rect":[1,1],"cap":"round"}]}` → a.shapes[0].group[0].cap: unknown rect key `cap`; expected one of rect, id, hidden, anim, position, round
 `{"stroke":"#000","cap":"pointy"}` → a.shapes[0].cap: unknown stroke cap `pointy`; expected one of butt, round, square

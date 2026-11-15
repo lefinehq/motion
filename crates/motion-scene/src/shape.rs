@@ -54,7 +54,12 @@ impl ShapeDraw {
 type Draw = fn(&ItemState) -> BezPath;
 
 /// What each geometry kind draws, by name; every geometry kind has a row.
-const OUTLINES: [(&str, Draw); 3] = [("rect", rect), ("ellipse", ellipse), ("path", path)];
+const OUTLINES: [(&str, Draw); 4] = [
+    ("rect", rect),
+    ("ellipse", ellipse),
+    ("star", star),
+    ("path", path),
+];
 
 /// The outline a geometry item draws, in its group's space; `None` for
 /// any other item.
@@ -221,6 +226,69 @@ fn ellipse(item: &ItemState) -> BezPath {
         let (from, from_dir) = at[i];
         let (to, to_dir) = at[(i + 1) % 4];
         path.curve_to(c + from + from_dir * KAPPA, c + to - to_dir * KAPPA, c + to);
+    }
+    path.close_path();
+    path
+}
+
+/// A star or a regular polygon about its centre: its corners on two circles,
+/// or on one for a polygon, at equal angles from the first point, straight
+/// up from the centre when `rotate` is 0, and on clockwise, or the other
+/// way round for `counterclockwise`. A star's points alternate with its
+/// inner corners. `points` counts by its whole part.
+///
+/// A corner's handles run along the circle it is on, both ways, each as
+/// long as its roundness times a quarter of the arc between two points of
+/// that circle: `2π r / (4 n)` for `n` points. A corner of roundness 0 is
+/// sharp, and the sides between sharp corners are straight lines.
+fn star(item: &ItemState) -> BezPath {
+    let [cx, cy] = item.point(props::STAR_POSITION);
+    let c = Point::new(cx, cy);
+    let n = item.number(props::STAR_POINTS).floor().max(0.0);
+    let turn = match item.setting("direction") {
+        "counterclockwise" => -1.0,
+        _ => 1.0,
+    };
+    let outer = (
+        item.number(props::STAR_OUTER_RADIUS),
+        item.number(props::STAR_OUTER_ROUNDNESS),
+    );
+    // A corner and its radius and roundness, in order around the shape.
+    let corners: Vec<(f64, f64)> = match item.setting("type") {
+        "polygon" => vec![outer; n as usize],
+        _ => {
+            let inner = (
+                item.number(props::STAR_INNER_RADIUS),
+                item.number(props::STAR_INNER_ROUNDNESS),
+            );
+            [outer, inner].repeat(n as usize)
+        }
+    };
+    let mut path = BezPath::new();
+    if corners.is_empty() {
+        return path;
+    }
+    let step = std::f64::consts::TAU / corners.len() as f64 * turn;
+    let first = (item.number(props::STAR_ROTATE) - 90.0).to_radians();
+    // Each corner's point and its handle forward along the outline.
+    let at: Vec<(Point, Vec2)> = corners
+        .iter()
+        .enumerate()
+        .map(|(i, &(radius, roundness))| {
+            let angle = first + step * i as f64;
+            let out = Vec2::from_angle(angle);
+            let along = Vec2::new(-out.y, out.x) * turn;
+            let reach = radius * std::f64::consts::TAU / (4.0 * n) * roundness;
+            (c + out * radius, along * reach)
+        })
+        .collect();
+    path.move_to(at[0].0);
+    for (i, &(from, leaving)) in at.iter().enumerate() {
+        let (to, arriving) = at[(i + 1) % at.len()];
+        match leaving == Vec2::ZERO && arriving == Vec2::ZERO {
+            true => path.line_to(to),
+            false => path.curve_to(from + leaving, to - arriving, to),
+        }
     }
     path.close_path();
     path

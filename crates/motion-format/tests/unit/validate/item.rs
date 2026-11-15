@@ -49,6 +49,38 @@ fn groups_nest_and_settings_default() {
 }
 
 #[test]
+fn a_star_keys_its_points_and_rests_as_the_original_draws_one() {
+    let items = shapes(
+        r#"{"star":6,"type":"polygon","outer-roundness":0.5,"anim":{"rotate":"0 -> 60 @0-5f"}},{"star":3}"#,
+    );
+    let (polygon, star) = (&items[0], &items[1]);
+    assert_eq!(polygon.values[0], (props::STAR_POINTS, Value::Number(6.0)));
+    assert_eq!(
+        (polygon.setting("type"), polygon.setting("direction")),
+        ("polygon", "clockwise")
+    );
+    assert_eq!(polygon.anim[0].target.prop, props::STAR_ROTATE);
+    assert_eq!(star.setting("type"), "star");
+    let rests = [
+        (props::STAR_POSITION, Value::Point([0.0, 0.0])),
+        (props::STAR_ROTATE, Value::Number(0.0)),
+        (props::STAR_OUTER_RADIUS, Value::Number(100.0)),
+        (props::STAR_INNER_RADIUS, Value::Number(50.0)),
+        (props::STAR_OUTER_ROUNDNESS, Value::Number(0.0)),
+        (props::STAR_INNER_ROUNDNESS, Value::Number(0.0)),
+    ];
+    for (prop, rest) in rests {
+        assert_eq!(star.rest(prop), rest, "{}", prop.name());
+    }
+    // Roundness may go past either end: a negative one loops inwards.
+    let looped = shapes(r#"{"star":5,"outer-roundness":-2,"inner-roundness":3}"#);
+    assert_eq!(
+        looped[0].rest(props::STAR_OUTER_ROUNDNESS),
+        Value::Number(-2.0)
+    );
+}
+
+#[test]
 fn paths_animate_with_key_lists_of_one_shape() {
     let items = shapes(
         r#"{"path":"M0,0 L10,0 L10,10 Z","anim":{"path":[{"t":0,"v":"M0,0 L10,0 L10,10 Z"},{"t":10,"v":"M0,0 L20,0 L20,20 Z"}]}}"#,
@@ -84,11 +116,14 @@ mod never_panics {
     /// A JSON value built from the words items use, so most inputs reach
     /// deep rules rather than failing on their shape.
     fn json() -> impl Strategy<Value = String> {
-        let word = prop::sample::select(vec![
-            "group", "rect", "ellipse", "path", "fill", "stroke", "size", "position", "round",
-            "color", "opacity", "width", "miter", "cap", "join", "rule", "id", "hidden", "anim",
-            "x", "width", "round", "evenodd", "butt", "t", "v", "curve",
-        ]);
+        let short = [
+            "group", "rect", "ellipse", "star", "path", "fill", "stroke", "size", "position",
+            "round", "points", "type", "polygon", "rotate", "color", "opacity", "width", "miter",
+            "cap", "join", "rule", "id", "hidden", "anim", "x", "width", "round", "evenodd",
+            "butt", "t", "v", "curve",
+        ];
+        let long = ["direction", "outer-radius", "inner-roundness"];
+        let word = prop::sample::select([&short[..], &long[..]].concat());
         let leaf = prop_oneof![
             Just("1".to_owned()),
             Just("-3".to_owned()),

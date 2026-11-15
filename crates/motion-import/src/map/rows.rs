@@ -189,6 +189,11 @@ pub(super) const MASK_MODES: &[(u32, &str)] = &[
 const LINE_CAPS: &[(i64, &str)] = &[(1, "butt"), (2, "round"), (3, "square")];
 const LINE_JOINS: &[(i64, &str)] = &[(1, "miter"), (2, "round"), (3, "bevel")];
 const FILL_RULES: &[(i64, &str)] = &[(1, "nonzero"), (2, "evenodd")];
+const STAR_TYPES: &[(i64, &str)] = &[(1, "star"), (2, "polygon")];
+/// A shape's direction: 1 is the default, clockwise, and 3 reverses it. The
+/// meaning of 2, which some paths, rectangles and ellipses store, is not
+/// known, so it is reported.
+const SHAPE_DIRECTIONS: &[(i64, &str)] = &[(1, "clockwise"), (3, "counterclockwise")];
 /// Trim Multiple Shapes: simultaneously cuts each outline the same way,
 /// individually cuts them one after another as one line.
 const TRIM_MODES: &[(i64, &str)] = &[(1, "each"), (2, "joined")];
@@ -919,7 +924,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 36] = [
+pub(super) static KINDS: [Kind; 37] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -1016,6 +1021,70 @@ pub(super) static KINDS: [Kind; 36] = [
                 To::OnlyDefault("reversed path direction"),
                 Number,
                 Missing::Number(1.0),
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Vector Shape - Star",
+        item: "star",
+        table: &SHAPES,
+        rows: &[
+            row(
+                "ADBE Vector Star Type",
+                To::Setting("type", STAR_TYPES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Vector Star Points",
+                To::Prop("points"),
+                Number,
+                Missing::Number(5.0),
+            ),
+            row(
+                "ADBE Vector Star Position",
+                To::Prop("position"),
+                Point,
+                Absent,
+            ),
+            row(
+                "ADBE Vector Star Rotation",
+                To::Prop("rotate"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Vector Star Inner Radius",
+                To::Prop("inner-radius"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Vector Star Outer Radius",
+                To::Prop("outer-radius"),
+                Number,
+                Absent,
+            ),
+            // The project's match names spell roundness without its second n.
+            row(
+                "ADBE Vector Star Inner Roundess",
+                To::Prop("inner-roundness"),
+                Percent,
+                Absent,
+            ),
+            row(
+                "ADBE Vector Star Outer Roundess",
+                To::Prop("outer-roundness"),
+                Percent,
+                Absent,
+            ),
+            row(
+                "ADBE Vector Shape Direction",
+                To::Setting("direction", SHAPE_DIRECTIONS),
+                Number,
+                Absent,
             ),
         ],
         parts: &[],
