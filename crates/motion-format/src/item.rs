@@ -344,6 +344,240 @@ pub static FILL_EFFECT: Registry = Registry {
     ],
 };
 
+/// The properties of the tint effect.
+pub static TINT: Registry = Registry {
+    kind: "tint",
+    rows: &[
+        color("black", [0.0, 0.0, 0.0, 1.0], "the colour black maps to"),
+        color("white", [1.0, 1.0, 1.0, 1.0], "the colour white maps to"),
+        number(
+            "amount",
+            1.0,
+            Some((0.0, 1.0)),
+            "how much of the tint replaces the colours, 0 to 1",
+        ),
+    ],
+};
+
+/// The properties of the black and white effect: how light each of six
+/// hues turns, and a tint.
+pub static BLACK_WHITE: Registry = Registry {
+    kind: "black-white",
+    rows: &[
+        number(
+            "reds",
+            0.4,
+            Some((-2.0, 3.0)),
+            "the grey reds turn into, as a share of their level",
+        ),
+        number(
+            "yellows",
+            0.6,
+            Some((-2.0, 3.0)),
+            "the grey yellows turn into, as a share of their level",
+        ),
+        number(
+            "greens",
+            0.4,
+            Some((-2.0, 3.0)),
+            "the grey greens turn into, as a share of their level",
+        ),
+        number(
+            "cyans",
+            0.6,
+            Some((-2.0, 3.0)),
+            "the grey cyans turn into, as a share of their level",
+        ),
+        number(
+            "blues",
+            0.2,
+            Some((-2.0, 3.0)),
+            "the grey blues turn into, as a share of their level",
+        ),
+        number(
+            "magentas",
+            0.8,
+            Some((-2.0, 3.0)),
+            "the grey magentas turn into, as a share of their level",
+        ),
+        number(
+            "tint",
+            0.0,
+            Some((0.0, 1.0)),
+            "how much of `tint-color` colours the grey, 0 to 1",
+        ),
+        color(
+            "tint-color",
+            [0.882_353, 0.827_451, 0.701_961, 1.0],
+            "the colour the grey takes",
+        ),
+    ],
+};
+
+/// The properties of the hue and saturation effect.
+pub static HUE_SATURATION: Registry = Registry {
+    kind: "hue-saturation",
+    rows: &[
+        number("hue", 0.0, None, "how far hues turn, in degrees"),
+        number(
+            "saturation",
+            0.0,
+            Some((-1.0, 1.0)),
+            "-1 takes all colour out, 1 saturates fully",
+        ),
+        number(
+            "lightness",
+            0.0,
+            Some((-1.0, 1.0)),
+            "-1 turns every colour black, 1 white",
+        ),
+        number(
+            "colorize-hue",
+            0.0,
+            None,
+            "the hue every colour takes when colourising, in degrees",
+        ),
+        number(
+            "colorize-saturation",
+            0.25,
+            Some((0.0, 1.0)),
+            "the saturation every colour takes when colourising",
+        ),
+        number(
+            "colorize-lightness",
+            0.0,
+            Some((-1.0, 1.0)),
+            "how far colourising moves lightness towards white (1) or black (-1)",
+        ),
+    ],
+};
+
+/// The properties of the exposure effect.
+pub static EXPOSURE: Registry = Registry {
+    kind: "exposure",
+    rows: &[
+        number(
+            "exposure",
+            0.0,
+            Some((-100.0, 100.0)),
+            "stops of light: each doubles or halves it",
+        ),
+        number(
+            "offset",
+            0.0,
+            Some((-2.0, 2.0)),
+            "light added after the exposure; negative darkens the shadows",
+        ),
+        number(
+            "gamma",
+            1.0,
+            Some((0.1, 10.0)),
+            "a power of 1/gamma on the result: above 1 brightens the mid-tones",
+        ),
+    ],
+};
+
+/// The properties of the levels effect.
+pub static LEVELS: Registry = Registry {
+    kind: "levels",
+    rows: &[
+        number(
+            "input-black",
+            0.0,
+            None,
+            "the level that becomes `output-black`, 0 to 1",
+        ),
+        number(
+            "input-white",
+            1.0,
+            None,
+            "the level that becomes `output-white`, 0 to 1",
+        ),
+        number(
+            "gamma",
+            1.0,
+            Some((0.0, 5.0)),
+            "the power between: above 1 brightens the mid-tones",
+        ),
+        number("output-black", 0.0, None, "the darkest level out, 0 to 1"),
+        number("output-white", 1.0, None, "the brightest level out, 0 to 1"),
+    ],
+};
+
+/// The properties of the invert effect.
+pub static INVERT: Registry = Registry {
+    kind: "invert",
+    rows: &[number(
+        "blend",
+        0.0,
+        Some((0.0, 1.0)),
+        "how much of the original stays, 0 to 1",
+    )],
+};
+
+/// The properties of the curves effect: one curve per channel, each the
+/// points `M x,y L x,y …` from input to output level, 0 to 1, in rising `x`,
+/// at most 16, joined by a natural cubic spline. An empty path is the
+/// straight line, which changes nothing.
+pub static CURVES: Registry = Registry {
+    kind: "curves",
+    rows: &[
+        PropertySpec {
+            name: "rgb",
+            ty: ValueType::Path,
+            rest: Rest::Value(Value::Path(Path::EMPTY)),
+            components: &[],
+            range: None,
+            broadcast: false,
+            spatial: false,
+            doc: "the curve of red, green and blue alike, after their own",
+        },
+        PropertySpec {
+            name: "red",
+            ty: ValueType::Path,
+            rest: Rest::Value(Value::Path(Path::EMPTY)),
+            components: &[],
+            range: None,
+            broadcast: false,
+            spatial: false,
+            doc: "the curve of red",
+        },
+        PropertySpec {
+            name: "green",
+            ty: ValueType::Path,
+            rest: Rest::Value(Value::Path(Path::EMPTY)),
+            components: &[],
+            range: None,
+            broadcast: false,
+            spatial: false,
+            doc: "the curve of green",
+        },
+        PropertySpec {
+            name: "blue",
+            ty: ValueType::Path,
+            rest: Rest::Value(Value::Path(Path::EMPTY)),
+            components: &[],
+            range: None,
+            broadcast: false,
+            spatial: false,
+            doc: "the curve of blue",
+        },
+        PropertySpec {
+            name: "alpha",
+            ty: ValueType::Path,
+            rest: Rest::Value(Value::Path(Path::EMPTY)),
+            components: &[],
+            range: None,
+            broadcast: false,
+            spatial: false,
+            doc: "the curve of alpha",
+        },
+    ],
+};
+
+/// The channels an effect can work on.
+const CHANNELS: &[&str] = &["rgb", "red", "green", "blue", "alpha"];
+
 /// The properties of a trim.
 pub static TRIM: Registry = Registry {
     kind: "trim",
@@ -456,7 +690,7 @@ pub static SHAPES: [ItemKind; 7] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 2] = [
+pub static EFFECTS: [ItemKind; 9] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -474,6 +708,85 @@ pub static EFFECTS: [ItemKind; 2] = [
         doc: "moves, scales, turns and fades everything the layer draws, inside the layer: \
               `anchor` sits at `position`, both at the origin by default, so a scale or turn \
               on its own is about the origin",
+    },
+    ItemKind {
+        name: "tint",
+        role: Role::Effect,
+        registry: &TINT,
+        primary: Primary::Property("amount"),
+        settings: &[],
+        doc: "maps each colour's luminance from `black` to `white`",
+    },
+    ItemKind {
+        name: "hue-saturation",
+        role: Role::Effect,
+        registry: &HUE_SATURATION,
+        primary: Primary::Property("hue"),
+        settings: &[SettingSpec {
+            name: "mode",
+            choices: &["adjust", "colorize"],
+            default: "adjust",
+            doc: "`adjust` turns hues and changes saturation and lightness; `colorize` gives \
+                  every colour the `colorize-` hue and saturation, keeping its lightness",
+        }],
+        doc: "turns hues and changes saturation and lightness",
+    },
+    ItemKind {
+        name: "exposure",
+        role: Role::Effect,
+        registry: &EXPOSURE,
+        primary: Primary::Property("exposure"),
+        settings: &[SettingSpec {
+            name: "space",
+            choices: &["linear", "gamma"],
+            default: "linear",
+            doc: "`linear` works on light, decoding sRGB first and encoding it again after; \
+                  `gamma` works on the values as they are",
+        }],
+        doc: "changes exposure in stops, as a camera does",
+    },
+    ItemKind {
+        name: "levels",
+        role: Role::Effect,
+        registry: &LEVELS,
+        primary: Primary::Property("gamma"),
+        settings: &[SettingSpec {
+            name: "channel",
+            choices: CHANNELS,
+            default: "rgb",
+            doc: "the channel it works on; `rgb` is each of the three alike",
+        }],
+        doc: "maps the levels from `input-black`–`input-white` to `output-black`–`output-white` \
+              through `gamma`, clipped to 0 to 1",
+    },
+    ItemKind {
+        name: "black-white",
+        role: Role::Effect,
+        registry: &BLACK_WHITE,
+        primary: Primary::Property("tint"),
+        settings: &[],
+        doc: "turns colours to grey, each hue as light as its share says",
+    },
+    ItemKind {
+        name: "curves",
+        role: Role::Effect,
+        registry: &CURVES,
+        primary: Primary::Property("rgb"),
+        settings: &[],
+        doc: "maps each channel's levels through a curve: first the channel's own, then `rgb`",
+    },
+    ItemKind {
+        name: "invert",
+        role: Role::Effect,
+        registry: &INVERT,
+        primary: Primary::Setting("channel"),
+        settings: &[SettingSpec {
+            name: "channel",
+            choices: CHANNELS,
+            default: "rgb",
+            doc: "the channel it inverts; `rgb` is each of the three",
+        }],
+        doc: "turns each level of a channel into its opposite",
     },
 ];
 

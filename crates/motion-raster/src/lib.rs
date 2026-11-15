@@ -15,6 +15,7 @@
 //! [D34]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d34-a-layer-tree-renderer-on-vello_cpu
 
 mod blend;
+mod colour;
 mod effect;
 mod image;
 mod list;
@@ -25,8 +26,8 @@ mod style;
 
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use effect::{
-    Apply, EFFECTS, Effect, EffectContext, EffectSpec, Move, ParamSpec, ParamType, ParamValue,
-    Space,
+    Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Move, ParamSpec, ParamType,
+    ParamValue, Space,
 };
 pub use image::Image;
 pub use list::{

@@ -15,6 +15,9 @@ pub(super) enum To {
     Prop(&'static str),
     /// A setting of the item: the project's code for each choice.
     Setting(&'static str, &'static [(i64, &'static str)]),
+    /// The five curves of a curves effect, from the data the project keeps
+    /// for them (`aRbp`).
+    Curves,
     /// Nowhere: it changes nothing a frame shows, for this reason.
     Ignore(&'static str),
     /// Nowhere, which is right only at its default; any other value is
@@ -169,6 +172,15 @@ const MODES: &[(i64, &str)] = &[
     (4, "min"),
     (5, "max"),
     (6, "difference"),
+];
+const COLORIZE: &[(i64, &str)] = &[(0, "adjust"), (1, "colorize")];
+const EXPOSURE_SPACES: &[(i64, &str)] = &[(0, "linear"), (1, "gamma")];
+const CHANNELS: &[(i64, &str)] = &[
+    (1, "rgb"),
+    (2, "red"),
+    (3, "green"),
+    (4, "blue"),
+    (5, "alpha"),
 ];
 const SHAPES_OF_RANGE: &[(i64, &str)] = &[
     (1, "square"),
@@ -334,7 +346,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 11] = [
+pub(super) static KINDS: [Kind; 18] = [
     Kind {
         match_name: "ADBE Vector Group",
         item: "group",
@@ -761,6 +773,398 @@ pub(super) static KINDS: [Kind; 11] = [
             on: true,
             off_rows: &TRANSFORM_EFFECT_APART,
         }),
+    },
+    Kind {
+        match_name: "ADBE Tint",
+        item: "tint",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Tint-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Tint-0001", To::Prop("black"), Color, Parameter),
+            row("ADBE Tint-0002", To::Prop("white"), Color, Parameter),
+            row("ADBE Tint-0003", To::Prop("amount"), Percent, Parameter),
+            row(
+                "ADBE Tint-0004",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE HUE SATURATION",
+        item: "hue-saturation",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE HUE SATURATION-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE HUE SATURATION-0002",
+                To::OnlyDefault("hue and saturation of one colour range"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE HUE SATURATION-0003",
+                To::Ignore("the colour ranges, which the master channel does not use"),
+                Number,
+                Absent,
+            ),
+            row("ADBE HUE SATURATION-0004", To::Prop("hue"), Number, Absent),
+            row(
+                "ADBE HUE SATURATION-0005",
+                To::Prop("saturation"),
+                Percent,
+                Absent,
+            ),
+            row(
+                "ADBE HUE SATURATION-0006",
+                To::Prop("lightness"),
+                Percent,
+                Absent,
+            ),
+            row(
+                "ADBE HUE SATURATION-0007",
+                To::Setting("mode", COLORIZE),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE HUE SATURATION-0008",
+                To::Prop("colorize-hue"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE HUE SATURATION-0009",
+                To::Prop("colorize-saturation"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE HUE SATURATION-0010",
+                To::Prop("colorize-lightness"),
+                Percent,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Exposure2",
+        item: "exposure",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Exposure2-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0001",
+                To::OnlyDefault("exposure per channel"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Exposure2-0002",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0006",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0007",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0011",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0012",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0016",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0017",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0021",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Exposure2-0003", To::Prop("exposure"), Number, Absent),
+            row("ADBE Exposure2-0004", To::Prop("offset"), Number, Absent),
+            row("ADBE Exposure2-0005", To::Prop("gamma"), Number, Absent),
+            row(
+                "ADBE Exposure2-0008",
+                To::Ignore("a channel's own exposure, which the master channel does not use"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0009",
+                To::Ignore("a channel's own exposure, which the master channel does not use"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0010",
+                To::Ignore("a channel's own exposure, which the master channel does not use"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0013",
+                To::Ignore("a channel's own exposure, which the master channel does not use"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0014",
+                To::Ignore("a channel's own exposure, which the master channel does not use"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0015",
+                To::Ignore("a channel's own exposure, which the master channel does not use"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0018",
+                To::Ignore("a channel's own exposure, which the master channel does not use"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0019",
+                To::Ignore("a channel's own exposure, which the master channel does not use"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0020",
+                To::Ignore("a channel's own exposure, which the master channel does not use"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Exposure2-0022",
+                To::Setting("space", EXPOSURE_SPACES),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Easy Levels2",
+        item: "levels",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Easy Levels2-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Easy Levels2-0001",
+                To::Setting("channel", CHANNELS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Easy Levels2-0002",
+                To::Ignore("the histogram, which only shows"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Easy Levels2-0003",
+                To::Prop("input-black"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Easy Levels2-0004",
+                To::Prop("input-white"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Easy Levels2-0005", To::Prop("gamma"), Number, Absent),
+            row(
+                "ADBE Easy Levels2-0006",
+                To::Prop("output-black"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Easy Levels2-0007",
+                To::Prop("output-white"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Easy Levels2-0008",
+                To::Ignore("clipping, which an 8-bit project does and the scene always does"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Easy Levels2-0009",
+                To::Ignore("clipping, which an 8-bit project does and the scene always does"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Invert",
+        item: "invert",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Invert-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Invert-0001",
+                To::Setting("channel", CHANNELS),
+                Number,
+                Absent,
+            ),
+            row("ADBE Invert-0002", To::Prop("blend"), Percent, Absent),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Black&White",
+        item: "black-white",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Black&White-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Black&White-0001",
+                To::Prop("reds"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Black&White-0002",
+                To::Prop("yellows"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Black&White-0003",
+                To::Prop("greens"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Black&White-0004",
+                To::Prop("cyans"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Black&White-0005",
+                To::Prop("blues"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Black&White-0006",
+                To::Prop("magentas"),
+                Percent,
+                Parameter,
+            ),
+            row("ADBE Black&White-0007", To::Prop("tint"), Number, Absent),
+            row(
+                "ADBE Black&White-0008",
+                To::Prop("tint-color"),
+                Color,
+                Parameter,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE CurvesCustom",
+        item: "curves",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE CurvesCustom-0000",
+                To::Ignore("which curve the effect's panel shows"),
+                Number,
+                Absent,
+            ),
+            row("ADBE CurvesCustom-0001", To::Curves, Number, Absent),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
     },
 ];
 

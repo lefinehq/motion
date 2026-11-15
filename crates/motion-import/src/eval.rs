@@ -48,7 +48,9 @@ impl Value {
             Value::Vector2(v) => v.to_vec(),
             Value::Vector3(v) => v.to_vec(),
             Value::Color(c) => vec![c.r, c.g, c.b, c.a],
-            Value::Path(_) | Value::Text(_) | Value::Opaque { .. } => return None,
+            Value::Path(_) | Value::Text(_) | Value::Data(_) | Value::Opaque { .. } => {
+                return None;
+            }
         })
     }
 

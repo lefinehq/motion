@@ -162,8 +162,17 @@ A `trim` keeps the stretch from `start` to `end`, shares of the length from 0 to
 |---|---|---|---|
 | `fill` | `color` | `color`, `opacity` | |
 | `transform` | `scale` | `position`, `anchor`, `scale`, `rotate`, `opacity` | |
+| `tint` | `amount` | `black`, `white`, `amount` | |
+| `hue-saturation` | `hue` | `hue`, `saturation`, `lightness`, `colorize-hue`, `colorize-saturation`, `colorize-lightness` | `mode`: `adjust`, `colorize` |
+| `exposure` | `exposure` | `exposure`, `offset`, `gamma` | `space`: `linear`, `gamma` |
+| `levels` | `gamma` | `input-black`, `input-white`, `gamma`, `output-black`, `output-white` | `channel`: `rgb`, `red`, `green`, `blue`, `alpha` |
+| `black-white` | `tint` | `reds`, `yellows`, `greens`, `cyans`, `blues`, `magentas`, `tint`, `tint-color` | |
+| `curves` | `rgb` | `rgb`, `red`, `green`, `blue`, `alpha` | |
+| `invert` | `channel` | `blend` | |
 
 A `transform` moves everything the layer draws, inside the layer, as a group's transform moves its items: `anchor` (px of the layer's own coordinates) goes to `position`, scaled and turned about it, and `opacity` multiplies the layer's. Both points rest at the origin, so `{"transform":1.5}` scales about the layer's origin; an import writes both. Several apply in order, each moving what the ones before it moved.
+
+The colour effects change each pixel on its own, on its straight colour, levels from 0 to 1. `tint` maps each colour's luma (Rec. 601) from `black` to `white` and mixes that in by `amount`. `hue-saturation` turns hues by `hue` degrees and moves saturation and lightness towards their ends by shares from -1 to 1; in `colorize`, every colour takes the `colorize-` hue and saturation at its own luma. `exposure` multiplies light by 2 to the `exposure`, adds `offset` and raises it to 1/`gamma`, on light decoded from sRGB in `linear` space. `levels` maps its channel from `input-black`–`input-white` to `output-black`–`output-white` through a power of 1/`gamma`. `black-white` turns each colour to grey: its lowest level, plus what its highest has over its middle times the share of its primary (`reds`, `greens`, `blues`), plus what its middle has over its lowest times the share of the secondary the two make (`yellows`, `cyans`, `magentas`); `tint` mixes in the hue and saturation of `tint-color` at that grey. Each `curves` property is a path of up to 16 points from input to output level in rising input, `"M 0,0 L 0.5,0.6 L 1,1"`, joined by a natural cubic spline and flat beyond its ends; a channel's own curve applies before `rgb`, and an empty path changes nothing. `invert` turns each level of its channel (`rgb`, `red`, `green`, `blue` or `alpha`) into 1 minus itself, keeping `blend` of the original.
 
 **Compositions.** `comps` holds compositions by id. Each has its own `size`, `dur`, optional `fps` (the scene's by default), `bg` (clear by default) and `labels`, and its own `layers`. A layer with `"comp":"card"` draws it in a box of the composition's size. The composition's time is the layer's own time, so `offset` and `stretch` move and slow it, and the layer shows nothing outside the composition's length. Compositions may draw other compositions, but never themselves.
 

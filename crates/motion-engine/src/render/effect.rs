@@ -1,11 +1,12 @@
 //! A layer's `fx` as the rasteriser's effects, joined by name: the scene
 //! format's effect kinds (`motion_format::item::EFFECTS`) and the
 //! rasteriser's rows (`motion_raster::EFFECTS`) share the kind's name and
-//! each parameter's name and type, which a test checks row by row. Adding an
+//! each parameter's name and type, then each setting as a choice parameter
+//! with the same choices, which a test checks row by row. Adding an
 //! effect is a row in each table and nothing here.
 
 use motion_format::{Diagnostic, Kind, Result, Value};
-use motion_raster::{Effect, ParamValue};
+use motion_raster::{Curve, Effect, ParamValue};
 use motion_scene::ItemState;
 
 use super::color;
@@ -22,9 +23,10 @@ pub(super) fn effects(fx: &[ItemState]) -> Result<Vec<Effect>> {
         .collect()
 }
 
-/// One effect, every parameter set from the row of the same name.
+/// One effect, every parameter set from the row of the same name, then
+/// each setting as the choice parameter of the same name.
 fn effect(item: &ItemState) -> Result<Effect> {
-    let params = item
+    let mut params = item
         .kind
         .registry
         .rows
@@ -32,20 +34,32 @@ fn effect(item: &ItemState) -> Result<Effect> {
         .zip(&item.values)
         .map(|(row, value)| Ok((row.name, param(value).map_err(|e| e.at(row.name))?)))
         .collect::<Result<Vec<_>>>()?;
+    for (setting, &choice) in item.kind.settings.iter().zip(&item.settings) {
+        let choice = u8::try_from(choice).map_err(|_| {
+            Diagnostic::new(Kind::OutOfRange, format!("choice {choice}"))
+                .at(setting.name)
+                .expected("fewer than 256 choices")
+        })?;
+        params.push((setting.name, ParamValue::Choice(choice)));
+    }
     Effect::new(item.kind.name, &params)
 }
 
-/// A scene value as an effect parameter.
+/// A scene value as an effect parameter: a path as a curve of its
+/// vertices' points.
+///
+/// # Errors
+/// A path the rasteriser does not take as a curve.
 fn param(value: &Value) -> Result<ParamValue> {
     match value {
         Value::Number(n) => Ok(ParamValue::Number(*n as f32)),
         Value::Color(rgba) => Ok(ParamValue::Color(color(*rgba))),
         Value::Point([x, y]) => Ok(ParamValue::Point([*x as f32, *y as f32])),
-        other => Err(Diagnostic::new(
-            Kind::WrongType,
-            format!("an effect parameter holding a {:?}", other.value_type()),
-        )
-        .expected("a number, a colour or a point")),
+        Value::Path(path) => {
+            let points: Vec<[f32; 2]> =
+                path.vertices().map(|v| v.point.map(|c| c as f32)).collect();
+            Ok(ParamValue::Curve(Curve::new(&points)?))
+        }
     }
 }
 

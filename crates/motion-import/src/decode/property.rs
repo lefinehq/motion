@@ -40,6 +40,11 @@ const SHAP: Name = Name::list(b"shap");
 const OTKY: Name = Name::list(b"otky");
 /// The text documents of a Source Text stream, as one object-syntax body.
 const BTDK: Name = Name::list(b"btdk");
+/// Data an effect keeps next to a parameter's stream, one `aRbp` per
+/// keyframe.
+const ARBS: Tag = Tag(*b"aRbs");
+/// One parameter's data.
+const ARBP: Name = Name::chunk(b"aRbp");
 
 /// The match name that ends a group.
 const GROUP_END: &str = "ADBE Group End";
@@ -252,10 +257,14 @@ impl Decoder {
             let (_, kind) = BODIES.iter().find(|(tag, _)| *tag == list)?;
             Some((index, *chunk, *kind))
         });
-        let others = body
+        // An effect keeps a parameter's own data next to its stream.
+        let data = body
             .iter()
-            .enumerate()
-            .filter(|(index, _)| main.is_none_or(|(main, ..)| main != *index));
+            .position(|chunk| chunk.name.list == Some(ARBS))
+            .filter(|_| matches!(main, Some((.., Body::Stream))));
+        let others = body.iter().enumerate().filter(|(index, _)| {
+            main.is_none_or(|(main, ..)| main != *index) && data != Some(*index)
+        });
         self.skip(others.map(|(_, chunk)| chunk.name));
         let Some((_, chunk, kind)) = main else {
             return Ok(Child::Property(opaque(match_name, Reason::OtherBody)));
@@ -268,7 +277,20 @@ impl Decoder {
                 Child::Group(self.group(scan.require_list(TDGP)?, match_name, timing)?)
             }
             Body::Stream => {
-                let values = Values::Opaque(Reason::Valueless);
+                let values = match data {
+                    Some(index) => {
+                        let mut arbs = parent.open(body[index], parent.child_path(&match_name))?;
+                        let chunks: Vec<_> = std::iter::from_fn(|| arbs.find(ARBP)).collect();
+                        Values::Listed {
+                            values: chunks
+                                .into_iter()
+                                .map(|chunk| Value::Data(chunk.body.to_vec()))
+                                .collect(),
+                            source: "one `aRbp` per keyframe in `LIST:aRbs`",
+                        }
+                    }
+                    None => Values::Opaque(Reason::Valueless),
+                };
                 Child::Property(self.stream(scan, match_name, &values, timing)?)
             }
             Body::Wrapped(wrapper) => {

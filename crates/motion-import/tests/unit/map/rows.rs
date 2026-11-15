@@ -34,6 +34,14 @@ fn check(
                 );
             });
         }
+        To::Curves => super::super::curves::NAMES.iter().for_each(|name| {
+            assert!(
+                registry.target(name).is_some(),
+                "{at}: `{}` writes the curve `{name}`, which `{}` lacks",
+                row.match_name,
+                registry.kind
+            );
+        }),
         To::Ignore(_) | To::OnlyDefault(_) => {}
     });
 }

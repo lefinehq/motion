@@ -320,6 +320,9 @@ pub enum Value {
     Path(Path),
     /// A text layer's text and its style.
     Text(Box<TextDocument>),
+    /// Data an effect keeps for a parameter (`aRbp`), laid out as that
+    /// effect's own, such as a Curves effect's points.
+    Data(Vec<u8>),
     /// A value the reader does not decode yet.
     Opaque {
         /// What sort of value it is.

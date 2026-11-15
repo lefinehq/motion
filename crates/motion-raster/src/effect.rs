@@ -20,6 +20,7 @@ use vello_cpu::RenderContext;
 use vello_cpu::kurbo::{Affine, Rect, Vec2};
 use vello_cpu::peniko::{BlendMode, Compose, Mix};
 
+use crate::colour;
 use crate::pixels::Pixels;
 use crate::style::Color;
 
@@ -32,6 +33,10 @@ pub enum ParamType {
     Color,
     /// A point, in px of the layer's own coordinates.
     Point,
+    /// One name out of the parameter's `choices`.
+    Choice,
+    /// A curve of levels, see [`Curve`].
+    Curve,
 }
 
 /// A value of an effect parameter.
@@ -43,6 +48,72 @@ pub enum ParamValue {
     Color(Color),
     /// A point, in px of the layer's own coordinates.
     Point([f32; 2]),
+    /// The index of a name in the parameter's `choices`.
+    Choice(u8),
+    /// A curve of levels.
+    Curve(Curve),
+}
+
+/// A curve of levels: up to [`Curve::MAX`] points from input to output,
+/// each 0 to 1, in rising input, joined by a natural cubic spline and flat
+/// beyond the first and last. No points is the straight line, which
+/// changes nothing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Curve {
+    len: u8,
+    points: [[f32; 2]; Curve::MAX],
+}
+
+impl Curve {
+    /// The most points a curve holds.
+    pub const MAX: usize = 16;
+
+    /// The straight line.
+    pub const IDENTITY: Curve = Curve {
+        len: 0,
+        points: [[0.0; 2]; Curve::MAX],
+    };
+
+    /// The curve through `points`.
+    ///
+    /// # Errors
+    /// [`Kind::OutOfRange`] for more than [`Curve::MAX`] points, a level
+    /// outside 0 to 1 or an input not above the one before.
+    pub fn new(points: &[[f32; 2]]) -> Result<Curve> {
+        if points.len() > Curve::MAX {
+            return Err(Diagnostic::new(
+                Kind::OutOfRange,
+                format!("a curve of {} points", points.len()),
+            )
+            .expected(format!("at most {} points", Curve::MAX)));
+        }
+        if let Some(i) = points
+            .iter()
+            .position(|p| p.iter().any(|c| !(0.0..=1.0).contains(c)))
+        {
+            return Err(Diagnostic::new(
+                Kind::OutOfRange,
+                format!("curve point {i} at {:?}", points[i]),
+            )
+            .expected("levels from 0 to 1"));
+        }
+        if let Some(i) = points.windows(2).position(|w| w[1][0] <= w[0][0]) {
+            return Err(Diagnostic::new(
+                Kind::OutOfRange,
+                format!("curve point {} not right of the one before", i + 1),
+            )
+            .expected("points in rising input"));
+        }
+        let mut curve = Curve::IDENTITY;
+        curve.points[..points.len()].copy_from_slice(points);
+        curve.len = points.len() as u8;
+        Ok(curve)
+    }
+
+    /// Its points.
+    pub fn points(&self) -> &[[f32; 2]] {
+        &self.points[..usize::from(self.len)]
+    }
 }
 
 impl ParamValue {
@@ -52,6 +123,8 @@ impl ParamValue {
             ParamValue::Number(_) => ParamType::Number,
             ParamValue::Color(_) => ParamType::Color,
             ParamValue::Point(_) => ParamType::Point,
+            ParamValue::Choice(_) => ParamType::Choice,
+            ParamValue::Curve(_) => ParamType::Curve,
         }
     }
 }
@@ -65,6 +138,8 @@ pub struct ParamSpec {
     pub default: ParamValue,
     /// The allowed numbers, inclusive, for a number parameter.
     pub range: Option<(f32, f32)>,
+    /// The names a choice parameter picks from.
+    pub choices: &'static [&'static str],
     /// What it does.
     pub doc: &'static str,
 }
@@ -140,12 +215,14 @@ pub const EFFECTS: &[EffectSpec] = &[
                 name: "color",
                 default: ParamValue::Color(Color::rgba(1.0, 0.0, 0.0, 1.0)),
                 range: None,
+                choices: &[],
                 doc: "the colour the content takes",
             },
             ParamSpec {
                 name: "opacity",
                 default: ParamValue::Number(1.0),
                 range: Some((0.0, 1.0)),
+                choices: &[],
                 doc: "how much of the colour replaces the content's own, 0 to 1",
             },
         ],
@@ -162,12 +239,14 @@ pub const EFFECTS: &[EffectSpec] = &[
                 name: "position",
                 default: ParamValue::Point([0.0, 0.0]),
                 range: None,
+                choices: &[],
                 doc: "where `anchor` goes, in px of the layer's own coordinates",
             },
             ParamSpec {
                 name: "anchor",
                 default: ParamValue::Point([0.0, 0.0]),
                 range: None,
+                choices: &[],
                 doc: "the point of the content that moves to `position`, and that it scales \
                       and turns about",
             },
@@ -175,23 +254,341 @@ pub const EFFECTS: &[EffectSpec] = &[
                 name: "scale",
                 default: ParamValue::Point([1.0, 1.0]),
                 range: None,
+                choices: &[],
                 doc: "size factor on each axis",
             },
             ParamSpec {
                 name: "rotate",
                 default: ParamValue::Number(0.0),
                 range: None,
+                choices: &[],
                 doc: "rotation in degrees, clockwise",
             },
             ParamSpec {
                 name: "opacity",
                 default: ParamValue::Number(1.0),
                 range: Some((0.0, 1.0)),
+                choices: &[],
                 doc: "what the content's opacity is multiplied by, 0 to 1",
             },
         ],
         doc: "moves, scales, turns and fades the content inside the layer",
         apply: Apply::Move(transform),
+    },
+    EffectSpec {
+        name: "tint",
+        params: &[
+            ParamSpec {
+                name: "black",
+                default: ParamValue::Color(Color::rgba(0.0, 0.0, 0.0, 1.0)),
+                range: None,
+                choices: &[],
+                doc: "the colour black maps to",
+            },
+            ParamSpec {
+                name: "white",
+                default: ParamValue::Color(Color::rgba(1.0, 1.0, 1.0, 1.0)),
+                range: None,
+                choices: &[],
+                doc: "the colour white maps to",
+            },
+            ParamSpec {
+                name: "amount",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how much of the tint replaces the colours",
+            },
+        ],
+        doc: "maps each colour's luma from black to white",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: colour::tint,
+        },
+    },
+    EffectSpec {
+        name: "hue-saturation",
+        params: &[
+            ParamSpec {
+                name: "hue",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "degrees hues turn",
+            },
+            ParamSpec {
+                name: "saturation",
+                default: ParamValue::Number(0.0),
+                range: Some((-1.0, 1.0)),
+                choices: &[],
+                doc: "share towards no or full saturation",
+            },
+            ParamSpec {
+                name: "lightness",
+                default: ParamValue::Number(0.0),
+                range: Some((-1.0, 1.0)),
+                choices: &[],
+                doc: "share towards black or white",
+            },
+            ParamSpec {
+                name: "colorize-hue",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "the hue colourising gives, in degrees",
+            },
+            ParamSpec {
+                name: "colorize-saturation",
+                default: ParamValue::Number(0.25),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "the saturation colourising gives",
+            },
+            ParamSpec {
+                name: "colorize-lightness",
+                default: ParamValue::Number(0.0),
+                range: Some((-1.0, 1.0)),
+                choices: &[],
+                doc: "share towards black or white when colourising",
+            },
+            ParamSpec {
+                name: "mode",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["adjust", "colorize"],
+                doc: "adjust or colourise",
+            },
+        ],
+        doc: "turns hues and changes saturation and lightness",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: colour::hue_saturation,
+        },
+    },
+    EffectSpec {
+        name: "exposure",
+        params: &[
+            ParamSpec {
+                name: "exposure",
+                default: ParamValue::Number(0.0),
+                range: Some((-100.0, 100.0)),
+                choices: &[],
+                doc: "stops of light",
+            },
+            ParamSpec {
+                name: "offset",
+                default: ParamValue::Number(0.0),
+                range: Some((-2.0, 2.0)),
+                choices: &[],
+                doc: "light added after the exposure",
+            },
+            ParamSpec {
+                name: "gamma",
+                default: ParamValue::Number(1.0),
+                range: Some((0.1, 10.0)),
+                choices: &[],
+                doc: "a power of 1/gamma on the result",
+            },
+            ParamSpec {
+                name: "space",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["linear", "gamma"],
+                doc: "whether it works on light or on the values",
+            },
+        ],
+        doc: "changes exposure in stops",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: colour::exposure,
+        },
+    },
+    EffectSpec {
+        name: "levels",
+        params: &[
+            ParamSpec {
+                name: "input-black",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "the level that becomes output-black",
+            },
+            ParamSpec {
+                name: "input-white",
+                default: ParamValue::Number(1.0),
+                range: None,
+                choices: &[],
+                doc: "the level that becomes output-white",
+            },
+            ParamSpec {
+                name: "gamma",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 5.0)),
+                choices: &[],
+                doc: "the power between",
+            },
+            ParamSpec {
+                name: "output-black",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "the darkest level out",
+            },
+            ParamSpec {
+                name: "output-white",
+                default: ParamValue::Number(1.0),
+                range: None,
+                choices: &[],
+                doc: "the brightest level out",
+            },
+            ParamSpec {
+                name: "channel",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["rgb", "red", "green", "blue", "alpha"],
+                doc: "the channel it works on",
+            },
+        ],
+        doc: "maps levels between two ranges through a gamma",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: colour::levels,
+        },
+    },
+    EffectSpec {
+        name: "invert",
+        params: &[
+            ParamSpec {
+                name: "blend",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how much of the original stays",
+            },
+            ParamSpec {
+                name: "channel",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["rgb", "red", "green", "blue", "alpha"],
+                doc: "the channel it inverts",
+            },
+        ],
+        doc: "turns each level into its opposite",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: colour::invert,
+        },
+    },
+    EffectSpec {
+        name: "black-white",
+        params: &[
+            ParamSpec {
+                name: "reds",
+                default: ParamValue::Number(0.4),
+                range: Some((-2.0, 3.0)),
+                choices: &[],
+                doc: "the grey reds turn into, as a share of their level",
+            },
+            ParamSpec {
+                name: "yellows",
+                default: ParamValue::Number(0.6),
+                range: Some((-2.0, 3.0)),
+                choices: &[],
+                doc: "the grey yellows turn into, as a share of their level",
+            },
+            ParamSpec {
+                name: "greens",
+                default: ParamValue::Number(0.4),
+                range: Some((-2.0, 3.0)),
+                choices: &[],
+                doc: "the grey greens turn into, as a share of their level",
+            },
+            ParamSpec {
+                name: "cyans",
+                default: ParamValue::Number(0.6),
+                range: Some((-2.0, 3.0)),
+                choices: &[],
+                doc: "the grey cyans turn into, as a share of their level",
+            },
+            ParamSpec {
+                name: "blues",
+                default: ParamValue::Number(0.2),
+                range: Some((-2.0, 3.0)),
+                choices: &[],
+                doc: "the grey blues turn into, as a share of their level",
+            },
+            ParamSpec {
+                name: "magentas",
+                default: ParamValue::Number(0.8),
+                range: Some((-2.0, 3.0)),
+                choices: &[],
+                doc: "the grey magentas turn into, as a share of their level",
+            },
+            ParamSpec {
+                name: "tint",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how much of `tint-color` colours the grey",
+            },
+            ParamSpec {
+                name: "tint-color",
+                default: ParamValue::Color(Color::rgba(0.882_353, 0.827_451, 0.701_961, 1.0)),
+                range: None,
+                choices: &[],
+                doc: "the colour the grey takes",
+            },
+        ],
+        doc: "turns colours to grey, each hue as light as its share says",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: colour::black_white,
+        },
+    },
+    EffectSpec {
+        name: "curves",
+        params: &[
+            ParamSpec {
+                name: "rgb",
+                default: ParamValue::Curve(Curve::IDENTITY),
+                range: None,
+                choices: &[],
+                doc: "the curve of red, green and blue alike, after their own",
+            },
+            ParamSpec {
+                name: "red",
+                default: ParamValue::Curve(Curve::IDENTITY),
+                range: None,
+                choices: &[],
+                doc: "the curve of red",
+            },
+            ParamSpec {
+                name: "green",
+                default: ParamValue::Curve(Curve::IDENTITY),
+                range: None,
+                choices: &[],
+                doc: "the curve of green",
+            },
+            ParamSpec {
+                name: "blue",
+                default: ParamValue::Curve(Curve::IDENTITY),
+                range: None,
+                choices: &[],
+                doc: "the curve of blue",
+            },
+            ParamSpec {
+                name: "alpha",
+                default: ParamValue::Curve(Curve::IDENTITY),
+                range: None,
+                choices: &[],
+                doc: "the curve of alpha",
+            },
+        ],
+        doc: "maps each channel's levels through a curve: first its own, then `rgb`",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: colour::curves,
+        },
     },
 ];
 
@@ -308,6 +705,11 @@ fn checked(spec: &ParamSpec, value: ParamValue) -> Result<ParamValue> {
             format!("{n} is outside {lo}..={hi}"),
         )
         .expected(format!("a number from {lo} to {hi}"))),
+        (ParamValue::Choice(i), _) if usize::from(i) >= spec.choices.len() => Err(Diagnostic::new(
+            Kind::OutOfRange,
+            format!("choice {i} of {}", spec.choices.len()),
+        )
+        .expected(format!("one of {}", spec.choices.join(", ")))),
         _ => Ok(value),
     }
 }

@@ -201,6 +201,7 @@ impl fmt::Display for Value {
                 write!(f, "path {shape}, {} vertices", path.vertices.len())
             }
             Value::Text(document) => write!(f, "{document}"),
+            Value::Data(bytes) => write!(f, "data, {} bytes", bytes.len()),
             Value::Opaque { reason } => write!(f, "opaque {reason}"),
         }
     }
