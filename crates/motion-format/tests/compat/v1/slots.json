@@ -7,5 +7,6 @@
 "layers":[
 {"id":"plate","rect":"600x300 r24","fill":"$accent","at":"540 300","in":"fade-up 12f"},
 {"id":"price","text":"$$99","font":"Inter Variable 96 700","fill":"#FFFFFF","at":"540 300"},
-{"id":"tag","comp":"tag","at":"540 700","anim":{"y":[[0,"700"],[25,"660"]]}}
+{"id":"tag","comp":"tag","at":"540 700","anim":{"y":[[0,"700"],[25,"660"]]}},
+{"id":"tag-2","comp":"tag","at":"540 900","overrides":{"$accent":"#F4A261","word":{"fill":"$accent"}}}
 ]}

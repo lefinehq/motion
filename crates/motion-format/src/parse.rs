@@ -191,14 +191,14 @@ pub fn parse_document(json: &str) -> Result<Document> {
 ///
 /// Slot references are resolved first, on a copy, so the values read are
 /// the slots' (D44).
-pub(crate) fn scene_from_value(value: &Value) -> Result<Scene> {
-    let checked = slots::declared(value).and_then(|declared| {
-        let (value, resolved) = slots::resolve(value, &declared)?;
+pub(crate) fn scene_from_value(written: &Value) -> Result<Scene> {
+    let checked = slots::declared(written).and_then(|declared| {
+        let (value, resolved) = slots::resolve(written, &declared)?;
         let read = de::from_value(&value).map_err(|mut d| {
             d.path = d.path.map(|place| place.by_layer_ids(&value));
             d
         });
-        read.and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc, &value, &declared))
+        read.and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc, written, &declared))
             .map_err(|d| resolved.explain(d))
     });
     // Validation stops at the first rule that fails, so this is that rule.

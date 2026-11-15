@@ -159,3 +159,69 @@ fn a_scene_without_dollars_is_not_copied() {
     assert!(matches!(resolved, Cow::Borrowed(_)));
     assert!(followed.followed.is_empty());
 }
+
+/// `card` shows its `title` and `accent` slots; the root's one layer draws
+/// it with `overrides`.
+fn card(overrides: Json) -> Json {
+    scene(json!({
+        "slots":{"promo":{"text":"Promo"}},
+        "comps":{"card":{"size":"100x100","dur":"1s",
+            "slots":{"title":{"text":"Hi"},"accent":"#FFFFFF"},
+            "layers":[{"id":"t","text":"$title","fill":"$accent"}]}},
+        "layers":[{"id":"a","comp":"card","overrides":overrides}]
+    }))
+}
+
+/// The layers the root's first layer draws.
+fn drawn(scene: &Json) -> Vec<crate::Layer> {
+    let doc = parse_document(&scene.to_string()).unwrap();
+    match &doc.scene().root.layers[0].content {
+        crate::Content::Comp(comp) => comp.instance.clone().unwrap(),
+        other => panic!("not a comp layer: {other:?}"),
+    }
+}
+
+#[rstest]
+#[case::own_value(json!({"$title":"Sale"}), json!({"t":{"text":"Sale"}}))]
+#[case::two_values(json!({"$title":"Sale","$accent":"#E63946"}), json!({"t":{"text":"Sale","fill":"#E63946"}}))]
+#[case::a_key_wins(json!({"$title":"Sale","t":{"text":"Exact"}}), json!({"t":{"text":"Exact"}}))]
+#[case::the_scenes_slot(json!({"$title":"$promo"}), json!({"t":{"text":"Promo"}}))]
+fn an_instance_gives_its_compositions_slots(#[case] given: Json, #[case] same_as: Json) {
+    assert_eq!(drawn(&card(given)), drawn(&card(same_as)));
+}
+
+#[test]
+fn an_instance_gives_slots_through_the_compositions_it_draws() {
+    let nested = |overrides: Json| {
+        scene(json!({
+            "comps":{
+                "card":{"size":"10x10","dur":"1s","slots":{"title":{"text":"Hi"}},
+                    "layers":[{"id":"t","text":"$title"}]},
+                "outer":{"size":"10x10","dur":"1s","slots":{"label":{"text":"Outer"}},
+                    "layers":[{"id":"inner","comp":"card","overrides":{"$title":"$label"}}]}
+            },
+            "layers":[{"id":"o","comp":"outer","overrides":overrides}]
+        }))
+    };
+    let text = |overrides: Json| {
+        let crate::Content::Comp(inner) = &drawn(&nested(overrides))[0].content else {
+            panic!("not a comp layer");
+        };
+        format!("{:?}", inner.instance.as_ref().unwrap()[0].content)
+    };
+    assert!(text(json!({"$label":"Nested"})).contains("Nested"));
+    assert!(text(json!({"inner":{"opacity":1}})).contains("Outer"));
+}
+
+#[rstest]
+#[case::no_such_slot(json!({"$ghost":"x"}), Kind::UnknownName, "a.overrides.$ghost")]
+#[case::wrong_type(json!({"$accent":"Launch"}), Kind::Invalid, "a.overrides.$accent")]
+#[case::not_keys(json!({"t":"Sale"}), Kind::Invalid, "a.overrides.t")]
+fn an_instance_value_that_does_not_fit_is_placed_at_its_entry(
+    #[case] given: Json,
+    #[case] kind: Kind,
+    #[case] place: &str,
+) {
+    let err = error(&card(given));
+    assert_eq!((err.kind, err.path_text().as_deref()), (kind, Some(place)));
+}
