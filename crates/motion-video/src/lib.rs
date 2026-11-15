@@ -7,9 +7,9 @@
 //! QuickTime Animation and Photo JPEG decode in this crate. H.264 decodes
 //! through the operating system's decoder where there is one ([D60]): on
 //! macOS, VideoToolbox, through `motion-videotoolbox`. The colour of its
-//! samples is read here on every platform ([`avc`], [`ycbcr`]), so another
-//! backend, such as a decoder loaded at run time, only has to hand back
-//! planes.
+//! samples is read here on every platform (`avc`, `colour`) and converted
+//! here (`ycbcr`), so another backend, such as a decoder loaded at run time,
+//! only has to hand back planes.
 //!
 //! Frames come out as straight-alpha RGBA, which the caller turns into
 //! whatever it draws with; this crate draws nothing.
@@ -17,12 +17,16 @@
 //! [D60]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d60-h264-footage-decodes-through-the-systems-decoder
 
 mod avc;
+mod colour;
 pub mod container;
 mod h264;
 mod jpeg;
 mod qtrle;
 #[cfg(target_os = "macos")]
 mod toolbox;
+// The conversion runs where a decoder hands back Y′CbCr planes: the
+// system's, on macOS, so far.
+#[cfg(any(target_os = "macos", test))]
 mod ycbcr;
 
 use std::collections::VecDeque;

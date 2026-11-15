@@ -6,7 +6,8 @@ use motion_format::{Diagnostic, Kind, Result};
 use motion_videotoolbox::{Biplanar, Error, Record, Samples};
 
 use crate::avc;
-use crate::ycbcr::{self, Colour, Planes};
+use crate::colour::Colour;
+use crate::ycbcr::{self, Planes};
 use crate::{Decoder, Frame, Picture};
 
 /// One clip's decompression session.
@@ -18,14 +19,14 @@ pub(crate) struct Avc {
 }
 
 impl Avc {
-    /// A session for the stream `record` configures, as read into
-    /// `parsed`, `width` by `height`.
+    /// A session for the stream `record` configures, whose samples have
+    /// NAL unit lengths of `length_size` bytes, `width` by `height`.
     ///
     /// # Errors
     /// The system's failure, when it has no decoder for the stream.
     pub(crate) fn new(
         record: &[u8],
-        parsed: avc::Record,
+        length_size: usize,
         width: u32,
         height: u32,
         colour: Colour,
@@ -34,7 +35,7 @@ impl Avc {
             .map_err(failed)?;
         Ok(Avc {
             decoder,
-            length_size: parsed.length_size,
+            length_size,
             colour,
         })
     }

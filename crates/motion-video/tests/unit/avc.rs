@@ -58,13 +58,13 @@ fn exp_golomb_numbers_read_as_the_standard_writes_them() {
     // 0, 1, 2, 3, 7 unsigned, then 1, -1, 2 signed.
     let bytes = packed("1 010 011 00100 0001000 010 011 00100");
     let mut bits = Bits::new(&bytes);
-    let unsigned: Vec<u32> = (0..5).map(|_| bits.ue().unwrap()).collect();
+    let unsigned: Vec<u32> = (0..5).map(|_| bits.golomb().unwrap()).collect();
     assert_eq!(unsigned, [0, 1, 2, 3, 7]);
-    let signed: Vec<i32> = (0..3).map(|_| bits.se().unwrap()).collect();
+    let signed: Vec<i32> = (0..3).map(|_| bits.signed_golomb().unwrap()).collect();
     assert_eq!(signed, [1, -1, 2]);
     // Past the end is none, not a panic.
     let mut bits = Bits::new(&[0, 0]);
-    assert_eq!(bits.ue(), None);
+    assert_eq!(bits.golomb(), None);
 }
 
 #[test]

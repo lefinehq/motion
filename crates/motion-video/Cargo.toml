@@ -20,5 +20,9 @@ motion-videotoolbox = { path = "../motion-videotoolbox" }
 [dev-dependencies]
 rstest.workspace = true
 
+# What motion's own encoder writes, read back.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+motion-encode = { path = "../motion-encode" }
+
 [lints]
 workspace = true

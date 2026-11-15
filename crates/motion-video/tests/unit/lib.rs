@@ -260,6 +260,58 @@ mod h264 {
         }
     }
 
+    #[test]
+    fn what_motion_encodes_reads_back_in_its_colours_and_times() {
+        use motion_encode::{Codec, VideoQuality, VideoSpec, VideoWriter};
+        // 1280 by 720, so the file's BT.709 tags and the size agree, at
+        // 30 fps: four quadrants, and a bar whose place counts the frame.
+        let (w, h) = (1280usize, 720usize);
+        let path =
+            std::env::temp_dir().join(format!("motion-video-own-{}.mp4", std::process::id()));
+        let spec = VideoSpec {
+            width: w as u32,
+            height: h as u32,
+            fps: 30.0,
+        };
+        let mut writer =
+            VideoWriter::create(&path, spec, Codec::H264, VideoQuality::Master).unwrap();
+        let pixel = |frame: usize, x: usize, y: usize| -> [u8; 4] {
+            if y < 64 && x / 64 == frame {
+                return [255, 255, 255, 255];
+            }
+            let q = usize::from(x >= w / 2) + 2 * usize::from(y >= h / 2);
+            let [r, g, b] = QUADRANTS[q];
+            [r, g, b, 255]
+        };
+        for frame in 0..12 {
+            let rgba: Vec<u8> = (0..w * h)
+                .flat_map(|i| pixel(frame, i % w, i / w))
+                .collect();
+            writer.push(&rgba).unwrap();
+        }
+        writer.finish().unwrap();
+        let c = Clip::open(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert!((c.seconds() - 0.4).abs() < 1e-9, "{}", c.seconds());
+        for frame in [0, 5, 11, 3] {
+            let f = c.frame_at(frame as f64 / 30.0).unwrap().unwrap();
+            for (q, want) in QUADRANTS.iter().enumerate() {
+                let (x, y) = ((q % 2) * w / 2 + w / 4, (q / 2) * h / 2 + h / 4);
+                let got = &f.pixels[4 * (y * w + x)..][..3];
+                let off = (0..3).map(|c| got[c].abs_diff(want[c])).max().unwrap();
+                assert!(
+                    off <= 2,
+                    "frame {frame}, quadrant {q}: {got:?}, not {want:?}"
+                );
+            }
+            // The bar is where this frame put it.
+            let bar = (0..w / 64)
+                .max_by_key(|&b| f.pixels[4 * (16 * w + b * 64 + 32)])
+                .unwrap();
+            assert_eq!(bar, frame, "frame {frame}");
+        }
+    }
+
     /// The colours of the quadrant clips, by quadrant.
     const QUADRANTS: [[u8; 3]; 4] = [[200, 60, 40], [40, 170, 80], [50, 80, 210], [230, 210, 60]];
 

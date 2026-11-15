@@ -1,8 +1,8 @@
 //! H.264 (`avc1`, `avc3`), decoded by the operating system's decoder where
-//! there is one ([D60]): VideoToolbox on macOS, in [`crate::toolbox`]. The
-//! colour of the decoded samples comes from the clip, read here on every
-//! platform, so a backend only hands back planes; one loaded at run time
-//! for the other platforms slots in beside the system's in [`decoder`].
+//! there is one ([D60]): VideoToolbox on macOS, in `toolbox`. The colour of
+//! the decoded samples comes from the clip, read here on every platform, so
+//! a backend only hands back planes; one loaded at run time for the other
+//! platforms slots in beside the system's in `backend`.
 //!
 //! [D60]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d60-h264-footage-decodes-through-the-systems-decoder
 
@@ -10,8 +10,8 @@ use motion_format::{Diagnostic, Kind, Result};
 
 use crate::Decoder;
 use crate::avc::Record;
+use crate::colour::Colour;
 use crate::container::Track;
-use crate::ycbcr::Colour;
 
 /// Whether H.264 decodes on this platform.
 pub(crate) const HERE: bool = cfg!(target_os = "macos");
@@ -34,17 +34,17 @@ pub(crate) fn decoder(track: &Track) -> Result<Box<dyn Decoder>> {
         })?;
     let parsed = Record::parse(record)?;
     let colour = Colour::of(track, parsed.sps.signal, parsed.sps.chroma_site)?;
-    backend(track, record, parsed, colour)
+    backend(track, record, parsed.length_size, colour)
 }
 
 #[cfg(target_os = "macos")]
 fn backend(
     track: &Track,
     record: &[u8],
-    parsed: Record,
+    length_size: usize,
     colour: Colour,
 ) -> Result<Box<dyn Decoder>> {
-    crate::toolbox::Avc::new(record, parsed, track.width, track.height, colour)
+    crate::toolbox::Avc::new(record, length_size, track.width, track.height, colour)
         .map(|d| Box::new(d) as Box<dyn Decoder>)
 }
 
@@ -52,7 +52,7 @@ fn backend(
 fn backend(
     track: &Track,
     _record: &[u8],
-    _parsed: Record,
+    _length_size: usize,
     _colour: Colour,
 ) -> Result<Box<dyn Decoder>> {
     Err(unsupported_here(&crate::codec_name(track.codec)))

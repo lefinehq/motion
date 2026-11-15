@@ -77,6 +77,7 @@ impl Record {
 /// after a `length_size`-byte length: it has slices, and every one has a
 /// `nal_ref_idc` of 0. Such a sample can go undecoded when its own frame
 /// is not wanted. A sample cut short is not one.
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn disposable(sample: &[u8], length_size: usize) -> bool {
     let mut rest = sample;
     let mut slices = 0;
@@ -115,17 +116,17 @@ impl Sps {
         let cut = || invalid("a cut-short sequence parameter set");
         let profile = bits.read(8).ok_or_else(cut)?;
         bits.read(16).ok_or_else(cut)?; // constraint flags and level
-        bits.ue().ok_or_else(cut)?; // seq_parameter_set_id
+        bits.golomb().ok_or_else(cut)?; // seq_parameter_set_id
         if matches!(
             profile,
             100 | 110 | 122 | 244 | 44 | 83 | 86 | 118 | 128 | 138 | 139 | 134 | 135
         ) {
-            let chroma_format = bits.ue().ok_or_else(cut)?;
+            let chroma_format = bits.golomb().ok_or_else(cut)?;
             if chroma_format == 3 {
                 bits.read(1).ok_or_else(cut)?; // separate_colour_plane_flag
             }
-            bits.ue().ok_or_else(cut)?; // bit_depth_luma_minus8
-            bits.ue().ok_or_else(cut)?; // bit_depth_chroma_minus8
+            bits.golomb().ok_or_else(cut)?; // bit_depth_luma_minus8
+            bits.golomb().ok_or_else(cut)?; // bit_depth_chroma_minus8
             bits.read(1).ok_or_else(cut)?; // qpprime_y_zero_transform_bypass_flag
             if bits.read(1).ok_or_else(cut)? == 1 {
                 let lists = if chroma_format == 3 { 12 } else { 8 };
@@ -137,32 +138,32 @@ impl Sps {
                 }
             }
         }
-        bits.ue().ok_or_else(cut)?; // log2_max_frame_num_minus4
-        match bits.ue().ok_or_else(cut)? {
+        bits.golomb().ok_or_else(cut)?; // log2_max_frame_num_minus4
+        match bits.golomb().ok_or_else(cut)? {
             0 => {
-                bits.ue().ok_or_else(cut)?; // log2_max_pic_order_cnt_lsb_minus4
+                bits.golomb().ok_or_else(cut)?; // log2_max_pic_order_cnt_lsb_minus4
             }
             1 => {
                 bits.read(1).ok_or_else(cut)?; // delta_pic_order_always_zero_flag
-                bits.se().ok_or_else(cut)?; // offset_for_non_ref_pic
-                bits.se().ok_or_else(cut)?; // offset_for_top_to_bottom_field
-                for _ in 0..bits.ue().ok_or_else(cut)? {
-                    bits.se().ok_or_else(cut)?; // offset_for_ref_frame
+                bits.signed_golomb().ok_or_else(cut)?; // offset_for_non_ref_pic
+                bits.signed_golomb().ok_or_else(cut)?; // offset_for_top_to_bottom_field
+                for _ in 0..bits.golomb().ok_or_else(cut)? {
+                    bits.signed_golomb().ok_or_else(cut)?; // offset_for_ref_frame
                 }
             }
             _ => {}
         }
-        bits.ue().ok_or_else(cut)?; // max_num_ref_frames
+        bits.golomb().ok_or_else(cut)?; // max_num_ref_frames
         bits.read(1).ok_or_else(cut)?; // gaps_in_frame_num_value_allowed_flag
-        bits.ue().ok_or_else(cut)?; // pic_width_in_mbs_minus1
-        bits.ue().ok_or_else(cut)?; // pic_height_in_map_units_minus1
+        bits.golomb().ok_or_else(cut)?; // pic_width_in_mbs_minus1
+        bits.golomb().ok_or_else(cut)?; // pic_height_in_map_units_minus1
         if bits.read(1).ok_or_else(cut)? == 0 {
             bits.read(1).ok_or_else(cut)?; // mb_adaptive_frame_field_flag
         }
         bits.read(1).ok_or_else(cut)?; // direct_8x8_inference_flag
         if bits.read(1).ok_or_else(cut)? == 1 {
             for _ in 0..4 {
-                bits.ue().ok_or_else(cut)?; // frame cropping offsets
+                bits.golomb().ok_or_else(cut)?; // frame cropping offsets
             }
         }
         let mut sps = Sps {
@@ -203,7 +204,7 @@ fn vui(bits: &mut Bits<'_>, sps: &mut Sps) -> Option<()> {
         });
     }
     if bits.read(1)? == 1 {
-        sps.chroma_site = Some(bits.ue()?);
+        sps.chroma_site = Some(bits.golomb()?);
     }
     Some(())
 }
@@ -213,7 +214,7 @@ fn skip_scaling_list(bits: &mut Bits<'_>, size: usize) -> Option<()> {
     let (mut last, mut next) = (8i64, 8i64);
     for _ in 0..size {
         if next != 0 {
-            next = (last + i64::from(bits.se()?)).rem_euclid(256);
+            next = (last + i64::from(bits.signed_golomb()?)).rem_euclid(256);
         }
         if next != 0 {
             last = next;
@@ -261,7 +262,7 @@ impl<'a> Bits<'a> {
     }
 
     /// An unsigned Exp-Golomb number.
-    fn ue(&mut self) -> Option<u32> {
+    fn golomb(&mut self) -> Option<u32> {
         let mut zeros = 0;
         while self.read(1)? == 0 {
             zeros += 1;
@@ -274,8 +275,8 @@ impl<'a> Bits<'a> {
     }
 
     /// A signed Exp-Golomb number.
-    fn se(&mut self) -> Option<i32> {
-        let k = i64::from(self.ue()?);
+    fn signed_golomb(&mut self) -> Option<i32> {
+        let k = i64::from(self.golomb()?);
         let value = if k % 2 == 1 { (k + 1) / 2 } else { -(k / 2) };
         Some(value as i32)
     }
