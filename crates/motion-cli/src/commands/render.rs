@@ -6,7 +6,8 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::str::FromStr;
 
-use motion_encode::{Codec, Container, VideoSpec, VideoWriter};
+use motion_encode::{Codec, Container, VideoQuality, VideoSpec, VideoWriter};
+use motion_engine::telemetry::timing::timed;
 use motion_engine::{Diagnostic, Kind, Quality, RenderOptions, Result, Session};
 
 /// The frames to draw, as typed: `N` or `A-B`, both ends included.
@@ -62,10 +63,53 @@ pub fn file_name(frame: u32) -> String {
     format!("frame-{frame:05}.png")
 }
 
+/// How a video file is encoded, as asked for; unset parts take the defaults.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Encoding {
+    /// `--codec`.
+    pub codec: Option<Codec>,
+    /// `--video-quality`.
+    pub quality: Option<VideoQuality>,
+}
+
+impl Encoding {
+    /// The encoding the arguments name.
+    ///
+    /// # Errors
+    /// An unknown-name diagnostic for a codec or quality this build lacks.
+    pub fn named(codec: Option<&str>, quality: Option<&str>) -> Result<Encoding> {
+        Ok(Encoding {
+            codec: codec.map(Codec::named).transpose()?,
+            quality: quality.map(VideoQuality::named).transpose()?,
+        })
+    }
+}
+
 /// Draws `frames` of the scene (all of them when `None`) into `out`: a video
-/// file when its extension names a container, else a folder of PNG files,
-/// created if missing. Prints what was written.
-pub fn run(path: &Path, frames: Option<Frames>, out: &Path, quality: Quality) -> Result<ExitCode> {
+/// file encoded as `encoding` asks when its extension names a container,
+/// else a folder of PNG files, created if missing. Prints what was written.
+///
+/// # Errors
+/// As drawing and writing, or an invalid-value diagnostic when `encoding`
+/// is set for PNG files.
+pub fn run(
+    path: &Path,
+    frames: Option<Frames>,
+    out: &Path,
+    quality: Quality,
+    encoding: Encoding,
+) -> Result<ExitCode> {
+    let is_video = Container::of(out).is_some();
+    if !is_video && encoding != Encoding::default() {
+        return Err(Diagnostic::new(
+            Kind::Invalid,
+            format!(
+                "`--codec` or `--video-quality` for the folder `{}`",
+                out.display()
+            ),
+        )
+        .expected("a video file for `--out`, such as `launch.mp4`"));
+    }
     let session = Session::open(path)?;
     let frames = match frames {
         Some(frames) => frames.range(),
@@ -75,9 +119,9 @@ pub fn run(path: &Path, frames: Option<Frames>, out: &Path, quality: Quality) ->
         quality,
         ..RenderOptions::default()
     };
-    match Container::of(out) {
-        Some(_) => video(&session, frames, options, out),
-        None => pictures(&session, frames, options, out),
+    match is_video {
+        true => video(&session, frames, options, out, encoding),
+        false => pictures(&session, frames, options, out),
     }
 }
 
@@ -105,26 +149,30 @@ fn video(
     frames: Range<u32>,
     options: RenderOptions,
     out: &Path,
+    encoding: Encoding,
 ) -> Result<ExitCode> {
     let fps = session.scene().root.fps;
-    let codec = Codec::Av1;
+    let codec = encoding.codec.unwrap_or_default();
+    let quality = encoding.quality.unwrap_or_default();
     // The writer takes its size from the first frame, as drawn.
     let mut writer: Option<VideoWriter> = None;
     let mut size = (0, 0);
     session.render_in_order(frames, options, |_, image| {
-        let writer = match &mut writer {
-            Some(writer) => writer,
-            None => {
-                size = (image.width(), image.height());
-                let spec = VideoSpec {
-                    width: size.0,
-                    height: size.1,
-                    fps,
-                };
-                writer.insert(VideoWriter::create(out, spec, codec)?)
-            }
-        };
-        writer.push(image.pixels())
+        timed("encode", || {
+            let writer = match &mut writer {
+                Some(writer) => writer,
+                None => {
+                    size = (image.width(), image.height());
+                    let spec = VideoSpec {
+                        width: size.0,
+                        height: size.1,
+                        fps,
+                    };
+                    writer.insert(VideoWriter::create(out, spec, codec, quality)?)
+                }
+            };
+            writer.push(image.pixels())
+        })
     })?;
     let Some(writer) = writer else {
         return Err(
@@ -132,12 +180,12 @@ fn video(
                 .expected("a range of at least one frame"),
         );
     };
-    let count = writer.finish()?;
+    let count = timed("encode", || writer.finish())?;
     let noun = if count == 1 { "frame" } else { "frames" };
     let (width, height) = size;
     let seconds = (count as f64 / fps * 100.0).round() / 100.0;
     println!(
-        "{count} {noun} written to {} ({}, {width}x{height}, {fps} fps, {seconds} s)",
+        "{count} {noun} written to {} ({}, {quality}, {width}x{height}, {fps} fps, {seconds} s)",
         out.display(),
         codec.to_string().to_uppercase(),
     );

@@ -104,3 +104,7 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.rav1e]
 opt-level = 3
+# The AV1 encoder is generic over its pixel type, so most of it is compiled
+# where `motion-encode` names `u8`: that crate, a thin layer, is optimised too.
+[profile.dev.package.motion-encode]
+opt-level = 3

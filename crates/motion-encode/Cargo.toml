@@ -10,8 +10,9 @@ publish.workspace = true
 
 [dependencies]
 motion-format = { path = "../motion-format" }
-# AV1, in pure Rust under BSD-2-Clause, without its assembly (D13, D46).
-rav1e = { version = "0.8", default-features = false }
+# AV1, in pure Rust under BSD-2-Clause, without its assembly (D13, D46),
+# with its tiles encoded in parallel.
+rav1e = { version = "0.8", default-features = false, features = ["threading"] }
 # MP4 boxes; the layout and streaming are ours (D46).
 mp4-atom = "0.17"
 strum.workspace = true

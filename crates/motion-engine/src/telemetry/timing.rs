@@ -25,6 +25,15 @@ pub const STAGE_FIELD: &str = "stage";
 /// The target of the per-step timing events in JSON log mode.
 pub const REPORT_TARGET: &str = "motion::timings";
 
+/// Runs `step` as the step `name`, so the timings count it with the
+/// engine's own: how a caller times work it does around the engine, such as
+/// encoding the frames it draws.
+pub fn timed<T>(name: &'static str, step: impl FnOnce() -> T) -> T {
+    // The name is a field because a span's own name is fixed where written.
+    let _span = tracing::debug_span!(target: STAGE_TARGET, STAGE_SPAN, stage = name).entered();
+    step()
+}
+
 /// The total time of each step, first seen first; a nested step also counts
 /// in its parent's. Clones share the totals, so the caller keeps a handle.
 #[derive(Debug, Clone, Default)]

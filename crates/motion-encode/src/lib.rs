@@ -21,5 +21,6 @@ mod video;
 
 pub use colour::Planes;
 pub use video::{
-    Codec, Container, DecoderConfig, Muxer, Packet, VideoEncoder, VideoSpec, VideoWriter,
+    Codec, Container, DecoderConfig, Muxer, Packet, VideoEncoder, VideoQuality, VideoSpec,
+    VideoWriter,
 };
