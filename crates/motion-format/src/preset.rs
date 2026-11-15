@@ -172,6 +172,7 @@ pub fn parts_animator(spec: &PresetSpec, behaviour: &Behaviour, fps: f64) -> Opt
                         path: None,
                     },
                 ],
+                listen: None,
             }
         })
         .collect();

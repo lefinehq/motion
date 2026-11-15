@@ -138,8 +138,121 @@ pub struct AnimKey {
 pub struct AnimTrack {
     /// What the track animates.
     pub target: Target,
-    /// Keys in non-decreasing time order; never empty.
+    /// Keys in non-decreasing time order; never empty. A track that listens
+    /// has one, its value at silence.
     pub keys: Vec<AnimKey>,
+    /// The sound whose level the track follows instead of time, if any.
+    pub listen: Option<Listen>,
+}
+
+/// What a track follows instead of time: the level of a sound, written
+/// `"1 -> 1.25 @level music 30-150Hz smooth 0.06s out-quad"`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Listen {
+    /// The audio or `comp` layer of the same list whose sound it hears.
+    pub layer: String,
+    /// The frequencies it hears, from and to, in Hz; the whole sound
+    /// without them.
+    pub band: Option<(f64, f64)>,
+    /// How long the level takes to rise or fall towards a new one: the time
+    /// constant of a one-pole filter.
+    pub smooth: Time,
+    /// How the level, 0 to 1, shapes the way from the value at silence to
+    /// the value at full level.
+    pub curve: Curve,
+    /// The value at full level; the track's one key holds the value at
+    /// silence.
+    pub to: KeyValue,
+}
+
+/// The word that makes a track listen, in place of its time range.
+pub(crate) const LEVEL: &str = "@level";
+/// The accepted form of a track that listens.
+pub(crate) const LEVEL_EXPECTED: &str = r#""<value> -> <value> @level <layer> [<low>-<high>Hz] [smooth <time>] [<curve>]", e.g. "1 -> 1.25 @level music 30-150Hz smooth 0.06s out-quad""#;
+
+/// The string form of a track that listens, as written.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LevelLine {
+    /// The value word at silence and at full level.
+    pub(crate) from: String,
+    pub(crate) to: String,
+    pub(crate) layer: String,
+    pub(crate) band: Option<(f64, f64)>,
+    pub(crate) smooth: Time,
+    pub(crate) curve: Curve,
+}
+
+impl LevelLine {
+    /// The line in `text`, or `None` when it has no `@level` and is a
+    /// track over time.
+    pub(crate) fn read(text: &str) -> Option<Result<LevelLine>> {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let at = words.iter().position(|w| *w == LEVEL)?;
+        Some(level_line(&words, at))
+    }
+}
+
+/// The words of a level line, `@level` at `at`.
+fn level_line(words: &[&str], at: usize) -> Result<LevelLine> {
+    let wrong = |what: String| Err(Diagnostic::syntax(what).expected(LEVEL_EXPECTED));
+    let [from, ARROW, to] = words[..at] else {
+        return wrong(format!(
+            "a track that listens goes from one value at silence to one at full level, not `{}`",
+            words[..at].join(" ")
+        ));
+    };
+    let mut rest = words[at + 1..].iter().copied().peekable();
+    let Some(layer) = rest.next() else {
+        return wrong(format!("missing the layer `{LEVEL}` listens to"));
+    };
+    let band = match rest.peek().and_then(|w| band(w)) {
+        Some(band) => {
+            rest.next();
+            Some(band?)
+        }
+        None => None,
+    };
+    let smooth = match rest.peek() {
+        Some(&"smooth") => {
+            rest.next();
+            let Some(word) = rest.next() else {
+                return wrong("missing the time after `smooth`".into());
+            };
+            word.parse::<Time>()?
+        }
+        _ => Time::Frames(0.0),
+    };
+    let curve = match rest.next() {
+        Some(word) => word.parse::<Curve>()?,
+        None => Curve::Linear,
+    };
+    if let Some(word) = rest.next() {
+        return wrong(format!("unexpected `{word}` after the curve"));
+    }
+    Ok(LevelLine {
+        from: from.to_owned(),
+        to: to.to_owned(),
+        layer: layer.to_owned(),
+        band,
+        smooth,
+        curve,
+    })
+}
+
+/// A band `<low>-<high>Hz`, or `None` when `word` is not one.
+fn band(word: &str) -> Option<Result<(f64, f64)>> {
+    let lower = word.to_ascii_lowercase();
+    let hz = lower.strip_suffix("hz")?;
+    let (low, high) = hz.split_once('-')?;
+    let read = |n: &str| n.parse::<f64>().ok().filter(|n| n.is_finite());
+    Some(match (read(low), read(high)) {
+        (Some(low), Some(high)) if 0.0 < low && low < high => Ok((low, high)),
+        _ => Err(Diagnostic::new(
+            crate::Kind::Invalid,
+            format!("`{word}` is not a band of frequencies"),
+        )
+        .expected("`<low>-<high>Hz` with 0 < low < high, e.g. `30-150Hz`")),
+    })
 }
 
 /// The string form of a track as written; `crate::validate` reads its values

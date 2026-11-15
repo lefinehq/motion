@@ -468,6 +468,37 @@ pub(crate) fn bands_of(
         .collect()
 }
 
+/// How loud `samples` at `rate` are, from 0 at silence to 1 for a
+/// full-scale sine, as a track that follows a sound hears them: the RMS
+/// level times the square root of 2 for the whole sound, or within `band`
+/// (from and to, in Hz) the loudest bin of the spectrum, as a spectrum's
+/// bands are measured. Not clamped.
+pub fn level(samples: &[f32], rate: f64, band: Option<(f64, f64)>) -> f64 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let Some((low, high)) = band else {
+        let power = samples
+            .iter()
+            .map(|s| f64::from(*s) * f64::from(*s))
+            .sum::<f64>()
+            / samples.len() as f64;
+        return (2.0 * power).sqrt();
+    };
+    let (spectrum, size) = amplitudes(samples);
+    let hertz_per_bin = rate / size as f64;
+    let first = (low / hertz_per_bin).ceil().max(0.0) as usize;
+    let last = ((high / hertz_per_bin).floor() as usize).min(spectrum.len() - 1);
+    match first <= last {
+        true => spectrum[first..=last].iter().copied().fold(0.0, f64::max),
+        // A band narrower than a bin reads the bin nearest its middle.
+        false => {
+            let middle = ((low + high) / 2.0 / hertz_per_bin).round() as usize;
+            spectrum[middle.min(spectrum.len() - 1)]
+        }
+    }
+}
+
 /// The amplitude spectrum of `samples` under a Hann window, zero-padded
 /// to a power of two: one amplitude a bin from 0 Hz to half the rate, a
 /// full-scale sine reaching 1. Also the padded size.
@@ -515,12 +546,17 @@ fn fft(re: &mut [f64], im: &mut [f64]) {
             im.swap(i, j);
         }
     }
+    // Every stage's twiddles are a stride through the largest's, so the
+    // sines and cosines are taken once a transform, not once a butterfly.
+    let twiddles: Vec<(f64, f64)> = (0..n / 2)
+        .map(|k| (-TAU * k as f64 / n as f64).sin_cos())
+        .collect();
     let mut length = 2;
     while length <= n {
-        let angle = -TAU / length as f64;
+        let stride = n / length;
         for start in (0..n).step_by(length) {
             for k in 0..length / 2 {
-                let (sin, cos) = (angle * k as f64).sin_cos();
+                let (sin, cos) = twiddles[k * stride];
                 let (a, b) = (start + k, start + k + length / 2);
                 let (tr, ti) = (re[b] * cos - im[b] * sin, re[b] * sin + im[b] * cos);
                 re[b] = re[a] - tr;

@@ -19,6 +19,7 @@ use motion_text::Typesetter;
 use tracing::{debug_span, field};
 
 use crate::graph::{CompGraph, ItemNode, Node, NodeContent, PropertyTrack, SceneGraph, Timing};
+use crate::level::{Ear, Levels};
 use crate::text;
 use crate::track::{KeySpec, Track};
 
@@ -32,6 +33,23 @@ use crate::track::{KeySpec, Track};
 /// If following parents leads back to a layer, or a `comp` layer names a
 /// composition the scene lacks, which validation rules out.
 pub fn compile(scene: &Scene, typesetter: &mut Typesetter) -> Result<SceneGraph> {
+    compile_with(scene, typesetter, &Levels::none())
+}
+
+/// Compiles `scene` as [`compile`] does, with the `levels` its listening
+/// tracks measured: each becomes a key every frame of its list's clock
+/// ([`Levels`]). A track without levels holds its value at silence.
+///
+/// # Errors
+/// As [`compile`].
+///
+/// # Panics
+/// As [`compile`].
+pub fn compile_with(
+    scene: &Scene,
+    typesetter: &mut Typesetter,
+    levels: &Levels,
+) -> Result<SceneGraph> {
     // Only animated tracks count: every node has one track per property.
     let span = debug_span!(
         "compile",
@@ -42,6 +60,7 @@ pub fn compile(scene: &Scene, typesetter: &mut Typesetter) -> Result<SceneGraph>
     let mut build = Build {
         scene,
         typesetter,
+        levels,
         instances: Vec::new(),
     };
     let mut comps = scene
@@ -74,6 +93,8 @@ pub fn compile(scene: &Scene, typesetter: &mut Typesetter) -> Result<SceneGraph>
 struct Build<'a> {
     scene: &'a Scene,
     typesetter: &'a mut Typesetter,
+    /// What the listening tracks measured.
+    levels: &'a Levels,
     /// One composition per `comp` layer with overrides, in the order met;
     /// the first is at index `scene.comps.len()` of the graph's comps.
     instances: Vec<CompGraph>,
@@ -97,17 +118,24 @@ impl Build<'_> {
             duration_frames: comp.duration.to_frames(comp.fps),
             background: rgba(comp.background),
             shutter: comp.shutter,
-            nodes: self.nodes(layers, canvas, comp.fps)?,
+            nodes: self.nodes(layers, canvas, comp.fps, &comp.id)?,
         })
     }
 
-    /// The nodes of one `canvas` whose clock runs at `fps`, with paths relative
-    /// to the list's owner.
-    fn nodes(&mut self, layers: &[Layer], canvas: Rect, fps: f64) -> Result<Vec<Node>> {
+    /// The nodes of one `canvas` whose clock runs at `fps`, the list of the
+    /// composition `comp`, with paths relative to the list's owner.
+    fn nodes(&mut self, layers: &[Layer], canvas: Rect, fps: f64, comp: &str) -> Result<Vec<Node>> {
+        let levels = self.levels;
+        let ear = |layer: &Layer| Ear {
+            levels,
+            comp,
+            fps,
+            timing: timing(layer, fps),
+        };
         let contents = layers
             .iter()
             .map(|layer| {
-                self.node_content(layer, fps)
+                self.node_content(layer, fps, ear(layer))
                     .map_err(|e| e.under(Place::of_layer(&layer.id)))
             })
             .collect::<Result<Vec<_>>>()?;
@@ -155,7 +183,12 @@ impl Build<'_> {
                     matte: mattes[i],
                     inputs: inputs[i].clone(),
                     ..node(
-                        layer, self.scene, fps, content, boxes[i], parents[i], extent,
+                        layer,
+                        self.scene,
+                        fps,
+                        content,
+                        (boxes[i], parents[i], extent),
+                        ear(layer),
                     )
                 }
             })
@@ -190,7 +223,7 @@ impl Build<'_> {
     }
 
     /// What a layer draws, compiled; text is set here.
-    fn node_content(&mut self, layer: &Layer, fps: f64) -> Result<NodeContent> {
+    fn node_content(&mut self, layer: &Layer, fps: f64, ear: Ear<'_>) -> Result<NodeContent> {
         Ok(match &layer.content {
             Content::Text(content) => NodeContent::Text {
                 text: text::set(content, self.typesetter)?,
@@ -199,11 +232,11 @@ impl Build<'_> {
                     .iter()
                     .chain(&content.animators)
                     .filter(|item| !item.hidden)
-                    .map(|item| item_node(item, fps))
+                    .map(|item| item_node(item, fps, ear))
                     .collect(),
             },
             Content::Rect(r) => NodeContent::Rect(*r),
-            Content::Shapes(items) => NodeContent::Shapes(item_nodes(items, fps)),
+            Content::Shapes(items) => NodeContent::Shapes(item_nodes(items, fps, ear)),
             Content::Comp(comp) => {
                 let shared = self
                     .scene
@@ -230,16 +263,16 @@ impl Build<'_> {
 }
 
 /// The items that are not hidden, compiled.
-fn item_nodes(items: &[Item], fps: f64) -> Vec<ItemNode> {
+fn item_nodes(items: &[Item], fps: f64, ear: Ear<'_>) -> Vec<ItemNode> {
     items
         .iter()
         .filter(|item| !item.hidden)
-        .map(|item| item_node(item, fps))
+        .map(|item| item_node(item, fps, ear))
         .collect()
 }
 
 /// One item: a track per row of its kind's registry, from its rest and `anim`.
-fn item_node(item: &Item, fps: f64) -> ItemNode {
+fn item_node(item: &Item, fps: f64, ear: Ear<'_>) -> ItemNode {
     let written: Vec<Written> = item
         .anim
         .iter()
@@ -249,6 +282,7 @@ fn item_node(item: &Item, fps: f64) -> ItemNode {
                 track,
                 &track.target.rest_of(item.rest(track.target.prop)),
                 fps,
+                ear,
             ),
         })
         .collect();
@@ -262,7 +296,7 @@ fn item_node(item: &Item, fps: f64) -> ItemNode {
             .map(|prop| property_track(prop, item.rest(prop), &written, fps))
             .collect(),
         settings: item.settings.clone(),
-        items: item_nodes(&item.items, fps),
+        items: item_nodes(&item.items, fps, ear),
         written: item
             .kind
             .registry
@@ -298,16 +332,27 @@ fn assert_no_cycle(parents: &[Option<usize>]) {
     }
 }
 
+/// When a layer shows and how its own clock runs against its list's.
+fn timing(layer: &Layer, fps: f64) -> Timing {
+    Timing {
+        span: layer
+            .span
+            .map(|span| (span.start.to_frames(fps), span.end.to_frames(fps))),
+        offset: layer.offset.to_frames(fps),
+        stretch: layer.stretch,
+    }
+}
+
 /// Compiles one layer into a node, with its content box, its parent's index,
-/// and the extent `at` resolves in.
+/// and the extent `at` resolves in, and where its listening tracks' levels
+/// are.
 fn node(
     layer: &Layer,
     scene: &Scene,
     fps: f64,
     content: NodeContent,
-    bounds: Rect,
-    parent: Option<usize>,
-    extent: Rect,
+    (bounds, parent, extent): (Rect, Option<usize>, Rect),
+    ear: Ear<'_>,
 ) -> Node {
     // An entrance on the parts of a text is one of its animators instead.
     let entrance = entrance(layer, scene).filter(|(behaviour, _)| behaviour.parts.is_none());
@@ -317,20 +362,14 @@ fn node(
         fill: layer.fill,
         bounds,
         parent,
-        timing: Timing {
-            span: layer
-                .span
-                .map(|span| (span.start.to_frames(fps), span.end.to_frames(fps))),
-            offset: layer.offset.to_frames(fps),
-            stretch: layer.stretch,
-        },
-        tracks: tracks(layer, entrance, extent, bounds, fps),
+        timing: ear.timing,
+        tracks: tracks(layer, entrance, extent, bounds, fps, ear),
         follows_at: (
             follows_at(layer, entrance, Axis::X),
             follows_at(layer, entrance, Axis::Y),
         ),
-        mask: item_nodes(&layer.mask, fps),
-        fx: item_nodes(&layer.fx, fps),
+        mask: item_nodes(&layer.mask, fps, ear),
+        fx: item_nodes(&layer.fx, fps, ear),
         hidden: layer.hidden,
         adjust: layer.adjust,
         collapse: layer.collapse,
@@ -362,6 +401,7 @@ fn tracks(
     extent: Rect,
     own: Rect,
     fps: f64,
+    ear: Ear<'_>,
 ) -> Vec<PropertyTrack> {
     let mut written: Vec<Written> = Vec::new();
     if let Some((behaviour, spec)) = entrance {
@@ -381,7 +421,7 @@ fn tracks(
             .rest_of(layer.rest(track.target.prop, extent, own));
         written.push(Written {
             target: track.target,
-            keys: anim_keys(track, &rest, fps),
+            keys: anim_keys(track, &rest, fps, ear),
         });
     }
     Prop::all()
@@ -442,8 +482,17 @@ fn entrance_keys(behaviour: &Behaviour, from: Start, rest: Value, fps: f64) -> V
 }
 
 /// An `anim` track's keys with their times in frames, and values written
-/// against the rest resolved against `rest`, the target's resting value.
-fn anim_keys(track: &AnimTrack, rest: &Value, fps: f64) -> Vec<KeySpec> {
+/// against the rest resolved against `rest`, the target's resting value. A
+/// track that listens has a key every frame of its list's clock when `ear`
+/// holds its levels, else its value at silence.
+fn anim_keys(track: &AnimTrack, rest: &Value, fps: f64, ear: Ear<'_>) -> Vec<KeySpec> {
+    if let (Some(listen), Some(first)) = (&track.listen, track.keys.first()) {
+        let from = first.value.resolve(rest);
+        let to = listen.to.resolve(rest);
+        return ear
+            .keys(listen, &from, &to)
+            .unwrap_or_else(|| vec![KeySpec::linear(0.0, from)]);
+    }
     track
         .keys
         .iter()
