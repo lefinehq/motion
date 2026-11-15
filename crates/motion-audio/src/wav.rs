@@ -203,36 +203,50 @@ fn u64_at(bytes: &[u8], at: usize) -> u64 {
         .map_or(0, u64::from_le_bytes)
 }
 
-/// A WAV file of `sound`'s samples as 32-bit float, its channel mask saying
-/// where they stand, for writing a mix to disk.
+/// A WAV file of `sound`'s samples as 32-bit float, for writing a mix to
+/// disk. Mono and stereo are plain float WAV, which every reader takes;
+/// more channels, or speakers other than the usual, add the extensible
+/// chunk's channel mask to say where they stand.
 pub fn encode(sound: &Sound) -> Vec<u8> {
     let channels = sound.channels().len();
     let frames = sound.frames();
     let data = frames * channels * 4;
-    let mask: u32 = sound
-        .speakers()
-        .iter()
-        .filter_map(|s| s.mask_bit())
-        .fold(0, |m, bit| m | (1 << bit));
-    let mut out = Vec::with_capacity(68 + data);
+    let plain = sound.speakers() == Speaker::default_layout(channels) && channels <= 2;
+    let mut format = Vec::with_capacity(40);
+    format.extend_from_slice(&if plain { FLOAT } else { EXTENSIBLE }.to_le_bytes());
+    format.extend_from_slice(&(channels as u16).to_le_bytes());
+    format.extend_from_slice(&sound.rate().to_le_bytes());
+    format.extend_from_slice(&(sound.rate() * 4 * channels as u32).to_le_bytes());
+    format.extend_from_slice(&(4 * channels as u16).to_le_bytes());
+    format.extend_from_slice(&32_u16.to_le_bytes());
+    if plain {
+        format.extend_from_slice(&0_u16.to_le_bytes());
+    } else {
+        let mask: u32 = sound
+            .speakers()
+            .iter()
+            .filter_map(|s| s.mask_bit())
+            .fold(0, |m, bit| m | (1 << bit));
+        format.extend_from_slice(&22_u16.to_le_bytes());
+        format.extend_from_slice(&32_u16.to_le_bytes());
+        format.extend_from_slice(&mask.to_le_bytes());
+        // KSDATAFORMAT_SUBTYPE_IEEE_FLOAT.
+        format.extend_from_slice(&[
+            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38,
+            0x9B, 0x71,
+        ]);
+    }
+    let mut out = Vec::with_capacity(48 + format.len() + data);
     out.extend_from_slice(b"RIFF");
-    out.extend_from_slice(&u32::try_from(60 + data).unwrap_or(u32::MAX).to_le_bytes());
+    let riff = 4 + 8 + format.len() + 12 + 8 + data;
+    out.extend_from_slice(&u32::try_from(riff).unwrap_or(u32::MAX).to_le_bytes());
     out.extend_from_slice(b"WAVEfmt ");
-    out.extend_from_slice(&40_u32.to_le_bytes());
-    out.extend_from_slice(&EXTENSIBLE.to_le_bytes());
-    out.extend_from_slice(&(channels as u16).to_le_bytes());
-    out.extend_from_slice(&sound.rate().to_le_bytes());
-    out.extend_from_slice(&(sound.rate() * 4 * channels as u32).to_le_bytes());
-    out.extend_from_slice(&(4 * channels as u16).to_le_bytes());
-    out.extend_from_slice(&32_u16.to_le_bytes());
-    out.extend_from_slice(&22_u16.to_le_bytes());
-    out.extend_from_slice(&32_u16.to_le_bytes());
-    out.extend_from_slice(&mask.to_le_bytes());
-    // KSDATAFORMAT_SUBTYPE_IEEE_FLOAT.
-    out.extend_from_slice(&[
-        0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B,
-        0x71,
-    ]);
+    out.extend_from_slice(&(format.len() as u32).to_le_bytes());
+    out.extend_from_slice(&format);
+    // A format other than integer PCM says its length in a `fact` chunk.
+    out.extend_from_slice(b"fact");
+    out.extend_from_slice(&4_u32.to_le_bytes());
+    out.extend_from_slice(&u32::try_from(frames).unwrap_or(u32::MAX).to_le_bytes());
     out.extend_from_slice(b"data");
     out.extend_from_slice(&u32::try_from(data).unwrap_or(u32::MAX).to_le_bytes());
     for f in 0..frames {

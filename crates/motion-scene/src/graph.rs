@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use kurbo::Rect;
 use motion_format::shorthand::{MatteMode, RectShape};
-use motion_format::{ImageContent, VideoContent};
+use motion_format::{AudioContent, ImageContent, VideoContent};
 
 use crate::text::TextNode;
 use motion_format::{Value, ValueType};
@@ -63,6 +63,8 @@ pub enum NodeContent {
     Image(Arc<ImageContent>),
     /// A video clip played in the node's own time over its box.
     Video(Arc<VideoContent>),
+    /// A sound file, played in the node's own time; it draws nothing.
+    Audio(Arc<AudioContent>),
     /// Nothing; other nodes move with it.
     Pivot,
     /// Nothing of its own; its effects apply to what is below it.

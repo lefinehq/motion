@@ -181,7 +181,10 @@ impl Build<'_> {
             }
             NodeContent::Image(image) => image.frame,
             NodeContent::Video(video) => video.frame,
-            NodeContent::Shapes(_) | NodeContent::Pivot | NodeContent::Filter => Rect::ZERO,
+            NodeContent::Shapes(_)
+            | NodeContent::Audio(_)
+            | NodeContent::Pivot
+            | NodeContent::Filter => Rect::ZERO,
         }
     }
 
@@ -218,6 +221,7 @@ impl Build<'_> {
             }
             Content::Image(image) => NodeContent::Image(Arc::new(image.clone())),
             Content::Video(video) => NodeContent::Video(Arc::new(video.clone())),
+            Content::Audio(audio) => NodeContent::Audio(Arc::new(audio.clone())),
             Content::Pivot => NodeContent::Pivot,
             Content::Filter => NodeContent::Filter,
         })

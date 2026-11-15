@@ -3,6 +3,7 @@
 //! [`walk`] every node of the frame at any depth.
 
 mod animate;
+mod audio;
 mod compile;
 mod curve;
 mod evaluate;
@@ -15,6 +16,7 @@ mod trim;
 mod walk;
 
 pub use animate::{COUNTS, GlyphParts, GlyphState, Parts};
+pub use audio::{Playing, Route, routes};
 pub use compile::compile;
 pub use curve::Ease;
 pub use evaluate::{evaluate, evaluate_comp, local_transform};

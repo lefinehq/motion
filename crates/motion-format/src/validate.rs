@@ -24,10 +24,10 @@ use crate::doc::{
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, MASKS, SHAPES};
 use crate::parse::key::{
-    ADJUST, ANIM, ANIMATE, AT, BG, BLEND, BOX, COLLAPSE, COMP, COMPS, DUR, FILL, FONT, FPS, FX, ID,
-    IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT,
-    PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, VIDEO, comp_path,
-    layer_path,
+    ADJUST, ANIM, ANIMATE, AT, AUDIO, BG, BLEND, BOX, COLLAPSE, COMP, COMPS, DUR, FILL, FONT, FPS,
+    FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT,
+    PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, VIDEO,
+    comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -38,8 +38,8 @@ use crate::units::{Color, SPAN_EXPECTED, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
 use crate::when::{Base, Moment, Moments, add, label_name};
 use crate::{
-    Address, BLEND_MODES, Comp, CompContent, Content, Curve, ImageContent, Layer, Scene, Step,
-    VideoContent, fmt_num,
+    Address, AudioContent, BLEND_MODES, Comp, CompContent, Content, Curve, ImageContent, Layer,
+    Scene, Step, VideoContent, fmt_num,
 };
 
 use crate::Place;
@@ -204,6 +204,7 @@ fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
         "mattes that never lead back to the layer",
     )?;
     inputs(&layers)?;
+    sounds(&layers)?;
     for (layer, Object(doc)) in layers.iter().zip(docs) {
         let Object(written) = &doc.anim;
         entrance_conflict(layer, &layers, context, written)
@@ -705,6 +706,63 @@ fn stretch(stretch: Number) -> Result<f64> {
     )
 }
 
+/// What sound allows: an audio layer draws nothing, so it holds no effects,
+/// is not matted and mattes nothing; and only a layer that plays sound, an
+/// audio or `comp` layer, has a `volume`.
+fn sounds(layers: &[Layer]) -> Result<()> {
+    let plays = |layer: &Layer| matches!(layer.content, Content::Audio(_));
+    for layer in layers {
+        let place = |d: Diagnostic| d.under(Place::of_layer(&layer.id));
+        let nothing = |key: &str, what: &str| {
+            place(
+                Diagnostic::new(
+                    Kind::Conflict,
+                    format!("an audio layer draws nothing, so it has nothing {what}"),
+                )
+                .at(key)
+                .expected(format!("`{key}` on a layer that draws")),
+            )
+        };
+        if plays(layer) && !layer.fx.is_empty() {
+            return Err(nothing(FX, "for effects to change"));
+        }
+        if plays(layer) && layer.matte.is_some() {
+            return Err(nothing(MATTE, "for a matte to cut"));
+        }
+        if let Some(matte) = &layer.matte
+            && layers.iter().any(|l| l.id == matte.layer && plays(l))
+        {
+            return Err(place(
+                Diagnostic::new(
+                    Kind::Conflict,
+                    format!(
+                        "`{}` is an audio layer, which draws nothing to matte with",
+                        matte.layer
+                    ),
+                )
+                .at(MATTE)
+                .expected("a layer that draws"),
+            ));
+        }
+        let volume = layer.value(Prop::VOLUME).is_some()
+            || layer
+                .anim
+                .iter()
+                .any(|track| track.target.prop == Prop::VOLUME);
+        if volume && !matches!(layer.content, Content::Audio(_) | Content::Comp(_)) {
+            return Err(place(
+                Diagnostic::new(
+                    Kind::Conflict,
+                    "`volume` only applies to `audio` or `comp` layers, which play sound",
+                )
+                .at(Prop::VOLUME.name())
+                .expected("`volume` on an audio layer, or on a `comp` layer for its whole sound"),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Every link at `key` (a parent, a matte) names another layer of the list,
 /// and following links never comes back; `looping` ends the message for a
 /// layer that would reach itself, `expected` says what is allowed.
@@ -822,7 +880,7 @@ fn layer_id(id: &str) -> Result<()> {
 }
 
 /// The keys that say what a layer draws, of which it has exactly one.
-const CONTENT_KEYS: [&str; 7] = [TEXT, RECT, SHAPES_KEY, COMP, IMAGE, VIDEO, PIVOT];
+const CONTENT_KEYS: [&str; 8] = [TEXT, RECT, SHAPES_KEY, COMP, IMAGE, VIDEO, AUDIO, PIVOT];
 
 /// A layer draws exactly one of [`CONTENT_KEYS`]. None is `Missing` and two
 /// is a `Conflict`, at the second, with the same message since the fix is the same.
@@ -834,6 +892,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         doc.comp.is_some(),
         doc.image.is_some(),
         doc.video.is_some(),
+        doc.audio.is_some(),
         doc.pivot.is_some(),
     ];
     let mut keys = CONTENT_KEYS
@@ -849,7 +908,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
             rest.join(", ")
         )
     };
-    const EXAMPLE: &str = r#"e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true"#;
+    const EXAMPLE: &str = r#"e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov", "audio":"music.mp3" or "pivot":true"#;
     let key = match (keys.next(), keys.next()) {
         (Some(key), None) => key,
         // Only effects: a filter layer.
@@ -925,6 +984,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         }
         IMAGE => image(doc.image.as_deref().expect("written"), doc.frame.as_ref()),
         VIDEO => video(doc.video.as_deref().expect("written"), doc.frame.as_ref()),
+        AUDIO => audio(doc.audio.as_deref().expect("written")),
         _ => match *doc.pivot {
             Some(true) => Ok(Content::Pivot),
             _ => Err(
@@ -1083,6 +1143,21 @@ fn video(path: &str, frame: Option<&ValueDoc>) -> Result<Content> {
     Ok(Content::Video(VideoContent {
         path: path.to_owned(),
         frame: text::frame(frame).map_err(|e| e.under(BOX))?,
+    }))
+}
+
+/// An audio layer: a sound file, relative to the scene file. It draws
+/// nothing, so it needs no box.
+fn audio(path: &str) -> Result<Content> {
+    if path.trim().is_empty() {
+        return Err(Diagnostic::new(Kind::Invalid, "an empty audio path")
+            .at(AUDIO)
+            .expected(
+                "a WAV, MP3, FLAC or Ogg Vorbis file, relative to the scene file, e.g. `music/theme.mp3`",
+            ));
+    }
+    Ok(Content::Audio(AudioContent {
+        path: path.to_owned(),
     }))
 }
 
@@ -1566,7 +1641,9 @@ fn known_box(layer: &Layer, context: &Context) -> Option<Rect> {
             .map(|c| Rect::new(0.0, 0.0, f64::from(c.size.width), f64::from(c.size.height))),
         Content::Image(image) => Some(image.frame),
         Content::Video(video) => Some(video.frame),
-        Content::Shapes(_) | Content::Pivot | Content::Filter => Some(Rect::ZERO),
+        Content::Shapes(_) | Content::Audio(_) | Content::Pivot | Content::Filter => {
+            Some(Rect::ZERO)
+        }
         Content::Text { .. } => None,
     }
 }

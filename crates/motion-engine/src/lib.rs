@@ -20,10 +20,12 @@ mod fonts;
 mod footage;
 mod geometry;
 mod import;
+mod mix;
 mod pictures;
 mod relocate;
 mod render;
 mod session;
+mod sounds;
 mod stage;
 pub mod telemetry;
 

@@ -124,70 +124,86 @@ impl Registry {
 }
 
 /// The transform every layer and shape group has, as a row set: position,
-/// anchor, scale, rotation and opacity, with where position and anchor rest.
-const fn transform(position: Rest, anchor: Rest, anchor_doc: &'static str) -> [PropertySpec; 5] {
-    [
-        PropertySpec {
-            name: "position",
-            ty: ValueType::Point,
-            rest: position,
-            components: &["x", "y"],
-            range: None,
-            broadcast: false,
-            spatial: true,
-            doc: "where the anchor sits in the parent, in px",
-        },
-        PropertySpec {
-            name: "anchor",
-            ty: ValueType::Point,
-            rest: anchor,
-            components: &["anchor-x", "anchor-y"],
-            range: None,
-            broadcast: false,
-            spatial: true,
-            doc: anchor_doc,
-        },
-        PropertySpec {
-            name: "scale",
-            ty: ValueType::Point,
-            rest: Rest::Value(Value::Point([1.0, 1.0])),
-            components: &["scale-x", "scale-y"],
-            range: None,
-            broadcast: true,
-            spatial: false,
-            doc: "size factor on each axis; one number scales both; negative values mirror",
-        },
-        PropertySpec {
-            name: "rotate",
-            ty: ValueType::Number,
-            rest: Rest::Value(Value::Number(0.0)),
-            components: &[],
-            range: None,
-            broadcast: false,
-            spatial: false,
-            doc: "rotation in degrees, clockwise",
-        },
-        PropertySpec {
-            name: "opacity",
-            ty: ValueType::Number,
-            rest: Rest::Value(Value::Number(1.0)),
-            components: &[],
-            range: Some((0.0, 1.0)),
-            broadcast: false,
-            spatial: false,
-            doc: "how opaque it is, 0 (invisible) to 1 (solid)",
-        },
-    ]
+/// anchor, scale, rotation and opacity, with where position and anchor rest,
+/// then any `extra` rows.
+macro_rules! transform {
+    ($position:expr, $anchor:expr, $anchor_doc:expr $(, $extra:expr)* $(,)?) => {
+        [
+            PropertySpec {
+                name: "position",
+                ty: ValueType::Point,
+                rest: $position,
+                components: &["x", "y"],
+                range: None,
+                broadcast: false,
+                spatial: true,
+                doc: "where the anchor sits in the parent, in px",
+            },
+            PropertySpec {
+                name: "anchor",
+                ty: ValueType::Point,
+                rest: $anchor,
+                components: &["anchor-x", "anchor-y"],
+                range: None,
+                broadcast: false,
+                spatial: true,
+                doc: $anchor_doc,
+            },
+            PropertySpec {
+                name: "scale",
+                ty: ValueType::Point,
+                rest: Rest::Value(Value::Point([1.0, 1.0])),
+                components: &["scale-x", "scale-y"],
+                range: None,
+                broadcast: true,
+                spatial: false,
+                doc: "size factor on each axis; one number scales both; negative values mirror",
+            },
+            PropertySpec {
+                name: "rotate",
+                ty: ValueType::Number,
+                rest: Rest::Value(Value::Number(0.0)),
+                components: &[],
+                range: None,
+                broadcast: false,
+                spatial: false,
+                doc: "rotation in degrees, clockwise",
+            },
+            PropertySpec {
+                name: "opacity",
+                ty: ValueType::Number,
+                rest: Rest::Value(Value::Number(1.0)),
+                components: &[],
+                range: Some((0.0, 1.0)),
+                broadcast: false,
+                spatial: false,
+                doc: "how opaque it is, 0 (invisible) to 1 (solid)",
+            },
+                $($extra,)*
+        ]
+    };
 }
 
-const LAYER_ROWS: [PropertySpec; 5] = transform(
+/// A layer's rows: its transform, then the gain of the sound it plays.
+const LAYER_ROWS: [PropertySpec; 6] = transform!(
     Rest::At,
     Rest::BoxCentre,
     "the point of the layer that sits at `position` and that it scales and turns about, \
      in px of its own box; the box centre by default",
+    PropertySpec {
+        name: "volume",
+        ty: ValueType::Number,
+        rest: Rest::Value(Value::Number(1.0)),
+        components: &[],
+        range: Some((0.0, 4.0)),
+        broadcast: false,
+        spatial: false,
+        doc: "the gain of the sound an audio or `comp` layer plays: 1 as recorded, 0 silent, \
+              up to 4 (+12 dB)",
+    },
 );
 
-const GROUP_ROWS: [PropertySpec; 5] = transform(
+const GROUP_ROWS: [PropertySpec; 5] = transform!(
     Rest::Value(Value::Point([0.0, 0.0])),
     Rest::Value(Value::Point([0.0, 0.0])),
     "the point of the group that sits at `position` and that it scales and turns about, \
@@ -207,7 +223,7 @@ pub static GROUP: Registry = Registry {
     rows: &GROUP_ROWS,
 };
 
-const TRANSFORM_EFFECT_ROWS: [PropertySpec; 5] = transform(
+const TRANSFORM_EFFECT_ROWS: [PropertySpec; 5] = transform!(
     Rest::Value(Value::Point([0.0, 0.0])),
     Rest::Value(Value::Point([0.0, 0.0])),
     "the point of the layer's content that sits at `position` and that it scales and turns \
@@ -261,6 +277,8 @@ impl Prop {
     pub const ROTATE: Prop = Prop::layer(3);
     /// Opacity, 0 (invisible) to 1 (solid).
     pub const OPACITY: Prop = Prop::layer(4);
+    /// The gain of the sound a layer plays, 1 as recorded.
+    pub const VOLUME: Prop = Prop::layer(5);
 
     const fn layer(index: usize) -> Prop {
         Prop::of(&LAYER, index)

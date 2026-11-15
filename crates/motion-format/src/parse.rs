@@ -53,6 +53,8 @@ pub mod key {
     pub const IMAGE: &str = "image";
     /// The video file a video layer plays, relative to the scene file.
     pub const VIDEO: &str = "video";
+    /// The sound file an audio layer plays, relative to the scene file.
+    pub const AUDIO: &str = "audio";
     /// A layer that draws nothing, for others to move with.
     pub const PIVOT: &str = "pivot";
     /// The font of a text layer.
@@ -147,7 +149,7 @@ pub const COMP_KEYS: [&str; 7] = [
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 30] = [
+pub const LAYER_KEYS: [&str; 31] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -156,6 +158,7 @@ pub const LAYER_KEYS: [&str; 30] = [
     key::OVERRIDES,
     key::IMAGE,
     key::VIDEO,
+    key::AUDIO,
     key::PIVOT,
     key::FONT,
     key::FILL,

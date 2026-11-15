@@ -23,6 +23,7 @@ use motion_text::{FontSet, Typesetter};
 use crate::clips::Clips;
 use crate::pictures::Pictures;
 use crate::render::{Sources, display_list};
+use crate::sounds::Sounds;
 use crate::stage::{stage, stage_ok};
 
 /// One scene and the results of the steps run on it. Methods run their steps
@@ -46,6 +47,9 @@ pub struct Session {
     /// The clips video layers play, each opened once, on first use, and
     /// dropped by an edit.
     clips: Clips,
+    /// The sounds audio layers play, each read once, on first use, and
+    /// dropped by an edit.
+    sounds: Sounds,
 }
 
 impl Session {
@@ -267,6 +271,40 @@ impl Session {
         })
     }
 
+    /// Whether any layer at any depth plays sound.
+    ///
+    /// # Errors
+    /// As [`Session::graph`].
+    pub fn plays_sound(&self) -> Result<bool> {
+        Ok(!motion_scene::routes(self.graph()?).is_empty())
+    }
+
+    /// The scene's sound over `frames`, possibly fractional: every audio
+    /// layer mixed into one stereo track at [`motion_audio::MIX_RATE`]
+    /// (steps `sound` for each file first played, and `mix`). Sound files
+    /// are relative to the scene file's folder, and each is read once per
+    /// edit.
+    ///
+    /// # Errors
+    /// As [`Session::graph`], or a sound file that cannot be read or is in
+    /// no format there is a decoder for, at its layer's `audio`.
+    pub fn mix(&self, frames: Range<f64>) -> Result<motion_audio::Sound> {
+        let graph = self.graph()?;
+        let routes = motion_scene::routes(graph);
+        let base = self.base();
+        let sound = |route: &motion_scene::Route| {
+            self.sounds.get(&base.join(route.path())).map_err(|e| {
+                e.at(motion_format::key::AUDIO)
+                    .under(motion_format::Place::of_layer(route.id(graph)))
+            })
+        };
+        // Files are read before the mix is timed.
+        for route in &routes {
+            sound(route)?;
+        }
+        stage("mix", || crate::mix::mix(graph, &routes, frames, sound))
+    }
+
     /// The whole frames the scene lasts: from 0 to its length, rounded up.
     ///
     /// # Errors
@@ -425,6 +463,7 @@ impl Session {
         self.graph = OnceLock::new();
         self.pictures = Pictures::default();
         self.clips = Clips::default();
+        self.sounds = Sounds::default();
         self.check()
     }
 
@@ -485,6 +524,7 @@ impl Session {
             font_cache: self.font_cache.clone(),
             pictures: Pictures::default(),
             clips: Clips::default(),
+            sounds: Sounds::default(),
         }
     }
 
@@ -555,6 +595,7 @@ impl FromStr for Session {
             font_cache: None,
             pictures: Pictures::default(),
             clips: Clips::default(),
+            sounds: Sounds::default(),
         })
     }
 }

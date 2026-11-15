@@ -59,6 +59,7 @@ fn holds(scene: &Scene, role: &Role) -> (String, Json) {
             Some(Content::Text(text)) => ("text".into(), json!(text.text)),
             Some(Content::Image(image)) => ("image".into(), json!(image.path)),
             Some(Content::Video(video)) => ("video".into(), json!(video.path)),
+            Some(Content::Audio(audio)) => ("audio".into(), json!(audio.path)),
             Some(Content::Comp(comp)) => ("comp".into(), json!(comp.id)),
             Some(Content::Rect(_)) => ("rect".into(), Json::Null),
             Some(Content::Shapes(_)) => ("shapes".into(), Json::Null),

@@ -7,8 +7,8 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::Value as Json;
 
 /// The keys whose string values are files relative to the scene's folder:
-/// the scene's `fonts`, and a layer's `image` and `video`.
-const FILES: [&str; 2] = ["image", "video"];
+/// the scene's `fonts`, and a layer's `image`, `video` and `audio`.
+const FILES: [&str; 3] = ["image", "video", "audio"];
 
 /// Rewrites every relative file `raw` names from the folder `from` to the
 /// folder `to`.

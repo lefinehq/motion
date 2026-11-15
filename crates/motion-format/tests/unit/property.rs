@@ -72,6 +72,7 @@ fn rest_comes_from_at_the_box_or_the_row() {
             Value::Point([1.0, 1.0]),
             Value::Number(0.0),
             Value::Number(1.0),
+            Value::Number(1.0),
         ]
     );
 }
@@ -80,10 +81,10 @@ fn rest_comes_from_at_the_box_or_the_row() {
 fn names_list_follows_registry_order() {
     assert_eq!(
         property_names().collect::<Vec<_>>(),
-        ["position", "anchor", "scale", "rotate", "opacity"]
+        ["position", "anchor", "scale", "rotate", "opacity", "volume"]
     );
     assert_eq!(
-        target_names().skip(5).collect::<Vec<_>>(),
+        target_names().skip(6).collect::<Vec<_>>(),
         ["x", "y", "anchor-x", "anchor-y", "scale-x", "scale-y"]
     );
 }

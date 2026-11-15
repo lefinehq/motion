@@ -93,6 +93,7 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
                     video: Arc::clone(video),
                     seconds: local / fps,
                 },
+                NodeContent::Audio(_) => ContentState::Audio,
                 NodeContent::Pivot => ContentState::Pivot,
                 NodeContent::Filter => ContentState::Filter,
             };
