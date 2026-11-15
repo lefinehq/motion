@@ -44,6 +44,7 @@ fn write_in(path: &Path, count: u32, codec: Codec) -> Vec<u8> {
 #[rstest]
 #[case("a.mp4", Some(Container::Mp4))]
 #[case("A.MP4", Some(Container::Mp4))]
+#[case("a.mov", Some(Container::Mov))]
 #[case("a.webm", None)]
 #[case("frames", None)]
 fn the_extension_picks_the_container(#[case] path: &str, #[case] expected: Option<Container>) {
@@ -130,7 +131,7 @@ fn a_codec_this_build_lacks_names_the_ones_it_has() {
     assert_eq!(err.kind, Kind::UnknownName);
     assert_eq!(err.message, "unknown codec `vp9`");
     let expected = match cfg!(target_os = "macos") {
-        true => "one of h264, hevc, av1",
+        true => "one of h264, hevc, prores, av1",
         false => "one of av1",
     };
     assert_eq!(err.expected.as_deref(), Some(expected));
@@ -173,4 +174,70 @@ fn the_systems_codecs_write_their_sample_entries(#[case] codec: Codec) {
         (mp4_atom::Codec::Hvc1(_), Codec::Hevc) => {}
         (entry, _) => panic!("{codec} wrote {entry:?}"),
     }
+}
+
+#[test]
+fn av1_is_refused_in_quicktime() {
+    let err = VideoWriter::create(
+        &scratch("av1-mov").join("a.mov"),
+        SPEC,
+        Codec::Av1,
+        VideoQuality::Web,
+    )
+    .err()
+    .unwrap();
+    assert_eq!(err.message, "AV1 in a `.mov` file");
+    assert_eq!(err.expected.as_deref(), Some("a `.mp4` file for AV1"));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn prores_goes_in_quicktime_at_one_quality() {
+    let dir = scratch("prores-rules");
+    let err = VideoWriter::create(
+        &dir.join("a.mp4"),
+        SPEC,
+        Codec::ProRes,
+        VideoQuality::Master,
+    )
+    .err()
+    .unwrap();
+    assert_eq!(
+        err.expected.as_deref(),
+        Some("a `.mov` file for ProRes 4444")
+    );
+    let err = VideoWriter::create(&dir.join("a.mov"), SPEC, Codec::ProRes, VideoQuality::Web)
+        .err()
+        .unwrap();
+    assert_eq!(err.message, "unknown video quality for ProRes 4444 `web`");
+    assert_eq!(Codec::ProRes.default_quality(), VideoQuality::Master);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn prores_writes_a_quicktime_file_with_alpha() {
+    let path = scratch("prores").join("clear.mov");
+    let mut writer = VideoWriter::create(&path, SPEC, Codec::ProRes, VideoQuality::Master).unwrap();
+    // A clear frame with an opaque bar.
+    for frame in 0..3usize {
+        let mut rgba = [0u8; 4].repeat(48 * 32);
+        for y in 0..32 {
+            rgba[(y * 48 + frame * 4) * 4..][..4].copy_from_slice(&[250, 200, 40, 255]);
+        }
+        writer.push(&rgba).unwrap();
+    }
+    assert_eq!(writer.finish().unwrap(), 3);
+    let bytes = fs::read(&path).unwrap();
+    let buf = &mut bytes.as_slice();
+    let ftyp = Ftyp::decode(buf).unwrap();
+    assert_eq!(ftyp.major_brand, b"qt  ".into());
+    let moov = Moov::decode(buf).unwrap();
+    let stbl = &moov.trak[0].mdia.minf.stbl;
+    let mp4_atom::Codec::Unknown(kind, body) = &stbl.stsd.codecs[0] else {
+        panic!("a ProRes sample entry");
+    };
+    assert_eq!(*kind, b"ap4h".into());
+    // The visual fields' depth, 32 bits for alpha, sits 74 bytes in.
+    assert_eq!(&body[74..76], &[0, 32]);
+    assert_eq!(stbl.stss.as_ref().unwrap().entries, vec![1, 2, 3]);
 }

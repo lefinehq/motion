@@ -1,4 +1,5 @@
-//! H.264 and HEVC from the system's VideoToolbox, on macOS ([D48]).
+//! H.264, HEVC and ProRes 4444 from the system's VideoToolbox, on macOS
+//! ([D48]).
 //!
 //! The system's encoders run on the media engine where the Mac has one, and
 //! in software where it has not, and Apple's licence covers the codecs
@@ -14,4 +15,4 @@
 
 mod encoder;
 
-pub use encoder::{Codec, Encoder, Error, Packet, Planes, Settings};
+pub use encoder::{Codec, Encoder, Error, Image, Packet, Planes, Settings};

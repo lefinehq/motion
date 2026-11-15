@@ -1,13 +1,14 @@
-//! H.264 and HEVC from the system's VideoToolbox on macOS ([D48]), behind
+//! H.264, HEVC and ProRes 4444 from the system's VideoToolbox on macOS ([D48]), behind
 //! [`VideoEncoder`].
 //!
 //! [D48]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d48-unsafe-code-lives-only-in-platform-bindings
 
 use motion_format::{Diagnostic, Kind, Result};
-use motion_videotoolbox::{Codec as System, Encoder, Error, Planes as SystemPlanes, Settings};
+use motion_videotoolbox::{
+    Codec as System, Encoder, Error, Image, Planes as SystemPlanes, Settings,
+};
 
-use crate::colour::Planes;
-use crate::video::{DecoderConfig, Packet, VideoEncoder, VideoQuality, VideoSpec};
+use crate::video::{DecoderConfig, Frame, Packet, VideoEncoder, VideoQuality, VideoSpec};
 
 /// A keyframe at least this often, in frames, so a player can seek.
 const MAX_KEYFRAME_INTERVAL: u32 = 240;
@@ -26,6 +27,7 @@ fn label(codec: System) -> &'static str {
     match codec {
         System::H264 => "H.264",
         System::Hevc => "HEVC",
+        System::ProRes4444 => "ProRes 4444",
     }
 }
 
@@ -71,13 +73,16 @@ impl Toolbox {
 }
 
 impl VideoEncoder for Toolbox {
-    fn encode(&mut self, planes: &Planes) -> Result<Vec<Packet>> {
-        let planes = SystemPlanes {
-            y: &planes.y,
-            cb: &planes.cb,
-            cr: &planes.cr,
+    fn encode(&mut self, frame: &Frame) -> Result<Vec<Packet>> {
+        let image = match frame {
+            Frame::Yuv420(planes) => Image::Yuv420(SystemPlanes {
+                y: &planes.y,
+                cb: &planes.cb,
+                cr: &planes.cr,
+            }),
+            Frame::Ayuv16(frame) => Image::Ayuv16(&frame.samples),
         };
-        let packets = self.encoder.encode(planes).map_err(|e| self.failure(&e))?;
+        let packets = self.encoder.encode(image).map_err(|e| self.failure(&e))?;
         Ok(packets.into_iter().map(packet).collect())
     }
 
@@ -91,6 +96,7 @@ impl VideoEncoder for Toolbox {
         match self.codec {
             System::H264 => DecoderConfig::Avc { record },
             System::Hevc => DecoderConfig::Hevc { record },
+            System::ProRes4444 => DecoderConfig::ProRes,
         }
     }
 }

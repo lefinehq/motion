@@ -12,8 +12,7 @@ use rav1e::config::SpeedSettings;
 use rav1e::data::{EncoderStatus, FrameType, Rational};
 use rav1e::{Config, Context, EncoderConfig};
 
-use crate::colour::Planes;
-use crate::video::{DecoderConfig, Packet, VideoEncoder, VideoQuality, VideoSpec};
+use crate::video::{DecoderConfig, Frame, Packet, VideoEncoder, VideoQuality, VideoSpec};
 
 /// A keyframe at least this often, in frames, so a player can seek.
 const MAX_KEYFRAME_INTERVAL: u64 = 240;
@@ -125,7 +124,13 @@ impl Av1 {
 }
 
 impl VideoEncoder for Av1 {
-    fn encode(&mut self, planes: &Planes) -> Result<Vec<Packet>> {
+    fn encode(&mut self, frame: &Frame) -> Result<Vec<Packet>> {
+        let Frame::Yuv420(planes) = frame else {
+            return Err(Diagnostic::new(
+                Kind::Invalid,
+                "the AV1 encoder takes 4:2:0 frames without alpha",
+            ));
+        };
         let mut frame = self.context.new_frame();
         let sources = [
             (&planes.y, planes.width),

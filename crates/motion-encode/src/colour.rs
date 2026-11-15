@@ -85,6 +85,56 @@ pub fn to_planes(rgba: &[u8], width: u32, height: u32) -> Planes {
     }
 }
 
+/// One frame as 16-bit 4:4:4 Y′CbCr with alpha, for codecs that keep alpha:
+/// per pixel alpha, luma, blue and red difference, in that order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ayuv16 {
+    /// Width in pixels.
+    pub width: u32,
+    /// Height in pixels.
+    pub height: u32,
+    /// Four samples a pixel, rows top to bottom with no padding.
+    pub samples: Vec<u16>,
+}
+
+/// The 16-bit samples of `rgba`, `width` by `height` straight-alpha RGBA8
+/// pixels. Alpha stays straight and in full range; colour is BT.709 in
+/// limited range scaled to 16 bits, each pixel's own, not drawn over black,
+/// so a clear area keeps the colour under it.
+///
+/// # Panics
+/// If `rgba` does not hold `width * height * 4` bytes; the caller checks.
+pub fn to_ayuv16(rgba: &[u8], width: u32, height: u32) -> Ayuv16 {
+    assert_eq!(
+        rgba.len(),
+        width as usize * height as usize * 4,
+        "four bytes per pixel"
+    );
+    let samples = rgba
+        .chunks_exact(4)
+        .flat_map(|pixel| {
+            let rgb = [0, 1, 2].map(|c| f32::from(pixel[c]) / 255.0);
+            let (b, r) = chroma(rgb);
+            [
+                u16::from(pixel[3]) * 257,
+                quantise16(16.0 + 219.0 * luma(rgb)),
+                quantise16(128.0 + 224.0 * b),
+                quantise16(128.0 + 224.0 * r),
+            ]
+        })
+        .collect();
+    Ayuv16 {
+        width,
+        height,
+        samples,
+    }
+}
+
+/// An 8-bit level, `value`, as a 16-bit sample: 235 becomes 60160.
+fn quantise16(value: f32) -> u16 {
+    (value * 256.0).round().clamp(0.0, 65535.0) as u16
+}
+
 /// Luma, 0 to 1, of gamma-encoded `[r, g, b]` from 0 to 1.
 fn luma([r, g, b]: [f32; 3]) -> f32 {
     KR * r + KG * g + KB * b

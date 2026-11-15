@@ -36,7 +36,7 @@ fn config() -> DecoderConfig {
 #[test]
 fn packets_out_of_order_are_refused() {
     let path = scratch("order");
-    let mut mp4 = Mp4::create(&path, SPEC).unwrap();
+    let mut mp4 = Mp4::create(&path, SPEC, Container::Mp4).unwrap();
     mp4.write(&packet(0, true)).unwrap();
     let err = mp4.write(&packet(2, false)).unwrap_err();
     assert_eq!(err.kind, Kind::Invalid);
@@ -46,7 +46,7 @@ fn packets_out_of_order_are_refused() {
 #[test]
 fn the_index_comes_first_and_points_at_the_samples() {
     let path = scratch("layout");
-    let mut mp4 = Box::new(Mp4::create(&path, SPEC).unwrap());
+    let mut mp4 = Box::new(Mp4::create(&path, SPEC, Container::Mp4).unwrap());
     for frame in 0..5 {
         mp4.write(&packet(frame, frame % 3 == 0)).unwrap();
     }
@@ -78,7 +78,7 @@ fn the_index_comes_first_and_points_at_the_samples() {
 
 #[test]
 fn offsets_past_four_gib_take_64_bits() {
-    let mp4 = Mp4::create(&scratch("co64"), SPEC).unwrap();
+    let mp4 = Mp4::create(&scratch("co64"), SPEC, Container::Mp4).unwrap();
     let stbl = mp4
         .moov(&config(), 1 << 33)
         .unwrap()
@@ -101,4 +101,36 @@ fn offsets_past_four_gib_take_64_bits() {
 #[test]
 fn a_record_that_does_not_read_is_an_error() {
     assert!(record_box::<mp4_atom::Av1c>(b"av1C", &[0x00]).is_err());
+}
+
+#[test]
+fn the_prores_entry_is_renamed_in_place() {
+    let path = scratch("rename");
+    let mut mp4 = Mp4::create(&path, SPEC, Container::Mov).unwrap();
+    mp4.sizes = vec![10];
+    let mut bytes = Vec::new();
+    encode(&mp4.moov(&DecoderConfig::ProRes, 100).unwrap(), &mut bytes).unwrap();
+    let length = bytes.len();
+    assert!(rename_entry(&mut bytes, b"jpeg", b"ap4h"));
+    assert_eq!(bytes.len(), length);
+    // Renamed once, it is no longer a `jpeg` entry to rename.
+    assert!(!rename_entry(&mut bytes, b"jpeg", b"ap4h"));
+    let moov = Moov::decode(&mut bytes.as_slice()).unwrap();
+    let mp4_atom::Codec::Unknown(kind, _) = &moov.trak[0].mdia.minf.stbl.stsd.codecs[0] else {
+        panic!("an entry mp4-atom does not know");
+    };
+    assert_eq!(*kind, b"ap4h".into());
+}
+
+#[test]
+fn renaming_needs_the_whole_path() {
+    let mut bytes = vec![
+        0, 0, 0, 16, b'm', b'o', b'o', b'v', 0, 0, 0, 8, b'f', b'r', b'e', b'e',
+    ];
+    assert!(!rename_entry(&mut bytes, b"jpeg", b"ap4h"));
+    // A box that claims more than its parent holds ends the walk.
+    let mut bytes = vec![
+        0, 0, 0, 16, b'm', b'o', b'o', b'v', 0, 0, 0, 99, b't', b'r', b'a', b'k',
+    ];
+    assert!(!rename_entry(&mut bytes, b"jpeg", b"ap4h"));
 }
