@@ -18,7 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use motion_engine::Session;
-use motion_format::item::{ANIMATORS, EFFECTS, ItemKind, Primary, SELECTORS, SHAPES};
+use motion_format::item::{ANIMATORS, EFFECTS, ItemKind, MASKS, Primary, SELECTORS, SHAPES};
 use motion_format::property::PROPERTIES;
 use motion_format::text::STYLE_KEYS;
 use motion_format::{COMP_KEYS, Curve, FAMILIES, LAYER_KEYS, NAMED_CURVES, SCENE_KEYS};
@@ -95,7 +95,13 @@ fn expected() -> BTreeSet<String> {
         names.insert(format!("layer {} at rest", spec.name));
         names.insert(format!("layer {} animated", spec.name));
     }
-    for kinds in [&SHAPES[..], &EFFECTS[..], &ANIMATORS[..], &SELECTORS[..]] {
+    for kinds in [
+        &SHAPES[..],
+        &EFFECTS[..],
+        &ANIMATORS[..],
+        &SELECTORS[..],
+        &MASKS[..],
+    ] {
         for kind in kinds {
             names.insert(format!("item {}", kind.name));
             for row in kind.registry.rows {
@@ -180,6 +186,7 @@ impl Used {
                 },
             );
             self.items(layer.get("shapes"), &SHAPES);
+            self.items(layer.get("mask"), &MASKS);
             self.items(layer.get("fx"), &EFFECTS);
             self.items(layer.get("animate"), &ANIMATORS);
             self.styles(layer.get("style"));

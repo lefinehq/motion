@@ -83,6 +83,8 @@ pub mod key {
     pub const OFFSET: &str = "offset";
     /// How slowly a layer's own time runs.
     pub const STRETCH: &str = "stretch";
+    /// A layer's masks.
+    pub const MASK: &str = "mask";
     /// A layer's effects.
     pub const FX: &str = "fx";
     /// A layer whose effects apply to what is below it, where it draws.
@@ -143,7 +145,7 @@ pub const COMP_KEYS: [&str; 7] = [
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 28] = [
+pub const LAYER_KEYS: [&str; 29] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -167,6 +169,7 @@ pub const LAYER_KEYS: [&str; 28] = [
     key::SPAN,
     key::OFFSET,
     key::STRETCH,
+    key::MASK,
     key::FX,
     key::ADJUST,
     key::COLLAPSE,

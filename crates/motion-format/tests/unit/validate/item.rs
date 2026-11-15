@@ -121,3 +121,38 @@ mod never_panics {
         }
     }
 }
+
+/// The masks of the one rect layer of a scene whose `mask` holds `items`.
+fn masks(items: &str) -> crate::Result<Vec<Item>> {
+    let json = format!(
+        r#"{{"motion":1,"dur":"1s","layers":[{{"id":"a","rect":"100x100","mask":[{items}]}}]}}"#
+    );
+    parse_document(&json).map(|doc| doc.scene().root.layers[0].mask.clone())
+}
+
+#[test]
+fn a_mask_holds_its_path_and_rests_at_its_defaults() {
+    let masks = masks(r#"{"mask":"M0,0 L10,0 L10,10 Z","feather":4,"mode":"subtract","id":"cut"}"#)
+        .unwrap();
+    let mask = &masks[0];
+    assert_eq!(mask.kind.role, Role::Mask);
+    assert_eq!(mask.values[0].0, props::MASK_PATH);
+    assert_eq!(mask.rest(props::MASK_FEATHER), Value::Point([4.0, 4.0]));
+    assert_eq!(mask.rest(props::MASK_OPACITY), Value::Number(1.0));
+    assert_eq!(mask.rest(props::MASK_EXPAND), Value::Number(0.0));
+    assert_eq!(mask.setting("mode"), "subtract");
+    assert_eq!(mask.setting("keep"), "inside");
+}
+
+#[test]
+fn a_mask_mode_is_one_of_its_list() {
+    let error = masks(r#"{"mask":"M0,0 L10,0 Z","mode":"xor"}"#).unwrap_err();
+    assert_eq!(error.path_text().as_deref(), Some("a.mask[0].mode"));
+}
+
+#[test]
+fn masks_of_a_layer_have_their_own_ids() {
+    let error =
+        masks(r#"{"mask":"M0,0 L1,0 Z","id":"m"},{"mask":"M0,0 L1,0 Z","id":"m"}"#).unwrap_err();
+    assert_eq!(error.path_text().as_deref(), Some("a.mask[1].id"));
+}

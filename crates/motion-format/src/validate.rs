@@ -22,11 +22,12 @@ use crate::doc::{
     PresetsDoc, SceneDoc, Shorthand, StartDoc, TrackDoc, ValueDoc,
 };
 use crate::edit_word::NONE;
-use crate::item::{EFFECTS, SHAPES};
+use crate::item::{EFFECTS, MASKS, SHAPES};
 use crate::parse::key::{
     ADJUST, ANIM, ANIMATE, AT, BG, BOX, COLLAPSE, COMP, COMPS, DUR, FILL, FONT, FPS, FX, ID, IMAGE,
-    IN, LABELS, LAYERS, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT,
-    RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, VIDEO, comp_path, layer_path,
+    IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS,
+    RECT, RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, VIDEO, comp_path,
+    layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -560,6 +561,12 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
             .transpose()?
             .unwrap_or(Time::Frames(0.0)),
         stretch: doc.stretch.map_or(Ok(1.0), stretch)?,
+        mask: match &*doc.mask {
+            Some(List(docs)) => item::items(docs, &MASKS, context.fps)
+                .and_then(|mask| item::unique_ids(&mask, "").map(|()| mask))
+                .map_err(|e| e.under(MASK))?,
+            None => Vec::new(),
+        },
         fx: match &*doc.fx {
             Some(List(docs)) => item::items(docs, &EFFECTS, context.fps)
                 .and_then(|fx| item::unique_ids(&fx, "").map(|()| fx))

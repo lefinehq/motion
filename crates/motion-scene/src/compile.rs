@@ -324,6 +324,7 @@ fn node(
             follows_at(layer, entrance, Axis::X),
             follows_at(layer, entrance, Axis::Y),
         ),
+        mask: item_nodes(&layer.mask, fps),
         fx: item_nodes(&layer.fx, fps),
         hidden: layer.hidden,
         adjust: layer.adjust,

@@ -86,6 +86,7 @@ pub(crate) struct LayerDoc {
     pub(crate) span: Present<Shorthand<Moments>>,
     pub(crate) offset: Present<Shorthand<Moment>>,
     pub(crate) stretch: Present<Number>,
+    pub(crate) mask: Present<List<ItemsDoc>>,
     pub(crate) fx: Present<List<ItemsDoc>>,
     pub(crate) adjust: Present<bool>,
     pub(crate) collapse: Present<bool>,
@@ -118,7 +119,7 @@ impl Form for ItemDoc {
     const FORM: &str = r##"an item object keyed by its kind, e.g. {"rect":[300,100],"round":12} or {"fill":"#FFE000"}"##;
 }
 
-/// A list of items: a layer's `shapes` or `fx`, or a group's items.
+/// A list of items: a layer's `shapes`, `mask` or `fx`, or a group's items.
 pub(crate) type ItemsDoc = Vec<Object<ItemDoc>>;
 
 impl Form for ItemsDoc {

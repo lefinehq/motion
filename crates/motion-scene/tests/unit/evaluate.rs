@@ -281,6 +281,22 @@ fn effects_are_evaluated_on_the_layer_clock() {
 }
 
 #[test]
+fn masks_are_evaluated_on_the_layer_clock() {
+    use motion_format::item::props::{MASK_FEATHER, MASK_OPACITY};
+    let graph = graph(
+        r##"{"motion":1,"dur":"1s","fps":10,"layers":[{"id":"a","rect":"10x10","offset":"5f",
+          "mask":[{"mask":"M0,0 L5,0 L5,5 Z","feather":2,"mode":"subtract","anim":{"opacity":"0 -> 1 @0-10f"}},
+                  {"mask":"M0,0 L1,0 Z","hidden":true}]}]}"##,
+    );
+    let state = evaluate(&graph, 10.0);
+    let mask = &state.nodes[0].mask;
+    assert_eq!(mask.len(), 1);
+    assert_eq!(mask[0].number(MASK_OPACITY), 0.5);
+    assert_eq!(mask[0].point(MASK_FEATHER), [2.0, 2.0]);
+    assert_eq!(mask[0].setting("mode"), "subtract");
+}
+
+#[test]
 fn pivots_draw_nothing_and_children_follow_them() {
     let graph = graph(
         r#"{"motion":1,"dur":"1s","layers":[{"id":"p","pivot":true,"at":"100 100","rotate":90},

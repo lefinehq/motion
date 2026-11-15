@@ -155,7 +155,7 @@ impl Walk {
                     transform,
                     opacity,
                 }),
-                Role::Paint | Role::Effect | Role::Animator | Role::Selector => {}
+                Role::Paint | Role::Effect | Role::Animator | Role::Selector | Role::Mask => {}
             }
         }
         above

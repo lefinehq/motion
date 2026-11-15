@@ -174,6 +174,8 @@ pub struct Node {
     pub tracks: Vec<PropertyTrack>,
     /// Whether moving the layer's `at` moves the whole motion on `(x, y)`.
     pub follows_at: (bool, bool),
+    /// Masks that cut what it draws, in order; hidden ones are left out.
+    pub mask: Vec<ItemNode>,
     /// Effects on what it draws, in order; hidden ones are left out.
     pub fx: Vec<ItemNode>,
     /// Left out of the frame; its children still move with it.
