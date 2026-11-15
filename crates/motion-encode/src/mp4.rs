@@ -15,11 +15,13 @@ use std::path::{Path, PathBuf};
 
 use motion_format::{Diagnostic, Kind, Result};
 use mp4_atom::{
-    Atom, Av01, Avc1, Co64, Colr, Decode, Dinf, Dref, Encode, Ftyp, Hdlr, Hvc1, Jpeg, Mdhd, Mdia,
-    Minf, Moov, Mvhd, Stbl, Stco, Stsc, StscEntry, Stsd, Stss, Stsz, StszSamples, Stts, SttsEntry,
-    Tkhd, Trak, Url, Visual, Vmhd,
+    Atom, Audio, Av01, Avc1, Co64, Colr, Decode, Dinf, Dref, Edts, Elst, ElstEntry, Encode, Esds,
+    FixedPoint, Ftyp, Hdlr, Hvc1, Jpeg, Mdhd, Mdia, Minf, Moov, Mp4a, Mvhd, Smhd, Sowt, Stbl, Stco,
+    Stsc, StscEntry, Stsd, Stss, Stsz, StszSamples, Stts, SttsEntry, Tkhd, Trak, Url, Visual, Vmhd,
+    esds,
 };
 
+use crate::sound::{AAC_FRAMES, EncodedSound, frequency_index};
 use crate::video::{Container, DecoderConfig, Muxer, Packet, VideoSpec};
 
 /// The ticks of a frame: the track's timescale is the frame rate times
@@ -67,8 +69,13 @@ impl Mp4 {
     }
 
     /// The index of the samples, for samples that start `offset` bytes
-    /// into the file.
-    fn moov(&self, config: &DecoderConfig, offset: u64) -> Result<Moov> {
+    /// into the file: the video's, then the sound's after them.
+    fn moov(
+        &self,
+        config: &DecoderConfig,
+        sound: Option<&EncodedSound>,
+        offset: u64,
+    ) -> Result<Moov> {
         let VideoSpec { width, height, fps } = self.spec;
         let count = self.sizes.len() as u32;
         let timescale = (fps * f64::from(FRAME_TICKS)).round() as u32;
@@ -103,107 +110,109 @@ impl Mp4 {
             }
             .into(),
         };
-        // One chunk, so its start is the only offset: 64 bits only past 4 GiB.
-        let (stco, co64) = match u32::try_from(offset) {
-            Ok(offset) => (
-                Some(Stco {
-                    entries: vec![offset],
-                }),
-                None,
-            ),
-            Err(_) => (
-                None,
-                Some(Co64 {
-                    entries: vec![offset],
-                }),
-            ),
-        };
+        let (stco, co64) = chunk_offset(offset);
+        let mut trak = vec![Trak {
+            tkhd: Tkhd {
+                track_id: 1,
+                duration,
+                enabled: true,
+                in_movie: true,
+                width: (width as u16).into(),
+                height: (height as u16).into(),
+                ..Tkhd::default()
+            },
+            mdia: Mdia {
+                mdhd: Mdhd {
+                    timescale,
+                    duration,
+                    language: "und".into(),
+                    ..Mdhd::default()
+                },
+                hdlr: Hdlr {
+                    handler: b"vide".into(),
+                    name: "motion".into(),
+                },
+                minf: Minf {
+                    vmhd: Some(Vmhd::default()),
+                    dinf: Dinf {
+                        dref: Dref {
+                            entries: vec![Url::default().into()],
+                        },
+                    },
+                    stbl: Stbl {
+                        stsd: Stsd {
+                            codecs: vec![codec],
+                        },
+                        stts: Stts {
+                            entries: vec![SttsEntry {
+                                sample_count: count,
+                                sample_delta: FRAME_TICKS,
+                            }],
+                        },
+                        stss: Some(Stss {
+                            entries: self.keyframes.clone(),
+                        }),
+                        // Every sample in one chunk, in order.
+                        stsc: Stsc {
+                            entries: vec![StscEntry {
+                                first_chunk: 1,
+                                samples_per_chunk: count,
+                                sample_description_index: 1,
+                            }],
+                        },
+                        stsz: Stsz {
+                            samples: StszSamples::Different {
+                                sizes: self.sizes.clone(),
+                            },
+                        },
+                        stco,
+                        co64,
+                        ..Stbl::default()
+                    },
+                    ..Minf::default()
+                },
+            },
+            ..Trak::default()
+        }];
+        let mut movie = duration;
+        if let Some(sound) = sound {
+            let heard = sound_trak(sound, timescale, offset + self.written)?;
+            movie = movie.max(heard.tkhd.duration);
+            trak.push(heard);
+        }
         Ok(Moov {
             mvhd: Mvhd {
                 timescale,
-                duration,
-                next_track_id: 2,
+                duration: movie,
+                next_track_id: trak.len() as u32 + 1,
                 ..Mvhd::default()
             },
-            trak: vec![Trak {
-                tkhd: Tkhd {
-                    track_id: 1,
-                    duration,
-                    enabled: true,
-                    in_movie: true,
-                    width: (width as u16).into(),
-                    height: (height as u16).into(),
-                    ..Tkhd::default()
-                },
-                mdia: Mdia {
-                    mdhd: Mdhd {
-                        timescale,
-                        duration,
-                        language: "und".into(),
-                        ..Mdhd::default()
-                    },
-                    hdlr: Hdlr {
-                        handler: b"vide".into(),
-                        name: "motion".into(),
-                    },
-                    minf: Minf {
-                        vmhd: Some(Vmhd::default()),
-                        dinf: Dinf {
-                            dref: Dref {
-                                entries: vec![Url::default().into()],
-                            },
-                        },
-                        stbl: Stbl {
-                            stsd: Stsd {
-                                codecs: vec![codec],
-                            },
-                            stts: Stts {
-                                entries: vec![SttsEntry {
-                                    sample_count: count,
-                                    sample_delta: FRAME_TICKS,
-                                }],
-                            },
-                            stss: Some(Stss {
-                                entries: self.keyframes.clone(),
-                            }),
-                            // Every sample in one chunk, in order.
-                            stsc: Stsc {
-                                entries: vec![StscEntry {
-                                    first_chunk: 1,
-                                    samples_per_chunk: count,
-                                    sample_description_index: 1,
-                                }],
-                            },
-                            stsz: Stsz {
-                                samples: StszSamples::Different {
-                                    sizes: self.sizes.clone(),
-                                },
-                            },
-                            stco,
-                            co64,
-                            ..Stbl::default()
-                        },
-                        ..Minf::default()
-                    },
-                },
-                ..Trak::default()
-            }],
+            trak,
             ..Moov::default()
         })
     }
 
     /// Lays the file out at `self.path`: `ftyp`, `moov`, then the samples
     /// copied from the scratch file.
-    fn lay_out(&self, config: &DecoderConfig) -> Result<()> {
+    fn lay_out(&self, config: &DecoderConfig, sound: Option<&EncodedSound>) -> Result<()> {
         let mut head = Vec::new();
         encode(&ftyp(self.container, config), &mut head)?;
         // The index holds the samples' offset, which follows the index:
-        // measure it once, then write it with the offset it gives.
+        // measure it, then write it with the offset it gives. An offset
+        // that passes 4 GiB takes 64 bits and lengthens the index, so
+        // measure again until the length holds.
+        let heard = sound.map_or_else(Vec::new, sound_bytes);
         let mut moov = Vec::new();
-        encode(&self.moov(config, 0)?, &mut moov)?;
-        let offset = (head.len() + moov.len()) as u64 + MDAT_HEADER;
-        moov.clear();
-        encode(&self.moov(config, offset)?, &mut moov)?;
+        let mut offset = 0;
+        loop {
+            moov.clear();
+            encode(&self.moov(config, sound, offset)?, &mut moov)?;
+            let start = (head.len() + moov.len()) as u64 + MDAT_HEADER;
+            if start == offset {
+                break;
+            }
+            offset = start;
+        }
         if *config == DecoderConfig::ProRes && !rename_entry(&mut moov, b"jpeg", b"ap4h") {
             return Err(Diagnostic::new(
                 Kind::Invalid,
@@ -213,7 +222,8 @@ impl Mp4 {
         head.extend_from_slice(&moov);
         head.extend_from_slice(&1u32.to_be_bytes());
         head.extend_from_slice(b"mdat");
-        head.extend_from_slice(&(MDAT_HEADER + self.written).to_be_bytes());
+        let samples = self.written + heard.len() as u64;
+        head.extend_from_slice(&(MDAT_HEADER + samples).to_be_bytes());
 
         let io = |e: io::Error| Diagnostic::io("write", &self.path, &e);
         let mut out = BufWriter::new(File::create(&self.path).map_err(io)?);
@@ -221,6 +231,7 @@ impl Mp4 {
         let mut samples = File::open(&self.scratch_path)
             .map_err(|e| Diagnostic::io("read", &self.scratch_path, &e))?;
         io::copy(&mut samples, &mut out).map_err(io)?;
+        out.write_all(&heard).map_err(io)?;
         out.into_inner()
             .map_err(|e| io(e.into_error()))?
             .sync_all()
@@ -260,16 +271,217 @@ impl Muxer for Mp4 {
         Ok(())
     }
 
-    fn finish(mut self: Box<Self>, config: &DecoderConfig) -> Result<()> {
+    fn finish(
+        mut self: Box<Self>,
+        config: &DecoderConfig,
+        sound: Option<&EncodedSound>,
+    ) -> Result<()> {
         self.scratch
             .flush()
             .map_err(|e| Diagnostic::io("write", &self.scratch_path, &e))?;
-        let laid_out = self.lay_out(config);
+        let laid_out = self.lay_out(config, sound);
         // The scratch file is ours and of no use now, whatever happened.
         let removed = fs::remove_file(&self.scratch_path);
         laid_out?;
         removed.map_err(|e| Diagnostic::io("remove", &self.scratch_path, &e))
     }
+}
+
+/// The sample table's chunk offset for one chunk at `offset`: 32 bits, or
+/// 64 past 4 GiB.
+fn chunk_offset(offset: u64) -> (Option<Stco>, Option<Co64>) {
+    match u32::try_from(offset) {
+        Ok(offset) => (
+            Some(Stco {
+                entries: vec![offset],
+            }),
+            None,
+        ),
+        Err(_) => (
+            None,
+            Some(Co64 {
+                entries: vec![offset],
+            }),
+        ),
+    }
+}
+
+/// The bytes of `sound`'s samples, as they follow the video's.
+fn sound_bytes(sound: &EncodedSound) -> Vec<u8> {
+    match sound {
+        EncodedSound::Aac { packets, .. } => packets.concat(),
+        EncodedSound::Pcm16 { data, .. } => data.clone(),
+    }
+}
+
+/// The sound's track: its samples in one chunk at `offset`, timed in its
+/// own rate, its length given in the movie's `timescale`. AAC's priming is
+/// skipped by an edit, so the sound starts with the first frame.
+fn sound_trak(sound: &EncodedSound, timescale: u32, offset: u64) -> Result<Trak> {
+    let rate = sound.rate();
+    let heard = (sound.frames() * u64::from(timescale)).div_ceil(u64::from(rate));
+    let audio = |channels: u16| Audio {
+        data_reference_index: 1,
+        channel_count: channels,
+        sample_size: 16,
+        sample_rate: FixedPoint::new(rate as u16, 0),
+    };
+    let (codec, stts, stsz, media, edts) = match sound {
+        EncodedSound::Aac {
+            packets,
+            leading,
+            channels,
+            bitrate,
+            ..
+        } => {
+            let freq_index = frequency_index(rate).ok_or_else(|| {
+                Diagnostic::new(Kind::OutOfRange, format!("AAC at {rate} Hz"))
+                    .expected("a rate AAC takes, such as 48000 Hz")
+            })?;
+            let largest = packets.iter().map(Vec::len).max().unwrap_or(0) as u32;
+            let codec = Mp4a {
+                audio: audio(*channels),
+                esds: Esds {
+                    es_desc: esds::EsDescriptor {
+                        es_id: 2,
+                        dec_config: esds::DecoderConfig {
+                            // MPEG-4 audio, an audio stream.
+                            object_type_indication: 0x40,
+                            stream_type: 0x05,
+                            buffer_size_db: [
+                                (largest >> 16) as u8,
+                                (largest >> 8) as u8,
+                                largest as u8,
+                            ]
+                            .into(),
+                            max_bitrate: *bitrate,
+                            avg_bitrate: *bitrate,
+                            dec_specific: Some(esds::DecoderSpecific {
+                                // AAC-LC.
+                                profile: 2,
+                                freq_index,
+                                chan_conf: *channels as u8,
+                                raw: Vec::new(),
+                            }),
+                            ..esds::DecoderConfig::default()
+                        },
+                        ..esds::EsDescriptor::default()
+                    },
+                },
+                btrt: None,
+                taic: None,
+            }
+            .into();
+            let count = packets.len() as u32;
+            let edts = Edts {
+                elst: Some(Elst {
+                    entries: vec![ElstEntry {
+                        segment_duration: heard,
+                        media_time: Some(u64::from(*leading)),
+                        media_rate: FixedPoint::new(1, 0),
+                    }],
+                }),
+            };
+            (
+                codec,
+                SttsEntry {
+                    sample_count: count,
+                    sample_delta: AAC_FRAMES,
+                },
+                Stsz {
+                    samples: StszSamples::Different {
+                        sizes: packets.iter().map(|p| p.len() as u32).collect(),
+                    },
+                },
+                u64::from(count) * u64::from(AAC_FRAMES),
+                Some(edts),
+            )
+        }
+        EncodedSound::Pcm16 {
+            frames, channels, ..
+        } => {
+            let count = u32::try_from(*frames).map_err(|_| {
+                Diagnostic::new(Kind::OutOfRange, format!("{frames} frames of sound"))
+                    .expected("under 2^32 frames of sound")
+            })?;
+            let codec = Sowt {
+                audio: audio(*channels),
+                pcmc: None,
+                chnl: None,
+                btrt: None,
+            }
+            .into();
+            (
+                codec,
+                SttsEntry {
+                    sample_count: count,
+                    sample_delta: 1,
+                },
+                Stsz {
+                    samples: StszSamples::Identical {
+                        count,
+                        size: 2 * u32::from(*channels),
+                    },
+                },
+                *frames,
+                None,
+            )
+        }
+    };
+    let (stco, co64) = chunk_offset(offset);
+    let samples = stts.sample_count;
+    Ok(Trak {
+        tkhd: Tkhd {
+            track_id: 2,
+            duration: heard,
+            enabled: true,
+            in_movie: true,
+            volume: FixedPoint::new(1, 0),
+            ..Tkhd::default()
+        },
+        edts,
+        mdia: Mdia {
+            mdhd: Mdhd {
+                timescale: rate,
+                duration: media,
+                language: "und".into(),
+                ..Mdhd::default()
+            },
+            hdlr: Hdlr {
+                handler: b"soun".into(),
+                name: "motion".into(),
+            },
+            minf: Minf {
+                smhd: Some(Smhd::default()),
+                dinf: Dinf {
+                    dref: Dref {
+                        entries: vec![Url::default().into()],
+                    },
+                },
+                stbl: Stbl {
+                    stsd: Stsd {
+                        codecs: vec![codec],
+                    },
+                    stts: Stts {
+                        entries: vec![stts],
+                    },
+                    stsc: Stsc {
+                        entries: vec![StscEntry {
+                            first_chunk: 1,
+                            samples_per_chunk: samples,
+                            sample_description_index: 1,
+                        }],
+                    },
+                    stsz,
+                    stco,
+                    co64,
+                    ..Stbl::default()
+                },
+                ..Minf::default()
+            },
+        },
+        ..Trak::default()
+    })
 }
 
 /// The file type: QuickTime's, or ISO base media with the codec's brand

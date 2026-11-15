@@ -6,7 +6,8 @@
 //! 1. [`colour`] turns each frame into BT.709 Y′CbCr 4:2:0, the planes every
 //!    codec gets;
 //! 2. a [`VideoEncoder`] compresses them into packets;
-//! 3. a [`Muxer`] writes the packets into a container.
+//! 3. a [`Muxer`] writes the packets into a container, with the sound
+//!    [`encode_sound`] made of the [`Soundtrack`] the writer was given.
 //!
 //! Every codec follows the licence policy of [D13]: nothing GPL and no
 //! patent-encumbered software encoder is compiled in.
@@ -17,11 +18,13 @@
 mod av1;
 pub mod colour;
 mod mp4;
+mod sound;
 #[cfg(target_os = "macos")]
 mod toolbox;
 mod video;
 
 pub use colour::{Ayuv16, Planes};
+pub use sound::{AAC_FRAMES, EncodedSound, Soundtrack, encode_sound};
 pub use video::{
     Codec, Container, DecoderConfig, Frame, Muxer, Packet, VideoEncoder, VideoQuality, VideoSpec,
     VideoWriter,
