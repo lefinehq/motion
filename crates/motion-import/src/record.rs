@@ -9,6 +9,7 @@ use binrw::BinRead;
 use binrw::helpers::until_eof;
 use motion_format::{Diagnostic, Kind, Result};
 
+use crate::model::AutoOrient;
 use crate::rifx::{Name, Tag};
 
 /// A record that is the whole body of one kind of chunk.
@@ -252,6 +253,23 @@ impl Cdta {
     pub const TO_END: u32 = u32::MAX;
 }
 
+/// `prin`: the 3D renderer of a composition, by its match name and the
+/// name its menu shows
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#prin)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Prin {
+    /// The renderer's match name, `ADBE Escher` for the classic one.
+    #[br(seek_before = at(0x04), map = |bytes: [u8; 48]| text(&bytes))]
+    pub match_name: String,
+    /// The name its menu shows.
+    #[br(map = |bytes: [u8; 48]| text(&bytes))]
+    pub name: String,
+}
+
+impl Record for Prin {
+    const NAME: Name = Name::chunk(b"prin");
+}
+
 /// `ldta`: a layer's id, timing, switches, blending and links
 /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#ldta)).
 /// The record is 160 bytes before file version 94 and 164 from it on; only
@@ -300,12 +318,22 @@ impl Record for Ldta {
 impl Ldta {
     /// Guide layer, in flags A.
     pub const GUIDE: (usize, u8) = (0, 0x02);
+    /// Auto-orient: each character of a per-character 3D text layer faces
+    /// the camera, in flags A.
+    pub const CHARACTERS_TOWARD_CAMERA: (usize, u8) = (0, 0x10);
+    /// Auto-orient along the motion path, in flags B.
+    pub const ALONG_PATH: (usize, u8) = (1, 0x01);
     /// Adjustment layer, in flags B.
     pub const ADJUSTMENT: (usize, u8) = (1, 0x02);
     /// 3D layer, in flags B.
     pub const THREE_D: (usize, u8) = (1, 0x04);
     /// Solo, in flags B.
     pub const SOLO: (usize, u8) = (1, 0x08);
+    /// Auto-orient towards the camera, on a 3D AV layer, in flags B.
+    pub const TOWARDS_CAMERA: (usize, u8) = (1, 0x20);
+    /// Auto-orient towards the point of interest, on a camera or a light
+    /// (a two-node rig), in flags B.
+    pub const TOWARDS_POINT: (usize, u8) = (1, 0x40);
     /// Null layer, in flags B.
     pub const NULL: (usize, u8) = (1, 0x80);
     /// Video enabled, in flags C.
@@ -323,6 +351,23 @@ impl Ldta {
     /// Whether the switch at `(byte, mask)` is on.
     pub fn is_on(&self, (byte, mask): (usize, u8)) -> bool {
         self.flags.get(byte).is_some_and(|flags| flags & mask != 0)
+    }
+
+    /// How the layer turns by itself. The setting is spread over four bits,
+    /// of which the project sets at most one.
+    pub fn auto_orient(&self) -> AutoOrient {
+        [
+            (Ldta::ALONG_PATH, AutoOrient::AlongPath),
+            (Ldta::TOWARDS_CAMERA, AutoOrient::TowardsCamera),
+            (Ldta::TOWARDS_POINT, AutoOrient::TowardsPoint),
+            (
+                Ldta::CHARACTERS_TOWARD_CAMERA,
+                AutoOrient::CharactersTowardCamera,
+            ),
+        ]
+        .into_iter()
+        .find_map(|(bit, orient)| self.is_on(bit).then_some(orient))
+        .unwrap_or(AutoOrient::Off)
     }
 }
 

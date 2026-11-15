@@ -11,11 +11,12 @@
 
 use motion_expr::Dialect;
 use motion_expr::fit::{Fitted, fit, fit_together};
+use motion_format::ValueType;
 use motion_format::property::Target;
 
 use super::Walk;
 use super::items::{Place, plural, range_text};
-use super::keys::{Convert, Written, fitted};
+use super::keys::{Convert, Written, every_frame, fitted};
 use super::report::{ExpressionReport, Outcome};
 use crate::bake::{Bake, Sampled, Samples};
 use crate::model::{Property, Stream, TextDocument, Value};
@@ -79,13 +80,17 @@ impl<'p> Walk<'p> {
     }
 
     /// The tracks `bake` becomes on a property written to `target`
-    /// (`found` in the registry) through `convert`, with its report, or
-    /// `None`, reported, when its values are not of the kind the row takes.
+    /// (`found` in the registry) through `convert`, and its third number to
+    /// `depth` where the row splits a 3D vector, with its report, or `None`,
+    /// reported, when its values are not of the kind the row takes. An
+    /// orientation, whose keys turn the shortest way rather than angle by
+    /// angle, is keyed at every frame it was evaluated.
     pub(super) fn baked_tracks(
         &mut self,
         bake: &Bake,
         property: &Property,
         (target, found): (&str, Option<Target>),
+        depth: Option<(&str, Target)>,
         convert: Convert,
         place: &Place<'_>,
     ) -> Option<Vec<BakedTrack>> {
@@ -120,13 +125,43 @@ impl<'p> Walk<'p> {
                 ),
             );
         }
-        let channels = &channels;
         let template = property.value.value_at(samples.times[0]);
         let spatial = found.is_some_and(Target::moves_in_space);
         let mut tracks = Vec::new();
         let mut errors = Vec::new();
         let mut keys = 0;
-        if spatial && let Some(found) = found {
+        // The depth of a split vector fits on its own, as a number.
+        let (channels, tolerances) = match depth {
+            Some((name, target)) if channels.len() > 2 && tolerances.len() > 2 => {
+                let one = fit(&samples.times, &channels[2], tolerances[2]);
+                errors.push(one.max_error);
+                let fits = std::slice::from_ref(&one);
+                let written = match still(fits) {
+                    true => {
+                        Written::Value(Convert::Depth.value(&Value::Number(one.keys[0].value))?)
+                    }
+                    false => {
+                        keys += one.keys.len();
+                        fitted(fits, &Value::Number(0.0), Convert::Depth, place.clock)?
+                    }
+                };
+                tracks.push(BakedTrack {
+                    name: name.to_owned(),
+                    component: target.component.is_some().then_some(target),
+                    written,
+                });
+                (&channels[..2], &tolerances[..2])
+            }
+            _ => (&channels[..], &tolerances[..]),
+        };
+        if found.is_some_and(|t| t.value_type() == ValueType::Orientation) {
+            keys = samples.times.len();
+            tracks.push(BakedTrack {
+                name: target.to_owned(),
+                component: None,
+                written: every_frame(&samples.times, channels, &template, convert, place.clock)?,
+            });
+        } else if spatial && let Some(found) = found {
             let names = found.prop.spec().components;
             for (i, name) in names.iter().enumerate() {
                 let (Some(values), Some(&tolerance)) = (channels.get(i), tolerances.get(i)) else {

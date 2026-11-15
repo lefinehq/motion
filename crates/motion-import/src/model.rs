@@ -115,6 +115,8 @@ pub struct Composition {
     pub work_area: Span,
     /// Its motion blur: whether it is on, and its shutter.
     pub motion_blur: MotionBlur,
+    /// The renderer that draws its 3D layers, where the file names one.
+    pub renderer: Option<Renderer>,
     /// The layers, top first.
     pub layers: Vec<Layer>,
     /// The controls of the template panel made from it, in a `.mogrt`'s
@@ -123,6 +125,27 @@ pub struct Composition {
     /// [D53]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d53-a-mogrt-imports-as-its-project-with-its-controls-as-slots
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub panel: Vec<PanelControl>,
+}
+
+/// The renderer that draws a composition's 3D layers
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#prin)).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Renderer {
+    /// Its match name.
+    pub match_name: String,
+    /// The name its menu shows.
+    pub name: String,
+}
+
+impl Renderer {
+    /// The match name of the classic renderer: layers are planes sorted by
+    /// depth, which is what the scene draws.
+    pub const CLASSIC: &str = "ADBE Escher";
+
+    /// Whether it is the classic renderer.
+    pub fn is_classic(&self) -> bool {
+        self.match_name == Renderer::CLASSIC
+    }
 }
 
 /// A composition's motion blur
@@ -535,6 +558,29 @@ pub struct Switches {
     /// one it sits in, unclipped; on a text or shape layer it is drawn at
     /// every scale, which a vector renderer always does.
     pub collapse: bool,
+    /// How it turns by itself.
+    pub orient: AutoOrient,
+}
+
+/// How a layer turns by itself, as it moves or towards what it looks at
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#ldta),
+/// flags A bit 4, flags B bits 0, 5 and 6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, strum::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum AutoOrient {
+    /// It does not.
+    #[default]
+    Off,
+    /// It turns along its motion path.
+    AlongPath,
+    /// A 3D layer turns to face the composition's camera.
+    TowardsCamera,
+    /// A camera or a light turns towards its point of interest, its anchor
+    /// point: a two-node rig.
+    TowardsPoint,
+    /// Each character of a per-character 3D text layer faces the camera.
+    CharactersTowardCamera,
 }
 
 /// Declares a unit enum read from one of the file's numeric codes: the

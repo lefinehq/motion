@@ -6,7 +6,8 @@ use serde_json::{Value as Json, json};
 
 use motion_format::Curve;
 
-use crate::model::{Color, Keyframe, Path, Stream, Value, Vertex};
+use crate::eval::Depth;
+use crate::model::{Color, Interpolation, Keyframe, Path, Stream, Value, Vertex};
 
 /// How a project value becomes a scene value.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -21,6 +22,12 @@ pub(crate) enum Convert {
     Times(f64),
     /// A 2D or 3D vector, to a point; a 3D vector's depth is dropped.
     Point,
+    /// The third number of a 3D vector, as it is: the depth of a point that
+    /// [`Convert::Point`] writes, or a scale's factor along depth.
+    Depth,
+    /// Three angles in degrees, as they are: an orientation, which turns
+    /// by one ease over the angle between its keys.
+    Angles,
     /// A vector in percent, to a point of fractions.
     PointPercent,
     /// A point in fractions of a layer's effect space, as an effect stores
@@ -77,6 +84,15 @@ impl Convert {
         }
     }
 
+    /// The first dimension of the project's value this converts, whose
+    /// eases its curves take: the depth is the third.
+    fn first_dim(self) -> usize {
+        match self {
+            Convert::Depth => 2,
+            _ => 0,
+        }
+    }
+
     /// How many components the scene value has, for eases per component.
     fn dims(self) -> usize {
         match self {
@@ -101,6 +117,8 @@ impl Convert {
                 Convert::Point | Convert::PointPercent | Convert::Sized { .. },
                 Value::Vector2([x, y]) | Value::Vector3([x, y, _]),
             ) => Some(json!([num(scene(*x, 0)), num(scene(*y, 1))])),
+            (Convert::Depth, Value::Vector3([_, _, z]) | Value::Number(z)) => Some(num(*z)),
+            (Convert::Angles, Value::Vector3(angles)) => Some(json!(angles.map(num))),
             (Convert::Color, Value::Color(color)) => Some(color_json(color)),
             (Convert::Path, Value::Path(path)) => Some(Json::String(svg(path))),
             (Convert::PathIn(size), Value::Path(path)) => {
@@ -366,6 +384,142 @@ pub(super) fn written(
     }
 }
 
+/// A stream of 3D vectors as a point and its depth: the point through
+/// `convert`, the depth through [`Convert::Depth`], or `None` for the depth
+/// where the stream holds no third number. `spatial` streams move along a
+/// path in space ([`spatial_split`]); the others key each part as it is,
+/// the depth with its own ease.
+pub(super) fn split(
+    stream: &Stream,
+    convert: Convert,
+    spatial: bool,
+    clock: Clock,
+    frame_rate: f64,
+) -> Option<(Written, Option<Written>)> {
+    match (stream, spatial) {
+        (Stream::Animated(keys), true) => spatial_split(stream, keys, convert, clock, frame_rate),
+        _ => Some((
+            written(stream, convert, spatial, clock)?,
+            written(stream, Convert::Depth, false, clock),
+        )),
+    }
+}
+
+/// Keys of points with depth that move along a path in space, as a
+/// spatial track of the point and a track of its depth. A span that stays
+/// at one depth keeps its flat path; a straight one keeps its ease, its
+/// speed along the line in space shared out to the point and the depth by
+/// how far each moves; a span whose path bends in depth is keyed at every
+/// frame of the composition between its keys, from our evaluation of the
+/// path ([`crate::eval::Path3`]), as the scene's paths are flat.
+fn spatial_split(
+    stream: &Stream,
+    keys: &[Keyframe],
+    convert: Convert,
+    clock: Clock,
+    frame_rate: f64,
+) -> Option<(Written, Option<Written>)> {
+    if !keys.iter().all(|k| matches!(k.value, Value::Vector3(_))) {
+        return Some((written(stream, convert, true, clock)?, None));
+    }
+    let stretch = clock.stretch.abs();
+    let factor = f64::midpoint(convert.factor(0), convert.factor(1)) * stretch;
+    let key = |time: f64, value: Json, curve: Option<Json>, path: Option<Json>| {
+        let mut object = serde_json::Map::new();
+        object.insert("t".into(), Json::String(clock.time(time)));
+        object.insert("v".into(), value);
+        if let Some(curve) = curve {
+            object.insert("curve".into(), curve);
+        }
+        if let Some(path) = path {
+            object.insert("path".into(), path);
+        }
+        Json::Object(object)
+    };
+    let linear = || Some(Json::String(curve_text(Curve::Linear)));
+    let (mut points, mut depths) = (Vec::new(), Vec::new());
+    let mut bends = false;
+    for (i, at) in keys.iter().enumerate() {
+        let (point, depth) = (convert.value(&at.value)?, Convert::Depth.value(&at.value)?);
+        let Some(next) = keys.get(i + 1) else {
+            points.push(key(at.time, point, None, None));
+            depths.push(key(at.time, depth, None, None));
+            break;
+        };
+        let held = at.out_interpolation == Interpolation::Hold;
+        match crate::eval::depth(at, next) {
+            _ if held => {
+                let hold = Some(Json::String(curve_text(Curve::Hold)));
+                points.push(key(at.time, point, hold.clone(), None));
+                depths.push(key(at.time, depth, hold, None));
+            }
+            Depth::Level => {
+                let curve = curve(at, next, convert, true, clock);
+                points.push(key(at.time, point, Some(curve), bend(at, next)));
+                depths.push(key(at.time, depth, linear(), None));
+            }
+            Depth::Straight => {
+                let [from, to] = [at, next].map(|k| k.value.numbers().unwrap_or_default());
+                let moved = |dims: std::ops::Range<usize>| {
+                    dims.map(|d| (to[d] - from[d]).powi(2)).sum::<f64>().sqrt()
+                };
+                let (flat, space) = (moved(0..2), moved(0..3));
+                // The share of the speed along the line each part takes.
+                let share = |part: f64| if space > 0.0 { part / space } else { 0.0 };
+                let ease = crate::eval::curve(at, next, 0);
+                let point_curve = curves(std::iter::once(scaled(ease, factor * share(flat))));
+                let depth_curve = curves(std::iter::once(scaled(
+                    ease,
+                    stretch * share(to[2] - from[2]),
+                )));
+                points.push(key(at.time, point, Some(point_curve), None));
+                depths.push(key(at.time, depth, Some(depth_curve), None));
+            }
+            Depth::Bent => {
+                bends = true;
+                points.push(key(at.time, point, linear(), None));
+                depths.push(key(at.time, depth, linear(), None));
+                for time in frames_between(at.time, next.time, frame_rate) {
+                    let value = stream.value_at(time);
+                    points.push(key(time, convert.value(&value)?, linear(), None));
+                    depths.push(key(time, Convert::Depth.value(&value)?, linear(), None));
+                }
+            }
+        }
+    }
+    let track = |keys: Vec<Json>| {
+        let first = keys.first()?.get("v")?.clone();
+        Some(Written::Track {
+            keys: Json::Array(keys),
+            first,
+        })
+    };
+    // A depth that never moves is one value.
+    let first_depth = depths.first()?.get("v")?.clone();
+    let still = !bends && depths.iter().all(|k| k.get("v") == Some(&first_depth));
+    let depth = match still {
+        true => Written::Value(first_depth),
+        false => track(depths)?,
+    };
+    Some((track(points)?, Some(depth)))
+}
+
+/// The times of a composition's frames strictly between `from` and `to`, in
+/// seconds, at `frame_rate`.
+fn frames_between(from: f64, to: f64, frame_rate: f64) -> impl Iterator<Item = f64> {
+    let rate = frame_rate.max(1.0);
+    // A frame closer to a key than this is the key's own.
+    let near = 1e-6;
+    #[expect(clippy::cast_possible_truncation, reason = "frames of a composition")]
+    let (first, last) = (
+        (from * rate).floor() as i64 + 1,
+        (to * rate).ceil() as i64 - 1,
+    );
+    (first..=last)
+        .map(move |n| n as f64 / rate)
+        .filter(move |&t| t > from + near && t < to - near)
+}
+
 /// The curve from `key` to `next` ([`crate::eval::curve`]), one per component
 /// where the project keeps one per dimension, with speeds per second of the
 /// layer's own time, which a stretch slows.
@@ -384,7 +538,7 @@ fn curve(key: &Keyframe, next: &Keyframe, convert: Convert, spatial: bool, clock
         }
         false => curves((0..convert.dims()).map(|dim| {
             scaled(
-                crate::eval::curve(key, next, dim),
+                crate::eval::curve(key, next, convert.first_dim() + dim),
                 convert.factor(dim) * stretch,
             )
         })),
@@ -516,6 +670,39 @@ pub(super) fn fitted(
     Some(Written::Track {
         keys: Json::Array(written),
         first: first?,
+    })
+}
+
+/// Samples at `times`, one channel per number of `template`'s kind, as a
+/// track keyed at each of them, straight from one to the next.
+pub(super) fn every_frame(
+    times: &[f64],
+    channels: &[Vec<f64>],
+    template: &Value,
+    convert: Convert,
+    clock: Clock,
+) -> Option<Written> {
+    let keys: Vec<Json> = times
+        .iter()
+        .enumerate()
+        .map(|(i, &time)| {
+            let numbers: Vec<f64> = channels
+                .iter()
+                .map(|c| c.get(i).copied())
+                .collect::<Option<_>>()?;
+            let mut object = serde_json::Map::new();
+            object.insert("t".into(), Json::String(clock.time(time)));
+            object.insert("v".into(), convert.value(&template.with_numbers(&numbers))?);
+            if i + 1 < times.len() {
+                object.insert("curve".into(), Json::String(curve_text(Curve::Linear)));
+            }
+            Some(Json::Object(object))
+        })
+        .collect::<Option<_>>()?;
+    let first = keys.first()?.get("v")?.clone();
+    Some(Written::Track {
+        keys: Json::Array(keys),
+        first,
     })
 }
 

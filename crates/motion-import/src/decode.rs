@@ -11,11 +11,11 @@ use motion_format::{Diagnostic, Kind, Place, Result};
 
 use crate::model::{
     Color, Composition, EffectDefinition, ExpressionEngine, Footage, Item, ItemKind, Layer,
-    MotionBlur, Project, Source, Span, Switches, Version,
+    MotionBlur, Project, Renderer, Source, Span, Switches, Version,
 };
 use crate::record::{
-    self, Alias, Cdta, Head, Idta, Ldta, Nhed, PlaceholderOpti, Ratio, Record, SolidOpti, Sspc,
-    text,
+    self, Alias, Cdta, Head, Idta, Ldta, Nhed, PlaceholderOpti, Prin, Ratio, Record, SolidOpti,
+    Sspc, text,
 };
 use crate::rifx::{self, Chunk, Name};
 
@@ -32,6 +32,8 @@ const ITEM: Name = Name::list(b"Item");
 const SFDR: Name = Name::list(b"Sfdr");
 /// One layer of a composition.
 const LAYR: Name = Name::list(b"Layr");
+/// A composition's 3D renderer.
+const PRIN: Name = Name::list(b"PRin");
 /// A footage source.
 const PIN: Name = Name::list(b"Pin ");
 /// A file path, around its `alas`.
@@ -232,6 +234,13 @@ impl Decoder {
                     _ => cdta.work_end.value(),
                 },
             },
+            renderer: match scan.list(PRIN)? {
+                Some(mut prin) => prin.optional::<Prin>()?.map(|prin| Renderer {
+                    match_name: prin.match_name,
+                    name: prin.name,
+                }),
+                None => None,
+            },
             layers: scan
                 .lists(LAYR)
                 .map(|layer| self.layer(layer?))
@@ -280,6 +289,7 @@ impl Decoder {
                 null: ldta.is_on(Ldta::NULL),
                 adjustment: ldta.is_on(Ldta::ADJUSTMENT),
                 collapse: ldta.is_on(Ldta::COLLAPSE),
+                orient: ldta.auto_orient(),
             },
             blend_mode: ldta.blend_mode.into(),
             track_matte: ldta.track_matte.into(),

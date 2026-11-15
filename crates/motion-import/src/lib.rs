@@ -26,11 +26,11 @@ mod test_support;
 
 pub use decode::decode;
 pub use model::{
-    BaselineOption, BlendMode, Caps, CharacterStyle, Child, Color, ComposedLine, ComposedSegment,
-    Composition, Control, ControlKind, ControlTarget, Ease, EffectDefinition, Expression,
-    ExpressionEngine, Footage, Group, Interpolation, Item, ItemKind, Justification, Kerning,
-    Keyframe, Layer, LayerKind, LeadingType, LineJoin, PanelControl, ParagraphStyle, Parameter,
-    Path, PathStep, Project, Property, Reason, Run, Source, Span, Spatial, Stream, Switches,
-    TextDocument, TextFrame, TrackMatte, Value, Version, Vertex,
+    AutoOrient, BaselineOption, BlendMode, Caps, CharacterStyle, Child, Color, ComposedLine,
+    ComposedSegment, Composition, Control, ControlKind, ControlTarget, Ease, EffectDefinition,
+    Expression, ExpressionEngine, Footage, Group, Interpolation, Item, ItemKind, Justification,
+    Kerning, Keyframe, Layer, LayerKind, LeadingType, LineJoin, PanelControl, ParagraphStyle,
+    Parameter, Path, PathStep, Project, Property, Reason, Renderer, Run, Source, Span, Spatial,
+    Stream, Switches, TextDocument, TextFrame, TrackMatte, Value, Version, Vertex,
 };
 pub use report::Report;

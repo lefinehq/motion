@@ -167,6 +167,7 @@ pub(crate) fn sample_project() -> Project {
             a: 1.0,
         },
         motion_blur: crate::model::MotionBlur::default(),
+        renderer: None,
         work_area: Span {
             start: 0.0,
             end: 4.0,
@@ -533,6 +534,7 @@ pub(crate) mod build {
                 a: 1.0,
             },
             motion_blur: crate::model::MotionBlur::default(),
+            renderer: None,
             work_area: Span {
                 start: 0.0,
                 end: duration,

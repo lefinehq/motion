@@ -13,6 +13,11 @@ use super::keys::Convert;
 pub(super) enum To {
     /// A property of the item, or one component of it, by its scene name.
     Prop(&'static str),
+    /// A 3D vector as two properties: its first two numbers to the point
+    /// property named first, through the row's conversion, and its third
+    /// to the number property named second, its depth ([`Convert::Depth`]).
+    /// A point that moves along a path moves along it in space.
+    Split(&'static str, &'static str),
     /// A setting of the item: the project's code for each choice.
     Setting(&'static str, &'static [(i64, &'static str)]),
     /// The layer the kind's input key names, from a layer parameter.
@@ -41,6 +46,13 @@ pub(super) enum Missing {
     Color([f64; 4]),
     /// The centre of the layer's composition.
     CompCentre,
+    /// A camera's zoom: a 50 mm lens on 36 mm film over the composition's
+    /// width ([`motion_format::property::default_zoom`]).
+    CameraZoom,
+    /// A camera's position: the composition's centre, as far in front of
+    /// it as the default zoom ([`Missing::CameraZoom`]), so it sees the
+    /// plane at depth 0 at 100 %.
+    CameraPosition,
     /// The centre of the layer's source, or the origin for a layer without one.
     SourceCentre,
     /// The default the project's effect definition gives.
@@ -298,8 +310,8 @@ const SHAPES_OF_RANGE: &[(i64, &str)] = &[
     (6, "smooth"),
 ];
 
-use Convert::{Color, Level, Number, Path, Percent, Point, PointPercent, Times};
-use Missing::{Absent, CompCentre, Parameter, SourceCentre};
+use Convert::{Angles, Color, Level, Number, Path, Percent, Point, PointPercent, Times};
+use Missing::{Absent, CameraPosition, CameraZoom, CompCentre, Parameter, SourceCentre};
 
 /// The rows of the transform effect that do not depend on whether its scale
 /// is uniform. Its points are fractions of the layer's size, which the walk
@@ -602,46 +614,268 @@ static TRANSFORM_EFFECT_APART: [Row; 13] = transform_effect_rows!(
     row("ADBE Geometry2-0004", To::Prop("scale-x"), Percent, Absent)
 );
 
-/// A layer's transform, in `ADBE Transform Group`. Layer scale and opacity
-/// are fractions in the project already.
-pub(super) static TRANSFORM: [Row; 10] = [
+/// Why the depth and turns out of the screen of a flat layer are ignored.
+const FLAT: &str = "depth and turns out of the screen on a flat layer, which only a 3D layer takes";
+
+/// A layer's transform, in `ADBE Transform Group`: `$anchor` and
+/// `$position` are where the anchor point and the position go, then the
+/// rows for depth, scale and opacity. Layer scale and opacity are
+/// fractions in the project already.
+macro_rules! layer_transform {
+    (
+        $anchor:expr,
+        $position:expr,
+        $depth:expr,
+        $scale:expr,
+        $orientation:expr,
+        $turn_x:expr,
+        $turn_y:expr,
+        $opacity:expr $(,)?
+    ) => {
+        [
+            $anchor,
+            $position,
+            row("ADBE Position_0", To::Prop("x"), Number, Absent),
+            row("ADBE Position_1", To::Prop("y"), Number, Absent),
+            $depth,
+            $scale,
+            $orientation,
+            $turn_x,
+            $turn_y,
+            row(
+                "ADBE Rotate Z",
+                To::Prop("rotate"),
+                Number,
+                Missing::Number(0.0),
+            ),
+            $opacity,
+            row(
+                "ADBE Envir Appear in Reflect",
+                To::Ignore("environment reflections of 3D layers"),
+                Number,
+                Absent,
+            ),
+        ]
+    };
+}
+
+/// The opacity of a layer that draws.
+const OPACITY: Row = row(
+    "ADBE Opacity",
+    To::Prop("opacity"),
+    Number,
+    Missing::Number(1.0),
+);
+
+/// The position of a 3D layer or a camera, with its depth.
+const POSITION_3D: Row = row(
+    "ADBE Position",
+    To::Split("position", "z"),
+    Point,
+    CompCentre,
+);
+
+/// The depth of a separated position.
+const DEPTH: Row = row("ADBE Position_2", To::Prop("z"), Number, Absent);
+
+/// A 3D layer's orientation and its turns about X and Y.
+const ORIENTATION: Row = row("ADBE Orientation", To::Prop("orient"), Angles, Absent);
+const TURN_X: Row = row(
+    "ADBE Rotate X",
+    To::Prop("rotate-x"),
+    Number,
+    Missing::Number(0.0),
+);
+const TURN_Y: Row = row(
+    "ADBE Rotate Y",
+    To::Prop("rotate-y"),
+    Number,
+    Missing::Number(0.0),
+);
+
+/// A flat layer's transform: what holds depth or turns out of the screen
+/// is ignored, as the original ignores it on a flat layer.
+pub(super) static TRANSFORM: [Row; 12] = layer_transform!(
     row("ADBE Anchor Point", To::Prop("anchor"), Point, SourceCentre),
     row("ADBE Position", To::Prop("position"), Point, CompCentre),
-    row("ADBE Position_0", To::Prop("x"), Number, Absent),
-    row("ADBE Position_1", To::Prop("y"), Number, Absent),
-    row(
-        "ADBE Position_2",
-        To::OnlyDefault("depth on a 3D layer"),
-        Number,
-        Missing::Number(0.0),
-    ),
+    row("ADBE Position_2", To::Ignore(FLAT), Number, Absent),
     row(
         "ADBE Scale",
         To::Prop("scale"),
         Point,
         Missing::Vector([1.0, 1.0]),
     ),
+    row("ADBE Orientation", To::Ignore(FLAT), Point, Absent),
+    row("ADBE Rotate X", To::Ignore(FLAT), Number, Absent),
+    row("ADBE Rotate Y", To::Ignore(FLAT), Number, Absent),
+    OPACITY,
+);
+
+/// A 3D layer's transform ([D58]): its anchor point, position and scale
+/// keep their depth, and it turns about X and Y and by its orientation.
+///
+/// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+pub(super) static TRANSFORM_3D: [Row; 12] = layer_transform!(
     row(
-        "ADBE Rotate Z",
-        To::Prop("rotate"),
+        "ADBE Anchor Point",
+        To::Split("anchor", "anchor-z"),
+        Point,
+        SourceCentre,
+    ),
+    POSITION_3D,
+    DEPTH,
+    row(
+        "ADBE Scale",
+        To::Split("scale", "scale-z"),
+        Point,
+        Missing::Vector([1.0, 1.0]),
+    ),
+    ORIENTATION,
+    TURN_X,
+    TURN_Y,
+    OPACITY,
+);
+
+/// A camera's or a light's transform: `$anchor` is where its point of
+/// interest goes; a camera's scale and opacity change nothing, and a
+/// light's position, which the project leaves out, defaults as a layer's.
+macro_rules! viewer_transform {
+    ($anchor:expr, $position:expr, $why:expr $(,)?) => {
+        layer_transform!(
+            $anchor,
+            $position,
+            DEPTH,
+            row("ADBE Scale", To::Ignore($why), Point, Absent),
+            ORIENTATION,
+            TURN_X,
+            TURN_Y,
+            row("ADBE Opacity", To::Ignore($why), Number, Absent),
+        )
+    };
+}
+
+/// Why a camera's scale and opacity are ignored.
+const CAMERA_DRAWS_NOTHING: &str = "the scale and opacity of a camera, which draws nothing";
+
+/// The position of a camera, whose default sees the plane at depth 0 at 100 %.
+const CAMERA_POSITION: Row = row(
+    "ADBE Position",
+    To::Split("position", "z"),
+    Point,
+    CameraPosition,
+);
+
+/// A two-node camera's transform: it turns towards its point of interest,
+/// its anchor point, which becomes its `target`. Every camera of the
+/// samples stores its point of interest, so its default is unmeasured; it
+/// is taken as an anchor point's.
+pub(super) static CAMERA_AIMED: [Row; 12] = viewer_transform!(
+    row(
+        "ADBE Anchor Point",
+        To::Split("target", "target-z"),
+        Point,
+        SourceCentre,
+    ),
+    CAMERA_POSITION,
+    CAMERA_DRAWS_NOTHING,
+);
+
+/// A one-node camera's transform: it looks along its own depth axis, and
+/// its point of interest changes nothing.
+pub(super) static CAMERA_FREE: [Row; 12] = viewer_transform!(
+    row(
+        "ADBE Anchor Point",
+        To::Ignore("the point of interest of a camera that does not turn towards it"),
+        Point,
+        Absent,
+    ),
+    CAMERA_POSITION,
+    CAMERA_DRAWS_NOTHING,
+);
+
+/// A light's transform, for the layers it moves: the light itself draws
+/// nothing (reported), and neither does its point of interest.
+pub(super) static LIGHT_TRANSFORM: [Row; 12] = viewer_transform!(
+    row(
+        "ADBE Anchor Point",
+        To::Ignore("the point of interest of a light, which is drawn as nothing"),
+        Point,
+        Absent,
+    ),
+    POSITION_3D,
+    "the scale and opacity of a light, which is drawn as nothing",
+);
+
+/// Why the settings of depth of field are ignored.
+const DEPTH_OF_FIELD: &str = "a setting of depth of field, which is reported where it is on";
+
+/// A camera's options, in `ADBE Camera Options Group`: its zoom, and depth
+/// of field, which the scene does not draw.
+pub(super) static CAMERA_OPTIONS: [Row; 12] = [
+    row("ADBE Camera Zoom", To::Prop("zoom"), Number, CameraZoom),
+    row(
+        "ADBE Camera Depth of Field",
+        To::OnlyDefault("depth of field (drawn sharp)"),
         Number,
         Missing::Number(0.0),
     ),
     row(
-        "ADBE Opacity",
-        To::Prop("opacity"),
+        "ADBE Camera Focus Distance",
+        To::Ignore(DEPTH_OF_FIELD),
         Number,
-        Missing::Number(1.0),
-    ),
-    row(
-        "ADBE Orientation",
-        To::OnlyDefault("3D orientation"),
-        Point,
         Absent,
     ),
     row(
-        "ADBE Envir Appear in Reflect",
-        To::Ignore("environment reflections of 3D layers"),
+        "ADBE Camera Aperture",
+        To::Ignore(DEPTH_OF_FIELD),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Camera Blur Level",
+        To::Ignore(DEPTH_OF_FIELD),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Iris Shape",
+        To::Ignore(DEPTH_OF_FIELD),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Iris Rotation",
+        To::Ignore(DEPTH_OF_FIELD),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Iris Roundness",
+        To::Ignore(DEPTH_OF_FIELD),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Iris Aspect Ratio",
+        To::Ignore(DEPTH_OF_FIELD),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Iris Diffraction Fringe",
+        To::Ignore(DEPTH_OF_FIELD),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Iris Highlight Gain",
+        To::Ignore(DEPTH_OF_FIELD),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Iris Highlight Threshold",
+        To::Ignore(DEPTH_OF_FIELD),
         Number,
         Absent,
     ),
@@ -2677,11 +2911,14 @@ pub(super) static POLICIES: [(&str, Policy); 28] = [
     ),
     (
         "ADBE Extrsn Options Group",
-        Policy::Ignore("extrusion of 3D layers"),
+        Policy::Ignore(
+            "extrusion of 3D layers, which only renderers other than the classic one draw \
+             (they are reported)",
+        ),
     ),
     (
         "ADBE Material Options Group",
-        Policy::Ignore("materials of 3D layers"),
+        Policy::Ignore("materials of 3D layers, which only lights change (they are reported)"),
     ),
     ("ADBE Audio Group", Policy::Ignore("audio")),
     ("ADBE Data Group", Policy::Ignore("data for templates")),
@@ -2727,8 +2964,8 @@ pub(super) static POLICIES: [(&str, Policy); 28] = [
     ("ADBE Point3D Control", Policy::Control),
     ("ADBE Layer Control", Policy::Control),
     (
-        "ADBE Camera Options Group",
-        Policy::Ignore("the options of a camera layer, which is reported"),
+        "ADBE Light Options Group",
+        Policy::Ignore("the options of a light layer, which is reported"),
     ),
 ];
 

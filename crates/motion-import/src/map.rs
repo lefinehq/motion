@@ -14,7 +14,7 @@ use serde_json::{Map, Value as Json, json};
 
 use serde::Serialize;
 
-use crate::model::{ComposedLine, Composition, Item, ItemKind, Layer, Project};
+use crate::model::{ComposedLine, Composition, Item, ItemKind, Layer, LayerKind, Project};
 
 mod curves;
 mod expressions;
@@ -543,7 +543,29 @@ impl<'p> Walk<'p> {
             })
             .collect();
         self.layer_scopes.pop();
+        self.renderer(composition, name);
         layers
+    }
+
+    /// Reports the renderer of `composition`, called `name`, where it has
+    /// 3D layers and draws them with another renderer than the classic one,
+    /// which is how the scene draws them.
+    fn renderer(&mut self, composition: &Composition, name: &str) {
+        let spatial = composition
+            .layers
+            .iter()
+            .any(|layer| layer.switches.three_d || layer.kind == LayerKind::Camera);
+        if let Some(renderer) = composition.renderer.as_ref().filter(|r| !r.is_classic())
+            && spatial
+        {
+            self.mapping.unsupported(
+                name,
+                format!(
+                    "the `{}` renderer (drawn as the classic renderer draws)",
+                    renderer.name
+                ),
+            );
+        }
     }
 }
 

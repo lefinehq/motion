@@ -12,11 +12,14 @@ use super::footage::{Media, media};
 use super::items::{Out, Place, Sink};
 use super::keys::{Clock, num};
 use super::report::Fate;
-use super::rows::{LAYER_ROOT, TRANSFORM};
+use super::rows::{
+    CAMERA_AIMED, CAMERA_FREE, CAMERA_OPTIONS, LAYER_ROOT, LIGHT_TRANSFORM, Row, TRANSFORM,
+    TRANSFORM_3D,
+};
 use super::{StoredText, Walk};
 use crate::model::{
-    BlendMode, Child, Composition, Footage, Group, Item, ItemKind, Layer, LayerKind, Property,
-    Source, Stream, TrackMatte, Value,
+    AutoOrient, BlendMode, Child, Composition, Footage, Group, Item, ItemKind, Layer, LayerKind,
+    Property, Source, Stream, TrackMatte, Value,
 };
 use motion_format::shorthand::MatteMode;
 
@@ -70,6 +73,7 @@ const EFFECTS: &str = "ADBE Effect Parade";
 const MASKS: &str = "ADBE Mask Parade";
 const AUDIO_GROUP: &str = "ADBE Audio Group";
 const AUDIO_LEVELS: &str = "ADBE Audio Levels";
+const CAMERA_OPTIONS_GROUP: &str = "ADBE Camera Options Group";
 
 /// The scene key of an audio layer's file.
 const AUDIO: &str = "audio";
@@ -98,7 +102,8 @@ impl<'p> Walk<'p> {
                 start: layer.start_time,
                 stretch: layer.stretch,
             },
-            comp_centre: half(f64::from(composition.width), f64::from(composition.height)),
+            comp_size: [f64::from(composition.width), f64::from(composition.height)],
+            frame_rate: composition.frame_rate,
             // A null's anchor rests at its top-left corner, not its centre,
             // so the children it moves keep their place.
             source_centre: match source.map(|item| &item.kind) {
@@ -164,7 +169,7 @@ impl<'p> Walk<'p> {
                 self.mapping.count(TRANSFORM_GROUP, Fate::Mapped);
                 self.rows(
                     &transform,
-                    &TRANSFORM,
+                    transform_rows(layer),
                     sink,
                     &mut out,
                     &place.inside(TRANSFORM_GROUP),
@@ -209,6 +214,7 @@ impl<'p> Walk<'p> {
                             }
                         }
                         AUDIO_GROUP if hears => self.levels(group, composition, &mut out, &here),
+                        CAMERA_OPTIONS_GROUP if layer.kind == LayerKind::Camera => {}
                         EFFECTS => {
                             self.mapping.count(EFFECTS, Fate::Mapped);
                             let effects = self.items(group, &here);
@@ -221,6 +227,22 @@ impl<'p> Walk<'p> {
                 }
             });
         self.rows(&root, &LAYER_ROOT, sink, &mut out, &place);
+        // A camera's options run even without the group, for its zoom.
+        if layer.kind == LayerKind::Camera {
+            let options: Vec<&Property> = layer
+                .properties
+                .children
+                .iter()
+                .filter_map(|child| match child {
+                    Child::Group(group) if group.match_name == CAMERA_OPTIONS_GROUP => Some(group),
+                    _ => None,
+                })
+                .flat_map(Group::properties)
+                .collect();
+            self.mapping.count(CAMERA_OPTIONS_GROUP, Fate::Mapped);
+            let here = place.inside(CAMERA_OPTIONS_GROUP);
+            self.rows(&options, &CAMERA_OPTIONS, sink, &mut out, &here);
+        }
         if layer.kind == LayerKind::Av
             && layer.switches.adjustment
             && out.keys.contains_key("fx")
@@ -300,7 +322,10 @@ impl<'p> Walk<'p> {
                 }
                 None => pivot(self, out, None),
             },
-            LayerKind::Camera => pivot(self, out, Some("cameras")),
+            LayerKind::Camera => {
+                out.keys.insert("camera".into(), json!(true));
+                self.mapping.count("layer: camera", Fate::Mapped);
+            }
             LayerKind::Light => pivot(self, out, Some("lights")),
             other => pivot(self, out, Some(&format!("{other} layers"))),
         }
@@ -497,8 +522,33 @@ impl<'p> Walk<'p> {
             ),
             None => {}
         }
-        if switches.three_d {
-            unsupported("3D layers (drawn flat)".into());
+        // A camera is always 3D, and a light is drawn as nothing in space.
+        match layer.kind {
+            LayerKind::Camera => {}
+            LayerKind::Light => {
+                out.keys.insert("3d".into(), json!(true));
+            }
+            _ if switches.three_d => {
+                out.keys.insert("3d".into(), json!(true));
+            }
+            _ => {}
+        }
+        match (switches.orient, layer.kind) {
+            (AutoOrient::Off, _)
+            | (AutoOrient::TowardsPoint, LayerKind::Camera | LayerKind::Light) => {}
+            (AutoOrient::AlongPath, _) => {
+                unsupported("turning along the motion path (drawn as it is turned)".into());
+            }
+            (AutoOrient::TowardsCamera, _) if switches.three_d => {
+                unsupported("turning to face the camera (drawn as it is turned)".into());
+            }
+            (AutoOrient::CharactersTowardCamera, _) if switches.three_d => {
+                unsupported(
+                    "characters turning to face the camera (drawn as they are turned)".into(),
+                );
+            }
+            // The original ignores the setting where the layer cannot take it.
+            _ => {}
         }
         // A layer's switch blurs it only where its composition's is on.
         if switches.motion_blur && composition.motion_blur.on {
@@ -555,6 +605,19 @@ impl<'p> Walk<'p> {
         if layer.stretch != 1.0 {
             out.keys.insert("stretch".into(), num(layer.stretch));
         }
+    }
+}
+
+/// The rows of `layer`'s transform: a flat layer's, a 3D layer's, a
+/// camera's, with its point of interest as its target where it turns
+/// towards it, or a light's.
+fn transform_rows(layer: &Layer) -> &'static [Row] {
+    match layer.kind {
+        LayerKind::Camera if layer.switches.orient == AutoOrient::TowardsPoint => &CAMERA_AIMED,
+        LayerKind::Camera => &CAMERA_FREE,
+        LayerKind::Light => &LIGHT_TRANSFORM,
+        _ if layer.switches.three_d => &TRANSFORM_3D,
+        _ => &TRANSFORM,
     }
 }
 
@@ -643,3 +706,7 @@ fn blend(mode: BlendMode) -> Option<&'static str> {
         _ => return None,
     })
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/map/layer.rs"]
+mod tests;

@@ -3,7 +3,9 @@
 use pretty_assertions::assert_eq;
 
 use super::*;
-use crate::model::{BlendMode, LayerKind, TrackMatte};
+use rstest::rstest;
+
+use crate::model::{AutoOrient, BlendMode, LayerKind, TrackMatte};
 use crate::test_support::{cdta, chunk, item, list, project, record};
 
 /// A `LIST:Pin` whose `sspc` has `code` and a 100 x 50 size, then `rest`.
@@ -336,6 +338,65 @@ fn reads_layers_with_their_timing_switches_and_links() {
         ("Grey", Some(2), None)
     );
     assert_eq!(grey.kind, LayerKind::Av);
+}
+
+#[rstest]
+#[case::off([0, 0x04, 0x01], LayerKind::Camera, AutoOrient::Off)]
+#[case::two_node_camera([0, 0x44, 0x01], LayerKind::Camera, AutoOrient::TowardsPoint)]
+#[case::along_path([0, 0x01, 0x07], LayerKind::Av, AutoOrient::AlongPath)]
+#[case::towards_camera([0, 0x24, 0x07], LayerKind::Av, AutoOrient::TowardsCamera)]
+#[case::characters([0x18, 0x04, 0x87], LayerKind::Text, AutoOrient::CharactersTowardCamera)]
+fn reads_how_a_layer_turns_by_itself(
+    #[case] flags: [u8; 3],
+    #[case] kind: LayerKind,
+    #[case] expected: AutoOrient,
+) {
+    let code = match kind {
+        LayerKind::Camera => 2,
+        LayerKind::Text => 3,
+        _ => 0,
+    };
+    let comp = item(
+        Idta::COMPOSITION,
+        1,
+        "Main",
+        &[cdta(100, 100, 24, 4), layer(164, 10, code, 0, flags, "")],
+    );
+    let project = decoded(&project(94, &[comp]));
+    assert_eq!(layers(&project)[0].switches.orient, expected);
+}
+
+#[test]
+fn reads_the_renderer_of_a_composition() {
+    let prin = |match_name: &str, name: &str| {
+        let mut body = vec![0u8; 104];
+        body[0x04..0x04 + match_name.len()].copy_from_slice(match_name.as_bytes());
+        body[0x34..0x34 + name.len()].copy_from_slice(name.as_bytes());
+        body[0x67] = 1;
+        list(b"PRin", &[chunk(b"prin", &body), chunk(b"prda", &[0; 12])])
+    };
+    let renderer = |children: &[Vec<u8>]| {
+        let comp = item(Idta::COMPOSITION, 1, "Main", children);
+        let project = decoded(&project(94, &[comp]));
+        match &project.items[0].kind {
+            ItemKind::Composition(composition) => composition.renderer.clone(),
+            _ => panic!("a composition"),
+        }
+    };
+    let classic =
+        renderer(&[cdta(8, 8, 24, 1), prin("ADBE Escher", "Classic 3D")]).expect("a renderer");
+    assert!(classic.is_classic());
+    let advanced =
+        renderer(&[cdta(8, 8, 24, 1), prin("ADBE Calder", "Advanced 3D")]).expect("a renderer");
+    assert_eq!(
+        (
+            advanced.match_name.as_str(),
+            advanced.name.as_str(),
+            advanced.is_classic()
+        ),
+        ("ADBE Calder", "Advanced 3D", false)
+    );
+    assert_eq!(renderer(&[cdta(8, 8, 24, 1)]), None);
 }
 
 #[test]

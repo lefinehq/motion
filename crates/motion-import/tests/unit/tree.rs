@@ -26,5 +26,6 @@ fn prints_paths_by_their_shape() {
 fn prints_every_switch() {
     let fields = serde_json::to_value(Switches::default()).unwrap();
     let printed = super::printed(&Switches::default());
-    assert_eq!(printed.len(), fields.as_object().unwrap().len());
+    // How a layer turns by itself prints by its name, not as a switch.
+    assert_eq!(printed.len(), fields.as_object().unwrap().len() - 1);
 }
