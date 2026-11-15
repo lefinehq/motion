@@ -17,7 +17,7 @@ const MAX_KEYFRAME_INTERVAL: u32 = 240;
 fn quality_of(quality: VideoQuality) -> f32 {
     match quality {
         VideoQuality::Draft => 0.35,
-        VideoQuality::Web => 0.65,
+        VideoQuality::Web => 0.8,
         VideoQuality::Master => 0.9,
     }
 }
