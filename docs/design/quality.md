@@ -67,16 +67,35 @@ Every rule is computed from the scene, at every frame. Each rule is marked with 
 |---|---|---|
 | No constant-speed motion on UI elements | peak speed ÷ average speed ≥ 1.4 (constant speed = 1.0) | Experiment: eased motion is easier to follow (Dragicevic et al. 2011) |
 | Not too many independent movers at once | ≤ 4 at moderate speed, fewer when fast | Experiment: people track about 4 objects |
-| Text stays long enough to read | ≥ the reading time at 20 characters per second, minimum 5/6 s | Standard: streaming subtitle guidelines |
+| Text stays long enough to read | ≥ the reading time at 20 characters per second, minimum 0.5 s | Standard: streaming subtitle guidelines (which keep 5/6 s; kinetic type holds a word about 0.6 s) |
 | No flashing hazards | ≤ 3 flashes per second | Standard: WCAG 2.3.1 |
 | Readable contrast | 4.5:1, or 3:1 for large text | Standard: WCAG |
 | Text inside the safe area | inside the central 90% of the frame | Standard: broadcast title-safe |
-| No judder on fast moves | speed below the judder limit for the frame rate, roughly 11 px per frame at 24 fps on a 1080p frame, unless motion blur is on | Industry rule of thumb |
+| No judder on fast moves | speed below the judder limit for the frame rate, roughly 11 px per frame at 24 fps on a 1080p frame, for at least 1/8 s, unless motion blur is on | Industry rule of thumb |
 | Durations in a sensible range | UI-scale moves 100–500 ms, longer for larger distances | Convention: design-system guidelines |
 | Overshoot is deliberate | bounce under a few percent unless the preset asks for more | Convention |
 | Stagger is even | equal offsets within a group | Convention. Research found staggering doesn't help viewers track objects, so this is a warning only. |
 
 The lead motion designer tunes these limits against the reference clips. Clips we deliberately break must trip the rules; good clips must pass.
+
+### Calibration
+
+Each rule `motion check` runs has a planted-defect scene in `crates/motion-engine/tests/planted.rs` that trips it and no other rule, and the same scenes without their defects trip nothing. On 2026-11-15 every rule ran over the local corpus's imported templates: 139 that compile, 31 of them drawn faithfully (under 5% of drawn px failing once settled). The faithful ones are the fair test, since the others lack mattes, expressions or footage the projects use, and draw text over the wrong backdrop.
+
+| Rule | Templates it fires on | Faithful ones |
+|---|---|---|
+| `judder` | 54 of 139 | 4 of 31 |
+| `easing` | 23 | 0 |
+| `text_hold` | 30 | 3 |
+| `crowd` | 16 | 1 |
+| `contrast` | 63 | 1 |
+| `flash` | 0 | 0 |
+
+Two limits moved:
+- `judder` counts a run of fast steps only from 1/8 s: the peak of an ease, one to three frames, fired on a faithful template that moves cleanly. The four left move 50 to 450 px a frame for most of a second without motion blur.
+- `text_hold`'s floor fell from 5/6 s to 0.5 s: kinetic type held three words 0.6 s each. The three left keep text readable for 0.2 s or less.
+
+The layout rules fire on many more: `offscreen` on 20 of the 31 faithful templates and `unsafe` on 17, mostly for layers parked off the canvas while they wait to enter. That is for the layout rules to answer, not the craft lint.
 
 ## Reference projects and the "can you tell?" test
 

@@ -185,6 +185,9 @@ pub(crate) struct Craft {
     pub severity: Severity,
     /// How it reads the frames.
     pub reads: Reads,
+    /// The shortest run of failing frames that counts, in seconds; shorter
+    /// ones pass.
+    pub lasting: f64,
     /// How the worst finding of a run prints.
     pub measure: fn(Finding) -> Measure,
     /// The edit that clears its findings on the layer at the address, as the

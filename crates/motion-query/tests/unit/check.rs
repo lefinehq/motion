@@ -481,7 +481,7 @@ fn a_fast_move_judders_until_motion_blur_is_on() {
 
 #[test]
 fn text_shown_too_briefly_is_found_with_its_reading_time() {
-    // 11 characters need 5/6 s; shown for 10 frames, a third of a second.
+    // 11 characters need 0.55 s; shown for 10 frames, a third of a second.
     let found = one(r#"{"id":"title","text":"Launch week","span":"0f-10f"}"#);
     let [hold] = craft(&found)[..] else {
         panic!("one finding: {found}");
@@ -494,7 +494,7 @@ fn text_shown_too_briefly_is_found_with_its_reading_time() {
             9,
             Measure::Below {
                 value: 0.3,
-                limit: 0.9,
+                limit: 0.6,
                 unit: Unit::Seconds
             }
         )
@@ -556,4 +556,15 @@ fn five_layers_moving_at_once_crowd_the_scene() {
     let four = (0..4).map(layer).collect::<Vec<_>>().join(",");
     let calm = check_json(&format!(r#"{{"motion":1,"dur":"1s","layers":[{four}]}}"#));
     assert!(craft(&calm).iter().all(|v| v.code != Code::Crowd), "{calm}");
+}
+
+#[test]
+fn the_peak_of_an_ease_is_too_brief_to_judder() {
+    // Out of a sharp ease, the card steps 21, 16 and 13 px, then slows
+    // under 11: 3 frames, under an eighth of a second.
+    let brief = one(r#"{"id":"card","rect":"100x100","anim":{"x":"300 -> 400 @0-30f out-expo"}}"#);
+    assert!(
+        craft(&brief).iter().all(|v| v.code != Code::Judder),
+        "{brief}"
+    );
 }

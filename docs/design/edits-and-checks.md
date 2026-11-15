@@ -164,14 +164,14 @@ Analytic checks are computed directly from the scene, for every frame. Nothing i
 ```
 E offscreen card 0-12f +40px; fix: card at="center 980"
 W judder badge 1-10f 150px/f >11; fix: badge mblur=true
-W text_hold title 0-9f 0.3s <0.9
+W text_hold title 0-9f 0.3s <0.6
 W easing card 0-20f 1 <1.4
 W crowd scene 4-18f 5 >4
 OK 12
 ```
 
-- **`judder`:** a layer that moves on its own steps farther in one frame than 11 px on a 1080-px-tall canvas (scaled by the canvas's height). Its own box's corners are measured on the canvas, and a layer moved only by its parent or composition is left to that one. A layer with `mblur` under an open shutter is smooth, so it is skipped, and turning `mblur` on is the fix.
-- **`text_hold`:** a text layer stays readable (shown, at least 90% opaque, moving no faster than the judder limit) for less than its characters at 20 a second, and never less than 5/6 s.
+- **`judder`:** a layer that moves on its own steps farther in one frame than 11 px on a 1080-px-tall canvas (scaled by the canvas's height), for 1/8 s or more: the peak of an ease passes. Its own box's corners are measured on the canvas, and a layer moved only by its parent or composition is left to that one. A layer with `mblur` under an open shutter is smooth, so it is skipped, and turning `mblur` on is the fix.
+- **`text_hold`:** a text layer stays readable (shown, at least 90% opaque, moving no faster than the judder limit) for less than its characters at 20 a second, and never less than 0.5 s.
 - **`easing`:** a move at one speed. A move is a run of at least 6 frames in which a layer's own transform carries the centre of its box; its peak speed over its mean speed is at least 1.4 when it eases (constant speed is 1). A drift slower than 2 px a frame is left alone. No fix is printed yet, since an edit cannot set a key's curve.
 - **`crowd`:** more than 4 layers moving on their own at once, each faster than 2 px a frame. It is the scene's, printed on `scene`, and counted only once something moves. No fix: which layers to hold back is a choice.
 - **`contrast`:** a readable text layer's glyphs against what is drawn behind them, by WCAG 2's contrast ratio: at least 4.5:1, or 3:1 for text of 24 px and up on a 1080-px-tall canvas. Twice a second, the scene is drawn at a quarter of its size without the layer and with only the layer; the ratio 90% of the glyphs' coverage reaches is measured. No fix: which colour to change is a choice.

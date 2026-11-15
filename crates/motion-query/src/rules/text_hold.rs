@@ -1,6 +1,6 @@
 //! `text_hold`: a text layer stays readable for less time than reading it
-//! takes, at 20 characters a second and never under 5/6 s, as streaming
-//! subtitle guidelines ask.
+//! takes, at 20 characters a second and never under 0.5 s, after streaming
+//! subtitle guidelines, with a shorter floor for kinetic type.
 
 use super::{Craft, Finding, Reads, Sample, judder_limit};
 use crate::report::{Code, Measure, Severity, Unit};
@@ -10,8 +10,10 @@ use motion_scene::{CompGraph, Node, SceneGraph};
 /// Characters read in a second.
 const CHARS_PER_SECOND: f64 = 20.0;
 
-/// The shortest time any text should stay readable, in seconds.
-const SHORTEST: f64 = 5.0 / 6.0;
+/// The shortest time any text should stay readable, in seconds: a short
+/// word read at a glance. Subtitles keep 5/6 s; kinetic type holds a word
+/// about 0.6 s.
+const SHORTEST: f64 = 0.5;
 
 /// At least this opaque, text counts as readable.
 const READABLE_OPACITY: f64 = 0.9;
@@ -21,6 +23,7 @@ pub(super) const TEXT_HOLD: Craft = Craft {
     code: Code::TextHold,
     severity: Severity::Warning,
     reads: Reads::Stretch { holds, judge },
+    lasting: 0.0,
     // Tenths of a second, rounded away from the limit so the gap shows.
     measure: |f| Measure::Below {
         value: (f.value * 10.0 + super::EPSILON).floor() / 10.0,

@@ -47,9 +47,9 @@ fn text_is_readable_when_shown_opaque_and_steady(#[case] now: Sample, #[case] re
 
 /// Frames at 30 fps a text of `chars` characters holds, and what is found.
 #[rstest]
-// 10 characters need 5/6 s: 25 frames.
-#[case::short_text_takes_the_shortest_hold(10, 25, None)]
-#[case::short_text_shown_too_briefly(10, 12, Some((0.4, 5.0 / 6.0)))]
+// 10 characters need 0.5 s, the shortest hold: 15 frames.
+#[case::short_text_takes_the_shortest_hold(10, 15, None)]
+#[case::short_text_shown_too_briefly(10, 12, Some((0.4, 0.5)))]
 // 60 characters need 3 s: 90 frames.
 #[case::long_text_takes_its_reading_time(60, 90, None)]
 #[case::long_text_shown_too_briefly(60, 45, Some((1.5, 3.0)))]

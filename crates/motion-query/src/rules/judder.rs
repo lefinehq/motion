@@ -7,12 +7,17 @@ use motion_format::key::MBLUR;
 use motion_format::{Address, Layer};
 use motion_scene::{CompGraph, Node, SceneGraph};
 
+/// The shortest run of steps that judders, in seconds: the peak of an
+/// ease, a frame or two, passes before the eye follows it.
+const LASTING: f64 = 1.0 / 8.0;
+
 /// A layer that moves on its own should not step farther than the limit in
 /// one frame unless it is blurred.
 pub(super) const JUDDER: Craft = Craft {
     code: Code::Judder,
     severity: Severity::Warning,
     reads: Reads::Step(step),
+    lasting: LASTING,
     measure: |f| Measure::Above {
         value: (f.value - super::EPSILON).ceil(),
         limit: f.limit,

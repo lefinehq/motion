@@ -17,9 +17,9 @@ Each rule measures one number per layer or per frame and compares it with a limi
 
 | Rule | Measures | Starting limit | Severity |
 |---|---|---|---|
-| `judder` | How far a layer's drawn box moves in one frame, on the canvas | 11 px per frame on a 1080-px-tall canvas, scaled by the canvas's height; skipped for a layer with `mblur` and an open shutter | warning |
+| `judder` | How far a layer's drawn box moves in one frame, on the canvas | 11 px per frame on a 1080-px-tall canvas, scaled by the canvas's height, for at least 1/8 s; skipped for a layer with `mblur` and an open shutter | warning |
 | `easing` | For each move (a run of at least 6 frames in which the layer's own transform changes), its peak speed over its mean speed | at least 1.4 (constant speed is 1.0) | warning |
-| `text_hold` | How long a text layer stays readable: shown, at least 90% opaque and moving no faster than the judder limit | at least the characters ÷ 20 per second, and at least 5/6 s | warning |
+| `text_hold` | How long a text layer stays readable: shown, at least 90% opaque and moving no faster than the judder limit | at least the characters ÷ 20 per second, and at least 0.5 s (5/6 s before calibration) | warning |
 | `crowd` | How many layers move on their own at once at more than 2 px per frame; a layer moved only by its parent or its composition does not count | at most 4 | warning |
 | `contrast` | The contrast between a text layer's fill and what is drawn behind its glyphs | 4.5:1, or 3:1 for text of 24 px and up | error |
 | `flash` | Changes of at least 10% in the mean relative luminance of a quarter or more of the frame | at most 3 per second | error |
@@ -50,6 +50,7 @@ Each step is one pull request, with its tests and docs.
    - A planted-defect scene per rule in the tests: each trips its rule and no other.
    - Every rule over the corpus's imported templates, measured locally. The share of templates each rule fires on is recorded in the docs.
    - Limits that fire on many professional templates are raised, or their rule is cut.
+   - Done 2026-11-15: the results and the two limits that moved are in [Quality](../design/quality.md#calibration).
 6. **The brief set.**
    - 30 briefs in `bench/briefs/`, grouped by use case: ads, launch and feature videos, explainers, social.
    - A runner records each brief's tokens, agent steps, wall-clock time, render time and `check` findings. It scores nothing: taste is judged by people ([D22](../design/decisions.md#d22-no-ai-judge)).

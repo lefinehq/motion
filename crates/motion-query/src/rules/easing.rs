@@ -23,6 +23,7 @@ pub(super) const EASING: Craft = Craft {
     code: Code::Easing,
     severity: Severity::Warning,
     reads: Reads::Moves { speed, judge },
+    lasting: 0.0,
     // Two decimals, rounded towards the limit's side it misses.
     measure: |f| Measure::Below {
         value: (f.value * 100.0 + super::EPSILON).floor() / 100.0,
