@@ -156,6 +156,29 @@ pub struct EffectSpec {
     /// What it does to the layer, given the parameter values in the order of
     /// `params`.
     pub apply: Apply,
+    /// How far what it draws reaches from what the layer drew, given the
+    /// parameter values. A moving row's move places the content itself,
+    /// so its reach is the move's and this says nothing more.
+    pub reach: fn(&[ParamValue]) -> Reach,
+}
+
+/// How far an effect's drawing reaches from what its layer drew, in px of
+/// the layer's own coordinates: the room a projected layer's buffer keeps
+/// around its content ([D58]). Each row errs on the large side, since too
+/// little room cuts what the effect draws and too much only costs pixels.
+///
+/// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Reach {
+    /// No farther than this from what the layer drew, and reading no
+    /// farther than this from each pixel it changes: 0 for an effect that
+    /// changes pixels only where they are.
+    Within(f32),
+    /// Anywhere in the layer's box ([`Layer::bounds`](crate::Layer::bounds)),
+    /// reading anywhere in it; anywhere at all for a layer without one.
+    Bounds,
+    /// Anywhere on the layer's plane, reading anywhere on it.
+    Anywhere,
 }
 
 /// What an effect does to the layer it is on.
@@ -249,6 +272,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "recolours the content with one colour, keeping its alpha",
+        reach: stays,
         apply: Apply::Pixels {
             over: Some(fill),
             pixels: fill_pixels,
@@ -295,6 +319,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "moves, scales, turns and fades the content inside the layer",
+        reach: stays,
         apply: Apply::Move(transform),
     },
     EffectSpec {
@@ -323,6 +348,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "maps each colour's luma from black to white",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: colour::tint,
@@ -382,6 +408,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "turns hues and changes saturation and lightness",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: colour::hue_saturation,
@@ -420,6 +447,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "changes exposure in stops",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: colour::exposure,
@@ -472,6 +500,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "maps levels between two ranges through a gamma",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: colour::levels,
@@ -496,6 +525,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "turns each level into its opposite",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: colour::invert,
@@ -659,6 +689,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "draws particles a producer sends out over time",
+        reach: anywhere,
         apply: Apply::Pixels {
             over: None,
             pixels: particles::particles,
@@ -802,6 +833,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "draws the spectrum of another layer's sound at the layer's time",
+        reach: in_box,
         apply: Apply::Pixels {
             over: None,
             pixels: crate::sound::spectrum,
@@ -910,6 +942,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "draws the wave of another layer's sound at the layer's time",
+        reach: in_box,
         apply: Apply::Pixels {
             over: None,
             pixels: crate::sound::waveform,
@@ -986,6 +1019,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "moves each pixel by the levels of another layer",
+        reach: displacement_reach,
         apply: Apply::Pixels {
             over: None,
             pixels: distort::displacement_map,
@@ -1052,6 +1086,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "repeats the layer in tiles around a point",
+        reach: anywhere,
         apply: Apply::Pixels {
             over: None,
             pixels: distort::motion_tile,
@@ -1076,6 +1111,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "moves the layer's content within its box, wrapping around",
+        reach: in_box,
         apply: Apply::Pixels {
             over: None,
             pixels: distort::wrap,
@@ -1152,6 +1188,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "moves each pixel by a smooth noise",
+        reach: turbulent_reach,
         apply: Apply::Pixels {
             over: None,
             pixels: distort::turbulent_displace,
@@ -1204,6 +1241,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "fills the layer with a gradient between two colours",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: generate::ramp,
@@ -1291,6 +1329,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "fills the layer with four colours at four points, blended",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: generate::four_color,
@@ -1371,6 +1410,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "draws a grid of lines",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: generate::grid,
@@ -1409,6 +1449,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "hides the layer in stripes",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: generate::venetian_blinds,
@@ -1564,6 +1605,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "fills the layer with grey noise in octaves",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: generate::fractal_noise,
@@ -1595,6 +1637,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "blurs with a Gaussian",
+        reach: gaussian_reach,
         apply: Apply::Pixels {
             over: None,
             pixels: blur::gaussian_blur,
@@ -1633,6 +1676,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "blurs with boxes run one after another",
+        reach: box_reach,
         apply: Apply::Pixels {
             over: None,
             pixels: blur::box_blur,
@@ -1685,6 +1729,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "draws the layer's shape as a soft shadow behind it",
+        reach: shadow_reach,
         apply: Apply::Pixels {
             over: None,
             pixels: blur::drop_shadow,
@@ -1730,6 +1775,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "adds the blurred light of the bright colours",
+        reach: glow_reach,
         apply: Apply::Pixels {
             over: None,
             pixels: blur::glow,
@@ -1745,6 +1791,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             doc: "in percent of the difference from the neighbours' mean",
         }],
         doc: "sharpens edges",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: blur::sharpen,
@@ -1811,6 +1858,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "turns colours to grey, each hue as light as its share says",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: colour::black_white,
@@ -1856,6 +1904,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             },
         ],
         doc: "maps each channel's levels through a curve: first its own, then `rgb`",
+        reach: stays,
         apply: Apply::Pixels {
             over: None,
             pixels: colour::curves,
@@ -1956,6 +2005,12 @@ impl Effect {
     /// Whether it needs the pixels its layer drew.
     pub fn reads_pixels(&self) -> bool {
         matches!(self.spec.apply, Apply::Pixels { over: None, .. })
+    }
+
+    /// How far what it draws reaches from what its layer drew, see
+    /// [`Reach`]; a moving effect's is its move's.
+    pub fn reach(&self) -> Reach {
+        (self.spec.reach)(&self.values)
     }
 
     /// How it moves the content, if it is a moving one.
@@ -2100,6 +2155,78 @@ fn transform(values: &[ParamValue]) -> Move {
             * Affine::translate(-point(*anchor)),
         opacity: *opacity,
     }
+}
+
+/// The reach of an effect that changes pixels only where they are.
+fn stays(_: &[ParamValue]) -> Reach {
+    Reach::Within(0.0)
+}
+
+/// The reach of an effect that draws and reads within the layer's box.
+fn in_box(_: &[ParamValue]) -> Reach {
+    Reach::Bounds
+}
+
+/// The reach of an effect that may draw anywhere.
+fn anywhere(_: &[ParamValue]) -> Reach {
+    Reach::Anywhere
+}
+
+/// The number in `values[i]`.
+fn number_at(values: &[ParamValue], i: usize) -> f32 {
+    match values[i] {
+        ParamValue::Number(n) => n,
+        _ => unreachable!("`Effect::new` checks the parameter types"),
+    }
+}
+
+/// How far a Gaussian of standard deviation `sigma` reaches: four of
+/// them, where less than a 30,000th of it is left.
+fn gaussian_span(sigma: f32) -> f32 {
+    4.0 * sigma
+}
+
+/// `displacement-map` moves a pixel at most its larger distance; wrapping
+/// reads across the whole box.
+fn displacement_reach(values: &[ParamValue]) -> Reach {
+    match values[5] {
+        ParamValue::Choice(1) => Reach::Bounds,
+        _ => Reach::Within(number_at(values, 0).abs().max(number_at(values, 1).abs())),
+    }
+}
+
+/// `turbulent-displace` moves a pixel up to `amount`/100 of `size` along
+/// each axis; bulges and twists follow the noise's slope, which may be
+/// steeper, so twice that.
+fn turbulent_reach(values: &[ParamValue]) -> Reach {
+    Reach::Within(2.0 * (number_at(values, 0) / 100.0 * number_at(values, 1)).abs())
+}
+
+/// `gaussian-blur` spreads by its Gaussian.
+fn gaussian_reach(values: &[ParamValue]) -> Reach {
+    Reach::Within(gaussian_span(
+        number_at(values, 0) * blur::SIGMA_PER_BLURRINESS,
+    ))
+}
+
+/// `box-blur` spreads by its radius and the pixel beyond it, once per
+/// pass.
+fn box_reach(values: &[ParamValue]) -> Reach {
+    Reach::Within((number_at(values, 0) + 1.0) * number_at(values, 1).round().max(1.0))
+}
+
+/// `drop-shadow` falls `distance` away and spreads by its softness.
+fn shadow_reach(values: &[ParamValue]) -> Reach {
+    Reach::Within(
+        number_at(values, 3) + gaussian_span(number_at(values, 4) * blur::SIGMA_PER_BLURRINESS),
+    )
+}
+
+/// `glow` spreads by its radius, as a blurriness.
+fn glow_reach(values: &[ParamValue]) -> Reach {
+    Reach::Within(gaussian_span(
+        number_at(values, 1) * blur::SIGMA_PER_BLURRINESS,
+    ))
 }
 
 #[cfg(test)]

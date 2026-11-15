@@ -20,12 +20,14 @@ mod colour;
 mod distort;
 mod effect;
 mod generate;
+mod homography;
 mod image;
 mod list;
 mod mask;
 mod particles;
 mod picture;
 mod pixels;
+mod projected;
 mod render;
 mod sound;
 mod style;
@@ -33,12 +35,13 @@ mod style;
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use effect::{
     Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Input, Move, ParamSpec, ParamType,
-    ParamValue, Space,
+    ParamValue, Reach, Space,
 };
+pub use homography::Homography;
 pub use image::Image;
 pub use list::{
     Blending, Clip, Frame, Glyph, GlyphDraw, ImageDraw, Layer, LayerMask, MaskMode, Matte,
-    MatteMode, Node, PathDraw,
+    MatteMode, Node, PathDraw, Projection,
 };
 pub use mask::SIGMA_PER_FEATHER;
 pub use picture::Picture;

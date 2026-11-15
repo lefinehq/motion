@@ -13,11 +13,14 @@ use vello_cpu::{
 };
 
 use crate::effect::{Effect, EffectContext, Input, Move, Space};
+use crate::homography::Homography;
 use crate::image::Image;
 use crate::list::{
-    Blending, Frame, GlyphDraw, ImageDraw, Layer, LayerMask, Matte, MatteMode, Node, PathDraw,
+    Blending, Clip, Frame, GlyphDraw, ImageDraw, Layer, LayerMask, Matte, MatteMode, Node,
+    PathDraw, Projection,
 };
 use crate::pixels::Pixels;
+use crate::projected::{self, Extent, Plan};
 use crate::style::{Color, DrawStyle};
 
 /// How the rasteriser computes colours.
@@ -89,7 +92,8 @@ pub fn render(frame: &Frame, width: u32, height: u32) -> Result<Image> {
 /// # Errors
 /// An out-of-range diagnostic for a size of zero or above 65535 pixels, an
 /// invalid-value diagnostic for linear-light blending, which the rasteriser
-/// cannot do yet, and one for glyphs a font cannot draw.
+/// cannot do yet, one for glyphs a font cannot draw, and a conflict for a
+/// projected layer that also has affine motion-blur moves.
 pub fn render_with(
     frame: &Frame,
     width: u32,
@@ -311,15 +315,70 @@ impl Painter {
     /// Draws `below`, then `filter`'s effects on it: what they give is
     /// mixed in by the filter's opacity, its matte, and the alpha of what
     /// its children draw, its region; without children, everywhere.
+    ///
+    /// A projected filter's region is drawn on its plane, masks included,
+    /// and laid onto the canvas; its effects run on the canvas, measured by
+    /// the affine map that matches its projection where the canvas sees
+    /// the middle of it.
     fn filter(&mut self, below: &[Node], filter: &Layer, parent: Affine) -> Result<()> {
         let drawn = self.drawn_alone(below, parent)?;
         if filter.opacity <= 0.0 || filter.effects.is_empty() {
             self.draw_pixels(&drawn);
             return Ok(());
         }
+        let (transform, region, cut) = match &filter.projection {
+            None => {
+                let transform = parent * filter.transform;
+                // Where it draws, by its alpha; a filter layer drawing
+                // nothing applies everywhere.
+                let region = match filter.children.is_empty() {
+                    true => None,
+                    false => Some(self.drawn_alone(&filter.children, transform)?),
+                };
+                (transform, region, self.cut(&filter.masks, transform))
+            }
+            Some(projection) => {
+                let maps = [Homography::from(parent) * projection.matrix];
+                let extent = match (filter.children.is_empty(), filter.bounds) {
+                    (false, _) => projected::nodes_extent(&filter.children),
+                    (true, Some(bounds)) => Extent::Box(bounds),
+                    (true, None) => Extent::Everywhere,
+                };
+                let reach = projected::mask_reach(&filter.masks);
+                let Some(plan) = Plan::new(extent, Some(reach), &maps, self.width, self.height)
+                else {
+                    // None of it is seen, so it applies nowhere.
+                    self.draw_pixels(&drawn);
+                    return Ok(());
+                };
+                let region = self.laid(&plan, &maps, |sub| {
+                    let mut pixels = match filter.children.is_empty() {
+                        true => {
+                            let mut whole = Painter::new(sub.width, sub.height, sub.options);
+                            whole.ctx.set_transform(plan.local);
+                            whole.ctx.set_paint(Color::WHITE.to_vello());
+                            whole.ctx.fill_rect(&filter.bounds.unwrap_or(plan.region));
+                            Pixels::from_pixmap(&whole.finish())
+                        }
+                        false => sub.drawn_alone(&filter.children, plan.local)?,
+                    };
+                    if let Some(cut) = sub.cut(&filter.masks, plan.local) {
+                        for (pixel, kept) in pixels.data_mut().iter_mut().zip(cut) {
+                            *pixel = pixel.map(|c| c * kept);
+                        }
+                    }
+                    sub.draw_pixels(&pixels);
+                    Ok(())
+                })?;
+                let transform = maps[0]
+                    .tangent(plan.seen)
+                    .unwrap_or(parent * filter.transform);
+                (transform, Some(region), None)
+            }
+        };
         let mut changed = drawn.clone();
         for effect in &filter.effects {
-            let space = self.space(effect, parent * filter.transform, filter)?;
+            let space = self.space(effect, transform, filter)?;
             effect.apply(&mut changed, &space);
         }
         let matte = filter
@@ -327,13 +386,6 @@ impl Painter {
             .as_ref()
             .map(|matte| self.matte_values(matte, parent))
             .transpose()?;
-        // Where it draws, by its alpha; a filter layer drawing nothing
-        // applies everywhere.
-        let region = match filter.children.is_empty() {
-            true => None,
-            false => Some(self.drawn_alone(&filter.children, parent * filter.transform)?),
-        };
-        let cut = self.cut(&filter.masks, parent * filter.transform);
         let mut mixed = drawn;
         mixed.mix(&changed, |i| {
             cut.as_ref().map_or(1.0, |c| c[i])
@@ -346,46 +398,19 @@ impl Painter {
     }
 
     /// Draws a layer: its children, in a buffer of their own when it is
-    /// isolated, then its effects on that buffer. Moves before the first
-    /// effect that reads pixels apply as the children are drawn; from that
-    /// effect on, the children are drawn on a canvas of their own and every
-    /// effect runs in order on its pixels.
+    /// isolated, then its effects on that buffer, then lays it on what is
+    /// below with its opacity, blend mode, clip and matte. A projected
+    /// layer's buffer is in its own coordinates and laid through its
+    /// projection.
     fn layer(&mut self, layer: &Layer, parent: Affine) -> Result<()> {
-        let reads = layer
-            .effects
-            .iter()
-            .position(Effect::reads_pixels)
-            .unwrap_or(layer.effects.len());
-        // Masks cut the content before any effect but moves, on its pixels,
-        // and a drawing moved for motion blur is made on pixels too.
-        let on_canvas = !layer.masks.is_empty() || !layer.motion.is_empty();
-        let (drawing, on_pixels) = match reads < layer.effects.len() || on_canvas {
-            // Only moves before the first effect that reads pixels.
-            true => {
-                let moves = layer.effects[..reads]
-                    .iter()
-                    .take_while(|e| e.movement().is_some())
-                    .count();
-                layer.effects.split_at(moves)
-            }
-            false => (layer.effects.as_slice(), &[][..]),
-        };
-        // Moving effects apply as the content is drawn, in the order they
-        // stand: each moves what the ones before it moved.
-        let moved = drawing.iter().filter_map(Effect::movement).fold(
-            Move {
-                transform: Affine::IDENTITY,
-                opacity: 1.0,
-            },
-            |done, next| Move {
-                transform: next.transform * done.transform,
-                opacity: done.opacity * next.opacity,
-            },
-        );
+        let steps = Steps::of(layer);
         // A transparent layer draws nothing, effects included.
-        let opacity = layer.opacity * moved.opacity;
+        let opacity = layer.opacity * steps.moved.opacity;
         if opacity <= 0.0 {
             return Ok(());
+        }
+        if let Some(projection) = &layer.projection {
+            return self.projected(layer, projection, &steps, opacity, parent);
         }
         let transform = parent * layer.transform;
         if !layer.is_isolated() {
@@ -399,7 +424,7 @@ impl Painter {
             .map(|matte| self.mask(matte, parent))
             .transpose()?;
         self.ctx.set_transform(transform);
-        let clip = layer.clip.as_ref().map(|clip| clip.outline());
+        let clip = layer.clip.as_ref().map(Clip::outline);
         if let Some((_, rule)) = &clip {
             self.ctx.set_fill_rule(rule.to_vello());
         }
@@ -410,42 +435,131 @@ impl Painter {
             mask,
             None,
         );
-        let cut = self.cut(&layer.masks, transform * moved.transform);
-        let drawn = match on_pixels.is_empty() && cut.is_none() && layer.motion.is_empty() {
-            true => {
-                let drawn = self.nodes(&layer.children, transform * moved.transform);
-                let mut effects = EffectContext {
-                    ctx: &mut self.ctx,
-                    width: self.width,
-                    height: self.height,
-                };
-                for effect in drawing {
-                    effect.paint_over(&mut effects);
-                }
-                drawn
-            }
-            false => self
-                .drawn_alone(&layer.children, transform * moved.transform)
-                .and_then(|mut pixels| {
-                    if let Some(cut) = &cut {
-                        for (pixel, kept) in pixels.data_mut().iter_mut().zip(cut) {
-                            *pixel = pixel.map(|c| c * kept);
-                        }
-                    }
-                    for effect in on_pixels {
-                        let space = self.space(effect, transform, layer)?;
-                        effect.apply(&mut pixels, &space);
-                    }
-                    if !layer.motion.is_empty() {
-                        pixels = moved_average(&pixels, &layer.motion, parent);
-                    }
-                    self.draw_pixels(&pixels);
-                    Ok(())
-                }),
-        };
+        let drawn = self.content(layer, &steps, transform, parent);
         // Pop even after a failure, so the context's layers stay balanced.
         self.ctx.pop_layer();
         drawn
+    }
+
+    /// Draws a projected layer ([D58]): its clipped content, masks and
+    /// effects on a buffer of its own in its own coordinates, laid onto the
+    /// canvas through each of its maps, then blended with `opacity`, its
+    /// blend mode and its matte, as a flat layer is.
+    ///
+    /// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+    fn projected(
+        &mut self,
+        layer: &Layer,
+        projection: &Projection,
+        steps: &Steps<'_>,
+        opacity: f32,
+        parent: Affine,
+    ) -> Result<()> {
+        if !layer.motion.is_empty() {
+            return Err(Diagnostic::new(
+                Kind::Conflict,
+                "a projected layer also has affine motion-blur moves",
+            )
+            .expected("motion blur of a projected layer as `Projection::samples`"));
+        }
+        let to_canvas = Homography::from(parent);
+        let maps: Vec<Homography> = match projection.samples.is_empty() {
+            true => vec![to_canvas * projection.matrix],
+            false => projection.samples.iter().map(|s| to_canvas * *s).collect(),
+        };
+        let extent = projected::extent(layer);
+        let reach = projected::read_reach(layer);
+        let Some(plan) = Plan::new(extent, reach, &maps, self.width, self.height) else {
+            return Ok(());
+        };
+        let laid = self.laid(&plan, &maps, |sub| {
+            // The buffer holds the layer alone, so only a clip needs a
+            // layer of its own in it: what effects paint over the content
+            // composes with the buffer's own px either way.
+            let Some((path, rule)) = layer.clip.as_ref().map(Clip::outline) else {
+                return sub.content(layer, steps, plan.local, Affine::IDENTITY);
+            };
+            sub.ctx.set_transform(plan.local);
+            sub.ctx.set_fill_rule(rule.to_vello());
+            sub.ctx.push_layer(Some(&path), None, None, None, None);
+            let drawn = sub.content(layer, steps, plan.local, Affine::IDENTITY);
+            sub.ctx.pop_layer();
+            drawn
+        })?;
+        let mask = layer
+            .matte
+            .as_ref()
+            .map(|matte| self.mask(matte, parent))
+            .transpose()?;
+        self.ctx.set_transform(Affine::IDENTITY);
+        self.ctx.push_layer(
+            None,
+            Some(layer.blend.to_vello()),
+            Some(opacity),
+            mask,
+            None,
+        );
+        self.draw_pixels(&laid);
+        self.ctx.pop_layer();
+        Ok(())
+    }
+
+    /// What `draw` paints on a painter of `plan`'s buffer, laid onto this
+    /// painter's grid through each of `maps` and averaged.
+    fn laid(
+        &self,
+        plan: &Plan,
+        maps: &[Homography],
+        draw: impl FnOnce(&mut Painter) -> Result<()>,
+    ) -> Result<Pixels> {
+        let mut sub = Painter::new(plan.width, plan.height, self.options);
+        draw(&mut sub)?;
+        let buffer = sub.finish();
+        Ok(projected::lay(&buffer, plan, maps, self.width, self.height))
+    }
+
+    /// Draws a layer's content inside the buffer it was given, in
+    /// coordinates `transform` maps to this painter's grid: its children,
+    /// then its effects. Moves before the first effect that reads pixels
+    /// apply as the children are drawn; from that effect on, the children
+    /// are drawn on a canvas of their own and every effect runs in order
+    /// on its pixels. `parent` places its motion-blur moves.
+    fn content(
+        &mut self,
+        layer: &Layer,
+        steps: &Steps<'_>,
+        transform: Affine,
+        parent: Affine,
+    ) -> Result<()> {
+        let moved = steps.moved.transform;
+        let cut = self.cut(&layer.masks, transform * moved);
+        if steps.on_pixels.is_empty() && cut.is_none() && layer.motion.is_empty() {
+            let drawn = self.nodes(&layer.children, transform * moved);
+            let mut effects = EffectContext {
+                ctx: &mut self.ctx,
+                width: self.width,
+                height: self.height,
+            };
+            for effect in steps.drawing {
+                effect.paint_over(&mut effects);
+            }
+            return drawn;
+        }
+        let mut pixels = self.drawn_alone(&layer.children, transform * moved)?;
+        if let Some(cut) = &cut {
+            for (pixel, kept) in pixels.data_mut().iter_mut().zip(cut) {
+                *pixel = pixel.map(|c| c * kept);
+            }
+        }
+        for effect in steps.on_pixels {
+            let space = self.space(effect, transform, layer)?;
+            effect.apply(&mut pixels, &space);
+        }
+        if !layer.motion.is_empty() {
+            pixels = moved_average(&pixels, &layer.motion, parent);
+        }
+        self.draw_pixels(&pixels);
+        Ok(())
     }
 
     fn path(&mut self, draw: &PathDraw, transform: Affine) {
@@ -517,6 +631,60 @@ impl Painter {
             Diagnostic::new(Kind::Invalid, format!("glyphs could not be drawn: {error}"))
                 .expected("glyph ids the font holds")
         })
+    }
+}
+
+/// How a layer's effects split between drawing its content and running on
+/// its pixels after.
+struct Steps<'a> {
+    /// The effects applied as the content is drawn: moves, and changes
+    /// painted over it.
+    drawing: &'a [Effect],
+    /// The effects run in order on the content's pixels.
+    on_pixels: &'a [Effect],
+    /// What the moves among `drawing` do together.
+    moved: Move,
+}
+
+impl Steps<'_> {
+    /// How `layer`'s effects split. Masks cut the content before any
+    /// effect but moves, on its pixels, and a drawing moved for motion
+    /// blur is made on pixels too, so with either only the moves before
+    /// the first effect that reads pixels apply as it is drawn.
+    fn of(layer: &Layer) -> Steps<'_> {
+        let reads = layer
+            .effects
+            .iter()
+            .position(Effect::reads_pixels)
+            .unwrap_or(layer.effects.len());
+        let on_canvas = !layer.masks.is_empty() || !layer.motion.is_empty();
+        let (drawing, on_pixels) = match reads < layer.effects.len() || on_canvas {
+            true => {
+                let moves = layer.effects[..reads]
+                    .iter()
+                    .take_while(|e| e.movement().is_some())
+                    .count();
+                layer.effects.split_at(moves)
+            }
+            false => (layer.effects.as_slice(), &[][..]),
+        };
+        // Moving effects apply as the content is drawn, in the order they
+        // stand: each moves what the ones before it moved.
+        let moved = drawing.iter().filter_map(Effect::movement).fold(
+            Move {
+                transform: Affine::IDENTITY,
+                opacity: 1.0,
+            },
+            |done, next| Move {
+                transform: next.transform * done.transform,
+                opacity: done.opacity * next.opacity,
+            },
+        );
+        Steps {
+            drawing,
+            on_pixels,
+            moved,
+        }
     }
 }
 

@@ -52,6 +52,29 @@ The rasteriser sits behind a small interface, so it can be swapped later (see [D
 
 **Motion blur** blends several in-between moments of the same frame. Because motion can compute any moment exactly, this costs no extra work in the engine. It only multiplies the drawing work.
 
+**Projected layers** are the rasteriser's half of 2.5D ([D58](decisions.md#d58-25d-layers-are-planes-projected-through-a-camera), [plan](../plans/2026-11-21-depth.md)). A layer with `Layer::projection` is a plane seen through a camera: a 3×3 projective matrix (`Homography`) takes its own coordinates to its parent's, in place of its transform (`crates/motion-raster/src/projected.rs`).
+
+- **Drawing.** Its children, masks, clip and effects are drawn flat in its own coordinates, into a buffer of its own, as an isolated layer's are. Effects get the buffer's space, so blur sizes and points stay in layer units.
+- **The buffer's region** is the part of the plane the canvas sees: the frame's inverse image in front of the camera, worked out as five half-planes clipping the box the layer draws in. That box is its bounds or its children's (glyphs measured from their outlines), grown by each effect's reach (`Reach`, a row of the effect registry) and cut to its clip. The region is then widened by how far its masks and effects read. A plane that draws everywhere, such as one with particles, is cut towards its horizon where 64 × 64 of its units fall within one px.
+- **The buffer's scale** is the most the matrix magnifies that region, at most 4×, and lowered so neither side passes 8,192 px.
+- **Laying.** Each canvas px is mapped back onto the plane. A px whose ray meets the plane behind the camera stays clear, so a plane crossing the camera is cut there with no clipping of outlines. The others are sampled from a chain of halved copies, made only when a footprint needs one. The level comes from the footprint the px has on the plane (the Jacobian of the map back), trilinearly, with up to 16 probes along the footprint's long axis, so planes seen nearly edge-on neither alias nor blur across. The buffer's clear border keeps edges antialiased.
+- **Afterwards** opacity, blend mode and matte (in the parent's coordinates) apply as for a flat layer. A projected filter layer's region is drawn on its plane; its effects run on the canvas, measured by the projection's affine match at the middle of what is seen.
+- **Motion blur** ([D57](decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter)) is `Projection::samples`: the drawing is made once and laid through the map at each moment, averaged at 1/n each. These are whole maps, not moves as `Layer::motion` holds, since the map at the frame may be singular (a plane seen edge-on). A layer with both is refused.
+
+*Measured* (unit tests in `crates/motion-raster/tests/unit/projected.rs`):
+
+| Check | Result |
+|---|---|
+| Identity and whole-px moves against the flat path | the same bytes |
+| Turned 0.5 rad and scaled 1.3× against the flat path | mean 0.39 levels, at most 60 on edges, from resampling |
+| Card turned 60° about Y at a zoom of 2,666.7 px | 200.86 px across, 200.85 by hand |
+| Plane crossing the camera | its front part only, cut within a px of where it should be |
+| Checkerboard tipped 84° back, against 16 × 16 supersampling | mean error 0.032 of white; 0.059 with one probe per px; 0.49 point-sampled |
+| Masked, blurred card turned 50°, against the flat drawing at 4× laid by hand with 4 × 4 samples | mean alpha error 0.0005 |
+| Motion-blur samples against `Layer::motion` with the same moves | the same bytes |
+
+*Measured* (M4 Max, one thread, release build, median of 21): a 1920 × 1080 card turned 35° about Y through the default camera, its buffer 2,563 × 1,462 px, draws in 53.3 ms with float compositing and 48.7 ms with the integer pipeline; drawn flat, 3.6 ms and 1.4 ms (`cargo test --release -p motion-raster --test timing -- --ignored --nocapture`). Most of it is sampling, two bilinear reads per px where the plane shrinks: with one read the frame takes 23 ms, with none 11 ms.
+
 ## Encoding
 
 In a fast renderer, encoding is usually the slowest step.

@@ -1676,6 +1676,7 @@ dependencies = [
  "png",
  "proptest",
  "rstest",
+ "skrifa",
  "vello_cpu",
  "zune-jpeg",
 ]
