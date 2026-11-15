@@ -260,8 +260,8 @@ These are wrong today, whatever the roadmap. Each gets a test that reproduces it
 | `motion-import/src/map/layer.rs:167-176` | A layer whose source is missing is dropped silently. The branch meant to report it can never run. *Resolved in PR #41.* |
 | `motion-import/src/map/layer.rs:236-238` | A parent outside the layer's comp is dropped with no finding. *Resolved in PR #41.* |
 | `motion-import/src/map.rs:114-165` | `--comp` takes the first comp with a matching name, even when two have it. |
-| `motion-edit/src/apply.rs:14, 59` | A layer with the id `scene` cannot be edited. |
-| `motion-engine/src/diff.rs:305, 325, 356` | Two `pixels()` helpers round differently, and `diff` renders outside the `render` stage. |
+| `motion-edit/src/apply.rs:14, 59` | A layer with the id `scene` cannot be edited. *Folded into D43:* the address grammar decides how the scene itself is named. |
+| `motion-engine/src/diff.rs:305, 325, 356` | Two `pixels()` helpers round differently, and `diff` renders outside the `render` stage. *Resolved in PR #44:* every frame the engine draws goes through `Session::draw`. (They rounded alike, since float casts saturate; the second was only a copy.) |
 
 ## After PR #34: D38 and the variant surface
 

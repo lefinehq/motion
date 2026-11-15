@@ -231,11 +231,27 @@ impl Session {
     /// As [`Session::display_list`], or a canvas the rasteriser cannot hold
     /// (zero or above 65535 pixels a side).
     pub fn render_with(&self, frame: f64, options: RenderOptions) -> Result<Image> {
-        let list = self.display_list(frame)?;
+        self.draw(&self.display_list(frame)?, options)
+    }
+
+    /// The canvas the scene is drawn on, in whole pixels.
+    ///
+    /// # Errors
+    /// As [`Session::graph`].
+    pub(crate) fn canvas(&self) -> Result<(u32, u32)> {
         let graph = self.graph()?;
-        let (width, height) = (pixels(graph.width), pixels(graph.height));
+        Ok((pixels(graph.width), pixels(graph.height)))
+    }
+
+    /// Draws `list` on the scene's canvas, as one `render` step: every frame
+    /// the engine draws goes through here.
+    ///
+    /// # Errors
+    /// As [`Session::render_with`].
+    pub(crate) fn draw(&self, list: &Frame, options: RenderOptions) -> Result<Image> {
+        let (width, height) = self.canvas()?;
         stage("render", || {
-            motion_raster::render_with(&list, width, height, options)
+            motion_raster::render_with(list, width, height, options)
         })
     }
 
@@ -410,7 +426,8 @@ fn is_lock(path: &Path) -> bool {
         .is_some_and(|e| e == crate::fonts::LOCK_EXTENSION)
 }
 
-/// A canvas side in whole pixels; validation keeps sizes whole and positive.
+/// A canvas side in whole pixels. Validation keeps sizes whole and
+/// positive, and the cast saturates, so a side is never wrapped.
 fn pixels(side: f64) -> u32 {
     side.round() as u32
 }
