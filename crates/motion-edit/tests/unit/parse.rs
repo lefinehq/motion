@@ -24,7 +24,7 @@ fn invalid_json(json: &str) -> Diagnostic {
 #[test]
 fn parses_targets_keys_and_typed_values() {
     let e = parse_edit(r#"title text="Launch \"Week\"" fill=#FFF fps=60 in=none"#).unwrap();
-    assert_eq!(e.target, "title");
+    assert_eq!(e.target.to_string(), "title");
     assert_eq!(e.changes[0].value, EditValue::Set(json!("Launch \"Week\"")));
     assert_eq!(e.changes[1].value, EditValue::Set(json!("#FFF")));
     assert_eq!(e.changes[2].value, EditValue::Set(json!(60)));
@@ -163,14 +163,14 @@ fn well_formed_quotes_still_work_next_to_other_words() {
 fn dotted_keys_and_json_values() {
     let e = parse_edit(r#"card anim.opacity=[["0f",0],["12f",1,"ease out ]"]] in=none"#).unwrap();
     assert_eq!(e.changes[0].key.as_str(), "anim.opacity");
-    assert_eq!(e.changes[0].key.segments(), ["anim", "opacity"]);
+    assert_eq!(e.changes[0].key.prefix(2), "anim.opacity");
     assert_eq!(
         e.changes[0].value,
         EditValue::Set(json!([["0f", 0], ["12f", 1, "ease out ]"]]))
     );
     assert_eq!(e.changes[1].value, EditValue::Remove);
     let e = parse_edit(r#"scene presets.my-pop={"opacity":0,"scale":0.5} fps=60"#).unwrap();
-    assert_eq!(e.changes[0].key.segments(), ["presets", "my-pop"]);
+    assert_eq!(e.changes[0].key.prefix(2), "presets.my-pop");
     assert_eq!(
         e.changes[0].value,
         EditValue::Set(json!({"opacity":0,"scale":0.5}))
@@ -216,7 +216,7 @@ fn json_is_read_to_its_closing_bracket_only() {
 #[test]
 fn spaces_around_the_line_and_between_words_are_ignored() {
     let e = parse_edit("  card \t fill=red   in=none  ").unwrap();
-    assert_eq!(e.target, "card");
+    assert_eq!(e.target.to_string(), "card");
     assert_eq!(e.changes.len(), 2);
 }
 
@@ -387,4 +387,21 @@ fn every_error_message() {
         })
         .collect();
     insta::assert_snapshot!(report.join("\n"));
+}
+
+#[test]
+fn a_target_is_a_layer_address_at_any_depth() {
+    let e = parse_edit("card/title text=Sale").unwrap();
+    assert_eq!(e.target.layers.len(), 2);
+    assert_eq!(e.target.to_string(), "card/title");
+    assert!(parse_edit("scene fps=60").unwrap().target.is_scene());
+    for bad in [
+        "Card fill=red",
+        "card/ fill=red",
+        "scene/card fill=red",
+        "card.fill x=1",
+    ] {
+        let err = parse_edit(bad).unwrap_err();
+        assert!(err.message.starts_with("invalid target"), "{bad}: {err}");
+    }
 }

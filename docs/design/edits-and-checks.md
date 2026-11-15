@@ -25,7 +25,8 @@ An edit names a **target**, then one or more **changes**.
 
 Targets can be:
 
-- **a layer id:** `title`
+- **a layer's address:** `title`, or `card/title` for the layer `title` inside the composition `card` draws ([D43](decisions.md#d43-one-layer-address-and-edits-per-instance))
+- **the scene itself:** `scene`
 - **one copy in a repeat:** `cards.3`, or its alias `card3`
 - **every copy in a repeat:** `cards.*`
 - **a property path:** `title.in.dur`
@@ -41,9 +42,15 @@ There are also four structural commands: `add`, `rm` (remove), `mv` (move) and `
 
 ### Nested paths and JSON values
 
-A key can be a dotted path, such as `anim.opacity`. The edit sets that one leaf and creates the objects on the way, so `card anim.opacity="0 -> 1 @0-20f"` adds an `anim` object if the layer has none. A value that starts with `[` or `{` is read as JSON, up to its balanced end, and may contain spaces. Any other value is a number, `true`, `false`, `none` or a string; quote a string that would otherwise look like one of those. A quoted value may contain spaces and four escapes: `\"` for a quote, `\\` for a backslash, `\n` for a new line and `\t` for a tab, so `title text="Make\nit move"` sets two lines.
+A key can be a dotted path, such as `anim.opacity`, and a list element is chosen by its `id` or index in brackets: `fx[glow].radius`, `scene comps.card.layers[title].text=Hi`. The edit sets that one leaf and creates the objects on the way, so `card anim.opacity="0 -> 1 @0-20f"` adds an `anim` object if the layer has none. A value that starts with `[` or `{` is read as JSON, up to its balanced end, and may contain spaces. Any other value is a number, `true`, `false`, `none` or a string; quote a string that would otherwise look like one of those. A quoted value may contain spaces and four escapes: `\"` for a quote, `\\` for a backslash, `\n` for a new line and `\t` for a tab, so `title text="Make\nit move"` sets two lines.
 
 `none` removes the key. If that leaves its parent object empty, the parent is removed too, up the path, so `card anim.opacity=none` on a layer whose only animation is opacity also removes `anim`.
+
+### Editing one instance of a composition
+
+`card/title text="Sale"` changes the title of the composition only where `card` draws it. The change is written into `overrides` on the scene's layer the address starts at, so `card` gets `"overrides":{"title":{"text":"Sale"}}`, and every other layer drawing the same composition is unchanged. A deeper address writes `overrides["label/title"]` on its first layer. An override replaces whole keys, so a change inside a key, such as `card/title anim.x=…`, starts from the key as that instance draws it and keeps its other tracks.
+
+`none` on an instance takes back the instance's own value. A key the composition itself gives the layer cannot be removed through one instance; the error says so and shows the edit of the composition, which changes every instance: `scene comps.label.layers[title].fill=none`.
 
 ### Editing one copy in a repeat
 

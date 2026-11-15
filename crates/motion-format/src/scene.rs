@@ -1,7 +1,8 @@
 //! The typed scene model the compiler consumes, and [`Document`], which keeps
 //! it with the JSON it was read from.
 
-use crate::Result;
+use crate::address::Id;
+use crate::{Address, Result};
 use serde_json::Value as Json;
 
 use crate::anim::AnimTrack;
@@ -65,6 +66,50 @@ impl Scene {
     /// The composition called `id`, if the scene has one.
     pub fn comp(&self, id: &str) -> Option<&Comp> {
         self.comps.iter().find(|c| c.id == id)
+    }
+
+    /// The layer `ids` lead to from the root, through the `comp` layers on
+    /// the way, as it is drawn there: with their overrides set.
+    pub fn layer(&self, ids: &[Id]) -> Option<&Layer> {
+        let (last, outer) = ids.split_last()?;
+        let mut layers = self.root.layers.as_slice();
+        for id in outer {
+            let layer = layers.iter().find(|l| l.id == id.as_ref())?;
+            layers = self.drawn(layer)?;
+        }
+        layers.iter().find(|l| l.id == last.as_ref())
+    }
+
+    /// The layers a `comp` layer draws: its own instance when it overrides
+    /// any, else its composition's. `None` for any other layer.
+    pub fn drawn<'a>(&'a self, layer: &'a Layer) -> Option<&'a [Layer]> {
+        let Content::Comp(comp) = &layer.content else {
+            return None;
+        };
+        match &comp.instance {
+            Some(layers) => Some(layers),
+            None => self.comp(&comp.id).map(|c| c.layers.as_slice()),
+        }
+    }
+
+    /// The address of every layer at any depth, in paint order: each layer,
+    /// then the layers of the composition it draws.
+    pub fn addresses(&self) -> Vec<Address> {
+        fn collect(scene: &Scene, layers: &[Layer], outer: &[Id], all: &mut Vec<Address>) {
+            for layer in layers {
+                let Ok(id) = layer.id.parse::<Id>() else {
+                    continue;
+                };
+                let ids: Vec<Id> = outer.iter().cloned().chain([id]).collect();
+                all.push(Address::layer(ids.iter().cloned()));
+                if let Some(inner) = scene.drawn(layer) {
+                    collect(scene, inner, &ids, all);
+                }
+            }
+        }
+        let mut all = Vec::new();
+        collect(self, &self.root.layers, &[], &mut all);
+        all
     }
 }
 
@@ -194,6 +239,13 @@ impl Document {
     /// The validated scene the JSON describes.
     pub fn scene(&self) -> &Scene {
         &self.scene
+    }
+
+    /// The JSON of the layer `ids` lead to from the root, as it is drawn
+    /// there: its composition's own layer with every override on the way
+    /// set over it. `None` when there is no such layer.
+    pub fn layer_json(&self, ids: &[Id]) -> Option<serde_json::Map<String, Json>> {
+        crate::overrides::layer_json(&self.raw, ids)
     }
 
     /// The JSON as read, dropping the scene.

@@ -3,7 +3,7 @@ source: crates/motion-edit/src/../tests/unit/parse.rs
 expression: "report.join(\"\\n\")"
 ---
 `` → empty edit; expected `<target> <key>=<value>`
-`fill=red` → no target before `fill=red`; expected a target first: a layer id or `scene`
+`fill=red` → no target before `fill=red`; expected a target first: a layer's address or `scene`
 `card` → no changes after `card`; expected `<key>=<value>`
 `card at=center 666` → `666` is not a change; expected `<key>=<value>`, with quotes around a value that has spaces
 `a"b x=1` → unexpected quote in `a"`; expected quotes only around a value, as in `<key>="<value>"`
@@ -17,8 +17,8 @@ expression: "report.join(\"\\n\")"
 `card delay+=10f` → operator `+=` is not supported yet; expected `<key>=<value>`
 `a x-=1` → operator `-=` is not supported yet; expected `<key>=<value>`
 `a =x` → missing key before `=` in `=x`; expected `<key>=<value>`
-`a x$y=1` → invalid key `x$y`: each dot-separated part must be non-empty letters, digits, `-` or `_`; expected `<key>[.<key>…]=<value>`
-`a anim..x=1` → invalid key `anim..x`: each dot-separated part must be non-empty letters, digits, `-` or `_`; expected `<key>[.<key>…]=<value>`
+`a x$y=1` → invalid key `x$y`: each dot-separated part must be non-empty letters, digits, `-` or `_`, with an optional `[id]` or `[index]`; expected `<key>[.<key>…]=<value>`, a list element as `<key>[<id>]` or `<key>[<index>]`
+`a anim..x=1` → invalid key `anim..x`: each dot-separated part must be non-empty letters, digits, `-` or `_`, with an optional `[id]` or `[index]`; expected `<key>[.<key>…]=<value>`, a list element as `<key>[<id>]` or `<key>[<index>]`
 `a fill=` → missing value for `fill`; expected `fill=<value>`, or `fill=""` for an empty string
 `a text="open` → unclosed quote in `text="open`; expected a closing `"`
 `a x="b"c` → unexpected text after the closing quote in `x="b"c`; expected a space after the quote, or the whole value quoted
@@ -34,7 +34,7 @@ expression: "report.join(\"\\n\")"
 `a fill=red fill=blue` → key `fill` given twice
 `card anim={} anim.x=1` → keys `anim` and `anim.x` overlap; set them in separate edits or merge them into one value
 `card anim.x.y=1 anim.x=2` → keys `anim.x` and `anim.x.y` overlap; set them in separate edits or merge them into one value
-`ghost fill=#FFF` → unknown layer id `ghost`; expected one of title, card
+`ghost fill=#FFF` → unknown layer `ghost`; expected one of title, card
 `card colour=#FFF` → unknown layer key `colour`; expected one of id, text, rect, shapes, comp, overrides, image, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, matte, position, anchor, scale, rotate, opacity
 `scene colour=red` → unknown scene key `colour`; expected one of motion, size, fps, dur, bg, presets, fonts, comps, layers
 `card in.opacity=1` → cannot set `in.opacity`: `in` is not an object

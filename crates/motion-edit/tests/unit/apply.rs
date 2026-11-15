@@ -49,7 +49,7 @@ fn edits_the_scene_itself() {
 fn reports_unknown_targets_keys_and_invalid_results() {
     assert_eq!(
         fail("ghost fill=#FFF"),
-        Diagnostic::unknown("layer id", "ghost", ["title", "card"])
+        Diagnostic::unknown("layer", "ghost", ["title", "card"])
     );
     assert_eq!(
         fail("card colour=#FFF"),
@@ -245,4 +245,122 @@ fn only_the_first_segment_is_checked_as_a_key() {
 #[case("card in.opacity=1", Kind::WrongType)]
 fn errors_say_what_kind_of_problem_they_are(#[case] line: &str, #[case] kind: Kind) {
     assert_eq!(fail(line).kind, kind);
+}
+
+/// A scene where `label` (a title and a badge) is drawn by `first` and
+/// `second`, and inside `card` by `deep`.
+fn instances() -> Document {
+    motion_format::parse_document(
+        r##"{"motion":1,"dur":"1s","comps":{
+          "label":{"size":"100x50","dur":"1s","layers":[
+            {"id":"title","text":"Shared","anim":{"opacity":"0 -> 1 @0-5f","x":"0 -> 10 @0-5f"}},
+            {"id":"badge","rect":"10x10","fill":"#00FF00","fx":[{"id":"tint","fill":"#FFFFFF"}]}]},
+          "card":{"size":"200x100","dur":"1s","layers":[{"id":"label","comp":"label"}]}},
+        "layers":[{"id":"first","comp":"label"},{"id":"second","comp":"label"},{"id":"deep","comp":"card"}]}"##,
+    )
+    .unwrap()
+}
+
+fn on_instances(line: &str) -> Result<Document> {
+    apply_edit(&instances(), &parse_edit(line).unwrap())
+}
+
+#[test]
+fn an_inner_layer_is_edited_for_one_instance_through_overrides() {
+    let out = on_instances("second/title text=Sale").unwrap().into_raw();
+    assert_eq!(
+        out["layers"][1]["overrides"],
+        json!({"title": {"text": "Sale"}})
+    );
+    // The composition and the other instance are as they were.
+    assert_eq!(out["comps"], instances().raw()["comps"]);
+    assert_eq!(out["layers"][0], instances().raw()["layers"][0]);
+    // Deeper, the override goes on the scene's layer the address starts at.
+    let out = on_instances("deep/label/title text=Deep")
+        .unwrap()
+        .into_raw();
+    assert_eq!(
+        out["layers"][2]["overrides"],
+        json!({"label/title": {"text": "Deep"}})
+    );
+}
+
+#[test]
+fn a_change_inside_a_key_starts_from_the_key_as_the_instance_draws_it() {
+    let out = on_instances(r#"second/title anim.x="5 -> 6 @0-5f""#)
+        .unwrap()
+        .into_raw();
+    // The whole `anim` is the override's, so the other track comes along.
+    assert_eq!(
+        out["layers"][1]["overrides"]["title"]["anim"],
+        json!({"opacity": "0 -> 1 @0-5f", "x": "5 -> 6 @0-5f"})
+    );
+    let out = on_instances("second/badge fx[tint].fill=#000000")
+        .unwrap()
+        .into_raw();
+    assert_eq!(
+        out["layers"][1]["overrides"]["badge"]["fx"],
+        json!([{"id": "tint", "fill": "#000000"}])
+    );
+}
+
+#[test]
+fn none_through_an_instance_takes_back_its_own_value_only() {
+    let set = on_instances("second/badge fill=#FF0000").unwrap();
+    // Taking back the instance's fill leaves no empty override behind ...
+    let back = apply_edit(&set, &parse_edit("second/badge fill=none").unwrap());
+    let err = back.unwrap_err();
+    // ... but the composition still gives the badge a fill, so it stays.
+    assert_eq!(err.kind, Kind::Conflict);
+    assert_eq!(
+        err.expected.as_deref(),
+        Some(
+            "`second/badge fill=<value>`, or `scene comps.label.layers[badge].fill=none` for every layer that draws `label`"
+        )
+    );
+    // A key only the override set goes away, and so does the empty override.
+    let set = on_instances(r#"second/title hidden=true"#).unwrap();
+    let back = apply_edit(&set, &parse_edit("second/title hidden=none").unwrap()).unwrap();
+    assert!(back.raw()["layers"][1].get("overrides").is_none());
+}
+
+#[test]
+fn a_selector_reaches_into_a_list() {
+    let out = on_instances("scene comps.label.layers[title].text=Hi")
+        .unwrap()
+        .into_raw();
+    assert_eq!(out["comps"]["label"]["layers"][0]["text"], "Hi");
+    let out = on_instances("scene comps.label.layers[1].fill=#0000FF")
+        .unwrap()
+        .into_raw();
+    assert_eq!(out["comps"]["label"]["layers"][1]["fill"], "#0000FF");
+    let out = on_instances("scene comps.label.layers[badge].fx[tint]=none")
+        .unwrap()
+        .into_raw();
+    assert_eq!(out["comps"]["label"]["layers"][1]["fx"], json!([]));
+    let err = on_instances("scene comps.label.layers[ghost].text=Hi").unwrap_err();
+    assert_eq!(err.kind, Kind::UnknownName);
+    assert_eq!(
+        err.message,
+        "cannot set `comps.label.layers[ghost].text`: `comps.label.layers` has no element `[ghost]`"
+    );
+}
+
+#[test]
+fn an_unknown_inner_layer_lists_every_address() {
+    let err = on_instances("second/ghost text=x").unwrap_err();
+    assert_eq!(err.message, "unknown layer `second/ghost`");
+    assert!(
+        err.expected
+            .as_deref()
+            .unwrap()
+            .contains("deep/label/title"),
+        "{err}"
+    );
+}
+
+#[test]
+fn an_invalid_inner_result_points_at_the_inner_layer() {
+    let err = on_instances("second/title fill=red").unwrap_err();
+    assert_eq!(err.path_text().as_deref(), Some("second/title.fill"));
 }

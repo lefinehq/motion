@@ -1,6 +1,7 @@
 //! Unit tests for `src/key_path.rs`.
 
 use super::*;
+use motion_format::Step;
 use rstest::rstest;
 
 fn key(text: &str) -> KeyPath {
@@ -8,11 +9,14 @@ fn key(text: &str) -> KeyPath {
 }
 
 #[test]
-fn a_key_keeps_its_text_and_segments() {
+fn a_key_keeps_its_text_and_steps() {
     let k = key("anim.opacity");
     assert_eq!(k.as_str(), "anim.opacity");
     assert_eq!(k.to_string(), "anim.opacity");
-    assert_eq!(k.segments(), ["anim", "opacity"]);
+    assert_eq!(
+        k.steps(),
+        [Step::Key("anim".into()), Step::Key("opacity".into())]
+    );
     assert_eq!(k.first(), "anim");
     assert_eq!(key("fill").first(), "fill");
 }
@@ -59,8 +63,22 @@ mod never_panics {
         fn key_dots_and_names(s in "[a-z.+_-]{0,20}") {
             if let Ok(k) = s.parse::<KeyPath>() {
                 prop_assert_eq!(k.as_str(), s.as_str());
-                prop_assert_eq!(k.prefix(k.segments().len()), s.as_str());
+                prop_assert_eq!(k.prefix(k.steps().len()), s.as_str());
             }
         }
+    }
+}
+
+#[test]
+fn a_selector_picks_a_list_element_by_id_or_index() {
+    let k = key("fx[glow].radius");
+    assert_eq!(k.first(), "fx");
+    assert_eq!(k.prefix(2), "fx[glow]");
+    assert_eq!(k.prefix(3), "fx[glow].radius");
+    assert_eq!(key("shapes[0]").prefix(2), "shapes[0]");
+    assert!(key("fx").overlaps(&key("fx[glow].radius")));
+    assert!(!key("fx[glow]").overlaps(&key("fx[blur]")));
+    for bad in ["fx[]", "fx[Glow]", "[0]", "fx.[0]"] {
+        assert!(bad.parse::<KeyPath>().is_err(), "{bad}");
     }
 }

@@ -10,7 +10,8 @@ use crate::parse::ESCAPES;
 // The accepted forms of a line, a change, a key and a JSON value.
 const LINE_FORM: &str = "`<target> <key>=<value>`";
 const CHANGE_FORM: &str = "`<key>=<value>`";
-const PATH_FORM: &str = "`<key>[.<key>…]=<value>`";
+const PATH_FORM: &str =
+    "`<key>[.<key>…]=<value>`, a list element as `<key>[<id>]` or `<key>[<index>]`";
 const JSON_FORM: &str = "`<key>=[…]` or `<key>={…}`, valid JSON";
 
 /// A syntax problem the edit grammar names where it fails, with its text.
@@ -36,8 +37,10 @@ pub(crate) enum Problem<'s> {
     Operator(char),
     /// A change with nothing before its `=`.
     MissingKey(&'s str),
-    /// A key that is not a dotted path of names.
+    /// A key that is not a path of names and selectors.
     InvalidKey(&'s str),
+    /// A target that is neither `scene` nor a layer address.
+    InvalidTarget(&'s str),
     /// A change with nothing after its `=`.
     MissingValue(&'s str),
     /// A quoted value without its closing quote; `rest` is the line from it on.
@@ -67,7 +70,7 @@ impl Problem<'_> {
             Problem::Empty => ("empty edit".into(), LINE_FORM.into()),
             Problem::NoTarget(word) => (
                 format!("no target before `{word}`"),
-                "a target first: a layer id or `scene`".into(),
+                "a target first: a layer's address or `scene`".into(),
             ),
             Problem::NoChanges(target) => {
                 (format!("no changes after `{target}`"), CHANGE_FORM.into())
@@ -102,9 +105,13 @@ impl Problem<'_> {
             ),
             Problem::InvalidKey(key) => (
                 format!(
-                    "invalid key `{key}`: each dot-separated part must be non-empty letters, digits, `-` or `_`"
+                    "invalid key `{key}`: each dot-separated part must be non-empty letters, digits, `-` or `_`, with an optional `[id]` or `[index]`"
                 ),
                 PATH_FORM.into(),
+            ),
+            Problem::InvalidTarget(target) => (
+                format!("invalid target `{target}`"),
+                "`scene`, or a layer's address: its id, or the ids down to it joined by `/`, e.g. `card/title`".into(),
             ),
             Problem::MissingValue(key) => (
                 format!("missing value for `{key}`"),

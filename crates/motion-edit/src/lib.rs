@@ -4,7 +4,7 @@
 //!
 //! ```
 //! let edit = motion_edit::parse_edit("title text=\"Hello\" in=none").unwrap();
-//! assert_eq!(edit.target, "title");
+//! assert_eq!(edit.target.to_string(), "title");
 //! assert_eq!(edit.changes.len(), 2);
 //! ```
 

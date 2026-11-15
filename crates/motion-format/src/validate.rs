@@ -38,6 +38,7 @@ use crate::{Address, Comp, CompContent, Content, Curve, ImageContent, Layer, Sce
 
 use crate::Place;
 use crate::address::{ID_RULE, Id, SCENE};
+use crate::overrides::written_id;
 
 /// The only format version.
 const VERSION: u32 = 1;
@@ -580,17 +581,10 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
 
 /// An image layer: a picture file, relative to the scene file, filling the
 /// layer's `box`, which it must have since the scene is read without
-/// The id a layer's JSON writes, if it writes one as a string.
-fn written_id(layer: &serde_json::Value) -> Option<&str> {
-    layer.get(ID).and_then(serde_json::Value::as_str)
-}
-
 /// The layers of the composition `canvas` names with `overrides` set over
-/// them, with paths relative to the `comp` layer: each override's keys
-/// replace the same keys of the layer its address names, and the list is
-/// then validated as any composition's layers are, so an error points at
-/// the inner layer, `title.text`. An address deeper than one layer is
-/// handed on as an override of the `comp` layer its first id names.
+/// them ([`crate::overrides`]), with paths relative to the `comp` layer:
+/// the list is validated as any composition's layers are, so an error
+/// points at the inner layer, `title.text`.
 fn instance(canvas: &Canvas, overrides: &OverridesDoc, shared: &Shared) -> Result<Vec<Layer>> {
     let at_overrides = |d: Diagnostic| d.at(OVERRIDES);
     let mut written: Vec<serde_json::Value> = shared
@@ -624,31 +618,13 @@ fn instance(canvas: &Canvas, overrides: &OverridesDoc, shared: &Shared) -> Resul
                 .expected("the keys to change; the id stays the layer's own"),
             ));
         }
-        let first: &str = address.layers[0].as_ref();
-        let Some(layer) = written
-            .iter_mut()
-            .find(|layer| written_id(layer) == Some(first))
-            .and_then(serde_json::Value::as_object_mut)
-        else {
+        if !crate::overrides::set_over(&mut written, &address.layers, keys) {
             let known: Vec<&str> = written.iter().filter_map(written_id).collect();
-            return Err(at_overrides(Diagnostic::unknown("layer", first, known)));
-        };
-        match address.layers.len() {
-            1 => layer.extend(keys.clone()),
-            _ => {
-                let rest = Address::layer(address.layers[1..].iter().cloned()).to_string();
-                let deeper = layer
-                    .entry(OVERRIDES)
-                    .or_insert_with(|| serde_json::Value::Object(Default::default()));
-                if let Some(deeper) = deeper.as_object_mut() {
-                    let entry = deeper
-                        .entry(rest)
-                        .or_insert_with(|| serde_json::Value::Object(Default::default()));
-                    if let Some(entry) = entry.as_object_mut() {
-                        entry.extend(keys.clone());
-                    }
-                }
-            }
+            return Err(at_overrides(Diagnostic::unknown(
+                "layer",
+                address.layers[0].as_ref(),
+                known,
+            )));
         }
     }
     let raw = serde_json::json!({ LAYERS: written });

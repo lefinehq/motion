@@ -16,7 +16,7 @@ use motion_format::address::Id;
 use motion_format::property::Prop;
 
 use crate::state::box_through;
-use crate::{ContentState, FrameState, NodeContent, NodeState, SceneGraph};
+use crate::{CompGraph, ContentState, FrameState, NodeContent, NodeState, SceneGraph};
 
 /// One node met on a [`walk`].
 #[derive(Debug, Clone, PartialEq)]
@@ -211,6 +211,22 @@ impl SceneGraph {
         let mut paths = Vec::new();
         self.collect(&self.root.nodes, &[], &mut paths);
         paths
+    }
+
+    /// The node `ids` lead to from the root, and the composition graph it
+    /// sits in: the root's for one id.
+    pub fn node_at(&self, ids: &[&str]) -> Option<(&crate::Node, &CompGraph)> {
+        let (last, outer) = ids.split_last()?;
+        let mut comp = &self.root;
+        for id in outer {
+            let node = comp.nodes.iter().find(|n| n.id == *id)?;
+            let NodeContent::Comp(index) = node.content else {
+                return None;
+            };
+            comp = &self.comps[index];
+        }
+        let node = comp.nodes.iter().find(|n| n.id == *last)?;
+        Some((node, comp))
     }
 
     fn collect<'a>(

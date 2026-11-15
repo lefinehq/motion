@@ -1,30 +1,32 @@
-//! The key of a change: a dotted path such as `anim.opacity`.
+//! The key of a change: a path such as `anim.opacity` or `fx[glow].radius`.
 
 use std::str::FromStr;
 
 use motion_format::grammar::parse_all;
-use motion_format::{Diagnostic, Result};
+use motion_format::{Diagnostic, Result, Step};
 
 use crate::parse::path;
 use crate::problem::Problem;
 
-/// The key of a change, such as `anim.opacity`, kept both as written and as
-/// its segments, so neither has to be rebuilt from the other. It prints as written.
+/// The key of a change, such as `anim.opacity` or `fx[glow].radius`, kept
+/// both as written and as its steps, so neither has to be rebuilt from the
+/// other. It prints as written.
 #[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
 #[display("{text}")]
 pub struct KeyPath {
     /// The key as written.
     text: String,
-    /// The names of the path; never empty.
-    segments: Vec<String>,
+    /// The steps of the path: keys, and `[id]` or `[index]` selectors
+    /// after them; never empty, and always a key first.
+    steps: Vec<Step>,
 }
 
 impl KeyPath {
-    /// A path of `segments`, written `text`; the grammar checks that they agree.
-    pub(crate) fn new(text: &str, segments: Vec<String>) -> KeyPath {
+    /// A path of `steps`, written `text`; the grammar checks that they agree.
+    pub(crate) fn new(text: &str, steps: Vec<Step>) -> KeyPath {
         KeyPath {
             text: text.to_owned(),
-            segments,
+            steps,
         }
     }
 
@@ -34,31 +36,50 @@ impl KeyPath {
         &self.text
     }
 
-    /// The names of the path, outermost first; there is always one.
+    /// The steps of the path, outermost first; there is always one, a key.
     #[must_use]
-    pub fn segments(&self) -> &[String] {
-        &self.segments
+    pub fn steps(&self) -> &[Step] {
+        &self.steps
     }
 
-    /// The first name of the path: `anim` of `anim.opacity`.
+    /// The first key of the path: `anim` of `anim.opacity`.
     #[must_use]
     pub fn first(&self) -> &str {
-        &self.segments[0]
+        match &self.steps[0] {
+            Step::Key(key) => key,
+            Step::Id(_) | Step::Index(_) => unreachable!("a key path starts with a key"),
+        }
     }
 
-    /// The key as written, up to (not including) segment `depth`: depth 2 of
-    /// `a.b.c` is `a.b`, and depth 0 is empty.
-    pub(crate) fn prefix(&self, depth: usize) -> &str {
-        let names: usize = self.segments[..depth].iter().map(String::len).sum();
-        let dots = depth.saturating_sub(1);
-        &self.text[..names + dots]
+    /// The path up to (not including) step `depth`: depth 2 of `a.b.c` is
+    /// `a.b`, depth 2 of `fx[glow].radius` is `fx[glow]`, and depth 0 is empty.
+    pub(crate) fn prefix(&self, depth: usize) -> String {
+        written(&self.steps[..depth])
     }
 
-    /// True when one key is the other or its prefix, segment by segment:
+    /// True when one key is the other or its prefix, step by step:
     /// `anim` and `anim.x`, but not `anim` and `animal`.
     pub(crate) fn overlaps(&self, other: &KeyPath) -> bool {
-        self.segments.starts_with(&other.segments) || other.segments.starts_with(&self.segments)
+        self.steps.starts_with(&other.steps) || other.steps.starts_with(&self.steps)
     }
+}
+
+/// `steps` as a key path writes them: keys joined by `.`, each selector in
+/// brackets after its key.
+pub(crate) fn written(steps: &[Step]) -> String {
+    let mut text = String::new();
+    for step in steps {
+        match step {
+            Step::Key(key) if text.is_empty() => text.push_str(key),
+            Step::Key(key) => {
+                text.push('.');
+                text.push_str(key);
+            }
+            Step::Id(id) => text.push_str(&format!("[{id}]")),
+            Step::Index(index) => text.push_str(&format!("[{index}]")),
+        }
+    }
+    text
 }
 
 impl FromStr for KeyPath {
