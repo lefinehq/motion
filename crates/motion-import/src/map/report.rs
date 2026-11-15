@@ -82,6 +82,8 @@ pub struct Mapping {
     pub slots: usize,
     /// The roles proposed for the designer to confirm.
     pub roles: Vec<super::roles::ProposedRole>,
+    /// The locks written, the defaults of a master with a logo.
+    pub locks: Vec<String>,
 }
 
 /// What one expression became.
@@ -255,6 +257,13 @@ impl fmt::Display for Mapping {
                 .map(|r| format!("{} {} ({})", r.role, r.address, r.from))
                 .collect();
             writeln!(f, "  roles, to confirm: {}", shown.join(", "))?;
+        }
+        if !self.locks.is_empty() {
+            writeln!(
+                f,
+                "  locks, as a master with a logo has: {}",
+                self.locks.join(", ")
+            )?;
         }
         if !self.clamped.is_empty() {
             let shown: Vec<String> = self

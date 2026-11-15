@@ -21,7 +21,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"motion":1,"dur":"1s","size":3,"layers":[]}` → size: invalid type: integer `3`; expected a size name such as `1080p`, or `<width>x<height>`
 `{"motion":1,"dur":"1s","size":"huge","layers":[]}` → size: unknown size `huge`; expected one of 720p, 1080p, 4k, square, vertical, or <width>x<height>
 `{"motion":1,"dur":"1s","bg":0,"layers":[]}` → bg: invalid type: integer `0`; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`
-`{"motion":1,"dur":"1s","colour":"x","layers":[]}` → colour: unknown field `colour`; expected one of motion, size, fps, dur, bg, labels, presets, fonts, slots, roles, comps, layers
+`{"motion":1,"dur":"1s","colour":"x","layers":[]}` → colour: unknown field `colour`; expected one of motion, size, fps, dur, bg, labels, presets, fonts, slots, roles, locks, comps, layers
 `{"motion":1,"dur":"1s","layers":{}}` → layers: invalid type: map; expected a list of layer objects, e.g. [{"id":"box","rect":"100x100"}]
 
 ## layers

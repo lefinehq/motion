@@ -36,6 +36,10 @@ pub struct Scene {
     ///
     /// [D50]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d50-roles-name-what-a-masters-layers-do
     pub roles: Vec<crate::roles::Role>,
+    /// What a variant may not change ([D51]).
+    ///
+    /// [D51]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d51-locks-are-refused-in-the-edit
+    pub locks: Vec<crate::Lock>,
 }
 
 /// A composition: a canvas of its own, with its own clock and layers, that

@@ -25,6 +25,11 @@ const VOCABULARY: [(&str, &[&str]); 9] = [
     ("date", &["date"]),
 ];
 
+/// The locks a master with a logo gets ([D51]).
+///
+/// [D51]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d51-locks-are-refused-in-the-edit
+pub(super) const DEFAULT_LOCKS: [&str; 3] = ["@logo", "palette", "typefaces"];
+
 /// A role the import proposed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProposedRole {

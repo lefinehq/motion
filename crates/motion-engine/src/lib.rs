@@ -43,7 +43,8 @@ pub use session::Session;
 
 pub use motion_format::roles::Role;
 pub use motion_format::{
-    Address, Content, Diagnostic, Document, Kind, Listed, Result, RoleTarget, Scene, write_document,
+    Address, Content, Diagnostic, Document, Kind, Listed, Lock, Result, RoleTarget, Scene,
+    write_document,
 };
 pub use motion_import::map::{Import, Mapping, Options as ImportOptions, StoredText};
 pub use motion_import::{Project, Report as ImportReport};

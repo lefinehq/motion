@@ -4,7 +4,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use motion_engine::{Content, Diagnostic, Kind, Result, Role, RoleTarget, Scene, Session};
+use motion_engine::{Content, Diagnostic, Kind, Lock, Result, Role, RoleTarget, Scene, Session};
 use serde_json::{Value as Json, json};
 
 /// Prints each role, what it names and what it holds; `json` prints them
@@ -33,8 +33,12 @@ pub fn run(path: &Path, json: bool) -> Result<ExitCode> {
                 Json::Null => String::new(),
                 value => format!(" {value}"),
             };
+            let locked = match locked(scene, role) {
+                true => "  locked",
+                false => "",
+            };
             println!(
-                "{:names$}  {:targets$}  {kind}{holds}",
+                "{:names$}  {:targets$}  {kind}{holds}{locked}",
                 role.id.to_string(),
                 role.target.to_string()
             );
@@ -65,6 +69,20 @@ fn holds(scene: &Scene, role: &Role) -> (String, Json) {
     }
 }
 
+/// Whether a lock holds what `role` names, or a layer around it.
+fn locked(scene: &Scene, role: &Role) -> bool {
+    scene
+        .held_locks()
+        .iter()
+        .any(|(lock, _)| match (lock, &role.target) {
+            (Lock::Layer(locked), RoleTarget::Layer(address)) => {
+                address.layers.starts_with(&locked.layers)
+            }
+            (Lock::Slot(locked), RoleTarget::Slot(slot)) => locked == slot,
+            _ => false,
+        })
+}
+
 fn data(scene: &Scene, role: &Role) -> Json {
     let (kind, value) = holds(scene, role);
     json!({
@@ -72,5 +90,6 @@ fn data(scene: &Scene, role: &Role) -> Json {
         "target": role.target.to_string(),
         "kind": kind,
         "value": value,
+        "locked": locked(scene, role),
     })
 }

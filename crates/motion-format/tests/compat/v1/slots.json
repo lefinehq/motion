@@ -1,6 +1,7 @@
 {"motion":1,"size":"1080x1080","fps":25,"dur":"2s","bg":"#101820",
 "slots":{"accent":{"color":"#E63946","label":"Accent"},"headline":{"text":"Launch"},"lift":40,"corner":[120,120]},
 "roles":{"headline":"tag/word","plate":"plate","accent":"$accent"},
+"locks":["@plate","palette","typefaces"],
 "comps":{
  "tag":{"size":"600x160","dur":"2s","bg":"#FFFFFF","slots":{"accent":"#2A9D8F"},"layers":[
   {"id":"dot","rect":"120x120 r60","fill":"$accent","at":"80 80"},

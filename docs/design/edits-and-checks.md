@@ -62,6 +62,10 @@ A key written `$id` edits a slot ([D44](decisions.md#d44-slots-are-named-values-
 
 A target written `@role` is what the scene's role names ([D50](decisions.md#d50-roles-name-what-a-masters-layers-do)): `@headline text="Sale"` is `title text="Sale"` when `headline` is `title`, and `@accent=#2A9D8F` is `$accent=#2A9D8F` when `accent` is the slot `$accent`. A brief written against roles runs on any master that has them. A layer's role takes keys and a slot's role takes a value; the error says which. `motion roles scene.json` lists each role with what it holds, and `--json` gives the same as data.
 
+### Locks
+
+An edit that touches what the scene's `locks` hold is refused, and the scene is left as it was ([D51](decisions.md#d51-locks-are-refused-in-the-edit)). A locked layer cannot be edited, nor anything inside it, nor reached from outside: an override into it, the composition one of the layers on the way to it draws, or the scene's `layers`. A locked slot cannot be set. With `palette` locked, an edit may only set colours the scene already has, compared as 8-bit colours; with `typefaces` locked, only font families it already uses. The message names the lock, `` `logo` is locked by `@logo` ``. `locks` and `roles` are scene keys like any other, which the designer edits; a batch cannot.
+
 ### Editing one copy in a repeat
 
 `card3 fill=red` does not split the five cards into five separate layers. It stores a small override on card 3, and the repeat stays one compact layer.

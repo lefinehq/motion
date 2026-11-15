@@ -11,6 +11,7 @@ mod doc;
 pub mod edit_word;
 pub mod grammar;
 pub mod item;
+pub mod locks;
 mod number;
 pub mod overrides;
 mod parse;
@@ -34,6 +35,7 @@ pub use address::{Address, Id, Step};
 pub use curve::{BACK_OVERSHOOT, Curve, ELASTIC, FAMILIES, Family, NAMED_CURVES, SHAPES, Shape};
 pub use diagnostic::{Diagnostic, Kind, Place, Result};
 pub use item::{Item, ItemKind, Role};
+pub use locks::Lock;
 pub use number::fmt_num;
 pub use parse::{COMP_KEYS, LAYER_KEYS, SCENE_KEYS, key, layer_keys, parse_document};
 pub use path::{Path, Vertex};
@@ -44,7 +46,13 @@ pub use slots::{Listed, Slot, SlotType};
 /// Whether `value` is a colour in any form the scene writes one: `#RGB`,
 /// `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1.
 pub fn is_color(value: &serde_json::Value) -> bool {
-    text::color(value).is_ok()
+    color(value).is_some()
+}
+
+/// `value` as a colour, straight RGBA from 0 to 1, if it is one in any
+/// form the scene writes one ([`is_color`]).
+pub fn color(value: &serde_json::Value) -> Option<[f64; 4]> {
+    text::color(value).ok()
 }
 pub use spring::Spring;
 pub use value::{Value, ValueType};
