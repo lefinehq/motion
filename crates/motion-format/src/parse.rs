@@ -39,6 +39,8 @@ pub mod key {
     pub const SHAPES: &str = "shapes";
     /// The composition a layer draws.
     pub const COMP: &str = "comp";
+    /// A `comp` layer's keys for the layers of its composition, by address.
+    pub const OVERRIDES: &str = "overrides";
     /// The picture file an image layer draws, relative to the scene file.
     pub const IMAGE: &str = "image";
     /// A layer that draws nothing, for others to move with.
@@ -115,12 +117,13 @@ pub const COMP_KEYS: [&str; 5] = [key::SIZE, key::FPS, key::DUR, key::BG, key::L
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 24] = [
+pub const LAYER_KEYS: [&str; 25] = [
     key::ID,
     key::TEXT,
     key::RECT,
     key::SHAPES,
     key::COMP,
+    key::OVERRIDES,
     key::IMAGE,
     key::PIVOT,
     key::FONT,
@@ -170,7 +173,7 @@ pub(crate) fn scene_from_value(value: &Value) -> Result<Scene> {
         d.path = d.path.map(|place| place.by_layer_ids(value));
         d
     });
-    let checked = read.and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc));
+    let checked = read.and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc, value));
     // Validation stops at the first rule that fails, so this is that rule.
     checked.inspect_err(|d| {
         debug!(kind = ?d.kind, path = d.path_text().as_deref(), "rejected: {}", d.message);

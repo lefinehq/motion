@@ -18,15 +18,15 @@ use crate::anim::{
 };
 use crate::doc::{
     AnimDoc, CompDoc, CompsDoc, EasingDoc, KeyDoc, KeyTime, LayerDoc, LayersDoc, List, Number,
-    Object, PathDoc, Present, PresetDoc, PresetsDoc, SceneDoc, Shorthand, StartDoc, TrackDoc,
-    ValueDoc,
+    Object, OverridesDoc, PathDoc, Present, PresetDoc, PresetsDoc, SceneDoc, Shorthand, StartDoc,
+    TrackDoc, ValueDoc,
 };
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, SHAPES};
 use crate::parse::key::{
-    ANIM, ANIMATE, AT, BG, BOX, COMP, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN, LAYERS, MATTE,
-    MOTION, OFFSET, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SIZE,
-    SPAN, STRETCH, STYLE, TEXT, comp_path, layer_path,
+    ANIM, ANIMATE, AT, BG, BOX, COMP, COMPS, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN, LAYERS,
+    MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS,
+    SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -34,7 +34,7 @@ use crate::property::{LAYER, Prop, PropertySpec, Registry, Rest, Target};
 use crate::shorthand::{Behaviour, Coord, Font, Position};
 use crate::units::{Color, SPAN_EXPECTED, SignedTime, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
-use crate::{Comp, Content, Curve, ImageContent, Layer, Scene, fmt_num};
+use crate::{Address, Comp, CompContent, Content, Curve, ImageContent, Layer, Scene, fmt_num};
 
 use crate::Place;
 use crate::address::{ID_RULE, Id, SCENE};
@@ -65,12 +65,22 @@ const DEFAULT_POSITION: Position = Position {
     y: Coord::Center,
 };
 
-/// What every composition reads from the scene: its presets and the
-/// compositions a `comp` layer may draw.
+/// What every composition reads from the scene: its presets, the
+/// compositions a `comp` layer may draw, and the JSON overrides are set over.
 struct Shared<'a> {
     presets: &'a [(String, PresetSpec)],
-    /// Every composition's id and size, read before any layer.
-    comps: &'a [(String, Size)],
+    /// Every composition's canvas, read before any layer.
+    comps: &'a [Canvas],
+    /// The scene as written, whose compositions' layers an override is set over.
+    raw: &'a serde_json::Value,
+}
+
+/// A composition's id, size and frames per second, which a layer drawing it
+/// may need before the composition is read.
+struct Canvas {
+    id: String,
+    size: Size,
+    fps: f64,
 }
 
 /// A composition's frames per second, length and background.
@@ -82,9 +92,7 @@ struct Clock {
 
 /// What a layer needs from the scene around it.
 struct Context<'a> {
-    presets: &'a [(String, PresetSpec)],
-    /// Every composition's id and size, read before any layer.
-    comps: &'a [(String, Size)],
+    shared: &'a Shared<'a>,
     /// The frames per second of the layer's composition.
     fps: f64,
     /// The canvas of the layer's composition.
@@ -92,7 +100,7 @@ struct Context<'a> {
 }
 
 /// Validates a scene document into a [`Scene`], with the defaults of the keys left out.
-pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
+pub(crate) fn scene(doc: &SceneDoc, raw: &serde_json::Value) -> Result<Scene> {
     version(required(*doc.motion, MOTION, &VERSION.to_string())?)?;
     let fps = doc.fps.map_or(Ok(DEFAULT_FPS), fps)?;
     let size = optional(doc.size.as_ref(), SIZE)?.unwrap_or(DEFAULT_SIZE);
@@ -100,7 +108,7 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
     let Object(own_presets) = &doc.presets;
     let presets = presets(own_presets).map_err(|e| e.under(PRESETS))?;
     let Object(comp_docs) = &doc.comps;
-    let comp_sizes = comp_sizes(comp_docs)?;
+    let canvases = canvases(comp_docs, fps)?;
     let fonts = match &*doc.fonts {
         Some(List(fonts)) => fonts.clone(),
         None => Vec::new(),
@@ -108,12 +116,14 @@ pub(crate) fn scene(doc: &SceneDoc) -> Result<Scene> {
     let List(layer_docs) = required(doc.layers.as_ref(), LAYERS, "[]")?;
     let shared = Shared {
         presets: &presets,
-        comps: &comp_sizes,
+        comps: &canvases,
+        raw,
     };
     let comps = comp_docs
         .iter()
-        .map(|(id, Object(comp_doc))| {
-            listed_comp(id, comp_doc, &shared, fps).map_err(|e| e.under(comp_path(id)))
+        .zip(&canvases)
+        .map(|((id, Object(comp_doc)), canvas)| {
+            listed_comp(canvas, comp_doc, &shared).map_err(|e| e.under(comp_path(id)))
         })
         .collect::<Result<Vec<_>>>()?;
     let root = comp(SCENE, size, clock, layer_docs, &shared)?;
@@ -163,8 +173,9 @@ fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
     Ok(layers)
 }
 
-/// Every composition's id, which follows the id rule, and size, which it must set.
-fn comp_sizes(docs: &CompsDoc) -> Result<Vec<(String, Size)>> {
+/// Every composition's canvas: its id, which follows the id rule, its size,
+/// which it must set, and its frames per second, the scene's unless set.
+fn canvases(docs: &CompsDoc, scene_fps: f64) -> Result<Vec<Canvas>> {
     docs.iter()
         .map(|(id, Object(doc))| {
             let place = |e: Diagnostic| e.under(comp_path(id));
@@ -179,24 +190,22 @@ fn comp_sizes(docs: &CompsDoc) -> Result<Vec<(String, Size)>> {
             let size = required(doc.size.as_ref(), SIZE, r#""1080x1920""#)
                 .and_then(|s| s.parse_at(SIZE))
                 .map_err(place)?;
-            Ok((id.clone(), size))
+            let fps = doc.fps.map_or(Ok(scene_fps), fps).map_err(place)?;
+            Ok(Canvas {
+                id: id.clone(),
+                size,
+                fps,
+            })
         })
         .collect()
 }
 
-/// One composition under `comps`, with paths relative to it: its clock
-/// defaults to the scene's `fps`, its background to clear.
-fn listed_comp(id: &str, doc: &CompDoc, shared: &Shared, scene_fps: f64) -> Result<Comp> {
-    let size = shared
-        .comps
-        .iter()
-        .find(|(c, _)| c == id)
-        .map(|(_, size)| *size)
-        .expect("comp sizes are read first");
-    let fps = doc.fps.map_or(Ok(scene_fps), fps)?;
-    let clock = clock(fps, &doc.dur, &doc.bg, CLEAR)?;
+/// One composition under `comps`, with paths relative to it: its background
+/// defaults to clear.
+fn listed_comp(canvas: &Canvas, doc: &CompDoc, shared: &Shared) -> Result<Comp> {
+    let clock = clock(canvas.fps, &doc.dur, &doc.bg, CLEAR)?;
     let List(layer_docs) = required(doc.layers.as_ref(), LAYERS, "[]")?;
-    comp(id, size, clock, layer_docs, shared)
+    comp(&canvas.id, canvas.size, clock, layer_docs, shared)
 }
 
 /// A composition's clock and background, from the keys the scene's root
@@ -224,8 +233,7 @@ fn comp(
     shared: &Shared,
 ) -> Result<Comp> {
     let context = Context {
-        presets: shared.presets,
-        comps: shared.comps,
+        shared,
         fps: clock.fps,
         size,
     };
@@ -247,7 +255,7 @@ fn no_comp_draws_itself(comps: &[Comp]) -> Result<()> {
             .iter()
             .enumerate()
             .filter_map(|(i, layer)| match &layer.content {
-                Content::Comp(id) => Some((i, id.as_str())),
+                Content::Comp(comp) => Some((i, comp.id.as_str())),
                 _ => None,
             })
     }
@@ -345,7 +353,7 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
         enter: doc
             .enter
             .as_ref()
-            .map(|written| entrance(written, context.presets))
+            .map(|written| entrance(written, context.shared.presets))
             .transpose()?,
         anim: anim(tracks, &LAYER, context.fps).map_err(|e| e.under(ANIM))?,
         parent: doc.parent.clone(),
@@ -503,6 +511,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         }
     };
     only_on(doc.fill.is_some(), FILL, key, &[TEXT, RECT])?;
+    only_on(!doc.overrides.0.is_empty(), OVERRIDES, key, &[COMP])?;
     only_on(doc.frame.is_some(), BOX, key, &[TEXT, IMAGE])?;
     let Object(style) = &doc.style;
     for (written, name) in [
@@ -533,21 +542,29 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         }
         COMP => {
             let id = doc.comp.clone().expect("written");
-            match context.comps.iter().any(|(c, _)| *c == id) {
-                true => Ok(Content::Comp(id)),
-                false if context.comps.is_empty() => Err(Diagnostic::new(
-                    Kind::UnknownName,
-                    format!("unknown composition `{id}`: the scene has none"),
-                )
-                .at(COMP)
-                .expected(r#"a composition under "comps", e.g. "comps":{"card":{"size":"600x400","dur":"5s","layers":[]}}"#)),
-                false => Err(Diagnostic::unknown(
-                    "composition",
-                    &id,
-                    context.comps.iter().map(|(c, _)| c.as_str()),
-                )
-                .at(COMP)),
-            }
+            let comps = &context.shared.comps;
+            let Some(canvas) = comps.iter().find(|c| c.id == id) else {
+                return Err(match comps.is_empty() {
+                    true => Diagnostic::new(
+                        Kind::UnknownName,
+                        format!("unknown composition `{id}`: the scene has none"),
+                    )
+                    .at(COMP)
+                    .expected(r#"a composition under "comps", e.g. "comps":{"card":{"size":"600x400","dur":"5s","layers":[]}}"#),
+                    false => Diagnostic::unknown(
+                        "composition",
+                        &id,
+                        comps.iter().map(|c| c.id.as_str()),
+                    )
+                    .at(COMP),
+                });
+            };
+            let Object(overrides) = &doc.overrides;
+            let instance = match overrides.is_empty() {
+                true => None,
+                false => Some(instance(canvas, overrides, context.shared)?),
+            };
+            Ok(Content::Comp(CompContent { id, instance }))
         }
         IMAGE => image(doc.image.as_deref().expect("written"), doc.frame.as_ref()),
         _ => match *doc.pivot {
@@ -563,6 +580,95 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
 
 /// An image layer: a picture file, relative to the scene file, filling the
 /// layer's `box`, which it must have since the scene is read without
+/// The id a layer's JSON writes, if it writes one as a string.
+fn written_id(layer: &serde_json::Value) -> Option<&str> {
+    layer.get(ID).and_then(serde_json::Value::as_str)
+}
+
+/// The layers of the composition `canvas` names with `overrides` set over
+/// them, with paths relative to the `comp` layer: each override's keys
+/// replace the same keys of the layer its address names, and the list is
+/// then validated as any composition's layers are, so an error points at
+/// the inner layer, `title.text`. An address deeper than one layer is
+/// handed on as an override of the `comp` layer its first id names.
+fn instance(canvas: &Canvas, overrides: &OverridesDoc, shared: &Shared) -> Result<Vec<Layer>> {
+    let at_overrides = |d: Diagnostic| d.at(OVERRIDES);
+    let mut written: Vec<serde_json::Value> = shared
+        .raw
+        .get(COMPS)
+        .and_then(|comps| comps.get(&canvas.id))
+        .and_then(|comp| comp.get(LAYERS))
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .expect("the composition was read from this JSON");
+    for (target, Object(keys)) in overrides {
+        let address = target
+            .parse::<Address>()
+            .ok()
+            .filter(|a| a.keys.is_empty() && !a.layers.is_empty())
+            .ok_or_else(|| {
+                at_overrides(
+                    Diagnostic::new(
+                        Kind::Invalid,
+                        format!("`{target}` is not the address of a layer"),
+                    )
+                    .expected("a layer of the composition, e.g. `title` or `badge/icon`"),
+                )
+            })?;
+        if keys.contains_key(ID) {
+            return Err(at_overrides(
+                Diagnostic::new(
+                    Kind::Conflict,
+                    format!("an override of `{target}` sets its `id`"),
+                )
+                .expected("the keys to change; the id stays the layer's own"),
+            ));
+        }
+        let first: &str = address.layers[0].as_ref();
+        let Some(layer) = written
+            .iter_mut()
+            .find(|layer| written_id(layer) == Some(first))
+            .and_then(serde_json::Value::as_object_mut)
+        else {
+            let known: Vec<&str> = written.iter().filter_map(written_id).collect();
+            return Err(at_overrides(Diagnostic::unknown("layer", first, known)));
+        };
+        match address.layers.len() {
+            1 => layer.extend(keys.clone()),
+            _ => {
+                let rest = Address::layer(address.layers[1..].iter().cloned()).to_string();
+                let deeper = layer
+                    .entry(OVERRIDES)
+                    .or_insert_with(|| serde_json::Value::Object(Default::default()));
+                if let Some(deeper) = deeper.as_object_mut() {
+                    let entry = deeper
+                        .entry(rest)
+                        .or_insert_with(|| serde_json::Value::Object(Default::default()));
+                    if let Some(entry) = entry.as_object_mut() {
+                        entry.extend(keys.clone());
+                    }
+                }
+            }
+        }
+    }
+    let raw = serde_json::json!({ LAYERS: written });
+    let read = crate::de::from_value::<List<LayersDoc>>(&raw[LAYERS]).map_err(|mut d| {
+        d.path = Some(
+            Place::from(LAYERS)
+                .join(d.path.take().unwrap_or_else(|| Place::from("")))
+                .by_layer_ids(&raw),
+        );
+        d
+    });
+    let List(docs) = read?;
+    let context = Context {
+        shared,
+        fps: canvas.fps,
+        size: canvas.size,
+    };
+    layers(&docs, &context)
+}
+
 /// opening its files.
 fn image(path: &str, frame: Option<&ValueDoc>) -> Result<Content> {
     if path.trim().is_empty() {
@@ -965,7 +1071,7 @@ fn entrance_conflict(
     let Some(behaviour) = &layer.enter else {
         return Ok(());
     };
-    let Some(spec) = lookup(context.presets, &behaviour.preset) else {
+    let Some(spec) = lookup(context.shared.presets, &behaviour.preset) else {
         return Ok(());
     };
     let Some(track) = layer
@@ -1032,11 +1138,12 @@ fn entrance_conflict(
 fn known_box(layer: &Layer, context: &Context) -> Option<Rect> {
     match &layer.content {
         Content::Rect(rect) => Some(Rect::new(0.0, 0.0, rect.width, rect.height)),
-        Content::Comp(id) => context
+        Content::Comp(comp) => context
+            .shared
             .comps
             .iter()
-            .find(|(c, _)| c == id)
-            .map(|(_, size)| Rect::new(0.0, 0.0, f64::from(size.width), f64::from(size.height))),
+            .find(|c| c.id == comp.id)
+            .map(|c| Rect::new(0.0, 0.0, f64::from(c.size.width), f64::from(c.size.height))),
         Content::Image(image) => Some(image.frame),
         Content::Shapes(_) | Content::Pivot => Some(Rect::ZERO),
         Content::Text { .. } => None,

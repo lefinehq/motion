@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Added
 
+- `overrides` on a `comp` layer ([D43](docs/design/decisions.md#d43-one-layer-address-and-edits-per-instance)): layer keys by address, set over the layers of the composition it draws for that layer alone, `{"title":{"text":"Sale"},"badge/icon":{"fill":"#E63946"}}`. The result is validated as any layer is, errors point at the inner layer (`card/title.text`), and each such layer compiles to a composition of its own. `Content::Comp` holds a `CompContent`.
 - `motion_scene::walk`: every node of an evaluated frame at any depth, in paint order, with its address, its transform in scene space, its opacity, the clip of the compositions around it and whether it draws. `SceneGraph::paths` lists the same nodes for every frame.
 - `motion_format::Address` and `Id` ([D43](docs/design/decisions.md#d43-one-layer-address-and-edits-per-instance)): one grammar and printer for a layer at any depth and the keys inside it (`card/title.fx[glow].radius`). The id rule lives in `Id` instead of a hand-written loop. `scene` is reserved: a layer may not take it, and the import gives such a layer `scene-2`.
 - Cargo workspace, repository documents and CI.

@@ -446,3 +446,68 @@ fn a_preset_may_scale_but_not_place_with_one_number() {
     let e = err(r#"{"motion":1,"dur":"1s","presets":{"far":{"scale":"+d"}},"layers":[]}"#);
     assert_eq!(e.kind, Kind::OutOfRange);
 }
+
+/// `label` holds `title` and `badge`; `card` holds a `label` layer. The
+/// root's layers follow, with `kv` on a `label` layer called `second`.
+fn instances(kv: &str) -> String {
+    format!(
+        r##"{{"motion":1,"dur":"1s","comps":{{
+          "label":{{"size":"100x50","dur":"1s","layers":[
+            {{"id":"badge","rect":"10x10","fill":"#00FF00"}},
+            {{"id":"title","text":"Shared"}}]}},
+          "card":{{"size":"200x100","dur":"1s","layers":[{{"id":"label","comp":"label"}}]}}}},
+        "layers":[{{"id":"first","comp":"label"}},{{"id":"second","comp":"label",{kv}}},
+          {{"id":"deep","comp":"card","overrides":{{"label/title":{{"text":"Deep"}}}}}}]}}"##
+    )
+}
+
+/// The composition a layer draws, with its overrides set.
+fn drawn(layer: &crate::Layer) -> &crate::CompContent {
+    match &layer.content {
+        Content::Comp(comp) => comp,
+        other => panic!("not a comp layer: {other:?}"),
+    }
+}
+
+/// The text of `layer`, a text layer.
+fn words(layer: &crate::Layer) -> &str {
+    match &layer.content {
+        Content::Text(text) => &text.text,
+        other => panic!("not a text layer: {other:?}"),
+    }
+}
+
+#[test]
+fn overrides_set_keys_over_the_inner_layer_of_one_instance() {
+    let d = doc(&instances(
+        r##""overrides":{"title":{"text":"Sale"},"badge":{"fill":"#FF0000"}}"##,
+    ));
+    let [first, second, deep] = &d.scene().root.layers[..] else {
+        panic!("three layers");
+    };
+    // A layer without overrides draws the composition every such layer shares.
+    assert_eq!(drawn(first).instance, None);
+    let inner = drawn(second).instance.as_ref().expect("an instance");
+    assert_eq!(words(&inner[1]), "Sale");
+    assert_eq!(inner[0].fill, [1.0, 0.0, 0.0, 1.0]);
+    // The composition itself does not change.
+    assert_eq!(words(&d.scene().comps[0].layers[1]), "Shared");
+    // Deeper addresses go on as the inner `comp` layer's own overrides.
+    let label = &drawn(deep).instance.as_ref().expect("an instance")[0];
+    let title = &drawn(label).instance.as_ref().expect("an inner instance")[1];
+    assert_eq!(words(title), "Deep");
+}
+
+#[test]
+fn an_override_error_points_at_the_inner_layer() {
+    assert_eq!(
+        fails(&instances(r#""overrides":{"title":{"text":5}}"#)),
+        at(Kind::WrongType, "second/title.text")
+    );
+    let deep = instances("\"hidden\":false").replace(r#""text":"Deep""#, r#""fill":"red""#);
+    assert_eq!(fails(&deep), at(Kind::Syntax, "deep/label/title.fill"));
+    assert_eq!(
+        fails(&instances(r#""overrides":{"ghost":{}}"#)),
+        at(Kind::UnknownName, "second.overrides")
+    );
+}

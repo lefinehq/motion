@@ -58,6 +58,7 @@ pub(crate) struct LayerDoc {
     pub(crate) rect: Present<Shorthand<RectShape>>,
     pub(crate) shapes: Present<List<ItemsDoc>>,
     pub(crate) comp: Present<String>,
+    pub(crate) overrides: Object<OverridesDoc>,
     pub(crate) image: Present<String>,
     pub(crate) pivot: Present<bool>,
     pub(crate) font: Present<Shorthand<Font>>,
@@ -157,6 +158,22 @@ pub(crate) struct CompDoc {
 
 impl Form for CompDoc {
     const FORM: &str = r#"a composition object, e.g. {"size":"600x400","dur":"5s","layers":[]}"#;
+}
+
+/// A `comp` layer's `overrides`: layer keys by the address, relative to the
+/// composition, of the layer they are set over.
+pub(crate) type OverridesDoc = IndexMap<String, Object<OverrideDoc>>;
+
+impl Form for OverridesDoc {
+    const FORM: &str = r##"an object of layer keys by layer address, e.g. {"title":{"text":"Sale"},"badge/icon":{"fill":"#E63946"}}"##;
+}
+
+/// The layer keys one override sets, kept as JSON: they are set over the
+/// layer's own keys, and the result is read as any layer is.
+pub(crate) type OverrideDoc = serde_json::Map<String, serde_json::Value>;
+
+impl Form for OverrideDoc {
+    const FORM: &str = r#"an object of layer keys, e.g. {"text":"Sale"}"#;
 }
 
 /// The `layers` list.

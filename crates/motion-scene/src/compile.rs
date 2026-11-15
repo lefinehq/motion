@@ -39,15 +39,22 @@ pub fn compile(scene: &Scene, typesetter: &mut Typesetter) -> Result<SceneGraph>
         tracks = field::Empty
     );
     let _entered = span.enter();
-    let comps = scene
+    let mut build = Build {
+        scene,
+        typesetter,
+        instances: Vec::new(),
+    };
+    let mut comps = scene
         .comps
         .iter()
         .map(|comp| {
-            comp_graph(comp, scene, typesetter)
+            build
+                .comp_graph(comp, &comp.layers)
                 .map_err(|e| e.under(motion_format::key::comp_path(&comp.id)))
         })
         .collect::<Result<Vec<CompGraph>>>()?;
-    let root = comp_graph(&scene.root, scene, typesetter)?;
+    let root = build.comp_graph(&scene.root, &scene.root.layers)?;
+    comps.append(&mut build.instances);
     // Counting walks every track, so skip it when nobody listens.
     if !span.is_disabled() {
         let animated = std::iter::once(&root)
@@ -61,115 +68,135 @@ pub fn compile(scene: &Scene, typesetter: &mut Typesetter) -> Result<SceneGraph>
     Ok(SceneGraph { root, comps })
 }
 
-/// One composition, the scene's root or one under `comps`, with paths
-/// relative to it.
-fn comp_graph(comp: &Comp, scene: &Scene, typesetter: &mut Typesetter) -> Result<CompGraph> {
-    let canvas = Rect::new(
-        0.0,
-        0.0,
-        f64::from(comp.size.width),
-        f64::from(comp.size.height),
-    );
-    Ok(CompGraph {
-        id: comp.id.clone(),
-        width: canvas.width(),
-        height: canvas.height(),
-        fps: comp.fps,
-        duration_frames: comp.duration.to_frames(comp.fps),
-        background: rgba(comp.background),
-        nodes: nodes(&comp.layers, canvas, comp.fps, scene, typesetter)?,
-    })
+/// What compiling reads and what it adds on the way: the scene, the
+/// typesetter that sets its text, and the compositions of `comp` layers
+/// that override theirs, which follow the scene's own in the graph.
+struct Build<'a> {
+    scene: &'a Scene,
+    typesetter: &'a mut Typesetter,
+    /// One composition per `comp` layer with overrides, in the order met;
+    /// the first is at index `scene.comps.len()` of the graph's comps.
+    instances: Vec<CompGraph>,
 }
 
-/// The nodes of one `canvas` whose clock runs at `fps`, with paths relative
-/// to the list's owner.
-fn nodes(
-    layers: &[Layer],
-    canvas: Rect,
-    fps: f64,
-    scene: &Scene,
-    typesetter: &mut Typesetter,
-) -> Result<Vec<Node>> {
-    let contents = layers
-        .iter()
-        .map(|layer| {
-            node_content(layer, scene, fps, typesetter)
-                .map_err(|e| e.under(Place::of_layer(&layer.id)))
+impl Build<'_> {
+    /// One composition, the scene's root, one under `comps` or one a `comp`
+    /// layer overrides, drawn with `layers`, with paths relative to it.
+    fn comp_graph(&mut self, comp: &Comp, layers: &[Layer]) -> Result<CompGraph> {
+        let canvas = Rect::new(
+            0.0,
+            0.0,
+            f64::from(comp.size.width),
+            f64::from(comp.size.height),
+        );
+        Ok(CompGraph {
+            id: comp.id.clone(),
+            width: canvas.width(),
+            height: canvas.height(),
+            fps: comp.fps,
+            duration_frames: comp.duration.to_frames(comp.fps),
+            background: rgba(comp.background),
+            nodes: self.nodes(layers, canvas, comp.fps)?,
         })
-        .collect::<Result<Vec<_>>>()?;
-    let boxes: Vec<Rect> = contents.iter().map(|c| content_box(c, scene)).collect();
-    let parents: Vec<Option<usize>> = layers
-        .iter()
-        .map(|layer| {
-            let id = layer.parent.as_ref()?;
-            layers.iter().position(|l| &l.id == id)
-        })
-        .collect();
-    assert_no_cycle(&parents);
-    // Validation has checked that each matte names a layer of this list.
-    let mattes: Vec<Option<(usize, MatteMode)>> = layers
-        .iter()
-        .map(|layer| {
-            let matte = layer.matte.as_ref()?;
-            let index = layers.iter().position(|l| l.id == matte.layer)?;
-            Some((index, matte.mode))
-        })
-        .collect();
-    Ok(layers
-        .iter()
-        .zip(contents)
-        .enumerate()
-        .map(|(i, (layer, content))| {
-            // `at` resolves in the parent's box, or on the canvas without a parent.
-            let extent = parents[i].map_or(canvas, |p| boxes[p]);
-            Node {
-                matte: mattes[i],
-                ..node(layer, scene, fps, content, boxes[i], parents[i], extent)
-            }
-        })
-        .collect())
-}
-
-/// A node's box in its own coordinates: a text layout's bounds, a rect's or
-/// a composition's canvas from the origin, an image's `box`, and empty at
-/// the origin for shapes and pivots.
-fn content_box(content: &NodeContent, scene: &Scene) -> Rect {
-    match content {
-        NodeContent::Text { text, .. } => text.layout.bounds(),
-        NodeContent::Rect(r) => Rect::new(0.0, 0.0, r.width, r.height),
-        NodeContent::Comp(index) => {
-            let size = scene.comps[*index].size;
-            Rect::new(0.0, 0.0, f64::from(size.width), f64::from(size.height))
-        }
-        NodeContent::Image(image) => image.frame,
-        NodeContent::Shapes(_) | NodeContent::Pivot => Rect::ZERO,
     }
-}
 
-/// What a layer draws, compiled; text is set here.
-fn node_content(
-    layer: &Layer,
-    scene: &Scene,
-    fps: f64,
-    typesetter: &mut Typesetter,
-) -> Result<NodeContent> {
-    Ok(match &layer.content {
-        Content::Text(content) => NodeContent::Text {
-            text: text::set(content, typesetter)?,
-            animators: item_nodes(&content.animators, fps),
-        },
-        Content::Rect(r) => NodeContent::Rect(*r),
-        Content::Shapes(items) => NodeContent::Shapes(item_nodes(items, fps)),
-        Content::Comp(id) => NodeContent::Comp(
-            scene
-                .comps
-                .iter()
-                .position(|c| &c.id == id)
-                .expect("validation checks every comp exists"),
-        ),
-        Content::Image(image) => NodeContent::Image(Arc::new(image.clone())),
-        Content::Pivot => NodeContent::Pivot,
-    })
+    /// The nodes of one `canvas` whose clock runs at `fps`, with paths relative
+    /// to the list's owner.
+    fn nodes(&mut self, layers: &[Layer], canvas: Rect, fps: f64) -> Result<Vec<Node>> {
+        let contents = layers
+            .iter()
+            .map(|layer| {
+                self.node_content(layer, fps)
+                    .map_err(|e| e.under(Place::of_layer(&layer.id)))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let boxes: Vec<Rect> = contents.iter().map(|c| self.content_box(c)).collect();
+        let parents: Vec<Option<usize>> = layers
+            .iter()
+            .map(|layer| {
+                let id = layer.parent.as_ref()?;
+                layers.iter().position(|l| &l.id == id)
+            })
+            .collect();
+        assert_no_cycle(&parents);
+        // Validation has checked that each matte names a layer of this list.
+        let mattes: Vec<Option<(usize, MatteMode)>> = layers
+            .iter()
+            .map(|layer| {
+                let matte = layer.matte.as_ref()?;
+                let index = layers.iter().position(|l| l.id == matte.layer)?;
+                Some((index, matte.mode))
+            })
+            .collect();
+        Ok(layers
+            .iter()
+            .zip(contents)
+            .enumerate()
+            .map(|(i, (layer, content))| {
+                // `at` resolves in the parent's box, or on the canvas without a parent.
+                let extent = parents[i].map_or(canvas, |p| boxes[p]);
+                Node {
+                    matte: mattes[i],
+                    ..node(
+                        layer, self.scene, fps, content, boxes[i], parents[i], extent,
+                    )
+                }
+            })
+            .collect())
+    }
+
+    /// A node's box in its own coordinates: a text layout's bounds, a rect's or
+    /// a composition's canvas from the origin, an image's `box`, and empty at
+    /// the origin for shapes and pivots.
+    fn content_box(&self, content: &NodeContent) -> Rect {
+        match content {
+            NodeContent::Text { text, .. } => text.layout.bounds(),
+            NodeContent::Rect(r) => Rect::new(0.0, 0.0, r.width, r.height),
+            NodeContent::Comp(index) => {
+                let shared = self.scene.comps.len();
+                let (width, height) = match self.scene.comps.get(*index) {
+                    Some(comp) => (f64::from(comp.size.width), f64::from(comp.size.height)),
+                    None => {
+                        let instance = &self.instances[*index - shared];
+                        (instance.width, instance.height)
+                    }
+                };
+                Rect::new(0.0, 0.0, width, height)
+            }
+            NodeContent::Image(image) => image.frame,
+            NodeContent::Shapes(_) | NodeContent::Pivot => Rect::ZERO,
+        }
+    }
+
+    /// What a layer draws, compiled; text is set here.
+    fn node_content(&mut self, layer: &Layer, fps: f64) -> Result<NodeContent> {
+        Ok(match &layer.content {
+            Content::Text(content) => NodeContent::Text {
+                text: text::set(content, self.typesetter)?,
+                animators: item_nodes(&content.animators, fps),
+            },
+            Content::Rect(r) => NodeContent::Rect(*r),
+            Content::Shapes(items) => NodeContent::Shapes(item_nodes(items, fps)),
+            Content::Comp(comp) => {
+                let shared = self
+                    .scene
+                    .comps
+                    .iter()
+                    .position(|c| c.id == comp.id)
+                    .expect("validation checks every comp exists");
+                match &comp.instance {
+                    None => NodeContent::Comp(shared),
+                    Some(layers) => {
+                        let graph = self.comp_graph(&self.scene.comps[shared], layers)?;
+                        self.instances.push(graph);
+                        NodeContent::Comp(self.scene.comps.len() + self.instances.len() - 1)
+                    }
+                }
+            }
+            Content::Image(image) => NodeContent::Image(Arc::new(image.clone())),
+            Content::Pivot => NodeContent::Pivot,
+        })
+    }
 }
 
 /// The items that are not hidden, compiled.

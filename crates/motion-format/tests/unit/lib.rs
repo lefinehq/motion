@@ -166,6 +166,35 @@ fn every_error_message() {
             layers,
         ),
         section(
+            "overrides",
+            &[
+                r#""overrides":3"#,
+                r#""overrides":{"title":3}"#,
+                r#""overrides":{"ghost":{"text":"x"}}"#,
+                r#""overrides":{"title.text":{}}"#,
+                r#""overrides":{"title":{"id":"other"}}"#,
+                r#""overrides":{"title":{"text":5}}"#,
+                r#""overrides":{"title":{"rect":"1x1"}}"#,
+                r#""overrides":{"title":{"fill":"red"}}"#,
+                r#""overrides":{"title/x":{"text":"x"}}"#,
+                r#""overrides":{"title":{"zoom":1}}"#,
+            ],
+            |kv| {
+                parse_document(&format!(
+                    r#"{{"motion":1,"dur":"1s","comps":{{"label":{{"size":"10x10","dur":"1s","layers":[{{"id":"title","text":"Hi"}}]}}}},"layers":[{{"id":"card","comp":"label",{kv}}}]}}"#
+                ))
+            },
+        ),
+        section(
+            "overrides on a layer that draws no composition",
+            &[r#""overrides":{"x":{}}"#],
+            |kv| {
+                parse_document(&format!(
+                    r#"{{"motion":1,"dur":"1s","layers":[{{"id":"a","rect":"1x1",{kv}}}]}}"#
+                ))
+            },
+        ),
+        section(
             "anim",
             &[
                 r#""x":3"#,
