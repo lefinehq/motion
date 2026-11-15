@@ -1,4 +1,4 @@
-Status: Draft · 2026-11-18
+Status: Built, steps 1 to 6 · 2026-11-18
 
 # The variant surface: roles, locks and batches
 
@@ -82,7 +82,7 @@ Each step is one pull request, with its tests.
 3. **Roles at import.** `@role` names, the vocabulary, the report lines, measured on the corpus. Done.
 4. **Locks.** `locks`, the four kinds, refusals in `apply_edit`, the import's defaults. Done: on the corpus, the 15 masters with a logo get the defaults.
 5. **Batches.** `motion batch`, its manifest, report and `--json`. Done: a variant's scene is written with the files it names relative to `out`, so it opens from there; a codec that keeps alpha writes `<id>.mov`.
-6. **Docs.** `variants.md`, `edits-and-checks.md`, the glossary and the CHANGELOG.
+6. **Docs.** `variants.md`, `edits-and-checks.md`, the glossary and the CHANGELOG. Done.
 
 ## Out of scope
 
