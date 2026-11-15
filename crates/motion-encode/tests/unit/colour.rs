@@ -104,3 +104,73 @@ fn ayuv16_keeps_straight_alpha_and_scales_to_16_bits() {
         );
     }
 }
+
+/// The planes pixel by pixel, as `to_planes` once made them: what the
+/// banded, one-read pass must match sample for sample.
+fn planes_one_by_one(rgba: &[u8], width: u32, height: u32) -> Planes {
+    let (w, h) = (width as usize, height as usize);
+    let pixel = |x: usize, y: usize| -> [f32; 3] {
+        let at = (y * w + x) * 4;
+        let alpha = f32::from(rgba[at + 3]) / 255.0;
+        [0, 1, 2].map(|c| f32::from(rgba[at + c]) / 255.0 * alpha)
+    };
+    let mut y_plane = Vec::new();
+    for y in 0..h {
+        for x in 0..w {
+            y_plane.push(quantise(16.0 + 219.0 * luma(pixel(x, y))));
+        }
+    }
+    let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
+    let (mut cb, mut cr) = (Vec::new(), Vec::new());
+    for by in 0..ch {
+        for bx in 0..cw {
+            let mut sum = [0.0f32; 3];
+            let mut count = 0.0f32;
+            for y in (by * 2)..(by * 2 + 2).min(h) {
+                for x in (bx * 2)..(bx * 2 + 2).min(w) {
+                    let p = pixel(x, y);
+                    sum = [sum[0] + p[0], sum[1] + p[1], sum[2] + p[2]];
+                    count += 1.0;
+                }
+            }
+            let (b, r) = chroma(sum.map(|s| s / count));
+            cb.push(quantise(128.0 + 224.0 * b));
+            cr.push(quantise(128.0 + 224.0 * r));
+        }
+    }
+    Planes {
+        width,
+        height,
+        y: y_plane,
+        cb,
+        cr,
+    }
+}
+
+proptest! {
+    #[test]
+    fn bands_give_the_samples_a_pixel_by_pixel_pass_gives(
+        width in 1u32..40,
+        height in 1u32..90,
+        seed: u64,
+    ) {
+        let mut state = seed | 1;
+        let rgba: Vec<u8> = (0..width * height * 4)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state as u8
+            })
+            .collect();
+        prop_assert_eq!(to_planes(&rgba, width, height), planes_one_by_one(&rgba, width, height));
+    }
+}
+
+#[test]
+fn a_tall_frame_split_into_bands_matches_too() {
+    // Enough block rows for several bands.
+    let (w, h) = (7, 301);
+    let rgba: Vec<u8> = (0..w * h * 4).map(|i| (i * 31 % 253) as u8).collect();
+    assert_eq!(to_planes(&rgba, w, h), planes_one_by_one(&rgba, w, h));
+}

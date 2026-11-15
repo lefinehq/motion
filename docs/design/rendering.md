@@ -101,14 +101,16 @@ In a fast renderer, encoding is usually the slowest step.
 
 | | draft | web | master | time (web) |
 |---|---|---|---|---|
-| H.264 | 18 KB, 37.7 dB | 62 KB, 52.4 dB | 101 KB, 52.9 dB | 0.8 s |
-| HEVC | 27 KB, 40.7 dB | 64 KB, 52.5 dB | 90 KB, 52.9 dB | 0.8 s |
-| AV1 | 17 KB, 46.2 dB | 24 KB, 51.5 dB | 42 KB, 52.7 dB | 7.8 s |
+| H.264 | 18 KB, 37.7 dB | 62 KB, 52.4 dB | 101 KB, 52.9 dB | 0.3 s |
+| HEVC | 27 KB, 40.7 dB | 64 KB, 52.5 dB | 90 KB, 52.9 dB | 0.3 s |
+| AV1 | 17 KB, 46.2 dB | 24 KB, 51.5 dB | 42 KB, 52.7 dB | 5.7 s |
 
 **Dark gradients.** `web` asks VideoToolbox for quality 0.8, up from 0.65 on 2026-11-15. At 0.65 a night-sky gradient of the demo film (luma 4 to 27 over 700 px) came out in blocks with purple and blue blotches: the 99th percentile of the error, after a 9 px blur, was 3.0 levels, and 1.26 at 0.8 (1.22 at 0.85, 1.0 at 0.95). It costs about half again in size (launch: 40 to 62 KB; the sky: 225 to 406 kbit/s). Measured, so not tried again:
 - dither before the encoder (a deband-and-dither filter) does not survive the system's H.264 and HEVC encoders, even at a constant 6 Mbit/s;
 - a bit-rate target instead of a quality helps less than 0.8 does, since the system's encoders spend what still frames need, not the target;
 - a lower AV1 quantizer leaves the gradient error where it is.
+
+The times are the whole render, drawing included, best of three. The colour conversion reads each pixel once and converts bands of rows on threads of their own: 3.3 ms for a 1080p frame, from 11.1 ms when it read each pixel twice on the one thread that hands frames to the encoder, which held encoding near 90 fps. A scene heavy with effects stays bound by drawing: the 40 s demo film takes 27 s either way.
 
 ProRes 4444 writes the same 60 frames in 1.4 s, about 4 MB, and decodes to the drawn frames with alpha within one level.
 
