@@ -105,7 +105,7 @@ fn a_lock_whose_font_is_not_cached_names_the_fetch() {
         "{}",
         error.message
     );
-    assert_eq!(error.path.as_deref(), Some("fonts[0]"));
+    assert_eq!(error.path_text().as_deref(), Some("fonts[0]"));
 }
 
 #[test]

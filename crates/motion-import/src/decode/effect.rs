@@ -3,7 +3,7 @@
 //! ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#listpart)).
 //! Both hold the same definitions; the first one read for a match name wins.
 
-use motion_format::{Diagnostic, Kind, Result};
+use motion_format::{Diagnostic, Kind, Place, Result};
 
 use super::{Decoder, Scan};
 use crate::model::{Color, Control, EffectDefinition, Parameter};
@@ -87,7 +87,7 @@ impl Decoder {
                             Kind::Missing,
                             format!("effect parameter `{match_name}` has no `pard`"),
                         )
-                        .at(path.clone()));
+                        .at(Place::other(path.clone())));
                     }
                 };
                 let label = body
@@ -129,7 +129,7 @@ fn counted(count: u32, read: usize, what: &str, path: &str) -> Result<()> {
                 what.replace("{count}", &count.to_string())
             ),
         )
-        .at(path)),
+        .at(Place::other(path))),
     }
 }
 

@@ -287,7 +287,7 @@ fn refuses_a_font_past_the_table() {
     let error = read_body(&["Inter-Bold"], &[], &[document]).unwrap_err();
     assert_eq!(error.kind, Kind::Invalid);
     assert_eq!(
-        error.path.as_deref(),
+        error.path_text().as_deref(),
         Some("LIST:btdk/1/1/0/0/6/0/0/0/0/6/0")
     );
     assert!(error.message.contains("font 4"), "{error}");
@@ -297,10 +297,10 @@ fn refuses_a_font_past_the_table() {
 fn refuses_bodies_without_the_records_it_needs() {
     let error = documents_of(b" /0 << >> /1 << >>").unwrap_err();
     assert_eq!(error.kind, Kind::Invalid);
-    assert_eq!(error.path.as_deref(), Some("LIST:btdk/0"));
+    assert_eq!(error.path_text().as_deref(), Some("LIST:btdk/0"));
     let error = documents_of(b" /0 (").unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref()),
+        (error.kind, error.path_text().as_deref()),
         (Kind::Syntax, Some(AT))
     );
 }

@@ -81,7 +81,11 @@ fn refuses_a_chunk_past_the_end_of_its_list() {
     bytes.truncate(bytes.len() - 4);
     let error = read(&bytes).unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref(), error.expected.as_deref()),
+        (
+            error.kind,
+            error.path_text().as_deref(),
+            error.expected.as_deref()
+        ),
         (
             Kind::Invalid,
             Some("RIFX"),

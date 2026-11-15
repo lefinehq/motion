@@ -439,7 +439,7 @@ fn an_unknown_font_is_an_error() {
     let text = StyledText::plain("a", style("Nope-Bold", 10.0));
     let error = setter().layout(&text).unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref()),
+        (error.kind, error.path_text().as_deref()),
         (Kind::UnknownName, Some("runs[0].style.font"))
     );
     assert!(error.expected.unwrap().contains(REGULAR));
@@ -453,7 +453,11 @@ fn a_character_without_a_glyph_is_an_error(#[case] text: &str) {
         .layout(&StyledText::plain(text, style(REGULAR, 10.0)))
         .unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref(), error.expected.as_deref()),
+        (
+            error.kind,
+            error.path_text().as_deref(),
+            error.expected.as_deref()
+        ),
         (
             Kind::Missing,
             Some("runs[0]"),
@@ -468,7 +472,7 @@ fn an_invalid_text_is_refused_before_layout() {
     text.runs[0].range = 0..1;
     let error = setter().layout(&text).unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref()),
+        (error.kind, error.path_text().as_deref()),
         (Kind::Invalid, Some("runs"))
     );
 }

@@ -93,12 +93,12 @@ fn a_failure_sits_at_its_path() {
     assert_eq!(err::<String>(json!(1)).path, None);
     assert_eq!(
         err::<Vec<Pair>>(json!([{"a": 1}, {"a": "x"}]))
-            .path
+            .path_text()
             .as_deref(),
         Some("[1].a")
     );
     assert_eq!(
-        err::<Pair>(json!({"a": 1, "c": 2})).path.as_deref(),
+        err::<Pair>(json!({"a": 1, "c": 2})).path_text().as_deref(),
         Some("c")
     );
 }

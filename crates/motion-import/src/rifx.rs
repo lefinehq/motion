@@ -16,7 +16,7 @@ use std::fmt;
 use std::ops::Range;
 
 use binrw::BinRead;
-use motion_format::{Diagnostic, Kind, Result};
+use motion_format::{Diagnostic, Kind, Place, Result};
 
 use crate::record::{self, Header};
 
@@ -120,7 +120,7 @@ pub(crate) fn read(file: &[u8]) -> Result<Chunk<'_>> {
         return Err(not_rifx());
     }
     let mut rest = file;
-    let root = split(&mut rest).map_err(|d| d.at("RIFX"))?;
+    let root = split(&mut rest).map_err(|d| d.at(Place::other("RIFX")))?;
     match root.body.split_first_chunk::<4>() {
         Some((form, body)) if Tag(*form) == Tag::FORM => Ok(Chunk {
             name: Name {

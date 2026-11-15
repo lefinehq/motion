@@ -7,8 +7,8 @@
 use std::sync::Arc;
 
 use kurbo::Rect;
+use motion_format::Place;
 use motion_format::anim::{AnimTrack, Easing};
-use motion_format::key::layer_path;
 use motion_format::preset::{PresetSpec, Start};
 use motion_format::property::{Prop, Rest, Target};
 use motion_format::shorthand::{Axis, Behaviour, MatteMode};
@@ -92,9 +92,9 @@ fn nodes(
 ) -> Result<Vec<Node>> {
     let contents = layers
         .iter()
-        .enumerate()
-        .map(|(i, layer)| {
-            node_content(layer, scene, fps, typesetter).map_err(|e| e.under(layer_path(i)))
+        .map(|layer| {
+            node_content(layer, scene, fps, typesetter)
+                .map_err(|e| e.under(Place::of_layer(&layer.id)))
         })
         .collect::<Result<Vec<_>>>()?;
     let boxes: Vec<Rect> = contents.iter().map(|c| content_box(c, scene)).collect();

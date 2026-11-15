@@ -27,7 +27,7 @@ fn in_span<T>(name: &'static str, step: impl FnOnce() -> T) -> T {
 fn log(d: &Diagnostic) {
     error!(
         kind = ?d.kind,
-        path = d.path.as_deref(),
+        path = d.path_text().as_deref(),
         expected = d.expected.as_deref(),
         "{}",
         d.message

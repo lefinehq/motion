@@ -30,7 +30,7 @@ fn line_err(text: &str) -> Diagnostic {
 }
 
 /// Where the track `x` of [`anim`] sits.
-const X: &str = "layers[1].anim.x";
+const X: &str = "a.anim.x";
 
 #[test]
 fn string_and_array_forms_give_identical_keys() {
@@ -78,8 +78,8 @@ fn bare_numbers_are_frames_and_order_follows_object() {
 fn unknown_property_lists_names() {
     let e = err(json!({"glow": "0 -> 1 @0-5f"}));
     assert_eq!(
-        (e.kind, e.path.as_deref()),
-        (Kind::UnknownName, Some("layers[1].anim.glow"))
+        (e.kind, e.path_text().as_deref()),
+        (Kind::UnknownName, Some("a.anim.glow"))
     );
     let names: Vec<&str> = crate::property::target_names().collect();
     assert_eq!(
@@ -92,13 +92,13 @@ fn unknown_property_lists_names() {
 fn out_of_range_value() {
     let e = err(json!({"opacity": [[0, 0], [5, 1], [9, 2]]}));
     assert_eq!(
-        (e.kind, e.path.as_deref()),
-        (Kind::OutOfRange, Some("layers[1].anim.opacity[2][1]"))
+        (e.kind, e.path_text().as_deref()),
+        (Kind::OutOfRange, Some("a.anim.opacity[2][1]"))
     );
     let e = err(json!({"opacity": "0 -> 2 @0-5f"}));
     assert_eq!(
-        (e.kind, e.path.as_deref()),
-        (Kind::OutOfRange, Some("layers[1].anim.opacity"))
+        (e.kind, e.path_text().as_deref()),
+        (Kind::OutOfRange, Some("a.anim.opacity"))
     );
 }
 
@@ -107,7 +107,7 @@ fn string_form_errors_give_the_form_of_the_part_that_failed() {
     for text in ["0 1 @0-5f", "0 -> 1", "0 -> 1 @0-5f ease ease"] {
         let e = line_err(text);
         assert_eq!(
-            (e.kind, e.path.as_deref(), e.expected.as_deref()),
+            (e.kind, e.path_text().as_deref(), e.expected.as_deref()),
             (Kind::Syntax, Some(X), Some(STRING_EXPECTED)),
             "{text}"
         );
@@ -115,7 +115,7 @@ fn string_form_errors_give_the_form_of_the_part_that_failed() {
     // A value is read as the target's type, and says that type's form.
     let e = line_err("a -> 1 @0-5f");
     assert_eq!(
-        (e.kind, e.path.as_deref(), e.expected.as_deref()),
+        (e.kind, e.path_text().as_deref(), e.expected.as_deref()),
         (Kind::Syntax, Some(X), Some(ValueType::Number.form()))
     );
     // A failing range or curve reports its own diagnostic, placed at the track.
@@ -128,11 +128,15 @@ fn string_form_errors_give_the_form_of_the_part_that_failed() {
             "cubic(1,2)".parse::<Curve>().map(drop),
         ),
     ] {
-        assert_eq!(line_err(text), part.unwrap_err().at(X), "{text}");
+        assert_eq!(
+            line_err(text),
+            part.unwrap_err().at(X.parse::<crate::Address>().unwrap()),
+            "{text}"
+        );
     }
     let e = line_err("0 -> 1 @5f-0f");
     assert_eq!(
-        (e.kind, e.path.as_deref(), e.expected.as_deref()),
+        (e.kind, e.path_text().as_deref(), e.expected.as_deref()),
         (Kind::Invalid, Some(X), Some(RANGE_EXPECTED))
     );
 }
@@ -180,12 +184,7 @@ fn array_form_errors_say_what_kind_of_problem_they_are() {
     let x0 = format!("{X}[0]");
     let x1 = format!("{X}[1]");
     for (value, kind, path, form) in [
-        (
-            json!([1]),
-            Kind::WrongType,
-            "layers[1].anim",
-            Some(AnimDoc::FORM),
-        ),
+        (json!([1]), Kind::WrongType, "a.anim", Some(AnimDoc::FORM)),
         (json!({"x": 3}), Kind::WrongType, X, Some(TRACK_EXPECTED)),
         (json!({"x": []}), Kind::Missing, X, Some(KEYS_EXPECTED)),
         (json!({"x": [5]}), Kind::WrongType, &x0, Some(KEY_EXPECTED)),
@@ -242,18 +241,17 @@ fn array_form_errors_say_what_kind_of_problem_they_are() {
         (
             json!({"opacity": [[0, 2]]}),
             Kind::OutOfRange,
-            "layers[1].anim.opacity[0][1]",
+            "a.anim.opacity[0][1]",
             None,
         ),
-        (
-            json!({"zoom": []}),
-            Kind::UnknownName,
-            "layers[1].anim.zoom",
-            None,
-        ),
+        (json!({"zoom": []}), Kind::UnknownName, "a.anim.zoom", None),
     ] {
         let e = err(value.clone());
-        assert_eq!((e.kind, e.path.as_deref()), (kind, Some(path)), "{value}");
+        assert_eq!(
+            (e.kind, e.path_text().as_deref()),
+            (kind, Some(path)),
+            "{value}"
+        );
         if let Some(form) = form {
             assert_eq!(e.expected.as_deref(), Some(form), "{value}");
         }
@@ -290,8 +288,8 @@ fn layer_carries_anim() {
 fn conflict_with_in_preset() {
     let e = scene(r#""in":"fade-up","anim":{"opacity":"0 -> 1 @0-5f"}"#).unwrap_err();
     assert_eq!(
-        (e.kind, e.path.as_deref()),
-        (Kind::Conflict, Some("layers[0].anim.opacity"))
+        (e.kind, e.path_text().as_deref()),
+        (Kind::Conflict, Some("a.anim.opacity"))
     );
     // The hint starts with the edit line that moves the entrance into `anim`.
     let hint = e.expected.unwrap();

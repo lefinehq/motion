@@ -56,7 +56,7 @@ fn reports_unknown_targets_keys_and_invalid_results() {
         Diagnostic::unknown("layer key", "colour", layer_keys())
     );
     let colour = fail("card fill=blue");
-    assert_eq!(colour.path.as_deref(), Some("layers[1].fill"));
+    assert_eq!(colour.path_text().as_deref(), Some("card.fill"));
     assert_eq!(colour, invalid("card fill=blue"));
     let duplicate = fail("card id=title");
     assert_eq!(duplicate.kind, Kind::Conflict);
@@ -107,12 +107,12 @@ fn unknown_keys_are_named_with_the_targets_keys(
 
 #[rstest]
 #[case::an_invalid_scene_result("scene fps=\"fast\"", Kind::WrongType, "fps")]
-#[case::an_invalid_layer_result("card fill=blue", Kind::Syntax, "layers[1].fill")]
+#[case::an_invalid_layer_result("card fill=blue", Kind::Syntax, "card.fill")]
 // Quoting it would leave an unknown property at the same path.
 #[case::a_number_for_an_unknown_property_gets_the_track_form(
     "card anim.nope=1",
     Kind::WrongType,
-    "layers[1].anim.nope"
+    "card.anim.nope"
 )]
 fn invalid_result_is_the_validation_diagnostic(
     #[case] line: &str,
@@ -121,7 +121,7 @@ fn invalid_result_is_the_validation_diagnostic(
 ) {
     let e = fail(line);
     assert_eq!(e.kind, kind);
-    assert_eq!(e.path.as_deref(), Some(path));
+    assert_eq!(e.path_text().as_deref(), Some(path));
     assert_eq!(e, invalid(line));
 }
 
@@ -132,7 +132,7 @@ fn number_or_bool_for_a_string_key_gets_a_quote_hint(#[case] line: &str, #[case]
     let e = fail(line);
     let plain = invalid(line);
     assert_eq!(e.kind, Kind::WrongType);
-    assert_eq!(e.path.as_deref(), Some("layers[0].text"));
+    assert_eq!(e.path_text().as_deref(), Some("title.text"));
     assert_eq!(e.message, plain.message);
     let expected = e.expected.as_deref().unwrap_or_default();
     assert!(expected.ends_with(quoted), "{expected}");
@@ -233,7 +233,7 @@ fn only_the_first_segment_is_checked_as_a_key() {
     );
     let e = fail("card anim.nope=[[0,1]]");
     assert_eq!(e.kind, Kind::UnknownName);
-    assert_eq!(e.path.as_deref(), Some("layers[1].anim.nope"));
+    assert_eq!(e.path_text().as_deref(), Some("card.anim.nope"));
 }
 
 #[rstest]

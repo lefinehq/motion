@@ -108,7 +108,7 @@ fn a_missing_font_is_an_error_not_a_fallback() {
     .unwrap_err();
     assert_eq!(error.kind, motion_format::Kind::UnknownName);
     assert!(error.message.contains("Lato-Black"), "{}", error.message);
-    assert_eq!(error.path.as_deref(), Some("font"));
+    assert_eq!(error.path_text().as_deref(), Some("font"));
     // A face a run asks for is reported at that run.
     let error = set(
         &content(
@@ -117,7 +117,7 @@ fn a_missing_font_is_an_error_not_a_fallback() {
         &mut typesetter,
     )
     .unwrap_err();
-    assert_eq!(error.path.as_deref(), Some("runs[1].font"));
+    assert_eq!(error.path_text().as_deref(), Some("runs[1].font"));
 }
 
 #[test]

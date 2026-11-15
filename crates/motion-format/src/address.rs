@@ -200,7 +200,7 @@ pub fn keys<R>(input: &mut &str) -> Parsed<Vec<Step>, R> {
 }
 
 /// A key: letters, digits, `-` and `_`.
-fn key<'s, R>(input: &mut &'s str) -> Parsed<&'s str, R> {
+pub(crate) fn key<'s, R>(input: &mut &'s str) -> Parsed<&'s str, R> {
     take_while(1.., |c: char| {
         c.is_ascii_alphanumeric() || c == '-' || c == '_'
     })

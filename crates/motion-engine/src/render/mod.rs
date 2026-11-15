@@ -23,7 +23,7 @@ mod text;
 use motion_format::key::IMAGE;
 use motion_format::property::Prop;
 use motion_format::shorthand::{MatteMode, RectShape};
-use motion_format::{ImageContent, Result};
+use motion_format::{ImageContent, Place, Result};
 use motion_raster::kurbo::{Affine, Rect, RoundedRect, Shape};
 use motion_raster::{
     Blending, Clip, Color, DrawStyle, FillRule, Frame, ImageDraw, Layer, Matte,
@@ -125,7 +125,7 @@ fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
         ContentState::Shapes(draws) => shape::draws(draws),
         ContentState::Text { text, glyphs } => text::draws(text, glyphs),
         ContentState::Image(content) => {
-            vec![image(content, sources.pictures).map_err(|e| e.under(node.id.as_str()))?]
+            vec![image(content, sources.pictures).map_err(|e| e.under(Place::of_layer(&node.id)))?]
         }
         ContentState::Comp(index, Some(inner)) => {
             let comp = &sources.graph.comps[*index];
@@ -146,7 +146,7 @@ fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
         // nothing for them to change.
         return Ok(None);
     }
-    let effects = effect::effects(&node.fx).map_err(|e| e.under(node.id.as_str()))?;
+    let effects = effect::effects(&node.fx).map_err(|e| e.under(Place::of_layer(&node.id)))?;
     Ok(Some(Node::Layer(Layer {
         transform: node.transform,
         opacity: opacity.min(1.0),

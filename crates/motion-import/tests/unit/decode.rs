@@ -197,7 +197,11 @@ fn names_the_chunk_path_of_a_record_too_short() {
     let comp = item(Idta::COMPOSITION, 2, "Main", &[chunk(b"cdta", &[0; 10])]);
     let error = decode(&project(94, &[item(Idta::FOLDER, 1, "", &[]), comp])).unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref(), error.expected.as_deref()),
+        (
+            error.kind,
+            error.path_text().as_deref(),
+            error.expected.as_deref()
+        ),
         (
             Kind::Invalid,
             Some("LIST:Fold/LIST:Item[1]/cdta"),
@@ -210,13 +214,17 @@ fn names_the_chunk_path_of_a_record_too_short() {
 fn refuses_a_project_without_a_required_chunk() {
     let error = decode(&crate::test_support::file(&[])).unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref(), error.expected.as_deref()),
+        (
+            error.kind,
+            error.path_text().as_deref(),
+            error.expected.as_deref()
+        ),
         (Kind::Missing, Some("RIFX"), Some("a `head` chunk"))
     );
     let footage = item(Idta::FOOTAGE, 4, "", &[]);
     let error = decode(&project(94, &[footage])).unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref()),
+        (error.kind, error.path_text().as_deref()),
         (Kind::Missing, Some("LIST:Fold/LIST:Item[0]"))
     );
 }

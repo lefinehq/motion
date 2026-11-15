@@ -27,7 +27,7 @@ mod write;
 
 pub use address::{Address, Id, Step};
 pub use curve::{Curve, NAMED_CURVES};
-pub use diagnostic::{Diagnostic, Kind, Result};
+pub use diagnostic::{Diagnostic, Kind, Place, Result};
 pub use item::{Item, ItemKind, Role};
 pub use number::fmt_num;
 pub use parse::{COMP_KEYS, LAYER_KEYS, SCENE_KEYS, key, layer_keys, parse_document};

@@ -5,7 +5,7 @@
 
 use std::num::NonZeroU32;
 
-use motion_format::{Diagnostic, Kind, Result};
+use motion_format::{Diagnostic, Kind, Place, Result};
 
 use super::{Decoder, Scan, UTF8};
 use crate::model::{
@@ -118,7 +118,7 @@ impl Values {
             Values::Opaque(reason) => Ok(Value::Opaque { reason: *reason }),
             Values::Listed { values, source } => values.get(index).cloned().ok_or_else(|| {
                 Diagnostic::new(Kind::Missing, format!("no value for keyframe {index}"))
-                    .at(scan.path.clone())
+                    .at(Place::other(scan.path.clone()))
                     .expected(format!("one value per keyframe: {source}"))
             }),
         }
@@ -385,7 +385,7 @@ fn static_value(
                 cdat.numbers.len()
             ),
         )
-        .at(scan.child_path(Cdat::NAME))
+        .at(Place::other(scan.child_path(Cdat::NAME)))
         .expected(format!("{dims} numbers"))
     })?;
     Ok(value_of(numbers, tdb4.is_color()))
@@ -419,12 +419,12 @@ fn keyframes(
                 ldat.len()
             ),
         )
-        .at(list.child_path(LDAT))
+        .at(Place::other(list.child_path(LDAT)))
         .expected("an `ldat` of count x item size bytes"));
     }
     let time_base = NonZeroU32::new(tdb4.time_base).ok_or_else(|| {
         Diagnostic::new(Kind::Invalid, "the keyframes have a time base of 0")
-            .at(list.path.clone())
+            .at(Place::other(list.path.clone()))
             .expected("a `tdb4` time base of at least 1")
     })?;
     let args = (usize::from(tdb4.dims), tdb4.layout());
