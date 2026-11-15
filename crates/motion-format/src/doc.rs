@@ -18,7 +18,7 @@ use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
 use crate::Curve;
 use crate::anim::{EASING_EXPECTED, KEY_EXPECTED, PATH_EXPECTED, TRACK_EXPECTED};
 use crate::preset::Start;
-use crate::shorthand::{Behaviour, Font, Matte, Position, RectShape};
+use crate::shorthand::{Behaviour, Font, Matte, Position, RectShape, Shutter};
 use crate::units::{Color, SignedTime, Size, Time};
 use crate::when::{Moment, Moments};
 
@@ -38,6 +38,7 @@ pub(crate) struct SceneDoc {
     pub(crate) fps: Present<Number>,
     pub(crate) dur: Present<Shorthand<Time>>,
     pub(crate) bg: Present<Shorthand<Color>>,
+    pub(crate) shutter: Present<Shorthand<Shutter>>,
     pub(crate) labels: Object<LabelsDoc>,
     pub(crate) presets: Object<PresetsDoc>,
     pub(crate) fonts: Present<List<FontsDoc>>,
@@ -94,6 +95,7 @@ pub(crate) struct LayerDoc {
     pub(crate) hidden: Present<bool>,
     pub(crate) matte: Present<Shorthand<Matte>>,
     pub(crate) blend: Present<String>,
+    pub(crate) mblur: Present<bool>,
     /// Every other key, kept as JSON until its name is checked, so an unknown
     /// key is reported as unknown whatever its value.
     #[serde(flatten)]
@@ -167,6 +169,7 @@ pub(crate) struct CompDoc {
     pub(crate) fps: Present<Number>,
     pub(crate) dur: Present<Shorthand<Time>>,
     pub(crate) bg: Present<Shorthand<Color>>,
+    pub(crate) shutter: Present<Shorthand<Shutter>>,
     pub(crate) labels: Object<LabelsDoc>,
     /// Read by `crate::slots` before the document is; kept so the key is known.
     pub(crate) slots: Present<serde_json::Value>,

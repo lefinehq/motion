@@ -96,6 +96,7 @@ impl Build<'_> {
             fps: comp.fps,
             duration_frames: comp.duration.to_frames(comp.fps),
             background: rgba(comp.background),
+            shutter: comp.shutter,
             nodes: self.nodes(layers, canvas, comp.fps)?,
         })
     }
@@ -335,6 +336,7 @@ fn node(
         collapse: layer.collapse,
         matte: None,
         blend: layer.blend,
+        mblur: layer.mblur,
         inputs: Vec::new(),
     }
 }

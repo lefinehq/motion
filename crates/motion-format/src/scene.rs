@@ -10,7 +10,7 @@ use crate::item::Item;
 use crate::parse::scene_from_value;
 use crate::preset::{PresetSpec, lookup, names};
 use crate::property::Prop;
-use crate::shorthand::{Behaviour, Matte, Position, RectShape};
+use crate::shorthand::{Behaviour, Matte, Position, RectShape, Shutter};
 use crate::slots::Slot;
 use crate::text::TextContent;
 use crate::units::{Color, Size, Time, TimeSpan};
@@ -57,6 +57,8 @@ pub struct Comp {
     pub duration: Time,
     /// The colour behind its layers; clear unless set.
     pub background: Color,
+    /// The shutter its layers with `mblur` blur over.
+    pub shutter: Shutter,
     /// Its layers in paint order: the first is at the back.
     pub layers: Vec<Layer>,
     /// Its named moments, resolved, in the order written.
@@ -188,6 +190,8 @@ pub struct Layer {
     /// How it blends with what is below it in its composition, one of
     /// [`BLEND_MODES`].
     pub blend: &'static str,
+    /// It is blurred along its motion, over its composition's shutter.
+    pub mblur: bool,
 }
 
 /// The blend modes a layer takes, `normal` first, which is the default.

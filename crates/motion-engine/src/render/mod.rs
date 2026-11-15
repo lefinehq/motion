@@ -33,6 +33,11 @@ use motion_raster::{
     BlendMode, Blending, Clip, Color, DrawStyle, Effect, FillRule, Frame, Heard, ImageDraw, Layer,
     Matte, MatteMode as RasterMatte, Node, Paint, PathDraw, Picture,
 };
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use motion_format::shorthand::Shutter;
 use motion_scene::{CompGraph, ContentState, FrameState, Node as GraphNode, NodeState, SceneGraph};
 
 /// How closely curves are flattened into the outlines this module builds
@@ -61,6 +66,49 @@ pub(crate) struct Sources<'a> {
     pub(crate) clips: &'a Clips<'a>,
     /// The sounds of audio layers, stereo at the mix rate.
     pub(crate) sounds: &'a Sounds<'a>,
+    /// The moments motion blur has evaluated so far.
+    pub(crate) moments: &'a Moments,
+}
+
+/// A canvas the engine draws: the scene's root, or a composition of
+/// `graph.comps`, which motion blur evaluates at other moments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Canvas {
+    /// The scene's root.
+    Root,
+    /// The composition at this index.
+    Comp(usize),
+}
+
+impl Canvas {
+    /// Its compiled composition.
+    fn graph(self, graph: &SceneGraph) -> &CompGraph {
+        match self {
+            Canvas::Root => &graph.root,
+            Canvas::Comp(index) => &graph.comps[index],
+        }
+    }
+}
+
+/// States of canvases at the moments motion blur samples, kept for one
+/// frame so layers that share a moment evaluate it once.
+#[derive(Default)]
+pub(crate) struct Moments(RefCell<HashMap<(Canvas, u64), Rc<FrameState>>>);
+
+impl Moments {
+    /// `canvas` evaluated at its own `frame`.
+    fn at(&self, graph: &SceneGraph, canvas: Canvas, frame: f64) -> Rc<FrameState> {
+        let key = (canvas, frame.to_bits());
+        if let Some(state) = self.0.borrow().get(&key) {
+            return Rc::clone(state);
+        }
+        let state = Rc::new(match canvas {
+            Canvas::Root => motion_scene::evaluate(graph, frame),
+            Canvas::Comp(index) => motion_scene::evaluate_comp(graph, index, frame),
+        });
+        self.0.borrow_mut().insert(key, Rc::clone(&state));
+        state
+    }
 }
 
 /// The display list of `state`, one frame of `sources.graph`'s scene, drawn
@@ -77,21 +125,16 @@ pub(crate) fn display_list(sources: Sources<'_>, state: &FrameState) -> Result<F
     Ok(Frame {
         background: opaque_enough(background).then(|| color(background)),
         blending: Blending::Gamma,
-        nodes: nodes(sources, &graph.root.nodes, canvas(&graph.root), state)?,
+        nodes: nodes(sources, Canvas::Root, canvas(&graph.root), state)?,
     })
 }
 
 /// The layers of one canvas's nodes, back to front: `list` is the canvas's
 /// compiled nodes, `area` the canvas, `state` their state at this frame.
-fn nodes(
-    sources: Sources<'_>,
-    list: &[GraphNode],
-    area: Rect,
-    state: &FrameState,
-) -> Result<Vec<Node>> {
+fn nodes(sources: Sources<'_>, at: Canvas, area: Rect, state: &FrameState) -> Result<Vec<Node>> {
     (0..state.nodes.len())
         .filter(|&i| state.nodes[i].visible())
-        .filter_map(|i| matted(sources, list, area, state, i).transpose())
+        .filter_map(|i| matted(sources, at, area, state, i).transpose())
         .collect()
 }
 
@@ -104,12 +147,17 @@ fn canvas(comp: &CompGraph) -> Rect {
 /// one, or `None` when it draws nothing.
 fn matted(
     sources: Sources<'_>,
-    list: &[GraphNode],
+    at: Canvas,
     area: Rect,
     state: &FrameState,
     i: usize,
 ) -> Result<Option<Node>> {
-    let Some(Node::Layer(mut drawn)) = layer(sources, &list[i], area, &state.nodes[i])? else {
+    let list = &at.graph(sources.graph).nodes;
+    let drawn = match blurs(&list[i]) {
+        true => blurred(sources, at, area, state, i)?,
+        false => layer(sources, &list[i], area, &state.nodes[i])?,
+    };
+    let Some(Node::Layer(mut drawn)) = drawn else {
         return Ok(None);
     };
     hear(sources, list, state, i, &mut drawn.effects)?;
@@ -146,7 +194,7 @@ fn matted(
     // nothing outside its span; it may be matted in turn.
     let matte = &state.nodes[source];
     let source = match matte.shown {
-        true => matted(sources, list, area, state, source)?,
+        true => matted(sources, at, area, state, source)?,
         false => None,
     };
     Ok(Some(Node::Layer(Layer {
@@ -221,6 +269,121 @@ fn hear(
     Ok(())
 }
 
+/// Whether `node` is drawn blurred along its motion: it asks to be, and it
+/// is neither an adjusting layer nor one whose effects read another layer,
+/// which are drawn at the frame's moment only.
+fn blurs(node: &GraphNode) -> bool {
+    node.mblur && !node.adjust && node.inputs.iter().all(Option::is_none)
+}
+
+/// How many times its shutter's samples a layer drawn once and moved may
+/// take: each is a pass over the frame's pixels, so fewer than a drawing
+/// made at every moment.
+const MOVED_GROWTH: u32 = 2;
+
+/// Node `i` of the canvas `at` blurred along its motion ([D57]), over the
+/// canvas's open shutter. Its corners' travel over the shutter, in px,
+/// decides the number of moments `n`: the shutter's samples, up to
+/// [`Shutter::MAX_GROWTH`] times as many. Whether it draws is decided at
+/// the frame: a moment outside its span still moves it, with its drawing
+/// at the frame, so a layer does not fade in or out at its ends.
+///
+/// - A shape, text, rect, image or video layer without effects is drawn
+///   at each moment, at `1/n` of its opacity and added, in a group of its
+///   own, so what moves inside it blurs too.
+/// - A `comp` layer, or one with effects, is drawn once at the frame and
+///   moved to where each moment puts it (`Layer::motion`), up to
+///   [`MOVED_GROWTH`] times its samples. Its content is its composition's,
+///   which blurs by its own shutter, as a nested composition's does in the
+///   projects the import reads.
+///
+/// [D57]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter
+fn blurred(
+    sources: Sources<'_>,
+    at: Canvas,
+    area: Rect,
+    state: &FrameState,
+    i: usize,
+) -> Result<Option<Node>> {
+    let graph = sources.graph;
+    let comp = at.graph(graph);
+    let node = &comp.nodes[i];
+    let shutter = comp.shutter;
+    if !shutter.open() {
+        return layer(sources, node, area, &state.nodes[i]);
+    }
+    let moment = |frame: f64| sources.moments.at(graph, at, frame);
+    let opens = moment(state.frame + shutter.phase / 360.0);
+    let closes = moment(state.frame + (shutter.phase + shutter.angle) / 360.0);
+    let frame_node = &state.nodes[i];
+    let moved = matches!(frame_node.content, ContentState::Comp(..)) || !frame_node.fx.is_empty();
+    let growth = match moved {
+        true => MOVED_GROWTH,
+        false => Shutter::MAX_GROWTH,
+    };
+    let most = shutter.samples * growth;
+    let travel = travel(&opens.nodes[i], &closes.nodes[i]).ceil();
+    let n = match travel.is_finite() {
+        true => (travel.min(f64::from(most)) as u32).max(shutter.samples),
+        false => most,
+    };
+    if moved {
+        let Some(Node::Layer(drawn)) = layer(sources, node, area, frame_node)? else {
+            return Ok(None);
+        };
+        let back = frame_node.transform.inverse();
+        let motion = shutter
+            .moments(state.frame, n)
+            .map(|frame| moment(frame).nodes[i].transform * back)
+            .collect();
+        return Ok(Some(Node::Layer(Layer { motion, ..drawn })));
+    }
+    let mut samples = Vec::with_capacity(n as usize);
+    for frame in shutter.moments(state.frame, n) {
+        let at_moment = moment(frame);
+        let sampled = &at_moment.nodes[i];
+        let outside;
+        let sampled = match sampled.shown {
+            true => sampled,
+            false => {
+                outside = NodeState {
+                    transform: sampled.transform,
+                    ..frame_node.clone()
+                };
+                &outside
+            }
+        };
+        if let Some(Node::Layer(drawn)) = layer(sources, node, area, sampled)? {
+            samples.push(Node::Layer(Layer {
+                opacity: drawn.opacity / n as f32,
+                blend: BlendMode::Add,
+                ..drawn
+            }));
+        }
+    }
+    Ok((!samples.is_empty()).then(|| {
+        Node::Layer(Layer {
+            isolate: true,
+            ..Layer::new(samples)
+        })
+    }))
+}
+
+/// How far, in px of the canvas, the corners of a node's box move from
+/// `from` to `to`: the most any of them moves.
+fn travel(from: &NodeState, to: &NodeState) -> f64 {
+    let corners = |node: &NodeState| {
+        let b = node.local_bounds;
+        [(b.x0, b.y0), (b.x1, b.y0), (b.x1, b.y1), (b.x0, b.y1)]
+            .map(|(x, y)| node.transform * motion_raster::kurbo::Point::new(x, y))
+    };
+    corners(from)
+        .into_iter()
+        .zip(corners(to))
+        .map(|(a, b)| a.distance(b))
+        .fold(0.0, f64::max)
+}
+
 /// The layer of one node of the canvas `area`, compiled as `compiled`,
 /// without its matte, or `None` when it draws nothing.
 fn layer(
@@ -263,7 +426,7 @@ fn layer(
         }
         ContentState::Comp(index, Some(inner)) if compiled.collapse => {
             let comp = &sources.graph.comps[*index];
-            let children = nodes(sources, &comp.nodes, canvas(comp), inner)?;
+            let children = nodes(sources, Canvas::Comp(*index), canvas(comp), inner)?;
             if children.is_empty() {
                 return Ok(None);
             }
@@ -292,7 +455,7 @@ fn layer(
             if opaque_enough(comp.background) {
                 children.push(fill(canvas.to_path(TOLERANCE), color(comp.background)));
             }
-            children.extend(nodes(sources, &comp.nodes, canvas, inner)?);
+            children.extend(nodes(sources, Canvas::Comp(*index), canvas, inner)?);
             children
         }
         ContentState::Comp(_, None) | ContentState::Audio | ContentState::Pivot => Vec::new(),

@@ -529,9 +529,10 @@ D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that t
   - the phase, where the shutter opens relative to the frame, in degrees;
   - the samples per frame.
 
-  The default is `"shutter":"180 -90 16"`. Each sample is the layer's whole drawing, content, effects and parents included, at that moment. The samples are averaged and then blend, matte and fade as one layer. A layer that moves farther than one sample spacing in px takes more samples, up to eight times the setting. A `shutter` angle of 0 turns motion blur off for the composition.
+  The default is `"shutter":"180 -90 16"`. Each sample is the layer's whole drawing, content, effects and parents included, at that moment. The samples are averaged and then blend, matte and fade as one layer. Whether the layer draws is decided at the frame: a moment before or after its span still moves it, so it doesn't fade in or out at its ends. A layer that moves farther than one sample spacing in px takes more samples, up to eight times the setting. A `comp` layer, or one with effects, is drawn once at the frame and moved to where each moment puts it, up to twice the setting; what moves inside a composition blurs by that composition's own shutter. A `shutter` angle of 0 turns motion blur off for the composition.
 - **Why:**
   - These are the settings the projects the import reads keep, as the same three numbers, so an import carries them as they are.
   - Averaging whole drawings blurs everything that moves: transforms, shapes, text and effects. That is what true motion blur means in D21, and what a cheaper streak of the transform alone would miss.
   - More samples for faster layers, as the original's adaptive limit does, keeps fast layers smooth without paying for slow ones.
+  - Drawing a composition or an effect stack once per frame keeps the cost of nested compositions and heavy effects from multiplying by the samples at each level.
 - **Not now:** frame blending, and motion blur of masks separately from their layer.

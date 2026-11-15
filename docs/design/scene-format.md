@@ -34,6 +34,12 @@ The top of the file sets the canvas:
 - **`fps`:** frames per second.
 - **`dur`:** the length of the clip.
 - **`bg`:** the background colour.
+- **`shutter`:** what layers with `mblur` blur over, as `"angle phase samples"` ([D57](decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter)).
+  - The angle is how long the shutter stays open, in degrees of a frame, 0 to 720. 360 is a whole frame, and 0 turns motion blur off.
+  - The phase is where it opens, in degrees from the frame's time, -360 to 360.
+  - The samples are how many moments a frame takes, 2 to 64.
+  - The default is `"180 -90 16"`, and the numbers left out keep theirs.
+  - A composition under `comps` has its own shutter, the default unless it sets one.
 
 **Units.** Time is counted in frames (`12f`), and seconds are accepted (`0.4s`). Colours are hex. Numbers are kept to 4 significant digits.
 
@@ -71,7 +77,7 @@ Every layer can also have:
 - **`adjust`:** `true` applies the layer's `fx` to everything below it in its composition instead of to its own content, which is not drawn but says where they apply, by its alpha. A filter layer, with no content, applies them everywhere. The change is mixed in by the layer's opacity and matte; points and lengths of its effects are in the layer's own coordinates ([D49](decisions.md#d49-effects-that-read-pixels-run-on-a-canvas-of-their-own))
 - **`collapse`:** on a `comp` layer, `true` draws the composition's layers straight into the canvas the layer sits in, under the layer's transform and opacity: they are not clipped to the composition's canvas, its background is not drawn, and their blend modes reach what is below unless the layer has effects ([D54](decisions.md#d54-a-collapsed-composition-draws-into-the-canvas-it-sits-in)). The layer's effects then run over that canvas, so their points and lengths are in its coordinates, not the layer's
 - **`hidden`:** `true` leaves it out of the frame but keeps it in the scene; its children still move with it
-- **`mblur`:** motion blur
+- **`mblur`:** `true` blurs the layer along its motion. It is drawn at moments evenly spread over its composition's open shutter, each moment its whole drawing with content, effects and parents. Those drawings are averaged and then blend, fade and matte as one. Whether it draws is decided at the frame, so it doesn't fade at the ends of its span. A layer whose corners move more px over the shutter than it has samples takes one sample per px, up to 8 times as many. A `comp` layer, or one with effects, is drawn once at the frame and moved to each moment, up to 2 times as many; its composition's layers blur by that composition's own `shutter`. Adjusting layers, and layers whose effects read another layer, are drawn unblurred
 - in and out points, and a time offset
 
 ## Properties

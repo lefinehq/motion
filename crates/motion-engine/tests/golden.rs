@@ -50,6 +50,11 @@ use rstest::rstest;
 // which cuts before it; a mask turning and scaling with its layer and
 // shrunk; and a filter layer inverting only where its feathered mask is.
 #[case::masks("masks", 0)]
+// Motion blur over a half-frame shutter: a rect moving fast beside the same
+// rect unblurred, a bar spinning, a layer whose span starts while the
+// shutter is open, and a nested composition with a whole-frame shutter of
+// its own.
+#[case::motion_blur("motion_blur", 6)]
 fn golden(#[case] scene: &str, #[case] frame: u32) {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden");
     let session = Session::open(dir.join(format!("{scene}.json"))).unwrap();

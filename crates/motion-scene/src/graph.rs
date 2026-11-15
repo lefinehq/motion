@@ -39,6 +39,8 @@ pub struct CompGraph {
     pub duration_frames: f64,
     /// The colour behind its nodes, straight RGBA from 0 to 1.
     pub background: [f64; 4],
+    /// The shutter its nodes with `mblur` blur over.
+    pub shutter: motion_format::shorthand::Shutter,
     /// Nodes in paint order: the first is at the back.
     pub nodes: Vec<Node>,
 }
@@ -192,6 +194,8 @@ pub struct Node {
     /// How it blends with what is below it, one of
     /// [`motion_format::BLEND_MODES`].
     pub blend: &'static str,
+    /// It is blurred along its motion, over its composition's shutter.
+    pub mblur: bool,
     /// For each of `fx`, the node of its own list whose drawing it reads,
     /// if it reads one.
     pub inputs: Vec<Option<usize>>,

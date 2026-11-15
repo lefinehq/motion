@@ -22,7 +22,7 @@ use motion_text::{FontSet, Typesetter};
 
 use crate::clips::Clips;
 use crate::pictures::Pictures;
-use crate::render::{Sources, display_list};
+use crate::render::{Moments, Sources, display_list};
 use crate::sounds::Sounds;
 use crate::stage::{stage, stage_ok};
 
@@ -223,11 +223,13 @@ impl Session {
         let pictures = |path: &str| self.pictures.get(&base.join(path));
         let clips = |path: &str, seconds: f64| self.clips.frame(&base.join(path), seconds);
         let sounds = |path: &str| self.sounds.get(&base.join(path));
+        let moments = Moments::default();
         let sources = Sources {
             graph,
             pictures: &pictures,
             clips: &clips,
             sounds: &sounds,
+            moments: &moments,
         };
         stage("display", || display_list(sources, &state))
     }

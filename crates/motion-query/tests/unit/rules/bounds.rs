@@ -15,6 +15,7 @@ fn graph() -> SceneGraph {
             fps: 30.0,
             duration_frames: 30.0,
             background: [0.0, 0.0, 0.0, 1.0],
+            shutter: motion_format::shorthand::Shutter::DEFAULT,
             nodes: vec![],
         },
         comps: vec![],

@@ -26,13 +26,13 @@ use crate::item::{EFFECTS, MASKS, Reads, SHAPES};
 use crate::parse::key::{
     ADJUST, ANIM, ANIMATE, AT, AUDIO, BG, BLEND, BOX, COLLAPSE, COMP, COMPS, DUR, FILL, FONT, FPS,
     FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT,
-    PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, VIDEO,
-    comp_path, layer_path,
+    PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SHUTTER, SIZE, SPAN, STRETCH, STYLE, TEXT,
+    VIDEO, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
 use crate::property::{LAYER, Prop, PropertySpec, Registry, Rest, Target};
-use crate::shorthand::{Behaviour, Coord, Font, Position};
+use crate::shorthand::{Behaviour, Coord, Font, Position, Shutter};
 use crate::slots::{Declared, Slot};
 use crate::units::{Color, SPAN_EXPECTED, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
@@ -102,6 +102,7 @@ struct Clock {
     fps: f64,
     duration: Time,
     background: Color,
+    shutter: Shutter,
 }
 
 /// What a layer needs from the scene around it.
@@ -126,7 +127,7 @@ pub(crate) fn scene(
     version(required(*doc.motion, MOTION, &VERSION.to_string())?)?;
     let fps = doc.fps.map_or(Ok(DEFAULT_FPS), fps)?;
     let size = optional(doc.size.as_ref(), SIZE)?.unwrap_or(DEFAULT_SIZE);
-    let clock = clock(fps, &doc.dur, &doc.bg, DEFAULT_BACKGROUND)?;
+    let clock = clock(fps, &doc.dur, &doc.bg, &doc.shutter, DEFAULT_BACKGROUND)?;
     let Object(own_presets) = &doc.presets;
     let presets = presets(own_presets).map_err(|e| e.under(PRESETS))?;
     let Object(comp_docs) = &doc.comps;
@@ -250,7 +251,7 @@ fn canvases(docs: &CompsDoc, scene_fps: f64) -> Result<Vec<Canvas>> {
 /// One composition under `comps`, with paths relative to it: its background
 /// defaults to clear.
 fn listed_comp(canvas: &Canvas, doc: &CompDoc, shared: &Shared, slots: &[Slot]) -> Result<Comp> {
-    let clock = clock(canvas.fps, &doc.dur, &doc.bg, CLEAR)?;
+    let clock = clock(canvas.fps, &doc.dur, &doc.bg, &doc.shutter, CLEAR)?;
     let List(layer_docs) = required(doc.layers.as_ref(), LAYERS, "[]")?;
     comp(
         &canvas.id,
@@ -335,12 +336,14 @@ fn clock(
     fps: f64,
     dur: &Present<Shorthand<Time>>,
     bg: &Present<Shorthand<Color>>,
+    shutter: &Present<Shorthand<Shutter>>,
     default_background: Color,
 ) -> Result<Clock> {
     Ok(Clock {
         fps,
         duration: required(dur.as_ref(), DUR, r#""5s""#)?.parse_at(DUR)?,
         background: optional(bg.as_ref(), BG)?.unwrap_or(default_background),
+        shutter: optional(shutter.as_ref(), SHUTTER)?.unwrap_or_default(),
     })
 }
 
@@ -369,6 +372,7 @@ fn comp(
         fps: clock.fps,
         duration: clock.duration,
         background: clock.background,
+        shutter: clock.shutter,
         layers,
         labels,
         slots: slots.to_vec(),
@@ -585,6 +589,7 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
                 .ok_or_else(|| Diagnostic::unknown("blend mode", name, BLEND_MODES).at(BLEND))?,
             None => BLEND_MODES[0],
         },
+        mblur: doc.mblur.unwrap_or(false),
     };
     let layer = Layer {
         adjust: adjusts(doc, &layer)?,
