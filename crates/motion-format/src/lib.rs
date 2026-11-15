@@ -33,7 +33,7 @@ pub use item::{Item, ItemKind, Role};
 pub use number::fmt_num;
 pub use parse::{COMP_KEYS, LAYER_KEYS, SCENE_KEYS, key, layer_keys, parse_document};
 pub use path::{Path, Vertex};
-pub use scene::{Comp, Content, Document, ImageContent, Layer, Scene};
+pub use scene::{Comp, CompContent, Content, Document, ImageContent, Layer, Scene};
 pub use spring::Spring;
 pub use value::{Value, ValueType};
 pub use write::write_document;

@@ -333,3 +333,29 @@ fn at_resolves_in_the_parents_box() {
     assert_eq!(track(&g.root.nodes[1], "x").sample(0.0), 100.0);
     assert_eq!(track(&g.root.nodes[1], "y").sample(0.0), 50.0);
 }
+
+#[test]
+fn a_comp_layer_with_overrides_draws_a_composition_of_its_own() {
+    let g = compile_json(
+        r#"{"motion":1,"dur":"1s","comps":{
+          "label":{"size":"100x50","dur":"1s","layers":[{"id":"title","rect":"10x10"}]}},
+        "layers":[{"id":"first","comp":"label"},{"id":"same","comp":"label"},
+          {"id":"wide","comp":"label","overrides":{"title":{"rect":"40x10"}}}]}"#,
+    );
+    let drawn: Vec<usize> = g
+        .root
+        .nodes
+        .iter()
+        .map(|n| match n.content {
+            NodeContent::Comp(index) => index,
+            _ => panic!("a comp node"),
+        })
+        .collect();
+    // Layers without overrides share the composition; the other gets its
+    // own, after the scene's, with the same id and canvas.
+    assert_eq!(drawn, [0, 0, 1]);
+    assert_eq!(g.comps.len(), 2);
+    assert_eq!((g.comps[1].id.as_str(), g.comps[1].width), ("label", 100.0));
+    assert_eq!(g.comps[0].nodes[0].bounds.width(), 10.0);
+    assert_eq!(g.comps[1].nodes[0].bounds.width(), 40.0);
+}

@@ -51,7 +51,7 @@ Every layer has an `id`: lowercase letters, digits, `-` and `_`, starting with a
 | `svg` | An SVG file as shapes |
 | `image` | A PNG or JPEG file stretched over the layer's `box` (see [Images](#images)) |
 | `solid` | A flat colour |
-| `comp` | A composition from `comps`, drawn in the layer's box at the layer's own time |
+| `comp` | A composition from `comps`, drawn in the layer's box at the layer's own time; `overrides` changes its layers for this layer alone |
 | `pivot` | An invisible layer (`"pivot":true`) that only carries a position, rotation and scale. Other layers can use it as a parent. |
 | filter layer | A layer with only an `fx` list. It applies the effects to everything below it. |
 | `camera` | The viewpoint for 2.5D layers |
@@ -141,6 +141,13 @@ Each kind lists its properties in `crates/motion-format/src/item.rs`; this table
 ```json
 "comps":{"card":{"size":"600x400","dur":"5s","layers":[{"id":"title","text":"Hello"}]}},
 "layers":[{"id":"card-1","comp":"card","at":"540 700","offset":"1s"}]
+```
+
+**Overrides.** A `comp` layer may change the layers of the composition it draws, for itself alone, with `overrides`: layer keys by the address of the layer they go on, relative to the composition ([D43](decisions.md#d43-one-layer-address-and-edits-per-instance)). Each override's keys replace the same keys of that layer, and the result is checked as any layer is, so an error points at the inner layer, `card-2/title.text`. An address may reach deeper, through the composition's own `comp` layers: `badge/icon`. Layers without overrides share the composition; an override cannot change a layer's `id`.
+
+```json
+"layers":[{"id":"card-1","comp":"card"},
+          {"id":"card-2","comp":"card","overrides":{"title":{"text":"Sale"},"badge/icon":{"fill":"#E63946"}}}]
 ```
 
 ## Images

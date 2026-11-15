@@ -53,7 +53,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","in":"zoom"}` → a.in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in
 `{"id":"a","rect":"1x1","anim":null}` → a.anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
 `{"id":"a","rect":"1x1","anim":[]}` → a.anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
-`{"id":"a","rect":"1x1","x":1}` → a.x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, image, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, matte, position, anchor, scale, rotate, opacity
+`{"id":"a","rect":"1x1","x":1}` → a.x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, overrides, image, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, matte, position, anchor, scale, rotate, opacity
 `{"id":"a","rect":"1x1","at":"1 2","position":[1,2]}` → a.position: `position` and `at` both place the layer; expected one of them: "at":"540 960" places it in the parent's box, "position":[540,960] at an exact point in the parent's own coordinates
 `{"id":"a","rect":"1x1","rotate":"x"}` → a.rotate: `x` is not a number; expected a number, e.g. `0.5`
 `{"id":"a","rect":"1x1","scale":[1,2,3]}` → a.scale: 3 numbers do not make a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
@@ -74,6 +74,21 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","stretch":0}` → a.stretch: must be a number other than zero; expected e.g. `2` for half speed, `-1` for backwards
 `{"id":"a","rect":"10x10","in":"fade-up","anim":{"opacity":"0 -> 1 @0-5f"}}` → a.anim.opacity: `opacity` is already animated by `in` (preset `fade-up`); expected `a in=none anim={"opacity":"0 -> 1 @0-12f ease-out","y":"580 -> 540 @0-12f ease-out"}` (the entrance as anim tracks; then adjust `opacity`), or define a scene preset without `opacity` under "presets"
 `{"id":"a","rect":"10x10","in":"fade-up","anim":{"position":"0,0 -> 1,1 @0-5f"}}` → a.anim.position: `position` is already animated by `in` (preset `fade-up`); expected `a in=none anim={"opacity":"0 -> 1 @0-12f ease-out","y":"580 -> 540 @0-12f ease-out","position":"0,0 -> 1,1 @0-5f"}` (the entrance as anim tracks; then adjust `position`), or define a scene preset without `position` under "presets"
+
+## overrides
+`"overrides":3` → card.overrides: invalid type: integer `3`; expected an object of layer keys by layer address, e.g. {"title":{"text":"Sale"},"badge/icon":{"fill":"#E63946"}}
+`"overrides":{"title":3}` → card.overrides.title: invalid type: integer `3`; expected an object of layer keys, e.g. {"text":"Sale"}
+`"overrides":{"ghost":{"text":"x"}}` → card.overrides: unknown layer `ghost`; expected one of title
+`"overrides":{"title.text":{}}` → card.overrides: `title.text` is not the address of a layer; expected a layer of the composition, e.g. `title` or `badge/icon`
+`"overrides":{"title":{"id":"other"}}` → card.overrides: an override of `title` sets its `id`; expected the keys to change; the id stays the layer's own
+`"overrides":{"title":{"text":5}}` → card/title.text: invalid type: integer `5`; expected a string
+`"overrides":{"title":{"rect":"1x1"}}` → card/title.rect: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg" or "pivot":true
+`"overrides":{"title":{"fill":"red"}}` → card/title.fill: `red` is not a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
+`"overrides":{"title/x":{"text":"x"}}` → card/title.overrides: `overrides` only applies to `comp` layers; expected `overrides` only next to `comp`
+`"overrides":{"title":{"zoom":1}}` → card/title.zoom: unknown layer key `zoom`; expected one of id, text, rect, shapes, comp, overrides, image, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, hidden, matte, position, anchor, scale, rotate, opacity
+
+## overrides on a layer that draws no composition
+`"overrides":{"x":{}}` → a.overrides: `overrides` only applies to `comp` layers; expected `overrides` only next to `comp`
 
 ## anim
 `"x":3` → a.anim.x: invalid type: integer `3`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of keys, each [time, value, curve] or {"t":time,"v":value,"curve":curve,"path":[[out-x,out-y],[in-x,in-y]]}

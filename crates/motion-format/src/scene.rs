@@ -133,12 +133,24 @@ pub enum Content {
     /// Shape items: groups, outlines and the paints that draw them. The
     /// first item draws on top.
     Shapes(Vec<Item>),
-    /// The composition with this id, drawn in the layer's box at the layer's time.
-    Comp(String),
+    /// A composition, drawn in the layer's box at the layer's time.
+    Comp(CompContent),
     /// A picture file stretched over the layer's box.
     Image(ImageContent),
     /// Nothing: a point that other layers move with.
     Pivot,
+}
+
+/// What a `comp` layer draws: a composition, as it is or with the layer's
+/// `overrides` set over its layers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompContent {
+    /// The composition's id under `comps`.
+    pub id: String,
+    /// The composition's layers with the layer's overrides set over them,
+    /// validated as any composition's layers are; `None` when it writes
+    /// none, and draws the composition every such layer shares.
+    pub instance: Option<Vec<Layer>>,
 }
 
 /// An image layer's picture and where it goes.
