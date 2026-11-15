@@ -170,6 +170,7 @@ pub(crate) fn sample_project() -> Project {
             end: 4.0,
         },
         layers: vec![title, null],
+        panel: Vec::new(),
     };
     let solid = Footage {
         width: 100,
@@ -533,6 +534,7 @@ pub(crate) mod build {
                 end: duration,
             },
             layers,
+            panel: Vec::new(),
         }
     }
 

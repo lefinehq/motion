@@ -20,6 +20,7 @@ use crate::record::{
 use crate::rifx::{self, Chunk, Name};
 
 mod effect;
+mod panel;
 mod property;
 mod text;
 
@@ -223,6 +224,10 @@ impl Decoder {
                 .lists(LAYR)
                 .map(|layer| self.layer(layer?))
                 .collect::<Result<_>>()?,
+            panel: match scan.list(panel::CIF3)? {
+                Some(cif3) => self.panel(cif3)?,
+                None => Vec::new(),
+            },
         })
     }
 

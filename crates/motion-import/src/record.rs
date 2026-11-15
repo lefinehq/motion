@@ -158,6 +158,37 @@ impl Record for Idta {
     const NAME: Name = Name::chunk(b"idta");
 }
 
+/// `CTyp`: the kind of a template panel's control, as
+/// [`ControlKind::from_code`](crate::ControlKind::from_code) reads it.
+#[derive(BinRead, Debug)]
+pub(crate) struct Ctyp {
+    pub code: u32,
+}
+
+impl Record for Ctyp {
+    const NAME: Name = Name::chunk(b"CTyp");
+}
+
+/// `CCId`: the composition a panel control's property is in.
+#[derive(BinRead, Debug)]
+pub(crate) struct Ccid {
+    pub id: u32,
+}
+
+impl Record for Ccid {
+    const NAME: Name = Name::chunk(b"CCId");
+}
+
+/// `CLId`: the layer a panel control's property is on.
+#[derive(BinRead, Debug)]
+pub(crate) struct Clid {
+    pub id: u32,
+}
+
+impl Record for Clid {
+    const NAME: Name = Name::chunk(b"CLId");
+}
+
 impl Idta {
     /// The type of a folder.
     pub const FOLDER: u16 = 1;
