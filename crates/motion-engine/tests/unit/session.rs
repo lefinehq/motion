@@ -301,6 +301,58 @@ fn the_first_failing_frame_is_reported_with_its_number() {
 }
 
 #[test]
+fn frames_in_order_are_handed_over_in_order() {
+    let session: Session = TINY.parse().unwrap();
+    let mut handed = Vec::new();
+    session
+        .render_in_order(0..5, RenderOptions::GOLDEN, |frame, image| {
+            assert_eq!(image.width(), 4);
+            handed.push(frame);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(handed, [0, 1, 2, 3, 4]);
+}
+
+#[test]
+fn no_frame_after_a_failure_is_handed_over() {
+    let session: Session = TINY.parse().unwrap();
+    let mut handed = Vec::new();
+    let error = session
+        .render_in_order(0..5, RenderOptions::GOLDEN, |frame, _| {
+            handed.push(frame);
+            match frame {
+                2 => Err(Diagnostic::new(Kind::Io, "disk full")),
+                _ => Ok(()),
+            }
+        })
+        .unwrap_err();
+    assert_eq!(error.message, "frame 2: disk full");
+    assert_eq!(handed, [0, 1, 2]);
+}
+
+#[test]
+fn frames_drawn_ahead_wait_for_their_turn() {
+    let session: Session = TINY.parse().unwrap();
+    let image = session.render(0.0).unwrap();
+    let mut handed = Vec::new();
+    let mut order = InOrder {
+        next: 0,
+        waiting: BTreeMap::new(),
+        failed: false,
+        each: |frame, _| {
+            handed.push(frame);
+            Ok(())
+        },
+    };
+    for frame in [2, 0, 3, 1] {
+        order.hand(frame, image.clone()).unwrap();
+    }
+    assert!(order.waiting.is_empty());
+    assert_eq!(handed, [0, 1, 2, 3]);
+}
+
+#[test]
 fn render_is_timed_as_display_and_render_steps() {
     let timings = Timings::default();
     with_subscriber(tracing_subscriber::registry().with(timings.layer()), || {

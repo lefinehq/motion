@@ -381,7 +381,7 @@ motion's value lies in the parts the agent touches: the format, the edits and th
 
 ### D46. Video is encoded in a crate of its own, behind one codec trait
 
-- **Decision:** `motion-encode` turns drawn frames into video files and knows nothing about scenes. Frames become BT.709 Y′CbCr 4:2:0 in one function of our own; each codec implements one `VideoEncoder` trait; each container one `Muxer` trait, MP4 through `muxide`. AV1 through `rav1e` is the codec every platform has. H.264 and HEVC come from the operating system or GPU, or from Cisco's OpenH264 binary loaded at run time, never compiled in ([D13](#d13-codec-licence-policy)). See the [plan](../plans/2026-11-16-encode.md).
+- **Decision:** `motion-encode` turns drawn frames into video files and knows nothing about scenes. Frames become BT.709 Y′CbCr 4:2:0 in one function of our own; each codec implements one `VideoEncoder` trait; each container one `Muxer` trait. MP4 is our own writer on `mp4-atom`'s boxes, so packets go to disk as they come; `muxide` was weighed and left out because it holds every packet in memory until the end. AV1 through `rav1e` is the codec every platform has. H.264 and HEVC come from the operating system or GPU, or from Cisco's OpenH264 binary loaded at run time, never compiled in ([D13](#d13-codec-licence-policy)). See the [plan](../plans/2026-11-16-encode.md).
 - **Why:**
   - A video file is the product. Today it needs another tool, which agents and servers may not have.
   - AV1 in pure Rust under a permissive licence runs everywhere, CI included, so the whole path is tested before any platform encoder exists.

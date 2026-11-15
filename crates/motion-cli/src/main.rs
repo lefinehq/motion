@@ -98,7 +98,8 @@ enum Command {
         /// A layer id (or `scene`) followed by `key=value` pairs.
         line: String,
     },
-    /// Draw frames of a scene into PNG files named `frame-00000.png`.
+    /// Draw frames of a scene into a video file, or into PNG files named
+    /// `frame-00000.png`.
     Render {
         /// Path to the scene file.
         scene: PathBuf,
@@ -109,8 +110,9 @@ enum Command {
         /// One frame to draw.
         #[arg(long, value_name = "N")]
         frame: Option<u32>,
-        /// The folder the PNG files are written to; created if missing.
-        #[arg(long, value_name = "DIR")]
+        /// A video file, whose extension picks the container (`.mp4`), or
+        /// else the folder the PNG files are written to, created if missing.
+        #[arg(long, value_name = "FILE|DIR")]
         out: PathBuf,
         /// How colours are computed: `precise` for delivered frames, `fast`
         /// for previews.
