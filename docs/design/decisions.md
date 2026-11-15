@@ -492,6 +492,7 @@ D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that t
   - Its effects are measured in the parent's space in the project, which is why the same ramp copied onto a collapsed title and onto a shape lines up there. Measuring them in the composition's own space put the title's ramp out of place.
   - One flag on the existing `comp` layer keeps addresses, overrides and slots working unchanged; flattening the layers into the parent at import would lose the composition as a unit to edit.
 - **Not now:** 3D layers inside a collapsed composition sharing the parent's camera and lights. Masks on the collapsed layer wait for masks.
+
 ### D55. Masks are items that cut a layer's content before its effects
 
 - **Decision:** a layer's `mask` is a list of mask items, as `fx` is a list of effects. Each mask is a closed path in the layer's own px, `{"mask":"M0,0 L200,0 L200,100 Z"}`, with animatable `feather`, `opacity` and `expand`, and the settings `mode` and `keep` (`inside` or `outside`). The masks combine in order into one coverage:
@@ -509,9 +510,19 @@ D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that t
   - Cutting before the effects lets a glow or a blur spread past the mask's edge, as it does in those projects.
 - **Not now:** mask motion blur, linear feather falloff, and masks on shape groups.
 
-### D57. Motion blur samples a layer's motion over the shutter
+### D56. Audio layers, mixed at 48 kHz and read by effects
 
-(D56 is taken by the audio decision.)
+- **Decision:** a scene plays sound files through `audio` layers, which draw nothing and play in their own time as video layers do. A `volume` gain, a property like `opacity`, fades them, and a `comp` layer's `volume` scales its composition's sound. The engine mixes every audible layer into one stereo track at 48 kHz in 32-bit float, which renders write to the output. Effects read an audio layer as `displacement-map` reads a layer, and properties may follow a sound's level through a modifier.
+  - **Reading.** `motion-audio` reads WAV itself, and MP3, FLAC and Ogg Vorbis through pure Rust decoders under permissive licences (`nanomp3`, `claxon`, `lewton`). The format comes from a file's first bytes. AAC comes from the operating system, as H.264 does ([D13](#d13-codec-licence-policy)).
+  - **Layout.** A file is decoded once per session, whole, folded down to stereo by its speakers (ITU-R BS.775) and resampled to 48 kHz. Resampling uses our own Kaiser-windowed sinc kernel, which also plays a stretched layer slower or faster.
+- **Why:**
+  - Every film the product makes has music. Templates also draw from their music, and 9 corpus samples hold spectrum effects drawn as nothing.
+  - Decoding whole files keeps any frame computable alone: a spectrum at frame 900 needs the samples around it, not a playhead. A three-minute song at 48 kHz stereo is 66 MB of floats.
+  - One kernel of our own gives the same samples on every machine and every run, so mixes can be compared in tests. A library's SIMD paths differ by CPU. With weights per phase, a three-minute 44.1 kHz song resamples in 0.18 s.
+  - The permissive pure Rust decoders keep the licence clean, as for codecs. The widest Rust audio library is MPL-2.0, which the dependency policy does not allow.
+- **Not now:** panning, audio effects (equaliser, compression), and more than two output channels. See the [plan](../plans/2026-11-20-audio.md).
+
+### D57. Motion blur samples a layer's motion over the shutter
 
 - **Decision:** a layer with `"mblur":true` is drawn as the average of its drawings at several moments while the shutter is open. Its composition's `shutter` sets three things:
   - the angle, as a share of a frame in degrees (180 is half a frame);
