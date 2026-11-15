@@ -8,6 +8,8 @@ The words we use in motion, and what they mean.
 
 **Agent.** An AI system that writes and edits scenes, for example a coding assistant or a content pipeline.
 
+**Batch.** A file that lists the variants of one master, each an id and its edits; `motion batch` makes, checks and renders them in turn. See [Edits and checks](design/edits-and-checks.md#batches-of-variants).
+
 **Behaviour.** A short description of a whole animation, such as `fade-up 12f stagger 6f`. It is the simplest way to animate.
 
 **Check.** A question motion answers about a scene with numbers, without rendering the video. See [Edits and checks](design/edits-and-checks.md).
@@ -36,6 +38,8 @@ The words we use in motion, and what they mean.
 
 **Key.** One value of a property at one moment. Its curve says how the value eases to the next key.
 
+**Lock.** What a variant may never change: a role, a layer, a slot, the palette or the typefaces. An edit that touches one is refused. See [Scene format](design/scene-format.md#locks).
+
 **Mask.** A shape that cuts out part of a layer.
 
 **Matte.** Another layer whose transparency or brightness is used as a stencil.
@@ -63,6 +67,8 @@ The words we use in motion, and what they mean.
 **Reference.** A value written `"$id"`, which takes the value of slot `id`: of its own composition, else of the scene. `$$` writes a literal dollar. See [Scene format](design/scene-format.md#slots).
 
 **Repeat.** One layer that produces several numbered copies of an item, filled in from `data`.
+
+**Role.** What a layer or slot does in a master, such as `headline` or `logo`. An edit may target it as `@headline`. See [Scene format](design/scene-format.md#roles).
 
 **Scene.** The JSON file that describes a video.
 

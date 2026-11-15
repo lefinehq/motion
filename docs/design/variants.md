@@ -13,7 +13,7 @@ In v1, motion turns a finished, professionally designed project into variants. A
 5. **The designer reviews the variants.** They approve each one, or tweak it with the same one-line edits.
 6. **A variant can go back to the project.** `motion export` patches each edited value into the bytes the import read it from, and leaves every other byte as it was ([D45](decisions.md#d45-export-patches-the-project-it-came-from)), so the designer can finish it in their tool. A slot that came from an expression control goes back into that control, so the template opens with the variant's values.
 
-Steps 1, 2, 4 and 6 work today on a single scene. The variant surface and batches of variants are the next milestone ([M3](roadmap.md#m3-variants)).
+Steps 1, 2, 4 and 6 work today, and step 4 works for many variants at once: `motion batch` makes each from the master, refuses the edits a lock holds, checks it and renders it ([D52](decisions.md#d52-a-batch-makes-every-variant-from-one-master)). Of step 3, roles, locks and slots work today; beats and the style profile come next in [M3](roadmap.md#m3-variants).
 
 ## Import
 
@@ -59,8 +59,8 @@ locks   logo, palette, typefaces, end card
 slots   $accent color #E63946 (14) · $headline text "Launch Week" (1) · card-2 $title "Sale"
 ```
 
-**Roles** say which layer is the headline, the logo, the call to action, the product and the background. A role names a layer by its address, so it can sit inside a composition.
-- motion infers roles from layer names, positions and content, and the designer confirms them.
+**Roles** say which layer is the headline, the logo, the call to action, the product and the background ([D50](decisions.md#d50-roles-name-what-a-masters-layers-do)). A role names a layer by its address, so it can sit inside a composition, or a slot by `$id`. An edit may target a role, `@headline text="Sale"`, so one brief works on every master, and `motion roles` lists them.
+- The import proposes roles from layer names, and the designer confirms them with an edit, `scene roles.headline=card/title`. Positions and content may sharpen the guess later.
 - A naming convention in the project, such as prefixing a layer name with `@headline`, skips the guessing.
 
 **Beats** are the master's sections in time. Shorter cuts drop or shorten beats by priority.
@@ -76,7 +76,7 @@ slots   $accent color #E63946 (14) · $headline text "Launch Week" (1) · card-2
 
 **Slots** are the values the template names for change ([D44](decisions.md#d44-slots-are-named-values-that-layers-follow)): each has a type and a label, and every value written `"$id"` follows it, so one edit, `$accent=#2A9D8F`, changes them all. The import makes them from the expression controls a template reads, and an instance of a composition gives its slots values of its own. `motion slots --json` lists them with the place of each value that follows, which is the first thing an agent reads.
 
-**Locks** are what a variant may never change. The default locks are the logo, the palette, the typefaces and the end card. The designer can add or remove locks.
+**Locks** are what a variant may never change ([D51](decisions.md#d51-locks-are-refused-in-the-edit)): a role, a layer and everything inside it, a slot, or the scene's `palette` and `typefaces`. An edit that touches one is refused with the lock named, so a variant never holds a locked change. The import locks the logo, the palette and the typefaces when it finds a logo, and the end card once the designer names it. The designer can add or remove locks; a batch cannot.
 
 ## Kinds of variant
 
