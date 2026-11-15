@@ -29,7 +29,7 @@ impl Frames {
     }
 
     /// The frames as a half-open range.
-    fn range(self) -> Range<u32> {
+    pub fn range(self) -> Range<u32> {
         self.first..self.last.saturating_add(1)
     }
 }
@@ -120,8 +120,46 @@ pub fn run(
         ..RenderOptions::default()
     };
     match is_video {
-        true => video(&session, frames, options, out, encoding),
+        true => {
+            let written = video(&session, frames, options, out, encoding)?;
+            println!("{written}");
+            Ok(ExitCode::SUCCESS)
+        }
         false => pictures(&session, frames, options, out),
+    }
+}
+
+/// A video file written: where, how, and how long.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Written {
+    /// The file.
+    pub out: std::path::PathBuf,
+    /// How many frames it holds.
+    pub frames: u64,
+    /// Its codec.
+    pub codec: Codec,
+    /// Its quality.
+    pub quality: VideoQuality,
+    /// Its size in pixels.
+    pub size: (u32, u32),
+    /// Its frames per second.
+    pub fps: f64,
+}
+
+impl std::fmt::Display for Written {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let noun = if self.frames == 1 { "frame" } else { "frames" };
+        let (width, height) = self.size;
+        let seconds = (self.frames as f64 / self.fps * 100.0).round() / 100.0;
+        write!(
+            f,
+            "{} {noun} written to {} ({}, {}, {width}x{height}, {} fps, {seconds} s)",
+            self.frames,
+            self.out.display(),
+            self.codec.label(),
+            self.quality,
+            self.fps,
+        )
     }
 }
 
@@ -143,14 +181,17 @@ fn pictures(
     Ok(ExitCode::SUCCESS)
 }
 
-/// Draws `frames` into the video file `out`, in AV1 for now.
-fn video(
+/// Draws `frames` into the video file `out`, encoded as `encoding` asks.
+///
+/// # Errors
+/// As drawing and writing, or an out-of-range diagnostic for no frames.
+pub fn video(
     session: &Session,
     frames: Range<u32>,
     options: RenderOptions,
     out: &Path,
     encoding: Encoding,
-) -> Result<ExitCode> {
+) -> Result<Written> {
     let fps = session.scene().root.fps;
     let codec = encoding.codec.unwrap_or_default();
     let quality = encoding.quality.unwrap_or(codec.default_quality());
@@ -180,16 +221,15 @@ fn video(
                 .expected("a range of at least one frame"),
         );
     };
-    let count = timed("encode", || writer.finish())?;
-    let noun = if count == 1 { "frame" } else { "frames" };
-    let (width, height) = size;
-    let seconds = (count as f64 / fps * 100.0).round() / 100.0;
-    println!(
-        "{count} {noun} written to {} ({}, {quality}, {width}x{height}, {fps} fps, {seconds} s)",
-        out.display(),
-        codec.label(),
-    );
-    Ok(ExitCode::SUCCESS)
+    let frames = timed("encode", || writer.finish())?;
+    Ok(Written {
+        out: out.to_path_buf(),
+        frames,
+        codec,
+        quality,
+        size,
+        fps,
+    })
 }
 
 #[cfg(test)]

@@ -21,6 +21,7 @@ mod footage;
 mod geometry;
 mod import;
 mod pictures;
+mod relocate;
 mod render;
 mod session;
 mod stage;
@@ -41,6 +42,7 @@ pub use import::{import, import_scene, substitute_fonts};
 pub use motion_import::export::{Change as ExportChange, Plan as ExportPlan};
 pub use session::Session;
 
+pub use motion_format::Id;
 pub use motion_format::roles::Role;
 pub use motion_format::{
     Address, Content, Diagnostic, Document, Kind, Listed, Lock, Result, RoleTarget, Scene,

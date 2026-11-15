@@ -428,6 +428,35 @@ impl Session {
         self.check()
     }
 
+    /// Applies one edit line of a variant ([D52]), as [`Session::edit`]
+    /// does, except that a variant cannot edit the scene's `roles` or
+    /// `locks`: those are the designer's.
+    ///
+    /// # Errors
+    /// As [`Session::edit`], or a conflict diagnostic for an edit of
+    /// `roles` or `locks`.
+    ///
+    /// [D52]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d52-a-batch-makes-every-variant-from-one-master
+    pub fn edit_variant(&mut self, line: &str) -> Result<Report> {
+        let parsed = motion_edit::parse_edit(&motion_edit::resolve_role(&self.doc, line)?)?;
+        let designers = [motion_format::key::ROLES, motion_format::key::LOCKS];
+        if let Some(change) = parsed
+            .changes
+            .iter()
+            .find(|c| parsed.target.is_scene() && designers.contains(&c.key.first()))
+        {
+            return Err(Diagnostic::new(
+                Kind::Conflict,
+                format!(
+                    "a variant cannot edit `{}`, which is the designer's",
+                    change.key.first()
+                ),
+            )
+            .expected("edits of the layers, slots and roles' values"));
+        }
+        self.edit(line)
+    }
+
     /// A copy of this session with the layers at `addresses` hidden, as an
     /// edit hides them, so one inside a composition is hidden in that
     /// instance alone; this one is left as it is.
@@ -435,7 +464,20 @@ impl Session {
     /// # Errors
     /// As [`Session::edit`], for a layer the scene does not have.
     pub(crate) fn hiding(&self, addresses: &[Address]) -> Result<Session> {
-        let mut hidden = Session {
+        let mut hidden = self.variant();
+        for address in addresses {
+            hidden.edit(&format!("{address} hidden=true"))?;
+        }
+        Ok(hidden)
+    }
+
+    /// A copy of this session to make a variant of ([D52]): the same scene
+    /// and file, sharing the fonts already read, with nothing drawn yet.
+    /// Edits of the copy leave this one as it is.
+    ///
+    /// [D52]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d52-a-batch-makes-every-variant-from-one-master
+    pub fn variant(&self) -> Session {
+        Session {
             path: self.path.clone(),
             doc: self.doc.clone(),
             fonts: OnceLock::new(),
@@ -443,11 +485,36 @@ impl Session {
             font_cache: self.font_cache.clone(),
             pictures: Pictures::default(),
             clips: Clips::default(),
-        };
-        for address in addresses {
-            hidden.edit(&format!("{address} hidden=true"))?;
         }
-        Ok(hidden)
+    }
+
+    /// The validated document: the scene and the JSON it was read from.
+    pub fn document(&self) -> &Document {
+        &self.doc
+    }
+
+    /// Writes the scene, in canonical form, to `path` instead of its own
+    /// file, with the files it names (its `fonts`, and each layer's `image`
+    /// and `video`) written relative to `path`'s folder, so it reads them
+    /// from there as it did from its own.
+    ///
+    /// # Errors
+    /// A [`Kind::Io`] diagnostic when the file cannot be written.
+    pub fn save_as(&self, path: &Path) -> Result<()> {
+        let mut raw = self.doc.raw().clone();
+        let from = self
+            .path
+            .as_deref()
+            .and_then(Path::parent)
+            .unwrap_or(Path::new(""));
+        let to = path.parent().unwrap_or(Path::new(""));
+        crate::relocate::files(&mut raw, from, to);
+        let tmp = temp_path(path);
+        fs::write(&tmp, write_document(&raw)).map_err(|e| Diagnostic::io("write", path, &e))?;
+        fs::rename(&tmp, path).map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            Diagnostic::io("write", path, &e)
+        })
     }
 
     /// Writes the scene, in canonical form, back to its file (step `save`),
