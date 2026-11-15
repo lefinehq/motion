@@ -180,9 +180,10 @@ impl Walk<'_> {
                 let expression = property.expression.as_ref().is_some_and(|e| e.enabled);
                 if let Some(bake) = baked {
                     let found = sink.registry.target(target);
-                    if let Some(tracks) =
+                    if let Some(mut tracks) =
                         self.baked_tracks(bake, property, (target, found), convert, place)
                     {
+                        self.follow_slot(&bake.source, &mut tracks);
                         let source = self.source(Writable::Expression);
                         for track in tracks {
                             let (name, component) = (&track.name, track.component);

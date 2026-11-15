@@ -78,6 +78,8 @@ pub struct Mapping {
     /// Values outside the range the scene takes, clamped into it as the
     /// original draws them, and where.
     pub clamped: Vec<Finding>,
+    /// How many slots the controls that expressions read became.
+    pub slots: usize,
 }
 
 /// What one expression became.
@@ -126,6 +128,11 @@ pub enum Outcome {
         /// The largest distance from a sample to the keys, per component,
         /// in the project's units.
         max_error: Vec<f64>,
+    },
+    /// A reference to a slot, which holds the control's value it read.
+    Slot {
+        /// The slot's id.
+        slot: String,
     },
     /// Nothing: the keys under it are kept.
     NotBaked {
@@ -214,9 +221,14 @@ impl fmt::Display for Mapping {
                         keys,
                         ..
                     } => Some((*approximate, *keys_before, *keys)),
-                    Outcome::NotBaked { .. } => None,
+                    Outcome::NotBaked { .. } | Outcome::Slot { .. } => None,
                 })
                 .collect();
+            let followers = self
+                .expressions
+                .iter()
+                .filter(|e| matches!(e.outcome, Outcome::Slot { .. }))
+                .count();
             writeln!(
                 f,
                 "  expressions: {} baked ({} approximate) into {} keys, where {} were; {} not baked",
@@ -224,8 +236,15 @@ impl fmt::Display for Mapping {
                 baked.iter().filter(|b| b.0).count(),
                 baked.iter().map(|b| b.2).sum::<usize>(),
                 baked.iter().map(|b| b.1).sum::<usize>(),
-                self.expressions.len() - baked.len()
+                self.expressions.len() - baked.len() - followers
             )?;
+            if self.slots > 0 {
+                writeln!(
+                    f,
+                    "  slots: {} from the controls expressions read, which {followers} values follow",
+                    self.slots
+                )?;
+            }
         }
         if !self.clamped.is_empty() {
             let shown: Vec<String> = self

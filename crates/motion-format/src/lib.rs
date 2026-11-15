@@ -38,6 +38,12 @@ pub use parse::{COMP_KEYS, LAYER_KEYS, SCENE_KEYS, key, layer_keys, parse_docume
 pub use path::{Path, Vertex};
 pub use scene::{Comp, CompContent, Content, Document, ImageContent, Layer, Scene, VideoContent};
 pub use slots::{Listed, Slot, SlotType};
+
+/// Whether `value` is a colour in any form the scene writes one: `#RGB`,
+/// `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1.
+pub fn is_color(value: &serde_json::Value) -> bool {
+    text::color(value).is_ok()
+}
 pub use spring::Spring;
 pub use value::{Value, ValueType};
 pub use write::write_document;
