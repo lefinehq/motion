@@ -19,6 +19,23 @@ pub enum Rest {
     /// The centre of the layer's box, in the layer's own coordinates (a text
     /// layer's box may start left of or above its origin).
     BoxCentre,
+    /// The zoom of the default camera: a 50 mm lens on 36 mm film, a 39.6°
+    /// horizontal view of the box `at` resolves in, `width · 50/36`, 2,666.7
+    /// px for 1920.
+    Zoom,
+    /// The depth of a layer's position: 0, and on a camera minus its zoom,
+    /// which [`Layer::rest`](crate::Layer::rest) gives, so a camera that sets
+    /// no depth sees a plane at depth 0 at 100 %.
+    Depth,
+}
+
+/// The default camera's focal length over its film width: a 50 mm lens on
+/// 36 mm film, a 39.6° horizontal view.
+pub const DEFAULT_LENS: f64 = 50.0 / 36.0;
+
+/// The zoom of the default camera for a canvas `width` px wide.
+pub fn default_zoom(width: f64) -> f64 {
+    width * DEFAULT_LENS
 }
 
 /// One animatable property of an object.
@@ -59,6 +76,8 @@ impl PropertySpec {
                 ])
             }
             Rest::BoxCentre => Value::Point([own.center().x, own.center().y]),
+            Rest::Zoom => Value::Number(default_zoom(extent.width())),
+            Rest::Depth => Value::Number(0.0),
         }
     }
 }
@@ -184,8 +203,29 @@ macro_rules! transform {
     };
 }
 
-/// A layer's rows: its transform, then the gain of the sound it plays.
-const LAYER_ROWS: [PropertySpec; 6] = transform!(
+const fn number_row(
+    name: &'static str,
+    rest: f64,
+    range: Option<(f64, f64)>,
+    doc: &'static str,
+) -> PropertySpec {
+    PropertySpec {
+        name,
+        ty: ValueType::Number,
+        rest: Rest::Value(Value::Number(rest)),
+        components: &[],
+        range,
+        broadcast: false,
+        spatial: false,
+        doc,
+    }
+}
+
+/// A layer's rows: its transform, the gain of the sound it plays, then the
+/// depth of a 3D layer and what a camera sees ([D58]).
+///
+/// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+const LAYER_ROWS: [PropertySpec; 15] = transform!(
     Rest::At,
     Rest::BoxCentre,
     "the point of the layer that sits at `position` and that it scales and turns about, \
@@ -201,6 +241,80 @@ const LAYER_ROWS: [PropertySpec; 6] = transform!(
         doc: "the gain of the sound an audio or `comp` layer plays: 1 as recorded, 0 silent, \
               up to 4 (+12 dB)",
     },
+    PropertySpec {
+        name: "z",
+        ty: ValueType::Number,
+        rest: Rest::Depth,
+        components: &[],
+        range: None,
+        broadcast: false,
+        spatial: false,
+        doc: "the depth of `position` on a 3D layer or camera, in px, away from the viewer as \
+              it grows; a camera rests at minus its zoom",
+    },
+    number_row(
+        "anchor-z",
+        0.0,
+        None,
+        "the depth of `anchor` on a 3D layer, in px",
+    ),
+    number_row(
+        "scale-z",
+        1.0,
+        None,
+        "the size factor along depth of a 3D layer, which its children's depths feel",
+    ),
+    number_row(
+        "rotate-x",
+        0.0,
+        None,
+        "the turn of a 3D layer about its X axis, in degrees",
+    ),
+    number_row(
+        "rotate-y",
+        0.0,
+        None,
+        "the turn of a 3D layer about its Y axis, in degrees",
+    ),
+    PropertySpec {
+        name: "orient",
+        ty: ValueType::Orientation,
+        rest: Rest::Value(Value::Orientation([0.0, 0.0, 0.0])),
+        components: &["orient-x", "orient-y", "orient-z"],
+        range: None,
+        broadcast: false,
+        spatial: false,
+        doc: "how a 3D layer or camera is turned, three angles in degrees applied after its \
+              rotations; its keys turn the shortest way between them",
+    },
+    PropertySpec {
+        name: "zoom",
+        ty: ValueType::Number,
+        rest: Rest::Zoom,
+        components: &[],
+        range: Some((1.0, f64::INFINITY)),
+        broadcast: false,
+        spatial: false,
+        doc: "a camera's distance in px at which a plane facing it shows at 100 %; by \
+              default a 50 mm lens on 36 mm film, `width · 50/36`",
+    },
+    PropertySpec {
+        name: "target",
+        ty: ValueType::Point,
+        rest: Rest::At,
+        components: &["target-x", "target-y"],
+        range: None,
+        broadcast: false,
+        spatial: true,
+        doc: "the point a camera turns to look at, in its parent's px, when the camera sets \
+              or animates it",
+    },
+    number_row(
+        "target-z",
+        0.0,
+        None,
+        "the depth of a camera's `target`, in px",
+    ),
 );
 
 const GROUP_ROWS: [PropertySpec; 5] = transform!(
@@ -279,6 +393,37 @@ impl Prop {
     pub const OPACITY: Prop = Prop::layer(4);
     /// The gain of the sound a layer plays, 1 as recorded.
     pub const VOLUME: Prop = Prop::layer(5);
+    /// The depth of `position` on a 3D layer or camera.
+    pub const Z: Prop = Prop::layer(6);
+    /// The depth of `anchor` on a 3D layer.
+    pub const ANCHOR_Z: Prop = Prop::layer(7);
+    /// The size factor along depth.
+    pub const SCALE_Z: Prop = Prop::layer(8);
+    /// The turn about X, in degrees.
+    pub const ROTATE_X: Prop = Prop::layer(9);
+    /// The turn about Y, in degrees.
+    pub const ROTATE_Y: Prop = Prop::layer(10);
+    /// The orientation, three angles in degrees.
+    pub const ORIENT: Prop = Prop::layer(11);
+    /// A camera's zoom, in px.
+    pub const ZOOM: Prop = Prop::layer(12);
+    /// The point a camera with `aim` looks at.
+    pub const TARGET: Prop = Prop::layer(13);
+    /// The depth of that point.
+    pub const TARGET_Z: Prop = Prop::layer(14);
+
+    /// The rows only a 3D layer or a camera may set or animate.
+    pub const DEPTH: [Prop; 6] = [
+        Prop::Z,
+        Prop::ANCHOR_Z,
+        Prop::SCALE_Z,
+        Prop::ROTATE_X,
+        Prop::ROTATE_Y,
+        Prop::ORIENT,
+    ];
+
+    /// The rows only a camera may set or animate.
+    pub const CAMERA: [Prop; 3] = [Prop::ZOOM, Prop::TARGET, Prop::TARGET_Z];
 
     const fn layer(index: usize) -> Prop {
         Prop::of(&LAYER, index)

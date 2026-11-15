@@ -64,6 +64,7 @@ fn holds(scene: &Scene, role: &Role) -> (String, Json) {
             Some(Content::Rect(_)) => ("rect".into(), Json::Null),
             Some(Content::Shapes(_)) => ("shapes".into(), Json::Null),
             Some(Content::Pivot) => ("pivot".into(), Json::Null),
+            Some(Content::Camera(_)) => ("camera".into(), Json::Null),
             Some(Content::Filter) => ("filter".into(), Json::Null),
             None => ("layer".into(), Json::Null),
         },

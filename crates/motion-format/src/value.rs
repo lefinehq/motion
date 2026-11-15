@@ -23,6 +23,9 @@ pub enum ValueType {
     Color,
     /// A bézier path ([`Path`]).
     Path,
+    /// Three angles in degrees, `[x, y, z]`: how a 3D layer is turned. Its
+    /// keys interpolate along the shortest turn between them, not angle by angle.
+    Orientation,
 }
 
 /// What each [`ValueType`] is, one row per variant in declaration order.
@@ -35,7 +38,7 @@ struct TypeSpec {
     noun: &'static str,
 }
 
-const TYPES: [TypeSpec; 4] = [
+const TYPES: [TypeSpec; 5] = [
     TypeSpec {
         dims: Some(1),
         form: "a number, e.g. `0.5`",
@@ -55,6 +58,11 @@ const TYPES: [TypeSpec; 4] = [
         dims: None,
         form: PATH_FORM,
         noun: "a path",
+    },
+    TypeSpec {
+        dims: Some(3),
+        form: "three angles in degrees, `[x, y, z]` in JSON or `x,y,z` in a string, e.g. `[0, 90, 0]`",
+        noun: "an orientation",
     },
 ];
 
@@ -91,6 +99,8 @@ pub enum Value {
     Color([f64; 4]),
     /// A bézier path.
     Path(Path),
+    /// Three angles in degrees about X, Y and Z.
+    Orientation([f64; 3]),
 }
 
 impl Value {
@@ -101,6 +111,7 @@ impl Value {
             Value::Point(_) => ValueType::Point,
             Value::Color(_) => ValueType::Color,
             Value::Path(_) => ValueType::Path,
+            Value::Orientation(_) => ValueType::Orientation,
         }
     }
 
@@ -112,6 +123,7 @@ impl Value {
             Value::Point(p) => p,
             Value::Color(c) => c,
             Value::Path(p) => p.components(),
+            Value::Orientation(o) => o,
         }
     }
 
@@ -151,6 +163,9 @@ impl Value {
             ValueType::Color => {
                 Value::Color([components[0], components[1], components[2], components[3]])
             }
+            ValueType::Orientation => {
+                Value::Orientation([components[0], components[1], components[2]])
+            }
             ValueType::Path => unreachable!("dims checked above"),
         }
     }
@@ -177,6 +192,14 @@ impl Value {
     pub fn as_point(&self) -> Option<[f64; 2]> {
         match self {
             Value::Point(p) => Some(*p),
+            _ => None,
+        }
+    }
+
+    /// The three angles, for a [`Value::Orientation`].
+    pub fn as_orientation(&self) -> Option<[f64; 3]> {
+        match self {
+            Value::Orientation(o) => Some(*o),
             _ => None,
         }
     }
@@ -248,7 +271,9 @@ fn value(input: &mut &str, ty: ValueType, broadcast: bool) -> Parsed<Value, ()> 
         ValueType::Color => {
             alt((terminated(hex_color, eof).map(Value::from), from_numbers)).parse_next(input)
         }
-        ValueType::Number | ValueType::Point | ValueType::Path => from_numbers.parse_next(input),
+        ValueType::Number | ValueType::Point | ValueType::Path | ValueType::Orientation => {
+            from_numbers.parse_next(input)
+        }
     }
 }
 

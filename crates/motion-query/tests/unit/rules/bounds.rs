@@ -48,8 +48,15 @@ fn rotated(x: f64, y: f64, w: f64, h: f64, opacity: f64, scale: f64, rotate: f64
             "scale" => Value::Point([scale, scale]),
             "opacity" => Value::Number(opacity),
             "rotate" => Value::Number(rotate),
-            "volume" => Value::Number(1.0),
-            _ => unreachable!("every property is listed"),
+            // Depth and camera rows rest where the registry puts them.
+            _ => p.spec().rest(
+                &motion_format::shorthand::Position {
+                    x: motion_format::shorthand::Coord::Px(0.0),
+                    y: motion_format::shorthand::Coord::Px(0.0),
+                },
+                kurbo::Rect::ZERO,
+                kurbo::Rect::ZERO,
+            ),
         })
         .collect();
     NodeState::of_box("n", w, h, values)

@@ -192,6 +192,11 @@ pub struct Layer {
     pub blend: &'static str,
     /// It is blurred along its motion, over its composition's shutter.
     pub mblur: bool,
+    /// It is a plane in its composition's 3D space, seen through the
+    /// composition's camera ([D58]); a camera always is.
+    ///
+    /// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+    pub three_d: bool,
 }
 
 /// The blend modes a layer takes, `normal` first, which is the default.
@@ -226,9 +231,20 @@ impl Layer {
 
     /// Where `prop` rests on this layer: the value it sets, else the
     /// registry's rest, with `at` resolved in `extent` for a box of `own`.
+    ///
+    /// A camera that sets no depth rests at minus its zoom, so it sees a
+    /// plane at depth 0 at 100 %.
     pub fn rest(&self, prop: Prop, extent: kurbo::Rect, own: kurbo::Rect) -> Value {
-        self.value(prop)
-            .unwrap_or_else(|| prop.spec().rest(&self.at, extent, own))
+        if let Some(value) = self.value(prop) {
+            return value;
+        }
+        match (&prop.spec().rest, &self.content) {
+            (crate::property::Rest::Depth, Content::Camera(_)) => {
+                let zoom = self.rest(Prop::ZOOM, extent, own);
+                Value::Number(-zoom.as_number().expect("zoom is a number"))
+            }
+            _ => prop.spec().rest(&self.at, extent, own),
+        }
     }
 }
 
@@ -252,9 +268,19 @@ pub enum Content {
     Audio(AudioContent),
     /// Nothing: a point that other layers move with.
     Pivot,
+    /// Nothing: the viewpoint of its composition's 3D layers.
+    Camera(CameraContent),
     /// Nothing of its own: its effects apply to what is below it in its
     /// composition, mixed in by its opacity and matte.
     Filter,
+}
+
+/// A camera: where it looks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CameraContent {
+    /// It turns to look at its `target`, which the layer sets or animates:
+    /// a two-node camera. Otherwise it looks along its own depth axis.
+    pub aim: bool,
 }
 
 /// What a `comp` layer draws: a composition, as it is or with the layer's

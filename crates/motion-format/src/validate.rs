@@ -24,10 +24,10 @@ use crate::doc::{
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, MASKS, Reads, SHAPES};
 use crate::parse::key::{
-    ADJUST, ANIM, ANIMATE, AT, AUDIO, BG, BLEND, BOX, COLLAPSE, COMP, COMPS, DUR, FILL, FONT, FPS,
-    FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT,
-    PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SHUTTER, SIZE, SPAN, STRETCH, STYLE, TEXT,
-    VIDEO, comp_path, layer_path,
+    ADJUST, ANIM, ANIMATE, AT, AUDIO, BG, BLEND, BOX, CAMERA, COLLAPSE, COMP, COMPS, DUR, FILL,
+    FONT, FPS, FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET, OVERRIDES,
+    PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SHUTTER, SIZE, SPAN,
+    STRETCH, STYLE, TEXT, THREE_D, VIDEO, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -38,8 +38,8 @@ use crate::units::{Color, SPAN_EXPECTED, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
 use crate::when::{Base, Moment, Moments, add, label_name};
 use crate::{
-    Address, AudioContent, BLEND_MODES, Comp, CompContent, Content, Curve, ImageContent, Layer,
-    Scene, Step, VideoContent, fmt_num,
+    Address, AudioContent, BLEND_MODES, CameraContent, Comp, CompContent, Content, Curve,
+    ImageContent, Layer, Scene, Step, VideoContent, fmt_num,
 };
 
 use crate::Place;
@@ -591,11 +591,14 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
             None => BLEND_MODES[0],
         },
         mblur: doc.mblur.unwrap_or(false),
+        three_d: doc.three_d.unwrap_or(false),
     };
     let layer = Layer {
         adjust: adjusts(doc, &layer)?,
+        three_d: layer.three_d || matches!(layer.content, Content::Camera(_)),
         ..layer
     };
+    depth(&layer, doc)?;
     if let Some(span) = layer.span {
         span_runs_forward(span, context.fps).map_err(|e| e.under(SPAN))?;
     }
@@ -603,6 +606,54 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
         parts_entrance(&layer, behaviour, context.shared.presets).map_err(|e| e.at(IN))?;
     }
     Ok(layer)
+}
+
+/// The depth rows are for 3D layers and cameras, and a camera's own rows
+/// for cameras: a flat layer that sets or animates them would have them
+/// ignored, so that is an error.
+fn depth(layer: &Layer, doc: &LayerDoc) -> Result<()> {
+    let camera = matches!(layer.content, Content::Camera(_));
+    let used = |prop: Prop| {
+        layer.value(prop).is_some() || layer.anim.iter().any(|track| track.target.prop == prop)
+    };
+    // Where the row is written: as a resting value, or under `anim`.
+    let at = |d: Diagnostic, prop: Prop| match layer.value(prop) {
+        Some(_) => d.at(prop.name()),
+        None => match layer.anim.iter().find(|track| track.target.prop == prop) {
+            Some(track) => d.at(track.target.name()).under(ANIM),
+            None => d.at(prop.name()),
+        },
+    };
+    if !layer.three_d
+        && let Some(prop) = Prop::DEPTH.into_iter().find(|&p| used(p))
+    {
+        let e = Diagnostic::new(
+            Kind::Invalid,
+            format!(
+                "`{}` places a layer in depth, and `{}` is flat",
+                prop.name(),
+                layer.id
+            ),
+        );
+        return Err(at(e, prop).expected(r#""3d":true on the layer"#));
+    }
+    if !camera && let Some(prop) = Prop::CAMERA.into_iter().find(|&p| used(p)) {
+        let e = Diagnostic::new(
+            Kind::Invalid,
+            format!(
+                "`{}` is a camera's, and `{}` is not a camera",
+                prop.name(),
+                layer.id
+            ),
+        );
+        return Err(at(e, prop).expected(r#""camera":true on the layer"#));
+    }
+    if camera && *doc.three_d == Some(false) {
+        return Err(Diagnostic::new(Kind::Conflict, "a camera is always 3D")
+            .at(THREE_D)
+            .expected("`3d` left out on a camera"));
+    }
+    Ok(())
 }
 
 /// Whether `layer` applies its effects to what is below it: a filter layer
@@ -964,7 +1015,9 @@ fn layer_id(id: &str) -> Result<()> {
 }
 
 /// The keys that say what a layer draws, of which it has exactly one.
-const CONTENT_KEYS: [&str; 8] = [TEXT, RECT, SHAPES_KEY, COMP, IMAGE, VIDEO, AUDIO, PIVOT];
+const CONTENT_KEYS: [&str; 9] = [
+    TEXT, RECT, SHAPES_KEY, COMP, IMAGE, VIDEO, AUDIO, PIVOT, CAMERA,
+];
 
 /// A layer draws exactly one of [`CONTENT_KEYS`]. None is `Missing` and two
 /// is a `Conflict`, at the second, with the same message since the fix is the same.
@@ -978,6 +1031,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         doc.video.is_some(),
         doc.audio.is_some(),
         doc.pivot.is_some(),
+        doc.camera.is_some(),
     ];
     let mut keys = CONTENT_KEYS
         .iter()
@@ -1069,6 +1123,20 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         IMAGE => image(doc.image.as_deref().expect("written"), doc.frame.as_ref()),
         VIDEO => video(doc.video.as_deref().expect("written"), doc.frame.as_ref()),
         AUDIO => audio(doc.audio.as_deref().expect("written")),
+        CAMERA => match *doc.camera {
+            Some(true) => Ok(Content::Camera(CameraContent {
+                aim: doc.values.contains_key(Prop::TARGET.name())
+                    || doc.values.contains_key(Prop::TARGET_Z.name())
+                    || doc.anim.0.keys().any(|name| {
+                        Target::named(name).is_some_and(|t| Prop::CAMERA[1..].contains(&t.prop))
+                    }),
+            })),
+            _ => Err(
+                Diagnostic::new(Kind::Invalid, "`camera` is `true` or left out")
+                    .at(CAMERA)
+                    .expected(r#""camera":true"#),
+            ),
+        },
         _ => match *doc.pivot {
             Some(true) => Ok(Content::Pivot),
             _ => Err(
@@ -1365,7 +1433,7 @@ fn listening(level: &LevelLine, target: Target) -> Result<AnimTrack> {
     }
     if !matches!(
         target.value_type(),
-        ValueType::Number | ValueType::Point | ValueType::Color
+        ValueType::Number | ValueType::Point | ValueType::Color | ValueType::Orientation
     ) {
         return Err(Diagnostic::new(
             Kind::Invalid,
@@ -1735,6 +1803,7 @@ fn entrance_conflict(
                     .spec()
                     .rest(&layer.at, canvas, known_box(layer, context)?)
             }
+            (None, Rest::Zoom | Rest::Depth) => layer.rest(target.prop, canvas, Rect::ZERO),
         };
         Some(target.rest_of(whole))
     };
@@ -1774,9 +1843,11 @@ fn known_box(layer: &Layer, context: &Context) -> Option<Rect> {
             .map(|c| Rect::new(0.0, 0.0, f64::from(c.size.width), f64::from(c.size.height))),
         Content::Image(image) => Some(image.frame),
         Content::Video(video) => Some(video.frame),
-        Content::Shapes(_) | Content::Audio(_) | Content::Pivot | Content::Filter => {
-            Some(Rect::ZERO)
-        }
+        Content::Shapes(_)
+        | Content::Audio(_)
+        | Content::Pivot
+        | Content::Camera(_)
+        | Content::Filter => Some(Rect::ZERO),
         Content::Text { .. } => None,
     }
 }

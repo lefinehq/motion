@@ -57,6 +57,8 @@ pub mod key {
     pub const AUDIO: &str = "audio";
     /// A layer that draws nothing, for others to move with.
     pub const PIVOT: &str = "pivot";
+    /// A layer that draws nothing and is the viewpoint of its composition's 3D layers.
+    pub const CAMERA: &str = "camera";
     /// The font of a text layer.
     pub const FONT: &str = "font";
     /// A layer's fill colour.
@@ -101,6 +103,8 @@ pub mod key {
     pub const BLEND: &str = "blend";
     /// Layer key: the layer is blurred along its motion.
     pub const MBLUR: &str = "mblur";
+    /// Layer key: the layer is a plane in its composition's 3D space.
+    pub const THREE_D: &str = "3d";
     /// Scene and composition key: the shutter its layers blur over.
     pub const SHUTTER: &str = "shutter";
 
@@ -155,7 +159,7 @@ pub const COMP_KEYS: [&str; 8] = [
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 32] = [
+pub const LAYER_KEYS: [&str; 34] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -166,6 +170,7 @@ pub const LAYER_KEYS: [&str; 32] = [
     key::VIDEO,
     key::AUDIO,
     key::PIVOT,
+    key::CAMERA,
     key::FONT,
     key::FILL,
     key::STYLE,
@@ -188,6 +193,7 @@ pub const LAYER_KEYS: [&str; 32] = [
     key::MATTE,
     key::BLEND,
     key::MBLUR,
+    key::THREE_D,
 ];
 
 /// Every key a layer may hold: [`LAYER_KEYS`], then the names of the

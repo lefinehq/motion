@@ -69,6 +69,11 @@ pub enum NodeContent {
     Audio(Arc<AudioContent>),
     /// Nothing; other nodes move with it.
     Pivot,
+    /// Nothing; the viewpoint of its composition's 3D nodes.
+    Camera {
+        /// It turns to look at its `target`.
+        aim: bool,
+    },
     /// Nothing of its own; its effects apply to what is below it.
     Filter,
 }
@@ -196,6 +201,8 @@ pub struct Node {
     pub blend: &'static str,
     /// It is blurred along its motion, over its composition's shutter.
     pub mblur: bool,
+    /// It is a plane in its composition's 3D space; a camera always is.
+    pub three_d: bool,
     /// For each of `fx`, the node of its own list whose drawing it reads,
     /// if it reads one.
     pub inputs: Vec<Option<usize>>,

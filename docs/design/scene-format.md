@@ -68,7 +68,7 @@ Lights and 3D models come in phase 2. See [Features](features.md).
 
 Every layer can also have:
 
-- **position and transform:** `at`, `anchor`, `scale`, `rotate`, `opacity`, plus `rotateX`, `rotateY` and `z` for depth
+- **position and transform:** `at`, `anchor`, `scale`, `rotate`, `opacity`, plus `z`, `rotate-x`, `rotate-y` and `orient` for depth on a 3D layer (see [Depth](#depth))
 - **`parent`:** another layer to follow
 - **`blend`:** how the layer blends with what is below it in its composition: `normal` (the default), `multiply`, `screen`, `overlay`, `darken`, `lighten`, `color-dodge`, `color-burn`, `hard-light`, `soft-light`, `difference`, `exclusion`, `hue`, `saturation`, `color`, `luminosity` or `add`. A composition is drawn on its own, so its layers blend only with each other, unless it is collapsed
 - **`mask`:** outlines that cut what the layer draws, with feather and expansion, before its `fx` ([D55](decisions.md#d55-masks-are-items-that-cut-a-layers-content-before-its-effects); see [Shapes, masks, effects and compositions](#shapes-masks-effects-and-compositions))
@@ -78,7 +78,27 @@ Every layer can also have:
 - **`collapse`:** on a `comp` layer, `true` draws the composition's layers straight into the canvas the layer sits in, under the layer's transform and opacity: they are not clipped to the composition's canvas, its background is not drawn, and their blend modes reach what is below unless the layer has effects ([D54](decisions.md#d54-a-collapsed-composition-draws-into-the-canvas-it-sits-in)). The layer's effects then run over that canvas, so their points and lengths are in its coordinates, not the layer's
 - **`hidden`:** `true` leaves it out of the frame but keeps it in the scene; its children still move with it
 - **`mblur`:** `true` blurs the layer along its motion. It is drawn at moments evenly spread over its composition's open shutter, each moment its whole drawing with content, effects and parents. Those drawings are averaged and then blend, fade and matte as one. Whether it draws is decided at the frame, so it doesn't fade at the ends of its span. A layer whose corners move more px over the shutter than it has samples takes one sample per px, up to 8 times as many. A `comp` layer, or one with effects, is drawn once at the frame and moved to each moment, up to 2 times as many; its composition's layers blur by that composition's own `shutter`. Adjusting layers, and layers whose effects read another layer, are drawn unblurred
+- **`3d`:** `true` makes the layer a plane in its composition's 3D space, seen through the composition's camera (see [Depth](#depth))
 - in and out points, and a time offset
+
+## Depth
+
+A layer with `"3d":true` is a flat plane that moves and turns in its composition's 3D space, and a `camera` layer is the viewpoint ([D58](decisions.md#d58-25d-layers-are-planes-projected-through-a-camera)):
+
+```json
+{"id":"cam", "camera":true, "z":-1800, "target":[960,540]},
+{"id":"card", "rect":"600x400", "3d":true, "anim":{"rotate-y":"-90 -> 0 @0-0.6s out-cubic"}}
+```
+
+- **Space.** X runs right, Y down and Z away from the viewer, in px. A turn about Z is clockwise on screen, as `rotate` is; turns about X and Y follow the same right-hand rule, so a positive `rotate-y` brings the right edge closer.
+- **The transform.** The anchor moves to the origin; then the layer scales, turns about Z (`rotate`), Y and X, takes its `orient`, and moves to its position. As a product: `T(position, z) · O · Rx · Ry · Rz · S · T(−anchor)`, after its parent's.
+- **Depth rows.** `z`, `anchor-z`, `scale-z`, `rotate-x`, `rotate-y` and `orient` are for 3D layers and cameras only, and `zoom`, `target` and `target-z` for cameras only: on another layer they are an error.
+- **Parents.** A 3D layer under a flat parent moves with the parent's transform in the plane at depth 0. A flat layer under a 3D parent moves with the parent seen straight on, without its depth.
+- **The camera.** The last `camera` layer of the list that shows at a frame, and is not `hidden`, is the composition's camera. It draws nothing, is always 3D, and can be a parent.
+  - It looks along its own Z axis from its position. A camera that sets or animates `target` turns to look at that point first, then takes its `orient` and rotations.
+  - `zoom` is the distance at which a plane facing it shows at 100 %. A camera's scale and anchor do not apply.
+  - Without a `z`, a camera sits at minus its zoom, so it sees the plane at depth 0 as a flat layer would be drawn.
+- **The default camera.** A composition without a camera that shows is seen through one centred on its canvas, at `z` minus its zoom, with a zoom of `width · 50/36`: a 50 mm lens on 36 mm film, a 39.6° horizontal view.
 
 ## Properties
 
@@ -92,6 +112,15 @@ Every animatable value of a layer is a **property**. They are listed once, in `c
 | `rotate` | number | 0 | | Rotation in degrees, clockwise. |
 | `opacity` | number | 1 | | How opaque the layer is, 0 (invisible) to 1 (solid). |
 | `volume` | number | 1 | | The gain of the sound an `audio` or `comp` layer plays: 1 as recorded, 0 silent, up to 4 (+12 dB). |
+| `z` | number | 0; a camera's minus its zoom | | The depth of `position` on a 3D layer or camera, in px, away from the viewer as it grows. |
+| `anchor-z` | number | 0 | | The depth of `anchor` on a 3D layer. |
+| `scale-z` | number | 1 | | The size factor along depth of a 3D layer, which its children's depths feel. |
+| `rotate-x` | number | 0 | | The turn of a 3D layer about its X axis, in degrees. |
+| `rotate-y` | number | 0 | | The turn of a 3D layer about its Y axis, in degrees. |
+| `orient` | orientation | `[0, 0, 0]` | `orient-x`, `orient-y`, `orient-z` | How a 3D layer or camera is turned, three angles in degrees applied after its rotations. Its keys turn the shortest way between them. |
+| `zoom` | number | `width · 50/36` of the box `at` resolves in | | A camera's distance in px at which a plane facing it shows at 100 %; the default is a 50 mm lens on 36 mm film. |
+| `target` | point | where `at` puts it | `target-x`, `target-y` | The point a camera turns to look at, in its parent's px, when the camera sets or animates it. |
+| `target-z` | number | 0 | | The depth of a camera's `target`. |
 
 **Resting values.** `at` sets where `position` rests, read in the parent's box. A layer may instead write `position` itself, an exact point in the parent's own coordinates, as imported scenes do; it cannot have both. Any other property rests where the layer sets it, by its name as a layer key, or at the value above:
 

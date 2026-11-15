@@ -10,9 +10,10 @@ use tracing::instrument;
 
 use crate::animate::{self, AnimatorState, COUNTS, Parts, Turns};
 use crate::shape::{self, ShapeDraw};
+use crate::space::{self, View};
 use crate::{
-    ContentState, FrameState, ItemNode, ItemState, Node, NodeContent, NodeState, PropertyTrack,
-    SceneGraph,
+    CompGraph, ContentState, FrameState, ItemNode, ItemState, Node, NodeContent, NodeState,
+    PropertyTrack, SceneGraph,
 };
 use motion_format::item::props;
 
@@ -20,7 +21,7 @@ use motion_format::item::props;
 // `trace`: it runs per frame, and costs one cached level check when disabled.
 #[instrument(level = "trace", skip(graph))]
 pub fn evaluate(graph: &SceneGraph, frame: f64) -> FrameState {
-    evaluate_nodes(graph, &graph.root.nodes, frame, graph.root.fps)
+    evaluate_nodes(graph, &graph.root, frame)
 }
 
 /// Evaluates the composition at `index` of `graph.comps` at its own `frame`.
@@ -28,17 +29,18 @@ pub fn evaluate(graph: &SceneGraph, frame: f64) -> FrameState {
 /// # Panics
 /// If `index` is not a composition of `graph`.
 pub fn evaluate_comp(graph: &SceneGraph, index: usize, frame: f64) -> FrameState {
-    let comp = &graph.comps[index];
-    evaluate_nodes(graph, &comp.nodes, frame, comp.fps)
+    evaluate_nodes(graph, &graph.comps[index], frame)
 }
 
-/// The state of `nodes`, one canvas whose clock runs at `fps`, at `frame`.
-fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> FrameState {
+/// The state of the nodes of `comp`, one canvas, at `frame` of its clock.
+fn evaluate_nodes(graph: &SceneGraph, comp: &CompGraph, frame: f64) -> FrameState {
+    let (nodes, fps) = (comp.nodes.as_slice(), comp.fps);
     let values: Vec<Vec<Value>> = nodes.iter().map(|n| values(n, frame)).collect();
-    let mut world: Vec<Option<Affine>> = vec![None; nodes.len()];
+    let mut world: Vec<Option<Placed>> = vec![None; nodes.len()];
     for i in 0..nodes.len() {
-        transform(nodes, &values, &mut world, i);
+        place(nodes, &values, &mut world, i);
     }
+    let view = view(comp, &values, &world, frame);
     // A hidden node another uses as its matte, or whose drawing another's
     // effect reads, is still drawn, into the mask or for the effect.
     let mattes: Vec<bool> = (0..nodes.len())
@@ -95,6 +97,7 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
                 },
                 NodeContent::Audio(_) => ContentState::Audio,
                 NodeContent::Pivot => ContentState::Pivot,
+                NodeContent::Camera { .. } => ContentState::Camera,
                 NodeContent::Filter => ContentState::Filter,
             };
             let local_bounds = match &content {
@@ -108,10 +111,12 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
                     .unwrap_or(Rect::ZERO),
                 _ => node.bounds,
             };
+            let world = world.expect("every transform is computed");
             NodeState {
                 id: node.id.clone(),
                 values,
-                transform: world.expect("every transform is computed"),
+                transform: world.flat,
+                space: world.space,
                 shown,
                 hidden: node.hidden,
                 content,
@@ -124,7 +129,38 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
             }
         })
         .collect();
-    FrameState { frame, fps, nodes }
+    FrameState {
+        frame,
+        fps,
+        nodes,
+        view,
+    }
+}
+
+/// The camera `comp` is seen through at `frame`: its last camera node that
+/// shows, or the default camera.
+fn view(comp: &CompGraph, values: &[Vec<Value>], world: &[Option<Placed>], frame: f64) -> View {
+    comp.nodes
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, node)| {
+            matches!(node.content, NodeContent::Camera { .. })
+                && !node.hidden
+                && node.timing.shows_at(frame)
+        })
+        .map_or_else(
+            || View::default_for(comp.width, comp.height),
+            |(i, _)| {
+                let zoom = values[i][Prop::ZOOM.index()]
+                    .as_number()
+                    .expect("a number property");
+                let space = world[i]
+                    .and_then(|placed| placed.space)
+                    .expect("a camera is placed in space");
+                View::camera(space, zoom, comp.width, comp.height)
+            },
+        )
 }
 
 /// Items at a node's own frame `local`.
@@ -194,23 +230,52 @@ fn sample(rows: &[PropertySpec], tracks: &[PropertyTrack], local: f64) -> Vec<Va
         .collect()
 }
 
-/// Node `i`'s transform to the canvas, its parents' first. Validation rules
-/// out parent cycles, so the recursion ends.
-fn transform(
-    nodes: &[Node],
-    values: &[Vec<Value>],
-    world: &mut [Option<Affine>],
-    i: usize,
-) -> Affine {
+/// Where a node is: flat on the canvas and, for a 3D node, in space.
+#[derive(Debug, Clone, Copy)]
+struct Placed {
+    /// To the canvas; a 3D node's plane seen straight on.
+    flat: Affine,
+    /// To the composition's space, for a 3D node or camera.
+    space: Option<glam::DMat4>,
+}
+
+/// Node `i`'s place, its parents' first. Validation rules out parent
+/// cycles, so the recursion ends.
+///
+/// A 3D node under a flat parent moves with the parent's transform lifted
+/// into space; a flat node under a 3D parent moves with the parent seen
+/// straight on, without its depth.
+fn place(nodes: &[Node], values: &[Vec<Value>], world: &mut [Option<Placed>], i: usize) -> Placed {
     if let Some(done) = world[i] {
         return done;
     }
-    let parent = nodes[i]
-        .parent
-        .map_or(Affine::IDENTITY, |p| transform(nodes, values, world, p));
-    let own = local_transform(&values[i]);
-    world[i] = Some(parent * own);
-    parent * own
+    let parent = nodes[i].parent.map(|p| place(nodes, values, world, p));
+    let node = &nodes[i];
+    let placed = match (node.three_d, &node.content) {
+        (true, content) => {
+            let own = match content {
+                NodeContent::Camera { aim } => space::camera_matrix(&values[i], *aim),
+                _ => space::local_matrix(&values[i]),
+            };
+            let above = parent.map_or(glam::DMat4::IDENTITY, |p| {
+                p.space.unwrap_or_else(|| space::lift(p.flat))
+            });
+            let matrix = above * own;
+            Placed {
+                flat: space::flatten(matrix),
+                space: Some(matrix),
+            }
+        }
+        (false, _) => {
+            let above = parent.map_or(Affine::IDENTITY, |p| p.space.map_or(p.flat, space::flatten));
+            Placed {
+                flat: above * local_transform(&values[i]),
+                space: None,
+            }
+        }
+    };
+    world[i] = Some(placed);
+    placed
 }
 
 /// A node's own transform from its values, one per property in registry

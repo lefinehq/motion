@@ -55,6 +55,15 @@ enum Segment {
     Components(Vec<Ease>),
     /// The value moves along a path.
     Path(PathSpan),
+    /// An orientation turns the shortest way from one key to the next, by
+    /// one curve over the angle between them, in degrees, so a speed is in
+    /// degrees per second.
+    Turn {
+        /// How the angle eases.
+        ease: Ease,
+        /// The angle between the keys, in degrees.
+        angle: f64,
+    },
 }
 
 /// A move along a bézier path from one point to another, eased along the
@@ -210,6 +219,14 @@ impl Segment {
                 let (point, _) = span.sample(p);
                 Value::Point([point.x, point.y])
             }
+            Segment::Turn { ease, angle } => {
+                let (from, to) = (turn(from), turn(to));
+                let progress = match *angle > 0.0 {
+                    true => ease.sample(0.0, *angle, p) / angle,
+                    false => 0.0,
+                };
+                Value::Orientation(crate::space::angles(from.slerp(to, progress)))
+            }
         }
     }
 
@@ -218,8 +235,14 @@ impl Segment {
         match self {
             Segment::Components(eases) => eases.iter().all(|e| e.is_still()),
             Segment::Path(span) => span.length == 0.0,
+            Segment::Turn { ease, .. } => ease.is_still(),
         }
     }
+}
+
+/// The turn an orientation value gives.
+fn turn(value: &Value) -> glam::DQuat {
+    crate::space::orientation(value.as_orientation().expect("an orientation track"))
 }
 
 /// The span from `a` to `b`.
@@ -235,6 +258,13 @@ fn segment(a: &KeySpec, b: &KeySpec, fps: f64, spatial: bool) -> Segment {
             a.easing.of(0),
             seconds,
         ));
+    }
+    if a.value.value_type() == ValueType::Orientation {
+        let angle = turn(&a.value).angle_between(turn(&b.value)).to_degrees();
+        return Segment::Turn {
+            ease: Ease::from_curve(a.easing.of(0), angle, seconds),
+            angle,
+        };
     }
     let deltas = a
         .value

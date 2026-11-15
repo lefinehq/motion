@@ -244,7 +244,7 @@ fn array_form_errors_say_what_kind_of_problem_they_are() {
             "a.anim.opacity[0][1]",
             None,
         ),
-        (json!({"zoom": []}), Kind::UnknownName, "a.anim.zoom", None),
+        (json!({"skew": []}), Kind::UnknownName, "a.anim.skew", None),
     ] {
         let e = err(value.clone());
         assert_eq!(

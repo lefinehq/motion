@@ -66,7 +66,7 @@ fn bad_start_value_shows_expected_form() {
 
 #[test]
 fn unknown_property_lists_the_registry() {
-    let e = presets(r#"{"a":{"zoom":1}}"#).unwrap_err();
+    let e = presets(r#"{"a":{"skew":1}}"#).unwrap_err();
     assert_eq!(e.kind, Kind::UnknownName);
     let names: Vec<&str> = crate::property::target_names().collect();
     assert_eq!(

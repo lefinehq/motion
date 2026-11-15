@@ -6,7 +6,7 @@ use motion_format::fmt_num;
 use motion_format::property::{Prop, Rest};
 use motion_format::shorthand::{Coord, Position};
 use motion_format::{Address, Diagnostic, Kind, Result};
-use motion_scene::{NodeState, SceneGraph, Visit, address_of, evaluate, walk};
+use motion_scene::{ContentState, NodeState, SceneGraph, Visit, address_of, evaluate, walk};
 use tracing::instrument;
 
 /// One line per node in `ids`, layer addresses such as `title` or
@@ -48,8 +48,13 @@ pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
 fn describe(address: &Address, visit: &Visit<'_>) -> String {
     let node = visit.node;
     // The property `at` sets is always printed, first, by its components.
+    // Depth rows only mean something on a 3D node, and a camera's own rows
+    // on a camera.
+    let camera = matches!(node.content, ContentState::Camera);
     let changed: String = Prop::all()
         .filter(|&prop| prop.spec().rest != Rest::At)
+        .filter(|prop| node.space.is_some() || !Prop::DEPTH.contains(prop))
+        .filter(|prop| camera || !Prop::CAMERA.contains(prop))
         .filter_map(|prop| {
             let shown = node.get(prop).to_string();
             let rest = rest_shown(prop, node);

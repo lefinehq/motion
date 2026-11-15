@@ -9,7 +9,7 @@ fn named_returns_the_row() {
     assert_eq!(opacity, Prop::OPACITY);
     assert_eq!(opacity.spec().rest, Rest::Value(Value::Number(1.0)));
     assert_eq!(opacity.spec().range, Some((0.0, 1.0)));
-    assert!(Prop::named("zoom").is_none());
+    assert!(Prop::named("skew").is_none());
     // A component is a target, not a property.
     assert!(Prop::named("x").is_none());
 }
@@ -73,6 +73,17 @@ fn rest_comes_from_at_the_box_or_the_row() {
             Value::Number(0.0),
             Value::Number(1.0),
             Value::Number(1.0),
+            // Depth: a plane at 0, flat, unturned.
+            Value::Number(0.0),
+            Value::Number(0.0),
+            Value::Number(1.0),
+            Value::Number(0.0),
+            Value::Number(0.0),
+            Value::Orientation([0.0; 3]),
+            // A camera: the default zoom of the extent, aimed where `at` is.
+            Value::Number(1920.0 * 50.0 / 36.0),
+            Value::Point([100.0, 540.0]),
+            Value::Number(0.0),
         ]
     );
 }
@@ -81,10 +92,13 @@ fn rest_comes_from_at_the_box_or_the_row() {
 fn names_list_follows_registry_order() {
     assert_eq!(
         property_names().collect::<Vec<_>>(),
-        ["position", "anchor", "scale", "rotate", "opacity", "volume"]
+        [
+            "position", "anchor", "scale", "rotate", "opacity", "volume", "z", "anchor-z",
+            "scale-z", "rotate-x", "rotate-y", "orient", "zoom", "target", "target-z"
+        ]
     );
     assert_eq!(
-        target_names().skip(6).collect::<Vec<_>>(),
+        target_names().skip(15).take(6).collect::<Vec<_>>(),
         ["x", "y", "anchor-x", "anchor-y", "scale-x", "scale-y"]
     );
 }
@@ -99,7 +113,7 @@ fn targets_name_a_whole_property_or_one_component() {
     assert_eq!(y.value_type(), ValueType::Number);
     assert_eq!(y.name(), "y");
     assert_eq!(Target::named("scale-x").unwrap().name(), "scale-x");
-    assert!(Target::named("z").is_none());
+    assert!(Target::named("w").is_none());
 }
 
 #[test]

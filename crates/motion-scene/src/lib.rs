@@ -10,6 +10,7 @@ mod evaluate;
 mod graph;
 mod level;
 mod shape;
+pub mod space;
 mod state;
 mod text;
 mod track;

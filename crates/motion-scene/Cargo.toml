@@ -9,6 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+glam.workspace = true
 kurbo.workspace = true
 libm.workspace = true
 motion-format = { path = "../motion-format" }
