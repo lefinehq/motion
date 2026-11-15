@@ -20,6 +20,8 @@ fn violation(severity: Severity, fix: Option<&str>) -> Violation {
 #[case(Code::Unsafe, "unsafe")]
 #[case(Code::Judder, "judder")]
 #[case(Code::TextHold, "text_hold")]
+#[case(Code::Easing, "easing")]
+#[case(Code::Crowd, "crowd")]
 fn codes_display_as_their_names(#[case] code: Code, #[case] name: &str) {
     assert_eq!(code.to_string(), name);
 }

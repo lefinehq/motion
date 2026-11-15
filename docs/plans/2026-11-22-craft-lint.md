@@ -7,7 +7,7 @@ Status: Draft · 2026-11-15
 ```
 W judder card 12-18f 23px/f >11; fix: card mblur=true
 W text_hold title 30-41f 0.4s <1.3
-W easing badge 0-24f 1.0 <1.4; fix: badge anim.x curve=out-cubic
+W easing badge 0-24f 1 <1.4
 OK 41
 ```
 
@@ -26,9 +26,9 @@ Each rule measures one number per layer or per frame and compares it with a limi
 
 ## The report
 
-A craft finding prints the measured value with its unit and the limit it misses, instead of an overshoot in px: `23px/f >11`, `0.4s <1.3`, `1.0 <1.4`, `6 >4`; the unit is printed once, after the value. Consecutive frames merge into one line, as the layout rules' do. A fix is printed only when one edit clears the finding:
+A craft finding prints the measured value with its unit and the limit it misses, instead of an overshoot in px: `23px/f >11`, `0.4s <1.3`, `1 <1.4`, `6 >4`; the unit is printed once, after the value. Consecutive frames merge into one line, as the layout rules' do. A fix is printed only when one edit clears the finding:
 - `judder`: turning on `mblur`;
-- `easing`: a curve on the track that drives the move;
+- `easing`: none yet, since an edit cannot set a key's curve; a curve on the track that drives the move is the fix once one can;
 - `text_hold`: none, since how long a span can grow depends on what follows it;
 - `crowd`: none, since which layers to hold back is a choice.
 
@@ -41,7 +41,7 @@ Each step is one pull request, with its tests and docs.
    - Report lines carry a value, a unit and a limit.
    - Rules can read a layer's states over all its frames, not one frame at a time.
    - `judder` and `text_hold`.
-3. **`easing` and `crowd`.** Moves are found from the layer's own transform. Text animators count as one mover.
+3. **`easing` and `crowd`.** Moves are found from the layer's own transform, measured on the centre of its own box. Text animators count as one mover. A scene where nothing moves does not count `crowd` as passed.
 4. **The pixel gates.**
    - `contrast` and `flash` on a render at a quarter of the size: the frame without the text layer for contrast, and the mean luminance of each frame's cells for flashing.
    - `motion check` runs them; `motion-query` stays free of rendering.

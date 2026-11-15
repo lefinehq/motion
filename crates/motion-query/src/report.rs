@@ -26,6 +26,10 @@ pub enum Code {
     Judder,
     /// A text layer is readable for less time than it takes to read.
     TextHold,
+    /// A move runs at one speed from start to end instead of easing.
+    Easing,
+    /// More layers move on their own at once than the eye can follow.
+    Crowd,
 }
 
 /// What a finding measured, as the report prints it after the frames.
@@ -62,6 +66,9 @@ pub enum Unit {
     /// Seconds.
     #[strum(serialize = "s")]
     Seconds,
+    /// A plain number: a ratio or a count.
+    #[strum(serialize = "")]
+    Number,
 }
 
 impl fmt::Display for Measure {
