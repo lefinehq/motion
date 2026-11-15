@@ -2,7 +2,7 @@
 //!
 //! The system's encoders run on the media engine where the Mac has one, and
 //! in software where it has not, and Apple's licence covers the codecs
-//! ([D13]). This crate wraps one compression session in a safe [`Encoder`]:
+//! ([D13]). This crate wraps one compression session in a safe `Encoder`:
 //! planes in, packets out. It is the one crate of the workspace allowed
 //! unsafe code, for the calls into the system's frameworks, and every
 //! unsafe block says why it is sound. It knows nothing of motion's own
