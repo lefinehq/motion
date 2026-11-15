@@ -44,6 +44,12 @@ use rstest::rstest;
 // parent, over a bar that shows through; scaled from a box off its origin
 // inside a round alpha matte; and, hidden, as the luma matte of a rect.
 #[case::images("images", 0)]
+// Masks: one subtracted from another, intersected, lightened with their
+// opacities, and differing; an outline feathered more across than down;
+// an expanded mask keeping the outside; a blur that spreads past its mask,
+// which cuts before it; a mask turning and scaling with its layer and
+// shrunk; and a filter layer inverting only where its feathered mask is.
+#[case::masks("masks", 0)]
 fn golden(#[case] scene: &str, #[case] frame: u32) {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden");
     let session = Session::open(dir.join(format!("{scene}.json"))).unwrap();
