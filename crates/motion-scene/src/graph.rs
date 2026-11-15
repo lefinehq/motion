@@ -13,20 +13,13 @@ use motion_format::{Value, ValueType};
 
 use crate::track::Track;
 
-/// A compiled scene: canvas, timing and nodes in paint order, and the
-/// compositions its `comp` nodes draw.
+/// A compiled scene: its root composition, which is the canvas the scene
+/// draws, and the compositions its `comp` nodes draw.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SceneGraph {
-    /// Canvas width in pixels.
-    pub width: f64,
-    /// Canvas height in pixels.
-    pub height: f64,
-    /// Frames per second.
-    pub fps: f64,
-    /// Scene length in frames.
-    pub duration_frames: f64,
-    /// Nodes in paint order: the first is at the back.
-    pub nodes: Vec<Node>,
+    /// The scene's own canvas, clock and nodes, whose id is
+    /// [`SCENE`](motion_format::address::SCENE).
+    pub root: CompGraph,
     /// Every composition, in the scene's order; [`NodeContent::Comp`] indexes it.
     pub comps: Vec<CompGraph>,
 }
@@ -34,7 +27,7 @@ pub struct SceneGraph {
 /// A compiled composition: its own canvas, clock and nodes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompGraph {
-    /// Its id in the scene.
+    /// Its id in the scene, or [`SCENE`](motion_format::address::SCENE) for the root.
     pub id: String,
     /// Canvas width in pixels.
     pub width: f64,

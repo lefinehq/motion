@@ -5,7 +5,7 @@ use crate::{Content, parse_document};
 
 fn text(keys: &str) -> TextContent {
     let json = format!(r#"{{"motion":1,"dur":"1s","layers":[{{"id":"t",{keys}}}]}}"#);
-    match &parse_document(&json).unwrap().scene().layers[0].content {
+    match &parse_document(&json).unwrap().scene().root.layers[0].content {
         Content::Text(text) => (**text).clone(),
         other => panic!("not text: {other:?}"),
     }

@@ -19,7 +19,7 @@ use crate::{
 // `trace`: it runs per frame, and costs one cached level check when disabled.
 #[instrument(level = "trace", skip(graph))]
 pub fn evaluate(graph: &SceneGraph, frame: f64) -> FrameState {
-    evaluate_nodes(graph, &graph.nodes, frame, graph.fps)
+    evaluate_nodes(graph, &graph.root.nodes, frame, graph.root.fps)
 }
 
 /// Evaluates the composition at `index` of `graph.comps` at its own `frame`.

@@ -45,7 +45,7 @@ fn raw_keeps_the_original_value() {
 fn from_value_keeps_the_value_and_rejects_an_invalid_one() {
     let raw = json!({"motion": 1, "dur": "1s", "layers": [{"id": "a", "rect": "1x1"}]});
     let d = Document::from_value(raw.clone()).unwrap();
-    assert_eq!(d.scene().layers[0].id, "a");
+    assert_eq!(d.scene().root.layers[0].id, "a");
     assert_eq!(d.into_raw(), raw);
     let e = Document::from_value(json!({"motion": 1, "layers": []})).unwrap_err();
     assert_eq!(e.kind, Kind::Missing);

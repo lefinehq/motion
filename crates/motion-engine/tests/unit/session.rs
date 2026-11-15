@@ -99,7 +99,7 @@ fn a_failed_edit_leaves_the_session_and_file_as_they_were() {
 #[test]
 fn an_edit_drops_the_compiled_graph() {
     let mut session = Session::open(LAUNCH).expect("open");
-    let width = |s: &Session| s.graph().expect("graph").nodes[1].bounds.width();
+    let width = |s: &Session| s.graph().expect("graph").root.nodes[1].bounds.width();
     assert_eq!(width(&session), 300.0);
     // The edit's check compiles the new scene, so the graph is fresh.
     session.edit("card rect=500x400").expect("edit");
@@ -209,7 +209,7 @@ fn fonts_resolve_beside_the_scene_file_and_set_its_text() {
             .any(|f| f.postscript_name == "FixtureSans-Black")
     );
     let graph = session.graph().expect("graph");
-    assert!(graph.nodes[0].bounds.width() > 0.0);
+    assert!(graph.root.nodes[0].bounds.width() > 0.0);
 }
 
 #[test]

@@ -47,8 +47,8 @@ struct Sources<'a> {
 }
 
 /// The display list of `state`, one frame of `graph`'s scene, drawn over
-/// `background` (straight RGBA from 0 to 1; a clear one draws nothing),
-/// with the image layers' pictures from `pictures`.
+/// the root composition's background (a clear one draws nothing), with the
+/// image layers' pictures from `pictures`.
 ///
 /// # Errors
 /// A diagnostic for an effect the rasteriser has no row for, or a parameter
@@ -56,15 +56,15 @@ struct Sources<'a> {
 /// `pictures` returns, at the layer's `image`.
 pub(crate) fn display_list(
     graph: &SceneGraph,
-    background: [f64; 4],
     state: &FrameState,
     pictures: &Pictures<'_>,
 ) -> Result<Frame> {
     let sources = Sources { graph, pictures };
+    let background = graph.root.background;
     Ok(Frame {
         background: opaque_enough(background).then(|| color(background)),
         blending: Blending::Gamma,
-        nodes: nodes(sources, &graph.nodes, state)?,
+        nodes: nodes(sources, &graph.root.nodes, state)?,
     })
 }
 

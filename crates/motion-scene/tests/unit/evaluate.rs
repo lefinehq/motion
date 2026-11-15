@@ -243,7 +243,7 @@ fn a_comp_compiles_its_canvas_and_the_layer_box() {
     );
     assert_eq!((card.fps, card.duration_frames), (10.0, 20.0));
     assert_eq!(card.background[3], 1.0);
-    assert_eq!(graph.nodes[0].content, NodeContent::Comp(0));
+    assert_eq!(graph.root.nodes[0].content, NodeContent::Comp(0));
     // The layer's box is the card, centred on the canvas.
     let state = evaluate(&graph, 50.0);
     assert_eq!(

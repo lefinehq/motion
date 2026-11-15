@@ -13,7 +13,7 @@ use motion_format::preset::{PresetSpec, Start};
 use motion_format::property::{Prop, Rest, Target};
 use motion_format::shorthand::{Axis, Behaviour, MatteMode};
 use motion_format::units::Color;
-use motion_format::{Content, Item, Layer, Result, Scene, Value, ValueType};
+use motion_format::{Comp, Content, Item, Layer, Result, Scene, Value, ValueType};
 use motion_text::Typesetter;
 
 use tracing::{debug_span, field};
@@ -33,51 +33,51 @@ use crate::track::{KeySpec, Track};
 /// composition the scene lacks, which validation rules out.
 pub fn compile(scene: &Scene, typesetter: &mut Typesetter) -> Result<SceneGraph> {
     // Only animated tracks count: every node has one track per property.
-    let span = debug_span!("compile", nodes = scene.layers.len(), tracks = field::Empty);
+    let span = debug_span!(
+        "compile",
+        nodes = scene.root.layers.len(),
+        tracks = field::Empty
+    );
     let _entered = span.enter();
-    let width = f64::from(scene.size.width);
-    let height = f64::from(scene.size.height);
     let comps = scene
         .comps
         .iter()
         .map(|comp| {
-            let canvas = Rect::new(
-                0.0,
-                0.0,
-                f64::from(comp.size.width),
-                f64::from(comp.size.height),
-            );
-            Ok(CompGraph {
-                id: comp.id.clone(),
-                width: canvas.width(),
-                height: canvas.height(),
-                fps: comp.fps,
-                duration_frames: comp.duration.to_frames(comp.fps),
-                background: rgba(comp.background),
-                nodes: nodes(&comp.layers, canvas, comp.fps, scene, typesetter)
-                    .map_err(|e| e.under(motion_format::key::comp_path(&comp.id)))?,
-            })
+            comp_graph(comp, scene, typesetter)
+                .map_err(|e| e.under(motion_format::key::comp_path(&comp.id)))
         })
         .collect::<Result<Vec<CompGraph>>>()?;
-    let canvas = Rect::new(0.0, 0.0, width, height);
-    let nodes = nodes(&scene.layers, canvas, scene.fps, scene, typesetter)?;
+    let root = comp_graph(&scene.root, scene, typesetter)?;
     // Counting walks every track, so skip it when nobody listens.
     if !span.is_disabled() {
-        let animated = nodes
-            .iter()
-            .chain(comps.iter().flat_map(|c| &c.nodes))
+        let animated = std::iter::once(&root)
+            .chain(&comps)
+            .flat_map(|c| &c.nodes)
             .flat_map(|node| &node.tracks)
             .filter(|track| !track.is_constant())
             .count();
         span.record("tracks", animated);
     }
-    Ok(SceneGraph {
-        width,
-        height,
-        fps: scene.fps,
-        duration_frames: scene.duration.to_frames(scene.fps),
-        nodes,
-        comps,
+    Ok(SceneGraph { root, comps })
+}
+
+/// One composition, the scene's root or one under `comps`, with paths
+/// relative to it.
+fn comp_graph(comp: &Comp, scene: &Scene, typesetter: &mut Typesetter) -> Result<CompGraph> {
+    let canvas = Rect::new(
+        0.0,
+        0.0,
+        f64::from(comp.size.width),
+        f64::from(comp.size.height),
+    );
+    Ok(CompGraph {
+        id: comp.id.clone(),
+        width: canvas.width(),
+        height: canvas.height(),
+        fps: comp.fps,
+        duration_frames: comp.duration.to_frames(comp.fps),
+        background: rgba(comp.background),
+        nodes: nodes(&comp.layers, canvas, comp.fps, scene, typesetter)?,
     })
 }
 

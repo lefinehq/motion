@@ -190,7 +190,7 @@ fn check(text: &StoredText, layout: &TextLayout) -> TextCheck {
 /// The text of the layer `text` names, as `scene` writes it.
 pub(crate) fn content_of<'s>(scene: &'s Scene, text: &StoredText) -> Result<&'s TextContent> {
     let layers: &[Layer] = match &text.comp {
-        None => &scene.layers,
+        None => &scene.root.layers,
         Some(id) => scene
             .comps
             .iter()
@@ -218,7 +218,7 @@ pub(crate) fn content_of<'s>(scene: &'s Scene, text: &StoredText) -> Result<&'s 
 /// The scene's layout of the layer `text` names.
 fn layout_of<'g>(graph: &'g SceneGraph, text: &StoredText) -> Result<&'g TextLayout> {
     let nodes: &[Node] = match &text.comp {
-        None => &graph.nodes,
+        None => &graph.root.nodes,
         Some(id) => graph
             .comps
             .iter()

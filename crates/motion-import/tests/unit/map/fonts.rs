@@ -36,7 +36,7 @@ fn a_substituted_font_is_written_and_reported_where_it_is_used() {
         .substitute_fonts(&swap("Inter-Bold", "InterVariable-Bold"))
         .expect("the scene stays valid");
     assert_eq!(import.json["layers"][1]["font"], "InterVariable-Bold 44");
-    let title = &import.document.scene().layers[1];
+    let title = &import.document.scene().root.layers[1];
     let motion_format::Content::Text(text) = &title.content else {
         panic!("the title is text");
     };

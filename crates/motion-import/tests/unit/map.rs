@@ -25,7 +25,7 @@ fn imports_the_sample_with_its_report() {
 #[test]
 fn layers_stack_bottom_first_and_keep_their_parent() {
     let import = imported(&Options::default());
-    let layers = import.document.scene().layers.clone();
+    let layers = import.document.scene().root.layers.clone();
     let ids: Vec<&str> = layers.iter().map(|layer| layer.id.as_str()).collect();
     assert_eq!(ids, ["ctrl", "title"]);
     assert_eq!(layers[1].parent.as_deref(), Some("ctrl"));

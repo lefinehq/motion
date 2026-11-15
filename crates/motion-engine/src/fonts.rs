@@ -34,6 +34,7 @@ pub fn lock_path(scene: &Path) -> PathBuf {
 pub fn font_names(scene: &Scene) -> Vec<String> {
     let mut names = BTreeSet::new();
     let layers = scene
+        .root
         .layers
         .iter()
         .chain(scene.comps.iter().flat_map(|c| &c.layers));

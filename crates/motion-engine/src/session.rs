@@ -13,7 +13,7 @@ use motion_edit::{apply_edit, parse_edit};
 use motion_fonts::{Cache, Lock};
 use motion_format::units::Time;
 use motion_format::{Diagnostic, Kind, Result};
-use motion_format::{Document, Scene, Value, parse_document, write_document};
+use motion_format::{Document, Scene, parse_document, write_document};
 use motion_query::{Report, at, check};
 use motion_raster::{Frame, Image, RenderOptions};
 use motion_scene::{FrameState, evaluate};
@@ -205,13 +205,9 @@ impl Session {
     pub fn display_list(&self, frame: f64) -> Result<Frame> {
         let state = self.frame(frame)?;
         let graph = self.graph()?;
-        let background = Value::from(self.doc.scene().background);
-        let c = background.components();
         let base = self.base();
         let picture = |path: &str| self.pictures.get(&base.join(path));
-        stage("display", || {
-            display_list(graph, [c[0], c[1], c[2], c[3]], &state, &picture)
-        })
+        stage("display", || display_list(graph, &state, &picture))
     }
 
     /// Draws `frame`, possibly fractional, with the default options: precise
@@ -240,7 +236,7 @@ impl Session {
     /// As [`Session::graph`].
     pub(crate) fn canvas(&self) -> Result<(u32, u32)> {
         let graph = self.graph()?;
-        Ok((pixels(graph.width), pixels(graph.height)))
+        Ok((pixels(graph.root.width), pixels(graph.root.height)))
     }
 
     /// Draws `list` on the scene's canvas, as one `render` step: every frame
@@ -260,7 +256,7 @@ impl Session {
     /// # Errors
     /// As [`Session::graph`].
     pub fn frames(&self) -> Result<Range<u32>> {
-        Ok(0..self.graph()?.duration_frames.ceil() as u32)
+        Ok(0..self.graph()?.root.duration_frames.ceil() as u32)
     }
 
     /// Draws every frame of `frames`, one per processor thread at a time,
@@ -339,7 +335,7 @@ impl Session {
     /// # Errors
     /// A diagnostic for a bad or negative time, or an id that is not a layer.
     pub fn at(&self, time: &str, ids: &[String]) -> Result<String> {
-        let fps = self.doc.scene().fps;
+        let fps = self.doc.scene().root.fps;
         let frame = stage("time", || Ok(time.parse::<Time>()?.to_frames(fps)))?;
         let graph = self.graph()?;
         stage("at", || at(graph, frame, ids))

@@ -3,15 +3,20 @@
 use super::*;
 use motion_format::Value;
 use motion_format::property::Prop;
+use motion_scene::CompGraph;
 use rstest::rstest;
 
 fn graph() -> SceneGraph {
     SceneGraph {
-        width: 1000.0,
-        height: 500.0,
-        fps: 30.0,
-        duration_frames: 30.0,
-        nodes: vec![],
+        root: CompGraph {
+            id: motion_format::address::SCENE.into(),
+            width: 1000.0,
+            height: 500.0,
+            fps: 30.0,
+            duration_frames: 30.0,
+            background: [0.0, 0.0, 0.0, 1.0],
+            nodes: vec![],
+        },
         comps: vec![],
     }
 }

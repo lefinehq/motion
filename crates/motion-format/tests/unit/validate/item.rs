@@ -7,7 +7,7 @@ use crate::{Content, Item, Value, parse_document};
 fn shapes(items: &str) -> Vec<Item> {
     let json = format!(r#"{{"motion":1,"dur":"1s","layers":[{{"id":"a","shapes":[{items}]}}]}}"#);
     let doc = parse_document(&json).unwrap();
-    match &doc.scene().layers[0].content {
+    match &doc.scene().root.layers[0].content {
         Content::Shapes(items) => items.clone(),
         other => panic!("not shapes: {other:?}"),
     }
@@ -63,7 +63,7 @@ fn paths_animate_with_key_lists_of_one_shape() {
 fn hidden_items_and_effects_are_kept() {
     let json = r##"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":"10x10","fx":[{"fill":"#00FF00","hidden":true,"anim":{"opacity":"0 -> 1 @0-5f"}}]}]}"##;
     let doc = parse_document(json).unwrap();
-    let fx = &doc.scene().layers[0].fx;
+    let fx = &doc.scene().root.layers[0].fx;
     assert_eq!(fx[0].kind.role, Role::Effect);
     assert!(fx[0].hidden);
     assert_eq!(fx[0].anim[0].target.prop, props::FILL_EFFECT_OPACITY);

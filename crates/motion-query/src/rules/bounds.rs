@@ -31,13 +31,16 @@ pub(super) const UNSAFE: Rule = Rule {
 
 /// The whole canvas.
 fn canvas(graph: &SceneGraph) -> Rect {
-    Rect::new(0.0, 0.0, graph.width, graph.height)
+    Rect::new(0.0, 0.0, graph.root.width, graph.root.height)
 }
 
 /// The title-safe area of the canvas.
 fn safe_area(graph: &SceneGraph) -> Rect {
-    let (dx, dy) = (graph.width * SAFE_INSET, graph.height * SAFE_INSET);
-    Rect::new(dx, dy, graph.width - dx, graph.height - dy)
+    let (dx, dy) = (
+        graph.root.width * SAFE_INSET,
+        graph.root.height * SAFE_INSET,
+    );
+    Rect::new(dx, dy, graph.root.width - dx, graph.root.height - dy)
 }
 
 fn offscreen(node: &NodeState, graph: &SceneGraph) -> Option<Overshoot> {
