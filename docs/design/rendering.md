@@ -62,6 +62,8 @@ In a fast renderer, encoding is usually the slowest step.
 | Linux with an NVIDIA or Intel/AMD GPU | NVENC / VAAPI | same |
 | Linux, CPU only | OpenH264, downloaded from Cisco on first use | same |
 
+**How it is built:** see [D46](decisions.md#d46-video-is-encoded-in-a-crate-of-its-own-behind-one-codec-trait) and the [plan](../plans/2026-11-16-encode.md). AV1 comes first because it runs everywhere; the platform encoders follow.
+
 **Licence policy.** The motion binary contains no GPL code and no patent-encumbered software encoder. H.264 and HEVC come from the operating system or the GPU vendor, whose licences cover them, or from Cisco's OpenH264 binary under Cisco's own terms. This is how web browsers handle it too. See [D13](decisions.md#d13-codec-licence-policy).
 
 ## Speed
