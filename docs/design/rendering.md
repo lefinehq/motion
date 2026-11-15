@@ -22,7 +22,7 @@ scene.json
  4. Draw      rasterise each layer (Vello), then composite: effects, masks, mattes, blend modes, depth
    │
    ▼
- 5. Encode    turn frames into MP4, WebM, MOV or PNG files, and mix in audio
+ 5. Encode    turn frames into MP4, MOV or PNG files (WebM and audio later)
 ```
 
 Steps 1–3 never touch pixels. Checks and edits only need these three steps, which is why they are fast and cost no image tokens.
@@ -55,14 +55,33 @@ The rasteriser sits behind a small interface, so it can be swapped later (see [D
 
 In a fast renderer, encoding is usually the slowest step.
 
-| Platform | H.264 / HEVC | Always available |
-|---|---|---|
-| macOS | VideoToolbox (built into the OS) | AV1, VP9, ProRes 4444 with alpha, PNG sequence |
-| Windows | Media Foundation (built into the OS) | same |
-| Linux with an NVIDIA or Intel/AMD GPU | NVENC / VAAPI | same |
-| Linux, CPU only | OpenH264, downloaded from Cisco on first use | same |
+`motion render --out <file>` encodes when the name ends in `.mp4` or `.mov`; a folder gets PNG frames. Frames are drawn on every core and handed to the encoder in order (`Session::render_in_order`), at most two per thread waiting, so memory does not grow with the video's length. `--timings` shows `encode` apart from `render`.
 
-**How it is built:** see [D46](decisions.md#d46-video-is-encoded-in-a-crate-of-its-own-behind-one-codec-trait) and the [plan](../plans/2026-11-16-encode.md). AV1 comes first because it runs everywhere; the platform encoders follow.
+| Codec | Where | From | Container | Default |
+|---|---|---|---|---|
+| H.264 | macOS | VideoToolbox, built into the OS | `.mp4`, `.mov` | on macOS |
+| HEVC | macOS | VideoToolbox | `.mp4`, `.mov` | |
+| ProRes 4444 with alpha | macOS | VideoToolbox | `.mov` | |
+| AV1 | everywhere | `rav1e`, compiled in | `.mp4` | elsewhere |
+| H.264 | Windows; Linux with a GPU; Linux on CPU | Media Foundation; NVENC or VA-API; Cisco's OpenH264, fetched on request | | *planned* |
+| VP9, AV1 in WebM | everywhere | | `.webm` | *planned* |
+
+**How it is built** ([D46](decisions.md#d46-video-is-encoded-in-a-crate-of-its-own-behind-one-codec-trait), [plan](../plans/2026-11-16-encode.md)):
+
+- `motion-encode` knows nothing about scenes. One colour module turns straight-alpha RGBA8 into what codecs take: BT.709 limited-range 4:2:0 with alpha drawn over black, or, for codecs that keep alpha, 16-bit 4:4:4 with straight alpha.
+- Each codec is one `VideoEncoder`; each container one `Muxer`. MP4 and QuickTime are our own writer on `mp4-atom`'s boxes: packets stream to a scratch file and the file is laid out with its index first.
+- The system's encoders are reached through `motion-videotoolbox`, the one crate allowed unsafe code ([D48](decisions.md#d48-unsafe-code-lives-only-in-platform-bindings)).
+- `--video-quality draft|web|master` is a row in one table per codec; ProRes has `master` only.
+
+**Speed and size** (*measured*, M4 Max, release build, 60 frames of `examples/launch.json` at 1080p, PSNR against the drawn frames):
+
+| | draft | web | master | time (web) |
+|---|---|---|---|---|
+| H.264 | 18 KB, 45.6 dB | 40 KB, 54.1 dB | 101 KB, 72.1 dB | 0.6 s |
+| HEVC | 27 KB, 44.7 dB | 47 KB, 59.0 dB | 90 KB, 72.3 dB | 0.6 s |
+| AV1 | 17 KB, 49.7 dB | 24 KB, 59.8 dB | 42 KB, 68.2 dB | 7.8 s |
+
+ProRes 4444 writes the same 60 frames in 1.4 s, about 4 MB, and decodes to the drawn frames with alpha within one level.
 
 **Licence policy.** The motion binary contains no GPL code and no patent-encumbered software encoder. H.264 and HEVC come from the operating system or the GPU vendor, whose licences cover them, or from Cisco's OpenH264 binary under Cisco's own terms. This is how web browsers handle it too. See [D13](decisions.md#d13-codec-licence-policy).
 
