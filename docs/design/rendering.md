@@ -97,13 +97,18 @@ In a fast renderer, encoding is usually the slowest step.
 - The system's encoders are reached through `motion-videotoolbox`, the one crate allowed unsafe code ([D48](decisions.md#d48-unsafe-code-lives-only-in-platform-bindings)).
 - `--video-quality draft|web|master` is a row in one table per codec; ProRes has `master` only.
 
-**Speed and size** (*measured*, M4 Max, release build, 60 frames of `examples/launch.json` at 1080p, PSNR against the drawn frames):
+**Speed and size** (*measured*, M4 Max, release build, 60 frames of `examples/launch.json` at 1080p; PSNR of the decoded RGB against the drawn frames, which 4:2:0 chroma caps near 53 dB):
 
 | | draft | web | master | time (web) |
 |---|---|---|---|---|
-| H.264 | 18 KB, 45.6 dB | 40 KB, 54.1 dB | 101 KB, 72.1 dB | 0.6 s |
-| HEVC | 27 KB, 44.7 dB | 47 KB, 59.0 dB | 90 KB, 72.3 dB | 0.6 s |
-| AV1 | 17 KB, 49.7 dB | 24 KB, 59.8 dB | 42 KB, 68.2 dB | 7.8 s |
+| H.264 | 18 KB, 37.7 dB | 62 KB, 52.4 dB | 101 KB, 52.9 dB | 0.8 s |
+| HEVC | 27 KB, 40.7 dB | 64 KB, 52.5 dB | 90 KB, 52.9 dB | 0.8 s |
+| AV1 | 17 KB, 46.2 dB | 24 KB, 51.5 dB | 42 KB, 52.7 dB | 7.8 s |
+
+**Dark gradients.** `web` asks VideoToolbox for quality 0.8, up from 0.65 on 2026-11-15. At 0.65 a night-sky gradient of the demo film (luma 4 to 27 over 700 px) came out in blocks with purple and blue blotches: the 99th percentile of the error, after a 9 px blur, was 3.0 levels, and 1.26 at 0.8 (1.22 at 0.85, 1.0 at 0.95). It costs about half again in size (launch: 40 to 62 KB; the sky: 225 to 406 kbit/s). Measured, so not tried again:
+- dither before the encoder (a deband-and-dither filter) does not survive the system's H.264 and HEVC encoders, even at a constant 6 Mbit/s;
+- a bit-rate target instead of a quality helps less than 0.8 does, since the system's encoders spend what still frames need, not the target;
+- a lower AV1 quantizer leaves the gradient error where it is.
 
 ProRes 4444 writes the same 60 frames in 1.4 s, about 4 MB, and decodes to the drawn frames with alpha within one level.
 
