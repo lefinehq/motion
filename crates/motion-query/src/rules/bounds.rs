@@ -3,8 +3,7 @@
 use super::{Overshoot, Rule, overshoot, visible};
 use crate::report::{Code, Severity};
 use kurbo::Rect;
-use motion_scene::NodeState;
-use motion_scene::SceneGraph;
+use motion_scene::{SceneGraph, Visit};
 
 /// The title-safe area keeps this fraction of the canvas free on each side.
 const SAFE_INSET: f64 = 0.05;
@@ -43,18 +42,18 @@ fn safe_area(graph: &SceneGraph) -> Rect {
     Rect::new(dx, dy, graph.root.width - dx, graph.root.height - dy)
 }
 
-fn offscreen(node: &NodeState, graph: &SceneGraph) -> Option<Overshoot> {
-    if !visible(node) {
+fn offscreen(visit: &Visit<'_>, graph: &SceneGraph) -> Option<Overshoot> {
+    if !visible(visit) {
         return None;
     }
-    overshoot(node, canvas(graph))
+    overshoot(visit, canvas(graph))
 }
 
-fn outside_safe_area(node: &NodeState, graph: &SceneGraph) -> Option<Overshoot> {
-    if !visible(node) {
+fn outside_safe_area(visit: &Visit<'_>, graph: &SceneGraph) -> Option<Overshoot> {
+    if !visible(visit) {
         return None;
     }
-    overshoot(node, safe_area(graph))
+    overshoot(visit, safe_area(graph))
 }
 
 #[cfg(test)]

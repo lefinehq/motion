@@ -22,4 +22,4 @@ pub use shape::{ShapeDraw, outline};
 pub use state::{ContentState, FrameState, ItemState, NodeState};
 pub use text::{TextNode, set as set_text};
 pub use track::{Key, KeySpec, PathSpan, Track};
-pub use walk::{Visit, Walk, walk};
+pub use walk::{Visit, Walk, address_of, walk};

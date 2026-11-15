@@ -87,7 +87,8 @@ enum Command {
         scene: PathBuf,
         /// The moment, such as `1.5s` or `45f`.
         time: String,
-        /// Layer ids to show; all when none are given.
+        /// Layers to show, by address, such as `title` or `card/title`;
+        /// every layer at any depth when none are given.
         ids: Vec<String>,
     },
     /// Apply an edit line such as `card fill=#FF0000` and save the scene.

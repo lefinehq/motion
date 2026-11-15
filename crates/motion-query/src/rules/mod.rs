@@ -13,9 +13,7 @@ mod bounds;
 
 use crate::report::{Code, Severity};
 use kurbo::{Rect, Vec2};
-use motion_format::property::Prop;
-use motion_scene::NodeState;
-use motion_scene::SceneGraph;
+use motion_scene::{SceneGraph, Visit};
 
 /// A rule's finding on one frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -32,8 +30,9 @@ pub(crate) struct Rule {
     pub severity: Severity,
     /// A rule whose failure on a node makes this one skip that node.
     pub suppressed_by: Option<Code>,
-    /// The finding for a node at one frame, or `None` when it is fine.
-    pub evaluate: fn(&NodeState, &SceneGraph) -> Option<Overshoot>,
+    /// The finding for a node at one frame, at any depth and in scene
+    /// space, or `None` when it is fine.
+    pub evaluate: fn(&Visit<'_>, &SceneGraph) -> Option<Overshoot>,
     /// `(area, aim)`: the rule's area and the one its fix hint aims at, which may be
     /// stricter so one edit clears later rules too.
     pub areas: fn(&SceneGraph) -> (Rect, Rect),
@@ -48,15 +47,18 @@ pub(crate) const EPSILON: f64 = 1e-9;
 /// An opacity at or below this is invisible, and an invisible node may sit anywhere.
 const INVISIBLE: f64 = 0.0;
 
-/// Whether rules look at `node` on this frame: it shows, and is not see-through.
-pub(crate) fn visible(node: &NodeState) -> bool {
-    node.visible() && node.number(Prop::OPACITY) > INVISIBLE
+/// Whether rules look at a node on this frame: it and the `comp` nodes
+/// around it show, together they are not see-through, and they do not clip
+/// all of it away.
+pub(crate) fn visible(visit: &Visit<'_>) -> bool {
+    visit.visible && visit.opacity > INVISIBLE && visit.drawn().is_some()
 }
 
-/// How far `node`'s drawn box leaves `area`. An axis on which the box is larger is
-/// deliberate bleed (a full-bleed background), so it is not measured.
-pub(super) fn overshoot(node: &NodeState, area: Rect) -> Option<Overshoot> {
-    let b = node.bounds();
+/// How far the part of a node that draws leaves `area`. An axis on which
+/// that part is larger is deliberate bleed (a full-bleed background), so it
+/// is not measured.
+pub(super) fn overshoot(visit: &Visit<'_>, area: Rect) -> Option<Overshoot> {
+    let b = visit.drawn()?;
     let x = axis_amount(b.x0, b.x1, (area.x0, area.x1));
     let y = axis_amount(b.y0, b.y1, (area.y0, area.y1));
     let amount = [x, y].into_iter().flatten().max_by(f64::total_cmp)?;

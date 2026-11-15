@@ -1,6 +1,6 @@
 //! The result of `check`, printed compactly because an agent reads it instead of frames.
 
-use motion_format::fmt_num;
+use motion_format::{Address, fmt_num};
 use std::fmt;
 
 /// How serious a violation is, printed as its first letter.
@@ -31,8 +31,8 @@ pub struct Violation {
     pub severity: Severity,
     /// The rule that found it.
     pub code: Code,
-    /// The layer id the problem is on.
-    pub id: String,
+    /// The layer the problem is on, at any depth: `card/title`.
+    pub address: Address,
     /// The first frame of the run.
     pub first_frame: u32,
     /// The last frame of the run, inclusive.
@@ -50,7 +50,7 @@ impl fmt::Display for Violation {
             "{} {} {} {}-{}f +{}px",
             self.severity,
             self.code,
-            self.id,
+            self.address,
             self.first_frame,
             self.last_frame,
             fmt_num(self.amount_px)

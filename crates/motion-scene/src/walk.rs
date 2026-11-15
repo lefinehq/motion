@@ -10,15 +10,20 @@
 //!
 //! [D43]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d43-one-layer-address-and-edits-per-instance
 
-use kurbo::Affine;
+use kurbo::{Affine, Rect};
 use motion_format::Address;
 use motion_format::address::Id;
+use motion_format::property::Prop;
 
-use crate::{ContentState, FrameState, NodeState};
+use crate::state::box_through;
+use crate::{ContentState, FrameState, NodeContent, NodeState, SceneGraph};
 
 /// One node met on a [`walk`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Visit<'a> {
+    /// Its place in [`SceneGraph::paths`], the same at every frame, so a
+    /// caller can gather what it sees of one node over many frames.
+    pub index: usize,
     /// The ids from the scene's root down to the node: the `comp` nodes it
     /// sits in, outermost first, then its own.
     pub ids: Vec<&'a str>,
@@ -30,6 +35,11 @@ pub struct Visit<'a> {
     /// Whether it draws in the frame: it, and every `comp` node around it,
     /// is [visible](NodeState::visible).
     pub visible: bool,
+    /// Its opacity times that of every `comp` node around it.
+    pub opacity: f64,
+    /// The part of the scene's canvas the `comp` nodes around it let it draw
+    /// in: each clips to its composition's canvas. `None` at the root.
+    pub clip: Option<Rect>,
 }
 
 impl Visit<'_> {
@@ -43,23 +53,54 @@ impl Visit<'_> {
     /// # Panics
     /// If an id does not follow the id rule, which validation rules out.
     pub fn address(&self) -> Address {
-        Address::layer(self.ids.iter().map(|id| {
-            id.parse::<Id>()
-                .expect("validated layer ids follow the id rule")
-        }))
+        address_of(&self.ids)
+    }
+
+    /// The axis-aligned box its content covers on the scene's canvas, before
+    /// any clip.
+    pub fn bounds(&self) -> Rect {
+        box_through(self.transform, self.node.local_bounds)
+    }
+
+    /// The part of [`Visit::bounds`] the `comp` nodes around it let it draw,
+    /// or `None` when they clip all of it away.
+    pub fn drawn(&self) -> Option<Rect> {
+        let bounds = self.bounds();
+        let Some(clip) = self.clip else {
+            return Some(bounds);
+        };
+        let inside = bounds.intersect(clip);
+        (inside.width() > 0.0 && inside.height() > 0.0).then_some(inside)
     }
 }
 
-/// Every node of `state`, a frame of a whole scene, in paint order: each
-/// node, then the nodes inside it when it is a shown `comp` node.
-pub fn walk(state: &FrameState) -> Walk<'_> {
+/// The address of the node `ids` lead to from the scene's root, as
+/// [`SceneGraph::paths`] lists them: `["card", "title"]` is `card/title`.
+///
+/// # Panics
+/// If an id does not follow the id rule, which validation rules out.
+pub fn address_of(ids: &[&str]) -> Address {
+    Address::layer(ids.iter().map(|id| {
+        id.parse::<Id>()
+            .expect("validated layer ids follow the id rule")
+    }))
+}
+
+/// Every node of `state`, a frame of `graph`, in paint order: each node,
+/// then the nodes inside it when it is a shown `comp` node.
+pub fn walk<'a>(graph: &'a SceneGraph, state: &'a FrameState) -> Walk<'a> {
     Walk {
+        graph,
+        sizes: subtree_sizes(graph),
+        next_index: 0,
         stack: vec![Level {
             nodes: &state.nodes,
             next: 0,
             ids: Vec::new(),
             transform: Affine::IDENTITY,
             visible: true,
+            opacity: 1.0,
+            clip: None,
         }],
     }
 }
@@ -67,6 +108,12 @@ pub fn walk(state: &FrameState) -> Walk<'_> {
 /// The iterator [`walk`] returns.
 #[derive(Debug, Clone)]
 pub struct Walk<'a> {
+    graph: &'a SceneGraph,
+    /// How many nodes each composition holds at any depth, to skip those of
+    /// one that is not evaluated.
+    sizes: Vec<usize>,
+    /// The [`Visit::index`] of the next node.
+    next_index: usize,
     /// The canvases being walked, the innermost last.
     stack: Vec<Level<'a>>,
 }
@@ -80,6 +127,8 @@ struct Level<'a> {
     ids: Vec<&'a str>,
     transform: Affine,
     visible: bool,
+    opacity: f64,
+    clip: Option<Rect>,
 }
 
 impl<'a> Iterator for Walk<'a> {
@@ -95,22 +144,88 @@ impl<'a> Iterator for Walk<'a> {
             level.next += 1;
             let mut ids = level.ids.clone();
             ids.push(node.id.as_str());
+            let index = self.next_index;
+            self.next_index += 1;
             let visit = Visit {
+                index,
                 ids,
                 node,
                 transform: level.transform * node.transform,
                 visible: level.visible && node.visible(),
+                opacity: level.opacity * node.number(Prop::OPACITY),
+                clip: level.clip,
             };
-            if let ContentState::Comp(_, Some(inner)) = &node.content {
+            if let ContentState::Comp(comp, None) = &node.content {
+                // Not evaluated at this frame: nothing inside it is met.
+                self.next_index += self.sizes[*comp];
+            }
+            if let ContentState::Comp(index, Some(inner)) = &node.content {
+                let comp = &self.graph.comps[*index];
+                let canvas = box_through(
+                    visit.transform,
+                    Rect::new(0.0, 0.0, comp.width, comp.height),
+                );
                 self.stack.push(Level {
                     nodes: &inner.nodes,
                     next: 0,
                     ids: visit.ids.clone(),
                     transform: visit.transform,
                     visible: visit.visible,
+                    opacity: visit.opacity,
+                    clip: Some(visit.clip.map_or(canvas, |outer| outer.intersect(canvas))),
                 });
             }
             return Some(visit);
+        }
+    }
+}
+
+/// How many nodes each composition of `graph` holds at any depth.
+fn subtree_sizes(graph: &SceneGraph) -> Vec<usize> {
+    fn size(graph: &SceneGraph, comp: usize, sizes: &mut [Option<usize>]) -> usize {
+        if let Some(known) = sizes[comp] {
+            return known;
+        }
+        let total = graph.comps[comp]
+            .nodes
+            .iter()
+            .map(|node| match node.content {
+                NodeContent::Comp(inner) => 1 + size(graph, inner, sizes),
+                _ => 1,
+            })
+            .sum();
+        sizes[comp] = Some(total);
+        total
+    }
+    let mut sizes = vec![None; graph.comps.len()];
+    (0..graph.comps.len())
+        .map(|comp| size(graph, comp, &mut sizes))
+        .collect()
+}
+
+impl SceneGraph {
+    /// The ids of every node at any depth, from the scene's root down, in
+    /// the order [`walk`] visits them: each node, then the nodes of the
+    /// composition it draws. A composition shown twice is listed twice.
+    pub fn paths(&self) -> Vec<Vec<&str>> {
+        let mut paths = Vec::new();
+        self.collect(&self.root.nodes, &[], &mut paths);
+        paths
+    }
+
+    fn collect<'a>(
+        &'a self,
+        nodes: &'a [crate::Node],
+        outer: &[&'a str],
+        paths: &mut Vec<Vec<&'a str>>,
+    ) {
+        for node in nodes {
+            let mut ids = outer.to_vec();
+            ids.push(node.id.as_str());
+            paths.push(ids.clone());
+            if let NodeContent::Comp(index) = node.content {
+                self.collect(&self.comps[index].nodes, &ids, paths);
+            }
         }
     }
 }

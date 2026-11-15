@@ -56,7 +56,7 @@ fn violation(
     Violation {
         severity,
         code,
-        id: id.into(),
+        address: id.parse().unwrap(),
         first_frame: *frames.start(),
         last_frame: *frames.end(),
         amount_px,
@@ -263,7 +263,11 @@ fn a_fix_under_a_scaled_parent_moves_at_in_the_parents_units() {
         {"id":"box","rect":"100x100","at":"0 0","anchor":[0,0],"scale":3},
         {"id":"kid","rect":"20x20","parent":"box","at":"340 50"}]}"#,
     );
-    let kid = r.violations.iter().find(|v| v.id == "kid").unwrap();
+    let kid = r
+        .violations
+        .iter()
+        .find(|v| v.address.to_string() == "kid")
+        .unwrap();
     assert_eq!(kid.code, Code::Offscreen);
     // The safe area ends at 950: 100 canvas px back is 33.33 of the parent's units.
     let fix = kid.fix.as_deref().unwrap();
@@ -290,6 +294,49 @@ fn no_fix_while_the_parent_moves() {
         {"id":"box","rect":"100x100","at":"0 0","anchor":[0,0],"anim":{"x":"0 -> 100 @0-10f"}},
         {"id":"kid","rect":"20x20","parent":"box","at":"2000 50"}]}"#,
     );
-    let kid = r.violations.iter().find(|v| v.id == "kid").unwrap();
+    let kid = r
+        .violations
+        .iter()
+        .find(|v| v.address.to_string() == "kid")
+        .unwrap();
     assert_eq!(kid.fix, None);
+}
+
+/// A 1000x1000 scene whose `card` layer, centred at `card_x`, shows the
+/// 400x200 composition `card`, which holds a 10x10 `title` centred at
+/// `title_x` in the composition's canvas.
+fn nested(card_x: u32, title_x: u32) -> Report {
+    check_json(&format!(
+        r#"{{"motion":1,"size":"1000x1000","dur":"1s",
+        "comps":{{"card":{{"size":"400x200","dur":"1s",
+          "layers":[{{"id":"title","rect":"10x10","position":[{title_x},100]}}]}}}},
+        "layers":[{{"id":"card","comp":"card","position":[{card_x},500]}}]}}"#
+    ))
+}
+
+#[test]
+fn a_layer_inside_a_comp_is_checked_in_scene_space_by_its_address() {
+    // The card runs 650..1050, the title 1040..1050: both 50 px past the edge.
+    let r = nested(850, 395);
+    let found: Vec<(String, Code, f64, bool)> = r
+        .violations
+        .iter()
+        .map(|v| (v.address.to_string(), v.code, v.amount_px, v.fix.is_some()))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            ("card".into(), Code::Offscreen, 50.0, true),
+            // No fix yet: an `at` edit cannot reach inside a composition.
+            ("card/title".into(), Code::Offscreen, 50.0, false),
+        ]
+    );
+}
+
+#[test]
+fn what_a_comp_clips_away_is_never_offscreen() {
+    // Inside the canvas, the title sits past the composition's own edge.
+    assert_eq!(nested(500, 395).violations, []);
+    assert_eq!(nested(500, 420).violations, []);
+    assert_eq!(nested(500, 420).passed, 4);
 }

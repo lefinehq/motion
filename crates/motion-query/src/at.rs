@@ -5,37 +5,48 @@ use kurbo::Point;
 use motion_format::fmt_num;
 use motion_format::property::{Prop, Rest};
 use motion_format::shorthand::{Coord, Position};
-use motion_format::{Diagnostic, Kind, Result};
-use motion_scene::{NodeState, SceneGraph, evaluate};
+use motion_format::{Address, Diagnostic, Kind, Result};
+use motion_scene::{NodeState, SceneGraph, Visit, address_of, evaluate, walk};
 use tracing::instrument;
 
-/// One line per node in `ids` (all when empty) at `frame`: `{id} x= y= w= h=`, with `x`
-/// and `y` where its anchor lands on the canvas, then each other property whose printed
-/// value differs from its default, so float dust stays hidden.
+/// One line per node in `ids`, layer addresses such as `title` or
+/// `card/title` (every node at any depth when empty), at `frame`:
+/// `{address} x= y= w= h=`, with `x` and `y` where its anchor lands on the
+/// scene's canvas, then each other property whose printed value differs
+/// from its default, so float dust stays hidden. A node inside a
+/// composition that is not shown at `frame` has no line.
+///
+/// # Errors
+/// A diagnostic for a negative frame, or an entry of `ids` that is not the
+/// address of a layer.
 #[instrument(level = "debug", skip(graph, ids), fields(ids = ids.len()))]
 pub fn at(graph: &SceneGraph, frame: f64, ids: &[String]) -> Result<String> {
     if frame < 0.0 {
         return Err(Diagnostic::new(Kind::OutOfRange, "time must be 0 or later"));
     }
-    // Reject unknown ids up front so a typo never yields a partial answer.
-    if let Some(unknown) = ids
+    // Reject unknown addresses up front so a typo never yields a partial answer.
+    let known: Vec<Address> = graph.paths().iter().map(|ids| address_of(ids)).collect();
+    let wanted = ids
         .iter()
-        .find(|id| !graph.root.nodes.iter().any(|n| &n.id == *id))
-    {
-        let ids = graph.root.nodes.iter().map(|n| &n.id);
-        return Err(Diagnostic::unknown("layer id", unknown, ids));
-    }
-    let lines: Vec<String> = evaluate(graph, frame)
-        .nodes
-        .iter()
-        .filter(|n| ids.is_empty() || ids.contains(&n.id))
-        .map(describe)
+        .map(|text| {
+            text.parse::<Address>()
+                .ok()
+                .filter(|address| known.contains(address))
+                .ok_or_else(|| Diagnostic::unknown("layer", text, &known))
+        })
+        .collect::<Result<Vec<Address>>>()?;
+    let state = evaluate(graph, frame);
+    let lines: Vec<String> = walk(graph, &state)
+        .map(|visit| (visit.address(), visit))
+        .filter(|(address, _)| wanted.is_empty() || wanted.contains(address))
+        .map(|(address, visit)| describe(&address, &visit))
         .collect();
     Ok(lines.join("\n"))
 }
 
-/// The line [`at`] prints for `node`.
-fn describe(node: &NodeState) -> String {
+/// The line [`at`] prints for the node at `address`.
+fn describe(address: &Address, visit: &Visit<'_>) -> String {
+    let node = visit.node;
     // The property `at` sets is always printed, first, by its components.
     let changed: String = Prop::all()
         .filter(|&prop| prop.spec().rest != Rest::At)
@@ -45,12 +56,12 @@ fn describe(node: &NodeState) -> String {
             (shown != rest).then(|| format!(" {}={shown}", prop.name()))
         })
         .collect();
-    // Where the anchor lands on the canvas: the position, through any parents.
+    // Where the anchor lands on the scene's canvas: the position, through
+    // any parents and the `comp` nodes around it.
     let [ax, ay] = node.point(Prop::ANCHOR);
-    let Point { x, y } = node.transform * Point::new(ax, ay);
+    let Point { x, y } = visit.transform * Point::new(ax, ay);
     format!(
-        "{} x={} y={} w={} h={}{changed}",
-        node.id,
+        "{address} x={} y={} w={} h={}{changed}",
         fmt_num(x),
         fmt_num(y),
         fmt_num(node.own_box.width()),
