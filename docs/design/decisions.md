@@ -547,3 +547,13 @@ D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that t
   - Depth sorting by layer, with flat layers splitting the runs, is the order the classic renderer of those projects uses. Splitting planes that intersect would need geometry, and no sample needs it yet.
   - A tested maths crate for 4×4 matrices and quaternions beats our own.
 - **Not now:** lights, shadows, materials, extrusion, depth of field, intersecting planes and per-character 3D text.
+
+### D59. Craft lint measures motion from the scene and reports numbers
+
+- **Decision:** `check` gains craft rules: judder, constant speed, text hold and crowding. They are computed from the evaluated scene, frame by frame, without rendering. Each finding is one line with the rule, the layer, the frames, the measured value and its limit, and the edit that clears it when one edit can. Craft rules warn. Two gates, text contrast and flashing, need pixels, so they run on a reduced render through the engine, and they are errors. All limits live in one table. A rule ships only when the planted-defect scenes trip it and few of the corpus's professional templates do.
+- **Why:**
+  - An agent reads a 50-token report, not frames. A number and a limit tell it how far to move, which a picture does not.
+  - These are the layer-2 rules of [Quality](quality.md#craft-lint), with the evidence for each. They measure craft, not taste, which stays with people ([D22](#d22-no-ai-judge)).
+  - Computing from the scene is exact and costs milliseconds, so it can run after every edit. Only contrast and flashing depend on what is drawn.
+  - The corpus is 198 templates made by professionals. A rule they trip often is a wrong rule, so it is the calibration set for false alarms.
+- **Not now:** layout and grid composition, colour harmony, loudness, and anything that would score taste.
