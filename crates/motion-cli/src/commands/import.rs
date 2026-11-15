@@ -112,10 +112,7 @@ fn print_text(text: &TextOutcome) {
         geometry.tolerance
     );
     for check in &geometry.texts {
-        let place = match &check.comp {
-            Some(comp) => format!("{comp}/{}", check.layer),
-            None => check.layer.clone(),
-        };
+        let place = check.layer.to_string();
         let lines = check.lines.len();
         let plural = if lines == 1 { "" } else { "s" };
         let worst = check

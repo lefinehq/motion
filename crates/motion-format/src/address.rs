@@ -112,6 +112,89 @@ impl Address {
         self.keys.push(step);
         self
     }
+
+    /// Where the layer `id` is written in the document: in the scene's
+    /// `layers` when `comp` is `None`, so the layer's own address, `title`;
+    /// else in that composition's, `scene.comps.card.layers[title]`, which
+    /// every layer drawing the composition shares.
+    pub fn written(comp: Option<&str>, id: Id) -> Address {
+        match comp {
+            None => Address::layer([id]),
+            Some(comp) => Address {
+                layers: Vec::new(),
+                keys: vec![
+                    Step::Key(crate::key::COMPS.into()),
+                    Step::Key(comp.to_owned()),
+                    Step::Key(crate::key::LAYERS.into()),
+                    Step::Id(id),
+                ],
+            },
+        }
+    }
+
+    /// The composition and layer id of an address [`Address::written`]
+    /// made for a composition's layer, `scene.comps.card.layers[title]`.
+    pub fn written_in_comp(&self) -> Option<(&str, &str)> {
+        use crate::key::{COMPS, LAYERS};
+        match self.keys.as_slice() {
+            [
+                Step::Key(comps),
+                Step::Key(comp),
+                Step::Key(layers),
+                Step::Id(id),
+            ] if self.layers.is_empty() && comps == COMPS && layers == LAYERS => Some((comp, id)),
+            _ => None,
+        }
+    }
+}
+
+/// `steps` as a key path writes them: keys joined by `.`, each `[id]` or
+/// `[index]` right after its key: `fx[glow].radius`.
+pub fn key_text(steps: &[Step]) -> String {
+    let mut text = String::new();
+    for step in steps {
+        match step {
+            Step::Key(key) if text.is_empty() => text.push_str(key),
+            Step::Key(key) => {
+                text.push('.');
+                text.push_str(key);
+            }
+            Step::Id(id) => text.push_str(&format!("[{id}]")),
+            Step::Index(index) => text.push_str(&format!("[{index}]")),
+        }
+    }
+    text
+}
+
+/// The value `steps` lead to in `json`: a key of an object, the element of
+/// a list whose `id` is the step's, or the element at its index.
+pub fn json_at<'j>(json: &'j serde_json::Value, steps: &[Step]) -> Option<&'j serde_json::Value> {
+    steps.iter().try_fold(json, |json, step| match step {
+        Step::Key(key) => json.get(key),
+        Step::Index(index) => json.get(index),
+        Step::Id(id) => json.as_array()?.iter().find(|item| {
+            item.get(crate::key::ID).and_then(serde_json::Value::as_str) == Some(id.as_ref())
+        }),
+    })
+}
+
+/// An address is written in JSON as its text: `"card/title.fill"`.
+impl serde::Serialize for Address {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Address {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        text.parse().map_err(serde::de::Error::custom)
+    }
 }
 
 impl fmt::Display for Address {

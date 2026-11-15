@@ -152,8 +152,7 @@ fn lists_the_fonts_the_set_lacks() {
 /// one glyph per character, the paragraph's end a space.
 fn stored_title(scene: &Scene) -> StoredText {
     let text = StoredText {
-        comp: None,
-        layer: "title".into(),
+        layer: motion_format::Address::written(None, "title".parse().unwrap()),
         lines: Vec::new(),
     };
     let mut fonts = FontSet::builtin();

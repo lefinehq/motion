@@ -3,6 +3,8 @@
 //! unchanged once written, and each fixture's scene and report print as
 //! their snapshot.
 
+use motion_format::Step;
+use motion_format::address::json_at;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -99,13 +101,14 @@ fn every_stored_text_names_a_text_layer_of_its_scope() {
             };
             let import = import(&project, &options).expect("the composition imports");
             for text in &import.texts {
-                let layers = match &text.comp {
-                    None => &import.json["layers"],
-                    Some(id) => &import.json["comps"][id]["layers"],
+                let written = match text.layer.written_in_comp() {
+                    Some(_) => text.layer.keys.clone(),
+                    None => vec![
+                        Step::Key("layers".into()),
+                        Step::Id(text.layer.layers[0].clone()),
+                    ],
                 };
-                let layer = layers
-                    .as_array()
-                    .and_then(|layers| layers.iter().find(|l| l["id"] == text.layer.as_str()))
+                let layer = json_at(&import.json, &written)
                     .unwrap_or_else(|| panic!("{name}/{comp}: no layer for {text:?}"));
                 assert!(layer["text"].is_string(), "{name}/{comp}: {}", text.layer);
                 assert!(!text.lines.is_empty(), "{name}/{comp}: {}", text.layer);

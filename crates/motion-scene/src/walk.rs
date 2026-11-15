@@ -229,6 +229,22 @@ impl SceneGraph {
         Some((node, comp))
     }
 
+    /// The node of the layer `address` names: at any depth as drawn
+    /// ([`SceneGraph::node_at`]), or as written in a composition,
+    /// `scene.comps.card.layers[title]`, in the graph every layer without
+    /// overrides shares.
+    pub fn find(&self, address: &Address) -> Option<&crate::Node> {
+        if let Some((comp, id)) = address.written_in_comp() {
+            let comp = self.comps.iter().find(|c| c.id == comp)?;
+            return comp.nodes.iter().find(|n| n.id == id);
+        }
+        if address.layers.is_empty() || !address.keys.is_empty() {
+            return None;
+        }
+        let ids: Vec<&str> = address.layers.iter().map(AsRef::as_ref).collect();
+        self.node_at(&ids).map(|(node, _)| node)
+    }
+
     fn collect<'a>(
         &'a self,
         nodes: &'a [crate::Node],

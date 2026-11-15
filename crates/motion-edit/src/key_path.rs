@@ -2,6 +2,7 @@
 
 use std::str::FromStr;
 
+use motion_format::address::key_text;
 use motion_format::grammar::parse_all;
 use motion_format::{Diagnostic, Result, Step};
 
@@ -54,7 +55,7 @@ impl KeyPath {
     /// The path up to (not including) step `depth`: depth 2 of `a.b.c` is
     /// `a.b`, depth 2 of `fx[glow].radius` is `fx[glow]`, and depth 0 is empty.
     pub(crate) fn prefix(&self, depth: usize) -> String {
-        written(&self.steps[..depth])
+        key_text(&self.steps[..depth])
     }
 
     /// True when one key is the other or its prefix, step by step:
@@ -62,24 +63,6 @@ impl KeyPath {
     pub(crate) fn overlaps(&self, other: &KeyPath) -> bool {
         self.steps.starts_with(&other.steps) || other.steps.starts_with(&self.steps)
     }
-}
-
-/// `steps` as a key path writes them: keys joined by `.`, each selector in
-/// brackets after its key.
-pub(crate) fn written(steps: &[Step]) -> String {
-    let mut text = String::new();
-    for step in steps {
-        match step {
-            Step::Key(key) if text.is_empty() => text.push_str(key),
-            Step::Key(key) => {
-                text.push('.');
-                text.push_str(key);
-            }
-            Step::Id(id) => text.push_str(&format!("[{id}]")),
-            Step::Index(index) => text.push_str(&format!("[{index}]")),
-        }
-    }
-    text
 }
 
 impl FromStr for KeyPath {

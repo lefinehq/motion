@@ -4,6 +4,8 @@
 //!
 //! [D45]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d45-export-patches-the-project-it-came-from
 
+use motion_format::Step;
+use motion_format::address::Id;
 use serde_json::{Map, Value as Json};
 
 use super::keys::Convert;
@@ -11,18 +13,6 @@ use crate::model::{Origin, Value};
 
 /// The prefix of a mark's key in an object being written.
 const MARK: &str = "$source:";
-
-/// One step of a path into a scene: a key of an object, the element of an
-/// array whose `id` it is, or else an element by index.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum Step {
-    /// A key of an object.
-    Key(String),
-    /// The element of an array with this `id`.
-    Id(String),
-    /// The element of an array at this index, for elements with no `id`.
-    Index(usize),
-}
 
 /// How a value the import wrote can go back into the project.
 #[derive(Debug, Clone, PartialEq)]
@@ -132,39 +122,11 @@ fn walk(json: &mut Json, path: &mut Vec<Step>, found: &mut Vec<(Vec<Step>, usize
     }
 }
 
-/// The step to the element `item` at index `i` of an array.
+/// The step to the element `item` at index `i` of an array: by its `id`
+/// when it has one that follows the id rule, else by its index.
 pub(crate) fn step(item: &Json, i: usize) -> Step {
-    match item.get("id").and_then(Json::as_str) {
-        Some(id) => Step::Id(id.to_owned()),
-        None => Step::Index(i),
+    match item.get("id").and_then(Json::as_str).map(str::parse::<Id>) {
+        Some(Ok(id)) => Step::Id(id),
+        _ => Step::Index(i),
     }
-}
-
-/// The value at `path` in `json`.
-pub(crate) fn at<'j>(json: &'j Json, path: &[Step]) -> Option<&'j Json> {
-    path.iter().try_fold(json, |json, step| match step {
-        Step::Key(key) => json.get(key),
-        Step::Index(i) => json.get(i),
-        Step::Id(id) => json
-            .as_array()?
-            .iter()
-            .find(|item| item.get("id").and_then(Json::as_str) == Some(id)),
-    })
-}
-
-/// A path as people read it: `layers[title].position[0]`.
-pub(crate) fn show(path: &[Step]) -> String {
-    let mut text = String::new();
-    for step in path {
-        match step {
-            Step::Key(key) if text.is_empty() => text.push_str(key),
-            Step::Key(key) => {
-                text.push('.');
-                text.push_str(key);
-            }
-            Step::Id(id) => text.push_str(&format!("[{id}]")),
-            Step::Index(i) => text.push_str(&format!("[{i}]")),
-        }
-    }
-    text
 }

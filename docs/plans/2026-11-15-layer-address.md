@@ -70,9 +70,9 @@ Each step is one pull request, with its tests.
 5. **Overrides** in the format: validation, compile, and the error snapshot.
 6. **Edits by address.** Layers at any depth, array selectors in key paths, and overrides through instances. `check`'s fix hints reach inner layers the same way. A batch of edit lines with `--out` (audit, workstream 4) follows once edits are typed.
 7. **Every report by address:**
-   - the import report's findings and `StoredText`;
-   - `ignore` in the fidelity tools and `hiding` in the session;
-   - the export's sources.
+   - `StoredText` and the text checks name the layer where the scene writes it: `title`, or `scene.comps.card.layers[title]`. The findings keep naming the project's places, because they describe what the project holds that the scene could not take.
+   - `ignore` in the fidelity tools and `hiding` in the session take addresses, so a layer inside a composition is hidden in that instance alone.
+   - The export's sources use the format's `Step`, and its paths print and resolve with the same functions as every address.
 8. **Docs:**
    - `scene-format.md`: addresses and `overrides`;
    - `edits-and-checks.md`;

@@ -11,9 +11,9 @@
 //! [D35]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d35-fidelity-is-measured-against-reference-renders
 
 use motion_format::text::TextContent;
-use motion_format::{Content, Diagnostic, Kind, Layer, Result, Scene};
+use motion_format::{Address, Content, Diagnostic, Kind, Result, Scene};
 use motion_import::map::StoredText;
-use motion_scene::{Node, NodeContent, SceneGraph, set_text};
+use motion_scene::{NodeContent, SceneGraph, set_text};
 use motion_text::{TextLayout, Typesetter};
 use serde::Serialize;
 
@@ -35,10 +35,8 @@ pub struct TextGeometry {
 /// One text layer's lines against the stored ones.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TextCheck {
-    /// The scene composition holding the layer, or none for the scene's own.
-    pub comp: Option<String>,
-    /// The layer's id.
-    pub layer: String,
+    /// Where the layer is written in the scene, as the stored text names it.
+    pub layer: Address,
     /// Line by line, as many as the longer layout has.
     pub lines: Vec<LineCheck>,
 }
@@ -181,7 +179,6 @@ pub fn check_text(
 
 fn check(text: &StoredText, layout: &TextLayout) -> TextCheck {
     TextCheck {
-        comp: text.comp.clone(),
         layer: text.layer.clone(),
         lines: lines(text, layout),
     }
@@ -189,23 +186,9 @@ fn check(text: &StoredText, layout: &TextLayout) -> TextCheck {
 
 /// The text of the layer `text` names, as `scene` writes it.
 pub(crate) fn content_of<'s>(scene: &'s Scene, text: &StoredText) -> Result<&'s TextContent> {
-    let layers: &[Layer] = match &text.comp {
-        None => &scene.root.layers,
-        Some(id) => scene
-            .comps
-            .iter()
-            .find(|comp| &comp.id == id)
-            .map(|comp| comp.layers.as_slice())
-            .ok_or_else(|| {
-                Diagnostic::unknown("composition", id, scene.comps.iter().map(|c| c.id.as_str()))
-            })?,
-    };
-    let layer = layers
-        .iter()
-        .find(|layer| layer.id == text.layer)
-        .ok_or_else(|| {
-            Diagnostic::unknown("layer", &text.layer, layers.iter().map(|l| l.id.as_str()))
-        })?;
+    let layer = scene
+        .find(&text.layer)
+        .ok_or_else(|| unknown(&text.layer))?;
     match &layer.content {
         Content::Text(content) => Ok(content),
         _ => Err(Diagnostic::new(
@@ -217,23 +200,9 @@ pub(crate) fn content_of<'s>(scene: &'s Scene, text: &StoredText) -> Result<&'s 
 
 /// The scene's layout of the layer `text` names.
 fn layout_of<'g>(graph: &'g SceneGraph, text: &StoredText) -> Result<&'g TextLayout> {
-    let nodes: &[Node] = match &text.comp {
-        None => &graph.root.nodes,
-        Some(id) => graph
-            .comps
-            .iter()
-            .find(|comp| &comp.id == id)
-            .map(|comp| comp.nodes.as_slice())
-            .ok_or_else(|| {
-                Diagnostic::unknown("composition", id, graph.comps.iter().map(|c| c.id.as_str()))
-            })?,
-    };
-    let node = nodes
-        .iter()
-        .find(|node| node.id == text.layer)
-        .ok_or_else(|| {
-            Diagnostic::unknown("layer", &text.layer, nodes.iter().map(|n| n.id.as_str()))
-        })?;
+    let node = graph
+        .find(&text.layer)
+        .ok_or_else(|| unknown(&text.layer))?;
     match &node.content {
         NodeContent::Text { text, .. } => Ok(&text.layout),
         _ => Err(Diagnostic::new(
@@ -302,6 +271,12 @@ fn lines(text: &StoredText, layout: &TextLayout) -> Vec<LineCheck> {
             ours: ours.get(i).cloned(),
         })
         .collect()
+}
+
+/// The diagnostic for a stored text naming a layer the scene has not.
+fn unknown(layer: &Address) -> Diagnostic {
+    Diagnostic::new(Kind::Missing, format!("the scene has no layer `{layer}`"))
+        .expected("the layer the import wrote for this text")
 }
 
 #[cfg(test)]

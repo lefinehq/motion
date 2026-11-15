@@ -80,6 +80,17 @@ impl Scene {
         layers.iter().find(|l| l.id == last.as_ref())
     }
 
+    /// The layer `address` names, at any depth as drawn ([`Scene::layer`]),
+    /// or as written in a composition: `scene.comps.card.layers[title]`
+    /// ([`Address::written`]). `None` for any other address.
+    pub fn find(&self, address: &Address) -> Option<&Layer> {
+        match (address.layers.is_empty(), address.written_in_comp()) {
+            (false, _) if address.keys.is_empty() => self.layer(&address.layers),
+            (true, Some((comp, id))) => self.comp(comp)?.layers.iter().find(|l| l.id == id),
+            _ => None,
+        }
+    }
+
     /// The layers a `comp` layer draws: its own instance when it overrides
     /// any, else its composition's. `None` for any other layer.
     pub fn drawn<'a>(&'a self, layer: &'a Layer) -> Option<&'a [Layer]> {

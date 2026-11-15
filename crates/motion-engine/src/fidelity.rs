@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use motion_format::{Diagnostic, Kind, Result};
+use motion_format::{Address, Diagnostic, Kind, Result};
 use motion_import::map::Options;
 use serde::{Deserialize, Serialize};
 
@@ -49,10 +49,11 @@ pub struct Sample {
     /// The scene time of the first reference frame, in seconds.
     #[serde(default)]
     pub start: f64,
-    /// Layers left out of the drawing and the measure, by scene id, such as
-    /// a placeholder the reference fills with footage.
+    /// Layers left out of the drawing and the measure, by address, such as
+    /// a placeholder the reference fills with footage: `plate`, or
+    /// `card/photo` inside a composition.
     #[serde(default)]
-    pub ignore: Vec<String>,
+    pub ignore: Vec<Address>,
     /// From when, in seconds, the sample has settled: its numbers from then
     /// on are kept apart from the entrance's.
     #[serde(default)]

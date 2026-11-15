@@ -23,7 +23,7 @@ pub struct Args<'a> {
     pub images: Option<&'a Path>,
     /// Layers left out of the drawing and the measure, by id: what the
     /// reference shows differently on purpose, such as a placeholder.
-    pub ignore: &'a [String],
+    pub ignore: &'a [motion_engine::Address],
 }
 
 /// Compares `scene` with the reference and prints the summary.

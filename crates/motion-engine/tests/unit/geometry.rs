@@ -23,8 +23,7 @@ fn session() -> Session {
 /// end counted.
 fn stored(session: &Session, comp: Option<&str>, layer: &str) -> StoredText {
     let text = StoredText {
-        comp: comp.map(str::to_owned),
-        layer: layer.into(),
+        layer: motion_format::Address::written(comp, layer.parse().unwrap()),
         lines: Vec::new(),
     };
     let layout = layout_of(session.graph().unwrap(), &text).unwrap();
@@ -112,13 +111,16 @@ fn lines_broken_elsewhere_or_missing_fail_outright() {
 fn refuses_layers_the_scene_has_not_or_that_hold_no_text() {
     let session = session();
     let text = |comp: Option<&str>, layer: &str| StoredText {
-        comp: comp.map(str::to_owned),
-        layer: layer.into(),
+        layer: motion_format::Address::written(comp, layer.parse().unwrap()),
         lines: Vec::new(),
     };
     for (comp, layer, says) in [
-        (None, "nothing", "unknown layer"),
-        (Some("deck"), "label", "unknown composition"),
+        (None, "nothing", "no layer `nothing`"),
+        (
+            Some("deck"),
+            "label",
+            "no layer `scene.comps.deck.layers[label]`",
+        ),
         (None, "box", "holds no text"),
     ] {
         let error = session.text_geometry(&[text(comp, layer)]).unwrap_err();
