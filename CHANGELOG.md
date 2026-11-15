@@ -97,6 +97,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Fixed
 
+- A null whose anchor the project leaves out rests it at its top-left corner, not its centre, so the layers it parents are no longer 50 px up and left of where the project draws them. On the local corpus, 10 samples draw closer to their reference and none passes or fails because of it; on two local `.mogrt` templates the layers now land on the preview's.
 - A template's point control that drives a position kept as separate dimensions no longer writes the composition's centre over the layer's own position: the position stays as it is, and the report names the control as left out.
 
 ### Changed

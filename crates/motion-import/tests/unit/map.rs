@@ -592,6 +592,55 @@ mod effects {
     }
 
     #[test]
+    fn a_null_whose_anchor_the_project_leaves_out_rests_at_its_corner() {
+        // A null over a 100 by 100 solid at the composition's centre, and a
+        // child at its origin: the child sits where the null's position is.
+        let mut null = layer(1, "Null 1", vec![]);
+        null.source = Some(9);
+        null.switches.null = true;
+        let mut child = layer(2, "Child", vec![]);
+        child.parent = Some(1);
+        child.properties.children = vec![crate::test_support::build::transform(vec![
+            crate::test_support::build::property(
+                "ADBE Position",
+                crate::model::Stream::Static(crate::model::Value::Vector3([0.0, 0.0, 0.0])),
+            ),
+        ])];
+        let mut project = project(vec![(2, "Main", comp(vec![child, null], 2.0))]);
+        project.items.push(crate::model::Item {
+            id: 9,
+            name: "Null 1".into(),
+            folder: None,
+            kind: crate::model::ItemKind::Footage(crate::model::Footage {
+                width: 100,
+                height: 100,
+                pixel_aspect: 1.0,
+                frame_rate: 0.0,
+                duration: 0.0,
+                source: crate::model::Source::Solid {
+                    color: crate::model::Color {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: 1.0,
+                    },
+                },
+            }),
+        });
+        let import = import(&project, &Options::default()).expect("imports");
+        let null = import.json["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|l| l["pivot"] == true)
+            .expect("the null");
+        assert!(
+            null.get("anchor").is_none_or(|a| *a == json!([0, 0])),
+            "{null}"
+        );
+    }
+
+    #[test]
     fn an_adjustment_layer_adjusts_where_its_solid_is() {
         let import = adjusting(vec![transform(vec![number("ADBE Geometry2-0007", 90.0)])]);
         let layer = &import.json["layers"][0];

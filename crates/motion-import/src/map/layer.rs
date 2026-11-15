@@ -90,7 +90,10 @@ impl<'p> Walk<'p> {
                 stretch: layer.stretch,
             },
             comp_centre: half(f64::from(composition.width), f64::from(composition.height)),
+            // A null's anchor rests at its top-left corner, not its centre,
+            // so the children it moves keep their place.
             source_centre: match source.map(|item| &item.kind) {
+                _ if layer.switches.null => [0.0, 0.0],
                 Some(ItemKind::Composition(c)) => half(f64::from(c.width), f64::from(c.height)),
                 Some(ItemKind::Footage(f)) => half(f64::from(f.width), f64::from(f.height)),
                 _ => [0.0, 0.0],
