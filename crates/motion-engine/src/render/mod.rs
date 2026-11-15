@@ -19,6 +19,7 @@
 //! [D34]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d34-a-layer-tree-renderer-on-vello_cpu
 
 mod effect;
+mod mask;
 mod shape;
 mod text;
 
@@ -234,6 +235,7 @@ fn layer(
             return Ok(Some(Node::Layer(Layer {
                 transform: node.transform,
                 opacity: opacity.min(1.0),
+                masks: mask::masks(&node.mask),
                 effects,
                 adjust: true,
                 time: node.seconds,
@@ -251,6 +253,7 @@ fn layer(
         transform: node.transform,
         opacity: opacity.min(1.0),
         clip,
+        masks: mask::masks(&node.mask),
         effects,
         isolate,
         bounds,

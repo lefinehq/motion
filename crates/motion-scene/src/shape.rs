@@ -226,10 +226,15 @@ fn ellipse(item: &ItemState) -> BezPath {
     path
 }
 
-/// A free path: each vertex to the next through its leaving handle and the
-/// next one's arriving handle, and back to the first when closed.
+/// A free path's outline, as [`bezier`] draws it.
 fn path(item: &ItemState) -> BezPath {
-    let shape = item.path(props::PATH_PATH);
+    bezier(item.path(props::PATH_PATH))
+}
+
+/// A scene path as an outline: each vertex to the next through its leaving
+/// handle and the next one's arriving handle, and back to the first when
+/// closed.
+pub fn bezier(shape: &motion_format::Path) -> BezPath {
     let vertices: Vec<_> = shape.vertices().collect();
     let mut out = BezPath::new();
     let Some(first) = vertices.first() else {

@@ -14,7 +14,9 @@ use vello_cpu::{
 
 use crate::effect::{Effect, EffectContext, Input, Move, Space};
 use crate::image::Image;
-use crate::list::{Blending, Frame, GlyphDraw, ImageDraw, Layer, Matte, MatteMode, Node, PathDraw};
+use crate::list::{
+    Blending, Frame, GlyphDraw, ImageDraw, Layer, LayerMask, Matte, MatteMode, Node, PathDraw,
+};
 use crate::pixels::Pixels;
 use crate::style::{Color, DrawStyle};
 
@@ -208,6 +210,27 @@ impl Painter {
         Ok(data)
     }
 
+    /// How much of a layer its `masks` keep at each pixel, in coordinates
+    /// `transform` maps to the frame; `None` when they cut nothing.
+    fn cut(&self, masks: &[LayerMask], transform: Affine) -> Option<Vec<f32>> {
+        if masks.is_empty() {
+            return None;
+        }
+        crate::mask::coverage(masks, transform, self.width, self.height, |mask| {
+            let mut painter = Painter::new(self.width, self.height, self.options);
+            painter.ctx.set_transform(transform);
+            painter.ctx.set_paint(Color::WHITE.to_vello());
+            painter.ctx.set_fill_rule(vello_cpu::peniko::Fill::NonZero);
+            painter.ctx.fill_path(&mask.path);
+            painter
+                .finish()
+                .data()
+                .iter()
+                .map(|p| f32::from(p.a) / 255.0)
+                .collect()
+        })
+    }
+
     /// Draws `nodes` on a canvas of their own and returns its pixels.
     fn drawn_alone(&self, nodes: &[Node], transform: Affine) -> Result<Pixels> {
         let mut painter = Painter::new(self.width, self.height, self.options);
@@ -309,9 +332,11 @@ impl Painter {
             true => None,
             false => Some(self.drawn_alone(&filter.children, parent * filter.transform)?),
         };
+        let cut = self.cut(&filter.masks, parent * filter.transform);
         let mut mixed = drawn;
         mixed.mix(&changed, |i| {
-            filter.opacity
+            cut.as_ref().map_or(1.0, |c| c[i])
+                * filter.opacity
                 * matte.as_ref().map_or(1.0, |m| f32::from(m[i]) / 255.0)
                 * region.as_ref().map_or(1.0, |r| r.data()[i][3])
         });
@@ -330,7 +355,8 @@ impl Painter {
             .iter()
             .position(Effect::reads_pixels)
             .unwrap_or(layer.effects.len());
-        let (drawing, on_pixels) = match reads < layer.effects.len() {
+        // Masks cut the content before any effect but moves, on its pixels.
+        let (drawing, on_pixels) = match reads < layer.effects.len() || !layer.masks.is_empty() {
             // Only moves before the first effect that reads pixels.
             true => {
                 let moves = layer.effects[..reads]
@@ -381,7 +407,8 @@ impl Painter {
             mask,
             None,
         );
-        let drawn = match on_pixels.is_empty() {
+        let cut = self.cut(&layer.masks, transform * moved.transform);
+        let drawn = match on_pixels.is_empty() && cut.is_none() {
             true => {
                 let drawn = self.nodes(&layer.children, transform * moved.transform);
                 let mut effects = EffectContext {
@@ -397,6 +424,11 @@ impl Painter {
             false => self
                 .drawn_alone(&layer.children, transform * moved.transform)
                 .and_then(|mut pixels| {
+                    if let Some(cut) = &cut {
+                        for (pixel, kept) in pixels.data_mut().iter_mut().zip(cut) {
+                            *pixel = pixel.map(|c| c * kept);
+                        }
+                    }
                     for effect in on_pixels {
                         let space = self.space(effect, transform, layer)?;
                         effect.apply(&mut pixels, &space);

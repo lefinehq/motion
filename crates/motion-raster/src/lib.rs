@@ -22,6 +22,7 @@ mod effect;
 mod generate;
 mod image;
 mod list;
+mod mask;
 mod particles;
 mod picture;
 mod pixels;
@@ -35,8 +36,10 @@ pub use effect::{
 };
 pub use image::Image;
 pub use list::{
-    Blending, Clip, Frame, Glyph, GlyphDraw, ImageDraw, Layer, Matte, MatteMode, Node, PathDraw,
+    Blending, Clip, Frame, Glyph, GlyphDraw, ImageDraw, Layer, LayerMask, MaskMode, Matte,
+    MatteMode, Node, PathDraw,
 };
+pub use mask::SIGMA_PER_FEATHER;
 pub use picture::Picture;
 pub use pixels::{Pixel, Pixels};
 pub use render::{Quality, RenderOptions, Simd, render, render_with};

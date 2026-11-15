@@ -67,6 +67,8 @@ pub struct Layer {
     pub blend: BlendMode,
     /// The region outside which nothing of it shows, in its own coordinates.
     pub clip: Option<Clip>,
+    /// Masks that cut its drawn content before its effects run, combined in order.
+    pub masks: Vec<LayerMask>,
     /// Effects run on its drawn content, in order.
     pub effects: Vec<Effect>,
     /// Its nodes, back to front.
@@ -89,6 +91,43 @@ pub struct Layer {
     pub bounds: Option<Rect>,
     /// Its own time, in seconds, which effects that run over time read.
     pub time: f64,
+}
+
+/// A mask: an outline that cuts what a layer draws, before its effects.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerMask {
+    /// The outline, in the layer's coordinates; filled by the non-zero rule.
+    pub path: BezPath,
+    /// How it combines with the masks before it.
+    pub mode: MaskMode,
+    /// It covers what is outside its outline instead of what is inside.
+    pub inverted: bool,
+    /// How much it covers, 0 to 1.
+    pub opacity: f32,
+    /// How far its edge fades on each axis, in the layer's units.
+    pub feather: [f32; 2],
+    /// How far its edge moves out, in the layer's units; negative moves it in.
+    pub expand: f32,
+}
+
+/// How a mask combines with the coverage of the masks before it, `a`,
+/// covering `m` itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaskMode {
+    /// Left out: it cuts nothing.
+    None,
+    /// Joins: `a + m − a·m`.
+    Add,
+    /// Removes: `a·(1 − m)`.
+    Subtract,
+    /// Keeps the overlap: `a·m`.
+    Intersect,
+    /// The larger of the two.
+    Lighten,
+    /// The smaller of the two.
+    Darken,
+    /// Where one covers and the other does not: `|a − m|`.
+    Difference,
 }
 
 /// A layer's matte: a node drawn in the layer's parent's coordinates, whose
@@ -125,6 +164,7 @@ impl Layer {
             opacity: 1.0,
             blend: BlendMode::Normal,
             clip: None,
+            masks: Vec::new(),
             effects: Vec::new(),
             children,
             isolate: false,
@@ -142,6 +182,7 @@ impl Layer {
             || self.blend != BlendMode::Normal
             || self.clip.is_some()
             || !self.effects.is_empty()
+            || !self.masks.is_empty()
             || self.matte.is_some()
             || self
                 .children

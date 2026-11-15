@@ -47,7 +47,7 @@ Every layer has an `id`: lowercase letters, digits, `-` and `_`, starting with a
 |---|---|
 | `text` | Text, with full shaping for any script |
 | `rect` | A rectangle the size of its box, with an optional corner radius (`"300x100 r12"`) |
-| `shapes` | Shape items: groups, rectangles, ellipses and free paths, drawn by fills and strokes (see [Shapes](#shapes-effects-and-compositions)) |
+| `shapes` | Shape items: groups, rectangles, ellipses and free paths, drawn by fills and strokes (see [Shapes](#shapes-masks-effects-and-compositions)) |
 | `svg` | An SVG file as shapes |
 | `image` | A PNG or JPEG file stretched over the layer's `box` (see [Images](#images)) |
 | `video` | A video clip played in the layer's own time and stretched over its `box` (see [Videos](#videos)) |
@@ -65,7 +65,7 @@ Every layer can also have:
 - **position and transform:** `at`, `anchor`, `scale`, `rotate`, `opacity`, plus `rotateX`, `rotateY` and `z` for depth
 - **`parent`:** another layer to follow
 - **`blend`:** a blend mode
-- **`mask`:** cut-out shapes, with feather and expansion ([D55](decisions.md#d55-masks-are-items-that-cut-a-layers-content-before-its-effects), [plan](../plans/2026-11-20-masks.md))
+- **`mask`:** outlines that cut what the layer draws, with feather and expansion, before its `fx` ([D55](decisions.md#d55-masks-are-items-that-cut-a-layers-content-before-its-effects); see [Shapes, masks, effects and compositions](#shapes-masks-effects-and-compositions))
 - **`matte`:** another layer of the same list whose drawing is a stencil: `"matte":"reveal alpha"` shows the layer where `reveal` is opaque. The modes are `alpha` (the default), `alpha-inverted`, `luma` and `luma-inverted`; luma reads transparency as black. The matte layer is drawn as it would be at that moment, with its transform, parents, opacity, effects, span and its own matte. Whether it is also drawn in the frame is up to its `hidden`, and a hidden layer still mattes
 - **`fx`:** a list of effects
 - **`adjust`:** `true` applies the layer's `fx` to everything below it in its composition instead of to its own content, which is not drawn but says where they apply, by its alpha. A filter layer, with no content, applies them everywhere. The change is mixed in by the layer's opacity and matte; points and lengths of its effects are in the layer's own coordinates ([D49](decisions.md#d49-effects-that-read-pixels-run-on-a-canvas-of-their-own))
@@ -118,7 +118,7 @@ Every animatable value of a layer is a **property**. They are listed once, in `c
 
 Checks measure the transformed box: the layer's box through its anchor, scale, rotation and position, and its parents'.
 
-## Shapes, effects and compositions
+## Shapes, masks, effects and compositions
 
 A `shapes` layer draws a list of **items**. Each item is an object whose kind's name is one of its keys; that key holds the kind's main value, and the other keys are its properties and settings. Every kind has its own property registry, so its values and `anim` tracks follow the same rules as a layer's ([D32](decisions.md#d32-one-format-for-authored-and-imported-scenes)).
 
@@ -156,6 +156,32 @@ Each kind lists its properties in `crates/motion-format/src/item.rs`; this table
 `size` splits into `width` and `height`, and `position` into `x` and `y`, for tracks. A rectangle's `round` is capped at half its shorter side. A `path` is SVG path data with absolute `M`, `L`, `C` and `Z` (`"M0,0 C40,0 80,40 80,80 Z"`); a track on it uses a key list, and every key keeps the same number of vertices and the same closure, so the outline moves vertex by vertex.
 
 A `trim` keeps the stretch from `start` to `end`, shares of the length from 0 to 1 (`{"trim":0.5}` keeps the first half), swapped if `start` is after `end`. `offset` moves the stretch along in degrees, 360 once around; a stretch that runs past the end goes on around a closed outline as one line and continues an open one as a second piece. `each` cuts every outline the same way, `joined` cuts them as one line in order. Equal `start` and `end` draw nothing, not even a cap. A cut closed outline is open: a stroke ends in its caps, and a fill closes it with a straight line. Lengths are arc lengths in the space each outline sits in.
+
+**Masks.** `mask` is a list in the same item form, of the one kind `mask`, that cuts what the layer draws before its effects run ([D55](decisions.md#d55-masks-are-items-that-cut-a-layers-content-before-its-effects)):
+
+| Item | Key holds | Properties | Settings |
+|---|---|---|---|
+| `mask` | `path` | `path`, `feather`, `opacity`, `expand` | `mode`: `add`, `subtract`, `intersect`, `lighten`, `darken`, `difference`, `none`; `keep`: `inside`, `outside` |
+
+- **The outline.** `path` is in the layer's own coordinates, written as a shape's `path` is. It closes when it is open, and keys of one track keep their vertex count.
+- **One mask's coverage.** It covers what is inside its outline, or what is outside it with `"keep":"outside"`, times its `opacity`.
+  - `expand` moves the edge out by that many px, or in when negative.
+  - `feather` fades the edge over about that many px, half inside and half outside. It is a Gaussian whose standard deviation is 0.3 of it, and one number fades both axes.
+- **Combining.** The masks combine in order, each with the coverage of the ones before it, `a`, as its `mode` says:
+  - `add` gives `a + m − a·m`;
+  - `subtract` gives `a·(1 − m)`;
+  - `intersect` gives `a·m`;
+  - `lighten` and `darken` give the larger and the smaller;
+  - `difference` gives `|a − m|`;
+  - `none` is skipped.
+
+  Before the first mask that is not `none`, `a` is 0 when that mask adds, lightens or differs, and 1 otherwise. A layer whose masks are all `none` is not cut.
+- **Order of drawing.** The coverage cuts the content first. Then the effects run, so a blur spreads past the mask's edge, and then the matte and opacity apply. A `transform` effect moves the cut content with its mask.
+- **Filter layers.** On a filter or adjusting layer, the masks say where its effects apply. A filter layer's own coordinates have their origin where its anchor is: the composition's centre, unless it is moved.
+
+```json
+{"id":"photo","image":"photo.jpg","mask":[{"mask":"M0,0 L800,0 L800,600 L0,600 Z","feather":40},{"mask":"M300,200 C400,200 400,400 300,400 Z","mode":"subtract"}]}
+```
 
 **Effects.** `fx` is a list in the same item form, applied in order to what the layer draws:
 
