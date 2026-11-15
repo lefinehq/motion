@@ -52,7 +52,7 @@ A hand-written impl is for real logic only.
 Every failure in every crate is one type, `motion_format::Diagnostic`. It prints as `path: message; expected form`, where the path and the expected form are each optional:
 
 ```
-layers[1].rect: `300xx` is not a valid rectangle; expected `<width>x<height> [r<radius>]`, e.g. `300x400 r24`
+card.rect: `300xx` is not a valid rectangle; expected `<width>x<height> [r<radius>]`, e.g. `300x400 r24`
 ```
 
 Build one with the builder, never with `format!` or a helper of your own:
@@ -67,7 +67,7 @@ Diagnostic::new(Kind::Conflict, "`font` only applies to text layers").at("font")
 
 - **`syntax`, `unknown`, `new(kind, …)`, `io`** start a diagnostic. `unknown` writes the list of allowed names itself, so pass the names from their table (names are data, [D27](docs/design/decisions.md#d27-one-generic-property-model)).
 - **`expected`** sets the accepted form, with an example. `or_expected` adds another form to it.
-- **`at`** sets the path where the error happened. **`under`** puts an outer path in front of it, so a nested parser reports its own place and the caller adds the key: `parse().map_err(|e| e.under("rect"))`.
+- **`at`** sets the place where the error happened: an `Address` for anything inside the scene (`Place::of_layer(id)` for a layer), or text for a place outside it, such as a key in an imported file. **`under`** puts an outer path in front of it, so a nested parser reports its own place and the caller adds the key: `parse().map_err(|e| e.under("rect"))`.
 - **Every `Syntax` and `UnknownName` error has an expected form.** A test for a new error should check it.
 - **`Kind`** says what went wrong: `Syntax`, `UnknownName`, `OutOfRange`, `Missing`, `Conflict`, `WrongType`, `Invalid` or `Io`. `Kind::exit_code()` is the one place that maps it to the command's exit code, which is 2 for every kind today. (`check` exits 1 when it finds violations, which are results, not errors.)
 

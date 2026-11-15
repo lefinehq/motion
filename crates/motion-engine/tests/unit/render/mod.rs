@@ -113,7 +113,7 @@ fn a_missing_picture_is_an_error_at_its_layers_image() {
     .display_list(0.0)
     .unwrap_err();
     assert_eq!(
-        (e.kind, e.path.as_deref()),
+        (e.kind, e.path_text().as_deref()),
         (motion_format::Kind::Io, Some("photo.image"))
     );
     assert!(e.message.contains("file.png"), "{e}");

@@ -60,7 +60,10 @@ fn check_names_the_value_that_breaks_a_rule(
     #[case] path: &str,
 ) {
     let error = styled.check().unwrap_err();
-    assert_eq!((error.kind, error.path.as_deref()), (kind, Some(path)));
+    assert_eq!(
+        (error.kind, error.path_text().as_deref()),
+        (kind, Some(path))
+    );
     assert!(error.expected.is_some());
 }
 

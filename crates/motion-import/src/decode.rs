@@ -7,7 +7,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 
-use motion_format::{Diagnostic, Kind, Result};
+use motion_format::{Diagnostic, Kind, Place, Result};
 
 use crate::model::{
     Color, Composition, EffectDefinition, ExpressionEngine, Footage, Item, ItemKind, Layer,
@@ -61,7 +61,7 @@ pub fn decode(file: &[u8]) -> Result<Project> {
     decoder.base.set(file.as_ptr().addr());
     let mut scan = Scan::new(
         &decoder,
-        root.chunks().map_err(|d| d.at(ROOT))?,
+        root.chunks().map_err(|d| d.at(Place::other(ROOT)))?,
         ROOT.into(),
         0,
     )?;
@@ -356,7 +356,7 @@ impl<'a, 'd> Scan<'a, 'd> {
                 Kind::Invalid,
                 format!("lists nest more than {MAX_DEPTH} deep"),
             )
-            .at(path)
+            .at(Place::other(path))
             .expected("a shallower project")),
             _ => Ok(Self {
                 decoder,
@@ -394,14 +394,15 @@ impl<'a, 'd> Scan<'a, 'd> {
     fn require(&mut self, name: Name) -> Result<Chunk<'a>> {
         self.find(name).ok_or_else(|| {
             Diagnostic::new(Kind::Missing, format!("no `{name}` where one is required"))
-                .at(self.path.clone())
+                .at(Place::other(self.path.clone()))
                 .expected(format!("a `{name}` chunk"))
         })
     }
 
     /// Reads `chunk` as a `T`, naming its path in an error.
     fn parse<T: binrw::BinRead>(&self, chunk: Chunk<'a>, args: T::Args<'_>) -> Result<T> {
-        record::parse(chunk.body, chunk.name, args).map_err(|d| d.at(self.child_path(chunk.name)))
+        record::parse(chunk.body, chunk.name, args)
+            .map_err(|d| d.at(Place::other(self.child_path(chunk.name))))
     }
 
     /// The next `R` record.
@@ -460,7 +461,9 @@ impl<'a, 'd> Scan<'a, 'd> {
 
     /// A scan over the children of `chunk`, found at `path`.
     fn open(&self, chunk: Chunk<'a>, path: String) -> Result<Scan<'a, 'd>> {
-        let chunks = chunk.chunks().map_err(|d| d.at(path.clone()))?;
+        let chunks = chunk
+            .chunks()
+            .map_err(|d| d.at(Place::other(path.clone())))?;
         Scan::new(self.decoder, chunks, path, self.depth + 1)
     }
 }

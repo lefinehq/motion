@@ -218,9 +218,9 @@ fn invalid_scene_exits_two_with_path() {
     let out = motion(&["check", path.to_str().expect("utf-8")]);
     assert_eq!(out.status.code(), Some(2));
     let invalid = open_error(&path);
-    assert_eq!(invalid.path.as_deref(), Some("layers[0].in"));
+    assert_eq!(invalid.path_text().as_deref(), Some("title.in"));
     assert_eq!(stderr(&out), error_line(&invalid));
-    assert!(stderr(&out).starts_with("error: layers[0].in: "));
+    assert!(stderr(&out).starts_with("error: title.in: "));
 }
 
 #[test]

@@ -89,21 +89,21 @@ fn errors_name_the_key_path() {
     let cos = parse(b" /1 [ << /0 1.0 >> << /0 (x) >> ]").unwrap();
     let error = read::<Outer>(&cos).unwrap_err();
     assert_eq!(error.kind, Kind::Invalid);
-    assert_eq!(error.path.as_deref(), Some("/1/1/0"));
+    assert_eq!(error.path_text().as_deref(), Some("/1/1/0"));
     assert!(
         error.message.starts_with("text document: invalid type"),
         "{error}"
     );
     let cos = parse(b" /1 [ << >> ]").unwrap();
     let error = read::<Outer>(&cos).unwrap_err();
-    assert_eq!(error.path.as_deref(), Some("/1/0"));
+    assert_eq!(error.path_text().as_deref(), Some("/1/0"));
     assert!(error.message.contains("missing field `0`"), "{error}");
 }
 
 #[test]
 fn an_error_at_the_top_has_the_root_path() {
     let error = read::<Vec<f64>>(&Cos::Integer(1)).unwrap_err();
-    assert_eq!(error.path.as_deref(), Some("/"));
+    assert_eq!(error.path_text().as_deref(), Some("/"));
 }
 
 #[test]

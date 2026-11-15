@@ -78,14 +78,23 @@ pub mod key {
     /// Layer key: the layer whose drawing decides where this one shows.
     pub const MATTE: &str = "matte";
 
-    /// The path of composition `id`, `comps.card`.
-    pub fn comp_path(id: &str) -> String {
-        format!("{COMPS}.{id}")
+    /// The place of composition `id`'s definition, `comps.card`.
+    pub fn comp_path(id: &str) -> crate::Place {
+        keys([crate::Step::Key(COMPS.into()), crate::Step::Key(id.into())])
     }
 
-    /// The path of the layer at `index`, `layers[2]`, as serde and validation write it.
-    pub fn layer_path(index: usize) -> String {
-        format!("{LAYERS}[{index}]")
+    /// The place of the layer at `index`, `layers[2]`, for a layer whose id
+    /// cannot name it: missing, invalid, or shared with another.
+    pub fn layer_path(index: usize) -> crate::Place {
+        keys([crate::Step::Key(LAYERS.into()), crate::Step::Index(index)])
+    }
+
+    /// A place of `steps` from the scene.
+    fn keys(steps: impl IntoIterator<Item = crate::Step>) -> crate::Place {
+        crate::Place::Scene(crate::Address {
+            layers: Vec::new(),
+            keys: steps.into_iter().collect(),
+        })
     }
 }
 
@@ -157,10 +166,14 @@ pub fn parse_document(json: &str) -> Result<Document> {
 
 /// Validates a JSON value into a typed [`Scene`], with the defaults of the keys left out.
 pub(crate) fn scene_from_value(value: &Value) -> Result<Scene> {
-    let checked = de::from_value(value).and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc));
+    let read = de::from_value(value).map_err(|mut d| {
+        d.path = d.path.map(|place| place.by_layer_ids(value));
+        d
+    });
+    let checked = read.and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc));
     // Validation stops at the first rule that fails, so this is that rule.
     checked.inspect_err(|d| {
-        debug!(kind = ?d.kind, path = d.path.as_deref(), "rejected: {}", d.message);
+        debug!(kind = ?d.kind, path = d.path_text().as_deref(), "rejected: {}", d.message);
     })
 }
 

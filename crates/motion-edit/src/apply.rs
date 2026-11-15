@@ -1,8 +1,8 @@
 //! Applying an [`Edit`] to a [`Document`]. Changes go to the raw JSON, so
 //! untouched parts and the order of keys stay as the author wrote them.
 
-use motion_format::key::{LAYERS, layer_path};
-use motion_format::{Diagnostic, Kind, Result};
+use motion_format::key::LAYERS;
+use motion_format::{Diagnostic, Kind, Place, Result};
 use motion_format::{Document, SCENE_KEYS, layer_keys};
 use serde_json::Value;
 use tracing::{Span, field, instrument};
@@ -78,10 +78,11 @@ impl Target {
     }
 
     /// The path validation reports for `key` on the target.
-    fn path_of(self, key: &str) -> String {
+    /// Where validation reports `key` of this target, the layer `id`.
+    fn place_of(self, id: &str, key: &str) -> Place {
         match self {
-            Target::Scene => key.to_owned(),
-            Target::Layer(index) => format!("{}.{key}", layer_path(index)),
+            Target::Scene => Place::from(key),
+            Target::Layer(index) => Place::layer(id, index).join(Place::from(key)),
         }
     }
 }
@@ -128,7 +129,7 @@ fn quote_hint(doc: &Document, edit: &Edit, target: Target, error: &Diagnostic) -
         .enumerate()
         .find_map(|(i, c)| match &c.value {
             EditValue::Set(v @ (Value::Number(_) | Value::Bool(_)))
-                if error.path.as_deref() == Some(target.path_of(c.key.as_str()).as_str()) =>
+                if error.path.as_ref() == Some(&target.place_of(&edit.target, c.key.as_str())) =>
             {
                 Some((i, v))
             }

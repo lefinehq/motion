@@ -29,7 +29,7 @@ fn layer(kv: &str) -> String {
 fn assert_fails(json: &str, kind: Kind, path: Option<&str>, form: &str) {
     let e = err(json);
     assert_eq!(
-        (e.kind, e.path.as_deref(), e.expected.as_deref()),
+        (e.kind, e.path_text().as_deref(), e.expected.as_deref()),
         (kind, path, Some(form)),
         "{json}"
     );
@@ -57,14 +57,18 @@ fn layer_errors_sit_under_the_layer_path() {
         let json = format!(
             r#"{{"motion":1,"dur":"1s","layers":[{{"id":"a","rect":"1x1"}},{{"id":"b","rect":"1x1",{kv}}}]}}"#
         );
-        err(&json).path.unwrap()
+        err(&json).path_text().unwrap()
     };
-    let prefix = format!("{}.", key::layer_path(1));
     // One from serde's structure, one from a validation rule, one from a
-    // rule that places its own path.
-    for kv in [r#""text":5"#, r#""fill":"red""#, r#""id":"a""#] {
+    // rule that places its own path. An id two layers share cannot name
+    // either, so the second is named by its index.
+    for (kv, prefix) in [
+        (r#""text":5"#, "b."),
+        (r#""fill":"red""#, "b."),
+        (r#""id":"a""#, "layers[1]."),
+    ] {
         let path = second(kv);
-        assert!(path.starts_with(&prefix), "{kv}: {path}");
+        assert!(path.starts_with(prefix), "{kv}: {path}");
     }
 }
 
@@ -103,11 +107,11 @@ fn null_is_never_a_left_out_key() {
             "dur",
             Time::FORM,
         ),
-        (layer(r#""in":null"#), "layers[0].in", Behaviour::FORM),
-        (layer(r#""anim":null"#), "layers[0].anim", AnimDoc::FORM),
+        (layer(r#""in":null"#), "a.in", Behaviour::FORM),
+        (layer(r#""anim":null"#), "a.anim", AnimDoc::FORM),
         (
             r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":null}]}"#.to_owned(),
-            "layers[0].text",
+            "a.text",
             "a string",
         ),
     ] {
@@ -127,7 +131,7 @@ fn unknown_keys_list_the_allowed_keys() {
     assert_fails(
         &layer(r#""x":1"#),
         Kind::UnknownName,
-        Some("layers[0].x"),
+        Some("a.x"),
         &one_of(&layer_keys),
     );
 }
@@ -166,29 +170,25 @@ fn wrong_types_name_the_accepted_form() {
         ),
         (
             r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":3}]}"#.to_owned(),
-            "layers[0].text",
+            "a.text",
             "a string",
         ),
         (
             r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":1}]}"#.to_owned(),
-            "layers[0].rect",
+            "a.rect",
             RectShape::FORM,
         ),
         (
             r#"{"motion":1,"dur":"1s","layers":[{"id":"a","text":"x","font":1}]}"#.to_owned(),
-            "layers[0].font",
+            "a.font",
             Font::FORM,
         ),
-        (
-            layer(r#""fill":1"#),
-            "layers[0].fill",
-            ValueType::Color.form(),
-        ),
-        (layer(r#""at":1"#), "layers[0].at", Position::FORM),
-        (layer(r#""in":true"#), "layers[0].in", Behaviour::FORM),
+        (layer(r#""fill":1"#), "a.fill", ValueType::Color.form()),
+        (layer(r#""at":1"#), "a.at", Position::FORM),
+        (layer(r#""in":true"#), "a.in", Behaviour::FORM),
         (scene(r#""presets":[]"#), "presets", PresetsDoc::FORM),
         (scene(r#""presets":{"a":3}"#), "presets.a", PresetDoc::FORM),
-        (layer(r#""anim":[]"#), "layers[0].anim", AnimDoc::FORM),
+        (layer(r#""anim":[]"#), "a.anim", AnimDoc::FORM),
     ] {
         assert_fails(&json, Kind::WrongType, Some(path), form);
     }
@@ -258,7 +258,7 @@ fn every_serde_shape_maps_to_its_kind() {
     assert_eq!(invalid_value.kind, Kind::Invalid);
     let short_key = err(&layer(r#""anim":{"x":[[0]]}"#));
     assert_eq!(short_key.kind, Kind::Invalid);
-    assert_eq!(short_key.path.as_deref(), Some("layers[0].anim.x[0]"));
+    assert_eq!(short_key.path_text().as_deref(), Some("a.anim.x[0]"));
 }
 
 mod never_panics {
@@ -294,7 +294,7 @@ fn documents_are_objects_not_arrays_of_field_values() {
     let e =
         scene_from_value(&json!({"motion": 1, "dur": "1s", "layers": [["a", "hi"]]})).unwrap_err();
     assert_eq!(
-        (e.kind, e.path.as_deref(), e.expected.as_deref()),
+        (e.kind, e.path_text().as_deref(), e.expected.as_deref()),
         (Kind::WrongType, Some("layers[0]"), Some(LayerDoc::FORM))
     );
 }

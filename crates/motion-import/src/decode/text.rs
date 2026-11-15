@@ -8,7 +8,7 @@
 
 use std::ops::Range;
 
-use motion_format::{Diagnostic, Kind, Result};
+use motion_format::{Diagnostic, Kind, Place, Result};
 use serde::Deserialize;
 
 use crate::cos::{self, Cos, de::read};
@@ -30,8 +30,8 @@ const BREAK: (char, char) = ('\r', '\n');
 /// records a text document needs, or a style names a font the table lacks.
 pub(super) fn documents(body: &[u8], path: &str) -> Result<Vec<TextDocument>> {
     let inside = |diagnostic: Diagnostic, keys: &str| {
-        let after = diagnostic.path.clone().unwrap_or_default();
-        diagnostic.at(format!("{path}{keys}{after}"))
+        let after = diagnostic.path_text().unwrap_or_default();
+        diagnostic.at(Place::other(format!("{path}{keys}{after}")))
     };
     let mut cos = cos::parse(body).map_err(|d| inside(d, ""))?;
     INHERITANCE
@@ -492,7 +492,7 @@ impl DocumentRecord {
                     .value
                     .style
                     .model(fonts)
-                    .map_err(|d| d.at(format!("/0/6/0/{index}/0/0/6/0")))?;
+                    .map_err(|d| d.at(Place::other(format!("/0/6/0/{index}/0/0/6/0"))))?;
                 Ok(Run { range, style })
             })
             .collect::<Result<_>>()?;

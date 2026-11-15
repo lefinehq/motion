@@ -45,7 +45,7 @@ fn display_with_path_and_with_or_without_expected() {
 #[test]
 fn at_replaces_the_path() {
     let d = Diagnostic::syntax("bad").at("a").at("b");
-    assert_eq!(d.path.as_deref(), Some("b"));
+    assert_eq!(d.path_text().as_deref(), Some("b"));
 }
 
 #[test]
@@ -65,21 +65,21 @@ fn under_sets_a_missing_path() {
 #[test]
 fn under_joins_a_field_with_a_dot() {
     let d = Diagnostic::syntax("bad").at("fill").under("layers[1]");
-    assert_eq!(d.path.as_deref(), Some("layers[1].fill"));
+    assert_eq!(d.path_text().as_deref(), Some("layers[1].fill"));
 }
 
 #[test]
 fn under_joins_an_index_without_a_dot() {
     let d = Diagnostic::syntax("bad").at("[2]").under("anim.x");
-    assert_eq!(d.path.as_deref(), Some("anim.x[2]"));
+    assert_eq!(d.path_text().as_deref(), Some("anim.x[2]"));
     let d = d.under("layers[0]");
-    assert_eq!(d.path.as_deref(), Some("layers[0].anim.x[2]"));
+    assert_eq!(d.path_text().as_deref(), Some("layers[0].anim.x[2]"));
 }
 
 #[test]
 fn under_an_empty_prefix_keeps_the_path() {
     let d = Diagnostic::syntax("bad").at("dur").under("");
-    assert_eq!(d.path.as_deref(), Some("dur"));
+    assert_eq!(d.path_text().as_deref(), Some("dur"));
     assert_eq!(Diagnostic::syntax("bad").under("").path, None);
 }
 
@@ -163,9 +163,9 @@ proptest! {
         prefix in ".*",
     ) {
         let mut d = Diagnostic::syntax("bad");
-        d.path = path.clone();
+        d.path = path.clone().map(Place::from);
         let d = d.under(prefix.clone());
-        let full = d.path.unwrap_or_default();
+        let full = d.path_text().unwrap_or_default();
         prop_assert!(full.starts_with(&prefix));
         prop_assert!(full.ends_with(path.as_deref().unwrap_or_default()));
     }

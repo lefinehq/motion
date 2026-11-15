@@ -1,6 +1,6 @@
 //! [`Diagnostic`], the one error type of every motion crate: what was wrong,
-//! where (`layers[1].fill`) and which forms are accepted, so an agent can fix
-//! its input in one try.
+//! where ([`Place`]: `card/title.fill`, an [`Address`] in a scene) and which
+//! forms are accepted, so an agent can fix its input in one try.
 //!
 //! ```
 //! use motion_format::{Diagnostic, Kind};
@@ -19,6 +19,12 @@
 use std::borrow::Cow;
 use std::path::Path;
 use std::{fmt, io};
+
+use winnow::combinator::{alt, delimited, eof, preceded, repeat, terminated};
+use winnow::prelude::*;
+
+use crate::address::{Address, Id, Step};
+use crate::grammar::Parsed;
 
 /// What sort of problem a [`Diagnostic`] reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -65,8 +71,8 @@ impl Kind {
 pub struct Diagnostic {
     /// What sort of problem this is; decides the CLI exit code.
     pub kind: Kind,
-    /// Where the problem is, e.g. `layers[1].in`; `None` for input without structure.
-    pub path: Option<String>,
+    /// Where the problem is, e.g. `card/title.in`; `None` for input without structure.
+    pub path: Option<Place>,
     /// What was wrong, including the offending input.
     pub message: String,
     /// The accepted forms, written for people, e.g. ``"`12f` or `0.4s`"``.
@@ -115,30 +121,32 @@ impl Diagnostic {
         )
     }
 
-    /// Sets the path of the offending input, replacing any path already set.
+    /// Sets the place of the offending input, replacing any place already set.
     #[must_use]
-    pub fn at(mut self, path: impl Into<String>) -> Self {
-        self.path = Some(path.into());
+    pub fn at(mut self, place: impl Into<Place>) -> Self {
+        self.path = Some(place.into());
         self
     }
 
-    /// Places the diagnostic inside `prefix`: `prefix.path`, `prefix[i]…` or `prefix`.
+    /// Places the diagnostic inside `outer`: `outer.path`, `outer[i]…`,
+    /// `outer/layer…` or `outer`.
     ///
-    /// An empty `prefix` (the top level) keeps the path, so callers need no root case.
+    /// An empty `outer` (the top level) keeps the place, so callers need no
+    /// root case.
     #[must_use]
-    pub fn under(mut self, prefix: impl Into<String>) -> Self {
-        let mut full = prefix.into();
-        if full.is_empty() {
-            return self;
-        }
-        if let Some(path) = self.path.take() {
-            if !path.starts_with('[') {
-                full.push('.');
-            }
-            full.push_str(&path);
-        }
-        self.path = Some(full);
+    pub fn under(mut self, outer: impl Into<Place>) -> Self {
+        let outer = outer.into();
+        self.path = match self.path.take() {
+            None if outer.is_top() => None,
+            None => Some(outer),
+            Some(inner) => Some(outer.join(inner)),
+        };
         self
+    }
+
+    /// The place, as it prints.
+    pub fn path_text(&self) -> Option<String> {
+        self.path.as_ref().map(ToString::to_string)
     }
 
     /// Sets the accepted forms, replacing any already set.
@@ -174,6 +182,236 @@ impl fmt::Display for Diagnostic {
 }
 
 impl std::error::Error for Diagnostic {}
+
+/// Where a [`Diagnostic`] points.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Place {
+    /// In a scene: a layer at any depth and keys inside it, or keys of the
+    /// scene itself. Until it is put under a layer, it is relative to
+    /// whatever holds it.
+    Scene(Address),
+    /// In another input with places of its own, as it names them: a
+    /// project's chunks, a file.
+    Other(String),
+}
+
+impl Place {
+    /// The layer `id`, as a place to put a diagnostic under. An id that
+    /// cannot name a layer (one that breaks the id rule, or `scene`) is the
+    /// layer at `index` of its list instead.
+    pub fn layer(id: &str, index: usize) -> Place {
+        match naming(id) {
+            Some(id) => Place::Scene(Address::layer([id])),
+            None => Place::Scene(Address {
+                layers: Vec::new(),
+                keys: vec![Step::Key(crate::key::LAYERS.into()), Step::Index(index)],
+            }),
+        }
+    }
+
+    /// The layer `id` of a scene that passed validation, whose ids follow
+    /// the id rule. An id that does not is kept as it is written.
+    pub fn of_layer(id: &str) -> Place {
+        match naming(id) {
+            Some(id) => Place::Scene(Address::layer([id])),
+            None => Place::Other(id.to_owned()),
+        }
+    }
+
+    /// This place in the scene `raw`, with each `layers[i]` named by its
+    /// layer's id where that id follows the id rule, as validation names
+    /// layers: `layers[1].text` becomes `title.text`, and
+    /// `comps.card.layers[0].text` becomes `comps.card.layers[title].text`.
+    pub(crate) fn by_layer_ids(self, raw: &serde_json::Value) -> Place {
+        let Place::Scene(address) = self else {
+            return self;
+        };
+        let mut named = Address {
+            layers: address.layers,
+            keys: Vec::new(),
+        };
+        let mut node = Some(raw);
+        let mut steps = address.keys.into_iter().peekable();
+        while let Some(step) = steps.next() {
+            let layer = match (&step, steps.peek()) {
+                (Step::Key(key), Some(Step::Index(i))) if key == crate::key::LAYERS => {
+                    let layer = node.and_then(|n| n.get(key)).and_then(|l| l.get(*i));
+                    let id = layer
+                        .and_then(|l| l.get(crate::key::ID))
+                        .and_then(serde_json::Value::as_str)
+                        .and_then(naming);
+                    id.map(|id| (id, layer))
+                }
+                _ => None,
+            };
+            match layer {
+                Some((id, layer)) => {
+                    steps.next();
+                    node = layer;
+                    match named.keys.is_empty() {
+                        true => named.layers.push(id),
+                        false => named
+                            .keys
+                            .extend([Step::Key(crate::key::LAYERS.into()), Step::Id(id)]),
+                    }
+                }
+                None => {
+                    node = node.and_then(|n| match &step {
+                        Step::Key(key) => n.get(key),
+                        Step::Index(i) => n.get(*i),
+                        Step::Id(_) => None,
+                    });
+                    named.keys.push(step);
+                }
+            }
+        }
+        Place::Scene(named)
+    }
+
+    /// A place in an input that is not a scene, as it names it.
+    pub fn other(text: impl Into<String>) -> Place {
+        Place::Other(text.into())
+    }
+
+    /// Whether it is the top level itself: a place in a scene with no layer
+    /// and no key.
+    fn is_top(&self) -> bool {
+        matches!(self, Place::Scene(a) if a.layers.is_empty() && a.keys.is_empty())
+    }
+
+    /// The address, for a place in a scene.
+    pub fn address(&self) -> Option<&Address> {
+        match self {
+            Place::Scene(address) => Some(address),
+            Place::Other(_) => None,
+        }
+    }
+
+    /// `inner` inside `self`. Layers put under keys are the elements of
+    /// those keys' `layers` list, as in a composition's own definition.
+    pub fn join(self, inner: Place) -> Place {
+        match (self, inner) {
+            (Place::Scene(outer), Place::Scene(inner)) if outer.keys.is_empty() => {
+                Place::Scene(Address {
+                    layers: outer.layers.into_iter().chain(inner.layers).collect(),
+                    keys: inner.keys,
+                })
+            }
+            (Place::Scene(mut outer), Place::Scene(inner)) => {
+                let listed = inner
+                    .layers
+                    .into_iter()
+                    .flat_map(|id| [Step::Key(crate::key::LAYERS.into()), Step::Id(id)]);
+                outer.keys.extend(listed.chain(inner.keys));
+                Place::Scene(outer)
+            }
+            (outer, inner) => {
+                let (outer, inner) = (outer.to_string(), inner.to_string());
+                match (outer.is_empty(), inner.starts_with('[')) {
+                    (true, _) => Place::Other(inner),
+                    (false, true) => Place::Other(format!("{outer}{inner}")),
+                    (false, false) => Place::Other(format!("{outer}.{inner}")),
+                }
+            }
+        }
+    }
+}
+
+/// A place in a scene printed relative to what holds it: its layers joined
+/// by `/`, then its keys, the first without a `.` when there is no layer.
+impl fmt::Display for Place {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let address = match self {
+            Place::Other(text) => return f.write_str(text),
+            Place::Scene(address) if !address.is_scene() => return write!(f, "{address}"),
+            Place::Scene(address) => address,
+        };
+        address
+            .keys
+            .iter()
+            .enumerate()
+            .try_for_each(|(i, step)| match step {
+                Step::Key(key) if i == 0 => f.write_str(key),
+                Step::Key(key) => write!(f, ".{key}"),
+                Step::Id(id) => write!(f, "[{id}]"),
+                Step::Index(index) => write!(f, "[{index}]"),
+            })
+    }
+}
+
+impl From<Address> for Place {
+    fn from(address: Address) -> Place {
+        Place::Scene(address)
+    }
+}
+
+/// A path of keys, such as `anim.x[2]` or `runs[0].range`, read as a place
+/// in a scene; the empty path is the top level. Text that is not a path of
+/// keys is kept as it is written.
+impl From<&str> for Place {
+    fn from(text: &str) -> Place {
+        match terminated(relative_keys::<()>, eof).parse(text) {
+            Ok(keys) => Place::Scene(Address {
+                layers: Vec::new(),
+                keys,
+            }),
+            Err(_) => Place::Other(text.to_owned()),
+        }
+    }
+}
+
+impl From<String> for Place {
+    fn from(text: String) -> Place {
+        Place::from(text.as_str())
+    }
+}
+
+impl From<&String> for Place {
+    fn from(text: &String) -> Place {
+        Place::from(text.as_str())
+    }
+}
+
+/// The id that names a layer in an address: one that follows the id rule
+/// and is not `scene`.
+fn naming(id: &str) -> Option<Id> {
+    id.parse::<Id>()
+        .ok()
+        .filter(|id| id.as_ref() != crate::address::SCENE)
+}
+
+/// Keys with no leading `.`: a key or a selector, then `.key`s and
+/// selectors; or nothing.
+fn relative_keys<R>(input: &mut &str) -> Parsed<Vec<Step>, R> {
+    let selector = || {
+        delimited(
+            '[',
+            alt((
+                winnow::ascii::dec_uint.map(Step::Index),
+                crate::address::id.map(|id: &str| Step::Id(id.parse().expect("an id"))),
+            )),
+            ']',
+        )
+    };
+    let key = || crate::address::key.map(|k: &str| Step::Key(k.to_owned()));
+    let first = alt((key(), selector()));
+    let rest = repeat(0.., alt((selector(), preceded('.', key())))).fold(
+        Vec::new,
+        |mut v: Vec<Step>, s| {
+            v.push(s);
+            v
+        },
+    );
+    winnow::combinator::opt((first, rest))
+        .map(|steps| match steps {
+            None => Vec::new(),
+            Some((first, mut rest)) => {
+                rest.insert(0, first);
+                rest
+            }
+        })
+        .parse_next(input)
+}
 
 #[cfg(test)]
 #[path = "../tests/unit/diagnostic.rs"]

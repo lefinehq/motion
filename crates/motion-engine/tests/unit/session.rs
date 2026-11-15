@@ -220,7 +220,7 @@ fn a_missing_font_file_or_face_is_reported() {
     );
     let error = Session::open(&missing).expect("open").graph().unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref()),
+        (error.kind, error.path_text().as_deref()),
         (Kind::Io, Some("fonts[1]"))
     );
     let unknown = scene_with_fonts(
@@ -229,8 +229,8 @@ fn a_missing_font_file_or_face_is_reported() {
     );
     let error = Session::open(&unknown).expect("open").check().unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref()),
-        (Kind::UnknownName, Some("layers[0].font"))
+        (error.kind, error.path_text().as_deref()),
+        (Kind::UnknownName, Some("t.font"))
     );
 }
 

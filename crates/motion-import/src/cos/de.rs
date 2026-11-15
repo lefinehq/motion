@@ -9,7 +9,7 @@
 
 use std::fmt;
 
-use motion_format::{Diagnostic, Kind, Result};
+use motion_format::{Diagnostic, Kind, Place, Result};
 use serde::de::value::{MapDeserializer, SeqDeserializer};
 use serde::de::{self, Deserialize, Deserializer, IntoDeserializer, Visitor};
 use serde::forward_to_deserialize_any;
@@ -28,7 +28,7 @@ pub(crate) fn read<'de, T: Deserialize<'de>>(cos: &'de Cos) -> Result<T> {
     serde_path_to_error::deserialize(cos).map_err(|error| {
         let path = key_path(error.path());
         Diagnostic::new(Kind::Invalid, format!("text document: {}", error.inner()))
-            .at(path)
+            .at(Place::other(path))
             .expected("a text document as the format notes describe it")
     })
 }

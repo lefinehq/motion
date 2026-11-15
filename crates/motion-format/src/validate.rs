@@ -35,6 +35,7 @@ use crate::units::{Color, SPAN_EXPECTED, SignedTime, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
 use crate::{Comp, Content, Curve, ImageContent, Layer, Scene, fmt_num};
 
+use crate::Place;
 use crate::address::{ID_RULE, Id, SCENE};
 
 /// The only format version.
@@ -125,7 +126,10 @@ fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
     let layers = docs
         .iter()
         .enumerate()
-        .map(|(i, Object(layer_doc))| layer(layer_doc, context).map_err(|e| e.under(layer_path(i))))
+        .map(|(i, Object(layer_doc))| {
+            let id = layer_doc.id.as_deref().unwrap_or_default();
+            layer(layer_doc, context).map_err(|e| e.under(Place::layer(id, i)))
+        })
         .collect::<Result<Vec<_>>>()?;
     unique_ids(&layers)?;
     links(
@@ -142,9 +146,10 @@ fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
         "would be its own matte through its mattes",
         "mattes that never lead back to the layer",
     )?;
-    for (i, (layer, Object(doc))) in layers.iter().zip(docs).enumerate() {
+    for (layer, Object(doc)) in layers.iter().zip(docs) {
         let Object(written) = &doc.anim;
-        entrance_conflict(layer, &layers, context, written).map_err(|e| e.under(layer_path(i)))?;
+        entrance_conflict(layer, &layers, context, written)
+            .map_err(|e| e.under(Place::of_layer(&layer.id)))?;
     }
     Ok(layers)
 }
@@ -222,7 +227,7 @@ fn no_comp_draws_itself(comps: &[Comp]) -> Result<()> {
                     format!("composition `{id}` would draw itself through its layers"),
                 )
                 .at(COMP)
-                .under(layer_path(first))
+                .under(Place::of_layer(&start.layers[first].id))
                 .under(comp_path(&start.id))
                 .expected("compositions that never lead back to themselves"));
             }
@@ -383,7 +388,7 @@ fn links(
         let Some(target) = link(layer) else {
             continue;
         };
-        let place = |d: Diagnostic| d.at(key).under(layer_path(i));
+        let place = |d: Diagnostic| d.at(key).under(Place::of_layer(&layer.id));
         let mut next = index(target).ok_or_else(|| {
             place(Diagnostic::unknown(
                 "layer id",

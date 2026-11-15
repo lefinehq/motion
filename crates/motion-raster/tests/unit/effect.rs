@@ -47,21 +47,21 @@ fn unknown_names_wrong_types_and_ranges_are_reported_at_the_parameter() {
 
     let e = Effect::new("fill", &[("colour", ParamValue::Number(1.0))]).unwrap_err();
     assert_eq!(
-        (e.kind, e.path.as_deref()),
+        (e.kind, e.path_text().as_deref()),
         (Kind::UnknownName, Some("colour"))
     );
     assert_eq!(e.expected.as_deref(), Some("one of color, opacity"));
 
     let e = Effect::new("fill", &[("color", ParamValue::Number(1.0))]).unwrap_err();
     assert_eq!(
-        (e.kind, e.path.as_deref()),
+        (e.kind, e.path_text().as_deref()),
         (Kind::WrongType, Some("color"))
     );
     assert_eq!(e.expected.as_deref(), Some("color"));
 
     let e = Effect::new("fill", &[("opacity", ParamValue::Number(1.5))]).unwrap_err();
     assert_eq!(
-        (e.kind, e.path.as_deref()),
+        (e.kind, e.path_text().as_deref()),
         (Kind::OutOfRange, Some("opacity"))
     );
     assert_eq!(e.expected.as_deref(), Some("a number from 0 to 1"));

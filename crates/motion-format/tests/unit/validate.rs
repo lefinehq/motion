@@ -19,7 +19,7 @@ fn err(json: &str) -> Diagnostic {
 /// The kind and path of the error of `json`.
 fn fails(json: &str) -> (Kind, Option<String>) {
     let e = err(json);
-    (e.kind, e.path)
+    (e.kind, e.path_text())
 }
 
 /// `(kind, Some(path))`, to compare with [`fails`].
@@ -103,7 +103,10 @@ fn size_fps_and_bg_overrides_reach_the_scene() {
 #[test]
 fn version_must_be_one() {
     let e = err(r#"{"motion":2,"dur":"1s","layers":[]}"#);
-    assert_eq!((e.kind, e.path.as_deref()), (Kind::Invalid, Some("motion")));
+    assert_eq!(
+        (e.kind, e.path_text().as_deref()),
+        (Kind::Invalid, Some("motion"))
+    );
     assert_eq!(e.expected.as_deref(), Some("`1`"));
 }
 
@@ -123,7 +126,10 @@ fn fps_tells_a_wrong_type_from_a_bound() {
 #[test]
 fn shorthand_failures_keep_their_path_and_expected_form() {
     let e = err(r#"{"motion":1,"dur":"soon","layers":[]}"#);
-    assert_eq!((e.kind, e.path.as_deref()), (Kind::Syntax, Some("dur")));
+    assert_eq!(
+        (e.kind, e.path_text().as_deref()),
+        (Kind::Syntax, Some("dur"))
+    );
     assert_eq!(
         e.expected,
         "soon".parse::<Time>().unwrap_err().expected,
@@ -135,7 +141,7 @@ fn shorthand_failures_keep_their_path_and_expected_form() {
     );
     assert_eq!(
         fails(&scene(r#"{"id":"a","rect":"1x1","fill":"red"}"#)),
-        at(Kind::Syntax, "layers[0].fill")
+        at(Kind::Syntax, "a.fill")
     );
 }
 
@@ -148,15 +154,15 @@ fn a_layer_draws_exactly_one_content() {
     assert_eq!(both.message, neither.message);
     assert_eq!(both.expected, neither.expected);
     // The second content key is the one to remove.
-    assert_eq!(both.path.as_deref(), Some("layers[0].rect"));
-    assert_eq!(neither.path.as_deref(), Some("layers[0]"));
+    assert_eq!(both.path_text().as_deref(), Some("a.rect"));
+    assert_eq!(neither.path_text().as_deref(), Some("a"));
 }
 
 #[test]
 fn font_only_applies_to_text() {
     assert_eq!(
         fails(&scene(r#"{"id":"a","rect":"1x1","font":"Inter 9"}"#)),
-        at(Kind::Conflict, "layers[0].font")
+        at(Kind::Conflict, "a.font")
     );
 }
 
@@ -184,8 +190,8 @@ fn an_image_layer_names_its_file_and_fills_its_box() {
 fn an_image_needs_a_path_and_a_box() {
     let missing = err(&scene(r#"{"id":"a","image":"a.png"}"#));
     assert_eq!(
-        (missing.kind, missing.path.as_deref()),
-        (Kind::Missing, Some("layers[0]"))
+        (missing.kind, missing.path_text().as_deref()),
+        (Kind::Missing, Some("a"))
     );
     assert_eq!(
         missing.expected.as_deref(),
@@ -193,17 +199,17 @@ fn an_image_needs_a_path_and_a_box() {
     );
     let empty = err(&scene(r#"{"id":"a","image":" ","box":[1,1]}"#));
     assert_eq!(
-        (empty.kind, empty.path.as_deref()),
-        (Kind::Invalid, Some("layers[0].image"))
+        (empty.kind, empty.path_text().as_deref()),
+        (Kind::Invalid, Some("a.image"))
     );
     assert!(empty.expected.is_some());
     assert_eq!(
         fails(&scene(r#"{"id":"a","image":"a.png","box":[0,1]}"#)),
-        at(Kind::Invalid, "layers[0].box")
+        at(Kind::Invalid, "a.box")
     );
     assert_eq!(
         fails(&scene(r#"{"id":"a","image":3,"box":[1,1]}"#)),
-        at(Kind::WrongType, "layers[0].image")
+        at(Kind::WrongType, "a.image")
     );
 }
 
@@ -211,19 +217,19 @@ fn an_image_needs_a_path_and_a_box() {
 fn box_applies_to_text_and_images_only_and_an_image_is_its_only_content() {
     assert_eq!(
         fails(&scene(r#"{"id":"a","rect":"1x1","box":[1,1]}"#)),
-        at(Kind::Conflict, "layers[0].box")
+        at(Kind::Conflict, "a.box")
     );
     assert_eq!(
         fails(&scene(
             r#"{"id":"a","rect":"1x1","image":"a.png","box":[1,1]}"#
         )),
-        at(Kind::Conflict, "layers[0].image")
+        at(Kind::Conflict, "a.image")
     );
     assert_eq!(
         fails(&scene(
             r#"{"id":"a","image":"a.png","box":[1,1],"font":"Inter 9"}"#
         )),
-        at(Kind::Conflict, "layers[0].font")
+        at(Kind::Conflict, "a.font")
     );
 }
 
@@ -231,13 +237,13 @@ fn box_applies_to_text_and_images_only_and_an_image_is_its_only_content() {
 fn ids_follow_the_id_rule_and_are_unique() {
     let e = err(&scene(r#"{"id":"Bad Id","rect":"1x1"}"#));
     assert_eq!(
-        (e.kind, e.path.as_deref()),
+        (e.kind, e.path_text().as_deref()),
         (Kind::Invalid, Some("layers[0].id"))
     );
     assert_eq!(e.expected.as_deref(), Some(ID_RULE));
     let e = err(&scene(r#"{"id":"scene","rect":"1x1"}"#));
     assert_eq!(
-        (e.kind, e.path.as_deref()),
+        (e.kind, e.path_text().as_deref()),
         (Kind::Conflict, Some("layers[0].id"))
     );
     assert!(e.expected.is_some());
@@ -253,8 +259,8 @@ fn an_entrance_names_a_preset_that_exists() {
         r#"{"id":"a","rect":"10x10"},{"id":"b","rect":"10x10","in":"zoom"}"#,
     ));
     assert_eq!(
-        (e.kind, e.path.as_deref()),
-        (Kind::UnknownName, Some("layers[1].in"))
+        (e.kind, e.path_text().as_deref()),
+        (Kind::UnknownName, Some("b.in"))
     );
     assert!(e.expected.is_some_and(|names| names.contains("fade-up")));
 }
@@ -265,7 +271,7 @@ fn a_value_that_is_not_finite_is_not_a_number() {
         fails(&scene(
             r#"{"id":"a","rect":"1x1","anim":{"x":"inf -> 1 @0-5f"}}"#,
         )),
-        at(Kind::Syntax, "layers[0].anim.x")
+        at(Kind::Syntax, "a.anim.x")
     );
 }
 
@@ -357,7 +363,7 @@ fn a_parent_chain_that_ends_is_fine_and_a_loop_is_not() {
         fails(&scene(
             r#"{"id":"a","rect":"1x1","parent":"b"},{"id":"b","rect":"1x1","parent":"c"},{"id":"c","rect":"1x1","parent":"b"}"#
         )),
-        at(Kind::Invalid, "layers[1].parent")
+        at(Kind::Invalid, "b.parent")
     );
 }
 
@@ -390,7 +396,7 @@ fn a_matte_names_a_layer_of_its_list_and_a_mode() {
         fails(&scene(
             r#"{"id":"a","rect":"1x1","matte":"b"},{"id":"b","rect":"1x1","matte":"c"},{"id":"c","rect":"1x1","matte":"b"}"#
         )),
-        at(Kind::Invalid, "layers[1].matte")
+        at(Kind::Invalid, "b.matte")
     );
 }
 
@@ -428,7 +434,7 @@ fn a_preset_may_scale_but_not_place_with_one_number() {
     );
     let e = err(r#"{"motion":1,"dur":"1s","presets":{"jump":{"position":5}},"layers":[]}"#);
     assert_eq!(
-        (e.kind, e.path.as_deref()),
+        (e.kind, e.path_text().as_deref()),
         (Kind::WrongType, Some("presets.jump.position"))
     );
     let e = err(r#"{"motion":1,"dur":"1s","presets":{"far":{"scale":"+d"}},"layers":[]}"#);

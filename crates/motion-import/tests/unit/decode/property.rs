@@ -345,7 +345,11 @@ fn refuses_a_value_shorter_than_its_dimensions() {
     );
     let error = read(&body, true).0.unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref(), error.expected.as_deref()),
+        (
+            error.kind,
+            error.path_text().as_deref(),
+            error.expected.as_deref()
+        ),
         (
             Kind::Invalid,
             Some("LIST:tdgp/ADBE Position/cdat"),
@@ -359,7 +363,7 @@ fn refuses_a_stream_without_its_metadata() {
     let body = group_body(1, "", &[tdmn("ADBE Opacity"), tdbs(&[cdat(&[1.0])])]);
     let error = read(&body, true).0.unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref()),
+        (error.kind, error.path_text().as_deref()),
         (Kind::Missing, Some("LIST:tdgp/ADBE Opacity"))
     );
 }
@@ -580,7 +584,11 @@ fn refuses_keyframes_the_list_cannot_hold() {
     let body = group_body(1, "", &[tdmn("ADBE Opacity"), short]);
     let error = read(&body, true).0.unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref(), error.expected.as_deref()),
+        (
+            error.kind,
+            error.path_text().as_deref(),
+            error.expected.as_deref()
+        ),
         (
             Kind::Invalid,
             Some("LIST:tdgp/ADBE Opacity/LIST:list/ldat"),
@@ -592,7 +600,7 @@ fn refuses_keyframes_the_list_cannot_hold() {
     let body = group_body(1, "", &[tdmn("ADBE Scale"), small]);
     let error = read(&body, true).0.unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref()),
+        (error.kind, error.path_text().as_deref()),
         (Kind::Invalid, Some("LIST:tdgp/ADBE Scale/LIST:list/ldat"))
     );
 
@@ -701,7 +709,7 @@ fn refuses_a_path_keyframe_without_its_path() {
     let body = group_body(1, "", &[tdmn("ADBE Mask Shape"), list(b"om-s", &[stream])]);
     let error = read(&body, true).0.unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref()),
+        (error.kind, error.path_text().as_deref()),
         (
             Kind::Missing,
             Some("LIST:tdgp/ADBE Mask Shape/LIST:tdbs/LIST:list")
@@ -768,7 +776,7 @@ fn refuses_an_orientation_without_its_angles() {
     let body = group_body(1, "", &[tdmn("ADBE Orientation"), wrapper]);
     let error = read(&body, true).0.unwrap_err();
     assert_eq!(
-        (error.kind, error.path.as_deref()),
+        (error.kind, error.path_text().as_deref()),
         (Kind::Missing, Some("LIST:tdgp/ADBE Orientation"))
     );
     let stream = tdbs(&[
@@ -801,7 +809,7 @@ fn text_document_errors_name_the_key_path_inside_the_body() {
     let error = read(&body, true).0.unwrap_err();
     assert_eq!(error.kind, Kind::Syntax);
     assert_eq!(
-        error.path.as_deref(),
+        error.path_text().as_deref(),
         Some("LIST:tdgp/ADBE Text Document/LIST:btdk")
     );
     let missing = list(
