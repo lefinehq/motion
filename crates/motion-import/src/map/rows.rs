@@ -175,6 +175,11 @@ const MODES: &[(i64, &str)] = &[
 ];
 const COLORIZE: &[(i64, &str)] = &[(0, "adjust"), (1, "colorize")];
 const EXPOSURE_SPACES: &[(i64, &str)] = &[(0, "linear"), (1, "gamma")];
+const DIMENSIONS: &[(i64, &str)] = &[(1, "both"), (2, "horizontal"), (3, "vertical")];
+const EDGES: &[(i64, &str)] = &[(0, "transparent"), (1, "repeat")];
+const SHADOW_ONLY: &[(i64, &str)] = &[(0, "shown"), (1, "hidden")];
+const GLOW_COMPOSITE: &[(i64, &str)] =
+    &[(1, "with-original"), (2, "with-original"), (3, "glow-only")];
 const CHANNELS: &[(i64, &str)] = &[
     (1, "rgb"),
     (2, "red"),
@@ -191,7 +196,7 @@ const SHAPES_OF_RANGE: &[(i64, &str)] = &[
     (6, "smooth"),
 ];
 
-use Convert::{Color, Number, Path, Percent, Point, PointPercent};
+use Convert::{Color, Level, Number, Path, Percent, Point, PointPercent};
 use Missing::{Absent, CompCentre, Parameter, SourceCentre};
 
 /// The rows of the transform effect that do not depend on whether its scale
@@ -346,7 +351,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 18] = [
+pub(super) static KINDS: [Kind; 24] = [
     Kind {
         match_name: "ADBE Vector Group",
         item: "group",
@@ -1076,6 +1081,300 @@ pub(super) static KINDS: [Kind; 18] = [
                 Absent,
             ),
             row("ADBE Invert-0002", To::Prop("blend"), Percent, Absent),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Gaussian Blur 2",
+        item: "gaussian-blur",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Gaussian Blur 2-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Gaussian Blur 2-0001",
+                To::Prop("blurriness"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Gaussian Blur 2-0002",
+                To::Setting("dimensions", DIMENSIONS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Gaussian Blur 2-0003",
+                To::Setting("edges", EDGES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Fast Blur",
+        item: "gaussian-blur",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Fast Blur-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fast Blur-0001",
+                To::Prop("blurriness"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Fast Blur-0002",
+                To::Setting("dimensions", DIMENSIONS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Fast Blur-0003",
+                To::Setting("edges", EDGES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Box Blur2",
+        item: "box-blur",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Box Blur2-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Box Blur2-0001", To::Prop("radius"), Number, Parameter),
+            row(
+                "ADBE Box Blur2-0002",
+                To::Prop("iterations"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Box Blur2-0003",
+                To::Setting("dimensions", DIMENSIONS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Box Blur2-0004",
+                To::Setting("edges", EDGES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Drop Shadow",
+        item: "drop-shadow",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Drop Shadow-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Drop Shadow-0001", To::Prop("color"), Color, Parameter),
+            row(
+                "ADBE Drop Shadow-0002",
+                To::Prop("opacity"),
+                Level,
+                Parameter,
+            ),
+            row(
+                "ADBE Drop Shadow-0003",
+                To::Prop("direction"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Drop Shadow-0004",
+                To::Prop("distance"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Drop Shadow-0005",
+                To::Prop("softness"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Drop Shadow-0006",
+                To::Setting("layer", SHADOW_ONLY),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Glo2",
+        item: "glow",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Glo2-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Glo2-0001",
+                To::OnlyDefault("a glow based on alpha"),
+                Number,
+                Parameter,
+            ),
+            row("ADBE Glo2-0002", To::Prop("threshold"), Level, Parameter),
+            row("ADBE Glo2-0003", To::Prop("radius"), Number, Parameter),
+            row("ADBE Glo2-0004", To::Prop("intensity"), Number, Parameter),
+            row(
+                "ADBE Glo2-0005",
+                To::Setting("composite", GLOW_COMPOSITE),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Glo2-0006",
+                To::OnlyDefault("a glow operation other than add"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Glo2-0007",
+                To::OnlyDefault("glow colours other than the original's"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Glo2-0008",
+                To::Ignore(
+                    "the A and B colours, which only glow colours other than the original's use",
+                ),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Glo2-0009",
+                To::Ignore(
+                    "the A and B colours, which only glow colours other than the original's use",
+                ),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Glo2-0010",
+                To::Ignore(
+                    "the A and B colours, which only glow colours other than the original's use",
+                ),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Glo2-0011",
+                To::Ignore(
+                    "the A and B colours, which only glow colours other than the original's use",
+                ),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Glo2-0012",
+                To::Ignore(
+                    "the A and B colours, which only glow colours other than the original's use",
+                ),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Glo2-0013",
+                To::Ignore(
+                    "the A and B colours, which only glow colours other than the original's use",
+                ),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Glo2-0014",
+                To::Setting("dimensions", DIMENSIONS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Sharpen",
+        item: "sharpen",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Sharpen-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Sharpen-0001", To::Prop("amount"), Number, Parameter),
             row(
                 "ADBE Force CPU GPU",
                 To::Ignore("where the original renders it"),
