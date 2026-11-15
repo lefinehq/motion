@@ -55,6 +55,7 @@ Each step is one pull request, with its tests and docs.
    - 30 briefs in `bench/briefs/`, grouped by use case: ads, launch and feature videos, explainers, social.
    - A runner records each brief's tokens, agent steps, wall-clock time, render time and `check` findings. It scores nothing: taste is judged by people ([D22](../design/decisions.md#d22-no-ai-judge)).
    - These are the briefs the [public scoreboard](../design/quality.md#the-public-scoreboard) will use.
+   - Done 2026-11-15: [`bench/`](../../bench/README.md) holds the briefs, and `motion bench` runs an agent on them.
 
 ## Out of scope
 

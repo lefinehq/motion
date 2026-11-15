@@ -6,6 +6,7 @@ mod commands;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Duration;
 
 use clap::builder::PossibleValuesParser;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -105,6 +106,24 @@ enum Command {
         /// Print the outcomes as JSON.
         #[arg(long)]
         json: bool,
+    },
+    /// Run an agent on every brief of a set and record what each run cost
+    /// and what `check` finds in the scene it wrote; scores nothing.
+    Bench {
+        /// The folder of briefs: Markdown files, in a folder per use case.
+        briefs: PathBuf,
+        /// The agent: a shell command, run in each brief's own folder with
+        /// the brief on stdin and its path in `MOTION_BRIEF`. It writes
+        /// `scene.json` there; its last line of output may be a JSON object
+        /// with its `tokens` and `steps`, or `usage` and `num_turns`.
+        #[arg(long)]
+        agent: String,
+        /// The folder for the runs: one folder per brief, and `results.jsonl`.
+        #[arg(short, long)]
+        out: PathBuf,
+        /// Seconds an agent may take on one brief before it is stopped.
+        #[arg(long, default_value_t = 1800)]
+        timeout: u64,
     },
     /// List what a scene's layers and slots do, with what each role holds.
     Roles {
@@ -309,6 +328,7 @@ impl Command {
             | Command::Export { scene, .. } => scene,
             Command::Import { project, .. } | Command::Inspect { project, .. } => project,
             Command::Fidelity { manifest, .. } | Command::Batch { manifest, .. } => manifest,
+            Command::Bench { briefs, .. } => briefs,
             Command::Fonts {
                 command: FontsCommand::Fetch { scene, .. },
             } => scene,
@@ -339,6 +359,12 @@ fn main() -> ExitCode {
             check,
             json,
         } => commands::batch::run(&manifest, check, json),
+        Command::Bench {
+            briefs,
+            agent,
+            out,
+            timeout,
+        } => commands::bench::run(&briefs, &agent, &out, Duration::from_secs(timeout)),
         Command::At { scene, time, ids } => commands::at::run(&scene, &time, &ids),
         Command::Edit { scene, line } => commands::edit::run(&scene, &line),
         Command::Render {

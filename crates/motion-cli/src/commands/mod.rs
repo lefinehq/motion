@@ -3,6 +3,7 @@
 
 pub mod at;
 pub mod batch;
+pub mod bench;
 pub mod check;
 pub mod diff;
 pub mod edit;
