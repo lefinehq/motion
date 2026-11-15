@@ -117,6 +117,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Fixed
 
+- An empty path reads back: the format wrote the path with no vertex as `""` and then rejected it, so a project with a path of no vertices (a shape group whose path was cleared) imported into a scene the format refused. As in SVG, `""` is now the path with no vertex, which draws nothing. On the local corpus, one sample failed to import this way; it now measures at 5.65% failing from when it has settled.
 - The import reads the adjustment switch on shape and text layers, not only on solids: the layer's content says where its effects apply to what is below it, and without an effect the scene draws it draws nothing. Seven corpus samples hold 400 such shape layers, which drew as plain shapes. Mean settled error over them 0.369 → 0.329; m771 0.466 → 0.196, where a white panel hid the title.
 - A null whose anchor the project leaves out rests it at its top-left corner, not its centre, so the layers it parents are no longer 50 px up and left of where the project draws them. On the local corpus, 10 samples draw closer to their reference and none passes or fails because of it; on two local `.mogrt` templates the layers now land on the preview's.
 - A template's point control that drives a position kept as separate dimensions no longer writes the composition's centre over the layer's own position: the position stays as it is, and the report names the control as left out.

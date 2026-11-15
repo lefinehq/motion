@@ -191,7 +191,7 @@ Each kind lists its properties in `crates/motion-format/src/item.rs`; this table
 | `stroke` | `color` | `color`, `opacity`, `width`, `miter` | `cap`: `butt`, `round`, `square`; `join`: `miter`, `round`, `bevel` |
 | `trim` | `end` | `end`, `start`, `offset` | `mode`: `each`, `joined` |
 
-`size` splits into `width` and `height`, and `position` into `x` and `y`, for tracks. A rectangle's `round` is capped at half its shorter side. A `path` is SVG path data with absolute `M`, `L`, `C` and `Z` (`"M0,0 C40,0 80,40 80,80 Z"`); a track on it uses a key list, and every key keeps the same number of vertices and the same closure, so the outline moves vertex by vertex.
+`size` splits into `width` and `height`, and `position` into `x` and `y`, for tracks. A rectangle's `round` is capped at half its shorter side. A `path` is SVG path data with absolute `M`, `L`, `C` and `Z` (`"M0,0 C40,0 80,40 80,80 Z"`), and, as in SVG, `""` is the path with no vertex, which draws nothing; a track on it uses a key list, and every key keeps the same number of vertices and the same closure, so the outline moves vertex by vertex.
 
 A `trim` keeps the stretch from `start` to `end`, shares of the length from 0 to 1 (`{"trim":0.5}` keeps the first half), swapped if `start` is after `end`. `offset` moves the stretch along in degrees, 360 once around; a stretch that runs past the end goes on around a closed outline as one line and continues an open one as a second piece. `each` cuts every outline the same way, `joined` cuts them as one line in order. Equal `start` and `end` draw nothing, not even a cap. A cut closed outline is open: a stroke ends in its caps, and a fill closes it with a straight line. Lengths are arc lengths in the space each outline sits in.
 

@@ -4,7 +4,8 @@
 //! A path is kept as a flat list of numbers, six per vertex, so a track
 //! interpolates two paths of the same shape the way it interpolates points.
 //! The string form is a subset of SVG path data, absolute commands only:
-//! `M x,y`, `L x,y`, `C x1,y1 x2,y2 x,y` and `Z`.
+//! `M x,y`, `L x,y`, `C x1,y1 x2,y2 x,y` and `Z`. As in SVG, empty path
+//! data is the path with no vertex, which draws nothing.
 
 use std::fmt;
 use std::str::FromStr;
@@ -16,7 +17,7 @@ use winnow::prelude::*;
 
 /// The accepted form of a path.
 pub const PATH_FORM: &str = "SVG path data with absolute commands, e.g. `M0,0 C10,0 20,10 20,20 L0,20 Z`: `M` once, \
-     then `L x,y` or `C x1,y1 x2,y2 x,y`, and `Z` to close";
+     then `L x,y` or `C x1,y1 x2,y2 x,y`, and `Z` to close; empty for no path";
 
 /// Numbers per vertex: point, arriving handle, leaving handle.
 const STRIDE: usize = 6;
@@ -146,6 +147,10 @@ enum Segment {
 }
 
 fn path(input: &mut &str) -> Parsed<Path, Problem> {
+    if input.trim().is_empty() {
+        *input = "";
+        return Ok(Path::EMPTY);
+    }
     let start = preceded((blank0, 'M', blank0), cut_err(point))
         .context(Problem::NoMove)
         .parse_next(input)?;

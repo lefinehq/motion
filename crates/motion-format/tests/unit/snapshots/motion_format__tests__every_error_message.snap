@@ -286,8 +286,8 @@ expression: "report.join(\"\\n\\n\")"
 `{"stroke":"#000","miter":0.5}` → a.shapes[0].miter: value 0.5 is outside 1..; expected a number of at least 1
 `{"fill":"#fff","id":"Bad"}` → a.shapes[0].id: invalid id `Bad`; expected ids use lowercase letters, digits, `-` and `_`, starting with a letter
 `{"fill":"#fff","id":"f"},{"group":[{"fill":"#000","id":"f"}]}` → a.shapes[1].group[0].id: duplicate item id `f`; expected every item of a layer to have its own id
-`{"path":[1,2]}` → a.shapes[0].path: a path is written as a string of path data, not numbers; expected SVG path data with absolute commands, e.g. `M0,0 C10,0 20,10 20,20 L0,20 Z`: `M` once, then `L x,y` or `C x1,y1 x2,y2 x,y`, and `Z` to close
-`{"path":"M0,0 Q1,1 2,2"}` → a.shapes[0].path: `M0,0 Q1,1 2,2` has a command other than `L`, `C` or `Z`; expected SVG path data with absolute commands, e.g. `M0,0 C10,0 20,10 20,20 L0,20 Z`: `M` once, then `L x,y` or `C x1,y1 x2,y2 x,y`, and `Z` to close
+`{"path":[1,2]}` → a.shapes[0].path: a path is written as a string of path data, not numbers; expected SVG path data with absolute commands, e.g. `M0,0 C10,0 20,10 20,20 L0,20 Z`: `M` once, then `L x,y` or `C x1,y1 x2,y2 x,y`, and `Z` to close; empty for no path
+`{"path":"M0,0 Q1,1 2,2"}` → a.shapes[0].path: `M0,0 Q1,1 2,2` has a command other than `L`, `C` or `Z`; expected SVG path data with absolute commands, e.g. `M0,0 C10,0 20,10 20,20 L0,20 Z`: `M` once, then `L x,y` or `C x1,y1 x2,y2 x,y`, and `Z` to close; empty for no path
 `{"path":"M0,0 L1,1","anim":{"path":"M0,0 L1,1 -> M0,0 L2,2 @0-5f"}}` → a.shapes[0].anim.path: `path` is a path, which a key list animates; expected a list of keys like [[0, 0], ["12f", 1, "ease-out"]]
 `{"path":"M0,0 L1,1","anim":{"path":[{"t":0,"v":"M0,0 L1,1"},{"t":5,"v":"M0,0 L1,1 Z"}]}}` → a.shapes[0].anim.path[1]: a path key differs in vertex count or closure from the first key; expected keys whose paths have the same vertices, all open or all closed
 `{"path":"M0,0 L1,1","anim":{"path":[{"t":0,"v":"M0,0 L1,1","curve":["ease","ease"]}]}}` → a.shapes[0].anim.path[0].curve: `path` is a path, so one curve eases every vertex together; expected one curve

@@ -85,10 +85,14 @@ fn writing_gives_cubics_that_read_back_the_same() {
 }
 
 #[test]
-fn an_empty_path_writes_nothing() {
+fn an_empty_path_writes_nothing_and_reads_back() {
     let path = Path::new(false, []);
     assert!(path.is_empty());
     assert_eq!(path.to_string(), "");
+    // As SVG's empty path data: the path with no vertex.
+    for text in ["", "  "] {
+        assert_eq!(text.parse::<Path>().unwrap(), Path::EMPTY, "{text:?}");
+    }
 }
 
 #[test]
@@ -155,12 +159,16 @@ proptest! {
     }
 
     #[test]
-    fn any_open_path_round_trips(vertices in prop::collection::vec(any_vertex(), 1..6)) {
+    fn any_open_path_round_trips(vertices in prop::collection::vec(any_vertex(), 0..6)) {
         // An open path's first arriving and last leaving handle draw nothing,
         // so they are not written.
         let mut vertices = vertices;
-        vertices[0].arriving = [0.0; 2];
-        vertices.last_mut().unwrap().leaving = [0.0; 2];
+        if let Some(first) = vertices.first_mut() {
+            first.arriving = [0.0; 2];
+        }
+        if let Some(last) = vertices.last_mut() {
+            last.leaving = [0.0; 2];
+        }
         let path = Path::new(false, vertices);
         prop_assert_eq!(path.to_string().parse::<Path>().unwrap(), path);
     }
