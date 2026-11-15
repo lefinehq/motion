@@ -45,6 +45,7 @@ Each step is one pull request, with its tests and docs.
 4. **The pixel gates.**
    - `contrast` and `flash` on a render at a quarter of the size: the frame without the text layer for contrast, and the mean luminance of each frame's cells for flashing.
    - `motion check` runs them; `motion-query` stays free of rendering.
+   - Contrast is sampled twice a second and measured on the ratio 90% of a layer's glyph coverage reaches. Flash counts a change of a cell of a 4 × 4 grid, from its last turn, as WCAG 2 does, with the darker side below 0.8.
 5. **Calibration.**
    - A planted-defect scene per rule in the tests: each trips its rule and no other.
    - Every rule over the corpus's imported templates, measured locally. The share of templates each rule fires on is recorded in the docs.

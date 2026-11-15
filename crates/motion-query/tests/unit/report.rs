@@ -22,6 +22,8 @@ fn violation(severity: Severity, fix: Option<&str>) -> Violation {
 #[case(Code::TextHold, "text_hold")]
 #[case(Code::Easing, "easing")]
 #[case(Code::Crowd, "crowd")]
+#[case(Code::Contrast, "contrast")]
+#[case(Code::Flash, "flash")]
 fn codes_display_as_their_names(#[case] code: Code, #[case] name: &str) {
     assert_eq!(code.to_string(), name);
 }
@@ -87,6 +89,14 @@ fn only_errors_count_for_has_errors() {
 #[case::below_a_limit(
     Measure::Below { value: 0.4, limit: 1.3, unit: Unit::Seconds },
     "0.4s <1.3"
+)]
+#[case::a_contrast_ratio(
+    Measure::Below { value: 2.1, limit: 4.5, unit: Unit::Ratio },
+    "2.1:1 <4.5"
+)]
+#[case::flashes_a_second(
+    Measure::Above { value: 5.0, limit: 3.0, unit: Unit::PerSecond },
+    "5/s >3"
 )]
 fn measures_print_their_value_unit_and_limit(#[case] measure: Measure, #[case] printed: &str) {
     assert_eq!(measure.to_string(), printed);

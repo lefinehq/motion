@@ -30,6 +30,11 @@ pub enum Code {
     Easing,
     /// More layers move on their own at once than the eye can follow.
     Crowd,
+    /// A text layer's glyphs stand out too little from what is drawn
+    /// behind them.
+    Contrast,
+    /// A quarter or more of the frame flashes more often than is safe.
+    Flash,
 }
 
 /// What a finding measured, as the report prints it after the frames.
@@ -69,6 +74,12 @@ pub enum Unit {
     /// A plain number: a ratio or a count.
     #[strum(serialize = "")]
     Number,
+    /// A contrast ratio, against 1: `2.1:1`.
+    #[strum(serialize = ":1")]
+    Ratio,
+    /// Times a second.
+    #[strum(serialize = "/s")]
+    PerSecond,
 }
 
 impl fmt::Display for Measure {
@@ -133,6 +144,12 @@ impl Report {
         self.violations
             .iter()
             .any(|v| v.severity == Severity::Error)
+    }
+
+    /// Adds `other`'s violations after this report's, and its passes.
+    pub fn join(&mut self, other: Report) {
+        self.violations.extend(other.violations);
+        self.passed += other.passed;
     }
 }
 
