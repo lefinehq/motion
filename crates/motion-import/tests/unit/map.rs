@@ -289,6 +289,46 @@ mod effects {
         import(&project, &Options::default())
     }
 
+    /// Like [`imported`], with the shape layer's adjustment switch on.
+    fn adjusting_shape(effects: Vec<Group>) -> Import {
+        let mut shape = layer(1, "Shape", vec![]);
+        shape.kind = LayerKind::Shape;
+        shape.switches.adjustment = true;
+        shape.properties.children = vec![
+            Child::Group(group(
+                "ADBE Root Vectors Group",
+                vec![Child::Group(group("ADBE Vector Shape - Rect", vec![]))],
+            )),
+            Child::Group(group(
+                "ADBE Effect Parade",
+                effects.into_iter().map(Child::Group).collect(),
+            )),
+        ];
+        let mut project = project(vec![(2, "Main", comp(vec![shape], 2.0))]);
+        project.effects.insert("ADBE Geometry2".into(), geometry());
+        import(&project, &Options::default()).expect("imports")
+    }
+
+    #[test]
+    fn a_shape_adjustment_layer_adjusts_where_its_shapes_are() {
+        let import = adjusting_shape(vec![transform(vec![number("ADBE Geometry2-0007", 90.0)])]);
+        let layer = &import.json["layers"][0];
+        assert_eq!(layer["adjust"], true);
+        assert!(layer["shapes"].is_array(), "{layer}");
+        assert_eq!(layer["fx"][0]["rotate"], 90);
+    }
+
+    #[test]
+    fn a_shape_adjustment_layer_without_a_drawn_effect_draws_nothing() {
+        let import = adjusting_shape(vec![group("ADBE Lens Flare", vec![])]);
+        let layer = &import.json["layers"][0];
+        assert_eq!(layer["pivot"], true);
+        assert!(
+            layer.get("shapes").is_none() && layer.get("adjust").is_none(),
+            "{layer}"
+        );
+    }
+
     /// The transform effect holding `properties`.
     fn transform(properties: Vec<Property>) -> Group {
         group(
