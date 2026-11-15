@@ -23,9 +23,16 @@ pub(crate) enum Convert {
     Point,
     /// A vector in percent, to a point of fractions.
     PointPercent,
-    /// A point in fractions of a layer's size, as an effect stores its
-    /// points, to pixels of a layer that size.
-    Sized([f64; 2]),
+    /// A point in fractions of a layer's effect space, as an effect stores
+    /// its points, to pixels of the layer: times the space's `size`, less
+    /// where the layer's own origin sits in that space, its `origin`.
+    Sized {
+        /// The effect space's size: the source's, else the composition's.
+        size: [f64; 2],
+        /// The layer's origin in the effect space: the top left for a
+        /// layer with a source, the middle for a shape or text layer.
+        origin: [f64; 2],
+    },
     /// A colour, to `[r, g, b, a]`.
     Color,
     /// A bezier path, to SVG path data.
@@ -40,8 +47,17 @@ impl Convert {
             Convert::Percent | Convert::PointPercent => 0.01,
             Convert::Level => 1.0 / 255.0,
             Convert::Times(k) => k,
-            Convert::Sized(size) => size[dim.min(1)],
+            Convert::Sized { size, .. } => size[dim.min(1)],
             _ => 1.0,
+        }
+    }
+
+    /// What the scene takes away from the project's value times
+    /// [`Convert::factor`] for the component `dim`; speeds ignore it.
+    pub(crate) fn offset(self, dim: usize) -> f64 {
+        match self {
+            Convert::Sized { origin, .. } => origin[dim.min(1)],
+            _ => 0.0,
         }
     }
 
@@ -50,7 +66,10 @@ impl Convert {
         match self {
             Convert::Point => Convert::Number,
             Convert::PointPercent => Convert::Percent,
-            Convert::Sized(size) => Convert::Sized([size[dim.min(1)]; 2]),
+            Convert::Sized { size, origin } => Convert::Sized {
+                size: [size[dim.min(1)]; 2],
+                origin: [origin[dim.min(1)]; 2],
+            },
             other => other,
         }
     }
@@ -58,27 +77,27 @@ impl Convert {
     /// How many components the scene value has, for eases per component.
     fn dims(self) -> usize {
         match self {
-            Convert::Point | Convert::PointPercent | Convert::Sized(_) => 2,
+            Convert::Point | Convert::PointPercent | Convert::Sized { .. } => 2,
             _ => 1,
         }
     }
 
     /// The scene value of `value`, or `None` when it is not of this kind.
     pub(crate) fn value(self, value: &Value) -> Option<Json> {
-        let factor = |dim| self.factor(dim);
+        let scene = |n: f64, dim| n * self.factor(dim) - self.offset(dim);
         match (self, value) {
             (
                 Convert::Number
                 | Convert::Percent
                 | Convert::Level
                 | Convert::Times(_)
-                | Convert::Sized(_),
+                | Convert::Sized { .. },
                 Value::Number(n),
-            ) => Some(num(n * factor(0))),
+            ) => Some(num(scene(*n, 0))),
             (
-                Convert::Point | Convert::PointPercent | Convert::Sized(_),
+                Convert::Point | Convert::PointPercent | Convert::Sized { .. },
                 Value::Vector2([x, y]) | Value::Vector3([x, y, _]),
-            ) => Some(json!([num(x * factor(0)), num(y * factor(1))])),
+            ) => Some(json!([num(scene(*x, 0)), num(scene(*y, 1))])),
             (Convert::Color, Value::Color(color)) => Some(color_json(color)),
             (Convert::Path, Value::Path(path)) => Some(Json::String(svg(path))),
             _ => None,

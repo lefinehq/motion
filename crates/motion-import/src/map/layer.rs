@@ -98,6 +98,12 @@ impl<'p> Walk<'p> {
                 Some(ItemKind::Footage(f)) => [f64::from(f.width), f64::from(f.height)],
                 _ => [f64::from(composition.width), f64::from(composition.height)],
             },
+            origin: match (source, layer.kind) {
+                (None, LayerKind::Shape | LayerKind::Text) => {
+                    half(f64::from(composition.width), f64::from(composition.height))
+                }
+                _ => [0.0, 0.0],
+            },
             effect: None,
         };
         let mut out = Out::default();

@@ -287,7 +287,7 @@ fn project_value(
         Convert::Number | Convert::Percent | Convert::Level | Convert::Times(_) => {
             (ValueType::Number, false)
         }
-        Convert::Point | Convert::PointPercent | Convert::Sized(_) => (ValueType::Point, true),
+        Convert::Point | Convert::PointPercent | Convert::Sized { .. } => (ValueType::Point, true),
         Convert::Color => (ValueType::Color, false),
         Convert::Path => return Err("a path, which the export does not write yet".into()),
     };
@@ -310,7 +310,7 @@ fn project_value(
         .components()
         .iter()
         .enumerate()
-        .map(|(i, n)| n / convert.factor(i))
+        .map(|(i, n)| (n + convert.offset(i)) / convert.factor(i))
         .collect();
     if numbers.iter().any(|n| !n.is_finite()) {
         return Err("a value that is not a finite number".into());
