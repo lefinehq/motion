@@ -289,7 +289,9 @@ fn project_value(
         }
         Convert::Point | Convert::PointPercent | Convert::Sized { .. } => (ValueType::Point, true),
         Convert::Color => (ValueType::Color, false),
-        Convert::Path => return Err("a path, which the export does not write yet".into()),
+        Convert::Path | Convert::PathIn(_) => {
+            return Err("a path, which the export does not write yet".into());
+        }
     };
     let parsed = match json {
         Json::String(text) => motion_format::Value::parse(text, ty, broadcast),

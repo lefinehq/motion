@@ -24,6 +24,7 @@ mod ids;
 mod items;
 pub(crate) mod keys;
 mod layer;
+mod masks;
 mod panel;
 mod report;
 mod roles;

@@ -252,6 +252,24 @@ pub struct Group {
     pub hidden: bool,
     /// Its groups and properties, in file order.
     pub children: Vec<Child>,
+    /// A mask's settings, on an `ADBE Mask Atom` group.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mask: Option<MaskSettings>,
+}
+
+/// The settings of a mask, from its `mkif`
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#mkif)).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct MaskSettings {
+    /// It covers what is outside its path.
+    pub inverted: bool,
+    /// Its motion blur: 0 as the layer's, 1 off, 2 on.
+    pub motion_blur: u8,
+    /// Its feather falls off linearly instead of smoothly.
+    pub linear_falloff: bool,
+    /// How it combines with the masks above it: 0 none, 1 add, 2 subtract,
+    /// 3 intersect, 4 lighten, 5 darken, 6 difference.
+    pub mode: u32,
 }
 
 impl Group {

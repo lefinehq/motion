@@ -39,6 +39,9 @@ pub(super) struct Place<'p> {
     /// middle for a shape or text layer, whose content is drawn about its
     /// origin in a box the size of its composition.
     pub origin: [f64; 2],
+    /// What one unit of the layer's mask paths spans, in px: its source's
+    /// size, or 1 on a layer without a source, whose masks are in px.
+    pub mask_space: [f64; 2],
     /// The definition of the effect being mapped, if any.
     pub effect: Option<&'p EffectDefinition>,
 }
@@ -506,6 +509,9 @@ impl Walk<'_> {
         let mut keys = Map::new();
         keys.insert(kind.item.into(), primary);
         keys.extend(out.finish());
+        if let Some(settings) = group.mask {
+            self.mask(settings, &mut keys, &place);
+        }
         if !group.enabled {
             keys.insert("hidden".into(), json!(true));
         }
@@ -688,12 +694,13 @@ fn convert(row: &Row, place: &Place<'_>) -> Convert {
         .effect
         .and_then(|effect| effect.parameter(row.match_name))
         .is_some_and(|parameter| matches!(parameter.control, Control::Point { .. }));
-    match point {
-        true => Convert::Sized {
+    match (point, row.convert) {
+        (true, _) => Convert::Sized {
             size: place.size,
             origin: place.origin,
         },
-        false => row.convert,
+        (false, Convert::PathIn(_)) => Convert::PathIn(place.mask_space),
+        (false, convert) => convert,
     }
 }
 
