@@ -55,7 +55,7 @@ These are throwaway tests on 3–5 of the lead designer's real projects. Each te
 - swap, reframe, cut down, localise and reinterpret
 - batch rendering
 
-See [Variants](variants.md).
+See [Variants](variants.md). Roles, locks and batches come first ([plan](../plans/2026-11-18-variant-surface.md)).
 
 **Release:** 0.3.
 
