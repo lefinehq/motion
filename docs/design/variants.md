@@ -29,7 +29,7 @@ The import is an ordinary scene ([D32](decisions.md#d32-one-format-for-authored-
 
 **Expressions are baked** when the project is imported ([D38](decisions.md#d38-expressions-are-baked-at-import)): an embedded JavaScript engine evaluates each one at every frame, and its values become keys fitted to curves. A render never runs JavaScript. The report keeps each expression's source and says what it became.
 
-**Live links come next.** Many templates drive their text and colours from a control layer, so that one value changes many. Baked, those links are frozen at the values the project saved. Keeping them live, so that a change to the control reaches every layer that follows it, is the work of D44, the next decision, and builds on overrides.
+**Live links come next.** Many templates drive their text and colours from a control layer, so that one value changes many. Baked, those links are frozen at the values the project saved. Keeping them live, so that a change to the control reaches every layer that follows it, is the work of [D44](decisions.md#d44-slots-are-named-values-that-layers-follow): slots, named values that layers follow, set per instance through overrides ([plan](../plans/2026-11-17-slots.md)).
 
 **Fonts** are resolved before a render, not during one ([D39](decisions.md#d39-fonts-are-resolved-before-a-render)), and a font the import does not have is substituted and reported ([D40](decisions.md#d40-missing-fonts-are-substituted-at-import)).
 

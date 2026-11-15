@@ -370,6 +370,16 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - Overrides are the mechanism the slots of D44 need as well: a slot is a named value that overrides point at.
 - **Not now:** overriding a comp layer's own size, length or frame rate, and layers added through an override. An override sets keys of layers the comp already has.
 
+### D44. Slots are named values that layers follow
+
+- **Decision:** a scene and each composition declare `slots`: named values typed by `ValueType`, with an optional label. Any value written `"$id"` follows a slot, resolved in the composition's own slots first, then the scene's; `$$` is a literal dollar. A `comp` layer sets its composition's slots for itself in `overrides` (`"$title":"Sale"`). References resolve at compile, so nothing after compile changes. `motion slots` lists them, and `motion edit` sets one with `$id=value`. The import turns control layers into slots, and expressions that only read a control into references; the rest stay baked ([D38](#d38-expressions-are-baked-at-import)). This refines D38's "not now". See the [plan](../plans/2026-11-17-slots.md).
+- **Why:**
+  - Half of the corpus's expressions (3,730 of 7,404, in 125 of 198 templates) read a control and do nothing else. Baked, the one value a designer exposed is copied into every key that read it, and a variant has to find them all.
+  - A slot is a value, not a script. Renders stay deterministic and free of JavaScript, and an agent changes a template by setting a handful of typed values it can list.
+  - Overrides ([D43](#d43-one-layer-address-and-edits-per-instance)) already give an instance its own values. Slots are the names those values go by, so one mechanism serves both a control layer and a precomposition's exposed values.
+  - Resolving at compile keeps the graph, the evaluator and the renderer unchanged.
+- **Not now:** arithmetic on slots, checkbox and menu choices, animated slots and seeded wiggles. Each waits for its own measured need.
+
 ### D45. Export patches the project it came from
 
 - **Decision:** a scene imported from an `.aep` goes back by patching that same file. `motion export` imports the original again, compares the edited scene with it, and writes each changed value into the bytes it was read from; every other byte stays as it was. A value is written back only where the import knows its source. Anything else that changed is reported, with why, and not guessed. The export checks itself: it reads the patched file again, imports it, and compares the result with the edited scene.
