@@ -7,6 +7,8 @@
 //!
 //! [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
 
+use std::cmp::Ordering;
+
 use glam::{DMat3, DMat4, DQuat, DVec2, DVec3, DVec4, EulerRot};
 use kurbo::{Affine, Point, Rect};
 use motion_format::Value;
@@ -137,6 +139,83 @@ impl View {
         (self.matrix * world)
             .transform_point3(DVec3::new(point.x, point.y, 0.0))
             .z
+    }
+
+    /// The corners of `rect` on the plane of a node whose matrix is
+    /// `world`, in the camera's space: what [`depth_order`] compares.
+    pub fn corners(&self, world: DMat4, rect: Rect) -> [DVec3; 4] {
+        let m = self.matrix * world;
+        [
+            (rect.x0, rect.y0),
+            (rect.x1, rect.y0),
+            (rect.x1, rect.y1),
+            (rect.x0, rect.y1),
+        ]
+        .map(|(x, y)| m.transform_point3(DVec3::new(x, y, 0.0)))
+    }
+}
+
+/// How far a point may sit off a plane, in px, and still count as on it:
+/// two layers this close are one plane, whose order the list decides.
+pub const ON_PLANE: f64 = 1e-4;
+
+/// Where a rectangle lies from a plane, seen from the camera.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Side {
+    /// All of it on the camera's side, some of it off the plane.
+    Front,
+    /// All of it on the far side, some of it off the plane.
+    Behind,
+    /// All of it on the plane.
+    On,
+    /// Some of it on each side: it crosses the plane.
+    Across,
+}
+
+/// Where the rectangle `of` lies from the plane of the rectangle `plane`,
+/// both by their corners in the camera's space, whose origin is the camera;
+/// `None` when that plane has no area or the camera sits in it, edge-on.
+fn side(plane: &[DVec3; 4], of: &[DVec3; 4]) -> Option<Side> {
+    let origin = plane[0];
+    let normal = (plane[1] - origin)
+        .cross(plane[3] - origin)
+        .try_normalize()?;
+    // The normal turned towards the camera.
+    let normal = match normal.dot(-origin) {
+        towards if towards.abs() <= ON_PLANE => return None,
+        towards if towards < 0.0 => -normal,
+        _ => normal,
+    };
+    let off = of.map(|corner| normal.dot(corner - origin));
+    let front = off.iter().any(|&d| d > ON_PLANE);
+    let behind = off.iter().any(|&d| d < -ON_PLANE);
+    Some(match (front, behind) {
+        (true, false) => Side::Front,
+        (false, true) => Side::Behind,
+        (false, false) => Side::On,
+        (true, true) => Side::Across,
+    })
+}
+
+/// Which of two flat rectangles, by their corners in the camera's space,
+/// draws first so the nearer hides the other where they overlap: `Less`
+/// when `a` is behind `b`, `Greater` when it is in front, `Equal` when both
+/// lie in one plane. One that lies wholly on one side of the other's plane
+/// is behind it or in front of it, wherever their centres are, so a small
+/// layer just in front of a large one stays in front however the two turn.
+/// `None` when the planes say nothing that holds: each crosses the other's
+/// plane, or the two tests disagree.
+pub fn depth_order(a: &[DVec3; 4], b: &[DVec3; 4]) -> Option<Ordering> {
+    let (b_from_a, a_from_b) = (side(a, b), side(b, a));
+    let b_nearer = b_from_a == Some(Side::Front) || a_from_b == Some(Side::Behind);
+    let a_nearer = b_from_a == Some(Side::Behind) || a_from_b == Some(Side::Front);
+    match (a_nearer, b_nearer) {
+        (false, true) => Some(Ordering::Less),
+        (true, false) => Some(Ordering::Greater),
+        (false, false) if b_from_a == Some(Side::On) || a_from_b == Some(Side::On) => {
+            Some(Ordering::Equal)
+        }
+        _ => None,
     }
 }
 

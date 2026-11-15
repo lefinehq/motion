@@ -508,6 +508,36 @@ fn equally_deep_3d_layers_keep_their_list_order() {
 }
 
 #[test]
+fn a_small_layer_just_in_front_of_a_turned_card_draws_over_it() {
+    // A wide card turned about Y, and a label 1 px in front of it near the
+    // edge turned away: the label's centre is deeper than the card's, but
+    // all of it is on the camera's side of the card's plane.
+    let layers = r#"{"id":"label","rect":"20x20","3d":true,"parent":"card","position":[30,50],"z":-1},
+           {"id":"card","rect":"400x100","3d":true,"rotate-y":50}"#;
+    let session = session(&scene(layers));
+    let state = session.frame(0.0).expect("a frame");
+    let depth = |i: usize| {
+        let node = &state.nodes[i];
+        state
+            .view
+            .depth(node.space.expect("3D"), node.local_bounds.center())
+    };
+    let (label, card) = (0, 1);
+    assert_eq!(state.nodes[label].id, "label");
+    assert!(depth(label) > depth(card), "the label's centre is deeper");
+    assert_eq!(painted(&scene(layers)), ["card", "label"]);
+}
+
+#[test]
+fn layers_in_one_plane_keep_their_list_order_however_deep_their_centres() {
+    let order = painted(&scene(
+        r#"{"id":"edge","rect":"20x20","3d":true,"parent":"wide","position":[370,50]},
+           {"id":"wide","rect":"400x100","3d":true,"rotate-y":50}"#,
+    ));
+    assert_eq!(order, ["edge", "wide"]);
+}
+
+#[test]
 fn a_collapsed_composition_joins_the_outer_camera() {
     // The inner card sits at depth 0 of a 100x50 composition, collapsed into
     // the 200x100 scene: it is seen through the scene's default camera, not

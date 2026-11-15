@@ -206,3 +206,46 @@ fn flattening_a_lifted_transform_gives_it_back() {
     let transform = Affine::new([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
     assert_eq!(flatten(lift(transform)), transform);
 }
+
+/// The corners of a `width` by `height` rectangle centred on `at`, turned
+/// by `turn` about Y, in the camera's space of a camera at the origin.
+fn plate(at: DVec3, width: f64, height: f64, turn: f64) -> [DVec3; 4] {
+    let turned = DMat4::from_translation(at) * DMat4::from_rotation_y(turn.to_radians());
+    [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+        .map(|(x, y)| turned.transform_point3(DVec3::new(x * width / 2.0, y * height / 2.0, 0.0)))
+}
+
+#[test]
+fn a_plate_wholly_on_the_cameras_side_of_another_is_in_front() {
+    use std::cmp::Ordering;
+    let card = plate(DVec3::new(0.0, 0.0, 1000.0), 400.0, 100.0, 50.0);
+    // 1 px in front of the card, near its edge that turns away: its centre
+    // is deeper than the card's.
+    let along = DVec3::new(50f64.to_radians().cos(), 0.0, -50f64.to_radians().sin());
+    let towards = DVec3::new(-50f64.to_radians().sin(), 0.0, -50f64.to_radians().cos());
+    let label = plate(
+        DVec3::new(0.0, 0.0, 1000.0) - along * 170.0 + towards,
+        20.0,
+        20.0,
+        50.0,
+    );
+    let centre = |c: &[DVec3; 4]| (c[0] + c[2]).z / 2.0;
+    assert!(
+        centre(&label) > centre(&card),
+        "{} {}",
+        centre(&label),
+        centre(&card)
+    );
+    assert_eq!(depth_order(&card, &label), Some(Ordering::Less));
+    assert_eq!(depth_order(&label, &card), Some(Ordering::Greater));
+}
+
+#[test]
+fn plates_in_one_plane_are_equal_and_crossing_ones_undecided() {
+    use std::cmp::Ordering;
+    let a = plate(DVec3::new(0.0, 0.0, 1000.0), 400.0, 100.0, 30.0);
+    let b = plate(DVec3::new(0.0, 20.0, 1000.0), 50.0, 50.0, 30.0);
+    assert_eq!(depth_order(&a, &b), Some(Ordering::Equal));
+    let crossing = plate(DVec3::new(0.0, 0.0, 1000.0), 400.0, 100.0, -30.0);
+    assert_eq!(depth_order(&a, &crossing), None);
+}
