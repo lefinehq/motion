@@ -106,17 +106,18 @@ mod imported {
 
     const SPEED: &str = r#"thisComp.layer("CONTROLS").effect("Speed")("Slider")"#;
 
-    /// Main holds `CONTROLS`, whose slider `Speed` is 4, and layers whose
-    /// transforms have the properties given.
+    /// Main holds `CONTROLS`, whose slider `Speed` is 4, stored at bytes
+    /// 100 to 108, and layers whose transforms have the properties given.
     fn main(layers: Vec<Vec<crate::model::Property>>) -> crate::map::Import {
-        let controls = layer(
-            9,
-            "CONTROLS",
-            vec![slider(
-                "Speed",
-                Some(property("ADBE Slider Control-0001", number(4.0))),
-            )],
-        );
+        let stored = crate::model::Property {
+            origin: Some(crate::model::Origin {
+                numbers: 100..108,
+                dims: 1,
+                color: false,
+            }),
+            ..property("ADBE Slider Control-0001", number(4.0))
+        };
+        let controls = layer(9, "CONTROLS", vec![slider("Speed", Some(stored))]);
         let mut all: Vec<_> = (1..)
             .zip(layers)
             .map(|(id, properties)| layer(id, &format!("L{id}"), vec![transform(properties)]))
@@ -173,6 +174,32 @@ mod imported {
             "{}",
             import.mapping
         );
+    }
+
+    #[test]
+    fn a_slot_goes_back_into_its_control() {
+        let import = main(vec![vec![expressed("ADBE Rotate Z", number(0.0), SPEED)]]);
+        let source = import
+            .sources
+            .0
+            .iter()
+            .find(|s| s.path.first() == Some(&motion_format::Step::Key("slots".into())))
+            .expect("the slot is marked");
+        assert_eq!(
+            motion_format::address::key_text(&source.path),
+            "slots.speed.number"
+        );
+        assert!(matches!(
+            &source.writable,
+            crate::map::sources::Writable::Static { origin, .. } if origin.numbers == (100..108)
+        ));
+        // The edit goes into the slider.
+        let mut edited = import.json.clone();
+        edited["slots"]["speed"]["number"] = json!(6);
+        let plan = crate::export::plan(&import.json, &import.sources, &edited);
+        assert_eq!(plan.written.len(), 1, "{:?}", plan.not_written);
+        assert_eq!(plan.patched_bytes(), 8);
+        assert_eq!(plan.written[0].at, "slots.speed.number");
     }
 
     #[test]

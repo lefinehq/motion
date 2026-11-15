@@ -11,7 +11,7 @@ In v1, motion turns a finished, professionally designed project into variants. A
 3. **motion builds the variant surface.** This is a compact summary of the master: its roles, beats, editable values, style and locks. The designer confirms the roles once per master.
 4. **An agent makes variants.** It turns a brief into one-line edits, runs `check`, and renders.
 5. **The designer reviews the variants.** They approve each one, or tweak it with the same one-line edits.
-6. **A variant can go back to the project.** `motion export` patches each edited value into the bytes the import read it from, and leaves every other byte as it was ([D45](decisions.md#d45-export-patches-the-project-it-came-from)), so the designer can finish it in their tool.
+6. **A variant can go back to the project.** `motion export` patches each edited value into the bytes the import read it from, and leaves every other byte as it was ([D45](decisions.md#d45-export-patches-the-project-it-came-from)), so the designer can finish it in their tool. A slot that came from an expression control goes back into that control, so the template opens with the variant's values.
 
 Steps 1, 2, 4 and 6 work today on a single scene. The variant surface and batches of variants are the next milestone ([M3](roadmap.md#m3-variants)).
 

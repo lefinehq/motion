@@ -206,7 +206,12 @@ impl<'p> Walk<'p> {
     /// Marks the one still value of `tracks` as read from a control when
     /// `source` only reads one ([`super::slots`]), to become a reference
     /// once every read is known.
-    pub(super) fn follow_slot(&mut self, source: &str, tracks: &mut [BakedTrack]) {
+    pub(super) fn follow_slot(
+        &mut self,
+        source: &str,
+        convert: Convert,
+        tracks: &mut [BakedTrack],
+    ) {
         let [
             BakedTrack {
                 component: None,
@@ -218,7 +223,7 @@ impl<'p> Walk<'p> {
             return;
         };
         let report = self.mapping.expressions.len().saturating_sub(1);
-        if let Some(marked) = self.read_control(source, value, report) {
+        if let Some(marked) = self.read_control(source, (value, convert), report) {
             *value = marked;
         }
     }
