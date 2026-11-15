@@ -9,7 +9,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use motion_format::{Diagnostic, Document, Kind, Result, parse_document};
+use motion_format::{Address, Diagnostic, Document, Kind, Result, parse_document};
 use serde_json::{Map, Value as Json, json};
 
 use serde::Serialize;
@@ -76,10 +76,10 @@ pub struct Import {
 /// The lines a project laid one text layer out in, at its first text.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StoredText {
-    /// The scene composition holding the layer, or none for the scene's own.
-    pub comp: Option<String>,
-    /// The layer's id in the scene.
-    pub layer: String,
+    /// Where the layer is written in the scene: `title`, or
+    /// `scene.comps.card.layers[title]` for a composition's
+    /// ([`Address::written`]).
+    pub layer: Address,
     /// Its lines, in the layer's coordinates.
     pub lines: Vec<ComposedLine>,
 }

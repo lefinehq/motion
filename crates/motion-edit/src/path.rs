@@ -3,12 +3,12 @@
 //! wrote them in. A selector picks a list element: `[glow]` the one whose
 //! `id` is `glow`, `[0]` the first.
 
+use motion_format::address::key_text;
 use motion_format::key::ID;
 use motion_format::{Diagnostic, Kind, Result, Step};
 use serde_json::{Map, Value};
 
 use crate::KeyPath;
-use crate::key_path::written;
 
 /// Sets `key` in `value` to `new`, creating the objects on the way. An
 /// existing key keeps its position, and a new one is appended; a selector
@@ -122,7 +122,7 @@ fn element<'v>(slot: &'v mut Value, step: &Step) -> std::result::Result<&'v mut 
             what: "a list".into(),
         });
     };
-    let what = written(std::slice::from_ref(step));
+    let what = key_text(std::slice::from_ref(step));
     match position(list, step) {
         Some(i) => Ok(&mut list[i]),
         None => Err(Missed {

@@ -21,9 +21,11 @@ use serde_json::Value as Json;
 
 use crate::map::Sources;
 use crate::map::keys::Convert;
-use crate::map::sources::{Source, Step, Writable, at, show, step};
+use crate::map::sources::{Source, Writable, step};
 use crate::model::{Color, Origin, Value};
 use crate::rifx::{self, Patch};
+use motion_format::Step;
+use motion_format::address::{json_at, key_text};
 
 /// The step of the numbers the import writes: it rounds them to six
 /// decimals. A value read back is compared with the edited one in steps.
@@ -103,9 +105,9 @@ pub fn plan(original: &Json, sources: &Sources, edited: &Json) -> Plan {
                 }
             }
             (why, _) => plan.not_written.push(Change {
-                at: show(&difference.path),
-                from: at(original, &difference.path).cloned(),
-                to: at(edited, &difference.path).cloned(),
+                at: key_text(&difference.path),
+                from: json_at(original, &difference.path).cloned(),
+                to: json_at(edited, &difference.path).cloned(),
                 why,
             }),
         }
@@ -120,12 +122,12 @@ pub fn plan(original: &Json, sources: &Sources, edited: &Json) -> Plan {
             continue;
         };
         let change = |why: Option<String>| Change {
-            at: show(&source.path),
-            from: at(original, &source.path).cloned(),
-            to: at(edited, &source.path).cloned(),
+            at: key_text(&source.path),
+            from: json_at(original, &source.path).cloned(),
+            to: json_at(edited, &source.path).cloned(),
             why,
         };
-        let value = at(edited, &source.path)
+        let value = json_at(edited, &source.path)
             .ok_or_else(|| "the edited scene has no value there".to_owned())
             .and_then(|json| project_value(json, *convert, template));
         let encoded = value.and_then(|value| {
@@ -165,9 +167,9 @@ pub fn verify(plan: &Plan, reimported: &Json) -> Vec<Change> {
     plan.expected
         .iter()
         .filter_map(|(path, expected)| {
-            let got = at(reimported, path);
+            let got = json_at(reimported, path);
             (!got.is_some_and(|got| close(got, expected))).then(|| Change {
-                at: show(path),
+                at: key_text(path),
                 from: got.cloned(),
                 to: Some(expected.clone()),
                 why: Some("the patched project does not read back as edited".into()),

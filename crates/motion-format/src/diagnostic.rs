@@ -326,16 +326,7 @@ impl fmt::Display for Place {
             Place::Scene(address) if !address.is_scene() => return write!(f, "{address}"),
             Place::Scene(address) => address,
         };
-        address
-            .keys
-            .iter()
-            .enumerate()
-            .try_for_each(|(i, step)| match step {
-                Step::Key(key) if i == 0 => f.write_str(key),
-                Step::Key(key) => write!(f, ".{key}"),
-                Step::Id(id) => write!(f, "[{id}]"),
-                Step::Index(index) => write!(f, "[{index}]"),
-            })
+        f.write_str(&crate::address::key_text(&address.keys))
     }
 }
 

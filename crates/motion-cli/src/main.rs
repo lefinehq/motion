@@ -141,10 +141,11 @@ enum Command {
         /// Write one error image per frame into this folder.
         #[arg(long, value_name = "DIR")]
         images: Option<PathBuf>,
-        /// A layer to leave out of the drawing and the measure, by id, such
-        /// as a placeholder the reference fills; repeat for more.
-        #[arg(long, value_name = "ID")]
-        ignore: Vec<String>,
+        /// A layer to leave out of the drawing and the measure, by address,
+        /// such as a placeholder the reference fills (`plate`, or
+        /// `card/photo` inside a composition); repeat for more.
+        #[arg(long, value_name = "ADDRESS")]
+        ignore: Vec<motion_engine::Address>,
     },
     /// Measure every sample of a local manifest against its reference, and
     /// compare the numbers with a ledger.

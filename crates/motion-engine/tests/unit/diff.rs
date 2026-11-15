@@ -141,7 +141,7 @@ fn an_ignored_layer_is_neither_drawn_nor_measured() {
     assert!(measured.union_mean.worst > 0.0);
     assert!(measured.content_failing.worst > 0.0);
     let ignoring = DiffOptions {
-        ignore: vec!["bar".into()],
+        ignore: vec!["bar".parse().unwrap()],
         ..options(frames, 2.0)
     };
     let diff = scene.diff(&ignoring).unwrap();
@@ -149,7 +149,7 @@ fn an_ignored_layer_is_neither_drawn_nor_measured() {
     assert_eq!(diff.content_failing.worst, 0.0);
     assert_eq!(diff.frames[0].content.pixels, diff.frames[0].drawn.pixels);
     let unknown = DiffOptions {
-        ignore: vec!["nope".into()],
+        ignore: vec!["nope".parse().unwrap()],
         ..ignoring
     };
     assert!(scene.diff(&unknown).is_err());

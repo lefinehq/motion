@@ -12,7 +12,7 @@ use std::thread;
 use motion_edit::{apply_edit, parse_edit};
 use motion_fonts::{Cache, Lock};
 use motion_format::units::Time;
-use motion_format::{Diagnostic, Kind, Result};
+use motion_format::{Address, Diagnostic, Kind, Result};
 use motion_format::{Document, Scene, parse_document, write_document};
 use motion_query::{Report, at, check};
 use motion_raster::{Frame, Image, RenderOptions};
@@ -355,12 +355,13 @@ impl Session {
         self.check()
     }
 
-    /// A copy of this session with the layers `ids` hidden, as an edit
-    /// hides them; this one is left as it is.
+    /// A copy of this session with the layers at `addresses` hidden, as an
+    /// edit hides them, so one inside a composition is hidden in that
+    /// instance alone; this one is left as it is.
     ///
     /// # Errors
-    /// As [`Session::edit`], for an id the scene does not have.
-    pub(crate) fn hiding(&self, ids: &[String]) -> Result<Session> {
+    /// As [`Session::edit`], for a layer the scene does not have.
+    pub(crate) fn hiding(&self, addresses: &[Address]) -> Result<Session> {
         let mut hidden = Session {
             path: self.path.clone(),
             doc: self.doc.clone(),
@@ -369,8 +370,8 @@ impl Session {
             font_cache: self.font_cache.clone(),
             pictures: Pictures::default(),
         };
-        for id in ids {
-            hidden.edit(&format!("{id} hidden=true"))?;
+        for address in addresses {
+            hidden.edit(&format!("{address} hidden=true"))?;
         }
         Ok(hidden)
     }

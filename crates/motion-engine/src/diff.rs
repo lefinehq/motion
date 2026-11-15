@@ -25,7 +25,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::thread;
 
-use motion_format::{Diagnostic, Kind, Result};
+use motion_format::{Address, Diagnostic, Kind, Result};
 use motion_raster::{Frame, Image, RenderOptions};
 use serde::Serialize;
 
@@ -44,9 +44,9 @@ pub struct DiffOptions {
     pub tolerance: f64,
     /// A folder to write one error image per frame into, if any.
     pub images: Option<PathBuf>,
-    /// Layers left out of the drawing and the measure, by id: what the
+    /// Layers left out of the drawing and the measure, by address: what the
     /// reference shows differently on purpose, such as a placeholder.
-    pub ignore: Vec<String>,
+    pub ignore: Vec<Address>,
 }
 
 impl DiffOptions {

@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use motion_format::Address;
 use motion_format::property::LAYER;
 use serde_json::{Value as Json, json};
 
@@ -132,9 +133,9 @@ impl<'p> Walk<'p> {
         self.switches(layer, composition, ids, &mut out, &place);
         self.timing(layer, composition, &mut out);
         if let Some(lines) = out.lines.take() {
+            let id = ids[&layer.id].parse().expect("the import writes valid ids");
             self.texts.push(StoredText {
-                comp: self.scope.clone(),
-                layer: ids[&layer.id].clone(),
+                layer: Address::written(self.scope.as_deref(), id),
                 lines,
             });
         }

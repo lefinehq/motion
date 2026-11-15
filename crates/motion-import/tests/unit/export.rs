@@ -49,7 +49,7 @@ fn set(json: &mut Json, path: &[Step], value: Json) {
                 .as_array_mut()
                 .expect("an array")
                 .iter_mut()
-                .find(|item| item["id"] == json!(id))
+                .find(|item| item["id"] == id.as_ref())
                 .expect("the id"),
         };
     }
@@ -93,20 +93,25 @@ fn every_static_value_of_every_fixture_writes_back() {
             .collect();
         for source in statics {
             let mut edited = imported.json.clone();
-            let before = at(&edited, &source.path).expect("marked").clone();
+            let before = json_at(&edited, &source.path).expect("marked").clone();
             set(&mut edited, &source.path, nudged(&before));
             let plan = plan(&imported.json, &imported.sources, &edited);
             assert_eq!(
                 plan.written.len(),
                 1,
                 "{name} {}: {plan}",
-                show(&source.path)
+                key_text(&source.path)
             );
             assert!(plan.not_written.is_empty(), "{name}: {plan}");
             let patched = apply(&bytes, &plan).expect("patches");
             assert_eq!(patched.len(), bytes.len(), "a static value keeps its size");
             let back = reimport(&patched);
-            assert_eq!(verify(&plan, &back), [], "{name} {}", show(&source.path));
+            assert_eq!(
+                verify(&plan, &back),
+                [],
+                "{name} {}",
+                key_text(&source.path)
+            );
             written += 1;
         }
     }
@@ -262,7 +267,7 @@ fn every_sample_project_writes_back() {
             .filter(|s| matches!(s.writable, Writable::Static { .. }))
             .collect();
         for source in &statics {
-            let before = at(&edited, &source.path).expect("marked").clone();
+            let before = json_at(&edited, &source.path).expect("marked").clone();
             set(&mut edited, &source.path, nudged(&before));
         }
         let plan = plan(&imported.json, &imported.sources, &edited);
