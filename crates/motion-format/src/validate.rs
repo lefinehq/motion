@@ -161,13 +161,16 @@ pub(crate) fn scene(
         &declared.scene,
     )?;
     no_comp_draws_itself(&comps)?;
-    Ok(Scene {
+    let mut scene = Scene {
         version: VERSION,
         root,
         presets,
         fonts,
         comps,
-    })
+        roles: Vec::new(),
+    };
+    scene.roles = crate::roles::read(doc.roles.as_ref(), &scene)?;
+    Ok(scene)
 }
 
 /// A list of layers on one canvas, with paths relative to the list's owner:

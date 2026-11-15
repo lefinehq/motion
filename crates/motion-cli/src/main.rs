@@ -94,6 +94,14 @@ enum Command {
         /// every layer at any depth when none are given.
         ids: Vec<String>,
     },
+    /// List what a scene's layers and slots do, with what each role holds.
+    Roles {
+        /// Path to the scene file.
+        scene: PathBuf,
+        /// Print them as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// List the slots of a scene and of its compositions, with how many
     /// values follow each.
     Slots {
@@ -280,6 +288,7 @@ impl Command {
             Command::Check { scene }
             | Command::At { scene, .. }
             | Command::Slots { scene, .. }
+            | Command::Roles { scene, .. }
             | Command::Edit { scene, .. }
             | Command::Render { scene, .. }
             | Command::Diff { scene, .. }
@@ -310,6 +319,7 @@ fn main() -> ExitCode {
     let result = match cli.command {
         Command::Check { scene } => commands::check::run(&scene),
         Command::Slots { scene, json } => commands::slots::run(&scene, json),
+        Command::Roles { scene, json } => commands::roles::run(&scene, json),
         Command::At { scene, time, ids } => commands::at::run(&scene, &time, &ids),
         Command::Edit { scene, line } => commands::edit::run(&scene, &line),
         Command::Render {

@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Condvar, Mutex, OnceLock, PoisonError};
 use std::thread;
 
-use motion_edit::{apply_edit, parse_edit};
 use motion_fonts::{Cache, Lock};
 use motion_format::units::Time;
 use motion_format::{Address, Diagnostic, Kind, Result};
@@ -421,7 +420,7 @@ impl Session {
     /// A diagnostic for a bad line or an invalid result; the session is then
     /// left as it was.
     pub fn edit(&mut self, line: &str) -> Result<Report> {
-        self.doc = stage("edit", || apply_edit(&self.doc, &parse_edit(line)?))?;
+        self.doc = stage("edit", || motion_edit::edit_line(&self.doc, line))?;
         self.fonts = OnceLock::new();
         self.graph = OnceLock::new();
         self.pictures = Pictures::default();

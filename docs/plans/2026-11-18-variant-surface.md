@@ -39,7 +39,7 @@ A scene has a median of 2 text layers (90th percentile 12), and 35 have none. Na
 {"motion":1, "roles":{"headline":"title", "cta":"end/cta", "logo":"logo", "accent":"$accent"}, "layers":[…]}
 ```
 
-- **A role names a layer by its address** ([D43](../design/decisions.md#d43-one-layer-address-and-edits-per-instance)), at any depth, or a slot by `$id` ([D44](../design/decisions.md#d44-slots-are-named-values-that-layers-follow)). Role names are ids. `check` reports a role whose address or slot does not exist.
+- **A role names a layer by its address** ([D43](../design/decisions.md#d43-one-layer-address-and-edits-per-instance)), at any depth, or a slot by `$id` ([D44](../design/decisions.md#d44-slots-are-named-values-that-layers-follow)). Role names are ids. A role whose address or slot does not exist is an error at it, `roles.headline`, as a parent that does not exist is, so an edit cannot leave a role naming nothing.
 - **An edit may target a role:** `@headline text="Sale"` is `title text="Sale"`, and `@accent=#2A9D8F` is `$accent=#2A9D8F`. An agent writes edits against roles, so the same brief works on every master.
 - **`motion roles scene.json`** lists each role with what it holds, its text, its kind or its slot's value, and whether it is locked. `--json` gives the same as data.
 - **The import proposes roles.** A layer named `@role Name` takes that role, and the `@role` leaves its id. Otherwise a layer whose id matches the vocabulary above takes the role when only one layer does. Each proposal is a line of the report, `role headline: title (from its name)`, so the designer can confirm or change it with an edit, `scene roles.headline=card/title`.
@@ -78,7 +78,7 @@ A scene has a median of 2 text layers (90th percentile 12), and 35 have none. Na
 Each step is one pull request, with its tests.
 
 1. **Decisions.** D50 to D52 and this plan.
-2. **Roles in the format.** `roles`, its check, `@role` edit targets and `motion roles` with `--json`.
+2. **Roles in the format.** `roles`, its check, `@role` edit targets and `motion roles` with `--json`. Done.
 3. **Roles at import.** `@role` names, the vocabulary, the report lines, measured on the corpus.
 4. **Locks.** `locks`, the four kinds, refusals in `apply_edit`, the import's defaults.
 5. **Batches.** `motion batch`, its manifest, report and `--json`.

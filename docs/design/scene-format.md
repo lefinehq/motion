@@ -231,6 +231,16 @@ A scene, and any composition in `comps`, may declare `slots`: named values that 
 - References are resolved before anything else reads the scene, so drawing a scene with slots costs nothing more, and the file keeps the references as written.
 - **Instances.** A `comp` layer gives its composition's slots values of its own in `overrides`, by `$id` next to the layer keys: `{"$title":"Sale","badge/icon":{"fill":"#E63946"}}`. The value replaces the slot's for every value of that instance's layers that follows it, and a layer key set by address wins over it. The value is read where the `comp` layer is written, so `"$title":"$promo"` passes on a slot of the outer scope, which is how a value reaches a composition drawn inside another. An id the composition does not declare, or a value that does not fit its slot, is an error at the entry, `card-2.overrides.$title`.
 
+## Roles
+
+A scene's `roles` say what its layers and slots do ([D50](decisions.md#d50-roles-name-what-a-masters-layers-do)): each role name, an id, names a layer by its address, at any depth, or a slot of the scene by `$id`.
+
+```json
+"roles":{"headline":"title","cta":"end/cta","accent":"$accent"}
+```
+
+A role that names no layer or slot is an error at it, `roles.headline`. An edit may target a role: `@headline text="Sale"` edits `title`, and `@accent=#2A9D8F` sets the slot. `motion roles` lists them with what each holds.
+
 ## Images
 
 An image layer draws a picture file: `image` names a PNG or JPEG file, relative to the scene file (an absolute path also works), and `box` says where its pixels go in the layer's own coordinates, `[width, height]` from the origin or `[x, y, width, height]`, as for box text. The picture is stretched to fill the box, so its size in the file does not have to match; an import writes the size the project gave it.

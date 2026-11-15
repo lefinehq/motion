@@ -32,6 +32,10 @@ pub struct Scene {
     pub fonts: Vec<String>,
     /// Compositions that `comp` layers draw, in the order written.
     pub comps: Vec<Comp>,
+    /// What its layers and slots do ([D50]).
+    ///
+    /// [D50]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d50-roles-name-what-a-masters-layers-do
+    pub roles: Vec<crate::roles::Role>,
 }
 
 /// A composition: a canvas of its own, with its own clock and layers, that
