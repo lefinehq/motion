@@ -247,3 +247,20 @@ fn behaviour_allows_any_whitespace_around_and_between_tokens() {
         assert_eq!(text.parse::<Behaviour>().unwrap(), expected, "{text:?}");
     }
 }
+
+#[test]
+fn behaviour_reads_a_curve_with_parameters() {
+    let b: Behaviour = "pop 18f out-back(2) @6f".parse().unwrap();
+    assert_eq!(b.curve, "out-back(2)".parse::<Curve>().unwrap());
+    assert_eq!(b.duration, Time::Frames(18.0));
+    let b: Behaviour = "fade steps(3) 12f".parse().unwrap();
+    assert_eq!(
+        b.curve,
+        Curve::Steps {
+            count: 3,
+            start: false
+        }
+    );
+    let e = "fade out-back(-1)".parse::<Behaviour>().unwrap_err();
+    assert_eq!(e.kind, Kind::Syntax, "a bad parameter is the curve's error");
+}

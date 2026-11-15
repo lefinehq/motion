@@ -172,3 +172,93 @@ fn cubic_closing_paren_must_end_the_token() {
         Some(Problem::Unclosed)
     ));
 }
+
+#[test]
+fn every_shape_and_family_parses_and_prints_back() {
+    for (shape_name, shape) in SHAPES {
+        for (family_name, family) in FAMILIES {
+            let token = format!("{shape_name}-{family_name}");
+            let curve = token.parse::<Curve>().unwrap();
+            assert_eq!(curve, Curve::Shaped(*shape, *family), "{token}");
+            assert_eq!(curve.to_string(), token);
+        }
+    }
+}
+
+#[test]
+fn family_parameters_parse_and_defaults_print_as_the_name() {
+    let parse = |t: &str| t.parse::<Curve>().unwrap();
+    assert_eq!(
+        parse("in-out(2.5)"),
+        Curve::Shaped(Shape::InOut, Family::Power(2.5))
+    );
+    assert_eq!(parse("in(2)").to_string(), "in-quad");
+    assert_eq!(
+        parse("out-back(2)"),
+        Curve::Shaped(Shape::Out, Family::Back(2.0))
+    );
+    assert_eq!(parse("out-back(2)").to_string(), "out-back(2)");
+    assert_eq!(
+        parse("out-elastic(1.5)"),
+        Curve::Shaped(
+            Shape::Out,
+            Family::Elastic {
+                amplitude: 1.5,
+                period: ELASTIC.1
+            }
+        )
+    );
+    assert_eq!(
+        parse("in-out-elastic(2,.5)").to_string(),
+        "in-out-elastic(2,0.5)"
+    );
+    assert_eq!(parse("out-in(3)").to_string(), "out-in-cubic");
+    assert_eq!(parse("out(1.7)").to_string(), "out(1.7)");
+}
+
+#[test]
+fn a_misshapen_family_names_the_family_form() {
+    for token in [
+        "in",
+        "out-expo(2)",
+        "in(0)",
+        "out-back(-1)",
+        "out-elastic(.5)",
+        "out-elastic(1,3)",
+        "in-out(1,2,3)",
+        "out-quad(",
+    ] {
+        let e = token.parse::<Curve>().unwrap_err();
+        assert_eq!(
+            (e.kind, e.expected.as_deref()),
+            (Kind::Syntax, Some(FAMILY_EXPECTED)),
+            "{token}"
+        );
+    }
+    // Only looking like one is an unknown name.
+    for token in ["outback", "in-bouncy", "bounce", "out-expo-"] {
+        assert_eq!(
+            token.parse::<Curve>().unwrap_err().kind,
+            Kind::UnknownName,
+            "{token}"
+        );
+    }
+}
+
+#[test]
+fn steps_parse_and_print() {
+    let parse = |t: &str| t.parse::<Curve>().unwrap();
+    assert_eq!(
+        parse("steps(4)"),
+        Curve::Steps {
+            count: 4,
+            start: false
+        }
+    );
+    assert_eq!(parse("steps(3,start)").to_string(), "steps(3,start)");
+    assert_eq!(parse("steps(1)").to_string(), "steps(1)");
+    for token in ["steps(0)", "steps(2.5)", "steps(2,end)", "steps(2"] {
+        let e = token.parse::<Curve>().unwrap_err();
+        assert_eq!(e.expected.as_deref(), Some(STEPS_EXPECTED), "{token}");
+    }
+}

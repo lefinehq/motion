@@ -16,7 +16,7 @@ use crate::curve::CUBIC_PREFIX;
 use crate::doc::Form;
 use crate::units::{Time, time};
 
-pub(crate) const EXPECTED: &str = "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`";
+pub(crate) const EXPECTED: &str = "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `out-expo` or `hold`, `out-back(2)`, `steps(4)`, or `cubic(x1,y1,x2,y2)`";
 
 /// Must be in `NAMED_CURVES`.
 const DEFAULT_CURVE: &str = "ease-out";
@@ -229,8 +229,8 @@ fn once_per_field<'s>(
 }
 
 /// One tuning token, told apart by its shape: `@` starts a start time, `px`
-/// ends a distance, no digits (or `cubic(`) make a curve and `f` or `s` ends
-/// a duration. Each shape commits, so a malformed token is reported as the
+/// ends a distance, no digits (or `cubic(`, or a call such as `out-back(2)`
+/// or `steps(4)`) make a curve and `f` or `s` ends a duration. Each shape commits, so a malformed token is reported as the
 /// kind it looks like, and a misspelt curve gets the curve error.
 fn tuning<'s>(input: &mut &'s str) -> Parsed<Tuning, Problem<'s>> {
     let token = *input;
@@ -243,7 +243,7 @@ fn tuning<'s>(input: &mut &'s str) -> Parsed<Tuning, Problem<'s>> {
         )
         .map(Tuning::Distance),
         preceded(
-            peek(alt((CUBIC_PREFIX.void(), digit_free))),
+            peek(alt((CUBIC_PREFIX.void(), digit_free, called))),
             cut_err(rest.try_map(|curve: &str| curve.parse().map_err(Problem::Curve))),
         )
         .map(Tuning::Curve),
@@ -255,6 +255,13 @@ fn tuning<'s>(input: &mut &'s str) -> Parsed<Tuning, Problem<'s>> {
     ))
     .context(Problem::Unknown(token))
     .parse_next(input)
+}
+
+/// A token shaped like a call, `name(…)`: a curve with parameters.
+fn called<'s>(input: &mut &'s str) -> Parsed<(), Problem<'s>> {
+    rest.verify(|token: &str| token.contains('(') && token.ends_with(')'))
+        .void()
+        .parse_next(input)
 }
 
 /// `value`, which must end the token; committed, since the shape said what it is.

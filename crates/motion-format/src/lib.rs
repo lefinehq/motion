@@ -26,7 +26,7 @@ pub mod value;
 mod write;
 
 pub use address::{Address, Id, Step};
-pub use curve::{Curve, NAMED_CURVES};
+pub use curve::{BACK_OVERSHOOT, Curve, ELASTIC, FAMILIES, Family, NAMED_CURVES, SHAPES, Shape};
 pub use diagnostic::{Diagnostic, Kind, Place, Result};
 pub use item::{Item, ItemKind, Role};
 pub use number::fmt_num;
