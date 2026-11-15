@@ -62,6 +62,7 @@ All notable changes to this project are documented here. The format is based on 
 - `motion export` compares what it reads back with the edit in the import's six-decimal steps, allowing one, so a value half a step from both neighbours no longer fails the check.
 - Baking expressions sits behind `motion-import`'s `bake` feature, which only the CLI turns on: `motion-engine` renders and imports without linking the script engine. The D38 and D39 guards check each crate's resolved dependencies (`cargo tree`), not its manifest lines.
 - The bake eases the values it reads with the scene's own curves and motion paths (`motion_scene::Ease`, `PathSpan`), not a copy of them.
+- An expression that reads nothing that changes with time runs once, not at every frame: a run knows whether it read `time`, a value the host says changes, or randomness seeded by the time (`Run::constant`, `Host::constant`).
 - Six crates instead of ten: the error type and shared grammar pieces live in `motion-format`, evaluation in `motion-scene`, and logging setup in `motion-engine`.
 - `check` evaluates one frame at a time instead of keeping every frame in memory.
 - Error messages name the path and the accepted form, with an example, for every syntax and unknown-name error.

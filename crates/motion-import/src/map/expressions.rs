@@ -200,6 +200,7 @@ impl<'p> Walk<'p> {
             values: Sampled::Text(texts),
             times,
             approximate,
+            ..
         }) = &bake.outcome
         else {
             self.not_baked(

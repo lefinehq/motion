@@ -79,6 +79,15 @@ pub trait Host {
     /// [`Missing`] when it comes from an expression not baked yet, or from
     /// something the import cannot know.
     fn value_at(&self, node: NodeId, time: f64, own: bool) -> Result<Val, Missing>;
+    /// Whether the property `node` holds one value at every time; with
+    /// `own`, the value under its expression. A run that reads only such
+    /// values at the time it runs gives one value at every time, so its
+    /// expression need run once. A host that cannot tell says no, which
+    /// costs only that shortcut.
+    fn constant(&self, node: NodeId, own: bool) -> bool {
+        let _ = (node, own);
+        false
+    }
     /// How many keys the property `node` has.
     fn key_count(&self, node: NodeId) -> usize;
     /// Key `n` of `node`, from 1: its time and value.

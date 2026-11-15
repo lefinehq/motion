@@ -12,7 +12,9 @@
 //!   that fails.
 //! - **Frames.** A property is evaluated at the frames its layer shows,
 //!   within the span of its comp the scene shows: a precomp an hour long
-//!   that the scene shows for 30 seconds is evaluated for those 30.
+//!   that the scene shows for 30 seconds is evaluated for those 30. A run
+//!   that read nothing that changes with time gives its value at every
+//!   frame, so such an expression runs once.
 //! - **Threads.** The engine recurses, so the bake runs on a thread with
 //!   `motion_expr::STACK_SIZE` of stack.
 //! - **Builds.** Evaluating needs the JavaScript engine, which only the
@@ -88,6 +90,9 @@ pub struct Samples {
     pub values: Sampled,
     /// Whether it used noise or randomness, which is our own approximation.
     pub approximate: bool,
+    /// Whether it read nothing that changes with time, so it ran once and
+    /// its value is the same at every frame.
+    pub constant: bool,
 }
 
 /// The values of [`Samples`].

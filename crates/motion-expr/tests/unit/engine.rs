@@ -214,6 +214,10 @@ impl Host for TestHost {
         }
         Ok(keys.last().unwrap().1.clone())
     }
+    fn constant(&self, node: NodeId, own: bool) -> bool {
+        let n = &self.nodes[node as usize];
+        n.value.is_some() && (own || !n.pending)
+    }
     fn key_count(&self, node: NodeId) -> usize {
         self.nodes[node as usize].keys.len()
     }
@@ -452,4 +456,56 @@ fn an_encoded_script_is_reported() {
         .compile("eval(\"@JSXBIN@ES@2.1@MyBn0\")", Dialect::Legacy)
         .unwrap_err();
     assert!(error.message.contains("encoded"), "{}", error.message);
+}
+
+#[test]
+fn a_run_knows_whether_it_gives_one_value_at_every_time() {
+    let Ids {
+        opacity, rotation, ..
+    } = ids();
+    let cases = [
+        // What it reads never changes.
+        ("value * 2", rotation, true),
+        (
+            r#"thisComp.layer("CONTROLS").effect("Shadows ON/OFF")(1) * 100"#,
+            rotation,
+            true,
+        ),
+        ("thisLayer.inPoint + thisComp.frameDuration", opacity, true),
+        ("loopOut() + smooth()", rotation, true),
+        ("posterizeTime(4); value", rotation, true),
+        ("seedRandom(3, true); random(10)", rotation, true),
+        // A keyed value read at a time of its own never changes either.
+        ("valueAtTime(0.5) + key(1).value", opacity, true),
+        // What it reads changes with time.
+        ("time", rotation, false),
+        ("delete time; time", rotation, false),
+        ("var time = 2; time", rotation, false),
+        ("value + time * 0", rotation, false),
+        ("timeToFrames()", rotation, false),
+        ("value", opacity, false),
+        ("velocity", opacity, false),
+        ("loopOut()", opacity, false),
+        ("posterizeTime(4); value", opacity, false),
+        (
+            r#"thisComp.layer("Title").transform.scale[0]"#,
+            rotation,
+            false,
+        ),
+        ("random()", rotation, false),
+        ("seedRandom(3, false); random(10)", rotation, false),
+        ("wiggle(2, 10)", rotation, false),
+        ("sourceRectAtTime === undefined ? 0 : 1", rotation, true),
+    ];
+    for (source, this, constant) in cases {
+        let run = eval(source, this, 0.6).unwrap_or_else(|f| panic!("{source}: {f:?}"));
+        assert_eq!(run.constant, constant, "{source}");
+    }
+}
+
+#[test]
+fn a_run_that_waits_is_not_taken_as_constant() {
+    let o = ids().opacity;
+    let source = "try { thisLayer.transform.rotation } catch (e) { 1 }";
+    assert_eq!(eval(source, o, 0.0), Err(Failure::Pending(ids().rotation)));
 }

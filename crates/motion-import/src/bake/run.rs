@@ -136,14 +136,21 @@ impl Baker {
             .unwrap_or((0.0, target.comp.duration));
         let times = frames(target, span)?;
         let mut values = Vec::with_capacity(times.len());
+        let mut constant = false;
         for &time in &times {
             values.push(self.evaluate(target.node, time, 0)?);
+            if let Some(Baked::Constant(value)) = self.host.baked.borrow().get(&target.node) {
+                values.resize(times.len(), value.clone());
+                constant = true;
+                break;
+            }
         }
         let template = target.property.value.value_at(times[0]);
         Ok(Samples {
             values: sampled(target.property, &template, &times, &values)?,
             times,
             approximate: self.approximate.contains(&target.node),
+            constant,
         })
     }
 
@@ -157,6 +164,7 @@ impl Baker {
                     return Ok(value.clone());
                 }
             }
+            Some(Baked::Constant(value)) => return Ok(value.clone()),
             Some(Baked::Failed(why)) => return Err(why.clone()),
             None => {}
         }
@@ -171,24 +179,30 @@ impl Baker {
         let result = self.run(node, time, depth);
         self.active.remove(&(node, bits));
         let mut baked = self.host.baked.borrow_mut();
-        match &result {
-            Ok(value) => {
+        match result {
+            Ok((value, true)) => {
+                baked.insert(node, Baked::Constant(value.clone()));
+                Ok(value)
+            }
+            Ok((value, false)) => {
                 if let Baked::Values(values) = baked
                     .entry(node)
                     .or_insert_with(|| Baked::Values(HashMap::new()))
                 {
                     values.insert(bits, value.clone());
                 }
+                Ok(value)
             }
             Err(why) => {
                 baked.insert(node, Baked::Failed(why.clone()));
+                Err(why)
             }
         }
-        result
     }
 
-    /// Runs `node`'s expression at `time` until nothing it reads waits.
-    fn run(&mut self, node: NodeId, time: f64, depth: usize) -> Result<Val, String> {
+    /// Runs `node`'s expression at `time` until nothing it reads waits:
+    /// its value, and whether it gives that value at every time.
+    fn run(&mut self, node: NodeId, time: f64, depth: usize) -> Result<(Val, bool), String> {
         let program = self.program(node)?;
         for _ in 0..MAX_WAITS {
             self.host.demand.set(None);
@@ -197,7 +211,7 @@ impl Baker {
                     if run.approximate {
                         self.approximate.insert(node);
                     }
-                    return Ok(run.value);
+                    return Ok((run.value, run.constant));
                 }
                 Err(Failure::Pending(_)) => {
                     let Some((other, at)) = self.host.demand.take() else {

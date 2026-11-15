@@ -86,6 +86,9 @@ struct Entry {
 pub(super) enum Baked {
     /// What its expression gave at each time asked, by the time's bits.
     Values(HashMap<u64, Val>),
+    /// What its expression gives at every time: it read nothing that
+    /// changes with time.
+    Constant(Val),
     /// It could not be evaluated, with why.
     Failed(String),
 }
@@ -358,19 +361,26 @@ impl ProjectHost {
         to_val(&property.value.value_at(time), unit(&property.match_name))
     }
 
+    /// The `_0`, `_1` and `_2` siblings of a separated position that it has.
+    fn parts(&self, node: NodeId) -> Vec<NodeId> {
+        let up = self.entries[node as usize].up.unwrap_or(PROJECT);
+        ["_0", "_1", "_2"]
+            .iter()
+            .filter_map(|suffix| {
+                let wanted = format!("ADBE Position{suffix}");
+                self.entries[up as usize]
+                    .children
+                    .iter()
+                    .copied()
+                    .find(|&c| self.entries[c as usize].match_name == wanted)
+            })
+            .collect()
+    }
+
     /// A separated position: its `_0`, `_1` and `_2` siblings together.
     fn separated(&self, node: NodeId, time: f64) -> Result<Val, Missing> {
-        let up = self.entries[node as usize].up.unwrap_or(PROJECT);
         let mut parts = Vec::new();
-        for suffix in ["_0", "_1", "_2"] {
-            let wanted = format!("ADBE Position{suffix}");
-            let Some(&sibling) = self.entries[up as usize]
-                .children
-                .iter()
-                .find(|&&c| self.entries[c as usize].match_name == wanted)
-            else {
-                continue;
-            };
+        for sibling in self.parts(node) {
             match self.value_at(sibling, time, false)? {
                 Val::Number(n) => parts.push(n),
                 _ => {
@@ -669,6 +679,7 @@ impl Host for ProjectHost {
                                 return Ok(value.clone());
                             }
                         }
+                        Some(Baked::Constant(value)) => return Ok(value.clone()),
                         // The bake says why it failed.
                         Some(Baked::Failed(_)) | None => {}
                     }
@@ -681,6 +692,25 @@ impl Host for ProjectHost {
             _ => Err(Missing::Unknown(
                 "the value of something that is not a property".into(),
             )),
+        }
+    }
+
+    fn constant(&self, node: NodeId, own: bool) -> bool {
+        match self.entries.get(node as usize).map(|e| &e.node) {
+            Some(Node::Property(property)) => {
+                let expression = property.expression.as_ref().is_some_and(|e| e.enabled);
+                if !own && expression {
+                    matches!(self.baked.borrow().get(&node), Some(Baked::Constant(_)))
+                } else if property.separated && property.match_name == "ADBE Position" {
+                    self.parts(node)
+                        .iter()
+                        .all(|&part| self.constant(part, false))
+                } else {
+                    matches!(property.value, Stream::Static(_))
+                }
+            }
+            Some(Node::Default(..)) => true,
+            _ => false,
         }
     }
 
