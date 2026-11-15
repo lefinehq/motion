@@ -32,6 +32,7 @@ use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
 use crate::property::{LAYER, Prop, PropertySpec, Registry, Rest, Target};
 use crate::shorthand::{Behaviour, Coord, Font, Position};
+use crate::slots::{Declared, Slot};
 use crate::units::{Color, SPAN_EXPECTED, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
 use crate::when::{Base, Moment, Moments, add, label_name};
@@ -112,7 +113,7 @@ struct Context<'a> {
 }
 
 /// Validates a scene document into a [`Scene`], with the defaults of the keys left out.
-pub(crate) fn scene(doc: &SceneDoc, raw: &serde_json::Value) -> Result<Scene> {
+pub(crate) fn scene(doc: &SceneDoc, raw: &serde_json::Value, declared: &Declared) -> Result<Scene> {
     version(required(*doc.motion, MOTION, &VERSION.to_string())?)?;
     let fps = doc.fps.map_or(Ok(DEFAULT_FPS), fps)?;
     let size = optional(doc.size.as_ref(), SIZE)?.unwrap_or(DEFAULT_SIZE);
@@ -135,12 +136,21 @@ pub(crate) fn scene(doc: &SceneDoc, raw: &serde_json::Value) -> Result<Scene> {
         .iter()
         .zip(&canvases)
         .map(|((id, Object(comp_doc)), canvas)| {
-            listed_comp(canvas, comp_doc, &shared).map_err(|e| e.under(comp_path(id)))
+            listed_comp(canvas, comp_doc, &shared, declared.of_comp(id))
+                .map_err(|e| e.under(comp_path(id)))
         })
         .collect::<Result<Vec<_>>>()?;
     let Object(own_labels) = &doc.labels;
     let root_labels = labels(own_labels, fps)?;
-    let root = comp(SCENE, size, clock, root_labels, layer_docs, &shared)?;
+    let root = comp(
+        SCENE,
+        size,
+        clock,
+        root_labels,
+        layer_docs,
+        &shared,
+        &declared.scene,
+    )?;
     no_comp_draws_itself(&comps)?;
     Ok(Scene {
         version: VERSION,
@@ -222,7 +232,7 @@ fn canvases(docs: &CompsDoc, scene_fps: f64) -> Result<Vec<Canvas>> {
 
 /// One composition under `comps`, with paths relative to it: its background
 /// defaults to clear.
-fn listed_comp(canvas: &Canvas, doc: &CompDoc, shared: &Shared) -> Result<Comp> {
+fn listed_comp(canvas: &Canvas, doc: &CompDoc, shared: &Shared, slots: &[Slot]) -> Result<Comp> {
     let clock = clock(canvas.fps, &doc.dur, &doc.bg, CLEAR)?;
     let List(layer_docs) = required(doc.layers.as_ref(), LAYERS, "[]")?;
     comp(
@@ -232,6 +242,7 @@ fn listed_comp(canvas: &Canvas, doc: &CompDoc, shared: &Shared) -> Result<Comp> 
         canvas.labels.clone(),
         layer_docs,
         shared,
+        slots,
     )
 }
 
@@ -325,6 +336,7 @@ fn comp(
     labels: Vec<(String, Time)>,
     layer_docs: &LayersDoc,
     shared: &Shared,
+    slots: &[Slot],
 ) -> Result<Comp> {
     let context = Context {
         shared,
@@ -342,6 +354,7 @@ fn comp(
         background: clock.background,
         layers,
         labels,
+        slots: slots.to_vec(),
     })
 }
 

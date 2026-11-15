@@ -179,6 +179,23 @@ A `transform` moves everything the layer draws, inside the layer, as a group's t
           {"id":"card-2","comp":"card","overrides":{"title":{"text":"Sale"},"badge/icon":{"fill":"#E63946"}}}]
 ```
 
+## Slots
+
+A scene, and any composition in `comps`, may declare `slots`: named values that layers follow ([D44](decisions.md#d44-slots-are-named-values-that-layers-follow)). A value written `"$id"` takes the value of slot `id`, so one change to a slot changes every value that follows it.
+
+```json
+{"motion":1,"size":"1080p","dur":"5s",
+ "slots":{"accent":{"color":"#E63946","label":"Accent"},"title":{"text":"Launch"},"lift":40},
+ "layers":[{"id":"plate","rect":"600x300 r24","fill":"$accent"},
+           {"id":"headline","text":"$title","font":"Inter Variable 96 700"}]}
+```
+
+- **Types.** The value fixes the slot's type: a colour string is a `color`, a number a `number`, `[x, y]` a `point`. Words are written `{"text":"…"}`. Any type may be written out, `{"color":"#E63946"}`, with an optional `label` for people.
+- **Scope.** A reference names a slot of the composition it is written in, then one of the scene. A composition never sees another composition's slots.
+- **Dollars.** `$` followed by an id is a reference. A string starting with `$$` stands for itself with one `$` fewer, so a price is `"$$99"`. A `$` before anything that is not an id, as in `"$99"`, stays as written.
+- **Checking.** A reference to no slot is an error at the value, `plate.fill`. A slot whose value does not fit where it is used is reported there, naming the slot: `plate.fill: … (the value of slot `$title`)`.
+- References are resolved before anything else reads the scene, so drawing a scene with slots costs nothing more, and the file keeps the references as written.
+
 ## Images
 
 An image layer draws a picture file: `image` names a PNG or JPEG file, relative to the scene file (an absolute path also works), and `box` says where its pixels go in the layer's own coordinates, `[width, height]` from the origin or `[x, y, width, height]`, as for box text. The picture is stretched to fill the box, so its size in the file does not have to match; an import writes the size the project gave it.

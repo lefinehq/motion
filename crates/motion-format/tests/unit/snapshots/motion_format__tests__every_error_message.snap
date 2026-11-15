@@ -21,7 +21,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"motion":1,"dur":"1s","size":3,"layers":[]}` → size: invalid type: integer `3`; expected a size name such as `1080p`, or `<width>x<height>`
 `{"motion":1,"dur":"1s","size":"huge","layers":[]}` → size: unknown size `huge`; expected one of 720p, 1080p, 4k, square, vertical, or <width>x<height>
 `{"motion":1,"dur":"1s","bg":0,"layers":[]}` → bg: invalid type: integer `0`; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`
-`{"motion":1,"dur":"1s","colour":"x","layers":[]}` → colour: unknown field `colour`; expected one of motion, size, fps, dur, bg, labels, presets, fonts, comps, layers
+`{"motion":1,"dur":"1s","colour":"x","layers":[]}` → colour: unknown field `colour`; expected one of motion, size, fps, dur, bg, labels, presets, fonts, slots, comps, layers
 `{"motion":1,"dur":"1s","layers":{}}` → layers: invalid type: map; expected a list of layer objects, e.g. [{"id":"box","rect":"100x100"}]
 
 ## layers
@@ -311,7 +311,7 @@ expression: "report.join(\"\\n\\n\")"
 `"card":{"size":"1x1","layers":[]}` → comps.card: missing `dur`; expected e.g. "dur":"5s"
 `"card":{"size":"1x1","dur":"1s"}` → comps.card: missing `layers`; expected e.g. "layers":[]
 `"card":{"size":"1x1","dur":"1s","fps":0,"layers":[]}` → comps.card.fps: must be a number above zero; expected e.g. `30`
-`"card":{"size":"1x1","dur":"1s","layers":[],"tint":1}` → comps.card.tint: unknown field `tint`; expected one of size, fps, dur, bg, labels, layers
+`"card":{"size":"1x1","dur":"1s","layers":[],"tint":1}` → comps.card.tint: unknown field `tint`; expected one of size, fps, dur, bg, labels, slots, layers
 `"card":{"size":"1x1","dur":"1s","layers":[{"id":"x"}]}` → comps.card.layers[x]: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`, or only `fx` for a filter layer; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
 `"card":{"size":"1x1","dur":"1s","layers":[{"id":"x","comp":"card"}]}` → comps.card.layers[x].comp: composition `card` would draw itself through its layers; expected compositions that never lead back to themselves
 `"card":{"size":"1x1","dur":"1s","layers":[{"id":"x","comp":"b"}]},"b":{"size":"1x1","dur":"1s","layers":[{"id":"y","comp":"card"}]}` → comps.card.layers[x].comp: composition `card` would draw itself through its layers; expected compositions that never lead back to themselves
