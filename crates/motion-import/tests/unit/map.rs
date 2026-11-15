@@ -368,6 +368,56 @@ mod effects {
         );
     }
 
+    #[test]
+    fn a_levels_channel_is_its_setting() {
+        let import = imported(vec![group(
+            "ADBE Easy Levels2",
+            vec![
+                Child::Property(number("ADBE Easy Levels2-0001", 2.0)),
+                Child::Property(number("ADBE Easy Levels2-0005", 1.5)),
+            ],
+        )])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"][0];
+        assert_eq!(fx["levels"], 1.5, "{fx}");
+        assert_eq!(fx["channel"], "red", "{fx}");
+    }
+
+    #[test]
+    fn curves_come_from_the_data_kept_for_them() {
+        let straight: &[[u16; 2]] = &[[0, 0], [255, 255]];
+        let data = crate::map::curves::tests::data([
+            &[[0, 0], [128, 160], [255, 255]],
+            straight,
+            straight,
+            &[[0, 51], [255, 255]],
+            straight,
+        ]);
+        let curves = |stream| {
+            imported(vec![group(
+                "ADBE CurvesCustom",
+                vec![Child::Property(property("ADBE CurvesCustom-0001", stream))],
+            )])
+            .expect("imports")
+        };
+        let import = curves(Stream::Static(Value::Data(data.clone())));
+        assert_eq!(
+            import.json["layers"][0]["fx"],
+            json!([{"curves":"M 0,0 L 0.501961,0.627451 L 1,1","blue":"M 0,0.2 L 1,1"}])
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+        let unread = curves(Stream::Static(Value::Data(data[..100].to_vec())));
+        let what: Vec<&str> = unread.mapping.by_what().into_keys().collect();
+        assert!(
+            what.contains(&"curves kept in a layout the import does not read"),
+            "{what:?}"
+        );
+    }
+
     /// A 200 by 100 comp holding a 300 by 200 adjustment solid with the
     /// effect groups `effects`, imported.
     fn adjusting(effects: Vec<Group>) -> Import {

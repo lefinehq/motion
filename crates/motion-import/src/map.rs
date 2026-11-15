@@ -16,6 +16,7 @@ use serde::Serialize;
 
 use crate::model::{ComposedLine, Composition, Item, ItemKind, Project};
 
+mod curves;
 mod expressions;
 mod fonts;
 mod footage;

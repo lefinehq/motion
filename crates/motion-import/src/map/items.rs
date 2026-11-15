@@ -6,11 +6,11 @@ use motion_format::item::{ItemKind, Primary};
 use motion_format::property::{Registry, Rest, Target};
 use serde_json::{Map, Value as Json, json};
 
-use super::Walk;
 use super::keys::{Clock, Convert, Written, num, written};
 use super::report::{ControlReport, Fate};
 use super::rows::{self, Kind, Missing, Part, Policy, Row, To};
 use super::sources::{Marks, Writable};
+use super::{Walk, curves};
 use crate::model::{
     Child, ComposedLine, Control, EffectDefinition, Group, Property, Stream, Value,
 };
@@ -236,6 +236,40 @@ impl Walk<'_> {
                         return self
                             .mapping
                             .unsupported(&place.at, "a value of a type its row does not take");
+                    }
+                }
+                self.mapping.count(name, Fate::Mapped);
+            }
+            To::Curves => {
+                let first = match &property.value {
+                    Stream::Static(value) => Some(value),
+                    Stream::Animated(keys) => {
+                        self.mapping.unsupported(
+                            &place.at,
+                            "animated curves (the first keyframe's are kept)",
+                        );
+                        keys.first().map(|key| &key.value)
+                    }
+                };
+                let curves = match first {
+                    Some(Value::Data(data)) => curves::read(data),
+                    _ => None,
+                };
+                let Some(curves) = curves else {
+                    // The kind's key holds `rgb`: straight, the effect
+                    // changes nothing.
+                    out.keys.insert("rgb".into(), json!(curves::path(&[])));
+                    self.mapping.count(name, Fate::Unsupported);
+                    return self.mapping.unsupported(
+                        &place.at,
+                        "curves kept in a layout the import does not read",
+                    );
+                };
+                // The kind's key holds `rgb`, so it is written even straight.
+                for (curve, points) in curves::NAMES.iter().zip(&curves) {
+                    if *curve == "rgb" || !curves::is_straight(points) {
+                        out.keys
+                            .insert((*curve).into(), json!(curves::path(points)));
                     }
                 }
                 self.mapping.count(name, Fate::Mapped);
