@@ -508,3 +508,19 @@ D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that t
   - The modes, their order and the starting coverage are the ones the projects the import reads use, so a mask imports as one item, with no rewriting.
   - Cutting before the effects lets a glow or a blur spread past the mask's edge, as it does in those projects.
 - **Not now:** mask motion blur, linear feather falloff, and masks on shape groups.
+
+### D57. Motion blur samples a layer's motion over the shutter
+
+(D56 is taken by the audio decision.)
+
+- **Decision:** a layer with `"mblur":true` is drawn as the average of its drawings at several moments while the shutter is open. Its composition's `shutter` sets three things:
+  - the angle, as a share of a frame in degrees (180 is half a frame);
+  - the phase, where the shutter opens relative to the frame, in degrees;
+  - the samples per frame.
+
+  The default is `"shutter":"180 -90 16"`. Each sample is the layer's whole drawing, content, effects and parents included, at that moment. The samples are averaged and then blend, matte and fade as one layer. A layer that moves farther than one sample spacing in px takes more samples, up to eight times the setting. A `shutter` angle of 0 turns motion blur off for the composition.
+- **Why:**
+  - These are the settings the projects the import reads keep, as the same three numbers, so an import carries them as they are.
+  - Averaging whole drawings blurs everything that moves: transforms, shapes, text and effects. That is what true motion blur means in D21, and what a cheaper streak of the transform alone would miss.
+  - More samples for faster layers, as the original's adaptive limit does, keeps fast layers smooth without paying for slow ones.
+- **Not now:** frame blending, and motion blur of masks separately from their layer.
