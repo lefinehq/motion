@@ -10,6 +10,7 @@ use super::Walk;
 use super::items::{Out, Place};
 use super::keys::{color_json, num};
 use super::report::Fate;
+use super::slots::{Held, address};
 use crate::model::{
     BaselineOption, Caps, CharacterStyle, Child, Group, Justification, Kerning, LeadingType,
     ParagraphStyle, Property, Stream, TextDocument, TextFrame, Value,
@@ -65,8 +66,15 @@ impl Walk<'_> {
                 .unsupported(&place.at, "a text document it could not read");
         };
         self.mapping.count(DOCUMENT, Fate::Mapped);
+        let still = baked.is_none() && matches!(property.value, Stream::Static(_));
         let set = baked.and_then(|bake| self.baked_document(bake, document, property, place));
         self.write_document(set.as_ref().unwrap_or(document), out, place);
+        // A still text a panel control drives follows its slot.
+        if let Some(text) = out.keys.get_mut("text").filter(|_| still)
+            && let Some(marked) = self.follow_panel(&Held::Stored(address(property)), text, None)
+        {
+            *text = marked;
+        }
     }
 
     /// Writes `document` into `out`.

@@ -9,6 +9,7 @@ use serde_json::{Map, Value as Json, json};
 use super::keys::{Clock, Convert, Written, num, written};
 use super::report::{ControlReport, Fate};
 use super::rows::{self, Kind, Missing, Part, Policy, Row, To};
+use super::slots::{Held, address};
 use super::sources::{Marks, Writable};
 use super::{Walk, curves};
 use crate::model::{
@@ -217,7 +218,21 @@ impl Walk<'_> {
                                 );
                             }
                         }
+                        // A still value a panel control drives follows its
+                        // slot, and goes back through the slot.
+                        let followed = match &mut written {
+                            Written::Value(value) if !expression => self
+                                .follow_panel(
+                                    &Held::Stored(address(property)),
+                                    value,
+                                    Some(convert),
+                                )
+                                .map(|marked| *value = marked)
+                                .is_some(),
+                            _ => false,
+                        };
                         let writable = match (&written, &property.value, &property.origin) {
+                            _ if followed => None,
                             _ if expression => Some(Writable::Expression),
                             (Written::Track { .. }, ..) => Some(Writable::Keyed),
                             (Written::Value(_), Stream::Static(value), Some(origin)) => {
@@ -347,6 +362,18 @@ impl Walk<'_> {
             return;
         };
         self.mapping.count(row.match_name, Fate::Defaulted);
+        // A transform value the project leaves out at its default can still
+        // be driven by a panel control: it follows the slot, written even
+        // at rest.
+        let held = self
+            .writing
+            .map(|(_, layer)| Held::Default(address(layer), row.match_name.to_owned()));
+        if let Some(marked) =
+            held.and_then(|held| self.follow_panel(&held, &json, Some(convert(row, place))))
+        {
+            out.keys.insert(target.into(), marked);
+            return;
+        }
         let differs = sink
             .registry
             .target(target)

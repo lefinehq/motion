@@ -29,7 +29,7 @@ use super::ids::Ids;
 use super::keys::Convert;
 use super::report::Outcome;
 use super::sources::{Marks, Writable};
-use crate::model::{Composition, ItemKind, Layer, Origin, Stream, Value};
+use crate::model::{Composition, ItemKind, Layer, Origin, Property, Stream, Value};
 
 /// What a reference is written as until the scene is finished, when every
 /// other string that starts with `$` is escaped: a project's text never
@@ -125,15 +125,18 @@ fn quoted(input: &mut &str) -> winnow::Result<String> {
     .parse_next(input)
 }
 
-/// One value an expression read from a control.
+/// One value read from a control: by an expression, or a property a
+/// template's panel control drives.
 #[derive(Debug, Clone, PartialEq)]
 struct Follower {
     /// The value, in the scene's units for its property.
     value: Json,
-    /// How its property converts the control's value into the scene's.
-    convert: Convert,
-    /// Its expression's report.
-    report: usize,
+    /// How its property converts the control's value into the scene's;
+    /// none for text.
+    convert: Option<Convert>,
+    /// Its expression's report; none for a property a panel control
+    /// drives.
+    report: Option<usize>,
 }
 
 /// A control that expressions read, which may become a slot.
@@ -153,6 +156,31 @@ struct Control {
     stored: Option<(Origin, Value)>,
     /// The values read from it, in the order written.
     followers: Vec<Follower>,
+    /// What holds its value, when it is found, so two reads of one
+    /// property are one control however they name it.
+    property: Option<Held>,
+    /// The type its slot takes, when its values do not say: text.
+    ty: Option<SlotType>,
+    /// Whether a template's panel offers it ([D53]), so its slot is the
+    /// scene's and the report counts it.
+    ///
+    /// [D53]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d53-a-mogrt-imports-as-its-project-with-its-controls-as-slots
+    panel: bool,
+}
+
+/// A control a template's panel offers, before anything reads it.
+pub(super) struct Offered {
+    /// What its slot's id is made from, and its label.
+    pub name: String,
+    /// Its label, with its group's name.
+    pub label: String,
+    /// The type its slot takes, when its values do not say.
+    pub ty: Option<SlotType>,
+    /// What holds each value it drives.
+    pub properties: Vec<Held>,
+    /// Where the project stores its value, when it stores one an export can
+    /// write.
+    pub stored: Option<(Origin, Value)>,
 }
 
 /// The controls read so far.
@@ -189,6 +217,17 @@ impl Slots {
         let mut ids = Ids::default();
         let mut decided = Decided::default();
         for control in self.0 {
+            if control.followers.is_empty() {
+                // A panel control nothing in the scene follows.
+                if let Some(panel) = mapping.panel.as_mut() {
+                    panel.left_out.push(super::report::Finding {
+                        at: control.label.clone(),
+                        what: "nothing the scene draws follows it".into(),
+                    });
+                }
+                decided.written.push(Vec::new());
+                continue;
+            }
             let mut tally: Vec<(&Json, usize)> = Vec::new();
             for follower in &control.followers {
                 match tally
@@ -207,7 +246,10 @@ impl Slots {
                 .map(|(value, _)| (*value).clone())
                 .expect("a control is read at least once");
             let id = ids.give(&control.name, "slot");
-            let ty = shorthand(&value).expect("only values a slot holds are read");
+            let ty = control
+                .ty
+                .or_else(|| shorthand(&value))
+                .expect("only values a slot holds are read");
             let mut written = Map::new();
             written.insert(ty.name().to_owned(), value.clone());
             written.insert("label".to_owned(), json!(control.label));
@@ -215,7 +257,7 @@ impl Slots {
                 .followers
                 .iter()
                 .find(|f| f.value == value)
-                .map(|f| f.convert);
+                .and_then(|f| f.convert);
             // A control may store its value otherwise than expressions read
             // it, a point in fractions of its layer or a slider in percent:
             // only one whose stored value converts to the slot's goes back.
@@ -237,13 +279,18 @@ impl Slots {
                 .entry(control.scope)
                 .or_default()
                 .insert(id.clone(), Json::Object(written));
-            mapping.slots += 1;
+            match (control.panel, mapping.panel.as_mut()) {
+                (true, Some(panel)) => panel.slots += 1,
+                _ => mapping.slots += 1,
+            }
             let followers = control
                 .followers
                 .into_iter()
                 .map(|follower| match follower.value == value {
                     true => {
-                        if let Some(report) = mapping.expressions.get_mut(follower.report) {
+                        if let Some(report) =
+                            follower.report.and_then(|r| mapping.expressions.get_mut(r))
+                        {
                             report.outcome = Outcome::Slot { slot: id.clone() };
                         }
                         Json::String(format!("${id}"))
@@ -272,7 +319,7 @@ impl<'p> Walk<'p> {
     /// What `value` is written as until the controls are decided, when
     /// `source`, the expression that gave the property being written and
     /// whose report is `report`, only reads a control that a slot in scope
-    /// can hold.
+    /// can hold, or that a template's panel offers.
     pub(super) fn read_control(
         &mut self,
         source: &str,
@@ -287,12 +334,6 @@ impl<'p> Walk<'p> {
             CompPick::This => (own, composition),
             CompPick::Named(name) => self.comp_named(name)?,
         };
-        // A reference sees its own composition's slots, then the scene's.
-        let scope = match (item == own, Some(item) == self.root) {
-            (true, _) => self.scope.clone(),
-            (false, true) => None,
-            (false, false) => return None,
-        };
         let read_layer = match &read.layer {
             None => layer,
             Some(Pick::Name(name)) => read_in.layers.iter().find(|l| &l.name == name)?,
@@ -300,19 +341,33 @@ impl<'p> Walk<'p> {
                 .layers
                 .get(usize::try_from(*index).ok()?.checked_sub(1)?)?,
         };
-        let key = (item, read_layer.id, read.effect.clone(), read.param.clone());
+        let (held, property) = self
+            .control_property(read_layer, &read.effect, &read.param)
+            .unzip();
+        let property = property.flatten();
         let follower = Follower {
             value: value.clone(),
-            convert,
-            report,
+            convert: Some(convert),
+            report: Some(report),
         };
-        let stored = self.stored_control(read_layer, &read.effect, &read.param);
+        // A control the panel offers is the scene's, whichever composition
+        // reads it.
+        if let Some(offered) = held.as_ref().and_then(|h| self.offered.get(h).copied()) {
+            return Some(self.slots.follow(offered, follower));
+        }
+        // A reference sees its own composition's slots, then the scene's.
+        let scope = match (item == own, Some(item) == self.root) {
+            (true, _) => self.scope.clone(),
+            (false, true) => None,
+            (false, false) => return None,
+        };
+        let key = (item, read_layer.id, read.effect.clone(), read.param.clone());
+        let stored = property.and_then(|p| stored(p, read_layer));
         let controls = &mut self.slots.0;
         // One parameter read as `effect("Size")(1)` and as
-        // `effect("Size")("Slider")` is one control: where the project
-        // stores it tells.
-        let same = |c: &Control| match (&c.stored, &stored) {
-            (Some((a, _)), Some((b, _))) => a.numbers == b.numbers,
+        // `effect("Size")("Slider")` is one control: the property tells.
+        let same = |c: &Control| match (&c.property, &held) {
+            (Some(a), Some(b)) => a == b,
             _ => c.key == key,
         };
         let index = match controls.iter().position(same) {
@@ -333,28 +388,24 @@ impl<'p> Walk<'p> {
                     label,
                     stored,
                     followers: Vec::new(),
+                    property: held,
+                    ty: None,
+                    panel: false,
                 });
                 controls.len() - 1
             }
         };
-        let followers = &mut controls[index].followers;
-        followers.push(follower);
-        Some(Json::String(format!(
-            "{REFERENCE}{index}:{}",
-            followers.len() - 1
-        )))
+        Some(self.slots.follow(index, follower))
     }
 
-    /// Where the project stores the parameter `param` of the effect
-    /// `effect` of `layer`, and its value, when the effect is a control and
-    /// the project stores a still value: a parameter at its default is not
-    /// stored.
-    fn stored_control(
+    /// What holds the parameter `param` of the effect `effect` of `layer`,
+    /// and the parameter, when the project stores it.
+    fn control_property(
         &self,
-        layer: &Layer,
+        layer: &'p Layer,
         effect: &Pick,
         param: &Pick,
-    ) -> Option<(Origin, Value)> {
+    ) -> Option<(Held, Option<&'p Property>)> {
         let definitions = &self.project.effects;
         let mut effects = super::layer::effects(layer);
         let group = match effect {
@@ -367,14 +418,6 @@ impl<'p> Walk<'p> {
             })?,
             Pick::Index(index) => effects.nth(usize::try_from(*index).ok()?.checked_sub(1)?)?,
         };
-        // An effect the scene draws writes its own parameters, which go
-        // back from there.
-        if !matches!(
-            super::rows::policy(&group.match_name),
-            Some(super::rows::Policy::Control)
-        ) {
-            return None;
-        }
         // A parameter's match name is its effect's and its 1-based index.
         let match_name = match param {
             Pick::Index(index) => format!("{}-{index:04}", group.match_name),
@@ -386,11 +429,12 @@ impl<'p> Walk<'p> {
                 .match_name
                 .clone(),
         };
-        let property = group.properties().find(|p| p.match_name == match_name)?;
-        match (&property.value, &property.origin) {
-            (Stream::Static(value), Some(origin)) => Some((origin.clone(), value.clone())),
-            _ => None,
-        }
+        let property = group.properties().find(|p| p.match_name == match_name);
+        let held = match property {
+            Some(property) => Held::Stored(address(property)),
+            None => Held::Default(address(group), match_name),
+        };
+        Some((held, property))
     }
 
     /// The id of the composition item `composition` is.
@@ -413,6 +457,99 @@ impl<'p> Walk<'p> {
             });
         let found = named.next()?;
         named.next().is_none().then_some(found)
+    }
+}
+
+/// Where the project stores `property`, a parameter of an effect of
+/// `layer`, and its value, when the effect is a control and the project
+/// stores a still value: a parameter at its default is not stored.
+fn stored(property: &Property, layer: &Layer) -> Option<(Origin, Value)> {
+    let group = super::layer::effects(layer)
+        .find(|group| group.properties().any(|p| std::ptr::eq(p, property)))?;
+    // An effect the scene draws writes its own parameters, which go back
+    // from there.
+    if !matches!(
+        super::rows::policy(&group.match_name),
+        Some(super::rows::Policy::Control)
+    ) {
+        return None;
+    }
+    still(property)
+}
+
+/// Where the project stores `property`'s value, and that value, when it is
+/// still and stored.
+pub(super) fn still(property: &Property) -> Option<(Origin, Value)> {
+    match (&property.value, &property.origin) {
+        (Stream::Static(value), Some(origin)) => Some((origin.clone(), value.clone())),
+        _ => None,
+    }
+}
+
+/// The address of `thing`, which names it while the project is read.
+pub(super) fn address<T>(thing: &T) -> usize {
+    std::ptr::from_ref(thing).addr()
+}
+
+/// What holds a value a control gives: a property the project stores, or
+/// one it leaves out at its default, named by what owns it (a layer for
+/// its transform, an effect for its parameters) and its match name.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(super) enum Held {
+    /// A property, by its address.
+    Stored(usize),
+    /// A property left out, by its owner's address and its match name.
+    Default(usize, String),
+}
+
+impl Slots {
+    /// Adds a control the panel offers, declared on the scene, and gives
+    /// its index.
+    pub(super) fn offer(&mut self, offered: Offered) -> usize {
+        self.0.push(Control {
+            key: (0, 0, Pick::Index(0), Pick::Index(0)),
+            scope: None,
+            name: offered.name,
+            label: offered.label,
+            stored: offered.stored,
+            followers: Vec::new(),
+            property: offered.properties.first().cloned(),
+            ty: offered.ty,
+            panel: true,
+        });
+        self.0.len() - 1
+    }
+
+    /// Adds `follower` to the control at `index`, and gives what its value
+    /// is written as until the controls are decided.
+    fn follow(&mut self, index: usize, follower: Follower) -> Json {
+        let followers = &mut self.0[index].followers;
+        followers.push(follower);
+        Json::String(format!("{REFERENCE}{index}:{}", followers.len() - 1))
+    }
+}
+
+impl Walk<'_> {
+    /// What the still `value` of the property `held` names is written as
+    /// until the controls are decided, when a template's panel control
+    /// drives it:
+    /// `convert` turns the project's value into it, none for text.
+    pub(super) fn follow_panel(
+        &mut self,
+        held: &Held,
+        value: &Json,
+        convert: Option<Convert>,
+    ) -> Option<Json> {
+        let index = *self.offered.get(held)?;
+        self.slots.0[index].ty.or_else(|| shorthand(value))?;
+        Some(self.slots.follow(
+            index,
+            Follower {
+                value: value.clone(),
+                convert,
+                report: None,
+            },
+        ))
     }
 }
 

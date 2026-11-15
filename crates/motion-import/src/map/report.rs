@@ -6,6 +6,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use super::items::plural;
+
 use serde::Serialize;
 
 /// What became of one property or group.
@@ -84,6 +86,22 @@ pub struct Mapping {
     pub roles: Vec<super::roles::ProposedRole>,
     /// The locks written, the defaults of a master with a logo.
     pub locks: Vec<String>,
+    /// What became of a template's panel ([D53]), for a `.mogrt`.
+    ///
+    /// [D53]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d53-a-mogrt-imports-as-its-project-with-its-controls-as-slots
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub panel: Option<PanelReport>,
+}
+
+/// What became of a template's panel.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct PanelReport {
+    /// How many controls it offers, groups left out.
+    pub controls: usize,
+    /// How many became slots.
+    pub slots: usize,
+    /// The controls that did not, by label, and why.
+    pub left_out: Vec<Finding>,
 }
 
 /// What one expression became.
@@ -264,6 +282,18 @@ impl fmt::Display for Mapping {
                 "  locks, as a master with a logo has: {}",
                 self.locks.join(", ")
             )?;
+        }
+        if let Some(panel) = &self.panel {
+            writeln!(
+                f,
+                "  template: {}, {}",
+                plural(panel.controls, "control"),
+                plural(panel.slots, "slot")
+            )?;
+            panel
+                .left_out
+                .iter()
+                .try_for_each(|c| writeln!(f, "    left out: {} ({})", c.at, c.what))?;
         }
         if !self.clamped.is_empty() {
             let shown: Vec<String> = self
