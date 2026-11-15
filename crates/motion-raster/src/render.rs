@@ -12,7 +12,7 @@ use vello_cpu::{
     RenderSettings, Resources, TargetInit,
 };
 
-use crate::effect::{Effect, EffectContext, Move, Space};
+use crate::effect::{Effect, EffectContext, Input, Move, Space};
 use crate::image::Image;
 use crate::list::{Blending, Frame, GlyphDraw, ImageDraw, Layer, Matte, MatteMode, Node, PathDraw};
 use crate::pixels::Pixels;
@@ -215,6 +215,28 @@ impl Painter {
         Ok(Pixels::from_pixmap(&painter.finish()))
     }
 
+    /// Where `effect` runs on a layer whose own coordinates `transform`
+    /// takes to the frame: with the drawing of the layer it reads, if any,
+    /// laid on those coordinates.
+    fn space(&self, effect: &Effect, transform: Affine, bounds: Option<Rect>) -> Result<Space> {
+        let input = effect
+            .input()
+            .map(|node| {
+                let bounds = match node {
+                    Node::Layer(layer) => layer.bounds,
+                    _ => None,
+                };
+                self.drawn_alone(std::slice::from_ref(node), transform)
+                    .map(|pixels| Input { pixels, bounds })
+            })
+            .transpose()?;
+        Ok(Space {
+            transform,
+            bounds,
+            input,
+        })
+    }
+
     /// Lays `pixels`, the size of the frame, over what is drawn so far.
     fn draw_pixels(&mut self, pixels: &Pixels) {
         let paint = vello_cpu::Image {
@@ -270,11 +292,9 @@ impl Painter {
             self.draw_pixels(&drawn);
             return Ok(());
         }
-        let space = Space {
-            transform: parent * filter.transform,
-        };
         let mut changed = drawn.clone();
         for effect in &filter.effects {
+            let space = self.space(effect, parent * filter.transform, filter.bounds)?;
             effect.apply(&mut changed, &space);
         }
         let matte = filter
@@ -286,7 +306,7 @@ impl Painter {
         // applies everywhere.
         let region = match filter.children.is_empty() {
             true => None,
-            false => Some(self.drawn_alone(&filter.children, space.transform)?),
+            false => Some(self.drawn_alone(&filter.children, parent * filter.transform)?),
         };
         let mut mixed = drawn;
         mixed.mix(&changed, |i| {
@@ -375,12 +395,13 @@ impl Painter {
             }
             false => self
                 .drawn_alone(&layer.children, transform * moved.transform)
-                .map(|mut pixels| {
-                    let space = Space { transform };
+                .and_then(|mut pixels| {
                     for effect in on_pixels {
+                        let space = self.space(effect, transform, layer.bounds)?;
                         effect.apply(&mut pixels, &space);
                     }
                     self.draw_pixels(&pixels);
+                    Ok(())
                 }),
         };
         // Pop even after a failure, so the context's layers stay balanced.

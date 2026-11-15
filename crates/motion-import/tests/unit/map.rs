@@ -425,6 +425,40 @@ mod effects {
     }
 
     #[test]
+    fn a_displacement_map_names_its_map_layer() {
+        let map = |layer: u32| {
+            group(
+                "ADBE Displacement Map",
+                vec![
+                    Child::Property(property(
+                        "ADBE Displacement Map-0001",
+                        Stream::Static(Value::Layer(layer)),
+                    )),
+                    Child::Property(number("ADBE Displacement Map-0003", 20.0)),
+                ],
+            )
+        };
+        let mut shape = layer(1, "Shape", vec![]);
+        shape.kind = LayerKind::Shape;
+        shape.properties.children = vec![Child::Group(group(
+            "ADBE Effect Parade",
+            vec![Child::Group(map(7)), Child::Group(map(1))],
+        ))];
+        let mut noise = layer(7, "Noise", vec![]);
+        noise.kind = LayerKind::Shape;
+        let project = project(vec![(2, "Main", comp(vec![shape, noise], 2.0))]);
+        let import = import(&project, &Options::default()).expect("imports");
+        let shape = import.json["layers"]
+            .as_array()
+            .and_then(|layers| layers.iter().find(|l| l["id"] == "shape"))
+            .expect("the shape layer");
+        assert_eq!(shape["fx"][0]["map"], "noise", "{shape}");
+        assert_eq!(shape["fx"][0]["displacement-map"], 20, "{shape}");
+        // A map that is the layer itself is what the effect reads anyway.
+        assert!(shape["fx"][1].get("map").is_none(), "{shape}");
+    }
+
+    #[test]
     fn curves_come_from_the_data_kept_for_them() {
         let straight: &[[u16; 2]] = &[[0, 0], [255, 255]];
         let data = crate::map::curves::tests::data([
@@ -512,7 +546,7 @@ mod effects {
 
     #[test]
     fn an_adjustment_layer_without_an_effect_the_scene_draws_draws_nothing() {
-        let import = adjusting(vec![group("ADBE Turbulent Displace", vec![])]);
+        let import = adjusting(vec![group("ADBE Lens Flare", vec![])]);
         let layer = &import.json["layers"][0];
         assert_eq!(layer["pivot"], true);
         assert!(
@@ -520,6 +554,6 @@ mod effects {
             "{layer}"
         );
         let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
-        assert_eq!(what, ["`ADBE Turbulent Displace`"]);
+        assert_eq!(what, ["`ADBE Lens Flare`"]);
     }
 }

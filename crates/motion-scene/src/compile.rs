@@ -128,6 +128,21 @@ impl Build<'_> {
                 Some((index, matte.mode))
             })
             .collect();
+        // Validation has checked that each input names a layer of this list.
+        let inputs: Vec<Vec<Option<usize>>> = layers
+            .iter()
+            .map(|layer| {
+                layer
+                    .fx
+                    .iter()
+                    .filter(|item| !item.hidden)
+                    .map(|item| {
+                        let id = item.input.as_deref()?;
+                        layers.iter().position(|l| l.id == id)
+                    })
+                    .collect()
+            })
+            .collect();
         Ok(layers
             .iter()
             .zip(contents)
@@ -137,6 +152,7 @@ impl Build<'_> {
                 let extent = parents[i].map_or(canvas, |p| boxes[p]);
                 Node {
                     matte: mattes[i],
+                    inputs: inputs[i].clone(),
                     ..node(
                         layer, self.scene, fps, content, boxes[i], parents[i], extent,
                     )
@@ -312,6 +328,7 @@ fn node(
         hidden: layer.hidden,
         adjust: layer.adjust,
         matte: None,
+        inputs: Vec::new(),
     }
 }
 

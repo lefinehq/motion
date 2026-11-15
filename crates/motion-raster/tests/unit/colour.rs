@@ -25,6 +25,8 @@ fn after(
         values,
         &Space {
             transform: Affine::IDENTITY,
+            bounds: None,
+            input: None,
         },
     );
     straight(pixels.data()[0])

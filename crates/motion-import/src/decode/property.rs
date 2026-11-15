@@ -46,6 +46,9 @@ const ARBS: Tag = Tag(*b"aRbs");
 /// One parameter's data.
 const ARBP: Name = Name::chunk(b"aRbp");
 
+/// The layer a layer parameter names, by id; 0 names none.
+const TDPI: Name = Name::chunk(b"tdpi");
+
 /// The match name that ends a group.
 const GROUP_END: &str = "ADBE Group End";
 /// The display name of a group or stream that was never renamed.
@@ -320,7 +323,19 @@ impl Decoder {
             Some(cdat) => {
                 let value = static_value(&scan, cdat, &tdb4, values)?;
                 origin = self.origin(cdat, &tdb4, &value);
-                Stream::Static(value)
+                // A layer parameter names its layer beside its value.
+                let layer = scan
+                    .find(TDPI)
+                    .and_then(|chunk| chunk.body.get(..4))
+                    .map(|id| u32::from_be_bytes([id[0], id[1], id[2], id[3]]))
+                    .filter(|&id| id != 0);
+                match layer {
+                    Some(id) => {
+                        origin = None;
+                        Stream::Static(Value::Layer(id))
+                    }
+                    None => Stream::Static(value),
+                }
             }
             None => {
                 let list = scan.require_list(KEYFRAMES)?;

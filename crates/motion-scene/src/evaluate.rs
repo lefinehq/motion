@@ -39,12 +39,13 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
     for i in 0..nodes.len() {
         transform(nodes, &values, &mut world, i);
     }
-    // A hidden node another uses as its matte is still drawn, into the mask.
+    // A hidden node another uses as its matte, or whose drawing another's
+    // effect reads, is still drawn, into the mask or for the effect.
     let mattes: Vec<bool> = (0..nodes.len())
         .map(|i| {
-            nodes
-                .iter()
-                .any(|n| n.matte.is_some_and(|(source, _)| source == i))
+            nodes.iter().any(|n| {
+                n.matte.is_some_and(|(source, _)| source == i) || n.inputs.contains(&Some(i))
+            })
         })
         .collect();
     let nodes = nodes

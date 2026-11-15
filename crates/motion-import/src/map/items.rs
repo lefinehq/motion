@@ -241,6 +241,33 @@ impl Walk<'_> {
                 }
                 self.mapping.count(name, Fate::Mapped);
             }
+            To::Input => {
+                let named = match &property.value {
+                    Stream::Static(Value::Layer(id)) => Some(*id),
+                    _ => None,
+                };
+                let key = sink.kind.and_then(|kind| kind.input);
+                let scope = self.layer_scopes.last();
+                // The layer itself, or none, is what the effect reads anyway.
+                let other = named.filter(|id| scope.is_none_or(|(_, own)| own != id));
+                match (other, key) {
+                    (None, _) => self.mapping.count(name, Fate::Defaulted),
+                    (Some(id), Some(key)) => match scope.and_then(|(ids, _)| ids.get(&id)) {
+                        Some(layer) => {
+                            out.keys.insert(key.into(), json!(layer));
+                            self.mapping.count(name, Fate::Mapped);
+                        }
+                        None => {
+                            self.mapping.count(name, Fate::Unsupported);
+                            self.mapping.unsupported(
+                                &place.at,
+                                "a layer parameter naming a layer outside its composition",
+                            );
+                        }
+                    },
+                    (Some(_), None) => self.mapping.ignore(name, "a layer the scene does not read"),
+                }
+            }
             To::Curves => {
                 let first = match &property.value {
                     Stream::Static(value) => Some(value),

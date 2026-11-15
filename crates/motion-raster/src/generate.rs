@@ -260,7 +260,11 @@ impl Noise {
         for octave in 0..octaves {
             // The last octave weighs by the fraction of complexity left.
             let share = (self.complexity - octave as f32).min(1.0);
-            let n = self.value([p[0], p[1], self.evolution], self.seed.wrapping_add(octave));
+            let n = value_noise(
+                [p[0], p[1], self.evolution],
+                self.seed.wrapping_add(octave),
+                self.kind,
+            );
             let n = if turbulent { (2.0 * n - 1.0).abs() } else { n };
             sum += n * weight * share;
             total += weight * share;
@@ -289,34 +293,33 @@ impl Noise {
         };
         if self.invert { 1.0 - v } else { v }
     }
+}
 
-    /// Value noise at `p`, 0 to 1, between lattice values blended as the
-    /// noise kind says: `spline`, `soft-linear`, `linear` or `block`.
-    fn value(&self, p: [f32; 3], seed: u32) -> f32 {
-        let cell = p.map(f32::floor);
-        let f: [f32; 3] = std::array::from_fn(|i| p[i] - cell[i]);
-        let at = cell.map(|c| c as i32);
-        if self.kind == 3 {
-            return lattice(at, seed);
-        }
-        let ease = |t: f32| match self.kind {
-            0 => t * t * t * (t * (t * 6.0 - 15.0) + 10.0),
-            1 => t * t * (3.0 - 2.0 * t),
-            _ => t,
-        };
-        let w = f.map(ease);
-        let corner =
-            |dx: i32, dy: i32, dz: i32| lattice([at[0] + dx, at[1] + dy, at[2] + dz], seed);
-        let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
-        let plane = |dz: i32| {
-            lerp(
-                lerp(corner(0, 0, dz), corner(1, 0, dz), w[0]),
-                lerp(corner(0, 1, dz), corner(1, 1, dz), w[0]),
-                w[1],
-            )
-        };
-        lerp(plane(0), plane(1), w[2])
+/// Value noise at `p`, 0 to 1, between lattice values blended as `kind`
+/// says: 0 `spline`, 1 `soft-linear`, 2 `linear` or 3 `block`.
+pub(crate) fn value_noise(p: [f32; 3], seed: u32, kind: usize) -> f32 {
+    let cell = p.map(f32::floor);
+    let f: [f32; 3] = std::array::from_fn(|i| p[i] - cell[i]);
+    let at = cell.map(|c| c as i32);
+    if kind == 3 {
+        return lattice(at, seed);
     }
+    let ease = |t: f32| match kind {
+        0 => t * t * t * (t * (t * 6.0 - 15.0) + 10.0),
+        1 => t * t * (3.0 - 2.0 * t),
+        _ => t,
+    };
+    let w = f.map(ease);
+    let corner = |dx: i32, dy: i32, dz: i32| lattice([at[0] + dx, at[1] + dy, at[2] + dz], seed);
+    let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+    let plane = |dz: i32| {
+        lerp(
+            lerp(corner(0, 0, dz), corner(1, 0, dz), w[0]),
+            lerp(corner(0, 1, dz), corner(1, 1, dz), w[0]),
+            w[1],
+        )
+    };
+    lerp(plane(0), plane(1), w[2])
 }
 
 /// A lattice point's value, 0 to 1, hashed from its coordinates and seed.

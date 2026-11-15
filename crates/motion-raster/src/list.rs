@@ -83,6 +83,10 @@ pub struct Layer {
     /// in by its opacity and matte. Its parent is isolated, so that is all
     /// its composition drew below it.
     pub adjust: bool,
+    /// Its box in its own coordinates, when its content has one: a rect's,
+    /// an image's or video's frame, a composition's canvas. Effects that
+    /// wrap, tile or pin at a layer's edges read it.
+    pub bounds: Option<Rect>,
 }
 
 /// A layer's matte: a node drawn in the layer's parent's coordinates, whose
@@ -124,6 +128,7 @@ impl Layer {
             isolate: false,
             matte: None,
             adjust: false,
+            bounds: None,
         }
     }
 

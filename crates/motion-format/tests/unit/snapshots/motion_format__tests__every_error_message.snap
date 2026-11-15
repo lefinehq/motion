@@ -73,6 +73,11 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","matte":"b sideways"},{"id":"b","rect":"1x1"}` → a.matte: unknown matte mode `sideways`; expected one of alpha, alpha-inverted, luma, luma-inverted
 `{"id":"a","rect":"1x1","matte":"b alpha extra"},{"id":"b","rect":"1x1"}` → a.matte: `b alpha extra` is not a valid matte; expected `<layer id> [alpha|alpha-inverted|luma|luma-inverted]`, e.g. `reveal alpha`
 `{"id":"a","rect":"1x1","matte":true}` → a.matte: invalid type: boolean `true`; expected `<layer id> [alpha|alpha-inverted|luma|luma-inverted]`, e.g. `reveal alpha`
+`{"id":"a","rect":"1x1","fx":[{"displacement-map":5,"map":"b"}]}` → a.fx[0].map: unknown layer id `b`; expected one of a
+`{"id":"a","rect":"1x1","fx":[{"displacement-map":5,"map":"a"}]}` → a: `a` would read its own drawing through the layers its effects read; expected effects that read other layers, never leading back
+`{"id":"a","rect":"1x1","fx":[{"displacement-map":5,"map":"b"}]},{"id":"b","rect":"1x1","matte":"a"}` → a: `a` would read its own drawing through the layers its effects read; expected effects that read other layers, never leading back
+`{"id":"a","rect":"1x1","fx":[{"displacement-map":5,"map":3}]}` → a.fx[0].map: invalid type: integer `3`; expected a string
+`{"id":"a","rect":"1x1","fx":[{"fill":"#FF0000","map":"a"}]}` → a.fx[0].map: unknown fill key `map`; expected one of fill, id, hidden, anim, opacity
 `{"id":"a","rect":"1x1","span":"5f"}` → a.span: `5f` has no `-` between start and end; expected `<start>-<end>` with a unit, e.g. `0-30f`, `0.5s-1s`; a bare start takes the end's unit
 `{"id":"a","rect":"1x1","span":"5-1f"}` → a.span: `5f-1f` starts after it ends; expected `<start>-<end>` with a unit, e.g. `0-30f`, `0.5s-1s`; a bare start takes the end's unit
 `{"id":"a","rect":"1x1","offset":"-1x"}` → a.offset: `-1x` is not a time or a moment; expected a time such as `2s` or `-6f`, or a base moved by a time: a label (`cta`, `cta+12f`, `cta-0.5s`), `<` where the layer before ends (`<+6f`) or `<<` where it starts (`<<-3f`)
@@ -301,7 +306,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"motion":1,"dur":"1s","fonts":[3],"layers":[]}` → fonts[0]: invalid type: integer `3`; expected a string
 
 ## effects
-`{"rect":[1,1]}` → a.fx[0]: needs the key of its kind; expected one kind key: `fill`, `transform`, `tint`, `hue-saturation`, `exposure`, `levels`, `ramp`, `four-color`, `grid`, `venetian-blinds`, `fractal-noise`, `gaussian-blur`, `box-blur`, `drop-shadow`, `glow`, `sharpen`, `black-white`, `curves`, `invert`
+`{"rect":[1,1]}` → a.fx[0]: needs the key of its kind; expected one kind key: `fill`, `transform`, `tint`, `hue-saturation`, `exposure`, `levels`, `displacement-map`, `motion-tile`, `wrap`, `turbulent-displace`, `ramp`, `four-color`, `grid`, `venetian-blinds`, `fractal-noise`, `gaussian-blur`, `box-blur`, `drop-shadow`, `glow`, `sharpen`, `black-white`, `curves`, `invert`
 `{"fill":"#fff","opacity":3}` → a.fx[0].opacity: value 3 is outside 0..=1; expected a number from 0 to 1
 `{"fill":"#fff","rule":"evenodd"}` → a.fx[0].rule: unknown fill key `rule`; expected one of fill, id, hidden, anim, opacity
 

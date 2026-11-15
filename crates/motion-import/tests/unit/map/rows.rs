@@ -42,6 +42,11 @@ fn check(
                 registry.kind
             );
         }),
+        To::Input => assert!(
+            kind.is_some_and(|kind| kind.input.is_some()),
+            "{at}: `{}` names a layer, which its kind does not read",
+            row.match_name
+        ),
         To::Ignore(_) | To::OnlyDefault(_) => {}
     });
 }

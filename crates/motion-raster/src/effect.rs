@@ -20,9 +20,10 @@ use vello_cpu::RenderContext;
 use vello_cpu::kurbo::{Affine, Rect, Vec2};
 use vello_cpu::peniko::{BlendMode, Compose, Mix};
 
+use crate::list::Node;
 use crate::pixels::Pixels;
 use crate::style::Color;
-use crate::{blur, colour, generate};
+use crate::{blur, colour, distort, generate};
 
 /// The type of one effect parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,10 +178,26 @@ pub enum Apply {
 
 /// Where an effect's pixels are: lengths and points of its parameters are
 /// in the layer's own coordinates, which `transform` takes to pixels.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Space {
     /// From the layer's own coordinates to pixels of the grid.
     pub transform: Affine,
+    /// The layer's box in its own coordinates, when it has one: what its
+    /// rect, image, video or composition fills.
+    pub bounds: Option<Rect>,
+    /// The drawing of the layer the effect reads, if it reads one.
+    pub input: Option<Input>,
+}
+
+/// The drawing of a layer an effect reads, in that layer's own
+/// coordinates laid on the reading layer's: its point `p` is at
+/// `transform * p` of the grid, as the reading layer's own point `p` is.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Input {
+    /// What it drew.
+    pub pixels: Pixels,
+    /// Its box in its own coordinates, when it has one.
+    pub bounds: Option<Rect>,
 }
 
 /// How a moving effect moves the layer's content.
@@ -477,6 +494,248 @@ pub const EFFECTS: &[EffectSpec] = &[
         apply: Apply::Pixels {
             over: None,
             pixels: colour::invert,
+        },
+    },
+    EffectSpec {
+        name: "displacement-map",
+        params: &[
+            ParamSpec {
+                name: "horizontal",
+                default: ParamValue::Number(5.0),
+                range: Some((-32_000.0, 32_000.0)),
+                choices: &[],
+                doc: "the farthest a pixel moves across, in px",
+            },
+            ParamSpec {
+                name: "vertical",
+                default: ParamValue::Number(5.0),
+                range: Some((-32_000.0, 32_000.0)),
+                choices: &[],
+                doc: "the farthest a pixel moves up or down, in px",
+            },
+            ParamSpec {
+                name: "horizontal-from",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "red",
+                    "green",
+                    "blue",
+                    "alpha",
+                    "luminance",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "full",
+                    "half",
+                    "off",
+                ],
+                doc: "which level of the map moves pixels across",
+            },
+            ParamSpec {
+                name: "vertical-from",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "green",
+                    "red",
+                    "blue",
+                    "alpha",
+                    "luminance",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "full",
+                    "half",
+                    "off",
+                ],
+                doc: "which level of the map moves pixels up or down",
+            },
+            ParamSpec {
+                name: "behaviour",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["center", "stretch", "tile"],
+                doc: "how the map lies on the layer",
+            },
+            ParamSpec {
+                name: "edges",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["clear", "wrap"],
+                doc: "whether moved pixels wrap around the box",
+            },
+        ],
+        doc: "moves each pixel by the levels of another layer",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: distort::displacement_map,
+        },
+    },
+    EffectSpec {
+        name: "motion-tile",
+        params: &[
+            ParamSpec {
+                name: "center",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "where a tile is centred, in px of the layer",
+            },
+            ParamSpec {
+                name: "tile-width",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "a tile's width, as a share of the layer's box",
+            },
+            ParamSpec {
+                name: "tile-height",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "a tile's height, as a share of the layer's box",
+            },
+            ParamSpec {
+                name: "output-width",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 300.0)),
+                choices: &[],
+                doc: "how wide the tiles reach, as a share of the box, about its middle",
+            },
+            ParamSpec {
+                name: "output-height",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 300.0)),
+                choices: &[],
+                doc: "how high the tiles reach, as a share of the box, about its middle",
+            },
+            ParamSpec {
+                name: "phase",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "how far every other column or row shifts, in degrees; a turn is a tile",
+            },
+            ParamSpec {
+                name: "edges",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["repeat", "mirror"],
+                doc: "whether every other tile flips",
+            },
+            ParamSpec {
+                name: "shift",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["vertical", "horizontal"],
+                doc: "whether the phase shifts columns up and down, or rows across",
+            },
+        ],
+        doc: "repeats the layer in tiles around a point",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: distort::motion_tile,
+        },
+    },
+    EffectSpec {
+        name: "wrap",
+        params: &[
+            ParamSpec {
+                name: "to",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "where the middle of the layer's box moves to, in px of the layer",
+            },
+            ParamSpec {
+                name: "blend",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how much of the layer stays as it was",
+            },
+        ],
+        doc: "moves the layer's content within its box, wrapping around",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: distort::wrap,
+        },
+    },
+    EffectSpec {
+        name: "turbulent-displace",
+        params: &[
+            ParamSpec {
+                name: "amount",
+                default: ParamValue::Number(50.0),
+                range: Some((-10_000.0, 10_000.0)),
+                choices: &[],
+                doc: "how far pixels move, in percent of `size`",
+            },
+            ParamSpec {
+                name: "size",
+                default: ParamValue::Number(100.0),
+                range: Some((2.0, 1_000.0)),
+                choices: &[],
+                doc: "how wide the noise's cells are, in px",
+            },
+            ParamSpec {
+                name: "offset",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "where the noise is centred, in px of the layer",
+            },
+            ParamSpec {
+                name: "complexity",
+                default: ParamValue::Number(1.0),
+                range: Some((1.0, 10.0)),
+                choices: &[],
+                doc: "how many octaves the noise sums",
+            },
+            ParamSpec {
+                name: "evolution",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "how far the noise has evolved, in degrees; a turn is a cell",
+            },
+            ParamSpec {
+                name: "seed",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 100_000.0)),
+                choices: &[],
+                doc: "which noise it is",
+            },
+            ParamSpec {
+                name: "displacement",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "turbulent",
+                    "turbulent-smoother",
+                    "bulge",
+                    "bulge-smoother",
+                    "twist",
+                    "twist-smoother",
+                    "horizontal",
+                    "vertical",
+                    "cross",
+                ],
+                doc: "how rough the movement is",
+            },
+            ParamSpec {
+                name: "pinning",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["all", "left-right", "top-bottom", "none"],
+                doc: "which edges of the layer's box stay put",
+            },
+        ],
+        doc: "moves each pixel by a smooth noise",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: distort::turbulent_displace,
         },
     },
     EffectSpec {
@@ -1190,6 +1449,7 @@ pub const EFFECTS: &[EffectSpec] = &[
 pub struct Effect {
     spec: &'static EffectSpec,
     values: Vec<ParamValue>,
+    input: Option<Box<Node>>,
 }
 
 impl Effect {
@@ -1220,7 +1480,24 @@ impl Effect {
                 })?;
             values[i] = checked(&spec.params[i], value).map_err(|e| e.at(param))?;
         }
-        Ok(Effect { spec, values })
+        Ok(Effect {
+            spec,
+            values,
+            input: None,
+        })
+    }
+
+    /// The effect reading `node`'s drawing: a layer drawn in its own
+    /// coordinates, which the renderer lays on those of the layer the
+    /// effect is on.
+    pub fn with_input(mut self, node: Node) -> Effect {
+        self.input = Some(Box::new(node));
+        self
+    }
+
+    /// The node whose drawing it reads, if any.
+    pub fn input(&self) -> Option<&Node> {
+        self.input.as_deref()
     }
 
     /// The effect's row.
