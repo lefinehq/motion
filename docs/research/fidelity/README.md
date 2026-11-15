@@ -20,10 +20,34 @@ The manifest is a JSON file, with paths relative to it:
 ```
 
 - `fonts` lists font folders, files or locks. A lock (`motion import --fetch-fonts` writes one) needs its files in the font cache.
-- `reference` is a folder of PNG frames. Decode an untagged HD video as BT.709 limited range ([why](../2026-11-14-fidelity-first-sample.md#reading-a-reference-correctly)).
+- `reference` is a folder of PNG frames. Decode an untagged HD video as BT.709 limited range ([why](../2026-11-14-fidelity-first-sample.md#reading-a-reference-correctly)). Take exact frames of the video: every k-th one (`select=not(mod(n\,k))`), with `fps` the video's rate over k, such as 23.976/12. ffmpeg's `fps` filter keeps the last frame of each slot, so at 2 a second from 25 its frame for 0.5 s shows 0.74 s; on the local corpus, references taken that way made every entrance fail.
 - `ignore` leaves out layers the reference fills with footage we do not have.
 - `settled` is when the entrance is over, so the layout's own error is not hidden by the motion's.
 - `comp` picks the composition, `start` the scene time of the first reference frame.
+- `excluded` says why a sample cannot pass however well motion draws it, such as a reference rendered from other footage than the project names. It is still measured, so a change to it shows in the ledger, but it is left out of the score.
+
+## The score
+
+A sample passes when every compared frame passes the fidelity limit of [Quality](../../design/quality.md#fidelity): no more than 1% of its content past 0.016 per channel (`DiffOptions::PASSING`, `Error::passes`). Each window counts its passing frames (`frames_passing`, higher is better in the ledger) and its empty ones (`frames_empty`): frames where the scene draws nothing and the reference is its background. Those pass without showing anything, so a window passes only when one of its frames has content, and a window with no frame never does. Means can fall a long way without a sample passing, so `motion fidelity` ends with the score, sample by sample (`Scoreboard`, `Verdict`):
+
+```text
+score: 1 of 181 pass every frame, 1 more once settled (13 excluded, 0 not yet scored)
+  pass (1): m759
+  pass once settled (1): m562
+  fail with nothing unsupported (11): m628 m632 m643 m650 m737 …
+  fail with one gap (26):
+    video footage in H.264 (drawn as nothing) (7): m777 m785 m789 …
+    `ADBE Vector Shape - Star` (3): m625 m778 m801
+    …
+  fail with more gaps: 142
+  excluded m576: the reference lays the transition over stock footage; …
+```
+
+That is the local corpus of 198 samples on 2026-11-15; 4 more could not be measured.
+
+- **pass**: every frame passes. **pass once settled**: every frame from `settled` passes, but not all of the entrance.
+- **fail with nothing unsupported**: the import named no gap, so something is drawn wrong or lost without a word. These come first: each is a bug, not a missing feature.
+- **fail with one gap**: one feature away from the limit, grouped by that feature, the one blocking the most first. Closing it is the quickest way to move the score.
 
 ## The windows
 

@@ -6,7 +6,9 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
-use motion_engine::{Change, Diagnostic, Ledger, Manifest, Measure, Result, Window};
+use motion_engine::{
+    Change, Diagnostic, Ledger, Manifest, Measure, Result, Scoreboard, Verdict, Window,
+};
 
 /// What to measure and where to keep it.
 pub struct Args<'a> {
@@ -24,8 +26,8 @@ pub struct Args<'a> {
     pub only: &'a [String],
 }
 
-/// Measures the samples, prints their numbers and what moved since the
-/// ledger, and writes the ledger when asked. Exits 1 when a sample cannot
+/// Measures the samples, prints their numbers, what moved since the
+/// ledger and the score, and writes the ledger when asked. Exits 1 when a sample cannot
 /// be measured, or when a number got worse and the ledger is not being
 /// rewritten to accept it.
 pub fn run(args: &Args<'_>) -> Result<ExitCode> {
@@ -56,6 +58,11 @@ pub fn run(args: &Args<'_>) -> Result<ExitCode> {
     if args.ledger.is_some() {
         print_changes(&changes);
     }
+    let chosen = manifest
+        .samples
+        .iter()
+        .filter(|s| args.only.is_empty() || args.only.contains(&s.id));
+    print_score(&Scoreboard::new(chosen, &after));
     if let (Some(path), true) = (args.ledger, args.write) {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir).map_err(|e| Diagnostic::io("create", dir, &e))?;
@@ -94,8 +101,15 @@ fn print_measure(id: &str, measure: &Measure) {
 
 /// A window's errors, the content's first.
 fn window(name: &str, w: &Window) -> String {
+    let passing = match (w.frames_passing, w.frames_empty) {
+        (Some(n), Some(empty)) if empty > 0 => {
+            format!(", {n} of {} frames pass ({empty} empty)", w.frames)
+        }
+        (Some(n), _) => format!(", {n} of {} frames pass", w.frames),
+        (None, _) => String::new(),
+    };
     format!(
-        "{name} ({}): content {:.4}, {:.2}% failing; where drawn {:.4}, {:.2}% failing; over all drawn {:.4}, {:.2}% failing",
+        "{name} ({}): content {:.4}, {:.2}% failing{passing}; where drawn {:.4}, {:.2}% failing; over all drawn {:.4}, {:.2}% failing",
         w.frames,
         w.content_error.unwrap_or_default(),
         w.content_failing.unwrap_or_default() * 100.0,
@@ -132,6 +146,51 @@ fn print_changes(changes: &[Change]) {
                 num(c.before),
                 num(c.after)
             );
+        }
+    }
+}
+
+/// The score: how many samples pass, and the failing ones nearest to
+/// passing, those with nothing named unsupported and those one gap away.
+fn print_score(board: &Scoreboard) {
+    let passes = board.ids(|v| *v == Verdict::Passes);
+    let settles = board.ids(|v| *v == Verdict::Settles);
+    let excluded = board.ids(|v| matches!(v, Verdict::Excluded(_)));
+    let unscored = board.ids(|v| *v == Verdict::Unscored);
+    println!(
+        "score: {} of {} pass every frame, {} more once settled ({} excluded, {} not yet scored)",
+        passes.len(),
+        board.scored(),
+        settles.len(),
+        excluded.len(),
+        unscored.len()
+    );
+    let list = |title: &str, ids: &[&str]| {
+        if !ids.is_empty() {
+            println!("  {title} ({}): {}", ids.len(), ids.join(" "));
+        }
+    };
+    list("pass", &passes);
+    list("pass once settled", &settles);
+    list(
+        "fail with nothing unsupported",
+        &board.ids(|v| *v == Verdict::Unexplained),
+    );
+    let single = board.single_gaps();
+    let one: usize = single.iter().map(|(_, ids)| ids.len()).sum();
+    if one > 0 {
+        println!("  fail with one gap ({one}):");
+        for (gap, ids) in &single {
+            println!("    {gap} ({}): {}", ids.len(), ids.join(" "));
+        }
+    }
+    let more = board.ids(|v| matches!(v, Verdict::Blocked(gaps) if gaps.len() > 1));
+    if !more.is_empty() {
+        println!("  fail with more gaps: {}", more.len());
+    }
+    for (id, verdict) in &board.samples {
+        if let Verdict::Excluded(reason) = verdict {
+            println!("  excluded {id}: {reason}");
         }
     }
 }

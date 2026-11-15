@@ -37,7 +37,9 @@ mod test_support;
 
 pub use diff::{Diff, DiffOptions, Error as DiffError, FrameDiff, Pooled};
 pub use export::export_project;
-pub use fidelity::{Change, Ledger, Manifest, Measure, NOISE, Sample, Window, compare, measure};
+pub use fidelity::{
+    Change, Ledger, Manifest, Measure, NOISE, Sample, Scoreboard, Verdict, Window, compare, measure,
+};
 pub use fonts::{
     LOCK_EXTENSION, LayoutJudge, add_fonts_entry, font_names, lock_path, missing_fonts,
 };

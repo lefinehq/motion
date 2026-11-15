@@ -53,6 +53,11 @@ impl DiffOptions {
     /// Blender's per-channel tolerance for its render tests.
     pub const TOLERANCE: f64 = 0.016;
 
+    /// The share of pixels that may fail the tolerance in a frame that
+    /// still passes: Blender's rule, the fidelity limit of
+    /// [Quality](https://github.com/lefinehq/motion/blob/main/docs/design/quality.md#fidelity).
+    pub const PASSING: f64 = 0.01;
+
     /// The PNG files in `dir`, sorted by name, as reference frames.
     ///
     /// # Errors
@@ -90,6 +95,14 @@ pub struct Error {
     pub psnr: Option<f64>,
     /// The share of them with a channel past the tolerance, 0 to 1.
     pub failing: f64,
+}
+
+impl Error {
+    /// Whether these pixels pass: no more than [`DiffOptions::PASSING`] of
+    /// them past the tolerance.
+    pub fn passes(&self) -> bool {
+        self.failing <= DiffOptions::PASSING
+    }
 }
 
 /// One reference frame against the scene.
