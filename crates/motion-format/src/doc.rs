@@ -72,6 +72,7 @@ pub(crate) struct LayerDoc {
     pub(crate) video: Present<String>,
     pub(crate) audio: Present<String>,
     pub(crate) pivot: Present<bool>,
+    pub(crate) camera: Present<bool>,
     pub(crate) font: Present<Shorthand<Font>>,
     pub(crate) fill: Present<serde_json::Value>,
     pub(crate) style: Object<StyleDoc>,
@@ -96,6 +97,8 @@ pub(crate) struct LayerDoc {
     pub(crate) matte: Present<Shorthand<Matte>>,
     pub(crate) blend: Present<String>,
     pub(crate) mblur: Present<bool>,
+    #[serde(rename = "3d")]
+    pub(crate) three_d: Present<bool>,
     /// Every other key, kept as JSON until its name is checked, so an unknown
     /// key is reported as unknown whatever its value.
     #[serde(flatten)]

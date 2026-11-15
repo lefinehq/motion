@@ -458,7 +458,10 @@ fn layer(
             children.extend(nodes(sources, Canvas::Comp(*index), canvas, inner)?);
             children
         }
-        ContentState::Comp(_, None) | ContentState::Audio | ContentState::Pivot => Vec::new(),
+        ContentState::Comp(_, None)
+        | ContentState::Audio
+        | ContentState::Pivot
+        | ContentState::Camera => Vec::new(),
         ContentState::Filter => {
             let effects =
                 effect::effects(&node.fx).map_err(|e| e.under(Place::of_layer(&node.id)))?;

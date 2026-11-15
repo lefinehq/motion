@@ -34,7 +34,7 @@ Words in *italics* are defined in the [glossary](../glossary.md).
 - Motion blur, controlled by *shutter angle*
 
 **Depth (2.5D)**
-- Layers that rotate and move in depth (`rotateX`, `rotateY`, `z`)
+- Layers that rotate and move in depth (`rotate-x`, `rotate-y`, `orient`, `z`)
 - A camera with perspective, dolly and orbit
 - Optional depth of field
 

@@ -15,6 +15,7 @@ fn raster_type(ty: ValueType) -> Option<ParamType> {
         ValueType::Color => Some(ParamType::Color),
         ValueType::Point => Some(ParamType::Point),
         ValueType::Path => Some(ParamType::Curve),
+        ValueType::Orientation => None,
     }
 }
 

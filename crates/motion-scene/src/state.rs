@@ -19,8 +19,16 @@ pub struct NodeState {
     pub id: String,
     /// One value per property, parallel to `motion_format::property::PROPERTIES`.
     pub values: Vec<Value>,
-    /// From the node's own coordinates to the canvas: its transform, then its parents'.
+    /// From the node's own coordinates to the canvas: its transform, then
+    /// its parents'. For a 3D node, its plane seen straight on, without the
+    /// camera: [`space`](NodeState::space) and the frame's
+    /// [`view`](FrameState::view) place it.
     pub transform: Affine,
+    /// For a 3D node or camera, from its own coordinates to its
+    /// composition's 3D space; `None` for a flat node ([D58]).
+    ///
+    /// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+    pub space: Option<glam::DMat4>,
     /// Whether the frame falls in the node's span and, for a composition,
     /// in the composition's length.
     pub shown: bool,
@@ -77,6 +85,9 @@ pub enum ContentState {
     Audio,
     /// Nothing.
     Pivot,
+    /// Nothing; a viewpoint, which [`FrameState::view`] is made from when
+    /// it is the composition's camera.
+    Camera,
     /// Nothing of its own; its effects apply to what is below it.
     Filter,
 }
@@ -160,6 +171,7 @@ impl NodeState {
         NodeState {
             id: id.into(),
             transform: crate::local_transform(&values),
+            space: None,
             values,
             shown: true,
             hidden: false,
@@ -235,6 +247,9 @@ pub struct FrameState {
     pub fps: f64,
     /// One state per node, in the graph's paint order.
     pub nodes: Vec<NodeState>,
+    /// The camera its 3D nodes are seen through: the last camera node that
+    /// shows, or the default camera.
+    pub view: crate::space::View,
 }
 
 /// The axis-aligned box `rect` covers through `transform`, with trig dust

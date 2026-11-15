@@ -218,6 +218,7 @@ impl Build<'_> {
             NodeContent::Shapes(_)
             | NodeContent::Audio(_)
             | NodeContent::Pivot
+            | NodeContent::Camera { .. }
             | NodeContent::Filter => Rect::ZERO,
         }
     }
@@ -257,6 +258,7 @@ impl Build<'_> {
             Content::Video(video) => NodeContent::Video(Arc::new(video.clone())),
             Content::Audio(audio) => NodeContent::Audio(Arc::new(audio.clone())),
             Content::Pivot => NodeContent::Pivot,
+            Content::Camera(camera) => NodeContent::Camera { aim: camera.aim },
             Content::Filter => NodeContent::Filter,
         })
     }
@@ -376,6 +378,7 @@ fn node(
         matte: None,
         blend: layer.blend,
         mblur: layer.mblur,
+        three_d: layer.three_d,
         inputs: Vec::new(),
     }
 }

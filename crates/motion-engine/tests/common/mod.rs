@@ -2,6 +2,7 @@
 //! integration tests that hold scenes to what they drew before.
 
 use motion_engine::{RenderOptions, Result, Session};
+use motion_format::property::Prop;
 use motion_format::{Value, fmt_num};
 
 /// What `session` means at its first, middle and last frames.
@@ -24,7 +25,12 @@ fn at(session: &Session, frame: f64) -> Result<String> {
     let mut out = format!("frame {frame}: {:016x}\n", fnv(image.pixels()));
     for node in session.frame(frame)?.nodes {
         let [a, b, c, d, e, f] = node.transform.as_coeffs();
-        let values: Vec<String> = node.values.iter().map(value).collect();
+        // A flat node's depth and camera rows mean nothing; a 3D node's do.
+        let rows = match node.space {
+            Some(_) => node.values.len(),
+            None => Prop::Z.index(),
+        };
+        let values: Vec<String> = node.values[..rows].iter().map(value).collect();
         out.push_str(&format!(
             "  {}{}{} [{}] {}\n",
             node.id,
@@ -58,6 +64,7 @@ fn value(value: &Value) -> String {
         Value::Number(n) => fmt_num(*n),
         Value::Point(p) => list(p),
         Value::Color(c) => list(c),
+        Value::Orientation(o) => list(o),
         Value::Path(path) => path.to_string(),
     }
 }

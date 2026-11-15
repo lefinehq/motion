@@ -60,6 +60,11 @@ fn param(value: &Value) -> Result<ParamValue> {
                 path.vertices().map(|v| v.point.map(|c| c as f32)).collect();
             Ok(ParamValue::Curve(Curve::new(&points)?))
         }
+        Value::Orientation(_) => Err(motion_format::Diagnostic::new(
+            motion_format::Kind::WrongType,
+            "an effect takes no orientation",
+        )
+        .expected("a number, a colour, a point or a path")),
     }
 }
 
