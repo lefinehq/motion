@@ -179,10 +179,17 @@ impl Form for CompDoc {
 
 /// A `comp` layer's `overrides`: layer keys by the address, relative to the
 /// composition, of the layer they are set over.
-pub(crate) type OverridesDoc = IndexMap<String, Object<OverrideDoc>>;
+pub(crate) type OverridesDoc = IndexMap<String, OverrideEntry>;
+
+/// One entry of `overrides`: layer keys under a layer's address, or a value
+/// under `$id` for a slot of the composition (D44); `crate::validate` tells
+/// them apart.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct OverrideEntry(pub(crate) serde_json::Value);
 
 impl Form for OverridesDoc {
-    const FORM: &str = r##"an object of layer keys by layer address, e.g. {"title":{"text":"Sale"},"badge/icon":{"fill":"#E63946"}}"##;
+    const FORM: &str = r##"an object of layer keys by layer address and slot values by `$id`, e.g. {"title":{"text":"Sale"},"$accent":"#E63946"}"##;
 }
 
 /// The layer keys one override sets, kept as JSON: they are set over the

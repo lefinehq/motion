@@ -218,6 +218,7 @@ A scene, and any composition in `comps`, may declare `slots`: named values that 
 - **Dollars.** `$` followed by an id is a reference. A string starting with `$$` stands for itself with one `$` fewer, so a price is `"$$99"`. A `$` before anything that is not an id, as in `"$99"`, stays as written.
 - **Checking.** A reference to no slot is an error at the value, `plate.fill`. A slot whose value does not fit where it is used is reported there, naming the slot: `plate.fill: … (the value of slot `$title`)`.
 - References are resolved before anything else reads the scene, so drawing a scene with slots costs nothing more, and the file keeps the references as written.
+- **Instances.** A `comp` layer gives its composition's slots values of its own in `overrides`, by `$id` next to the layer keys: `{"$title":"Sale","badge/icon":{"fill":"#E63946"}}`. The value replaces the slot's for every value of that instance's layers that follows it, and a layer key set by address wins over it. The value is read where the `comp` layer is written, so `"$title":"$promo"` passes on a slot of the outer scope, which is how a value reaches a composition drawn inside another. An id the composition does not declare, or a value that does not fit its slot, is an error at the entry, `card-2.overrides.$title`.
 
 ## Images
 

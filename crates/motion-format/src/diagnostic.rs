@@ -100,15 +100,19 @@ impl Diagnostic {
 
     /// A [`Kind::UnknownName`] diagnostic: ``unknown {what} `{name}`; expected one of a, b``.
     ///
-    /// Pass `allowed` from the table that holds the names, so the list cannot drift.
+    /// Pass `allowed` from the table that holds the names, so the list cannot
+    /// drift; with none allowed, there is no list to expect.
     pub fn unknown(
         what: impl fmt::Display,
         name: impl fmt::Display,
         allowed: impl IntoIterator<Item = impl fmt::Display>,
     ) -> Self {
         let allowed: Vec<String> = allowed.into_iter().map(|a| a.to_string()).collect();
-        Self::new(Kind::UnknownName, format!("unknown {what} `{name}`"))
-            .expected(format!("one of {}", allowed.join(", ")))
+        let unknown = Self::new(Kind::UnknownName, format!("unknown {what} `{name}`"));
+        match allowed.is_empty() {
+            true => unknown,
+            false => unknown.expected(format!("one of {}", allowed.join(", "))),
+        }
     }
 
     /// A [`Kind::Io`] diagnostic: ``cannot {action} `{path}`: {err}``.

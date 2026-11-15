@@ -17,9 +17,9 @@ use crate::anim::{
     RANGE_EXPECTED, Span, TrackLine, rest_word,
 };
 use crate::doc::{
-    AnimDoc, CompDoc, CompsDoc, EasingDoc, KeyDoc, KeyTime, LabelsDoc, LayerDoc, LayersDoc, List,
-    Number, Object, OverridesDoc, PathDoc, Present, PresetDoc, PresetsDoc, SceneDoc, Shorthand,
-    StartDoc, TrackDoc, ValueDoc,
+    AnimDoc, CompDoc, CompsDoc, EasingDoc, Form, KeyDoc, KeyTime, LabelsDoc, LayerDoc, LayersDoc,
+    List, Number, Object, OverrideDoc, OverrideEntry, OverridesDoc, PathDoc, Present, PresetDoc,
+    PresetsDoc, SceneDoc, Shorthand, StartDoc, TrackDoc, ValueDoc,
 };
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, SHAPES};
@@ -37,7 +37,8 @@ use crate::units::{Color, SPAN_EXPECTED, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
 use crate::when::{Base, Moment, Moments, add, label_name};
 use crate::{
-    Address, Comp, CompContent, Content, Curve, ImageContent, Layer, Scene, VideoContent, fmt_num,
+    Address, Comp, CompContent, Content, Curve, ImageContent, Layer, Scene, Step, VideoContent,
+    fmt_num,
 };
 
 use crate::Place;
@@ -76,8 +77,11 @@ struct Shared<'a> {
     presets: &'a [(String, PresetSpec)],
     /// Every composition's canvas, read before any layer.
     comps: &'a [Canvas],
-    /// The scene as written, whose compositions' layers an override is set over.
-    raw: &'a serde_json::Value,
+    /// The scene as written, whose compositions' layers an instance
+    /// resolves with its own slot values before its overrides are set over.
+    written: &'a serde_json::Value,
+    /// The slots of the scene and of each composition.
+    declared: &'a Declared,
 }
 
 /// A composition's id, size and frames per second, which a layer drawing it
@@ -113,7 +117,11 @@ struct Context<'a> {
 }
 
 /// Validates a scene document into a [`Scene`], with the defaults of the keys left out.
-pub(crate) fn scene(doc: &SceneDoc, raw: &serde_json::Value, declared: &Declared) -> Result<Scene> {
+pub(crate) fn scene(
+    doc: &SceneDoc,
+    written: &serde_json::Value,
+    declared: &Declared,
+) -> Result<Scene> {
     version(required(*doc.motion, MOTION, &VERSION.to_string())?)?;
     let fps = doc.fps.map_or(Ok(DEFAULT_FPS), fps)?;
     let size = optional(doc.size.as_ref(), SIZE)?.unwrap_or(DEFAULT_SIZE);
@@ -130,7 +138,8 @@ pub(crate) fn scene(doc: &SceneDoc, raw: &serde_json::Value, declared: &Declared
     let shared = Shared {
         presets: &presets,
         comps: &canvases,
-        raw,
+        written,
+        declared,
     };
     let comps = comp_docs
         .iter()
@@ -847,31 +856,75 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
 /// the list is validated as any composition's layers are, so an error
 /// points at the inner layer, `title.text`.
 fn instance(canvas: &Canvas, overrides: &OverridesDoc, shared: &Shared) -> Result<Vec<Layer>> {
-    let at_overrides = |d: Diagnostic| d.at(OVERRIDES);
-    let mut written: Vec<serde_json::Value> = shared
-        .raw
+    let at_overrides = |d: Diagnostic| d.under(OVERRIDES);
+    // The slot values this instance gives, then the layer keys it sets.
+    let (slot_entries, layer_entries): (Vec<_>, Vec<_>) = overrides
+        .iter()
+        .partition(|(target, _)| target.starts_with('$'));
+    let comp_slots = shared.declared.of_comp(&canvas.id);
+    let given = crate::slots::given(
+        comp_slots,
+        slot_entries
+            .iter()
+            .map(|(target, OverrideEntry(value))| (&target[1..], value)),
+    )
+    .map_err(at_overrides)?;
+    // The composition as written, its references resolved with this
+    // instance's values first; the layer keys, already resolved where they
+    // are written, go over it after, so none is resolved twice.
+    let mut written = shared
+        .written
         .get(COMPS)
         .and_then(|comps| comps.get(&canvas.id))
         .and_then(|comp| comp.get(LAYERS))
-        .and_then(serde_json::Value::as_array)
+        .filter(|layers| layers.is_array())
         .cloned()
         .expect("the composition was read from this JSON");
-    for (target, Object(keys)) in overrides {
+    let scopes = [
+        given.as_slice(),
+        comp_slots,
+        shared.declared.scene.as_slice(),
+    ];
+    crate::slots::resolve_layers(
+        &mut written,
+        &scopes,
+        Some(&comp_path(&canvas.id)),
+        &mut Default::default(),
+    )?;
+    let serde_json::Value::Array(mut written) = written else {
+        unreachable!("filtered to an array above");
+    };
+    let at_target = |d: Diagnostic| d.at(OVERRIDES);
+    for (target, OverrideEntry(keys)) in layer_entries {
+        let Some(keys) = keys.as_object() else {
+            let entry = Place::Scene(Address {
+                layers: Vec::new(),
+                keys: vec![Step::Key(target.clone())],
+            });
+            return Err(at_overrides(
+                Diagnostic::new(
+                    Kind::Invalid,
+                    format!("`{keys}` is not an object of layer keys"),
+                )
+                .expected(OverrideDoc::FORM)
+                .at(entry),
+            ));
+        };
         let address = target
             .parse::<Address>()
             .ok()
             .filter(|a| a.keys.is_empty() && !a.layers.is_empty())
             .ok_or_else(|| {
-                at_overrides(
+                at_target(
                     Diagnostic::new(
                         Kind::Invalid,
                         format!("`{target}` is not the address of a layer"),
                     )
-                    .expected("a layer of the composition, e.g. `title` or `badge/icon`"),
+                    .expected("a layer of the composition, e.g. `title` or `badge/icon`, or a slot, `$accent`"),
                 )
             })?;
         if keys.contains_key(ID) {
-            return Err(at_overrides(
+            return Err(at_target(
                 Diagnostic::new(
                     Kind::Conflict,
                     format!("an override of `{target}` sets its `id`"),
@@ -881,7 +934,7 @@ fn instance(canvas: &Canvas, overrides: &OverridesDoc, shared: &Shared) -> Resul
         }
         if !crate::overrides::set_over(&mut written, &address.layers, keys) {
             let known: Vec<&str> = written.iter().filter_map(written_id).collect();
-            return Err(at_overrides(Diagnostic::unknown(
+            return Err(at_target(Diagnostic::unknown(
                 "layer",
                 address.layers[0].as_ref(),
                 known,

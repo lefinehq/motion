@@ -164,23 +164,69 @@ fn slot(id: &str, written: &Json) -> Result<Slot> {
         Json::String(_) => (SlotType::Color, written.clone(), None),
         _ => return Err(invalid(written)),
     };
-    let fits = match (ty, &value) {
+    check_fits(ty, &value).map_err(|d| d.expected(FORM))?;
+    Ok(Slot {
+        id,
+        ty,
+        value,
+        label,
+    })
+}
+
+/// `Ok` when `value` is a value of type `ty`.
+fn check_fits(ty: SlotType, value: &Json) -> Result<()> {
+    let fits = match (ty, value) {
         (SlotType::Number, Json::Number(_)) | (SlotType::Text, Json::String(_)) => true,
         (SlotType::Point, Json::Array(xy)) => xy.len() == 2 && xy.iter().all(Json::is_number),
         (SlotType::Color, Json::String(text)) => text.parse::<Color>().is_ok(),
         _ => false,
     };
     match fits {
-        true => Ok(Slot {
-            id,
-            ty,
-            value,
-            label,
-        }),
-        false => {
-            Err(Diagnostic::new(Kind::Invalid, format!("`{value}` for a {ty} slot")).expected(FORM))
-        }
+        true => Ok(()),
+        false => Err(Diagnostic::new(
+            Kind::Invalid,
+            format!("`{value}` for a {ty} slot"),
+        )),
     }
+}
+
+/// The slots a composition `declared`, as one instance of it gives them:
+/// `entries`, the `$id` keys of its `overrides` with their values.
+///
+/// # Errors
+/// An unknown-name diagnostic for an id the composition does not declare,
+/// or an invalid-value one for a value that does not fit its slot, each at
+/// the entry.
+pub(crate) fn given<'g>(
+    declared: &[Slot],
+    entries: impl IntoIterator<Item = (&'g str, &'g Json)>,
+) -> Result<Vec<Slot>> {
+    entries
+        .into_iter()
+        .map(|(id, value)| {
+            let at = Place::Scene(Address {
+                layers: Vec::new(),
+                keys: vec![Step::Key(format!("${id}"))],
+            });
+            let Some(slot) = declared.iter().find(|s| &*s.id == id) else {
+                let known = declared.iter().map(|s| format!("${}", s.id));
+                let unknown = Diagnostic::unknown("slot", format!("${id}"), known);
+                let unknown = match declared.is_empty() {
+                    true => unknown.expected("a slot of the composition, which declares none"),
+                    false => unknown,
+                };
+                return Err(unknown.at(at));
+            };
+            check_fits(slot.ty, value).map_err(|d| {
+                d.expected(format!("a {}, like `{}`", slot.ty, slot.value))
+                    .at(at)
+            })?;
+            Ok(Slot {
+                value: value.clone(),
+                ..slot.clone()
+            })
+        })
+        .collect()
 }
 
 fn invalid(written: &Json) -> Diagnostic {
@@ -276,8 +322,9 @@ fn has_dollar(json: &Json) -> bool {
 }
 
 /// Resolves the references in a list of layers, `owner` being the place of
-/// their composition, none for the scene's own.
-fn resolve_layers(
+/// their composition, none for the scene's own; the scopes are searched in
+/// order.
+pub(crate) fn resolve_layers(
     layers: &mut Json,
     scopes: &[&[Slot]],
     owner: Option<&Place>,

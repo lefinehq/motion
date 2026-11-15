@@ -81,16 +81,17 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"10x10","in":"fade-up","anim":{"position":"0,0 -> 1,1 @0-5f"}}` → a.anim.position: `position` is already animated by `in` (preset `fade-up`); expected `a in=none anim={"opacity":"0 -> 1 @0-12f ease-out","y":"580 -> 540 @0-12f ease-out","position":"0,0 -> 1,1 @0-5f"}` (the entrance as anim tracks; then adjust `position`), or define a scene preset without `position` under "presets"
 
 ## overrides
-`"overrides":3` → card.overrides: invalid type: integer `3`; expected an object of layer keys by layer address, e.g. {"title":{"text":"Sale"},"badge/icon":{"fill":"#E63946"}}
-`"overrides":{"title":3}` → card.overrides.title: invalid type: integer `3`; expected an object of layer keys, e.g. {"text":"Sale"}
+`"overrides":3` → card.overrides: invalid type: integer `3`; expected an object of layer keys by layer address and slot values by `$id`, e.g. {"title":{"text":"Sale"},"$accent":"#E63946"}
+`"overrides":{"title":3}` → card.overrides.title: `3` is not an object of layer keys; expected an object of layer keys, e.g. {"text":"Sale"}
 `"overrides":{"ghost":{"text":"x"}}` → card.overrides: unknown layer `ghost`; expected one of title
-`"overrides":{"title.text":{}}` → card.overrides: `title.text` is not the address of a layer; expected a layer of the composition, e.g. `title` or `badge/icon`
+`"overrides":{"title.text":{}}` → card.overrides: `title.text` is not the address of a layer; expected a layer of the composition, e.g. `title` or `badge/icon`, or a slot, `$accent`
 `"overrides":{"title":{"id":"other"}}` → card.overrides: an override of `title` sets its `id`; expected the keys to change; the id stays the layer's own
 `"overrides":{"title":{"text":5}}` → card/title.text: invalid type: integer `5`; expected a string
 `"overrides":{"title":{"rect":"1x1"}}` → card/title.rect: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`, or only `fx` for a filter layer; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
 `"overrides":{"title":{"fill":"red"}}` → card/title.fill: `red` is not a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
 `"overrides":{"title/x":{"text":"x"}}` → card/title.overrides: `overrides` only applies to `comp` layers; expected `overrides` only next to `comp`
 `"overrides":{"title":{"zoom":1}}` → card/title.zoom: unknown layer key `zoom`; expected one of id, text, rect, shapes, comp, overrides, image, video, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, adjust, hidden, matte, position, anchor, scale, rotate, opacity
+`"overrides":{"$ghost":"x"}` → card.overrides.$ghost: unknown slot `$ghost`; expected a slot of the composition, which declares none
 
 ## overrides on a layer that draws no composition
 `"overrides":{"x":{}}` → a.overrides: `overrides` only applies to `comp` layers; expected `overrides` only next to `comp`

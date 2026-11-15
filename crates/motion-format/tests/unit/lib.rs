@@ -183,6 +183,7 @@ fn every_error_message() {
                 r#""overrides":{"title":{"fill":"red"}}"#,
                 r#""overrides":{"title/x":{"text":"x"}}"#,
                 r#""overrides":{"title":{"zoom":1}}"#,
+                r#""overrides":{"$ghost":"x"}"#,
             ],
             |kv| {
                 parse_document(&format!(
