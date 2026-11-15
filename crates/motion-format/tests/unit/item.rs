@@ -132,6 +132,7 @@ fn an_item_reads_its_values_and_settings() {
         items: Vec::new(),
         anim: Vec::new(),
         hidden: false,
+        input: None,
     };
     assert_eq!(item.rest(props::STROKE_WIDTH), Value::Number(6.0));
     assert_eq!(item.rest(props::STROKE_MITER), Value::Number(4.0));

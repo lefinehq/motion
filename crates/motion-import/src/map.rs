@@ -252,6 +252,9 @@ struct Walk<'p> {
     items: HashMap<u32, &'p Item>,
     /// The ids of the compositions met so far, by item id.
     comp_ids: HashMap<u32, String>,
+    /// The scene ids of the layers of each composition being mapped, the
+    /// innermost last, by project layer id, with the layer being mapped.
+    layer_scopes: Vec<(HashMap<u32, String>, u32)>,
     /// The ids given out to compositions.
     taken: Ids,
     /// The compositions met but not written yet, in the order met.
@@ -294,6 +297,7 @@ impl<'p> Walk<'p> {
             project,
             items: project.items.iter().map(|item| (item.id, item)).collect(),
             comp_ids: HashMap::new(),
+            layer_scopes: Vec::new(),
             taken: Ids::default(),
             pending: Vec::new(),
             mapping: Mapping::default(),
@@ -426,11 +430,22 @@ impl<'p> Walk<'p> {
                 (layer.id, id)
             })
             .collect();
-        composition
+        // An effect may read only a layer the scene keeps.
+        let kept = composition
+            .layers
+            .iter()
+            .filter(|layer| !layer::is_dropped(layer, composition))
+            .filter_map(|layer| Some((layer.id, given.get(&layer.id)?.clone())))
+            .collect();
+        self.layer_scopes.push((kept, 0));
+        let layers = composition
             .layers
             .iter()
             .rev()
             .filter_map(|layer| {
+                if let Some(scope) = self.layer_scopes.last_mut() {
+                    scope.1 = layer.id;
+                }
                 // A control layer is still walked, so its controls are
                 // reported and the reads of them decided.
                 let written = self.layer(layer, composition, name, &given);
@@ -442,7 +457,9 @@ impl<'p> Walk<'p> {
                     false => Some(written),
                 }
             })
-            .collect()
+            .collect();
+        self.layer_scopes.pop();
+        layers
     }
 }
 

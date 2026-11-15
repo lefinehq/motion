@@ -182,6 +182,9 @@ pub struct Node {
     pub adjust: bool,
     /// The node of its own list whose drawing decides where it shows, and how.
     pub matte: Option<(usize, MatteMode)>,
+    /// For each of `fx`, the node of its own list whose drawing it reads,
+    /// if it reads one.
+    pub inputs: Vec<Option<usize>>,
 }
 
 #[cfg(test)]

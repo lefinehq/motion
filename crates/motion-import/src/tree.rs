@@ -202,6 +202,7 @@ impl fmt::Display for Value {
             }
             Value::Text(document) => write!(f, "{document}"),
             Value::Data(bytes) => write!(f, "data, {} bytes", bytes.len()),
+            Value::Layer(id) => write!(f, "layer {id}"),
             Value::Opaque { reason } => write!(f, "opaque {reason}"),
         }
     }

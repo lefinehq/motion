@@ -197,6 +197,7 @@ fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
         "would be its own matte through its mattes",
         "mattes that never lead back to the layer",
     )?;
+    inputs(&layers)?;
     for (layer, Object(doc)) in layers.iter().zip(docs) {
         let Object(written) = &doc.anim;
         entrance_conflict(layer, &layers, context, written)
@@ -710,6 +711,62 @@ fn links(
             match link(&layers[next]) {
                 Some(up) => next = index(up).unwrap_or(next),
                 None => break,
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Every layer an effect reads (its input) is in the same list and is
+/// not the layer itself, and no layer reaches itself through the layers
+/// its effects read and its matte, which are drawn to draw it.
+fn inputs(layers: &[Layer]) -> Result<()> {
+    let index = |id: &str| layers.iter().position(|layer| layer.id == id);
+    let mut reads: Vec<Vec<usize>> = Vec::with_capacity(layers.len());
+    for layer in layers {
+        let mut needs = Vec::new();
+        for (i, item) in layer.fx.iter().enumerate() {
+            let Some(target) = item.input.as_deref() else {
+                continue;
+            };
+            let key = item.kind.input.unwrap_or_default();
+            let place = |d: Diagnostic| {
+                d.at(key)
+                    .under(format!("fx[{i}]"))
+                    .under(Place::of_layer(&layer.id))
+            };
+            let at = index(target).ok_or_else(|| {
+                place(Diagnostic::unknown(
+                    "layer id",
+                    target,
+                    layers.iter().map(|l| l.id.as_str()),
+                ))
+            })?;
+            needs.push(at);
+        }
+        if let Some(matte) = layer.matte.as_ref().and_then(|m| index(&m.layer)) {
+            needs.push(matte);
+        }
+        reads.push(needs);
+    }
+    // A layer that reaches itself would need its own drawing to be drawn.
+    for start in 0..layers.len() {
+        let mut stack = reads[start].clone();
+        let mut seen = vec![false; layers.len()];
+        while let Some(next) = stack.pop() {
+            if next == start {
+                return Err(Diagnostic::new(
+                    Kind::Invalid,
+                    format!(
+                        "`{}` would read its own drawing through the layers its effects read",
+                        layers[start].id
+                    ),
+                )
+                .under(Place::of_layer(&layers[start].id))
+                .expected("effects that read other layers, never leading back"));
+            }
+            if !std::mem::replace(&mut seen[next], true) {
+                stack.extend(&reads[next]);
             }
         }
     }

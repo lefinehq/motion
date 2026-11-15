@@ -95,6 +95,27 @@ fn matted(
     // An adjusting layer applies its effects to what is below it, where it
     // draws.
     drawn.adjust |= list[i].adjust;
+    // An effect that reads another layer reads its drawing in its own
+    // coordinates, with its effects but not its transform, opacity or
+    // matte; nothing outside its span.
+    for (effect, input) in drawn.effects.iter_mut().zip(&list[i].inputs) {
+        let Some(source) = *input else {
+            continue;
+        };
+        let read = match state.nodes[source].shown {
+            true => layer(sources, &state.nodes[source])?,
+            false => None,
+        };
+        let read = match read {
+            Some(Node::Layer(read)) => Layer {
+                transform: Affine::IDENTITY,
+                opacity: 1.0,
+                ..read
+            },
+            _ => Layer::new(Vec::new()),
+        };
+        *effect = effect.clone().with_input(Node::Layer(read));
+    }
     let Some((source, mode)) = list[i].matte else {
         return Ok(Some(Node::Layer(drawn)));
     };
@@ -127,14 +148,20 @@ fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
     }
     let mut clip = None;
     let mut isolate = false;
+    let mut bounds = None;
     let children = match &node.content {
-        ContentState::Rect(shape) => vec![rect(shape, node.fill)],
+        ContentState::Rect(shape) => {
+            bounds = Some(Rect::new(0.0, 0.0, shape.width, shape.height));
+            vec![rect(shape, node.fill)]
+        }
         ContentState::Shapes(draws) => shape::draws(draws),
         ContentState::Text { text, glyphs } => text::draws(text, glyphs),
         ContentState::Image(content) => {
+            bounds = Some(content.frame);
             vec![image(content, sources.pictures).map_err(|e| e.under(Place::of_layer(&node.id)))?]
         }
         ContentState::Video { video, seconds } => {
+            bounds = Some(video.frame);
             let frame = (sources.clips)(&video.path, *seconds)
                 .map_err(|e| e.at(VIDEO).under(Place::of_layer(&node.id)))?;
             frame
@@ -151,6 +178,7 @@ fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
             let comp = &sources.graph.comps[*index];
             let canvas = Rect::new(0.0, 0.0, comp.width, comp.height);
             clip = Some(Clip::Rect(canvas));
+            bounds = Some(canvas);
             isolate = true;
             let mut children = Vec::new();
             if opaque_enough(comp.background) {
@@ -184,6 +212,7 @@ fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
         clip,
         effects,
         isolate,
+        bounds,
         ..Layer::new(children)
     })))
 }

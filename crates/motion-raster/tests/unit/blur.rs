@@ -7,6 +7,8 @@ use crate::style::Color;
 
 const ONE: Space = Space {
     transform: Affine::IDENTITY,
+    bounds: None,
+    input: None,
 };
 
 /// A `width` by `height` grid, transparent but for one opaque white pixel.
@@ -77,6 +79,8 @@ fn a_blur_scales_with_the_layer() {
     let mut twice = impulse(201, 1, 100, 0);
     let doubled = Space {
         transform: Affine::scale(2.0),
+        bounds: None,
+        input: None,
     };
     gaussian_blur(&mut twice, &values, &doubled);
     let (_, _, v1) = row_moments(&once, 0);

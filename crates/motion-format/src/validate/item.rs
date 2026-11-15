@@ -28,6 +28,7 @@ fn item(doc: &ItemDoc, kinds: &'static [ItemKind], fps: f64) -> Result<Item> {
     let mut values = Vec::new();
     let mut settings: Vec<usize> = kind.settings.iter().map(|s| s.default_index()).collect();
     let mut items = Vec::new();
+    let mut input = None;
     for (key, written) in &doc.values {
         let place = |e: Diagnostic| e.under(key.as_str());
         if key == kind.name {
@@ -49,6 +50,9 @@ fn item(doc: &ItemDoc, kinds: &'static [ItemKind], fps: f64) -> Result<Item> {
             )
             .at(key.as_str())
             .expected(format!("`{key}` written as the value of `{}`", kind.name)));
+        } else if kind.input == Some(key.as_str()) {
+            let id: String = crate::de::from_value(written).map_err(place)?;
+            input = Some(id);
         } else if let Some(at) = table::position(kind.settings, key) {
             settings[at] = choice(written, kind, at).map_err(place)?;
         } else if let Some(prop) = kind.registry.prop(key) {
@@ -71,6 +75,7 @@ fn item(doc: &ItemDoc, kinds: &'static [ItemKind], fps: f64) -> Result<Item> {
         items,
         anim: anim(tracks, kind.registry, fps).map_err(|e| e.under(ANIM))?,
         hidden: doc.hidden.unwrap_or(false),
+        input,
     })
 }
 
@@ -125,6 +130,7 @@ fn keys(kind: &'static ItemKind) -> impl Iterator<Item = &'static str> {
     [kind.name, ID, HIDDEN, ANIM]
         .into_iter()
         .chain(kind.settings.iter().map(|s| s.name))
+        .chain(kind.input)
         .chain(kind.registry.names())
         .filter(move |n| Some(*n) != primary)
 }

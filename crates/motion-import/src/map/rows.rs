@@ -15,6 +15,8 @@ pub(super) enum To {
     Prop(&'static str),
     /// A setting of the item: the project's code for each choice.
     Setting(&'static str, &'static [(i64, &'static str)]),
+    /// The layer the kind's input key names, from a layer parameter.
+    Input,
     /// The five curves of a curves effect, from the data the project keeps
     /// for them (`aRbp`).
     Curves,
@@ -175,6 +177,41 @@ const MODES: &[(i64, &str)] = &[
 ];
 const COLORIZE: &[(i64, &str)] = &[(0, "adjust"), (1, "colorize")];
 const EXPOSURE_SPACES: &[(i64, &str)] = &[(0, "linear"), (1, "gamma")];
+const MAP_LEVELS: &[(i64, &str)] = &[
+    (1, "red"),
+    (2, "green"),
+    (3, "blue"),
+    (4, "alpha"),
+    (5, "luminance"),
+    (6, "hue"),
+    (7, "lightness"),
+    (8, "saturation"),
+    (9, "full"),
+    (10, "half"),
+    (11, "off"),
+];
+const MAP_BEHAVIOURS: &[(i64, &str)] = &[(1, "center"), (2, "stretch"), (3, "tile")];
+const MAP_EDGES: &[(i64, &str)] = &[(0, "clear"), (1, "wrap")];
+const TILE_EDGES: &[(i64, &str)] = &[(0, "repeat"), (1, "mirror")];
+const TILE_SHIFTS: &[(i64, &str)] = &[(0, "vertical"), (1, "horizontal")];
+const DISPLACEMENTS: &[(i64, &str)] = &[
+    (1, "turbulent"),
+    (2, "bulge"),
+    (3, "twist"),
+    (5, "turbulent-smoother"),
+    (6, "bulge-smoother"),
+    (7, "twist-smoother"),
+    (9, "vertical"),
+    (10, "horizontal"),
+    (11, "cross"),
+];
+// Pinning the horizontal edges keeps the top and bottom put.
+const PINNINGS: &[(i64, &str)] = &[
+    (1, "none"),
+    (3, "all"),
+    (4, "top-bottom"),
+    (5, "left-right"),
+];
 const RAMP_SHAPES: &[(i64, &str)] = &[(1, "linear"), (2, "radial")];
 const GENERATOR_MODES: &[(i64, &str)] = &[(1, "replace"), (2, "over")];
 const GRID_SIZES: &[(i64, &str)] = &[(1, "corner"), (2, "width"), (3, "width-height")];
@@ -607,7 +644,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 29] = [
+pub(super) static KINDS: [Kind; 33] = [
     Kind {
         match_name: "ADBE Vector Group",
         item: "group",
@@ -1337,6 +1374,254 @@ pub(super) static KINDS: [Kind; 29] = [
                 Absent,
             ),
             row("ADBE Invert-0002", To::Prop("blend"), Percent, Absent),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Displacement Map",
+        item: "displacement-map",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Displacement Map-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Displacement Map-0001", To::Input, Number, Absent),
+            row(
+                "ADBE Displacement Map-0002",
+                To::Setting("horizontal-from", MAP_LEVELS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Displacement Map-0003",
+                To::Prop("horizontal"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Displacement Map-0004",
+                To::Setting("vertical-from", MAP_LEVELS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Displacement Map-0005",
+                To::Prop("vertical"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Displacement Map-0006",
+                To::Setting("behaviour", MAP_BEHAVIOURS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Displacement Map-0007",
+                To::Setting("edges", MAP_EDGES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Displacement Map-0008",
+                To::Ignore(
+                    "whether the layer grows to hold what moves past it; the frame holds it",
+                ),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Tile",
+        item: "motion-tile",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Tile-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Tile-0001", To::Prop("center"), Point, Parameter),
+            row("ADBE Tile-0002", To::Prop("tile-width"), Percent, Parameter),
+            row(
+                "ADBE Tile-0003",
+                To::Prop("tile-height"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Tile-0004",
+                To::Prop("output-width"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Tile-0005",
+                To::Prop("output-height"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Tile-0006",
+                To::Setting("edges", TILE_EDGES),
+                Number,
+                Absent,
+            ),
+            row("ADBE Tile-0007", To::Prop("phase"), Number, Parameter),
+            row(
+                "ADBE Tile-0008",
+                To::Setting("shift", TILE_SHIFTS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Offset",
+        item: "wrap",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Offset-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Offset-0001", To::Prop("to"), Point, Parameter),
+            row("ADBE Offset-0002", To::Prop("blend"), Number, Parameter),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Turbulent Displace",
+        item: "turbulent-displace",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Turbulent Displace-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Turbulent Displace-0001",
+                To::Setting("displacement", DISPLACEMENTS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Turbulent Displace-0002",
+                To::Prop("amount"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Turbulent Displace-0003",
+                To::Prop("size"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Turbulent Displace-0004",
+                To::Prop("offset"),
+                Point,
+                Parameter,
+            ),
+            row(
+                "ADBE Turbulent Displace-0005",
+                To::Prop("complexity"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Turbulent Displace-0006",
+                To::Prop("evolution"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Turbulent Displace-0007",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Turbulent Displace-0008",
+                To::OnlyDefault("a cycled evolution"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Turbulent Displace-0009",
+                To::Ignore("the cycle of a cycled evolution, which is reported on its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Turbulent Displace-0010",
+                To::Prop("seed"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Turbulent Displace-0011",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Turbulent Displace-0012",
+                To::Setting("pinning", PINNINGS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Turbulent Displace-0013",
+                To::OnlyDefault("a layer resized to fit what it displaces"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Turbulent Displace-0014",
+                To::Ignore("antialiasing; the scene reads between pixels"),
+                Number,
+                Absent,
+            ),
             row(
                 "ADBE Force CPU GPU",
                 To::Ignore("where the original renders it"),

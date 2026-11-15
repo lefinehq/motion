@@ -88,6 +88,9 @@ pub struct ItemKind {
     pub primary: Primary,
     /// Its fixed settings.
     pub settings: &'static [SettingSpec],
+    /// The key that names another layer whose drawing it reads, if it
+    /// reads one, such as the map a displacement follows.
+    pub input: Option<&'static str>,
     /// What it draws or does, for people and agents.
     pub doc: &'static str,
 }
@@ -168,6 +171,8 @@ pub struct Item {
     pub anim: Vec<AnimTrack>,
     /// Left out of the frame, yet kept in the scene.
     pub hidden: bool,
+    /// The id of the layer its kind's input key names, in the same list.
+    pub input: Option<String>,
 }
 
 impl Item {
@@ -356,6 +361,128 @@ pub static TINT: Registry = Registry {
             Some((0.0, 1.0)),
             "how much of the tint replaces the colours, 0 to 1",
         ),
+    ],
+};
+
+/// The properties of the displacement map.
+pub static DISPLACEMENT_MAP: Registry = Registry {
+    kind: "displacement-map",
+    rows: &[
+        number(
+            "horizontal",
+            5.0,
+            Some((-32_000.0, 32_000.0)),
+            "the farthest a pixel moves across, in px",
+        ),
+        number(
+            "vertical",
+            5.0,
+            Some((-32_000.0, 32_000.0)),
+            "the farthest a pixel moves up or down, in px",
+        ),
+    ],
+};
+
+/// The properties of `motion-tile`.
+pub static MOTION_TILE: Registry = Registry {
+    kind: "motion-tile",
+    rows: &[
+        point(
+            "center",
+            [0.0, 0.0],
+            &[],
+            false,
+            "where a tile is centred, in px of the layer",
+        ),
+        number(
+            "tile-width",
+            1.0,
+            Some((0.0, 1.0)),
+            "a tile's width, as a share of the layer's box",
+        ),
+        number(
+            "tile-height",
+            1.0,
+            Some((0.0, 1.0)),
+            "a tile's height, as a share of the layer's box",
+        ),
+        number(
+            "output-width",
+            1.0,
+            Some((0.0, 300.0)),
+            "how wide the tiles reach, as a share of the box, about its middle",
+        ),
+        number(
+            "output-height",
+            1.0,
+            Some((0.0, 300.0)),
+            "how high the tiles reach, as a share of the box, about its middle",
+        ),
+        number(
+            "phase",
+            0.0,
+            None,
+            "how far every other column or row shifts, in degrees; a turn is a tile",
+        ),
+    ],
+};
+
+/// The properties of `wrap`.
+pub static WRAP: Registry = Registry {
+    kind: "wrap",
+    rows: &[
+        point(
+            "to",
+            [0.0, 0.0],
+            &[],
+            false,
+            "where the middle of the layer's box moves to, in px of the layer",
+        ),
+        number(
+            "blend",
+            0.0,
+            Some((0.0, 1.0)),
+            "how much of the layer stays as it was",
+        ),
+    ],
+};
+
+/// The properties of `turbulent-displace`.
+pub static TURBULENT_DISPLACE: Registry = Registry {
+    kind: "turbulent-displace",
+    rows: &[
+        number(
+            "amount",
+            50.0,
+            Some((-10_000.0, 10_000.0)),
+            "how far pixels move, in percent of `size`",
+        ),
+        number(
+            "size",
+            100.0,
+            Some((2.0, 1_000.0)),
+            "how wide the noise's cells are, in px",
+        ),
+        point(
+            "offset",
+            [0.0, 0.0],
+            &[],
+            false,
+            "where the noise is centred, in px of the layer",
+        ),
+        number(
+            "complexity",
+            1.0,
+            Some((1.0, 10.0)),
+            "how many octaves the noise sums",
+        ),
+        number(
+            "evolution",
+            0.0,
+            None,
+            "how far the noise has evolved, in degrees; a turn is a cell",
+        ),
+        number("seed", 0.0, Some((0.0, 100_000.0)), "which noise it is"),
     ],
 };
 
@@ -912,6 +1039,7 @@ pub static SHAPES: [ItemKind; 7] = [
         registry: &GROUP,
         primary: Primary::Items(&SHAPES),
         settings: &[],
+        input: None,
         doc: "items under one transform and opacity; paints in it draw the outlines above them, \
               in it and in its groups",
     },
@@ -921,6 +1049,7 @@ pub static SHAPES: [ItemKind; 7] = [
         registry: &RECT,
         primary: Primary::Property("size"),
         settings: &[],
+        input: None,
         doc: "a rectangle centred on `position`, with rounded corners",
     },
     ItemKind {
@@ -929,6 +1058,7 @@ pub static SHAPES: [ItemKind; 7] = [
         registry: &ELLIPSE,
         primary: Primary::Property("size"),
         settings: &[],
+        input: None,
         doc: "an ellipse centred on `position`",
     },
     ItemKind {
@@ -937,6 +1067,7 @@ pub static SHAPES: [ItemKind; 7] = [
         registry: &PATH,
         primary: Primary::Property("path"),
         settings: &[],
+        input: None,
         doc: "a bézier outline, open or closed",
     },
     ItemKind {
@@ -950,6 +1081,7 @@ pub static SHAPES: [ItemKind; 7] = [
             default: "nonzero",
             doc: "which areas count as inside where outlines cross",
         }],
+        input: None,
         doc: "paints the inside of the outlines above it",
     },
     ItemKind {
@@ -971,6 +1103,7 @@ pub static SHAPES: [ItemKind; 7] = [
                 doc: "how corners finish",
             },
         ],
+        input: None,
         doc: "paints a line along the outlines above it",
     },
     ItemKind {
@@ -985,19 +1118,21 @@ pub static SHAPES: [ItemKind; 7] = [
             doc: "`each` cuts every outline the same way on its own; `joined` cuts them as one \
                   line, in order",
         }],
+        input: None,
         doc: "cuts the outlines above it, and those in the groups above it, down to a stretch \
               of their length, for every paint that draws them",
     },
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 19] = [
+pub static EFFECTS: [ItemKind; 23] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
         registry: &FILL_EFFECT,
         primary: Primary::Property("color"),
         settings: &[],
+        input: None,
         doc: "turns every drawn pixel of the layer one colour, keeping its coverage",
     },
     ItemKind {
@@ -1006,6 +1141,7 @@ pub static EFFECTS: [ItemKind; 19] = [
         registry: &TRANSFORM_EFFECT,
         primary: Primary::Property("scale"),
         settings: &[],
+        input: None,
         doc: "moves, scales, turns and fades everything the layer draws, inside the layer: \
               `anchor` sits at `position`, both at the origin by default, so a scale or turn \
               on its own is about the origin",
@@ -1016,6 +1152,7 @@ pub static EFFECTS: [ItemKind; 19] = [
         registry: &TINT,
         primary: Primary::Property("amount"),
         settings: &[],
+        input: None,
         doc: "maps each colour's luminance from `black` to `white`",
     },
     ItemKind {
@@ -1030,6 +1167,7 @@ pub static EFFECTS: [ItemKind; 19] = [
             doc: "`adjust` turns hues and changes saturation and lightness; `colorize` gives \
                   every colour the `colorize-` hue and saturation, keeping its lightness",
         }],
+        input: None,
         doc: "turns hues and changes saturation and lightness",
     },
     ItemKind {
@@ -1044,6 +1182,7 @@ pub static EFFECTS: [ItemKind; 19] = [
             doc: "`linear` works on light, decoding sRGB first and encoding it again after; \
                   `gamma` works on the values as they are",
         }],
+        input: None,
         doc: "changes exposure in stops, as a camera does",
     },
     ItemKind {
@@ -1057,8 +1196,130 @@ pub static EFFECTS: [ItemKind; 19] = [
             default: "rgb",
             doc: "the channel it works on; `rgb` is each of the three alike",
         }],
+        input: None,
         doc: "maps the levels from `input-black`–`input-white` to `output-black`–`output-white` \
               through `gamma`, clipped to 0 to 1",
+    },
+    ItemKind {
+        name: "displacement-map",
+        role: Role::Effect,
+        registry: &DISPLACEMENT_MAP,
+        primary: Primary::Property("horizontal"),
+        settings: &[
+            SettingSpec {
+                name: "horizontal-from",
+                choices: &[
+                    "red",
+                    "green",
+                    "blue",
+                    "alpha",
+                    "luminance",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "full",
+                    "half",
+                    "off",
+                ],
+                default: "red",
+                doc: "which level of the map moves pixels across; `full`, `half` and `off` are fixed levels",
+            },
+            SettingSpec {
+                name: "vertical-from",
+                choices: &[
+                    "green",
+                    "red",
+                    "blue",
+                    "alpha",
+                    "luminance",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "full",
+                    "half",
+                    "off",
+                ],
+                default: "green",
+                doc: "which level of the map moves pixels up or down",
+            },
+            SettingSpec {
+                name: "behaviour",
+                choices: &["center", "stretch", "tile"],
+                default: "center",
+                doc: "how the map's box lies on the layer's: centred, stretched over it, or tiled",
+            },
+            SettingSpec {
+                name: "edges",
+                choices: &["clear", "wrap"],
+                default: "clear",
+                doc: "whether what moves past the layer's box comes back on the other side",
+            },
+        ],
+        input: Some("map"),
+        doc: "moves each pixel by the levels of another layer, the map",
+    },
+    ItemKind {
+        name: "motion-tile",
+        role: Role::Effect,
+        registry: &MOTION_TILE,
+        primary: Primary::Property("tile-width"),
+        settings: &[
+            SettingSpec {
+                name: "edges",
+                choices: &["repeat", "mirror"],
+                default: "repeat",
+                doc: "whether every other tile flips",
+            },
+            SettingSpec {
+                name: "shift",
+                choices: &["vertical", "horizontal"],
+                default: "vertical",
+                doc: "whether the phase shifts columns up and down, or rows across",
+            },
+        ],
+        input: None,
+        doc: "repeats the layer in tiles around a point",
+    },
+    ItemKind {
+        name: "wrap",
+        role: Role::Effect,
+        registry: &WRAP,
+        primary: Primary::Property("to"),
+        settings: &[],
+        input: None,
+        doc: "moves the layer's content within its box, wrapping around",
+    },
+    ItemKind {
+        name: "turbulent-displace",
+        role: Role::Effect,
+        registry: &TURBULENT_DISPLACE,
+        primary: Primary::Property("amount"),
+        settings: &[
+            SettingSpec {
+                name: "displacement",
+                choices: &[
+                    "turbulent",
+                    "turbulent-smoother",
+                    "bulge",
+                    "bulge-smoother",
+                    "twist",
+                    "twist-smoother",
+                    "horizontal",
+                    "vertical",
+                    "cross",
+                ],
+                default: "turbulent",
+                doc: "how rough the movement is",
+            },
+            SettingSpec {
+                name: "pinning",
+                choices: &["all", "left-right", "top-bottom", "none"],
+                default: "all",
+                doc: "which edges of the layer's box stay put",
+            },
+        ],
+        input: None,
+        doc: "moves each pixel by a smooth noise",
     },
     ItemKind {
         name: "ramp",
@@ -1071,6 +1332,7 @@ pub static EFFECTS: [ItemKind; 19] = [
             default: "linear",
             doc: "`linear` along the line from `start` to `end`; `radial` around `start`",
         }],
+        input: None,
         doc: "fills the layer with a gradient between two colours",
     },
     ItemKind {
@@ -1084,6 +1346,7 @@ pub static EFFECTS: [ItemKind; 19] = [
             default: "replace",
             doc: "`replace` draws it alone where the layer is; `over` lays it over the layer",
         }],
+        input: None,
         doc: "fills the layer with four colours at four points, blended",
     },
     ItemKind {
@@ -1111,6 +1374,7 @@ pub static EFFECTS: [ItemKind; 19] = [
                 doc: "`replace` draws it alone where the layer is; `over` lays it over the layer",
             },
         ],
+        input: None,
         doc: "draws a grid of lines",
     },
     ItemKind {
@@ -1119,6 +1383,7 @@ pub static EFFECTS: [ItemKind; 19] = [
         registry: &VENETIAN_BLINDS,
         primary: Primary::Property("completion"),
         settings: &[],
+        input: None,
         doc: "hides the layer in stripes, from one side of each",
     },
     ItemKind {
@@ -1163,6 +1428,7 @@ pub static EFFECTS: [ItemKind; 19] = [
                 doc: "`over` lays it over the layer; `replace` draws it alone where the layer is",
             },
         ],
+        input: None,
         doc: "fills the layer with grey noise in octaves",
     },
     ItemKind {
@@ -1184,6 +1450,7 @@ pub static EFFECTS: [ItemKind; 19] = [
                 doc: "what lies beyond the frame's edges while blurring: nothing, or the edge pixels repeated",
             },
         ],
+        input: None,
         doc: "blurs the layer with a Gaussian",
     },
     ItemKind {
@@ -1205,6 +1472,7 @@ pub static EFFECTS: [ItemKind; 19] = [
                 doc: "what lies beyond the frame's edges while blurring: nothing, or the edge pixels repeated",
             },
         ],
+        input: None,
         doc: "blurs the layer with boxes run one after another",
     },
     ItemKind {
@@ -1218,6 +1486,7 @@ pub static EFFECTS: [ItemKind; 19] = [
             default: "shown",
             doc: "whether the layer is drawn over its shadow, or only the shadow",
         }],
+        input: None,
         doc: "draws the layer's shape as a soft shadow behind it",
     },
     ItemKind {
@@ -1239,6 +1508,7 @@ pub static EFFECTS: [ItemKind; 19] = [
                 doc: "whether the glow is added to the layer, or drawn alone",
             },
         ],
+        input: None,
         doc: "adds the blurred light of the layer's bright colours to it",
     },
     ItemKind {
@@ -1247,6 +1517,7 @@ pub static EFFECTS: [ItemKind; 19] = [
         registry: &SHARPEN,
         primary: Primary::Property("amount"),
         settings: &[],
+        input: None,
         doc: "sharpens edges by moving pixels away from their neighbours",
     },
     ItemKind {
@@ -1255,6 +1526,7 @@ pub static EFFECTS: [ItemKind; 19] = [
         registry: &BLACK_WHITE,
         primary: Primary::Property("tint"),
         settings: &[],
+        input: None,
         doc: "turns colours to grey, each hue as light as its share says",
     },
     ItemKind {
@@ -1263,6 +1535,7 @@ pub static EFFECTS: [ItemKind; 19] = [
         registry: &CURVES,
         primary: Primary::Property("rgb"),
         settings: &[],
+        input: None,
         doc: "maps each channel's levels through a curve: first the channel's own, then `rgb`",
     },
     ItemKind {
@@ -1276,6 +1549,7 @@ pub static EFFECTS: [ItemKind; 19] = [
             default: "rgb",
             doc: "the channel it inverts; `rgb` is each of the three",
         }],
+        input: None,
         doc: "turns each level of a channel into its opposite",
     },
 ];
@@ -1423,6 +1697,7 @@ pub static ANIMATORS: [ItemKind; 1] = [ItemKind {
                   outward from the middle, inward from both ends, or shuffled by `seed`",
         },
     ],
+    input: None,
     doc: "applies its properties to the parts of the text its selectors choose, each part in \
           its turn when it staggers",
 }];
@@ -1460,6 +1735,7 @@ pub static SELECTORS: [ItemKind; 1] = [ItemKind {
             doc: "how it combines with the selectors before it",
         },
     ],
+    input: None,
     doc: "chooses the parts between `start` and `end`, moved by `offset`",
 }];
 

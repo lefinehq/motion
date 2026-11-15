@@ -17,6 +17,7 @@
 mod blend;
 mod blur;
 mod colour;
+mod distort;
 mod effect;
 mod generate;
 mod image;
@@ -28,7 +29,7 @@ mod style;
 
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use effect::{
-    Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Move, ParamSpec, ParamType,
+    Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Input, Move, ParamSpec, ParamType,
     ParamValue, Space,
 };
 pub use image::Image;
