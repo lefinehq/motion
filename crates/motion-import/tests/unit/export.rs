@@ -225,6 +225,7 @@ fn projects(dir: &std::path::Path) -> Vec<PathBuf> {
 fn every_sample_project_writes_back() {
     let dir = PathBuf::from(std::env::var("MOTION_AEP_SAMPLES").expect("set $MOTION_AEP_SAMPLES"));
     let (mut files, mut identical, mut scenes, mut values, mut failures) = (0, 0, 0, 0, Vec::new());
+    let mut slots = 0;
     for path in projects(&dir) {
         let started = std::time::Instant::now();
         let bytes = fs::read(&path).expect("read a sample");
@@ -272,6 +273,11 @@ fn every_sample_project_writes_back() {
         }
         let plan = plan(&imported.json, &imported.sources, &edited);
         values += plan.written.len();
+        slots += plan
+            .written
+            .iter()
+            .filter(|c| c.at.starts_with("slots.") || c.at.contains(".slots."))
+            .count();
         let patched = match apply(&bytes, &plan) {
             Ok(patched) => patched,
             Err(e) => {
@@ -318,7 +324,7 @@ fn every_sample_project_writes_back() {
         );
     }
     println!(
-        "{files} projects: {identical} write back identical; {scenes} scenes, {values} static values written back and read back"
+        "{files} projects: {identical} write back identical; {scenes} scenes, {values} static values written back and read back, {slots} of them slots"
     );
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

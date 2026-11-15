@@ -26,8 +26,10 @@ use winnow::token::take_till;
 
 use super::Walk;
 use super::ids::Ids;
+use super::keys::Convert;
 use super::report::Outcome;
-use crate::model::{Composition, ItemKind, Layer};
+use super::sources::{Marks, Writable};
+use crate::model::{Composition, ItemKind, Layer, Origin, Stream, Value};
 
 /// What a reference is written as until the scene is finished, when every
 /// other string that starts with `$` is escaped: a project's text never
@@ -128,6 +130,8 @@ fn quoted(input: &mut &str) -> winnow::Result<String> {
 struct Follower {
     /// The value, in the scene's units for its property.
     value: Json,
+    /// How its property converts the control's value into the scene's.
+    convert: Convert,
     /// Its expression's report.
     report: usize,
 }
@@ -144,6 +148,9 @@ struct Control {
     name: String,
     /// The control's name, for people.
     label: String,
+    /// Where the project stores the control's value, and that value, when
+    /// it stores one that an export can write.
+    stored: Option<(Origin, Value)>,
     /// The values read from it, in the order written.
     followers: Vec<Follower>,
 }
@@ -167,8 +174,16 @@ impl Slots {
     /// Makes each control a slot holding the value most of its reads gave,
     /// the first of those on a tie: those reads follow it, and the others
     /// keep their own values, baked. Each following expression's report
-    /// says which slot it follows.
-    pub(super) fn decide(self, mapping: &mut super::report::Mapping) -> Decided {
+    /// says which slot it follows, and a slot whose control the project
+    /// stores, as the reads it holds give it, is marked to go back into it
+    /// ([D45]) through their conversion, added to `sources`.
+    ///
+    /// [D45]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d45-export-patches-the-project-it-came-from
+    pub(super) fn decide(
+        self,
+        mapping: &mut super::report::Mapping,
+        sources: &mut Vec<Writable>,
+    ) -> Decided {
         // Ids are unique over every scope, so a composition's slot never
         // hides one of the scene's that its layers follow.
         let mut ids = Ids::default();
@@ -196,6 +211,27 @@ impl Slots {
             let mut written = Map::new();
             written.insert(ty.name().to_owned(), value.clone());
             written.insert("label".to_owned(), json!(control.label));
+            let convert = control
+                .followers
+                .iter()
+                .find(|f| f.value == value)
+                .map(|f| f.convert);
+            // A control may store its value otherwise than expressions read
+            // it, a point in fractions of its layer or a slider in percent:
+            // only one whose stored value converts to the slot's goes back.
+            let stored = control.stored.filter(|(_, template)| {
+                convert.and_then(|c| c.value(template)).as_ref() == Some(&value)
+            });
+            if let (Some((origin, template)), Some(convert)) = (stored, convert) {
+                sources.push(Writable::Static {
+                    origin,
+                    convert,
+                    template,
+                });
+                let mut marks = Marks::default();
+                marks.add(ty.name().to_owned(), sources.len() - 1);
+                marks.write(&mut written);
+            }
             decided
                 .declared
                 .entry(control.scope)
@@ -240,7 +276,7 @@ impl<'p> Walk<'p> {
     pub(super) fn read_control(
         &mut self,
         source: &str,
-        value: &Json,
+        (value, convert): (&Json, Convert),
         report: usize,
     ) -> Option<Json> {
         let read = read(source)?;
@@ -267,10 +303,19 @@ impl<'p> Walk<'p> {
         let key = (item, read_layer.id, read.effect.clone(), read.param.clone());
         let follower = Follower {
             value: value.clone(),
+            convert,
             report,
         };
+        let stored = self.stored_control(read_layer, &read.effect, &read.param);
         let controls = &mut self.slots.0;
-        let index = match controls.iter().position(|c| c.key == key) {
+        // One parameter read as `effect("Size")(1)` and as
+        // `effect("Size")("Slider")` is one control: where the project
+        // stores it tells.
+        let same = |c: &Control| match (&c.stored, &stored) {
+            (Some((a, _)), Some((b, _))) => a.numbers == b.numbers,
+            _ => c.key == key,
+        };
+        let index = match controls.iter().position(same) {
             Some(index) => index,
             None => {
                 let label = match &read.effect {
@@ -286,6 +331,7 @@ impl<'p> Walk<'p> {
                     scope,
                     name,
                     label,
+                    stored,
                     followers: Vec::new(),
                 });
                 controls.len() - 1
@@ -297,6 +343,54 @@ impl<'p> Walk<'p> {
             "{REFERENCE}{index}:{}",
             followers.len() - 1
         )))
+    }
+
+    /// Where the project stores the parameter `param` of the effect
+    /// `effect` of `layer`, and its value, when the effect is a control and
+    /// the project stores a still value: a parameter at its default is not
+    /// stored.
+    fn stored_control(
+        &self,
+        layer: &Layer,
+        effect: &Pick,
+        param: &Pick,
+    ) -> Option<(Origin, Value)> {
+        let definitions = &self.project.effects;
+        let mut effects = super::layer::effects(layer);
+        let group = match effect {
+            Pick::Name(name) => effects.find(|group| {
+                let shown = group
+                    .name
+                    .as_deref()
+                    .or_else(|| definitions.get(&group.match_name).map(|d| d.name.as_str()));
+                shown == Some(name.as_str())
+            })?,
+            Pick::Index(index) => effects.nth(usize::try_from(*index).ok()?.checked_sub(1)?)?,
+        };
+        // An effect the scene draws writes its own parameters, which go
+        // back from there.
+        if !matches!(
+            super::rows::policy(&group.match_name),
+            Some(super::rows::Policy::Control)
+        ) {
+            return None;
+        }
+        // A parameter's match name is its effect's and its 1-based index.
+        let match_name = match param {
+            Pick::Index(index) => format!("{}-{index:04}", group.match_name),
+            Pick::Name(name) => definitions
+                .get(&group.match_name)?
+                .parameters
+                .iter()
+                .find(|p| &p.name == name)?
+                .match_name
+                .clone(),
+        };
+        let property = group.properties().find(|p| p.match_name == match_name)?;
+        match (&property.value, &property.origin) {
+            (Stream::Static(value), Some(origin)) => Some((origin.clone(), value.clone())),
+            _ => None,
+        }
     }
 
     /// The id of the composition item `composition` is.

@@ -183,7 +183,7 @@ impl Walk<'_> {
                     if let Some(mut tracks) =
                         self.baked_tracks(bake, property, (target, found), convert, place)
                     {
-                        self.follow_slot(&bake.source, &mut tracks);
+                        self.follow_slot(&bake.source, convert, &mut tracks);
                         let source = self.source(Writable::Expression);
                         for track in tracks {
                             let (name, component) = (&track.name, track.component);

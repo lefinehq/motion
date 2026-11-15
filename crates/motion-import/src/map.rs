@@ -367,7 +367,8 @@ impl<'p> Walk<'p> {
         }
         // A control's slot holds what most of its reads gave, so references
         // are written once every layer is.
-        let mut decided = std::mem::take(&mut self.slots).decide(&mut self.mapping);
+        let mut decided =
+            std::mem::take(&mut self.slots).decide(&mut self.mapping, &mut self.sources);
         if let Some(declared) = decided.declared.remove(&None) {
             scene.insert("slots".into(), Json::Object(declared));
         }
