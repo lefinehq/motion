@@ -138,7 +138,16 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
             .collect(),
     );
     let mut document = read_back(&json)?;
-    walk.mapping.roles = roles::propose(&document, &walk.named_roles);
+    let offered = walk
+        .mapping
+        .panel
+        .as_ref()
+        .map(|panel| panel.ids.clone())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|id| json["slots"][id.as_str()].get("text").is_some())
+        .collect::<Vec<_>>();
+    walk.mapping.roles = roles::propose(&document, &walk.named_roles, &offered);
     if !walk.mapping.roles.is_empty() {
         json["roles"] = roles::written(&walk.mapping.roles);
         // A master with a logo locks it, its palette and its typefaces.

@@ -36,6 +36,13 @@ pub fn export_project(
     out: &Path,
     comp: Option<String>,
 ) -> Result<Plan> {
+    if crate::import::is_template(project) {
+        return Err(Diagnostic::new(
+            Kind::Invalid,
+            "a scene cannot be written back into a `.mogrt` template yet",
+        )
+        .expected("an `.aep` project (D53 leaves writing a template back for later)"));
+    }
     let text = fs::read_to_string(scene).map_err(|e| Diagnostic::io("read", scene, &e))?;
     let edited: Json = serde_json::from_str(&text).map_err(|e| {
         Diagnostic::new(Kind::Syntax, format!("the scene is not JSON: {e}"))

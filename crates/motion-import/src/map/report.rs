@@ -100,6 +100,8 @@ pub struct PanelReport {
     pub controls: usize,
     /// How many became slots.
     pub slots: usize,
+    /// The ids of those slots, in the panel's order.
+    pub ids: Vec<String>,
     /// The controls that did not, by label, and why.
     pub left_out: Vec<Finding>,
 }

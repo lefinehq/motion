@@ -96,6 +96,24 @@ Chunks outside the property tree that the reader does not need yet (views, rende
 - A layer the scene cannot draw yet (footage it cannot find or draw, cameras, lights, adjustment layers) becomes a `pivot`, so its children keep their parent.
 - A font the import does not have (the `--font` files and folders, any `--fetch-fonts` locked, and the built-in Inter) is replaced by the closest face it has: one of the same family if any, else Inter, at the same slant and the nearest weight. A missing font's weight and slant come from its PostScript name's style suffix, through the table in `crates/motion-text/src/fallback.rs`. Each use is reported under unsupported, such as `missing fonts, substituted (`Brand-Bold → InterVariable-Bold`)`, with where ([D40](decisions.md#d40-missing-fonts-are-substituted-at-import)).
 
+### `.mogrt` templates
+
+`motion import template.mogrt --out scene.json` opens the archive ([D53](decisions.md#d53-a-mogrt-imports-as-its-project-with-its-controls-as-slots), [plan](../plans/2026-11-19-mogrt.md)), reads the project inside it as above, and imports the composition the template was made from. `motion inspect` prints that project.
+
+- **The archive.** The reader reads only `definition.json`, the panel, and the project in the nested `.aegraphic` archive. Each entry is capped at 1 GiB inflated. A template with no project inside, such as one made in an editing app, is refused with why.
+- **Controls become slots.** Each control of the panel becomes a slot of the scene, in the panel's order:
+  - a text control becomes `text`;
+  - a colour control becomes `color`;
+  - a slider, angle or checkbox becomes `number`;
+  - a point or scale becomes `point`.
+- **Ids and labels.** The slot's id comes from the control's name, and its label is that name, `Group / Name` inside a group.
+- **What follows the slot.** The project names each control's target by composition, layer and match-name path.
+  - A still property the control drives follows the slot. So does a transform value the project leaves out at its default, which the import finds by its layer.
+  - An expression control merges with the slot its plain reads already made, whichever composition reads it.
+  - A control nothing in the scene follows, because its expressions do more than read it, is left out. The report says so: `template: 9 controls, 3 slots`, then `left out: <name> (why)`.
+- **Roles.** A role of text (`headline`, `subhead`, `body`, `cta`, `price`, `date`) whose words only one text control's name has is proposed on that slot, `headline $title (from its control's name)`. This comes after a layer named for a role and before a layer id that matches.
+- **Export.** `motion export` refuses a `.mogrt` as the project to write into until writing a template back has a reason.
+
 The report has four counts per match name (mapped, defaulted, ignored, unsupported), the reasons things were ignored, the values clamped into range, and every unsupported feature with where it was met, substituted fonts among them.
 
 ## How to add a decoder

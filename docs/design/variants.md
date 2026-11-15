@@ -7,7 +7,7 @@ In v1, motion turns a finished, professionally designed project into variants. A
 ## The workflow
 
 1. **The designer finishes the master** in their desktop motion-design tool and saves the project.
-2. **motion imports it.** `motion import` reads the `.aep` project itself, with no desktop tool installed ([D30](decisions.md#d30-read-aep-projects-directly)), and writes a motion scene with a report of what it mapped, defaulted and could not hold yet. The tool's own render of the master, or the template's preview, is kept as the reference to compare against.
+2. **motion imports it.** `motion import` reads the `.aep` project itself, or the one inside a `.mogrt` template, whose panel of controls becomes the scene's slots ([D53](decisions.md#d53-a-mogrt-imports-as-its-project-with-its-controls-as-slots)), with no desktop tool installed ([D30](decisions.md#d30-read-aep-projects-directly)), and writes a motion scene with a report of what it mapped, defaulted and could not hold yet. The tool's own render of the master, or the template's preview, is kept as the reference to compare against.
 3. **motion builds the variant surface.** This is a compact summary of the master: its roles, beats, editable values, style and locks. The designer confirms the roles once per master.
 4. **An agent makes variants.** It turns a brief into one-line edits, runs `check`, and renders.
 5. **The designer reviews the variants.** They approve each one, or tweak it with the same one-line edits.
