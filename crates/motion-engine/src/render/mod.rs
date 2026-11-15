@@ -140,10 +140,8 @@ fn nodes(sources: Sources<'_>, at: Canvas, area: Rect, state: &FrameState) -> Re
 }
 
 /// The visible nodes of `state` that draw, in the order they draw ([D58]): list
-/// order, except that each run of adjacent 3D nodes draws back to front by
-/// how deep the centre of each one's box sits in front of the camera; a
-/// flat node between two runs keeps them apart. Equally deep nodes keep
-/// their list order.
+/// order, except that each run of adjacent 3D nodes draws back to front
+/// ([`back_to_front`]); a flat node between two runs keeps them apart.
 ///
 /// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
 pub(crate) fn paint_order(state: &FrameState) -> Vec<usize> {
@@ -160,22 +158,88 @@ pub(crate) fn paint_order(state: &FrameState) -> Vec<usize> {
             )
         })
         .collect();
-    let depth = |i: usize| {
-        let node = &state.nodes[i];
-        node.space
-            .map(|space| state.view.depth(space, node.local_bounds.center()))
-    };
+    let deep = |i: usize| state.nodes[i].space.is_some();
     let mut order = Vec::with_capacity(visible.len());
-    for run in visible.chunk_by(|&a, &b| depth(a).is_some() == depth(b).is_some()) {
-        let mut run = run.to_vec();
-        if depth(run[0]).is_some() {
-            // The farthest first; a stable sort keeps list order for ties.
-            run.sort_by(|&a, &b| {
-                let (a, b) = (depth(a).expect("3D"), depth(b).expect("3D"));
-                b.total_cmp(&a)
-            });
+    for run in visible.chunk_by(|&a, &b| deep(a) == deep(b)) {
+        match deep(run[0]) {
+            true => order.extend(back_to_front(state, run)),
+            false => order.extend_from_slice(run),
         }
-        order.extend(run);
+    }
+    order
+}
+
+/// A 3D node as the paint order sees it: its box's corners in the camera's
+/// space, where the box shows on the canvas, and how deep its centre is.
+struct Seen {
+    corners: [glam::DVec3; 4],
+    footprint: Option<Rect>,
+    depth: f64,
+}
+
+/// The 3D nodes `run` of `state`, in list order, in the order they draw.
+/// Where the boxes of two show over each other, the one wholly behind the
+/// other's plane draws first ([`space::depth_order`]), and of two in one
+/// plane the first in the list; this holds a layer laid just in front of a
+/// larger one in front, however far apart their centres are. Otherwise, and
+/// to break a cycle, the node whose centre is deepest draws first, then the
+/// first in the list. Planes that cross are drawn whole, not cut.
+fn back_to_front(state: &FrameState, run: &[usize]) -> Vec<usize> {
+    let seen: Vec<Seen> = run
+        .iter()
+        .map(|&i| {
+            let node = &state.nodes[i];
+            let world = node.space.expect("a 3D node");
+            let bounds = node.local_bounds;
+            Seen {
+                corners: state.view.corners(world, bounds),
+                footprint: space::bbox(&space::outline(state.view.plane(world), bounds)),
+                depth: state.view.depth(world, bounds.center()),
+            }
+        })
+        .collect();
+    // `after[a]` holds the nodes that draw after `a`; `waiting[b]` counts
+    // the nodes `b` draws after that have not drawn yet.
+    let mut after = vec![Vec::new(); run.len()];
+    let mut waiting = vec![0_usize; run.len()];
+    for a in 0..run.len() {
+        for b in a + 1..run.len() {
+            let overlap = match (seen[a].footprint, seen[b].footprint) {
+                (Some(fa), Some(fb)) => fa.intersect(fb).area() > 0.0,
+                _ => false,
+            };
+            if !overlap {
+                continue;
+            }
+            let (first, then) = match space::depth_order(&seen[a].corners, &seen[b].corners) {
+                Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal) => (a, b),
+                Some(std::cmp::Ordering::Greater) => (b, a),
+                None => continue,
+            };
+            after[first].push(then);
+            waiting[then] += 1;
+        }
+    }
+    // The deepest first, then the first in the list.
+    let deeper = |a: usize, b: usize| {
+        seen[a]
+            .depth
+            .total_cmp(&seen[b].depth)
+            .then_with(|| b.cmp(&a))
+    };
+    let mut left: Vec<usize> = (0..run.len()).collect();
+    let mut order = Vec::with_capacity(run.len());
+    while !left.is_empty() {
+        let free = left.iter().copied().filter(|&n| waiting[n] == 0);
+        let next = free
+            .max_by(|&a, &b| deeper(a, b))
+            .or_else(|| left.iter().copied().max_by(|&a, &b| deeper(a, b)))
+            .expect("a node left");
+        left.retain(|&n| n != next);
+        for &then in &after[next] {
+            waiting[then] = waiting[then].saturating_sub(1);
+        }
+        order.push(run[next]);
     }
     order
 }
