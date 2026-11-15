@@ -355,6 +355,21 @@ motion's value lies in the parts the agent touches: the format, the edits and th
   - `drawn` and `union` still tell layout error (drawn in the wrong place or colour) apart from missing content (absent from `drawn`, present in `content`).
   - An ignored layer stands for content the reference has and the scene does not, such as a photo in a placeholder, so measuring the reference there would count a gap the manifest declared.
 
+### D43. One layer address, and edits per instance
+
+- **Decision:** a layer anywhere in a scene has one address, and an edit through a comp layer changes that instance only.
+  - **Layers.** A layer is named by the ids from the scene down through the comp layers that show it, joined by `/`: `card/title` is the layer `title` inside the comp that the layer `card` shows. Ids cannot hold `/`, so the address is never ambiguous. A top-level layer is its id, as before.
+  - **Keys.** Keys inside a layer follow `.`, as edits write them today. An element of a list is chosen by its id, `fx[glow].radius`, or by its index, `runs[0]`.
+  - **The scene.** The scene itself is `scene`. No layer may take that id, and the import gives such a layer `scene-2`.
+  - **One type.** The address is one type in `motion-format`, with one grammar and one printer. Diagnostics, edits, `at`, `check`, the import report, the fidelity tools and the export all carry it and print it the same way, so an error's place can be pasted into an edit.
+  - **Edits per instance.** An edit through an address such as `card/title text="Sale"` is written on the comp layer `card` as an override: `"overrides": {"title": {"text": "Sale"}}`. The comp, and every other layer that shows it, stay as they are. An edit of the comp itself, which every instance shows, is a key path from the scene: `scene comps.label.layers[title].text="Sale"`.
+- **Why:**
+  - In our local corpus of 198 templates, 121 keep all their text inside nested comps, and today nothing can address it: edits, `at` and `check` reach top-level layers only (measured, 2026-11-15; see the [audit](../research/2026-11-15-architecture-audit.md)).
+  - Layers are named four ways today (`layers[1].rect` in errors, `comp/layer` in the import report, a pair in the text geometry, a bare id in edits). An agent cannot carry a place from one tool to another.
+  - In 41 of the 198 templates, a comp that holds text is shown more than once, such as one label comp used for three labels. A variant gives each its own text. An edit that changed the comp would change all three, and one that was refused would leave no way to do it.
+  - Overrides are the mechanism the slots of D44 need as well: a slot is a named value that overrides point at.
+- **Not now:** overriding a comp layer's own size, length or frame rate, and layers added through an override. An override sets keys of layers the comp already has.
+
 ### D45. Export patches the project it came from
 
 - **Decision:** a scene imported from an `.aep` goes back by patching that same file. `motion export` imports the original again, compares the edited scene with it, and writes each changed value into the bytes it was read from; every other byte stays as it was. A value is written back only where the import knows its source. Anything else that changed is reported, with why, and not guessed. The export checks itself: it reads the patched file again, imports it, and compares the result with the edited scene.
