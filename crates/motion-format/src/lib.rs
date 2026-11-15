@@ -12,6 +12,7 @@ pub mod edit_word;
 pub mod grammar;
 pub mod item;
 mod number;
+pub mod overrides;
 mod parse;
 pub mod path;
 pub mod preset;

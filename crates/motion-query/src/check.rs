@@ -7,7 +7,9 @@ use kurbo::{Affine, Point, Rect, Vec2};
 use motion_format::key::AT;
 use motion_format::shorthand::{Coord, Position};
 use motion_format::{Address, Layer, Scene};
-use motion_scene::{Node, SceneGraph, Visit, address_of, evaluate, local_transform, walk};
+use motion_scene::{
+    CompGraph, Node, SceneGraph, Visit, address_of, evaluate, local_transform, walk,
+};
 use tracing::{Span, field, instrument};
 
 /// Runs the standard rules on `scene` over every frame of `graph`, its
@@ -42,15 +44,12 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
         passed: 0,
     };
     let mut rules_run = 0;
-    // A fix hint edits the layer's `at`, which only the scene's own layers
-    // can take until edits reach inside compositions.
-    let mut roots = scene.root.layers.iter().zip(&graph.root.nodes);
     for (ids, scan) in paths.iter().zip(scans) {
-        let root = match ids.len() {
-            1 => roots.next(),
-            _ => None,
-        };
-        rules_run += scan.finish(&address_of(ids), root, graph, &mut report);
+        let address = address_of(ids);
+        // A fix hint edits the layer's `at` where the instance draws it.
+        let layer = scene.layer(&address.layers);
+        let placed = layer.zip(graph.node_at(ids));
+        rules_run += scan.finish(&address, placed, graph, &mut report);
     }
     Span::current()
         .record("rules_run", rules_run)
@@ -126,13 +125,13 @@ impl LayerScan {
     }
 
     /// Adds the findings on the layer at `address` to `report` and returns
-    /// how many rules ran; `root` is the layer and its node when it is one of
-    /// the scene's own, which a fix hint can move. A rule whose
+    /// how many rules ran; `placed` is the layer, its node and the
+    /// composition graph it sits in, which a fix hint reads. A rule whose
     /// `suppressed_by` failed here is skipped: it neither runs nor passes.
     fn finish(
         self,
         address: &Address,
-        root: Option<(&Layer, &Node)>,
+        placed: Option<(&Layer, (&Node, &CompGraph))>,
         graph: &SceneGraph,
         report: &mut Report,
     ) -> usize {
@@ -148,8 +147,8 @@ impl LayerScan {
                 continue;
             }
             failed.push(rule.code);
-            let fix = self.sweep.zip(root).and_then(|(sweep, (layer, node))| {
-                fix_hint(rule, sweep, self.frame, layer, node, graph)
+            let fix = self.sweep.zip(placed).and_then(|(sweep, placed)| {
+                fix_hint(rule, sweep, self.frame, address, placed, graph)
             });
             let violations = runs
                 .into_iter()
@@ -216,8 +215,8 @@ fn fix_hint(
     rule: &Rule,
     sweep: Rect,
     frame: Frame,
-    layer: &Layer,
-    node: &Node,
+    address: &Address,
+    (layer, (node, comp)): (&Layer, (&Node, &CompGraph)),
     graph: &SceneGraph,
 ) -> Option<String> {
     let Frame::Steady(parent) = frame else {
@@ -238,15 +237,14 @@ fn fix_hint(
         return None;
     }
     let only_followed = |delta: f64, follows: bool| if follows { delta } else { 0.0 };
-    // `at` keywords resolve in the parent's box, or on the canvas.
-    let extent = node
-        .parent
-        .map_or((graph.root.width, graph.root.height), |p| {
-            let parent = graph.root.nodes[p].bounds;
-            (parent.width(), parent.height())
-        });
+    // `at` keywords resolve in the parent's box, or on the canvas of the
+    // composition the layer sits in.
+    let extent = node.parent.map_or((comp.width, comp.height), |p| {
+        let parent = comp.nodes[p].bounds;
+        (parent.width(), parent.height())
+    });
     fix(
-        &layer.id,
+        address,
         layer.at,
         Vec2::new(
             only_followed(snap(local.x), follows_x),
@@ -265,7 +263,7 @@ fn snap(v: f64) -> f64 {
 /// `id at="x y"` for a shift, or `None` if nothing moves. An axis that does not
 /// move keeps its coordinate, so `center` stays `center`.
 fn fix(
-    id: &str,
+    address: &Address,
     at: Position,
     Vec2 { x: dx, y: dy }: Vec2,
     (width, height): (f64, f64),
@@ -278,7 +276,7 @@ fn fix(
         d => Coord::Px(c.resolve(extent) + d),
     };
     let (x, y) = (moved(at.x, dx, width), moved(at.y, dy, height));
-    Some(format!("{id} {AT}=\"{x} {y}\""))
+    Some(format!("{address} {AT}=\"{x} {y}\""))
 }
 
 #[cfg(test)]

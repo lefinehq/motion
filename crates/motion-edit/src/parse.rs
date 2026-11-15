@@ -3,8 +3,11 @@
 //!
 //! ```text
 //! line    = target (ws change)+
+//! target  = "scene" | id ("/" id)*      a layer at any depth: `card/title`
 //! change  = path "=" value
-//! path    = segment ("." segment)*      a segment is letters, digits, `-` and `_`
+//! path    = key select? ("." key select?)*
+//! key     = letters, digits, `-` and `_`
+//! select  = "[" id "]" | "[" index "]"  a list element by its id or index
 //! value   = quoted | json | bare
 //! quoted  = '"' (char | escape)* '"'
 //! escape  = '\"' | '\\' | '\n' (newline) | '\t' (tab)
@@ -12,18 +15,18 @@
 //! bare    = text up to the next space: `none`, `true`, `false`, a number, or a string
 //! ```
 
+use motion_format::address::{key_path, target as layers};
 use motion_format::edit_word::{FALSE, NONE, TRUE};
 use motion_format::grammar::{Failure, Parsed, blank0, blank1, ends_with, parse_all, word};
-use motion_format::{Diagnostic, Kind, Result};
+use motion_format::{Address, Diagnostic, Kind, Result};
 use serde_json::{Number, Value};
 use winnow::combinator::{
-    alt, cut_err, delimited, dispatch, empty, eof, fail, opt, peek, preceded, repeat, separated,
-    terminated,
+    alt, cut_err, delimited, dispatch, empty, eof, fail, opt, peek, preceded, repeat, terminated,
 };
 use winnow::error::{ErrMode, FromExternalError};
 use winnow::prelude::*;
 use winnow::stream::Stream;
-use winnow::token::{any, none_of, one_of, take_till, take_while};
+use winnow::token::{any, none_of, one_of, take_till};
 
 use crate::key_path::KeyPath;
 use crate::problem::Problem;
@@ -31,8 +34,9 @@ use crate::problem::Problem;
 /// A parsed edit: one target and the changes to make to it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Edit {
-    /// A layer id, or `scene` for the top level of the document.
-    pub target: String,
+    /// `scene` for the top level of the document, or a layer at any depth:
+    /// `title`, `card/title`. It has no keys.
+    pub target: Address,
     /// The changes, in the order written; no two write the same place.
     pub changes: Vec<Change>,
 }
@@ -82,7 +86,7 @@ impl Edit {
         let Some((a, b)) = conflict else {
             return Ok(());
         };
-        let (outer, inner) = if a.segments().len() <= b.segments().len() {
+        let (outer, inner) = if a.steps().len() <= b.steps().len() {
             (a, b)
         } else {
             (b, a)
@@ -115,16 +119,15 @@ fn edit<'s>(input: &mut &'s str) -> Parsed<Edit, Problem<'s>> {
         ),
         blank0,
     )
-    .try_map(|(target, changes): (&str, Vec<Change>)| {
-        if changes.is_empty() {
-            Err(Problem::NoChanges(target))
-        } else {
-            Ok(Edit {
-                target: target.to_owned(),
-                changes,
-            })
-        }
-    })
+    .try_map(
+        |((written, target), changes): ((&str, Address), Vec<Change>)| {
+            if changes.is_empty() {
+                Err(Problem::NoChanges(written))
+            } else {
+                Ok(Edit { target, changes })
+            }
+        },
+    )
     .parse_next(input)
 }
 
@@ -138,14 +141,20 @@ fn ends_bare(c: char) -> bool {
     c.is_whitespace() || c == '"'
 }
 
-/// The target: a layer id or `scene`.
-fn target<'s>(input: &mut &'s str) -> Parsed<&'s str, Problem<'s>> {
+/// The target, as written and read: `scene`, or a layer address.
+fn target<'s>(input: &mut &'s str) -> Parsed<(&'s str, Address), Problem<'s>> {
     dispatch! {(peek(opt(word)), take_till(0.., ends_key), opt(one_of(['=', '"'])));
         // The one failure without a problem: the line is empty.
         (None, _, _) => fail,
         (Some(word), _, Some('=')) => cut_err(fail).context(Problem::NoTarget(word)),
         (_, before, Some('"')) => cut_err(fail).context(Problem::StrayQuote(before)),
-        (_, name, _) => empty.value(name),
+        (_, name, _) => cut_err(empty.value(name).try_map(|name: &'s str| {
+            let mut rest = name;
+            match terminated(layers::<()>, eof).parse_next(&mut rest) {
+                Ok(ids) => Ok((name, Address::layer(ids))),
+                Err(_) => Err(Problem::InvalidTarget(name)),
+            }
+        })),
     }
     .parse_next(input)
 }
@@ -172,16 +181,10 @@ pub(crate) fn path<'s>(input: &mut &'s str) -> Parsed<KeyPath, Problem<'s>> {
             Some(op) => Err(Problem::Operator(op)),
             None => Ok(()),
         }),
-        terminated(separated(1.., segment.map(str::to_owned), '.'), eof)
-            .context(Problem::InvalidKey(text)),
+        terminated(key_path, eof).context(Problem::InvalidKey(text)),
     )
-    .map(|segments| KeyPath::new(text, segments))
+    .map(|steps| KeyPath::new(text, steps))
     .parse_next(input)
-}
-
-/// One name of a path: letters, digits, `-` and `_`.
-fn segment<'s>(input: &mut &'s str) -> Parsed<&'s str, Problem<'s>> {
-    take_while(1.., |c: char| c.is_alphanumeric() || c == '-' || c == '_').parse_next(input)
 }
 
 /// The value of the change to `key`, told apart by its first character;

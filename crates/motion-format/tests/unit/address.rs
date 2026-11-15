@@ -110,3 +110,23 @@ proptest! {
         prop_assert_eq!(address.to_string().parse::<Address>().unwrap(), address);
     }
 }
+
+#[test]
+fn a_key_path_has_no_leading_dot() {
+    let read = |text: &str| crate::grammar::parse_whole(text, key_path, "key", "a key");
+    assert_eq!(
+        read("fx[glow].radius").unwrap(),
+        [
+            Step::Key("fx".into()),
+            Step::Id(id("glow")),
+            Step::Key("radius".into())
+        ]
+    );
+    assert_eq!(
+        read("layers[0]").unwrap(),
+        [Step::Key("layers".into()), Step::Index(0)]
+    );
+    for bad in ["", ".fill", "fill.", "fx[]", "[0]"] {
+        assert!(read(bad).is_err(), "{bad}");
+    }
+}

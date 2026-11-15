@@ -178,6 +178,30 @@ fn scene_ends<R>(input: &mut &str) -> Parsed<(), R> {
 /// The keys of an address: each `.` and a key, with an optional `[id]` or
 /// `[index]` after it.
 pub fn keys<R>(input: &mut &str) -> Parsed<Vec<Step>, R> {
+    repeat(0.., preceded('.', step))
+        .fold(Vec::new, |mut steps: Vec<Step>, (key, selector)| {
+            steps.push(key);
+            steps.extend(selector);
+            steps
+        })
+        .parse_next(input)
+}
+
+/// A path of keys on its own, as an edit writes it after its target: a
+/// key, then [`keys`]: `fx[glow].radius`.
+pub fn key_path<R>(input: &mut &str) -> Parsed<Vec<Step>, R> {
+    (step, keys)
+        .map(|((key, selector), rest)| {
+            let mut steps = vec![key];
+            steps.extend(selector);
+            steps.extend(rest);
+            steps
+        })
+        .parse_next(input)
+}
+
+/// One key and the optional `[id]` or `[index]` after it.
+fn step<R>(input: &mut &str) -> Parsed<(Step, Option<Step>), R> {
     let selector = delimited(
         '[',
         alt((
@@ -186,17 +210,7 @@ pub fn keys<R>(input: &mut &str) -> Parsed<Vec<Step>, R> {
         )),
         ']',
     );
-    let step = (
-        preceded('.', key.map(|k: &str| Step::Key(k.to_owned()))),
-        opt(selector),
-    );
-    repeat(0.., step)
-        .fold(Vec::new, |mut steps: Vec<Step>, (key, selector)| {
-            steps.push(key);
-            steps.extend(selector);
-            steps
-        })
-        .parse_next(input)
+    (key.map(|k: &str| Step::Key(k.to_owned())), opt(selector)).parse_next(input)
 }
 
 /// A key: letters, digits, `-` and `_`.

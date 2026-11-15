@@ -306,11 +306,16 @@ fn no_fix_while_the_parent_moves() {
 /// 400x200 composition `card`, which holds a 10x10 `title` centred at
 /// `title_x` in the composition's canvas.
 fn nested(card_x: u32, title_x: u32) -> Report {
+    nested_with(card_x, title_x, "")
+}
+
+/// [`nested`], with `kv` on the `card` layer.
+fn nested_with(card_x: u32, title_x: u32, kv: &str) -> Report {
     check_json(&format!(
         r#"{{"motion":1,"size":"1000x1000","dur":"1s",
         "comps":{{"card":{{"size":"400x200","dur":"1s",
-          "layers":[{{"id":"title","rect":"10x10","position":[{title_x},100]}}]}}}},
-        "layers":[{{"id":"card","comp":"card","position":[{card_x},500]}}]}}"#
+          "layers":[{{"id":"title","rect":"10x10","at":"{title_x} 100"}}]}}}},
+        "layers":[{{"id":"card","comp":"card","position":[{card_x},500]{kv}}}]}}"#
     ))
 }
 
@@ -327,8 +332,7 @@ fn a_layer_inside_a_comp_is_checked_in_scene_space_by_its_address() {
         found,
         [
             ("card".into(), Code::Offscreen, 50.0, true),
-            // No fix yet: an `at` edit cannot reach inside a composition.
-            ("card/title".into(), Code::Offscreen, 50.0, false),
+            ("card/title".into(), Code::Offscreen, 50.0, true),
         ]
     );
 }
@@ -339,4 +343,26 @@ fn what_a_comp_clips_away_is_never_offscreen() {
     assert_eq!(nested(500, 395).violations, []);
     assert_eq!(nested(500, 420).violations, []);
     assert_eq!(nested(500, 420).passed, 4);
+}
+
+#[test]
+fn the_fix_for_an_inner_layer_is_an_edit_of_its_instance() {
+    let r = nested(850, 395);
+    let title = r
+        .violations
+        .iter()
+        .find(|v| v.address.to_string() == "card/title")
+        .unwrap();
+    let fix = title.fix.as_deref().unwrap();
+    // The title must come 100 px in, to the safe area's edge at 950.
+    assert_eq!(fix, r#"card/title at="295 100""#);
+    // Written as the edit writes it, the override clears the title.
+    let after = nested_with(850, 395, r#","overrides":{"title":{"at":"295 100"}}"#);
+    assert!(
+        after
+            .violations
+            .iter()
+            .all(|v| v.address.to_string() != "card/title"),
+        "{after}"
+    );
 }
