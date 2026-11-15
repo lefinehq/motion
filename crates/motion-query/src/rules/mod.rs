@@ -8,12 +8,21 @@
 //! 3. Add it to [`RULES`], whose order is the report's order.
 //! 4. If it would only repeat a bigger problem, set `suppressed_by` to a rule listed earlier.
 //! 5. Add unit tests for the rule and a scene test in `check.rs`.
+//!
+//! Craft rules ([D59]) read a layer over many frames instead: a step from
+//! one frame to the next, or a stretch of frames. They are listed in
+//! [`CRAFT`], after the layout rules, and add a [`Code`] the same way.
+//!
+//! [D59]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d59-craft-lint-measures-motion-from-the-scene-and-reports-numbers
 
 mod bounds;
+mod judder;
+mod text_hold;
 
-use crate::report::{Code, Severity};
-use kurbo::{Rect, Vec2};
-use motion_scene::{SceneGraph, Visit};
+use crate::report::{Code, Measure, Severity};
+use kurbo::{Affine, Point, Rect, Vec2};
+use motion_format::Address;
+use motion_scene::{CompGraph, Node, SceneGraph, Visit};
 
 /// A rule's finding on one frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -40,6 +49,115 @@ pub(crate) struct Rule {
 
 /// Every rule, in report order.
 pub(crate) const RULES: &[Rule] = &[bounds::OFFSCREEN, bounds::UNSAFE];
+
+/// What a craft rule found: the worst value and the limit it misses.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Finding {
+    /// What was measured.
+    pub value: f64,
+    /// The limit it misses.
+    pub limit: f64,
+}
+
+impl Finding {
+    /// How far past its limit it is, the larger the worse.
+    pub fn excess(self) -> f64 {
+        (self.value - self.limit).abs()
+    }
+}
+
+/// What craft rules see of one layer at one frame.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Sample {
+    /// The frame of the scene.
+    pub frame: u32,
+    /// Whether rules look at it on this frame ([`visible`]).
+    pub shown: bool,
+    /// Its opacity times that of the `comp` nodes around it.
+    pub opacity: f64,
+    /// The corners of its own box on the canvas.
+    pub corners: [Point; 4],
+    /// Its own transform in its parent: what moves it on its own.
+    pub local: Affine,
+    /// How many characters it reads, for a text layer.
+    pub chars: Option<usize>,
+    /// Whether it is drawn with motion blur.
+    pub blurred: bool,
+}
+
+impl Sample {
+    /// How far its corners move from `before` to it, the farthest one, in
+    /// px of the canvas.
+    pub fn moved_from(&self, before: &Sample) -> f64 {
+        self.corners
+            .iter()
+            .zip(&before.corners)
+            .map(|(a, b)| a.distance(*b))
+            .fold(0.0, f64::max)
+    }
+
+    /// Whether it moves on its own from `before`, not only with what holds it.
+    pub fn moves_from(&self, before: &Sample) -> bool {
+        self.local
+            .as_coeffs()
+            .iter()
+            .zip(before.local.as_coeffs())
+            .any(|(a, b)| (a - b).abs() > EPSILON)
+    }
+}
+
+/// What a step rule makes of one step.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Measured {
+    /// The rule does not apply to it.
+    Skipped,
+    /// It is within the limit.
+    Passed,
+    /// It misses the limit.
+    Found(Finding),
+}
+
+/// How a craft rule reads a layer's frames.
+pub(crate) enum Reads {
+    /// Each frame against the one before it, both shown.
+    Step(fn(&Sample, &Sample, &SceneGraph) -> Measured),
+    /// Stretches of consecutive frames in which `holds`, each judged by its
+    /// length in frames and its first sample once it ends.
+    Stretch {
+        /// Whether the frame belongs to a stretch, given the frame before it
+        /// when that one is the previous frame.
+        holds: fn(&Sample, Option<&Sample>, &SceneGraph) -> bool,
+        /// The finding on a stretch of this many frames, if any.
+        judge: fn(u32, &Sample, &SceneGraph) -> Option<Finding>,
+    },
+}
+
+/// A craft rule ([D59]): it measures a layer's motion over its frames and
+/// says how far past a limit it goes.
+///
+/// [D59]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d59-craft-lint-measures-motion-from-the-scene-and-reports-numbers
+pub(crate) struct Craft {
+    /// The rule's identity.
+    pub code: Code,
+    /// How serious a finding is.
+    pub severity: Severity,
+    /// How it reads the frames.
+    pub reads: Reads,
+    /// How the worst finding of a run prints.
+    pub measure: fn(Finding) -> Measure,
+    /// The edit that clears its findings on the layer at the address, which
+    /// the node draws in the composition, when one edit can.
+    pub fix: fn(&Address, &Node, &CompGraph) -> Option<String>,
+}
+
+/// Every craft rule, in report order, after [`RULES`].
+pub(crate) const CRAFT: &[Craft] = &[judder::JUDDER, text_hold::TEXT_HOLD];
+
+/// The most a layer may move in one frame, in px of the canvas, before the
+/// eye sees it jump: 11 px on a 1080-px-tall canvas, scaled by its height.
+pub(crate) fn judder_limit(graph: &SceneGraph) -> f64 {
+    11.0 * graph.root.height / 1080.0
+}
 
 /// Float noise below this many pixels is not an overshoot.
 pub(crate) const EPSILON: f64 = 1e-9;

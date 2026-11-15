@@ -30,7 +30,7 @@ fn scratch_copy(name: &str) -> PathBuf {
 #[test]
 fn the_launch_example_checks_ok() {
     let session = Session::open(LAUNCH).expect("open");
-    assert_eq!(session.check().expect("check").to_string(), "OK 4");
+    assert_eq!(session.check().expect("check").to_string(), "OK 7");
     assert_eq!(session.path(), Some(Path::new(LAUNCH)));
 }
 
