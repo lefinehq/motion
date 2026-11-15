@@ -3,6 +3,9 @@
 //! HD video. Every codec gets its planes from here, so they differ only in
 //! how they compress them.
 
+use std::sync::LazyLock;
+use std::thread;
+
 /// The luma weights of BT.709's red, green and blue.
 const KR: f32 = 0.2126;
 const KB: f32 = 0.0722;
@@ -40,48 +43,81 @@ impl Planes {
 /// alpha would show it. Chroma averages each 2x2 block; a block cut by the
 /// right or bottom edge averages the pixels it has.
 ///
+/// Each pixel is read once, and bands of rows are converted on threads of
+/// their own; every sample is the same as a pixel-by-pixel pass gives.
+///
 /// # Panics
 /// If `rgba` does not hold `width * height * 4` bytes; the caller checks.
 pub fn to_planes(rgba: &[u8], width: u32, height: u32) -> Planes {
     let (w, h) = (width as usize, height as usize);
     assert_eq!(rgba.len(), w * h * 4, "four bytes per pixel");
-    let pixel = |x: usize, y: usize| -> [f32; 3] {
-        let at = (y * w + x) * 4;
-        let alpha = f32::from(rgba[at + 3]) / 255.0;
-        [0, 1, 2].map(|c| f32::from(rgba[at + c]) / 255.0 * alpha)
-    };
-    let mut y_plane = Vec::with_capacity(w * h);
-    for y in 0..h {
-        for x in 0..w {
-            y_plane.push(quantise(16.0 + 219.0 * luma(pixel(x, y))));
-        }
-    }
     let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
-    let mut cb = Vec::with_capacity(cw * ch);
-    let mut cr = Vec::with_capacity(cw * ch);
-    for by in 0..ch {
+    let mut y = vec![0; w * h];
+    let mut cb = vec![0; cw * ch];
+    let mut cr = vec![0; cw * ch];
+    // Whole blocks rows per band, so a band's chroma needs no other band.
+    let workers = thread::available_parallelism().map_or(1, usize::from);
+    let blocks = ch.div_ceil(workers.min(ch.div_ceil(BAND_BLOCK_ROWS)).max(1));
+    thread::scope(|scope| {
+        let bands = y
+            .chunks_mut(blocks * 2 * w)
+            .zip(cb.chunks_mut(blocks * cw))
+            .zip(cr.chunks_mut(blocks * cw));
+        for (band, ((y, cb), cr)) in bands.enumerate() {
+            let first = band * blocks * 2;
+            let rows = &rgba[first * w * 4..((first + blocks * 2).min(h)) * w * 4];
+            scope.spawn(move || convert_band(rows, w, y, cb, cr));
+        }
+    });
+    Planes {
+        width,
+        height,
+        y,
+        cb,
+        cr,
+    }
+}
+
+/// The fewest block rows (pairs of pixel rows) a thread converts.
+const BAND_BLOCK_ROWS: usize = 16;
+
+/// Each 8-bit level over 255, as `f32`.
+static UNIT: LazyLock<[f32; 256]> = LazyLock::new(|| std::array::from_fn(|v| v as f32 / 255.0));
+
+/// Converts `rgba`, whole rows `w` pixels wide starting on an even row,
+/// into its luma rows and chroma rows.
+fn convert_band(rgba: &[u8], w: usize, y_out: &mut [u8], cb_out: &mut [u8], cr_out: &mut [u8]) {
+    let unit = &*UNIT;
+    let h = rgba.len() / (w * 4);
+    let cw = w.div_ceil(2);
+    // The block row's pixels, premultiplied, read once for luma and chroma.
+    let mut pixels = vec![[0.0f32; 3]; 2 * w];
+    for by in 0..h.div_ceil(2) {
+        let rows = (by * 2)..(by * 2 + 2).min(h);
+        for (r, y) in rows.clone().enumerate() {
+            for x in 0..w {
+                let at = (y * w + x) * 4;
+                let alpha = unit[usize::from(rgba[at + 3])];
+                let p = [0, 1, 2].map(|c| unit[usize::from(rgba[at + c])] * alpha);
+                pixels[r * w + x] = p;
+                y_out[y * w + x] = quantise(16.0 + 219.0 * luma(p));
+            }
+        }
         for bx in 0..cw {
             let mut sum = [0.0f32; 3];
             let mut count = 0.0f32;
-            for y in (by * 2)..(by * 2 + 2).min(h) {
+            for r in 0..rows.len() {
                 for x in (bx * 2)..(bx * 2 + 2).min(w) {
-                    let p = pixel(x, y);
+                    let p = pixels[r * w + x];
                     sum = [sum[0] + p[0], sum[1] + p[1], sum[2] + p[2]];
                     count += 1.0;
                 }
             }
             let mean = sum.map(|s| s / count);
             let (b, r) = chroma(mean);
-            cb.push(quantise(128.0 + 224.0 * b));
-            cr.push(quantise(128.0 + 224.0 * r));
+            cb_out[by * cw + bx] = quantise(128.0 + 224.0 * b);
+            cr_out[by * cw + bx] = quantise(128.0 + 224.0 * r);
         }
-    }
-    Planes {
-        width,
-        height,
-        y: y_plane,
-        cb,
-        cr,
     }
 }
 
