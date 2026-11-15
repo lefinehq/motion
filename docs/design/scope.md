@@ -36,7 +36,7 @@ A request is in scope only if it passes all three tests:
   - font files
   - fonts downloaded with `motion fonts add`
 - **Images:** PNG, JPEG, WebP, SVG.
-- **Audio:** WAV, MP3, AAC, FLAC.
+- **Audio:** WAV, MP3, FLAC and Ogg Vorbis, told by their first bytes, not their names. AAC (`.m4a`, and the sound of video files) will come through the operating system (audio plan step 4).
 - **Data and variables:** render one scene many times with different data, for example `motion render scene.json --data rows.json`. This is a common need in programmable video, and the `data` field already supports it.
 
 ### Import and variants (the v1 focus)

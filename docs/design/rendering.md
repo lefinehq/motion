@@ -22,7 +22,8 @@ scene.json
  4. Draw      rasterise each layer (Vello), then composite: effects, masks, mattes, blend modes, depth
    │
    ▼
- 5. Encode    turn frames into MP4, MOV or PNG files (WebM and audio later)
+ 5. Encode    turn frames into MP4, MOV or PNG files, and the mix into WAV
+              (WebM, and sound inside MP4 and MOV, later)
 ```
 
 Steps 1–3 never touch pixels. Checks and edits only need these three steps, which is why they are fast and cost no image tokens.
@@ -84,6 +85,22 @@ In a fast renderer, encoding is usually the slowest step.
 ProRes 4444 writes the same 60 frames in 1.4 s, about 4 MB, and decodes to the drawn frames with alpha within one level.
 
 **Licence policy.** The motion binary contains no GPL code and no patent-encumbered software encoder. H.264 and HEVC come from the operating system or the GPU vendor, whose licences cover them, or from Cisco's OpenH264 binary under Cisco's own terms. This is how web browsers handle it too. See [D13](decisions.md#d13-codec-licence-policy).
+
+## Sound
+
+A scene's sound is mixed apart from its frames ([D56](decisions.md#d56-audio-layers-mixed-at-48-khz-and-read-by-effects), [plan](../plans/2026-11-20-audio.md)). `motion render scene.json --out mix.wav` writes it alone; an audio track in MP4 and MOV waits for the encoder.
+
+- **Reading.** `motion-audio` reads WAV itself and MP3, FLAC and Ogg Vorbis through pure Rust decoders, chosen by the file's first bytes. Each file is decoded once per session, whole, folded down to stereo by where its speakers stand (ITU-R BS.775), and resampled to 48 kHz by our own band-limited kernel, which gives the same samples on every machine.
+- **Mixing.** Each audio layer is a route from the canvas down through `comp` layers. The mix asks each route what plays once a millisecond (the file position, the gain from every `volume` on the way, the speed from every `stretch`) and moves linearly between, so fades have no steps; around a layer's start or end it asks every sample. A layer that plays at its own rate copies samples straight from the file; one stretched reads through the kernel, narrowed so nothing folds back. Layers are summed without a limiter, and a render reports a peak above full scale.
+- **Reading sound while drawing.** `audio-spectrum` and `audio-waveform` ask the mix for the window they need at each frame, so frames still draw alone, in any order, on every core. A track written `@level` follows a sound: a scene with one compiles twice, first to find the sound's routes, then with the levels measured once per frame of its list as keys (step `listen`).
+
+*Measured* on an M4 Max (release build), for a 60 s scene at 30 fps with two layers of a 1:44 MP3, one stretched 1.5×, a spectrum effect, and a scale following the bass:
+
+| Step | Time |
+|---|---|
+| Decoding and resampling the MP3, once | 0.42 s |
+| `listen`: the bass level at 1801 frames | 0.05 s |
+| `mix`: 60 s of both layers | 0.31 s |
 
 ## Speed
 
