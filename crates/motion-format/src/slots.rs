@@ -15,7 +15,6 @@ use std::fmt;
 use serde_json::Value as Json;
 
 use crate::parse::key::{COMPS, ID, LAYERS, SLOTS, comp_path};
-use crate::units::Color;
 use crate::{Address, Diagnostic, Id, Kind, Place, Result, Step};
 
 /// What kind of value a slot holds, which the values following it take.
@@ -160,7 +159,9 @@ fn slot(id: &str, written: &Json) -> Result<Slot> {
             (ty, value.clone(), label)
         }
         Json::Number(_) => (SlotType::Number, written.clone(), None),
-        Json::Array(_) => (SlotType::Point, written.clone(), None),
+        // Two numbers are a point; three or four, a colour's channels.
+        Json::Array(items) if items.len() == 2 => (SlotType::Point, written.clone(), None),
+        Json::Array(_) => (SlotType::Color, written.clone(), None),
         Json::String(_) => (SlotType::Color, written.clone(), None),
         _ => return Err(invalid(written)),
     };
@@ -178,7 +179,7 @@ fn check_fits(ty: SlotType, value: &Json) -> Result<()> {
     let fits = match (ty, value) {
         (SlotType::Number, Json::Number(_)) | (SlotType::Text, Json::String(_)) => true,
         (SlotType::Point, Json::Array(xy)) => xy.len() == 2 && xy.iter().all(Json::is_number),
-        (SlotType::Color, Json::String(text)) => text.parse::<Color>().is_ok(),
+        (SlotType::Color, Json::String(_) | Json::Array(_)) => crate::text::color(value).is_ok(),
         _ => false,
     };
     match fits {

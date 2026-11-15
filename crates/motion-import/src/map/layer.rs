@@ -33,6 +33,26 @@ fn matte_mode(matte: TrackMatte) -> Result<Option<MatteMode>, u8> {
     }
 }
 
+/// Why a layer of controls is left out of the scene.
+pub(super) const DROPPED: &str =
+    "a layer of expression controls only, which draws nothing (left out)";
+
+/// Whether `layer` is left out of the scene: its effects are all controls,
+/// whose reads are slots or baked, it draws nothing, and no layer of
+/// `composition` has it as its parent or its matte.
+pub(super) fn is_dropped(layer: &Layer, composition: &Composition) -> bool {
+    let switches = &layer.switches;
+    let draws_nothing = layer.kind == LayerKind::Av
+        && (switches.null || switches.guide || switches.adjustment || !switches.enabled);
+    draws_nothing
+        && super::slots::is_control_layer(layer)
+        && !composition.layers.iter().any(|other| {
+            other.parent == Some(layer.id)
+                || (other.track_matte != TrackMatte::None
+                    && matte_layer(other, composition) == Some(layer.id))
+        })
+}
+
 /// The id of `layer`'s matte layer: the one its file names, or in files
 /// that name none, the layer just above it.
 fn matte_layer(layer: &Layer, composition: &Composition) -> Option<u32> {
@@ -54,10 +74,11 @@ impl<'p> Walk<'p> {
     pub(super) fn layer(
         &mut self,
         layer: &'p Layer,
-        composition: &Composition,
+        composition: &'p Composition,
         comp_name: &str,
         ids: &HashMap<u32, String>,
     ) -> Json {
+        self.writing = Some((composition, layer));
         let source = layer.source.and_then(|id| self.items.get(&id).copied());
         let half = |w: f64, h: f64| [w / 2.0, h / 2.0];
         let place = Place {
@@ -373,6 +394,23 @@ fn replacing_effect(layer: &Layer) -> Option<&str> {
                 })
             }
             _ => None,
+        })
+}
+
+/// The effects of `layer`, in order.
+pub(super) fn effects(layer: &Layer) -> impl Iterator<Item = &Group> {
+    layer
+        .properties
+        .children
+        .iter()
+        .filter_map(|child| match child {
+            Child::Group(parade) if parade.match_name == EFFECTS => Some(parade),
+            _ => None,
+        })
+        .flat_map(|parade| parade.children.iter())
+        .filter_map(|effect| match effect {
+            Child::Group(effect) => Some(effect),
+            Child::Property(_) => None,
         })
 }
 

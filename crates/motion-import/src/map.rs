@@ -14,7 +14,7 @@ use serde_json::{Map, Value as Json, json};
 
 use serde::Serialize;
 
-use crate::model::{ComposedLine, Composition, Item, ItemKind, Project};
+use crate::model::{ComposedLine, Composition, Item, ItemKind, Layer, Project};
 
 mod curves;
 mod expressions;
@@ -26,6 +26,7 @@ pub(crate) mod keys;
 mod layer;
 mod report;
 mod rows;
+mod slots;
 pub(crate) mod sources;
 mod text;
 
@@ -272,6 +273,12 @@ struct Walk<'p> {
     bakes: &'p crate::bake::Bakes,
     /// How each value marked in the scene goes back into the project.
     sources: Vec<sources::Writable>,
+    /// The item id of the composition imported as the scene.
+    root: Option<u32>,
+    /// The composition and layer being written.
+    writing: Option<(&'p Composition, &'p Layer)>,
+    /// The slots the controls read so far became, by scope.
+    slots: slots::Slots,
 }
 
 impl<'p> Walk<'p> {
@@ -297,6 +304,9 @@ impl<'p> Walk<'p> {
             videos,
             bakes,
             sources: Vec::new(),
+            root: None,
+            writing: None,
+            slots: slots::Slots::default(),
         }
     }
 
@@ -310,6 +320,7 @@ impl<'p> Walk<'p> {
     /// they draw, and the fonts.
     fn scene(&mut self, (item, root): (&'p Item, &'p Composition), options: &Options) -> Json {
         self.mapping.scene.clone_from(&item.name);
+        self.root = Some(item.id);
         let scope = self.taken.give(&item.name, "scene");
         self.mapping.ids.push(Named {
             comp: None,
@@ -351,13 +362,32 @@ impl<'p> Walk<'p> {
                 comp.insert("fps".into(), num(composition.frame_rate));
             }
             self.scope = Some(self.comp_ids[&id].clone());
-            comp.insert("layers".into(), Json::Array(self.layers(composition, name)));
-            comps.insert(self.comp_ids[&id].clone(), Json::Object(comp));
+            let layers = Json::Array(self.layers(composition, name));
+            comps.insert(self.comp_ids[&id].clone(), (comp, layers));
+        }
+        // A control's slot holds what most of its reads gave, so references
+        // are written once every layer is.
+        let mut decided = std::mem::take(&mut self.slots).decide(&mut self.mapping);
+        if let Some(declared) = decided.declared.remove(&None) {
+            scene.insert("slots".into(), Json::Object(declared));
         }
         if !comps.is_empty() {
-            scene.insert("comps".into(), json!(comps));
+            let comps: Map<String, Json> = comps
+                .into_iter()
+                .map(|(id, (mut comp, mut layers))| {
+                    slots::write_references(&mut layers, &decided);
+                    if let Some(declared) = decided.declared.remove(&Some(id.clone())) {
+                        comp.insert("slots".into(), Json::Object(declared));
+                    }
+                    comp.insert("layers".into(), layers);
+                    (id, Json::Object(comp))
+                })
+                .collect();
+            scene.insert("comps".into(), Json::Object(comps));
         }
-        scene.insert("layers".into(), Json::Array(layers));
+        let mut layers = Json::Array(layers);
+        slots::write_references(&mut layers, &decided);
+        scene.insert("layers".into(), layers);
         Json::Object(scene)
     }
 
@@ -399,7 +429,18 @@ impl<'p> Walk<'p> {
             .layers
             .iter()
             .rev()
-            .map(|layer| self.layer(layer, composition, name, &given))
+            .filter_map(|layer| {
+                // A control layer is still walked, so its controls are
+                // reported and the reads of them decided.
+                let written = self.layer(layer, composition, name, &given);
+                match layer::is_dropped(layer, composition) {
+                    true => {
+                        self.mapping.ignore("layer", layer::DROPPED);
+                        None
+                    }
+                    false => Some(written),
+                }
+            })
             .collect()
     }
 }

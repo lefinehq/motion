@@ -24,6 +24,7 @@ fn error(scene: &Json) -> Diagnostic {
 #[case::colour(json!("#E63946"), SlotType::Color, json!("#E63946"), None)]
 #[case::number(json!(1.5), SlotType::Number, json!(1.5), None)]
 #[case::point(json!([3, 4]), SlotType::Point, json!([3, 4]), None)]
+#[case::colour_channels(json!([1, 0.5, 0, 1]), SlotType::Color, json!([1, 0.5, 0, 1]), None)]
 #[case::text(json!({"text":"Launch"}), SlotType::Text, json!("Launch"), None)]
 #[case::labelled(json!({"color":"#fff","label":"Accent"}), SlotType::Color, json!("#fff"), Some("Accent"))]
 fn a_slot_is_typed_by_its_value(

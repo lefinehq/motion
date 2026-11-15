@@ -213,7 +213,7 @@ A scene, and any composition in `comps`, may declare `slots`: named values that 
            {"id":"headline","text":"$title","font":"Inter Variable 96 700"}]}
 ```
 
-- **Types.** The value fixes the slot's type: a colour string is a `color`, a number a `number`, `[x, y]` a `point`. Words are written `{"text":"…"}`. Any type may be written out, `{"color":"#E63946"}`, with an optional `label` for people.
+- **Types.** The value fixes the slot's type: a colour is a `color`, as a string or as `[r, g, b, a]`, a number a `number`, `[x, y]` a `point`. Words are written `{"text":"…"}`. Any type may be written out, `{"color":"#E63946"}`, with an optional `label` for people.
 - **Scope.** A reference names a slot of the composition it is written in, then one of the scene. A composition never sees another composition's slots.
 - **Dollars.** `$` followed by an id is a reference. A string starting with `$$` stands for itself with one `$` fewer, so a price is `"$$99"`. A `$` before anything that is not an id, as in `"$99"`, stays as written.
 - **Checking.** A reference to no slot is an error at the value, `plate.fill`. A slot whose value does not fit where it is used is reported there, naming the slot: `plate.fill: … (the value of slot `$title`)`.

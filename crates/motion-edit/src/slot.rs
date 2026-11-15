@@ -120,7 +120,8 @@ fn set_scene_slot(doc: &Document, raw: &mut Value, id: &str, value: &EditValue) 
 fn shorthand(value: &Value) -> Option<SlotType> {
     match value {
         Value::Number(_) => Some(SlotType::Number),
-        Value::Array(_) => Some(SlotType::Point),
+        Value::Array(xy) if xy.len() == 2 => Some(SlotType::Point),
+        Value::Array(_) => Some(SlotType::Color),
         Value::String(_) => Some(SlotType::Color),
         _ => None,
     }

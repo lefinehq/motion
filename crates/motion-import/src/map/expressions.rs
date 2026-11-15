@@ -203,6 +203,26 @@ impl<'p> Walk<'p> {
         Some(tracks)
     }
 
+    /// Marks the one still value of `tracks` as read from a control when
+    /// `source` only reads one ([`super::slots`]), to become a reference
+    /// once every read is known.
+    pub(super) fn follow_slot(&mut self, source: &str, tracks: &mut [BakedTrack]) {
+        let [
+            BakedTrack {
+                component: None,
+                written: Written::Value(value),
+                ..
+            },
+        ] = tracks
+        else {
+            return;
+        };
+        let report = self.mapping.expressions.len().saturating_sub(1);
+        if let Some(marked) = self.read_control(source, value, report) {
+            *value = marked;
+        }
+    }
+
     /// The document a source text expression sets, when its text never
     /// changes; one that changes keeps its first frame's text, reported.
     pub(super) fn baked_document(
