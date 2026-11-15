@@ -56,7 +56,7 @@ Every layer has an `id`: lowercase letters, digits, `-` and `_`, starting with a
 | `pivot` | An invisible layer (`"pivot":true`) that only carries a position, rotation and scale. Other layers can use it as a parent. |
 | filter layer | A layer with only an `fx` list. It applies the effects to everything below it in its composition (see `adjust`). |
 | `camera` | The viewpoint for 2.5D layers |
-| `audio` | A sound file placed on the timeline |
+| `audio` | A sound file played in the layer's own time; it draws nothing (see [Audio](#audio)) |
 
 Lights and 3D models come in phase 2. See [Features](features.md).
 
@@ -85,6 +85,7 @@ Every animatable value of a layer is a **property**. They are listed once, in `c
 | `scale` | point | `[1, 1]` | `scale-x`, `scale-y` | Size factor on each axis. One number scales both; negative values mirror. |
 | `rotate` | number | 0 | | Rotation in degrees, clockwise. |
 | `opacity` | number | 1 | | How opaque the layer is, 0 (invisible) to 1 (solid). |
+| `volume` | number | 1 | | The gain of the sound an `audio` or `comp` layer plays: 1 as recorded, 0 silent, up to 4 (+12 dB). |
 
 **Resting values.** `at` sets where `position` rests, read in the parent's box. A layer may instead write `position` itself, an exact point in the parent's own coordinates, as imported scenes do; it cannot have both. Any other property rests where the layer sets it, by its name as a layer key, or at the value above:
 
@@ -305,7 +306,21 @@ A video layer plays a clip: `video` names an `.mov` or `.mp4` file, relative to 
 - **Time.** The clip plays in the layer's own time: at its own time `t`, the layer draws the frame showing `t` seconds into the clip. So `offset` starts it later and `stretch` slows it (`2`) or speeds it (`0.5`). Before the clip starts and from its end on, the layer draws nothing.
 - **Codecs.** QuickTime Animation (`rle `, RGB, or ARGB with its alpha) and Photo JPEG decode today; a clip in any other codec is an error that names the file and the codec. The container is read by motion itself, with no system library.
 - **Files.** A render opens each clip once and decodes frames as they are shown, keeping the last ones, so a render going forward decodes each frame once. A file no frame shows is never read.
-- Like any layer, a video has a transform, parent, opacity, span and time, can be a matte, and can be matted. Its sound is not played: scenes have no audio yet.
+- Like any layer, a video has a transform, parent, opacity, span and time, can be a matte, and can be matted. Its sound is not played yet: an `audio` layer of the same file plays it once AAC can be read.
+
+## Audio
+
+An audio layer plays a sound file: `audio` names a WAV, MP3, FLAC or Ogg Vorbis file, relative to the scene file. It draws nothing, so it needs no box ([D56](decisions.md#d56-audio-layers-mixed-at-48-khz-and-read-by-effects)).
+
+```json
+{"id":"music","audio":"music/theme.mp3","offset":"0.5s","span":"0.5s-12s","anim":{"volume":"0 -> 1 @0-1s"}}
+```
+
+- **Time.** It plays in its own time, as a video does: at its own time `t` it plays the sound `t` seconds into the file. `offset` starts it later, `span` trims it, and `stretch` plays it slower (`2`) or faster (`0.5`), pitch included, as tape would. Before 0 and from the file's end on it is silent.
+- **Volume.** `volume` is a gain, 1 as recorded, 0 silent, up to 4 (+12 dB). It is a property like `opacity`, so a fade is keys. A `comp` layer's `volume` scales everything its composition plays, and an audio layer inside a composition plays while the `comp` layer is in its span, in the composition's time. Only `audio` and `comp` layers take a `volume`.
+- **Muting.** A `hidden` audio or `comp` layer is silent.
+- **What it is not.** An audio layer has no effects and no matte, and is no layer's matte: it draws nothing.
+- **The mix.** Every audible layer is mixed into one stereo track at 48 kHz. Files are read by their first bytes, not their names, folded down to stereo, and resampled. Volume moves smoothly between keys, and layers are summed without a limiter. `motion render scene.json --out mix.wav` writes the mix, and says when it goes above full scale.
 
 ## Animation, at three levels of detail
 

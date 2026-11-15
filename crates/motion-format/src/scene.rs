@@ -244,6 +244,8 @@ pub enum Content {
     Image(ImageContent),
     /// A video clip played in the layer's own time over the layer's box.
     Video(VideoContent),
+    /// A sound file played in the layer's own time; it draws nothing.
+    Audio(AudioContent),
     /// Nothing: a point that other layers move with.
     Pivot,
     /// Nothing of its own: its effects apply to what is below it in its
@@ -283,6 +285,14 @@ pub struct VideoContent {
     /// The layer's box, which the frames are stretched to fill, in the
     /// layer's own coordinates.
     pub frame: kurbo::Rect,
+}
+
+/// What an `audio` layer plays.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AudioContent {
+    /// The sound file, as written: relative to the scene file's folder, or
+    /// absolute.
+    pub path: String,
 }
 
 /// A parsed scene file: the typed scene and the JSON it came from, kept so

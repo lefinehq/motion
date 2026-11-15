@@ -73,6 +73,8 @@ pub enum ContentState {
         /// The node's own time, in seconds, which is the clip's.
         seconds: f64,
     },
+    /// Sound, which draws nothing; the mix plays it.
+    Audio,
     /// Nothing.
     Pivot,
     /// Nothing of its own; its effects apply to what is below it.

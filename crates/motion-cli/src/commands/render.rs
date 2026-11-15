@@ -99,6 +99,25 @@ pub fn run(
     quality: Quality,
     encoding: Encoding,
 ) -> Result<ExitCode> {
+    if is_sound(out) {
+        if encoding != Encoding::default() {
+            return Err(Diagnostic::new(
+                Kind::Invalid,
+                format!(
+                    "`--codec` or `--video-quality` for the sound file `{}`",
+                    out.display()
+                ),
+            )
+            .expected("a video file for `--out`, such as `launch.mp4`"));
+        }
+        let session = Session::open(path)?;
+        let frames = match frames {
+            Some(frames) => frames.range(),
+            None => session.frames()?,
+        };
+        println!("{}", sound(&session, frames, out)?);
+        return Ok(ExitCode::SUCCESS);
+    }
     let is_video = Container::of(out).is_some();
     if !is_video && encoding != Encoding::default() {
         return Err(Diagnostic::new(
@@ -127,6 +146,44 @@ pub fn run(
         }
         false => pictures(&session, frames, options, out),
     }
+}
+
+/// Whether `out` names a sound file, which gets the mix alone: a `.wav`.
+fn is_sound(out: &Path) -> bool {
+    out.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("wav"))
+}
+
+/// Mixes the sound of `frames` into the WAV file `out`, as 32-bit float
+/// stereo at the mix rate, and says what was written: how long, and how
+/// loud its loudest sample is.
+///
+/// # Errors
+/// As mixing and writing.
+pub fn sound(session: &Session, frames: Range<u32>, out: &Path) -> Result<String> {
+    let range = f64::from(frames.start)..f64::from(frames.end);
+    let mix = session.mix(range)?;
+    fs::write(out, motion_audio::wav::encode(&mix))
+        .map_err(|e| Diagnostic::io("write", out, &e))?;
+    let peak = mix
+        .channels()
+        .iter()
+        .flatten()
+        .fold(0.0_f32, |peak, s| peak.max(s.abs()));
+    let level = match peak > 0.0 {
+        true => format!("peak {:.1} dBFS", 20.0 * f64::from(peak).log10()),
+        false => "silent".into(),
+    };
+    let over = match peak > 1.0 {
+        true => ", above full scale: lower a `volume`",
+        false => "",
+    };
+    let seconds = (mix.seconds() * 100.0).round() / 100.0;
+    Ok(format!(
+        "mix written to {} ({seconds} s, {} Hz stereo, {level}{over})",
+        out.display(),
+        mix.rate()
+    ))
 }
 
 /// A video file written: where, how, and how long.

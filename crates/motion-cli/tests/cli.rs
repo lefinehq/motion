@@ -571,6 +571,40 @@ fn render_to_an_mp4_file_writes_a_video() {
 }
 
 #[test]
+fn render_to_a_wav_file_writes_the_mix() {
+    let dir = scratch("render-mix");
+    let sound = fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../motion-format/tests/compat/v1/sounds/tick.wav"
+    ))
+    .expect("read the tick");
+    fs::write(dir.join("tick.wav"), sound).expect("write the tick");
+    let scene = dir.join("scene.json");
+    fs::write(
+        &scene,
+        r#"{"motion":1,"fps":10,"dur":"1s","layers":[
+          {"id":"a","audio":"tick.wav"},{"id":"b","audio":"tick.wav","offset":"0.5s","volume":4}]}"#,
+    )
+    .expect("write the scene");
+    let out = dir.join("mix.wav");
+    let file = out.to_str().expect("utf-8 path");
+    let run = motion(&["render", scene.to_str().expect("utf-8 path"), "--out", file]);
+    assert_eq!(run.status.code(), Some(0), "{}", stderr(&run));
+    // A tick at -12 dB played four times as loud reaches just past full scale.
+    assert_eq!(
+        stdout(&run),
+        format!(
+            "mix written to {file} (1 s, 48000 Hz stereo, peak 0.0 dBFS, above full scale: lower a `volume`)\n"
+        )
+    );
+    let mix = motion_audio::open(&out).expect("reads back");
+    assert_eq!(
+        (mix.rate(), mix.channels().len(), mix.frames()),
+        (48_000, 2, 48_000)
+    );
+}
+
+#[test]
 fn render_takes_a_codec_and_a_video_quality_and_times_the_encoding() {
     let (dir, scene) = small_scene("render-video-quality");
     let file = dir.join("draft.mp4");

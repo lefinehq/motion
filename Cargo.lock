@@ -1506,6 +1506,7 @@ name = "motion-cli"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "motion-audio",
  "motion-encode",
  "motion-engine",
  "motion-fonts",
@@ -1552,6 +1553,7 @@ name = "motion-engine"
 version = "0.0.0"
 dependencies = [
  "insta",
+ "motion-audio",
  "motion-edit",
  "motion-fonts",
  "motion-format",

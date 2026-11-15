@@ -50,7 +50,9 @@ fn every_geometry_kind_has_an_outline() {
 #[test]
 fn group_rows_are_the_layer_transform_rows() {
     let names = |r: &'static motion_format::property::Registry| r.names().collect::<Vec<_>>();
-    assert_eq!(names(&GROUP), names(&LAYER));
+    // A layer then has the gain of its sound, which a group does not.
+    assert_eq!(names(&GROUP), names(&LAYER)[..5]);
+    assert_eq!(names(&LAYER)[5], "volume");
 }
 
 #[test]

@@ -69,6 +69,7 @@ pub(crate) struct LayerDoc {
     pub(crate) overrides: Object<OverridesDoc>,
     pub(crate) image: Present<String>,
     pub(crate) video: Present<String>,
+    pub(crate) audio: Present<String>,
     pub(crate) pivot: Present<bool>,
     pub(crate) font: Present<Shorthand<Font>>,
     pub(crate) fill: Present<serde_json::Value>,

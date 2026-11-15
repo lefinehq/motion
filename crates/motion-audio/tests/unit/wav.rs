@@ -34,3 +34,11 @@ fn broken_files_say_what_is_wrong() {
     let adpcm = decode(&header(&fmt)).expect_err("ADPCM");
     assert!(adpcm.message.contains("format code 0x0002"), "{adpcm}");
 }
+
+#[test]
+fn surround_is_written_with_where_its_channels_stand() {
+    let sound = open(&crate::tests::data("surround.wav")).expect("decodes");
+    let again = decode(&encode(&sound)).expect("reads back");
+    assert_eq!(again.speakers(), sound.speakers());
+    assert_eq!(again.channels(), sound.channels());
+}

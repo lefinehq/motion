@@ -47,6 +47,7 @@ fn rotated(x: f64, y: f64, w: f64, h: f64, opacity: f64, scale: f64, rotate: f64
             "scale" => Value::Point([scale, scale]),
             "opacity" => Value::Number(opacity),
             "rotate" => Value::Number(rotate),
+            "volume" => Value::Number(1.0),
             _ => unreachable!("every property is listed"),
         })
         .collect();
