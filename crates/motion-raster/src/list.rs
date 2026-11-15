@@ -8,6 +8,7 @@ use vello_cpu::peniko::FontData;
 
 use crate::blend::BlendMode;
 use crate::effect::Effect;
+use crate::homography::Homography;
 use crate::picture::Picture;
 use crate::style::{Color, DrawStyle, FillRule, Paint};
 
@@ -52,7 +53,7 @@ pub enum Node {
 /// A group of nodes drawn together.
 ///
 /// A layer whose opacity is 1, whose blend mode is normal, which has no clip,
-/// no effects and no matte, and which is not marked `isolate` only moves its
+/// no effects, no matte and no projection, and which is not marked `isolate` only moves its
 /// children: it costs no extra buffer. Otherwise it is isolated: its
 /// children are drawn into a buffer of their own, so their blend modes see
 /// only each other, its effects run on that buffer in order, and the result
@@ -93,8 +94,53 @@ pub struct Layer {
     pub time: f64,
     /// Motion blur of a drawing made once: moves in its parent's
     /// coordinates. The layer is drawn once, with its masks and effects,
-    /// laid at each move and averaged, before it blends.
+    /// laid at each move and averaged, before it blends. Empty for a
+    /// projected layer, whose moves are [`Projection::samples`].
     pub motion: Vec<Affine>,
+    /// A plane seen through a camera ([D58]): when set, the layer is drawn
+    /// in its own coordinates and laid onto its parent's through this map,
+    /// and `transform` is not used.
+    ///
+    /// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+    pub projection: Option<Projection>,
+}
+
+/// How a projected layer lies on its parent ([D58]).
+///
+/// The layer's children, masks, clip and effects are drawn flat in its own
+/// coordinates, into a buffer of its own at the most the map magnifies the
+/// part the canvas sees. The buffer is laid onto the canvas through the
+/// map, sampled from a chain of halved copies by the footprint of each
+/// pixel. Pixels whose ray meets the plane behind the camera stay clear.
+/// Its opacity, blend mode and matte then apply as for a flat layer.
+///
+/// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+#[derive(Debug, Clone, PartialEq)]
+pub struct Projection {
+    /// From the layer's own coordinates to its parent's, with `w`, the
+    /// third coordinate of the image, positive in front of the camera and
+    /// negative behind it.
+    pub matrix: Homography,
+    /// Motion blur of a drawing made once ([D57]): the map at each moment
+    /// of the shutter, from the layer's own coordinates to its parent's as
+    /// `matrix` is. The drawing is laid through each and averaged at `1/n`
+    /// each, before it blends; empty for none, when it is laid through
+    /// `matrix` alone. They take the place [`Layer::motion`] has for a
+    /// flat layer, as whole maps rather than moves, since the map at the
+    /// frame may be singular (a plane seen edge-on) and have no inverse.
+    ///
+    /// [D57]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter
+    pub samples: Vec<Homography>,
+}
+
+impl Projection {
+    /// The layer laid through `matrix`, without motion blur.
+    pub fn new(matrix: Homography) -> Projection {
+        Projection {
+            matrix,
+            samples: Vec::new(),
+        }
+    }
 }
 
 /// A mask: an outline that cuts what a layer draws, before its effects.
@@ -177,6 +223,7 @@ impl Layer {
             bounds: None,
             time: 0.0,
             motion: Vec::new(),
+            projection: None,
         }
     }
 
@@ -189,6 +236,7 @@ impl Layer {
             || !self.effects.is_empty()
             || !self.masks.is_empty()
             || !self.motion.is_empty()
+            || self.projection.is_some()
             || self.matte.is_some()
             || self
                 .children

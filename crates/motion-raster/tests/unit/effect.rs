@@ -17,6 +17,35 @@ fn every_effect_has_a_unique_name_and_documented_parameters() {
 }
 
 #[test]
+fn every_effect_says_how_far_it_reaches() {
+    for spec in EFFECTS {
+        let effect = Effect::new(spec.name, &[]).unwrap();
+        if let Reach::Within(by) = effect.reach() {
+            assert!(by.is_finite() && by >= 0.0, "{}: {by}", spec.name);
+        }
+    }
+    let reach =
+        |name: &str, params: &[(&str, ParamValue)]| Effect::new(name, params).unwrap().reach();
+    // Four standard deviations of the Gaussian a blurriness gives.
+    let Reach::Within(blur) = reach("gaussian-blur", &[("blurriness", ParamValue::Number(20.0))])
+    else {
+        panic!("a blur reaches a distance");
+    };
+    assert!((blur - 24.0).abs() < 1e-4);
+    assert_eq!(
+        reach("drop-shadow", &[("distance", ParamValue::Number(30.0))]),
+        Reach::Within(30.0)
+    );
+    assert_eq!(reach("invert", &[]), Reach::Within(0.0));
+    assert_eq!(reach("wrap", &[]), Reach::Bounds);
+    assert_eq!(
+        reach("displacement-map", &[("edges", ParamValue::Choice(1))]),
+        Reach::Bounds
+    );
+    assert_eq!(reach("particles", &[]), Reach::Anywhere);
+}
+
+#[test]
 fn left_out_parameters_take_their_defaults() {
     let fill = Effect::new("fill", &[]).unwrap();
     assert_eq!(fill.spec().name, "fill");
