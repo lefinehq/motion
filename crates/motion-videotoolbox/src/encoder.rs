@@ -134,7 +134,7 @@ pub struct Packet {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error {
     /// What was being done.
-    pub doing: &'static str,
+    pub doing: String,
     /// The system's status code.
     pub status: i32,
 }
@@ -148,10 +148,37 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 /// `Ok` when `status` is the system's success, else the error of `doing`.
-fn check(doing: &'static str, status: i32) -> Result<(), Error> {
+fn check(doing: &str, status: i32) -> Result<(), Error> {
     match status {
         0 => Ok(()),
-        status => Err(Error { doing, status }),
+        status => Err(Error {
+            doing: doing.to_owned(),
+            status,
+        }),
+    }
+}
+
+/// Whether a session must take a property.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Need {
+    /// The file is wrong without it.
+    Required,
+    /// It helps, and an encoder may refuse it.
+    Hint,
+}
+
+/// The status of a property an encoder does not take.
+const PROPERTY_NOT_SUPPORTED: i32 = -12900;
+
+/// `Ok` when `status` is the system's success, else the error of `doing`
+/// the thing `name`.
+fn check_named(doing: &str, name: &str, status: i32) -> Result<(), Error> {
+    match status {
+        0 => Ok(()),
+        status => Err(Error {
+            doing: format!("{doing} `{name}`"),
+            status,
+        }),
     }
 }
 
@@ -218,7 +245,7 @@ impl Encoder {
         };
         check("creating a compression session", status)?;
         let raw = NonNull::new(raw).ok_or(Error {
-            doing: "creating a compression session",
+            doing: "creating a compression session".into(),
             status: -1,
         })?;
         // SAFETY: a session from `create` is ours to release.
@@ -256,12 +283,14 @@ impl Encoder {
         let rate_key = unsafe { kVTCompressionPropertyKey_ExpectedFrameRate };
         let quality = CFNumber::new_f32(self.settings.quality);
         let interval = CFNumber::new_i32(self.settings.keyframe_interval as i32);
-        let mut properties: Vec<(&CFString, &CFType)> = vec![
-            (primaries_key, primaries),
-            (transfer_key, transfer),
-            (matrix_key, matrix),
-            (real_time, CFBoolean::new(false)),
-            (rate_key, &rate),
+        // A hint may be refused by an encoder that has no use for it; a
+        // requirement may not, or the file would not be what was asked for.
+        let mut properties: Vec<(&'static str, &CFString, &CFType, Need)> = vec![
+            ("ColorPrimaries", primaries_key, primaries, Need::Required),
+            ("TransferFunction", transfer_key, transfer, Need::Required),
+            ("YCbCrMatrix", matrix_key, matrix, Need::Required),
+            ("RealTime", real_time, CFBoolean::new(false), Need::Hint),
+            ("ExpectedFrameRate", rate_key, &rate, Need::Hint),
         ];
         let profile = match self.settings.codec {
             // SAFETY: reading a constant of the framework.
@@ -280,23 +309,34 @@ impl Encoder {
             // SAFETY: reading a constant of the framework.
             let interval_key = unsafe { kVTCompressionPropertyKey_MaxKeyFrameInterval };
             properties.extend([
-                (reordering, CFBoolean::new(false) as &CFType),
-                (profile_key, profile),
-                (quality_key, &quality),
-                (interval_key, &interval),
+                // Packets in the order they are shown: the MP4 writer
+                // stores no composition offsets.
+                (
+                    "AllowFrameReordering",
+                    reordering,
+                    CFBoolean::new(false) as &CFType,
+                    Need::Required,
+                ),
+                ("ProfileLevel", profile_key, profile, Need::Required),
+                ("Quality", quality_key, &quality, Need::Required),
+                ("MaxKeyFrameInterval", interval_key, &interval, Need::Hint),
             ]);
         } else {
             // SAFETY: reading a constant of the framework.
             let alpha_key = unsafe { kVTCompressionPropertyKey_AlphaChannelMode };
             // SAFETY: reading a constant of the framework.
             let straight = unsafe { kVTAlphaChannelMode_StraightAlpha };
-            properties.push((alpha_key, straight));
+            // The planes carry straight alpha; the default is premultiplied.
+            properties.push(("AlphaChannelMode", alpha_key, straight, Need::Required));
         }
-        for (key, value) in properties {
+        for (name, key, value, need) in properties {
             // SAFETY: each key is a compression property, and each value
             // the type the framework documents for it.
             let status = unsafe { VTSessionSetProperty(&self.session, key, Some(value)) };
-            check("setting a compression property", status)?;
+            match (status, need) {
+                (PROPERTY_NOT_SUPPORTED, Need::Hint) => {}
+                (status, _) => check_named("setting the compression property", name, status)?,
+            }
         }
         Ok(())
     }
@@ -380,7 +420,7 @@ impl Encoder {
         };
         if !fits {
             return Err(Error {
-                doing: "taking an image of another size or kind",
+                doing: "taking an image of another size or kind".into(),
                 status: -1,
             });
         }
@@ -399,7 +439,7 @@ impl Encoder {
         };
         check("making a pixel buffer", status)?;
         let raw = NonNull::new(raw).ok_or(Error {
-            doing: "making a pixel buffer",
+            doing: "making a pixel buffer".into(),
             status: -1,
         })?;
         // SAFETY: a buffer from `CVPixelBufferCreate` is ours to release.
@@ -416,7 +456,7 @@ impl Encoder {
         let unlocked = unsafe { CVPixelBufferUnlockBaseAddress(&buffer, lock) };
         if !written {
             return Err(Error {
-                doing: "reaching a pixel buffer's planes",
+                doing: "reaching a pixel buffer's planes".into(),
                 status: -1,
             });
         }
@@ -508,7 +548,7 @@ unsafe extern "C-unwind" fn finished(
     let mut output = output.lock().unwrap_or_else(PoisonError::into_inner);
     if status != 0 {
         output.failure.get_or_insert(Error {
-            doing: "encoding a frame",
+            doing: "encoding a frame".into(),
             status,
         });
         return;
@@ -535,7 +575,7 @@ unsafe extern "C-unwind" fn finished(
 /// A sample's bytes and whether it is a keyframe.
 fn read(sample: &CMSampleBuffer, frame: u64) -> Result<Packet, Error> {
     let failure = Error {
-        doing: "reading a compressed frame",
+        doing: "reading a compressed frame".into(),
         status: -1,
     };
     // SAFETY: a valid sample.
