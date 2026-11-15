@@ -146,6 +146,80 @@ fn the_fill_effect_mixes_towards_its_colour_and_keeps_alpha() {
     );
 }
 
+/// The transform effect with `position`, `anchor`, `scale` and `opacity`.
+fn transform(position: [f32; 2], anchor: [f32; 2], scale: [f32; 2], opacity: f32) -> Effect {
+    Effect::new(
+        "transform",
+        &[
+            ("position", ParamValue::Point(position)),
+            ("anchor", ParamValue::Point(anchor)),
+            ("scale", ParamValue::Point(scale)),
+            ("opacity", ParamValue::Number(opacity)),
+        ],
+    )
+    .unwrap()
+}
+
+#[test]
+fn the_transform_effect_moves_and_fades_the_content_wherever_it_stands() {
+    // A 2-pixel square in the top left corner of an 8-pixel frame, moved by
+    // its anchor to the centre and scaled up three times about it.
+    let square = Node::Path(PathDraw {
+        path: Rect::new(0.0, 0.0, 2.0, 2.0).to_path(0.1),
+        paint: Paint::Solid(Color::BLACK),
+        style: DrawStyle::Fill(FillRule::NonZero),
+    });
+    let frame = |effects| Frame {
+        nodes: vec![Node::Layer(Layer {
+            effects,
+            ..Layer::new(vec![square.clone()])
+        })],
+        ..Frame::default()
+    };
+    let moved = transform([4.0, 4.0], [1.0, 1.0], [3.0, 3.0], 0.5);
+    let image = render_with(&frame(vec![moved.clone()]), 8, 8, RenderOptions::GOLDEN).unwrap();
+    // Now 6 pixels wide about the centre, at half opacity; the corner is empty.
+    assert!(
+        near(image.pixel(2, 2).unwrap(), [0, 0, 0, 128]),
+        "{:?}",
+        image.pixel(2, 2)
+    );
+    assert!(
+        near(image.pixel(5, 5).unwrap(), [0, 0, 0, 128]),
+        "{:?}",
+        image.pixel(5, 5)
+    );
+    assert_eq!(image.pixel(0, 0).unwrap(), [0, 0, 0, 0]);
+    // A fill after it recolours what it moved, as a fill before it does.
+    let white = Effect::new("fill", &[("color", ParamValue::Color(Color::WHITE))]).unwrap();
+    for effects in [vec![moved.clone(), white.clone()], vec![white, moved]] {
+        let image = render_with(&frame(effects), 8, 8, RenderOptions::GOLDEN).unwrap();
+        assert!(
+            near(image.pixel(5, 5).unwrap(), [255, 255, 255, 128]),
+            "{:?}",
+            image.pixel(5, 5)
+        );
+    }
+}
+
+#[test]
+fn transform_effects_apply_in_order_each_moving_what_the_last_moved() {
+    let effects = [
+        transform([2.0, 0.0], [0.0, 0.0], [1.0, 1.0], 1.0),
+        transform([0.0, 0.0], [0.0, 0.0], [2.0, 2.0], 1.0),
+    ];
+    let movement = |list: &[Effect]| {
+        list.iter()
+            .filter_map(Effect::movement)
+            .fold(Affine::IDENTITY, |done, next| next.transform * done)
+    };
+    // Moved 2 right, then doubled about the origin: 1 goes to 6.
+    assert_eq!(
+        movement(&effects) * vello_cpu::kurbo::Point::new(1.0, 0.0),
+        (6.0, 0.0).into()
+    );
+}
+
 #[test]
 fn a_clip_hides_what_lies_outside_it() {
     let clipped = Layer {

@@ -72,11 +72,17 @@ impl<'p> Walk<'p> {
                 Some(ItemKind::Footage(f)) => half(f64::from(f.width), f64::from(f.height)),
                 _ => [0.0, 0.0],
             },
+            size: match source.map(|item| &item.kind) {
+                Some(ItemKind::Composition(c)) => [f64::from(c.width), f64::from(c.height)],
+                Some(ItemKind::Footage(f)) => [f64::from(f.width), f64::from(f.height)],
+                _ => [f64::from(composition.width), f64::from(composition.height)],
+            },
             effect: None,
         };
         let mut out = Out::default();
         out.keys.insert("id".into(), json!(ids[&layer.id]));
-        self.content(layer, source, &mut out, &place);
+        let replaced = replacing_effect(layer);
+        self.content(layer, source, replaced, &mut out, &place);
         let sink = Sink {
             registry: &LAYER,
             kind: None,
@@ -112,6 +118,10 @@ impl<'p> Walk<'p> {
                     let here = place.inside(&group.match_name);
                     match group.match_name.as_str() {
                         TRANSFORM_GROUP => {}
+                        VECTORS | TEXT if replaced.is_some() => self.mapping.ignore(
+                            &group.match_name,
+                            "what a layer draws where an effect draws in its place",
+                        ),
                         VECTORS if layer.kind == LayerKind::Shape => {
                             self.mapping.count(VECTORS, Fate::Mapped);
                             let shapes = self.items(group, &here);
@@ -121,7 +131,7 @@ impl<'p> Walk<'p> {
                         EFFECTS => {
                             self.mapping.count(EFFECTS, Fate::Mapped);
                             let effects = self.items(group, &here);
-                            if !effects.is_empty() {
+                            if !effects.is_empty() && replaced.is_none() {
                                 out.keys.insert("fx".into(), Json::Array(effects));
                             }
                         }
@@ -144,7 +154,14 @@ impl<'p> Walk<'p> {
 
     /// What the layer draws; a pivot, reported, for what the scene cannot
     /// draw yet.
-    fn content(&mut self, layer: &Layer, source: Option<&Item>, out: &mut Out, place: &Place<'_>) {
+    fn content(
+        &mut self,
+        layer: &Layer,
+        source: Option<&Item>,
+        replaced: Option<&str>,
+        out: &mut Out,
+        place: &Place<'_>,
+    ) {
         let pivot = |walk: &mut Walk<'_>, out: &mut Out, why: Option<&str>| {
             out.keys.insert("pivot".into(), json!(true));
             if let Some(why) = why {
@@ -154,6 +171,13 @@ impl<'p> Walk<'p> {
                     .unsupported(&place.at, format!("{why} (drawn as nothing)"));
             }
         };
+        if let Some(effect) = replaced {
+            return pivot(
+                self,
+                out,
+                Some(&format!("layers whose `{effect}` draws in their place")),
+            );
+        }
         match layer.kind {
             LayerKind::Shape => {
                 out.keys.insert("shapes".into(), json!([]));
@@ -314,4 +338,29 @@ impl<'p> Walk<'p> {
             out.keys.insert("stretch".into(), num(layer.stretch));
         }
     }
+}
+
+/// The first effect on `layer` that draws in place of its content and that
+/// the scene cannot draw yet, if any.
+fn replacing_effect(layer: &Layer) -> Option<&str> {
+    layer
+        .properties
+        .children
+        .iter()
+        .find_map(|child| match child {
+            Child::Group(parade) if parade.match_name == EFFECTS => {
+                parade.children.iter().find_map(|effect| match effect {
+                    Child::Group(effect)
+                        if effect.enabled
+                            && !effect.hidden
+                            && super::rows::kind(&effect.match_name).is_none()
+                            && super::rows::REPLACING.contains(&effect.match_name.as_str()) =>
+                    {
+                        Some(effect.match_name.as_str())
+                    }
+                    _ => None,
+                })
+            }
+            _ => None,
+        })
 }

@@ -285,7 +285,7 @@ fn project_value(
 ) -> std::result::Result<Value, String> {
     let (ty, broadcast) = match convert {
         Convert::Number | Convert::Percent => (ValueType::Number, false),
-        Convert::Point | Convert::PointPercent => (ValueType::Point, true),
+        Convert::Point | Convert::PointPercent | Convert::Sized(_) => (ValueType::Point, true),
         Convert::Color => (ValueType::Color, false),
         Convert::Path => return Err("a path, which the export does not write yet".into()),
     };
@@ -304,8 +304,12 @@ fn project_value(
         _ => return Err(format!("{json} is not a value of this kind")),
     }
     .map_err(|e| e.message)?;
-    let factor = convert.factor();
-    let numbers: Vec<f64> = parsed.components().iter().map(|n| n / factor).collect();
+    let numbers: Vec<f64> = parsed
+        .components()
+        .iter()
+        .enumerate()
+        .map(|(i, n)| n / convert.factor(i))
+        .collect();
     if numbers.iter().any(|n| !n.is_finite()) {
         return Err("a value that is not a finite number".into());
     }

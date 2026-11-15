@@ -1,7 +1,8 @@
 //! Effects as a registry ([D34]): each is a row of [`EFFECTS`] with a name,
-//! typed parameters and a function that draws it onto a layer's isolated
-//! content. Adding an effect is adding a row and its function; the renderer
-//! never names an effect.
+//! typed parameters and what it does to a layer, as an [`Apply`]: paint over
+//! the layer's isolated content once it is drawn, or move that content
+//! before it is drawn. Adding an effect is adding a row and its function;
+//! the renderer never names an effect.
 //!
 //! An [`Effect`] in a display list is built with [`Effect::new`], which checks
 //! its parameters against the row, so drawing it cannot fail.
@@ -12,7 +13,7 @@ use std::fmt;
 
 use motion_format::{Diagnostic, Kind, Result};
 use vello_cpu::RenderContext;
-use vello_cpu::kurbo::{Affine, Rect};
+use vello_cpu::kurbo::{Affine, Rect, Vec2};
 use vello_cpu::peniko::{BlendMode, Compose, Mix};
 
 use crate::style::Color;
@@ -24,6 +25,8 @@ pub enum ParamType {
     Number,
     /// A colour.
     Color,
+    /// A point, in px of the layer's own coordinates.
+    Point,
 }
 
 /// A value of an effect parameter.
@@ -33,6 +36,8 @@ pub enum ParamValue {
     Number(f32),
     /// A colour.
     Color(Color),
+    /// A point, in px of the layer's own coordinates.
+    Point([f32; 2]),
 }
 
 impl ParamValue {
@@ -41,6 +46,7 @@ impl ParamValue {
         match self {
             ParamValue::Number(_) => ParamType::Number,
             ParamValue::Color(_) => ParamType::Color,
+            ParamValue::Point(_) => ParamType::Point,
         }
     }
 }
@@ -66,9 +72,30 @@ pub struct EffectSpec {
     pub params: &'static [ParamSpec],
     /// What it does.
     pub doc: &'static str,
-    /// Draws the effect onto the isolated content of the layer, given the
-    /// parameter values in the order of `params`.
-    pub draw: fn(&mut EffectContext<'_>, &[ParamValue]),
+    /// What it does to the layer, given the parameter values in the order of
+    /// `params`.
+    pub apply: Apply,
+}
+
+/// What an effect does to the layer it is on.
+#[derive(Debug, Clone, Copy)]
+pub enum Apply {
+    /// Paints over the layer's isolated content once it is drawn.
+    Paint(fn(&mut EffectContext<'_>, &[ParamValue])),
+    /// Moves the layer's content: a transform in the layer's own
+    /// coordinates and an opacity, applied as the content is drawn. Every
+    /// painting effect so far changes each pixel on its own, so a move
+    /// commutes with them, and applies first wherever it stands in the list.
+    Move(fn(&[ParamValue]) -> Move),
+}
+
+/// How a moving effect moves the layer's content.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Move {
+    /// From the content's coordinates to the layer's.
+    pub transform: Affine,
+    /// What the content's opacity is multiplied by, 0 to 1.
+    pub opacity: f32,
 }
 
 impl fmt::Debug for EffectSpec {
@@ -86,25 +113,65 @@ impl PartialEq for EffectSpec {
 }
 
 /// Every effect the renderer can draw.
-pub const EFFECTS: &[EffectSpec] = &[EffectSpec {
-    name: "fill",
-    params: &[
-        ParamSpec {
-            name: "color",
-            default: ParamValue::Color(Color::rgba(1.0, 0.0, 0.0, 1.0)),
-            range: None,
-            doc: "the colour the content takes",
-        },
-        ParamSpec {
-            name: "opacity",
-            default: ParamValue::Number(1.0),
-            range: Some((0.0, 1.0)),
-            doc: "how much of the colour replaces the content's own, 0 to 1",
-        },
-    ],
-    doc: "recolours the content with one colour, keeping its alpha",
-    draw: fill,
-}];
+pub const EFFECTS: &[EffectSpec] = &[
+    EffectSpec {
+        name: "fill",
+        params: &[
+            ParamSpec {
+                name: "color",
+                default: ParamValue::Color(Color::rgba(1.0, 0.0, 0.0, 1.0)),
+                range: None,
+                doc: "the colour the content takes",
+            },
+            ParamSpec {
+                name: "opacity",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 1.0)),
+                doc: "how much of the colour replaces the content's own, 0 to 1",
+            },
+        ],
+        doc: "recolours the content with one colour, keeping its alpha",
+        apply: Apply::Paint(fill),
+    },
+    EffectSpec {
+        name: "transform",
+        params: &[
+            ParamSpec {
+                name: "position",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                doc: "where `anchor` goes, in px of the layer's own coordinates",
+            },
+            ParamSpec {
+                name: "anchor",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                doc: "the point of the content that moves to `position`, and that it scales \
+                      and turns about",
+            },
+            ParamSpec {
+                name: "scale",
+                default: ParamValue::Point([1.0, 1.0]),
+                range: None,
+                doc: "size factor on each axis",
+            },
+            ParamSpec {
+                name: "rotate",
+                default: ParamValue::Number(0.0),
+                range: None,
+                doc: "rotation in degrees, clockwise",
+            },
+            ParamSpec {
+                name: "opacity",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 1.0)),
+                doc: "what the content's opacity is multiplied by, 0 to 1",
+            },
+        ],
+        doc: "moves, scales, turns and fades the content inside the layer",
+        apply: Apply::Move(transform),
+    },
+];
 
 /// An effect with its parameter values, checked against its row.
 #[derive(Debug, Clone, PartialEq)]
@@ -154,9 +221,20 @@ impl Effect {
         &self.values
     }
 
-    /// Draws the effect onto the content drawn so far in `ctx`'s layer.
-    pub(crate) fn draw(&self, ctx: &mut EffectContext<'_>) {
-        (self.spec.draw)(ctx, &self.values);
+    /// Paints the effect over the content drawn so far in `ctx`'s layer, if
+    /// it is a painting one.
+    pub(crate) fn paint(&self, ctx: &mut EffectContext<'_>) {
+        if let Apply::Paint(paint) = self.spec.apply {
+            paint(ctx, &self.values);
+        }
+    }
+
+    /// How it moves the content, if it is a moving one.
+    pub fn movement(&self) -> Option<Move> {
+        match self.spec.apply {
+            Apply::Move(movement) => Some(movement(&self.values)),
+            Apply::Paint(_) => None,
+        }
     }
 }
 
@@ -229,6 +307,29 @@ fn fill(ctx: &mut EffectContext<'_>, values: &[ParamValue]) {
         unreachable!("`Effect::new` checks the fill parameters");
     };
     ctx.cover(color.with_opacity(*opacity), Compose::SrcAtop);
+}
+
+/// The `transform` effect: the content's anchor goes to `position`, scaled
+/// and turned about it, as a shape group's transform places its items.
+fn transform(values: &[ParamValue]) -> Move {
+    let [
+        ParamValue::Point(position),
+        ParamValue::Point(anchor),
+        ParamValue::Point(scale),
+        ParamValue::Number(rotate),
+        ParamValue::Number(opacity),
+    ] = values
+    else {
+        unreachable!("`Effect::new` checks the transform parameters");
+    };
+    let point = |[x, y]: [f32; 2]| Vec2::new(f64::from(x), f64::from(y));
+    Move {
+        transform: Affine::translate(point(*position))
+            * Affine::rotate(f64::from(*rotate).to_radians())
+            * Affine::scale_non_uniform(f64::from(scale[0]), f64::from(scale[1]))
+            * Affine::translate(-point(*anchor)),
+        opacity: *opacity,
+    }
 }
 
 #[cfg(test)]

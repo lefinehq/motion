@@ -207,6 +207,20 @@ pub static GROUP: Registry = Registry {
     rows: &GROUP_ROWS,
 };
 
+const TRANSFORM_EFFECT_ROWS: [PropertySpec; 5] = transform(
+    Rest::Value(Value::Point([0.0, 0.0])),
+    Rest::Value(Value::Point([0.0, 0.0])),
+    "the point of the layer's content that sits at `position` and that it scales and turns \
+     about, in px of the layer's own coordinates",
+);
+
+/// The properties of the transform effect: a group's transform, applied to
+/// everything the layer draws.
+pub static TRANSFORM_EFFECT: Registry = Registry {
+    kind: "transform effect",
+    rows: &TRANSFORM_EFFECT_ROWS,
+};
+
 /// Every layer property, in registry order.
 pub const PROPERTIES: &[PropertySpec] = &LAYER_ROWS;
 

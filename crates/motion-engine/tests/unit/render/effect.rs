@@ -13,7 +13,8 @@ fn raster_type(ty: ValueType) -> Option<ParamType> {
     match ty {
         ValueType::Number => Some(ParamType::Number),
         ValueType::Color => Some(ParamType::Color),
-        ValueType::Point | ValueType::Path => None,
+        ValueType::Point => Some(ParamType::Point),
+        ValueType::Path => None,
     }
 }
 
@@ -73,7 +74,10 @@ fn a_layers_effects_keep_their_order_and_values() {
 
 #[test]
 fn a_value_the_rasteriser_has_no_type_for_is_reported() {
-    let point = param(&Value::Point([1.0, 2.0])).unwrap_err();
-    assert_eq!(point.kind, Kind::WrongType);
-    assert!(param(&Value::Path(Path::new(false, []))).is_err());
+    assert_eq!(
+        param(&Value::Point([1.0, 2.0])).unwrap(),
+        ParamValue::Point([1.0, 2.0])
+    );
+    let path = param(&Value::Path(Path::new(false, []))).unwrap_err();
+    assert_eq!(path.kind, Kind::WrongType);
 }

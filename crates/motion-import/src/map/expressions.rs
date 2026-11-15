@@ -106,7 +106,7 @@ impl<'p> Walk<'p> {
             return None;
         };
         let range = found.and_then(|t| t.prop.spec().range);
-        let (channels, clamped) = clamp_samples(channels, range, convert.factor());
+        let (channels, clamped) = clamp_samples(channels, range, convert);
         if clamped > 0
             && let Some(range) = range
         {
@@ -143,12 +143,12 @@ impl<'p> Walk<'p> {
                 let written = match still(fits) {
                     true => Written::Value(
                         convert
-                            .component()
+                            .component(i)
                             .value(&template.with_numbers(&[one.keys[0].value]))?,
                     ),
                     false => {
                         keys += one.keys.len();
-                        fitted(fits, &template, convert.component(), place.clock)?
+                        fitted(fits, &template, convert.component(i), place.clock)?
                     }
                 };
                 tracks.push(BakedTrack {
@@ -279,17 +279,19 @@ fn with_text(document: &TextDocument, text: &str) -> TextDocument {
 fn clamp_samples(
     channels: &[Vec<f64>],
     range: Option<(f64, f64)>,
-    factor: f64,
+    convert: Convert,
 ) -> (std::borrow::Cow<'_, [Vec<f64>]>, usize) {
-    let Some((lo, hi)) = range.filter(|_| factor > 0.0) else {
+    let Some((lo, hi)) = range.filter(|_| (0..channels.len()).all(|i| convert.factor(i) > 0.0))
+    else {
         return (std::borrow::Cow::Borrowed(channels), 0);
     };
-    let (lo, hi) = (lo / factor, hi / factor);
+    let bounds = |i: usize| (lo / convert.factor(i), hi / convert.factor(i));
     let frames = channels.first().map_or(0, Vec::len);
     let outside = |f: usize| {
-        channels
-            .iter()
-            .any(|c| c.get(f).is_some_and(|&v| v < lo || v > hi))
+        channels.iter().enumerate().any(|(i, c)| {
+            let (lo, hi) = bounds(i);
+            c.get(f).is_some_and(|&v| v < lo || v > hi)
+        })
     };
     let clamped = (0..frames).filter(|&f| outside(f)).count();
     if clamped == 0 {
@@ -297,7 +299,11 @@ fn clamp_samples(
     }
     let owned = channels
         .iter()
-        .map(|c| c.iter().map(|v| v.clamp(lo, hi)).collect())
+        .enumerate()
+        .map(|(i, c)| {
+            let (lo, hi) = bounds(i);
+            c.iter().map(|v| v.clamp(lo, hi)).collect()
+        })
         .collect();
     (std::borrow::Cow::Owned(owned), clamped)
 }

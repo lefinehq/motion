@@ -10,7 +10,7 @@
 
 use crate::anim::AnimTrack;
 use crate::path::Path;
-use crate::property::{GROUP, Prop, PropertySpec, Registry, Rest};
+use crate::property::{GROUP, Prop, PropertySpec, Registry, Rest, TRANSFORM_EFFECT};
 use crate::table::{self, Named};
 use crate::value::{Value, ValueType};
 
@@ -456,14 +456,26 @@ pub static SHAPES: [ItemKind; 7] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 1] = [ItemKind {
-    name: "fill",
-    role: Role::Effect,
-    registry: &FILL_EFFECT,
-    primary: Primary::Property("color"),
-    settings: &[],
-    doc: "turns every drawn pixel of the layer one colour, keeping its coverage",
-}];
+pub static EFFECTS: [ItemKind; 2] = [
+    ItemKind {
+        name: "fill",
+        role: Role::Effect,
+        registry: &FILL_EFFECT,
+        primary: Primary::Property("color"),
+        settings: &[],
+        doc: "turns every drawn pixel of the layer one colour, keeping its coverage",
+    },
+    ItemKind {
+        name: "transform",
+        role: Role::Effect,
+        registry: &TRANSFORM_EFFECT,
+        primary: Primary::Property("scale"),
+        settings: &[],
+        doc: "moves, scales, turns and fades everything the layer draws, inside the layer: \
+              `anchor` sits at `position`, both at the origin by default, so a scale or turn \
+              on its own is about the origin",
+    },
+];
 
 const fn point(
     name: &'static str,

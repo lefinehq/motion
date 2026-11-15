@@ -40,11 +40,12 @@ fn param(value: &Value) -> Result<ParamValue> {
     match value {
         Value::Number(n) => Ok(ParamValue::Number(*n as f32)),
         Value::Color(rgba) => Ok(ParamValue::Color(color(*rgba))),
+        Value::Point([x, y]) => Ok(ParamValue::Point([*x as f32, *y as f32])),
         other => Err(Diagnostic::new(
             Kind::WrongType,
             format!("an effect parameter holding a {:?}", other.value_type()),
         )
-        .expected("a number or a colour")),
+        .expected("a number, a colour or a point")),
     }
 }
 

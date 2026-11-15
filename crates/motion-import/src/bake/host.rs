@@ -79,7 +79,14 @@ struct Entry {
     name: String,
     /// Its index among its siblings, from 1.
     index: usize,
+    /// How many of an expression's units make one of the project's, per
+    /// component.
+    unit: Unit,
 }
+
+/// How many of an expression's units make one of the project's, per
+/// component; components past the last take 1.
+pub(super) type Unit = [f64; 3];
 
 /// What a property with an expression reads as, so far.
 #[derive(Debug, Clone, PartialEq)]
@@ -153,6 +160,7 @@ impl ProjectHost {
                     match_name: String::new(),
                     name: String::new(),
                     index: 1,
+                    unit: [1.0; 3],
                 }],
                 layers: HashMap::new(),
                 baked: RefCell::new(HashMap::new()),
@@ -222,6 +230,7 @@ impl ProjectHost {
             up: Some(up),
             children: Vec::new(),
             match_name: match_name.to_owned(),
+            unit: [unit(match_name); 3],
             name,
             index,
         });
@@ -258,7 +267,12 @@ impl<'p> Build<'p> {
                 match stored {
                     Some(p) => {
                         let name = p.name.clone().unwrap_or_else(|| parameter.name.clone());
-                        self.property(up, p, name, index, at);
+                        let id = self.property(up, p, name, index, at);
+                        // A point parameter is stored in fractions of the
+                        // layer's size, as its default is.
+                        if let Control::Point { .. } = parameter.control {
+                            self.host.entries[id as usize].unit = [at.size[0], at.size[1], 1.0];
+                        }
                     }
                     None => {
                         let node = Node::Default(Box::new(parameter.clone()), at.size);
@@ -302,7 +316,7 @@ impl<'p> Build<'p> {
         name: String,
         index: usize,
         at: At<'p>,
-    ) {
+    ) -> NodeId {
         let node = Node::Property(Box::new(property.clone()));
         let id = self.host.add(up, node, &property.match_name, name, index);
         if property.expression.as_ref().is_some_and(|e| e.enabled) {
@@ -314,6 +328,7 @@ impl<'p> Build<'p> {
                 item: at.item,
             });
         }
+        id
     }
 
     /// The name the original shows for a group the user did not name.
@@ -340,6 +355,12 @@ fn layer_size(project: &Project, layer: &Layer, comp: &Composition) -> [f64; 2] 
 }
 
 impl ProjectHost {
+    /// How many of an expression's units make one of the project's in each
+    /// component of `node`'s value.
+    pub(super) fn unit(&self, node: NodeId) -> Unit {
+        self.entries.get(node as usize).map_or([1.0; 3], |e| e.unit)
+    }
+
     /// The comp node holding `node`.
     fn comp_of(&self, node: NodeId) -> Option<NodeId> {
         let mut at = Some(node);
@@ -358,7 +379,7 @@ impl ProjectHost {
         if property.separated && property.match_name == "ADBE Position" {
             return self.separated(node, time);
         }
-        to_val(&property.value.value_at(time), unit(&property.match_name))
+        to_val(&property.value.value_at(time), self.unit(node))
     }
 
     /// The `_0`, `_1` and `_2` siblings of a separated position that it has.
@@ -428,15 +449,11 @@ fn unit(match_name: &str) -> f64 {
     }
 }
 
-/// How many of an expression's units make one of `property`'s.
-pub(super) fn unit_of(property: &Property) -> f64 {
-    unit(&property.match_name)
-}
-
-/// A project value as an expression reads it, scaled by `unit`.
-fn to_val(value: &Value, unit: f64) -> Result<Val, Missing> {
+/// A project value as an expression reads it, each component scaled by
+/// its `unit`.
+fn to_val(value: &Value, unit: Unit) -> Result<Val, Missing> {
     match value {
-        Value::Number(n) => Ok(Val::Number(n * unit)),
+        Value::Number(n) => Ok(Val::Number(n * unit[0])),
         Value::Text(document) => Ok(Val::Text(document.text.clone())),
         Value::Path(_) => Err(Missing::Unknown("a path's shape".into())),
         Value::Opaque { reason } => Err(Missing::Unknown(format!(
@@ -447,7 +464,8 @@ fn to_val(value: &Value, unit: f64) -> Result<Val, Missing> {
                 .numbers()
                 .unwrap_or_default()
                 .iter()
-                .map(|n| n * unit)
+                .enumerate()
+                .map(|(i, n)| n * unit.get(i).copied().unwrap_or(1.0))
                 .collect(),
         )),
     }
@@ -733,10 +751,7 @@ impl Host for ProjectHost {
             return None;
         };
         let key = keys.get(n.checked_sub(1)?)?;
-        Some((
-            key.time,
-            to_val(&key.value, unit(&property.match_name)).ok()?,
-        ))
+        Some((key.time, to_val(&key.value, self.unit(node)).ok()?))
     }
 }
 

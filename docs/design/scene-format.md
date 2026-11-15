@@ -160,6 +160,9 @@ A `trim` keeps the stretch from `start` to `end`, shares of the length from 0 to
 | Effect | Key holds | Properties | Settings |
 |---|---|---|---|
 | `fill` | `color` | `color`, `opacity` | |
+| `transform` | `scale` | `position`, `anchor`, `scale`, `rotate`, `opacity` | |
+
+A `transform` moves everything the layer draws, inside the layer, as a group's transform moves its items: `anchor` (px of the layer's own coordinates) goes to `position`, scaled and turned about it, and `opacity` multiplies the layer's. Both points rest at the origin, so `{"transform":1.5}` scales about the layer's origin; an import writes both. Several apply in order, each moving what the ones before it moved.
 
 **Compositions.** `comps` holds compositions by id. Each has its own `size`, `dur`, optional `fps` (the scene's by default), `bg` (clear by default) and `labels`, and its own `layers`. A layer with `"comp":"card"` draws it in a box of the composition's size. The composition's time is the layer's own time, so `offset` and `stretch` move and slow it, and the layer shows nothing outside the composition's length. Compositions may draw other compositions, but never themselves.
 

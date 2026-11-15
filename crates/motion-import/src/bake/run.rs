@@ -147,7 +147,13 @@ impl Baker {
         }
         let template = target.property.value.value_at(times[0]);
         Ok(Samples {
-            values: sampled(target.property, &template, &times, &values)?,
+            values: sampled(
+                target.property,
+                self.host.unit(target.node),
+                &template,
+                &times,
+                &values,
+            )?,
             times,
             approximate: self.approximate.contains(&target.node),
             constant,
@@ -365,6 +371,7 @@ fn remaps(property: &Property) -> bool {
 /// The values an expression gave, as the property's own kind of value.
 fn sampled(
     property: &Property,
+    unit: super::host::Unit,
     template: &Value,
     times: &[f64],
     values: &[Val],
@@ -375,7 +382,7 @@ fn sampled(
     let Some(own) = template.numbers() else {
         return Err("it sets a path or a value the bake does not take yet".into());
     };
-    let unit = super::host::unit_of(property);
+    let unit_of = |i: usize| unit.get(i).copied().unwrap_or(1.0);
     let mut channels = vec![Vec::with_capacity(values.len()); own.len()];
     for (value, &time) in values.iter().zip(times) {
         let numbers = match value {
@@ -390,7 +397,7 @@ fn sampled(
         let own_now = property.value.value_at(time).numbers().unwrap_or_default();
         for (i, channel) in channels.iter_mut().enumerate() {
             let n = match numbers.get(i) {
-                Some(n) if n.is_finite() => n / unit,
+                Some(n) if n.is_finite() => n / unit_of(i),
                 Some(_) => return Err("it gives a value that is not a finite number".into()),
                 None => own_now.get(i).copied().unwrap_or(0.0),
             };
@@ -398,9 +405,11 @@ fn sampled(
         }
     }
     let colour = matches!(template, Value::Color(_));
-    let tolerance = if colour { 0.001 } else { 0.01 / unit };
+    let tolerances = (0..channels.len())
+        .map(|i| if colour { 0.001 } else { 0.01 / unit_of(i) })
+        .collect();
     Ok(Sampled::Numbers {
-        tolerances: vec![tolerance; channels.len()],
+        tolerances,
         channels,
     })
 }
