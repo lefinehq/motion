@@ -189,6 +189,9 @@ pub struct Space {
     pub input: Option<Input>,
     /// The layer's own time, in seconds.
     pub time: f64,
+    /// The sound the effect reads, if it reads one: the window it asked
+    /// for.
+    pub sound: Option<std::sync::Arc<crate::sound::Heard>>,
 }
 
 /// The drawing of a layer an effect reads, in that layer's own
@@ -659,6 +662,257 @@ pub const EFFECTS: &[EffectSpec] = &[
         apply: Apply::Pixels {
             over: None,
             pixels: particles::particles,
+        },
+    },
+    EffectSpec {
+        name: "audio-spectrum",
+        params: &[
+            ParamSpec {
+                name: "start",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "where the line starts, or the circle's centre, in px of the layer",
+            },
+            ParamSpec {
+                name: "end",
+                default: ParamValue::Point([200.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "where the line ends, or a point of the circle, in px of the layer",
+            },
+            ParamSpec {
+                name: "height",
+                default: ParamValue::Number(480.0),
+                range: Some((0.0, 32_000.0)),
+                choices: &[],
+                doc: "how far the loudest it draws reaches from the line, in px",
+            },
+            ParamSpec {
+                name: "duration",
+                default: ParamValue::Number(90.0),
+                range: Some((1.0, 30_000.0)),
+                choices: &[],
+                doc: "how much sound it reads about the layer's time, in ms",
+            },
+            ParamSpec {
+                name: "offset",
+                default: ParamValue::Number(0.0),
+                range: Some((-30_000.0, 30_000.0)),
+                choices: &[],
+                doc: "how far after the layer's time the window is centred, in ms",
+            },
+            ParamSpec {
+                name: "thickness",
+                default: ParamValue::Number(3.0),
+                range: Some((0.0, 4_000.0)),
+                choices: &[],
+                doc: "how thick a line, bar or dot is, in px",
+            },
+            ParamSpec {
+                name: "softness",
+                default: ParamValue::Number(0.5),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how much of a line's thickness fades out at its edges, 0 to 1",
+            },
+            ParamSpec {
+                name: "inside-color",
+                default: ParamValue::Color(Color::WHITE),
+                range: None,
+                choices: &[],
+                doc: "the colour at the line",
+            },
+            ParamSpec {
+                name: "outside-color",
+                default: ParamValue::Color(Color::WHITE),
+                range: None,
+                choices: &[],
+                doc: "the colour at the far ends",
+            },
+            ParamSpec {
+                name: "from",
+                default: ParamValue::Number(20.0),
+                range: Some((1.0, 48_000.0)),
+                choices: &[],
+                doc: "the lowest frequency, in Hz",
+            },
+            ParamSpec {
+                name: "to",
+                default: ParamValue::Number(2_000.0),
+                range: Some((1.0, 48_000.0)),
+                choices: &[],
+                doc: "the highest frequency, in Hz",
+            },
+            ParamSpec {
+                name: "bands",
+                default: ParamValue::Number(64.0),
+                range: Some((1.0, 4_096.0)),
+                choices: &[],
+                doc: "how many frequencies it shows",
+            },
+            ParamSpec {
+                name: "hue",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "how far the hue turns from the first band to the last, in degrees",
+            },
+            ParamSpec {
+                name: "display",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["digital", "lines", "dots"],
+                doc: "how a band shows",
+            },
+            ParamSpec {
+                name: "side",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["both", "a", "b"],
+                doc: "which side of the line bands rise on",
+            },
+            ParamSpec {
+                name: "path",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["line", "circle"],
+                doc: "where bands stand",
+            },
+            ParamSpec {
+                name: "average",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["off", "on"],
+                doc: "whether each band is averaged over short windows",
+            },
+            ParamSpec {
+                name: "symmetry",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["on", "off"],
+                doc: "whether the hue turn runs to the middle band and back",
+            },
+            ParamSpec {
+                name: "composite",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["off", "on"],
+                doc: "whether the layer's own drawing stays under the bands",
+            },
+        ],
+        doc: "draws the spectrum of another layer's sound at the layer's time",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: crate::sound::spectrum,
+        },
+    },
+    EffectSpec {
+        name: "audio-waveform",
+        params: &[
+            ParamSpec {
+                name: "start",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "where the line starts, or the circle's centre, in px of the layer",
+            },
+            ParamSpec {
+                name: "end",
+                default: ParamValue::Point([200.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "where the line ends, or a point of the circle, in px of the layer",
+            },
+            ParamSpec {
+                name: "height",
+                default: ParamValue::Number(480.0),
+                range: Some((0.0, 32_000.0)),
+                choices: &[],
+                doc: "how far the loudest it draws reaches from the line, in px",
+            },
+            ParamSpec {
+                name: "duration",
+                default: ParamValue::Number(90.0),
+                range: Some((1.0, 30_000.0)),
+                choices: &[],
+                doc: "how much sound it reads about the layer's time, in ms",
+            },
+            ParamSpec {
+                name: "offset",
+                default: ParamValue::Number(0.0),
+                range: Some((-30_000.0, 30_000.0)),
+                choices: &[],
+                doc: "how far after the layer's time the window is centred, in ms",
+            },
+            ParamSpec {
+                name: "thickness",
+                default: ParamValue::Number(3.0),
+                range: Some((0.0, 4_000.0)),
+                choices: &[],
+                doc: "how thick a line, bar or dot is, in px",
+            },
+            ParamSpec {
+                name: "softness",
+                default: ParamValue::Number(0.5),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how much of a line's thickness fades out at its edges, 0 to 1",
+            },
+            ParamSpec {
+                name: "inside-color",
+                default: ParamValue::Color(Color::WHITE),
+                range: None,
+                choices: &[],
+                doc: "the colour at the line",
+            },
+            ParamSpec {
+                name: "outside-color",
+                default: ParamValue::Color(Color::WHITE),
+                range: None,
+                choices: &[],
+                doc: "the colour at the far ends",
+            },
+            ParamSpec {
+                name: "samples",
+                default: ParamValue::Number(32.0),
+                range: Some((2.0, 4_096.0)),
+                choices: &[],
+                doc: "how many points of the wave it draws",
+            },
+            ParamSpec {
+                name: "display",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["digital", "lines", "dots"],
+                doc: "how the wave shows",
+            },
+            ParamSpec {
+                name: "channel",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["mono", "left", "right"],
+                doc: "which channel the wave follows",
+            },
+            ParamSpec {
+                name: "path",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["line", "circle"],
+                doc: "where the wave runs",
+            },
+            ParamSpec {
+                name: "composite",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["off", "on"],
+                doc: "whether the layer's own drawing stays under the wave",
+            },
+        ],
+        doc: "draws the wave of another layer's sound at the layer's time",
+        apply: Apply::Pixels {
+            over: None,
+            pixels: crate::sound::waveform,
         },
     },
     EffectSpec {
@@ -1615,6 +1869,7 @@ pub struct Effect {
     spec: &'static EffectSpec,
     values: Vec<ParamValue>,
     input: Option<Box<Node>>,
+    sound: Option<std::sync::Arc<crate::sound::Heard>>,
 }
 
 impl Effect {
@@ -1649,6 +1904,7 @@ impl Effect {
             spec,
             values,
             input: None,
+            sound: None,
         })
     }
 
@@ -1658,6 +1914,17 @@ impl Effect {
     pub fn with_input(mut self, node: Node) -> Effect {
         self.input = Some(Box::new(node));
         self
+    }
+
+    /// The effect reading `heard`, the window of sound it asked for.
+    pub fn with_sound(mut self, heard: crate::sound::Heard) -> Effect {
+        self.sound = Some(std::sync::Arc::new(heard));
+        self
+    }
+
+    /// The sound it reads, if any.
+    pub fn sound(&self) -> Option<&std::sync::Arc<crate::sound::Heard>> {
+        self.sound.as_ref()
     }
 
     /// The node whose drawing it reads, if any.

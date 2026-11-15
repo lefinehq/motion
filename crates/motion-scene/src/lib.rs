@@ -16,7 +16,7 @@ mod trim;
 mod walk;
 
 pub use animate::{COUNTS, GlyphParts, GlyphState, Parts};
-pub use audio::{Playing, Route, routes};
+pub use audio::{Playing, Route, routes, routes_from};
 pub use compile::compile;
 pub use curve::Ease;
 pub use evaluate::{evaluate, evaluate_comp, local_transform};

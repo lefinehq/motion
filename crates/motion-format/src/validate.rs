@@ -22,7 +22,7 @@ use crate::doc::{
     PresetsDoc, SceneDoc, Shorthand, StartDoc, TrackDoc, ValueDoc,
 };
 use crate::edit_word::NONE;
-use crate::item::{EFFECTS, MASKS, SHAPES};
+use crate::item::{EFFECTS, MASKS, Reads, SHAPES};
 use crate::parse::key::{
     ADJUST, ANIM, ANIMATE, AT, AUDIO, BG, BLEND, BOX, COLLAPSE, COMP, COMPS, DUR, FILL, FONT, FPS,
     FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT,
@@ -815,7 +815,10 @@ fn inputs(layers: &[Layer]) -> Result<()> {
             let Some(target) = item.input.as_deref() else {
                 continue;
             };
-            let key = item.kind.input.unwrap_or_default();
+            let Some(input) = item.kind.input else {
+                continue;
+            };
+            let key = input.key;
             let place = |d: Diagnostic| {
                 d.at(key)
                     .under(format!("fx[{i}]"))
@@ -828,7 +831,29 @@ fn inputs(layers: &[Layer]) -> Result<()> {
                     layers.iter().map(|l| l.id.as_str()),
                 ))
             })?;
-            needs.push(at);
+            let plays = matches!(layers[at].content, Content::Audio(_) | Content::Comp(_));
+            match input.reads {
+                Reads::Drawing if matches!(layers[at].content, Content::Audio(_)) => {
+                    return Err(place(
+                        Diagnostic::new(
+                            Kind::Conflict,
+                            format!("`{target}` is an audio layer, which draws nothing to read"),
+                        )
+                        .expected("a layer that draws"),
+                    ));
+                }
+                Reads::Drawing => needs.push(at),
+                // Sound is mixed, not drawn, so reading it needs no drawing.
+                Reads::Sound if plays => {}
+                Reads::Sound => {
+                    return Err(place(
+                        Diagnostic::new(Kind::Conflict, format!("`{target}` plays no sound"))
+                            .expected(
+                                "an `audio` layer, or a `comp` layer for its composition's sound",
+                            ),
+                    ));
+                }
+            }
         }
         if let Some(matte) = layer.matte.as_ref().and_then(|m| index(&m.layer)) {
             needs.push(matte);

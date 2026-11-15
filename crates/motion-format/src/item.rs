@@ -90,11 +90,32 @@ pub struct ItemKind {
     pub primary: Primary,
     /// Its fixed settings.
     pub settings: &'static [SettingSpec],
-    /// The key that names another layer whose drawing it reads, if it
-    /// reads one, such as the map a displacement follows.
-    pub input: Option<&'static str>,
+    /// The key that names another layer it reads, and what it reads of
+    /// it, if it reads one: the map a displacement follows, the sound a
+    /// spectrum shows.
+    pub input: Option<Input>,
     /// What it draws or does, for people and agents.
     pub doc: &'static str,
+}
+
+/// Another layer of the same list an effect reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Input {
+    /// The key that names the layer.
+    pub key: &'static str,
+    /// What the effect reads of it.
+    pub reads: Reads,
+}
+
+/// What an effect reads of the layer its input names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reads {
+    /// Its drawing, with its effects but not its transform: a layer that
+    /// draws.
+    Drawing,
+    /// The sound it plays, with its volume: an `audio` layer, or a `comp`
+    /// layer for everything its composition plays.
+    Sound,
 }
 
 impl ItemKind {
@@ -491,6 +512,75 @@ pub static DISPLACEMENT_MAP: Registry = Registry {
             "the farthest a pixel moves up or down, in px",
         ),
     ],
+};
+
+/// The properties every sound-reading effect shares, in order: where it
+/// stands, how tall and thick it draws, the window of sound it reads, and
+/// its colours.
+macro_rules! sound_rows {
+    ($($extra:expr),* $(,)?) => {
+        &[
+            point("start", [0.0, 0.0], &["start-x", "start-y"], false, "where the line starts, \
+                   or the circle's centre, in px of the layer"),
+            point("end", [200.0, 0.0], &["end-x", "end-y"], false, "where the line ends, or a \
+                   point of the circle, in px of the layer"),
+            number("height", 480.0, Some((0.0, 32_000.0)), "how far the loudest it draws \
+                    reaches from the line, in px"),
+            number("duration", 90.0, Some((1.0, 30_000.0)), "how much sound it reads about the \
+                    layer's time, in ms"),
+            number("offset", 0.0, Some((-30_000.0, 30_000.0)), "how far after the layer's time the \
+                    window is centred, in ms"),
+            number("thickness", 3.0, Some((0.0, 4_000.0)), "how thick a line, bar or dot is, in px"),
+            number("softness", 0.5, Some((0.0, 1.0)), "how much of a line's thickness fades out \
+                    at its edges, 0 to 1"),
+            color("inside-color", [1.0, 1.0, 1.0, 1.0], "the colour at the line"),
+            color("outside-color", [1.0, 1.0, 1.0, 1.0], "the colour at the far ends"),
+            $($extra,)*
+        ]
+    };
+}
+
+/// The properties of `audio-spectrum`.
+pub static AUDIO_SPECTRUM: Registry = Registry {
+    kind: "audio-spectrum",
+    rows: sound_rows!(
+        number(
+            "from",
+            20.0,
+            Some((1.0, 48_000.0)),
+            "the lowest frequency, in Hz"
+        ),
+        number(
+            "to",
+            2_000.0,
+            Some((1.0, 48_000.0)),
+            "the highest frequency, in Hz"
+        ),
+        number(
+            "bands",
+            64.0,
+            Some((1.0, 4_096.0)),
+            "how many frequencies it shows"
+        ),
+        number(
+            "hue",
+            0.0,
+            None,
+            "how far the hue turns from the first band to the last, in \
+                degrees"
+        ),
+    ),
+};
+
+/// The properties of `audio-waveform`.
+pub static AUDIO_WAVEFORM: Registry = Registry {
+    kind: "audio-waveform",
+    rows: sound_rows!(number(
+        "samples",
+        32.0,
+        Some((2.0, 4_096.0)),
+        "how many points of the wave it draws"
+    )),
 };
 
 /// The properties of `motion-tile`.
@@ -1235,7 +1325,7 @@ pub static SHAPES: [ItemKind; 7] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 24] = [
+pub static EFFECTS: [ItemKind; 26] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -1405,8 +1495,104 @@ pub static EFFECTS: [ItemKind; 24] = [
                 doc: "whether what moves past the layer's box comes back on the other side",
             },
         ],
-        input: Some("map"),
+        input: Some(Input {
+            key: "map",
+            reads: Reads::Drawing,
+        }),
         doc: "moves each pixel by the levels of another layer, the map",
+    },
+    ItemKind {
+        name: "audio-spectrum",
+        role: Role::Effect,
+        registry: &AUDIO_SPECTRUM,
+        primary: Primary::Property("height"),
+        settings: &[
+            SettingSpec {
+                name: "display",
+                choices: &["digital", "lines", "dots"],
+                default: "digital",
+                doc: "how a band shows: a column of squares, a solid bar, or a dot at its top",
+            },
+            SettingSpec {
+                name: "side",
+                choices: &["both", "a", "b"],
+                default: "both",
+                doc: "which side of the line bands rise on: `a` is to the left going from \
+                      `start` to `end`, `b` the other, `both` mirrors them",
+            },
+            SettingSpec {
+                name: "path",
+                choices: &["line", "circle"],
+                default: "line",
+                doc: "where bands stand: along the line from `start` to `end`, or round a \
+                      circle about `start` through `end`",
+            },
+            SettingSpec {
+                name: "average",
+                choices: &["off", "on"],
+                default: "off",
+                doc: "whether each band is averaged over `duration` in short windows, which \
+                      steadies it",
+            },
+            SettingSpec {
+                name: "symmetry",
+                choices: &["on", "off"],
+                default: "on",
+                doc: "whether the hue turn of `hue` runs to the middle band and back",
+            },
+            SettingSpec {
+                name: "composite",
+                choices: &["off", "on"],
+                default: "off",
+                doc: "whether the layer's own drawing stays under the bands",
+            },
+        ],
+        input: Some(Input {
+            key: "audio",
+            reads: Reads::Sound,
+        }),
+        doc: "draws the spectrum of another layer's sound at the layer's time: one band a \
+              frequency from `from` to `to`, as tall as that frequency is loud",
+    },
+    ItemKind {
+        name: "audio-waveform",
+        role: Role::Effect,
+        registry: &AUDIO_WAVEFORM,
+        primary: Primary::Property("height"),
+        settings: &[
+            SettingSpec {
+                name: "display",
+                choices: &["digital", "lines", "dots"],
+                default: "digital",
+                doc: "how the wave shows: a bar a sample, a line through the samples, or a \
+                      dot a sample",
+            },
+            SettingSpec {
+                name: "channel",
+                choices: &["mono", "left", "right"],
+                default: "mono",
+                doc: "which channel the wave follows; `mono` is both, averaged",
+            },
+            SettingSpec {
+                name: "path",
+                choices: &["line", "circle"],
+                default: "line",
+                doc: "where the wave runs: along the line from `start` to `end`, or round a \
+                      circle about `start` through `end`",
+            },
+            SettingSpec {
+                name: "composite",
+                choices: &["off", "on"],
+                default: "off",
+                doc: "whether the layer's own drawing stays under the wave",
+            },
+        ],
+        input: Some(Input {
+            key: "audio",
+            reads: Reads::Sound,
+        }),
+        doc: "draws the wave of another layer's sound at the layer's time, `samples` points \
+              along the line from `start` to `end`",
     },
     ItemKind {
         name: "motion-tile",

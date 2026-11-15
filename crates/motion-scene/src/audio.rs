@@ -36,23 +36,46 @@ pub struct Playing {
 /// scene's own nodes. A composition shown by several `comp` nodes gives a
 /// route through each.
 pub fn routes(graph: &SceneGraph) -> Vec<Route> {
-    fn collect(graph: &SceneGraph, nodes: &[Node], above: &mut Vec<usize>, all: &mut Vec<Route>) {
-        for (i, node) in nodes.iter().enumerate() {
-            above.push(i);
-            match &node.content {
-                NodeContent::Audio(audio) => all.push(Route {
-                    steps: above.clone(),
-                    audio: Arc::clone(audio),
-                }),
-                NodeContent::Comp(index) => collect(graph, &graph.comps[*index].nodes, above, all),
-                _ => {}
-            }
-            above.pop();
-        }
-    }
     let mut all = Vec::new();
-    collect(graph, &graph.root.nodes, &mut Vec::new(), &mut all);
+    for i in 0..graph.root.nodes.len() {
+        collect(graph, &graph.root.nodes, i, &mut Vec::new(), &mut all);
+    }
     all
+}
+
+/// The routes of the sound node `index` of `nodes`, one canvas, plays: its
+/// own when it is an audio node, every one its composition plays when it
+/// is a `comp` node, none otherwise. Each starts at `nodes`, so it is read
+/// with [`Route::at_in`] on that canvas.
+pub fn routes_from(graph: &SceneGraph, nodes: &[Node], index: usize) -> Vec<Route> {
+    let mut all = Vec::new();
+    collect(graph, nodes, index, &mut Vec::new(), &mut all);
+    all
+}
+
+/// Adds the routes down from node `i` of `nodes`, below `above`, to `all`.
+fn collect(
+    graph: &SceneGraph,
+    nodes: &[Node],
+    i: usize,
+    above: &mut Vec<usize>,
+    all: &mut Vec<Route>,
+) {
+    above.push(i);
+    match &nodes[i].content {
+        NodeContent::Audio(audio) => all.push(Route {
+            steps: above.clone(),
+            audio: Arc::clone(audio),
+        }),
+        NodeContent::Comp(index) => {
+            let inner = &graph.comps[*index].nodes;
+            for j in 0..inner.len() {
+                collect(graph, inner, j, above, all);
+            }
+        }
+        _ => {}
+    }
+    above.pop();
 }
 
 impl Route {
@@ -79,8 +102,20 @@ impl Route {
     /// there: a node on the way is hidden or outside its span, or a
     /// composition on the way is outside its own length.
     pub fn at(&self, graph: &SceneGraph, frame: f64) -> Option<Playing> {
-        let mut nodes = &graph.root.nodes;
-        let mut fps = graph.root.fps;
+        self.at_in(graph, &graph.root.nodes, graph.root.fps, frame)
+    }
+
+    /// What it plays at `frame` of the canvas of `nodes`, whose clock runs
+    /// at `fps`, for a route starting there (see [`routes_from`]).
+    pub fn at_in(
+        &self,
+        graph: &SceneGraph,
+        nodes: &[Node],
+        fps: f64,
+        frame: f64,
+    ) -> Option<Playing> {
+        let mut nodes = nodes;
+        let mut fps = fps;
         let mut frame = frame;
         let mut gain = 1.0;
         let mut speed = 1.0;

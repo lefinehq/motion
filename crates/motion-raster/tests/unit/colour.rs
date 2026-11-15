@@ -28,6 +28,7 @@ fn after(
             bounds: None,
             input: None,
             time: 0.0,
+            sound: None,
         },
     );
     straight(pixels.data()[0])

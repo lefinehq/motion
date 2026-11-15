@@ -50,7 +50,7 @@ fn item(doc: &ItemDoc, kinds: &'static [ItemKind], fps: f64) -> Result<Item> {
             )
             .at(key.as_str())
             .expected(format!("`{key}` written as the value of `{}`", kind.name)));
-        } else if kind.input == Some(key.as_str()) {
+        } else if kind.input.is_some_and(|input| input.key == key) {
             let id: String = crate::de::from_value(written).map_err(place)?;
             input = Some(id);
         } else if let Some(at) = table::position(kind.settings, key) {
@@ -130,7 +130,7 @@ fn keys(kind: &'static ItemKind) -> impl Iterator<Item = &'static str> {
     [kind.name, ID, HIDDEN, ANIM]
         .into_iter()
         .chain(kind.settings.iter().map(|s| s.name))
-        .chain(kind.input)
+        .chain(kind.input.map(|input| input.key))
         .chain(kind.registry.names())
         .filter(move |n| Some(*n) != primary)
 }

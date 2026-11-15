@@ -258,6 +258,7 @@ impl Painter {
             bounds: layer.bounds,
             input,
             time: layer.time,
+            sound: effect.sound().cloned(),
         })
     }
 

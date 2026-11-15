@@ -118,3 +118,46 @@ fn a_missing_file_is_an_error_at_its_layers_audio() {
     assert!(error.to_string().contains("song.audio"), "{error}");
     assert!(error.to_string().contains("absent.mp3"), "{error}");
 }
+
+/// How many pixels of frame `frame` of the 10 fps, 100 by 100 scene of
+/// `layers` in `dir`, drawn white on the black frame, are more than half lit.
+fn lit(dir: &Path, layers: &str, frame: f64) -> usize {
+    let path = dir.join("drawn.json");
+    let scene =
+        format!(r#"{{"motion":1,"size":"100x100","fps":10,"dur":"2s","layers":[{layers}]}}"#);
+    std::fs::write(&path, scene).unwrap();
+    let image = Session::open(&path).unwrap().render(frame).unwrap();
+    image
+        .pixels()
+        .chunks_exact(4)
+        .filter(|p| p[0] > 128)
+        .count()
+}
+
+#[test]
+fn a_spectrum_hears_the_sound_about_its_layers_time() {
+    let dir = folder("spectrum");
+    // One band at the tone's 1 kHz, as a bar rising from y = 80 midway along the line, on pixel centres:
+    // half scale reaches 20 px, 3 px wide.
+    let layers = |offset: &str| {
+        format!(
+            r##"{{"id":"t","audio":"tone.wav","offset":"0.5s"}},
+            {{"id":"bars","rect":"100x100","fill":"#FFFFFF","position":[50,50],
+              "fx":[{{"audio-spectrum":40,"audio":"t","start":[45.5,80],"end":[65.5,80],
+                      "from":1000,"to":1000,"bands":1,"display":"lines","side":"a",
+                      "softness":0,"offset":{offset}}}]}}"##
+        )
+    };
+    // Before the tone starts, the bar is flat; its round ends still show.
+    let quiet = lit(&dir, &layers("0"), 2.0);
+    assert!(quiet <= 12, "{quiet} px before the tone");
+    // Inside it, the bar stands about 20 by 3 px.
+    let loud = lit(&dir, &layers("0"), 10.0);
+    assert!((55..=80).contains(&loud), "{loud} px inside the tone");
+    // A window 0.6 s earlier hears silence again.
+    let early = lit(&dir, &layers("-600"), 10.0);
+    assert_eq!(early, quiet);
+    // One 0.6 s later, from frame 0, hears the tone.
+    let late = lit(&dir, &layers("600"), 0.0);
+    assert!((55..=80).contains(&late), "{late} px heard ahead");
+}

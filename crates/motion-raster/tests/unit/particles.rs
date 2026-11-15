@@ -39,6 +39,7 @@ fn system(rate: f32, velocity: f32, gravity: f32, animation: u8, time: f64) -> P
         bounds: None,
         input: None,
         time,
+        sound: None,
     };
     particles(&mut pixels, &values, &space);
     pixels
