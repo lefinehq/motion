@@ -374,7 +374,53 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
     if let Some(span) = layer.span {
         span_runs_forward(span, context.fps).map_err(|e| e.under(SPAN))?;
     }
+    if let Some(behaviour) = &layer.enter {
+        parts_entrance(&layer, behaviour, context.shared.presets).map_err(|e| e.at(IN))?;
+    }
     Ok(layer)
+}
+
+/// The layer properties an entrance can move text parts by: those a text
+/// animator has under the same name and meaning.
+pub(crate) const PART_PROPS: [&str; 4] = ["position", "scale", "rotate", "opacity"];
+
+/// Checks an entrance that moves the parts of a text: the layer must be
+/// text, and its preset may move only what a text animator can.
+fn parts_entrance(
+    layer: &Layer,
+    behaviour: &Behaviour,
+    presets: &[(String, PresetSpec)],
+) -> Result<()> {
+    let Some(parts) = behaviour.parts else {
+        return Ok(());
+    };
+    if !matches!(layer.content, Content::Text(_)) {
+        return Err(Diagnostic::new(
+            Kind::Conflict,
+            format!("`{parts}` moves the parts of a text, and this is not a text layer"),
+        )
+        .expected("parts only on a text layer; elsewhere the whole layer enters"));
+    }
+    let spec = lookup(presets, &behaviour.preset).expect("the preset was checked");
+    match spec
+        .props
+        .iter()
+        .find(|(target, _)| !PART_PROPS.contains(&target.prop.name()))
+    {
+        Some((target, _)) => Err(Diagnostic::new(
+            Kind::Conflict,
+            format!(
+                "preset `{}` moves `{}`, which the parts of a text cannot move",
+                behaviour.preset,
+                target.name()
+            ),
+        )
+        .expected(format!(
+            "a preset that moves only {}",
+            PART_PROPS.map(|p| format!("`{p}`")).join(", ")
+        ))),
+        None => Ok(()),
+    }
 }
 
 /// The layer keys that are not fixed keys: each a property, set to a value of its type.
@@ -1047,6 +1093,10 @@ fn entrance_conflict(
     let Some(behaviour) = &layer.enter else {
         return Ok(());
     };
+    // An entrance on the parts of a text leaves the layer's own tracks alone.
+    if behaviour.parts.is_some() {
+        return Ok(());
+    }
     let Some(spec) = lookup(context.shared.presets, &behaviour.preset) else {
         return Ok(());
     };

@@ -8,12 +8,13 @@ use motion_format::Value;
 use motion_format::property::{PROPERTIES, Prop, PropertySpec};
 use tracing::instrument;
 
-use crate::animate::{self, AnimatorState};
+use crate::animate::{self, AnimatorState, COUNTS, Parts, Turns};
 use crate::shape::{self, ShapeDraw};
 use crate::{
     ContentState, FrameState, ItemNode, ItemState, Node, NodeContent, NodeState, PropertyTrack,
     SceneGraph,
 };
+use motion_format::item::props;
 
 /// Evaluates every node of `graph` at `frame`, which may be fractional (sub-frame samples).
 // `trace`: it runs per frame, and costs one cached level check when disabled.
@@ -64,6 +65,7 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
                                 .iter()
                                 .zip(items_at(animators, local))
                                 .map(|(node, item)| AnimatorState {
+                                    turns: turns(node, &item, &text.parts, local),
                                     item,
                                     applies: node.written.clone(),
                                 })
@@ -128,6 +130,32 @@ fn items_at(items: &[ItemNode], local: f64) -> Vec<ItemState> {
             items: items_at(&item.items, local),
         })
         .collect()
+}
+
+/// A staggered animator as each part sees it at `local`: as it was each
+/// part's wait earlier. The stagger, order and seed are read at `local`.
+fn turns(node: &ItemNode, item: &ItemState, parts: &Parts, local: f64) -> Option<Turns> {
+    let stagger = item.number(props::ANIMATOR_STAGGER);
+    if stagger <= 0.0 {
+        return None;
+    }
+    let by = COUNTS
+        .iter()
+        .position(|c| *c == item.setting("by"))
+        .expect("every count has a row");
+    let waits = animate::waits(
+        item.setting("order"),
+        item.number(props::ANIMATOR_SEED),
+        parts.counts[by],
+    );
+    let parts = waits
+        .into_iter()
+        .map(|wait| {
+            let mut seen = items_at(std::slice::from_ref(node), local - wait * stagger);
+            seen.pop().expect("one item in, one out")
+        })
+        .collect();
+    Some(Turns { by, parts })
 }
 
 /// One node's values at the parent's `frame`, sampled at its own time.

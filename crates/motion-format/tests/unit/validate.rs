@@ -511,3 +511,33 @@ fn an_override_error_points_at_the_inner_layer() {
         at(Kind::UnknownName, "second.overrides")
     );
 }
+
+#[test]
+fn an_entrance_on_parts_needs_a_text_layer() {
+    let json = r#"{"motion":1,"dur":"1s","layers":[{"id":"r","rect":"10x10","in":"fade word"}]}"#;
+    assert_eq!(fails(json), at(Kind::Conflict, "r.in"));
+    assert!(err(json).message.contains("not a text layer"));
+}
+
+#[test]
+fn an_entrance_on_parts_moves_only_what_an_animator_can() {
+    let json = r#"{"motion":1,"dur":"1s","presets":{"shift":{"anchor-x":"+d"}},"layers":[{"id":"t","text":"a","in":"shift char"}]}"#;
+    assert_eq!(fails(json), at(Kind::Conflict, "t.in"));
+    assert!(
+        err(json).message.contains("`anchor-x`"),
+        "{}",
+        err(json).message
+    );
+    // The same preset moves a whole layer.
+    doc(
+        r#"{"motion":1,"dur":"1s","presets":{"shift":{"anchor-x":"+d"}},"layers":[{"id":"t","text":"a","in":"shift"}]}"#,
+    );
+}
+
+#[test]
+fn an_entrance_on_parts_leaves_the_layer_tracks_to_anim() {
+    // `anim` on opacity would clash with a whole-layer fade, not with a fade of the parts.
+    doc(
+        r#"{"motion":1,"dur":"1s","layers":[{"id":"t","text":"ab","in":"fade char stagger 2f","anim":{"opacity":"0 -> 1 @0-4f"}}]}"#,
+    );
+}

@@ -258,3 +258,91 @@ mod any_selector {
         }
     }
 }
+
+#[rstest]
+#[case::first("first", [0.0, 1.0, 2.0, 3.0, 4.0])]
+#[case::last("last", [4.0, 3.0, 2.0, 1.0, 0.0])]
+#[case::center("center", [2.0, 1.0, 0.0, 1.0, 2.0])]
+#[case::edges("edges", [0.0, 1.0, 2.0, 1.0, 0.0])]
+fn each_order_gives_its_waits(#[case] order: &str, #[case] expected: [f64; 5]) {
+    assert_eq!(waits(order, 0.0, 5), expected);
+}
+
+#[test]
+fn the_two_middle_parts_of_an_even_count_go_together_half_a_turn_in() {
+    assert_eq!(waits("center", 0.0, 4), [1.5, 0.5, 0.5, 1.5]);
+    assert_eq!(waits("edges", 0.0, 4), [0.0, 1.0, 1.0, 0.0]);
+}
+
+#[test]
+fn random_is_a_shuffle_the_seed_picks_and_repeats() {
+    let mut sorted = waits("random", 3.0, 12);
+    assert_eq!(sorted, waits("random", 3.0, 12));
+    assert_ne!(sorted, waits("random", 4.0, 12));
+    assert_ne!(sorted, waits("first", 0.0, 12));
+    sorted.sort_by(f64::total_cmp);
+    assert_eq!(sorted, waits("first", 0.0, 12));
+    assert!(waits("random", 0.0, 0).is_empty());
+}
+
+/// Four characters fading in over 4 frames from frame 2, with `extra` keys
+/// on the animator.
+fn staggered(extra: &str) -> String {
+    format!(
+        r#""text":"abcd","animate":[{{"animator":[{{"range":"char"}}],"opacity":0,{extra}"anim":{{"opacity":"0 -> 1 @2-6f ease-in-out"}}}}]"#
+    )
+}
+
+#[test]
+fn each_part_sees_the_animator_as_it_was_its_wait_earlier() {
+    let together = staggered("");
+    let apart = staggered(r#""stagger":2,"#);
+    for at in [0.0, 3.0, 5.0, 7.5, 10.0, 13.0] {
+        let now = opacities(&apart, at);
+        for (k, opacity) in now.iter().enumerate() {
+            let earlier = opacities(&together, at - 2.0 * k as f64)[k];
+            assert!((opacity - earlier).abs() < 1e-9, "char {k} at {at}");
+        }
+    }
+    // Half way through the first part's fade, the others have not begun.
+    assert_eq!(opacities(&apart, 4.0), [0.5, 0.0, 0.0, 0.0]);
+}
+
+#[test]
+fn a_staggered_selector_moves_in_each_parts_turn() {
+    // The range sweeps on with its own track; each part sees the sweep late.
+    let keys = r#""text":"ab","animate":[{"animator":[{"range":"char","anim":{"offset":"0 -> 1 @0-4f"}}],"opacity":0,"stagger":4}]"#;
+    // At frame 2 the sweep has passed half: the first char is in, and the
+    // second sees frame -2, where the range still covers everything.
+    assert_eq!(opacities(keys, 2.0), [1.0, 0.0]);
+    // The second char sees frame 2 at frame 6, where the range covers it,
+    // and is let go once it sees the sweep end.
+    assert_eq!(opacities(keys, 6.0), [1.0, 0.0]);
+    assert_eq!(opacities(keys, 8.0), [1.0, 1.0]);
+}
+
+#[test]
+fn a_space_under_word_is_not_delayed() {
+    let keys = r#""text":"ab cd","animate":[{"animator":[{"range":"char"}],"opacity":0,"stagger":3,"by":"word","anim":{"opacity":"0 -> 1 @0-1f"}}]"#;
+    // At frame 2 the first word is in, the second waits until frame 4, and
+    // the space between them sees the animator as it is.
+    assert_eq!(opacities(keys, 2.0), [1.0, 1.0, 1.0, 0.0, 0.0]);
+    assert_eq!(opacities(keys, 4.0), [1.0; 5]);
+}
+
+#[test]
+fn an_entrance_on_parts_moves_each_part_not_the_layer() {
+    let keys = r#""text":"ab cd","in":"fade-up word 30px 4f linear stagger 4f""#;
+    let state = frame(keys, 2.0);
+    let node = &state.nodes[0];
+    let (_, glyphs) = text_of(node);
+    // The layer itself does not move or fade.
+    assert_eq!(node.values[Prop::OPACITY.index()].as_number(), Some(1.0));
+    // Half way through its move, the first word is 15 px low and half faded;
+    // the second has not begun.
+    let ys: Vec<f64> = glyphs.iter().map(|g| g.transform.translation().y).collect();
+    assert!((ys[0] - 15.0).abs() < 1e-9, "{ys:?}");
+    assert!((ys[3] - 30.0).abs() < 1e-9, "{ys:?}");
+    assert_eq!(opacities(keys, 2.0), [0.5, 0.5, 1.0, 0.0, 0.0]);
+    assert_eq!(opacities(keys, 8.0), [1.0; 5]);
+}

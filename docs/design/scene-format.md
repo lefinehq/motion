@@ -345,10 +345,11 @@ Above, every line starts 75 px low and invisible. As `offset` moves the range of
 - **Selectors.** `range` counts characters (`char`), characters other than spaces (`char-no-space`), `word`s or `line`s; its key holds which. `start`, `end` and `offset` are fractions of the parts, from 0 (before the first) to 1 (after the last). `amount` scales the choice, and a negative amount reverses the animator. With the `square` shape, a part is chosen by how much of it the range covers, and `smooth` 0 makes that all or nothing, decided by the part's middle. The other shapes are read at each part's middle: `ramp-up` rises across the range and stays chosen after it, `ramp-down` is the reverse, and `triangle`, `round` and `smooth` rise and fall inside it. `mode` combines a selector with the ones before it.
 - **What applies.** `position` and `rotate` add. `scale` and `opacity` move from 1 toward the animator's value. `fill`, `stroke` and `stroke-width` move from the part's own toward the animator's. `tracking` adds space after each chosen part, and the parts after it on its line move along, keeping the line's alignment.
 - **Each part's anchor** is the middle of its baseline, moved by the animator's `anchor`; parts scale and turn about it.
+- **Stagger.** With `stagger` above 0, the parts counted by `by` take turns: each part sees the animator, its selectors included, as it was its wait earlier, so every part makes the whole motion with its own curve. A part waits `stagger` frames per turn. `order` sets the turns: `first` in reading order, `last` the reverse, `center` outward from the middle (the two middle parts of an even count go together, half a turn in), `edges` inward from both ends, and `random` a shuffle picked by `seed`. A glyph in no part, such as a space under `word`, sees the animator as it is.
 
 | Animator | Key holds | Properties | Settings |
 |---|---|---|---|
-| `animator` | its items | `position`, `anchor`, `scale`, `rotate`, `opacity`, `fill`, `stroke`, `stroke-width`, `tracking` | |
+| `animator` | its items | `position`, `anchor`, `scale`, `rotate`, `opacity`, `fill`, `stroke`, `stroke-width`, `tracking`, `stagger`, `seed` | `by`: `char`, `char-no-space`, `word`, `line`; `order`: `first`, `last`, `center`, `edges`, `random` |
 
 | Selector | Key holds | Properties | Settings |
 |---|---|---|---|
@@ -356,12 +357,17 @@ Above, every line starts 75 px low and invisible. As `offset` moves the range of
 
 ## Text motion
 
-Text can be animated one character, one word or one line at a time:
+A text layer's `in` can move the parts of the text instead of the whole layer, one after another:
 
 ```json
-"in":"type-on char 2f"
-"in":"rise word stagger 3f"
+"in":"fade-up word 30px 10f out-back stagger 3f"
+"in":"pop char spring(.5) stagger 2f center"
 ```
+
+- A part word, `char`, `char-no-space`, `word` or `line`, makes each part enter by the preset about its own anchor.
+- `stagger <time>` is how long each part waits after the one before it, and an order word (`first`, `last`, `center`, `edges`, `random`) is who goes first. Both need a part word.
+- The preset may move `position` (`x`, `y`), `scale`, `rotate` and `opacity`, which become the same values of a text animator. A preset that moves anything else is an error on a text's parts.
+- It becomes an animator ahead of the layer's own `animate`: the values go from the preset's start to rest over the behaviour's frames and curve, a `range` by the same parts chooses them all, and the parts take turns as `stagger` says. The file keeps the one line.
 
 ## Modifiers
 

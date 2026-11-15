@@ -103,6 +103,71 @@ pub struct AnimatorState {
     pub item: ItemState,
     /// The properties it sets or animates; only these apply.
     pub applies: Vec<Prop>,
+    /// When it staggers, the animator as each part sees it in its turn.
+    pub turns: Option<Turns>,
+}
+
+/// A staggered animator, as each part of one count sees it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Turns {
+    /// The count whose parts take turns, an index into [`COUNTS`].
+    pub by: usize,
+    /// The animator, selectors included, as part `k` sees it: as it was
+    /// its wait earlier.
+    pub parts: Vec<ItemState>,
+}
+
+impl AnimatorState {
+    /// The animator as the part `glyph` belongs to sees it: in its turn when
+    /// it staggers, else as it is. A glyph in no part of the count, such as a
+    /// space under `word`, sees it as it is.
+    fn seen_by(&self, glyph: &GlyphParts) -> &ItemState {
+        self.turns
+            .as_ref()
+            .and_then(|turns| glyph.index[turns.by].and_then(|k| turns.parts.get(k)))
+            .unwrap_or(&self.item)
+    }
+}
+
+/// How many turns each of `n` parts waits in `order`: `first` waits `k`
+/// turns for part `k`, `last` the reverse, `center` the distance from the
+/// middle part (half a turn for the two middle parts of an even count),
+/// `edges` the distance from the nearer end, and `random` a shuffle of the
+/// reading order picked by `seed`.
+///
+/// # Panics
+/// If `order` is not one of the animator's `order` choices.
+pub fn waits(order: &str, seed: f64, n: usize) -> Vec<f64> {
+    let middle = (n as f64 - 1.0) / 2.0;
+    let index = (0..n).map(|k| k as f64);
+    match order {
+        "first" => index.collect(),
+        "last" => index.map(|k| n as f64 - 1.0 - k).collect(),
+        "center" => index.map(|k| (k - middle).abs()).collect(),
+        "edges" => index.map(|k| middle - (k - middle).abs()).collect(),
+        "random" => shuffled(n, seed).into_iter().map(|k| k as f64).collect(),
+        order => unreachable!("no order `{order}`"),
+    }
+}
+
+/// `0..n` in an order picked by `seed`: Fisher-Yates driven by SplitMix64,
+/// so every platform and every render agree.
+fn shuffled(n: usize, seed: f64) -> Vec<usize> {
+    let mut state = seed.to_bits();
+    let mut next = || {
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    };
+    let mut order: Vec<usize> = (0..n).collect();
+    for i in (1..n).rev() {
+        // `i + 1` is at most `n`, so the remainder fits a `usize`.
+        let j = usize::try_from(next() % (i as u64 + 1)).expect("below n");
+        order.swap(i, j);
+    }
+    order
 }
 
 /// What one glyph accumulates from the animators before it is placed.
@@ -146,9 +211,10 @@ pub fn glyph_states(
         .collect();
     for animator in animators {
         for (effect, glyph) in effects.iter_mut().zip(&parts.glyphs) {
-            let amount = chosen(&animator.item.items, glyph, &parts.counts);
+            let item = animator.seen_by(glyph);
+            let amount = chosen(&item.items, glyph, &parts.counts);
             if amount != 0.0 {
-                apply(animator, amount, effect);
+                apply(item, &animator.applies, amount, effect);
             }
         }
     }
@@ -223,15 +289,15 @@ fn range(selector: &ItemState, i: usize, n: usize) -> f64 {
     v * selector.number(props::RANGE_AMOUNT)
 }
 
-/// Applies `animator`'s properties to one glyph, chosen by `amount`.
-fn apply(animator: &AnimatorState, amount: f64, effect: &mut Effect) {
-    let item = &animator.item;
+/// Applies the properties of the animator `item` that `applies` lists to
+/// one glyph, chosen by `amount`.
+fn apply(item: &ItemState, applies: &[Prop], amount: f64, effect: &mut Effect) {
     let toward = |from: f64, to: f64| from + (to - from) * amount;
     // Colours and widths blend, so a negative choice cannot overshoot them.
     let blend = amount.clamp(0.0, 1.0);
     let mix =
         |from: [f64; 4], to: [f64; 4]| std::array::from_fn(|c| from[c] + (to[c] - from[c]) * blend);
-    for &prop in &animator.applies {
+    for &prop in applies {
         let vec = || {
             let [x, y] = item.point(prop);
             Vec2::new(x, y)
@@ -262,6 +328,8 @@ fn apply(animator: &AnimatorState, amount: f64, effect: &mut Effect) {
                 effect.state.stroke_width = w + (item.number(prop) - w) * blend;
             }
             p if p == props::ANIMATOR_TRACKING => effect.tracking += item.number(prop) * amount,
+            // When each part moves, not what it does.
+            p if p == props::ANIMATOR_STAGGER || p == props::ANIMATOR_SEED => {}
             p => unreachable!("`{}` is not an animator property", p.name()),
         }
     }

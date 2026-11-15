@@ -9,7 +9,7 @@ use std::sync::Arc;
 use kurbo::Rect;
 use motion_format::Place;
 use motion_format::anim::{AnimTrack, Easing};
-use motion_format::preset::{PresetSpec, Start};
+use motion_format::preset::{PresetSpec, Start, parts_animator};
 use motion_format::property::{Prop, Rest, Target};
 use motion_format::shorthand::{Axis, Behaviour, MatteMode};
 use motion_format::units::Color;
@@ -173,7 +173,13 @@ impl Build<'_> {
         Ok(match &layer.content {
             Content::Text(content) => NodeContent::Text {
                 text: text::set(content, self.typesetter)?,
-                animators: item_nodes(&content.animators, fps),
+                animators: entrance(layer, self.scene)
+                    .and_then(|(behaviour, spec)| parts_animator(spec, behaviour, fps))
+                    .iter()
+                    .chain(&content.animators)
+                    .filter(|item| !item.hidden)
+                    .map(|item| item_node(item, fps))
+                    .collect(),
             },
             Content::Rect(r) => NodeContent::Rect(*r),
             Content::Shapes(items) => NodeContent::Shapes(item_nodes(items, fps)),
@@ -275,7 +281,8 @@ fn node(
     parent: Option<usize>,
     extent: Rect,
 ) -> Node {
-    let entrance = entrance(layer, scene);
+    // An entrance on the parts of a text is one of its animators instead.
+    let entrance = entrance(layer, scene).filter(|(behaviour, _)| behaviour.parts.is_none());
     Node {
         id: layer.id.clone(),
         content,
