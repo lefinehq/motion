@@ -87,6 +87,8 @@ pub struct Layer {
     /// an image's or video's frame, a composition's canvas. Effects that
     /// wrap, tile or pin at a layer's edges read it.
     pub bounds: Option<Rect>,
+    /// Its own time, in seconds, which effects that run over time read.
+    pub time: f64,
 }
 
 /// A layer's matte: a node drawn in the layer's parent's coordinates, whose
@@ -129,6 +131,7 @@ impl Layer {
             matte: None,
             adjust: false,
             bounds: None,
+            time: 0.0,
         }
     }
 

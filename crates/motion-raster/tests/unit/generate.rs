@@ -9,6 +9,7 @@ const ONE: Space = Space {
     transform: Affine::IDENTITY,
     bounds: None,
     input: None,
+    time: 0.0,
 };
 
 /// A `width` by 1 opaque grey layer.
@@ -65,6 +66,7 @@ fn a_ramp_draws_only_where_the_layer_is_and_moves_with_it() {
         transform: Affine::translate((5.0, 0.0)),
         bounds: None,
         input: None,
+        time: 0.0,
     };
     ramp(&mut pixels, &values, &space);
     // Pixel 5's centre is (0.5, 0.5) in the layer, √0.5 px from `start`.

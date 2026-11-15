@@ -306,7 +306,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"motion":1,"dur":"1s","fonts":[3],"layers":[]}` → fonts[0]: invalid type: integer `3`; expected a string
 
 ## effects
-`{"rect":[1,1]}` → a.fx[0]: needs the key of its kind; expected one kind key: `fill`, `transform`, `tint`, `hue-saturation`, `exposure`, `levels`, `displacement-map`, `motion-tile`, `wrap`, `turbulent-displace`, `ramp`, `four-color`, `grid`, `venetian-blinds`, `fractal-noise`, `gaussian-blur`, `box-blur`, `drop-shadow`, `glow`, `sharpen`, `black-white`, `curves`, `invert`
+`{"rect":[1,1]}` → a.fx[0]: needs the key of its kind; expected one kind key: `fill`, `transform`, `tint`, `hue-saturation`, `exposure`, `levels`, `particles`, `displacement-map`, `motion-tile`, `wrap`, `turbulent-displace`, `ramp`, `four-color`, `grid`, `venetian-blinds`, `fractal-noise`, `gaussian-blur`, `box-blur`, `drop-shadow`, `glow`, `sharpen`, `black-white`, `curves`, `invert`
 `{"fill":"#fff","opacity":3}` → a.fx[0].opacity: value 3 is outside 0..=1; expected a number from 0 to 1
 `{"fill":"#fff","rule":"evenodd"}` → a.fx[0].rule: unknown fill key `rule`; expected one of fill, id, hidden, anim, opacity
 

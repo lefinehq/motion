@@ -166,6 +166,7 @@ A `trim` keeps the stretch from `start` to `end`, shares of the length from 0 to
 | `hue-saturation` | `hue` | `hue`, `saturation`, `lightness`, `colorize-hue`, `colorize-saturation`, `colorize-lightness` | `mode`: `adjust`, `colorize` |
 | `exposure` | `exposure` | `exposure`, `offset`, `gamma` | `space`: `linear`, `gamma` |
 | `levels` | `gamma` | `input-black`, `input-white`, `gamma`, `output-black`, `output-white` | `channel`: `rgb`, `red`, `green`, `blue`, `alpha` |
+| `particles` | `rate` | `rate`, `longevity`, `position`, `radius-x`, `radius-y`, `velocity`, `gravity`, `resistance`, `direction`, `extra`, `birth-size`, `death-size`, `size-variation`, `max-opacity`, `birth-color`, `death-color`, `seed` | `animation`: `explosive`, `direction`; `shape`: `faded`, `disc`, `bubble`; `opacity-map`: `fade-out`, `constant`, `fade-out-sharp`, `fade-in`, `fade-in-out`; `transfer`: `over`, `screen`, `add` |
 | `displacement-map` | `horizontal` | `horizontal`, `vertical` | `horizontal-from`: `red`, `green`, `blue`, `alpha`, `luminance`, `hue`, `lightness`, `saturation`, `full`, `half`, `off`; `vertical-from`: `green`, `red`, `blue`, `alpha`, `luminance`, `hue`, `lightness`, `saturation`, `full`, `half`, `off`; `behaviour`: `center`, `stretch`, `tile`; `edges`: `clear`, `wrap` |
 | `motion-tile` | `tile-width` | `center`, `tile-width`, `tile-height`, `output-width`, `output-height`, `phase` | `edges`: `repeat`, `mirror`; `shift`: `vertical`, `horizontal` |
 | `wrap` | `to` | `to`, `blend` | |
@@ -185,6 +186,8 @@ A `trim` keeps the stretch from `start` to `end`, shares of the length from 0 to
 | `invert` | `channel` | `blend` | |
 
 A `transform` moves everything the layer draws, inside the layer, as a group's transform moves its items: `anchor` (px of the layer's own coordinates) goes to `position`, scaled and turned about it, and `opacity` multiplies the layer's. Both points rest at the origin, so `{"transform":1.5}` scales about the layer's origin; an import writes both. Several apply in order, each moving what the ones before it moved.
+
+`particles` draws, in place of the layer, particles a producer sends out over the layer's own time: `rate` a second from an ellipse `radius-x` by `radius-y` px around `position`, each living `longevity` seconds, leaving at `velocity` px a second every way or towards `direction`, varied by `extra`, falling with `gravity` and slowed by `resistance`. Each grows from `birth-size` to `death-size` px and turns from `birth-color` to `death-color`. Particle `i` is born at `i / rate` seconds and its random draws come from `seed` and `i`, so every frame draws alone and the same, with at most 20,000 at once.
 
 `displacement-map` reads another layer, the one `map` names in the same list (its own drawing without `map`): that layer's drawing in its own coordinates, with its effects but not its transform, opacity or matte, as a project reads a layer parameter. Each pixel moves up to `horizontal` and `vertical` px by the map's levels at the same place, 0.5 moving nothing; the map's box lies centred on the layer's, stretched over it, or tiled, and a map layer may be hidden. A layer may not reach itself through the layers its effects read and its matte.
 

@@ -118,6 +118,7 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
                 local_bounds,
                 fill: node.fill,
                 fx: items_at(&node.fx, local),
+                seconds: local / fps,
             }
         })
         .collect();

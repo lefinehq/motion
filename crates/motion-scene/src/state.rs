@@ -37,6 +37,9 @@ pub struct NodeState {
     pub fill: [f64; 4],
     /// Its effects at this frame, in order.
     pub fx: Vec<ItemState>,
+    /// Its own time at this frame, in seconds, which effects that run
+    /// over time, such as particles, read.
+    pub seconds: f64,
 }
 
 /// What a node draws at one frame.
@@ -161,6 +164,7 @@ impl NodeState {
             local_bounds: Rect::new(0.0, 0.0, width, height),
             fill: [1.0; 4],
             fx: Vec::new(),
+            seconds: 0.0,
         }
     }
 

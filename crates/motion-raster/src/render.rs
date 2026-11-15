@@ -218,7 +218,7 @@ impl Painter {
     /// Where `effect` runs on a layer whose own coordinates `transform`
     /// takes to the frame: with the drawing of the layer it reads, if any,
     /// laid on those coordinates.
-    fn space(&self, effect: &Effect, transform: Affine, bounds: Option<Rect>) -> Result<Space> {
+    fn space(&self, effect: &Effect, transform: Affine, layer: &Layer) -> Result<Space> {
         let input = effect
             .input()
             .map(|node| {
@@ -232,8 +232,9 @@ impl Painter {
             .transpose()?;
         Ok(Space {
             transform,
-            bounds,
+            bounds: layer.bounds,
             input,
+            time: layer.time,
         })
     }
 
@@ -294,7 +295,7 @@ impl Painter {
         }
         let mut changed = drawn.clone();
         for effect in &filter.effects {
-            let space = self.space(effect, parent * filter.transform, filter.bounds)?;
+            let space = self.space(effect, parent * filter.transform, filter)?;
             effect.apply(&mut changed, &space);
         }
         let matte = filter
@@ -397,7 +398,7 @@ impl Painter {
                 .drawn_alone(&layer.children, transform * moved.transform)
                 .and_then(|mut pixels| {
                     for effect in on_pixels {
-                        let space = self.space(effect, transform, layer.bounds)?;
+                        let space = self.space(effect, transform, layer)?;
                         effect.apply(&mut pixels, &space);
                     }
                     self.draw_pixels(&pixels);

@@ -27,6 +27,7 @@ fn after(
             transform: Affine::IDENTITY,
             bounds: None,
             input: None,
+            time: 0.0,
         },
     );
     straight(pixels.data()[0])

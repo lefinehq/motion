@@ -17,6 +17,8 @@ pub(crate) enum Convert {
     Percent,
     /// An 8-bit level, 0 to 255, to a fraction.
     Level,
+    /// A number in an effect's own units, times the scene's units per one.
+    Times(f64),
     /// A 2D or 3D vector, to a point; a 3D vector's depth is dropped.
     Point,
     /// A vector in percent, to a point of fractions.
@@ -37,6 +39,7 @@ impl Convert {
         match self {
             Convert::Percent | Convert::PointPercent => 0.01,
             Convert::Level => 1.0 / 255.0,
+            Convert::Times(k) => k,
             Convert::Sized(size) => size[dim.min(1)],
             _ => 1.0,
         }
@@ -65,7 +68,11 @@ impl Convert {
         let factor = |dim| self.factor(dim);
         match (self, value) {
             (
-                Convert::Number | Convert::Percent | Convert::Level | Convert::Sized(_),
+                Convert::Number
+                | Convert::Percent
+                | Convert::Level
+                | Convert::Times(_)
+                | Convert::Sized(_),
                 Value::Number(n),
             ) => Some(num(n * factor(0))),
             (
