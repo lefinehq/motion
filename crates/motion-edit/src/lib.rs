@@ -13,8 +13,10 @@ mod key_path;
 mod parse;
 mod path;
 mod problem;
+mod role;
 mod slot;
 
 pub use apply::apply_edit;
 pub use key_path::KeyPath;
 pub use parse::{Change, Edit, EditValue, parse_edit};
+pub use role::{edit_line, resolve_role};

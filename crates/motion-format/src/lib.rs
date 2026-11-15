@@ -17,6 +17,7 @@ mod parse;
 pub mod path;
 pub mod preset;
 pub mod property;
+pub mod roles;
 mod scene;
 pub mod shorthand;
 pub mod slots;
@@ -36,6 +37,7 @@ pub use item::{Item, ItemKind, Role};
 pub use number::fmt_num;
 pub use parse::{COMP_KEYS, LAYER_KEYS, SCENE_KEYS, key, layer_keys, parse_document};
 pub use path::{Path, Vertex};
+pub use roles::RoleTarget;
 pub use scene::{Comp, CompContent, Content, Document, ImageContent, Layer, Scene, VideoContent};
 pub use slots::{Listed, Slot, SlotType};
 

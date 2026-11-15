@@ -31,6 +31,8 @@ pub mod key {
     pub const FONTS: &str = "fonts";
     /// The named values a scene or a composition declares (D44).
     pub const SLOTS: &str = "slots";
+    /// What a scene's layers and slots do (D50).
+    pub const ROLES: &str = "roles";
     /// The layers.
     pub const LAYERS: &str = "layers";
     /// A layer's id.
@@ -109,7 +111,7 @@ pub mod key {
 }
 
 /// The keys allowed at the top level, in the order of `SceneDoc`'s fields.
-pub const SCENE_KEYS: [&str; 11] = [
+pub const SCENE_KEYS: [&str; 12] = [
     key::MOTION,
     key::SIZE,
     key::FPS,
@@ -119,6 +121,7 @@ pub const SCENE_KEYS: [&str; 11] = [
     key::PRESETS,
     key::FONTS,
     key::SLOTS,
+    key::ROLES,
     key::COMPS,
     key::LAYERS,
 ];

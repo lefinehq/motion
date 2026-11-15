@@ -41,8 +41,9 @@ pub use import::{import, import_scene, substitute_fonts};
 pub use motion_import::export::{Change as ExportChange, Plan as ExportPlan};
 pub use session::Session;
 
+pub use motion_format::roles::Role;
 pub use motion_format::{
-    Address, Diagnostic, Document, Kind, Listed, Result, Scene, write_document,
+    Address, Content, Diagnostic, Document, Kind, Listed, Result, RoleTarget, Scene, write_document,
 };
 pub use motion_import::map::{Import, Mapping, Options as ImportOptions, StoredText};
 pub use motion_import::{Project, Report as ImportReport};

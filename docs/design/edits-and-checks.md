@@ -58,6 +58,10 @@ A key written `$id` edits a slot ([D44](decisions.md#d44-slots-are-named-values-
 
 `motion slots scene.json` lists every slot of the scene and of each composition, with its type, value and label, and how many values follow it. `--json` prints the same as data, with the place of each value that follows, such as `plate.fill`.
 
+### Editing a role
+
+A target written `@role` is what the scene's role names ([D50](decisions.md#d50-roles-name-what-a-masters-layers-do)): `@headline text="Sale"` is `title text="Sale"` when `headline` is `title`, and `@accent=#2A9D8F` is `$accent=#2A9D8F` when `accent` is the slot `$accent`. A brief written against roles runs on any master that has them. A layer's role takes keys and a slot's role takes a value; the error says which. `motion roles scene.json` lists each role with what it holds, and `--json` gives the same as data.
+
 ### Editing one copy in a repeat
 
 `card3 fill=red` does not split the five cards into five separate layers. It stores a small override on card 3, and the repeat stays one compact layer.
