@@ -64,7 +64,7 @@ Every layer can also have:
 
 - **position and transform:** `at`, `anchor`, `scale`, `rotate`, `opacity`, plus `rotateX`, `rotateY` and `z` for depth
 - **`parent`:** another layer to follow
-- **`blend`:** a blend mode
+- **`blend`:** how the layer blends with what is below it in its composition: `normal` (the default), `multiply`, `screen`, `overlay`, `darken`, `lighten`, `color-dodge`, `color-burn`, `hard-light`, `soft-light`, `difference`, `exclusion`, `hue`, `saturation`, `color`, `luminosity` or `add`. A composition is drawn on its own, so its layers blend only with each other, unless it is collapsed
 - **`mask`:** outlines that cut what the layer draws, with feather and expansion, before its `fx` ([D55](decisions.md#d55-masks-are-items-that-cut-a-layers-content-before-its-effects); see [Shapes, masks, effects and compositions](#shapes-masks-effects-and-compositions))
 - **`matte`:** another layer of the same list whose drawing is a stencil: `"matte":"reveal alpha"` shows the layer where `reveal` is opaque. The modes are `alpha` (the default), `alpha-inverted`, `luma` and `luma-inverted`; luma reads transparency as black. The matte layer is drawn as it would be at that moment, with its transform, parents, opacity, effects, span and its own matte. Whether it is also drawn in the frame is up to its `hidden`, and a hidden layer still mattes
 - **`fx`:** a list of effects

@@ -95,6 +95,8 @@ pub mod key {
     pub const HIDDEN: &str = "hidden";
     /// Layer key: the layer whose drawing decides where this one shows.
     pub const MATTE: &str = "matte";
+    /// Layer key: how a layer blends with what is below it.
+    pub const BLEND: &str = "blend";
 
     /// The place of composition `id`'s definition, `comps.card`.
     pub fn comp_path(id: &str) -> crate::Place {
@@ -145,7 +147,7 @@ pub const COMP_KEYS: [&str; 7] = [
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 29] = [
+pub const LAYER_KEYS: [&str; 30] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -175,6 +177,7 @@ pub const LAYER_KEYS: [&str; 29] = [
     key::COLLAPSE,
     key::HIDDEN,
     key::MATTE,
+    key::BLEND,
 ];
 
 /// Every key a layer may hold: [`LAYER_KEYS`], then the names of the

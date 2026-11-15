@@ -185,7 +185,31 @@ pub struct Layer {
     pub hidden: bool,
     /// The layer of its own list whose drawing decides where it shows.
     pub matte: Option<Matte>,
+    /// How it blends with what is below it in its composition, one of
+    /// [`BLEND_MODES`].
+    pub blend: &'static str,
 }
+
+/// The blend modes a layer takes, `normal` first, which is the default.
+pub const BLEND_MODES: [&str; 17] = [
+    "normal",
+    "multiply",
+    "screen",
+    "overlay",
+    "darken",
+    "lighten",
+    "color-dodge",
+    "color-burn",
+    "hard-light",
+    "soft-light",
+    "difference",
+    "exclusion",
+    "hue",
+    "saturation",
+    "color",
+    "luminosity",
+    "add",
+];
 
 impl Layer {
     /// The resting value it sets for `prop`, if any.

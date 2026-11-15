@@ -23,13 +23,13 @@ mod mask;
 mod shape;
 mod text;
 
-use motion_format::key::{IMAGE, VIDEO};
+use motion_format::key::{BLEND, IMAGE, VIDEO};
 use motion_format::property::Prop;
 use motion_format::shorthand::{MatteMode, RectShape};
 use motion_format::{ImageContent, Place, Result};
 use motion_raster::kurbo::{Affine, Rect, RoundedRect, Shape};
 use motion_raster::{
-    Blending, Clip, Color, DrawStyle, FillRule, Frame, ImageDraw, Layer, Matte,
+    BlendMode, Blending, Clip, Color, DrawStyle, FillRule, Frame, ImageDraw, Layer, Matte,
     MatteMode as RasterMatte, Node, Paint, PathDraw, Picture,
 };
 use motion_scene::{CompGraph, ContentState, FrameState, Node as GraphNode, NodeState, SceneGraph};
@@ -109,6 +109,8 @@ fn matted(
     // An adjusting layer applies its effects to what is below it, where it
     // draws.
     drawn.adjust |= list[i].adjust;
+    drawn.blend = BlendMode::named(list[i].blend)
+        .map_err(|e| e.at(BLEND).under(Place::of_layer(&state.nodes[i].id)))?;
     // An effect that reads another layer reads its drawing in its own
     // coordinates, with its effects but not its transform, opacity or
     // matte; nothing outside its span.

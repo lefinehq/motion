@@ -669,3 +669,30 @@ mod effects {
         assert_eq!(what, ["`ADBE Lens Flare`"]);
     }
 }
+
+#[test]
+fn a_blend_mode_the_scene_has_is_written_and_another_reported() {
+    use crate::BlendMode;
+    let imported = |mode| {
+        let mut sample = sample_project();
+        for item in &mut sample.items {
+            if let crate::model::ItemKind::Composition(c) = &mut item.kind {
+                c.layers
+                    .iter_mut()
+                    .for_each(|layer| layer.blend_mode = mode);
+            }
+        }
+        import(&sample, &Options::default()).expect("the sample imports")
+    };
+    let screen = imported(BlendMode::Screen);
+    assert_eq!(screen.json["layers"][0]["blend"], "screen");
+    let dissolve = imported(BlendMode::Dissolve);
+    assert!(dissolve.json["layers"][0].get("blend").is_none());
+    assert!(
+        dissolve
+            .mapping
+            .unsupported
+            .iter()
+            .any(|f| f.what == "the blend mode `dissolve`")
+    );
+}

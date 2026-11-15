@@ -352,8 +352,12 @@ impl<'p> Walk<'p> {
         if switches.solo {
             unsupported("solo layers".into());
         }
-        if layer.blend_mode != BlendMode::Normal {
-            unsupported(format!("the blend mode `{}`", layer.blend_mode));
+        match blend(layer.blend_mode) {
+            Some("normal") => {}
+            Some(mode) => {
+                out.keys.insert("blend".into(), json!(mode));
+            }
+            None => unsupported(format!("the blend mode `{}`", layer.blend_mode)),
         }
         let mode = match matte_mode(layer.track_matte) {
             Ok(mode) => mode,
@@ -455,5 +459,32 @@ fn draws_an_effect(layer: &Layer) -> bool {
             })
         }
         _ => false,
+    })
+}
+
+/// The scene's blend mode for the project's `mode`, if the scene has one
+/// that blends the same way. The classic modes, kept from older versions
+/// for their 8-bit arithmetic, blend as their current ones on the levels
+/// the scene draws.
+fn blend(mode: BlendMode) -> Option<&'static str> {
+    Some(match mode {
+        BlendMode::Normal => "normal",
+        BlendMode::Add | BlendMode::LinearDodge => "add",
+        BlendMode::Multiply => "multiply",
+        BlendMode::Screen => "screen",
+        BlendMode::Overlay => "overlay",
+        BlendMode::SoftLight => "soft-light",
+        BlendMode::HardLight => "hard-light",
+        BlendMode::Darken => "darken",
+        BlendMode::Lighten => "lighten",
+        BlendMode::Difference | BlendMode::ClassicDifference => "difference",
+        BlendMode::Exclusion => "exclusion",
+        BlendMode::ColorDodge => "color-dodge",
+        BlendMode::ColorBurn => "color-burn",
+        BlendMode::Hue => "hue",
+        BlendMode::Saturation => "saturation",
+        BlendMode::Color => "color",
+        BlendMode::Luminosity => "luminosity",
+        _ => return None,
     })
 }

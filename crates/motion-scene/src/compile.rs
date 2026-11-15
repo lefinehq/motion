@@ -330,6 +330,7 @@ fn node(
         adjust: layer.adjust,
         collapse: layer.collapse,
         matte: None,
+        blend: layer.blend,
         inputs: Vec::new(),
     }
 }
