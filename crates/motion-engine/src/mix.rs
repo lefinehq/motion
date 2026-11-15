@@ -30,7 +30,40 @@ pub(crate) fn mix(
     frames: Range<f64>,
     sound: impl Fn(&Route) -> Result<std::sync::Arc<Sound>>,
 ) -> Result<Sound> {
-    let fps = graph.root.fps;
+    mix_in(graph, Canvas::root(graph), routes, frames, sound)
+}
+
+/// A canvas routes start from: its nodes and its clock.
+#[derive(Clone, Copy)]
+pub(crate) struct Canvas<'g> {
+    /// Its nodes.
+    pub(crate) nodes: &'g [motion_scene::Node],
+    /// Its frames a second.
+    pub(crate) fps: f64,
+}
+
+impl<'g> Canvas<'g> {
+    /// The scene's own canvas.
+    pub(crate) fn root(graph: &'g SceneGraph) -> Canvas<'g> {
+        Canvas {
+            nodes: &graph.root.nodes,
+            fps: graph.root.fps,
+        }
+    }
+}
+
+/// The mix of `routes`, which start at `canvas`, over its `frames`.
+///
+/// # Errors
+/// The first route's sound that cannot be read.
+pub(crate) fn mix_in(
+    graph: &SceneGraph,
+    canvas: Canvas<'_>,
+    routes: &[Route],
+    frames: Range<f64>,
+    sound: impl Fn(&Route) -> Result<std::sync::Arc<Sound>>,
+) -> Result<Sound> {
+    let fps = canvas.fps;
     let start = frames.start / fps;
     let length = ((frames.end - frames.start).max(0.0) / fps * f64::from(MIX_RATE)).ceil() as usize;
     let mut left = vec![0.0_f32; length];
@@ -64,8 +97,9 @@ pub(crate) fn mix(
         };
         for block in (0..length).step_by(BLOCK) {
             let end = (block + BLOCK).min(length);
-            let first = route.at(graph, frame_at(block));
-            let last = route.at(graph, frame_at(end));
+            let at = |frame: f64| route.at_in(graph, canvas.nodes, fps, frame);
+            let first = at(frame_at(block));
+            let last = at(frame_at(end));
             match (first, last) {
                 (None, None) => {}
                 (Some(a), Some(b)) => {
@@ -84,7 +118,7 @@ pub(crate) fn mix(
                 // It starts or stops inside the block: ask each sample.
                 _ => {
                     for n in block..end {
-                        if let Some(playing) = route.at(graph, frame_at(n)) {
+                        if let Some(playing) = at(frame_at(n)) {
                             play(n, playing);
                         }
                     }

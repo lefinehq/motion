@@ -23,6 +23,7 @@ fn stripes() -> (Pixels, Space) {
         bounds: Some(Rect::new(0.0, 0.0, 4.0, 1.0)),
         input: None,
         time: 0.0,
+        sound: None,
     };
     (pixels, space)
 }
@@ -75,6 +76,7 @@ fn turbulent_displacement_moves_pixels_but_keeps_pinned_edges() {
         bounds: Some(Rect::new(0.0, 0.0, 64.0, 64.0)),
         input: None,
         time: 0.0,
+        sound: None,
     };
     let before = pixels.clone();
     let values = [

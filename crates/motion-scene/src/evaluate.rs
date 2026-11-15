@@ -124,7 +124,7 @@ fn evaluate_nodes(graph: &SceneGraph, nodes: &[Node], frame: f64, fps: f64) -> F
             }
         })
         .collect();
-    FrameState { frame, nodes }
+    FrameState { frame, fps, nodes }
 }
 
 /// Items at a node's own frame `local`.

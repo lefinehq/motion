@@ -222,10 +222,12 @@ impl Session {
         let base = self.base();
         let pictures = |path: &str| self.pictures.get(&base.join(path));
         let clips = |path: &str, seconds: f64| self.clips.frame(&base.join(path), seconds);
+        let sounds = |path: &str| self.sounds.get(&base.join(path));
         let sources = Sources {
             graph,
             pictures: &pictures,
             clips: &clips,
+            sounds: &sounds,
         };
         stage("display", || display_list(sources, &state))
     }

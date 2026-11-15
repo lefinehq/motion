@@ -34,7 +34,7 @@ mod write;
 pub use address::{Address, Id, Step};
 pub use curve::{BACK_OVERSHOOT, Curve, ELASTIC, FAMILIES, Family, NAMED_CURVES, SHAPES, Shape};
 pub use diagnostic::{Diagnostic, Kind, Place, Result};
-pub use item::{Item, ItemKind, Role};
+pub use item::{Input, Item, ItemKind, Reads, Role};
 pub use locks::Lock;
 pub use number::fmt_num;
 pub use parse::{COMP_KEYS, LAYER_KEYS, SCENE_KEYS, key, layer_keys, parse_document};

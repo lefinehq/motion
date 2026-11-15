@@ -269,7 +269,7 @@ impl Walk<'_> {
                     Stream::Static(Value::Layer(id)) => Some(*id),
                     _ => None,
                 };
-                let key = sink.kind.and_then(|kind| kind.input);
+                let key = sink.kind.and_then(|kind| kind.input).map(|input| input.key);
                 let scope = self.layer_scopes.last();
                 // The layer itself, or none, is what the effect reads anyway.
                 let other = named.filter(|id| scope.is_none_or(|(_, own)| own != id));

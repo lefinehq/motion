@@ -27,6 +27,7 @@ mod particles;
 mod picture;
 mod pixels;
 mod render;
+mod sound;
 mod style;
 
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
@@ -43,6 +44,7 @@ pub use mask::SIGMA_PER_FEATHER;
 pub use picture::Picture;
 pub use pixels::{Pixel, Pixels};
 pub use render::{Quality, RenderOptions, Simd, render, render_with};
+pub use sound::Heard;
 pub use style::{
     CAPS, Cap, Color, Dashes, DrawStyle, FILL_RULES, FillRule, JOINS, Join, Paint, StrokeStyle,
 };

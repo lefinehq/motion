@@ -231,6 +231,8 @@ impl NodeState {
 pub struct FrameState {
     /// The time evaluated, in frames.
     pub frame: f64,
+    /// The canvas's frames a second.
+    pub fps: f64,
     /// One state per node, in the graph's paint order.
     pub nodes: Vec<NodeState>,
 }

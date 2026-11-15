@@ -23,14 +23,15 @@ mod mask;
 mod shape;
 mod text;
 
-use motion_format::key::{BLEND, IMAGE, VIDEO};
+use motion_format::key::{AUDIO, BLEND, IMAGE, VIDEO};
 use motion_format::property::Prop;
 use motion_format::shorthand::{MatteMode, RectShape};
 use motion_format::{ImageContent, Place, Result};
+use motion_format::{Input, Reads, Value};
 use motion_raster::kurbo::{Affine, Rect, RoundedRect, Shape};
 use motion_raster::{
-    BlendMode, Blending, Clip, Color, DrawStyle, FillRule, Frame, ImageDraw, Layer, Matte,
-    MatteMode as RasterMatte, Node, Paint, PathDraw, Picture,
+    BlendMode, Blending, Clip, Color, DrawStyle, Effect, FillRule, Frame, Heard, ImageDraw, Layer,
+    Matte, MatteMode as RasterMatte, Node, Paint, PathDraw, Picture,
 };
 use motion_scene::{CompGraph, ContentState, FrameState, Node as GraphNode, NodeState, SceneGraph};
 
@@ -40,6 +41,9 @@ const TOLERANCE: f64 = 0.01;
 
 /// Finds the picture an image layer's `image` names.
 pub(crate) type Pictures<'a> = dyn Fn(&str) -> Result<Picture> + 'a;
+
+/// Finds the sound an audio layer's `audio` plays, laid out for the mix.
+pub(crate) type Sounds<'a> = dyn Fn(&str) -> Result<std::sync::Arc<motion_audio::Sound>> + 'a;
 
 /// Finds the frame a video layer's `video` shows at a time in seconds, or
 /// `None` outside the clip.
@@ -55,6 +59,8 @@ pub(crate) struct Sources<'a> {
     pub(crate) pictures: &'a Pictures<'a>,
     /// The frames of video layers.
     pub(crate) clips: &'a Clips<'a>,
+    /// The sounds of audio layers, stereo at the mix rate.
+    pub(crate) sounds: &'a Sounds<'a>,
 }
 
 /// The display list of `state`, one frame of `sources.graph`'s scene, drawn
@@ -106,6 +112,7 @@ fn matted(
     let Some(Node::Layer(mut drawn)) = layer(sources, &list[i], area, &state.nodes[i])? else {
         return Ok(None);
     };
+    hear(sources, list, state, i, &mut drawn.effects)?;
     // An adjusting layer applies its effects to what is below it, where it
     // draws.
     drawn.adjust |= list[i].adjust;
@@ -154,6 +161,64 @@ fn matted(
         }),
         ..drawn
     })))
+}
+
+/// Gives each effect of node `i` that reads a layer's sound the window it
+/// asks for: `duration` ms of what that layer plays, centred `offset` ms
+/// after the canvas's time, mixed in the canvas's clock.
+///
+/// # Errors
+/// A sound file that cannot be read, at its audio layer.
+fn hear(
+    sources: Sources<'_>,
+    list: &[GraphNode],
+    state: &FrameState,
+    i: usize,
+    effects: &mut [Effect],
+) -> Result<()> {
+    let items = &state.nodes[i].fx;
+    for ((effect, input), item) in effects.iter_mut().zip(&list[i].inputs).zip(items) {
+        let (
+            Some(source),
+            Some(Input {
+                reads: Reads::Sound,
+                ..
+            }),
+        ) = (*input, item.kind.input)
+        else {
+            continue;
+        };
+        let value = |name: &str| {
+            item.kind
+                .registry
+                .prop(name)
+                .and_then(|prop| item.values.get(prop.index()))
+                .and_then(Value::as_number)
+                .unwrap_or(0.0)
+        };
+        let (duration, offset) = (value("duration") / 1000.0, value("offset") / 1000.0);
+        let centre = state.frame / state.fps + offset;
+        let frames = (centre - duration / 2.0) * state.fps..(centre + duration / 2.0) * state.fps;
+        let routes = motion_scene::routes_from(sources.graph, list, source);
+        let canvas = crate::mix::Canvas {
+            nodes: list,
+            fps: state.fps,
+        };
+        let sound = |route: &motion_scene::Route| {
+            (sources.sounds)(route.path())
+                .map_err(|e| e.at(AUDIO).under(Place::of_layer(route.id(sources.graph))))
+        };
+        let heard = crate::mix::mix_in(sources.graph, canvas, &routes, frames, sound)?;
+        let [left, right] = heard.channels() else {
+            continue;
+        };
+        *effect = effect.clone().with_sound(Heard {
+            left: left.clone(),
+            right: right.clone(),
+            rate: heard.rate() as f32,
+        });
+    }
+    Ok(())
 }
 
 /// The layer of one node of the canvas `area`, compiled as `compiled`,
