@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use motion_format::{Diagnostic, Kind, Result};
 
 use crate::colour::{Planes, to_planes};
+#[cfg(target_os = "macos")]
+use motion_videotoolbox::Codec as System;
 
 /// The size and rate of a video.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,6 +38,17 @@ pub enum DecoderConfig {
     /// An AV1 codec configuration record, its sequence header included.
     Av1 {
         /// The record's bytes, as the `av1C` box holds them.
+        record: Vec<u8>,
+    },
+    /// An H.264 decoder configuration record: profile, level and parameter
+    /// sets.
+    Avc {
+        /// The record's bytes, as the `avcC` box holds them.
+        record: Vec<u8>,
+    },
+    /// An HEVC decoder configuration record.
+    Hevc {
+        /// The record's bytes, as the `hvcC` box holds them.
         record: Vec<u8>,
     },
 }
@@ -91,12 +104,31 @@ pub trait Muxer: Send {
 )]
 #[strum(serialize_all = "lowercase")]
 pub enum Codec {
-    /// AV1, through `rav1e`, on every platform.
+    /// H.264 from the system's encoder, on macOS; the default there.
+    #[cfg(target_os = "macos")]
     #[default]
+    H264,
+    /// HEVC from the system's encoder, on macOS.
+    #[cfg(target_os = "macos")]
+    Hevc,
+    /// AV1, through `rav1e`, on every platform; the default where the
+    /// platform's own encoder has not landed.
+    #[cfg_attr(not(target_os = "macos"), default)]
     Av1,
 }
 
 impl Codec {
+    /// The codec's name as people write it: `H.264`, `HEVC`, `AV1`.
+    pub fn label(self) -> &'static str {
+        match self {
+            #[cfg(target_os = "macos")]
+            Codec::H264 => "H.264",
+            #[cfg(target_os = "macos")]
+            Codec::Hevc => "HEVC",
+            Codec::Av1 => "AV1",
+        }
+    }
+
     /// The codec named `name`.
     ///
     /// # Errors
@@ -214,6 +246,10 @@ impl VideoWriter {
             .expected("a size above zero and a frame rate above zero"));
         }
         let encoder: Box<dyn VideoEncoder> = match codec {
+            #[cfg(target_os = "macos")]
+            Codec::H264 => Box::new(crate::toolbox::Toolbox::new(spec, System::H264, quality)?),
+            #[cfg(target_os = "macos")]
+            Codec::Hevc => Box::new(crate::toolbox::Toolbox::new(spec, System::Hevc, quality)?),
             Codec::Av1 => Box::new(crate::av1::Av1::new(spec, quality)?),
         };
         let partial = partial_path(path);

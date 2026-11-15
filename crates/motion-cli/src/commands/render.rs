@@ -187,7 +187,7 @@ fn video(
     println!(
         "{count} {noun} written to {} ({}, {quality}, {width}x{height}, {fps} fps, {seconds} s)",
         out.display(),
-        codec.to_string().to_uppercase(),
+        codec.label(),
     );
     Ok(ExitCode::SUCCESS)
 }

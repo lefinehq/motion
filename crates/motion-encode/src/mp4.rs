@@ -15,9 +15,9 @@ use std::path::{Path, PathBuf};
 
 use motion_format::{Diagnostic, Kind, Result};
 use mp4_atom::{
-    Av01, Av1c, Co64, Colr, Decode, Dinf, Dref, Encode, Ftyp, Hdlr, Mdhd, Mdia, Minf, Moov, Mvhd,
-    Stbl, Stco, Stsc, StscEntry, Stsd, Stss, Stsz, StszSamples, Stts, SttsEntry, Tkhd, Trak, Url,
-    Visual, Vmhd,
+    Atom, Av01, Avc1, Co64, Colr, Decode, Dinf, Dref, Encode, Ftyp, Hdlr, Hvc1, Mdhd, Mdia, Minf,
+    Moov, Mvhd, Stbl, Stco, Stsc, StscEntry, Stsd, Stss, Stsz, StszSamples, Stts, SttsEntry, Tkhd,
+    Trak, Url, Visual, Vmhd,
 };
 
 use crate::video::{DecoderConfig, Muxer, Packet, VideoSpec};
@@ -70,17 +70,32 @@ impl Mp4 {
         let count = self.sizes.len() as u32;
         let timescale = (fps * f64::from(FRAME_TICKS)).round() as u32;
         let duration = u64::from(count) * u64::from(FRAME_TICKS);
+        let visual = Visual {
+            data_reference_index: 1,
+            width: width as u16,
+            height: height as u16,
+            ..Visual::default()
+        };
         let codec = match config {
             DecoderConfig::Av1 { record } => Av01 {
-                visual: Visual {
-                    data_reference_index: 1,
-                    width: width as u16,
-                    height: height as u16,
-                    ..Visual::default()
-                },
-                av1c: av1c(record)?,
+                visual,
+                av1c: record_box(b"av1C", record)?,
                 colr: vec![bt709()],
                 ..Av01::default()
+            }
+            .into(),
+            DecoderConfig::Avc { record } => Avc1 {
+                visual,
+                avcc: record_box(b"avcC", record)?,
+                colr: vec![bt709()],
+                ..Avc1::default()
+            }
+            .into(),
+            DecoderConfig::Hevc { record } => Hvc1 {
+                visual,
+                hvcc: record_box(b"hvcC", record)?,
+                colr: vec![bt709()],
+                ..Hvc1::default()
             }
             .into(),
         };
@@ -247,15 +262,18 @@ impl Muxer for Mp4 {
     }
 }
 
-/// The file type: ISO base media, with the codec's brand.
+/// The file type: ISO base media, with the codec's brand where it has one.
 fn ftyp(config: &DecoderConfig) -> Ftyp {
-    let brand = match config {
-        DecoderConfig::Av1 { .. } => b"av01",
+    let brand: Option<&[u8; 4]> = match config {
+        DecoderConfig::Av1 { .. } => Some(b"av01"),
+        DecoderConfig::Avc { .. } => Some(b"avc1"),
+        DecoderConfig::Hevc { .. } => None,
     };
+    let brands = [b"isom", b"iso2", b"mp41"].into_iter().chain(brand);
     Ftyp {
         major_brand: b"isom".into(),
         minor_version: 512,
-        compatible_brands: vec![b"isom".into(), b"iso2".into(), b"mp41".into(), brand.into()],
+        compatible_brands: brands.map(|&brand| brand.into()).collect(),
     }
 }
 
@@ -270,16 +288,20 @@ fn bt709() -> Colr {
     }
 }
 
-/// The `av1C` box of an AV1 codec configuration record.
-fn av1c(record: &[u8]) -> Result<Av1c> {
+/// The box `kind` (`av1C`, `avcC`, `hvcC`) of a codec's configuration
+/// record, as the encoder gave it.
+fn record_box<A: Atom>(kind: &[u8; 4], record: &[u8]) -> Result<A> {
     let mut boxed = Vec::with_capacity(record.len() + 8);
     boxed.extend_from_slice(&(record.len() as u32 + 8).to_be_bytes());
-    boxed.extend_from_slice(b"av1C");
+    boxed.extend_from_slice(kind);
     boxed.extend_from_slice(record);
-    Av1c::decode(&mut boxed.as_slice()).map_err(|e| {
+    A::decode(&mut boxed.as_slice()).map_err(|e| {
         Diagnostic::new(
             Kind::Invalid,
-            format!("the AV1 encoder's configuration does not read: {e}"),
+            format!(
+                "the encoder's `{}` configuration does not read: {e}",
+                String::from_utf8_lossy(kind)
+            ),
         )
     })
 }

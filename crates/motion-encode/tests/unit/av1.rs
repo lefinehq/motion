@@ -65,7 +65,9 @@ fn every_frame_comes_out_in_order_and_the_first_is_a_keyframe() {
     assert_eq!(frames, (0..6).collect::<Vec<_>>());
     assert!(packets[0].keyframe);
 
-    let DecoderConfig::Av1 { record } = encoder.config();
+    let DecoderConfig::Av1 { record } = encoder.config() else {
+        panic!("an AV1 record");
+    };
     // The record's marker and version, then the sequence header OBU.
     assert_eq!(record[0], 0x81);
     assert_eq!((record[4] >> 3) & 0xf, 1);

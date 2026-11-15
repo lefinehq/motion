@@ -17,6 +17,10 @@ rav1e = { version = "0.8", default-features = false, features = ["threading"] }
 mp4-atom = "0.17"
 strum.workspace = true
 
+# H.264 and HEVC from the system's encoder (D13, D48).
+[target.'cfg(target_os = "macos")'.dependencies]
+motion-videotoolbox = { path = "../motion-videotoolbox" }
+
 [dev-dependencies]
 pretty_assertions.workspace = true
 proptest.workspace = true

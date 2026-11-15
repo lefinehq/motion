@@ -17,6 +17,8 @@
 mod av1;
 pub mod colour;
 mod mp4;
+#[cfg(target_os = "macos")]
+mod toolbox;
 mod video;
 
 pub use colour::Planes;
