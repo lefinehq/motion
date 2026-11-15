@@ -65,7 +65,7 @@ Every layer can also have:
 - **position and transform:** `at`, `anchor`, `scale`, `rotate`, `opacity`, plus `rotateX`, `rotateY` and `z` for depth
 - **`parent`:** another layer to follow
 - **`blend`:** a blend mode
-- **`mask`:** cut-out shapes, with feather and expansion
+- **`mask`:** cut-out shapes, with feather and expansion ([D55](decisions.md#d55-masks-are-items-that-cut-a-layers-content-before-its-effects), [plan](../plans/2026-11-20-masks.md))
 - **`matte`:** another layer of the same list whose drawing is a stencil: `"matte":"reveal alpha"` shows the layer where `reveal` is opaque. The modes are `alpha` (the default), `alpha-inverted`, `luma` and `luma-inverted`; luma reads transparency as black. The matte layer is drawn as it would be at that moment, with its transform, parents, opacity, effects, span and its own matte. Whether it is also drawn in the frame is up to its `hidden`, and a hidden layer still mattes
 - **`fx`:** a list of effects
 - **`adjust`:** `true` applies the layer's `fx` to everything below it in its composition instead of to its own content, which is not drawn but says where they apply, by its alpha. A filter layer, with no content, applies them everywhere. The change is mixed in by the layer's opacity and matte; points and lengths of its effects are in the layer's own coordinates ([D49](decisions.md#d49-effects-that-read-pixels-run-on-a-canvas-of-their-own))
