@@ -368,7 +368,7 @@ An audio layer plays a sound file: `audio` names a WAV, MP3, FLAC or Ogg Vorbis 
 - **What it is not.** An audio layer has no effects and no matte, and is no layer's matte: it draws nothing.
 - **Drawn.** `audio-spectrum` and `audio-waveform` effects on other layers draw its sound, or a composition's through its `comp` layer (see effects).
 - **Followed.** A track written `@level <id>` follows its level (see property tracks).
-- **The mix.** Every audible layer is mixed into one stereo track at 48 kHz. Files are read by their first bytes, not their names, folded down to stereo, and resampled. Volume moves smoothly between keys, and layers are summed without a limiter. `motion render scene.json --out mix.wav` writes the mix, and says when it goes above full scale.
+- **The mix.** Every audible layer is mixed into one stereo track at 48 kHz. Files are read by their first bytes, not their names, folded down to stereo, and resampled. Volume moves smoothly between keys, and layers are summed without a limiter. `motion render scene.json --out mix.wav` writes the mix, and says when it goes above full scale; a video of the scene holds the mix as its sound (AAC in MP4, PCM in MOV).
 
 ## Animation, at three levels of detail
 

@@ -111,10 +111,14 @@ ProRes 4444 writes the same 60 frames in 1.4 s, about 4 MB, and decodes to the d
 
 ## Sound
 
-A scene's sound is mixed apart from its frames ([D56](decisions.md#d56-audio-layers-mixed-at-48-khz-and-read-by-effects), [plan](../plans/2026-11-20-audio.md)). `motion render scene.json --out mix.wav` writes it alone; an audio track in MP4 and MOV waits for the encoder.
+A scene's sound is mixed apart from its frames ([D56](decisions.md#d56-audio-layers-mixed-at-48-khz-and-read-by-effects), [plan](../plans/2026-11-20-audio.md)). `motion render scene.json --out mix.wav` writes it alone, and a video of a scene that plays sound holds the mix of the frames drawn as its second track.
 
 - **Reading.** `motion-audio` reads WAV itself and MP3, FLAC and Ogg Vorbis through pure Rust decoders, chosen by the file's first bytes. Each file is decoded once per session, whole, folded down to stereo by where its speakers stand (ITU-R BS.775), and resampled to 48 kHz by our own band-limited kernel, which gives the same samples on every machine.
 - **Mixing.** Each audio layer is a route from the canvas down through `comp` layers. The mix asks each route what plays once a millisecond (the file position, the gain from every `volume` on the way, the speed from every `stretch`) and moves linearly between, so fades have no steps; around a layer's start or end it asks every sample. A layer that plays at its own rate copies samples straight from the file; one stretched reads through the kernel, narrowed so nothing folds back. Layers are summed without a limiter, and a render reports a peak above full scale.
+- **In the video.** The mix follows the frames in the file, in one chunk, so the index ahead of both still lets a player start at once.
+  - **MP4** takes AAC-LC at 192 kbit/s from the system's encoder ([D13](decisions.md#d13-codec-licence-policy)): AudioToolbox on macOS. The encoder's priming (2,112 frames) is cut by an edit list, so the sound starts with the first frame. Where the system has no AAC encoder motion can use (Linux and Windows today), a scene with sound is refused in MP4, with `.mov` or `.wav` offered instead.
+  - **MOV** takes 16-bit PCM on every platform, from the mix's floats with triangular dither of one step, from a fixed seed, so the same mix gives the same bytes.
+  - On the 40 s demo film both decode to the mix's 1,920,000 frames with no offset: AAC within 54 dB SNR, PCM within 73 dB.
 - **Reading sound while drawing.** `audio-spectrum` and `audio-waveform` ask the mix for the window they need at each frame, so frames still draw alone, in any order, on every core. A track written `@level` follows a sound: a scene with one compiles twice, first to find the sound's routes, then with the levels measured once per frame of its list as keys (step `listen`).
 
 *Measured* on an M4 Max (release build), for a 60 s scene at 30 fps with two layers of a 1:44 MP3, one stretched 1.5×, a spectrum effect, and a scale following the bass:

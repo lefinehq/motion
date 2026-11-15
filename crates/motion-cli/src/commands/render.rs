@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::str::FromStr;
 
-use motion_encode::{Codec, Container, VideoQuality, VideoSpec, VideoWriter};
+use motion_encode::{Codec, Container, Soundtrack, VideoQuality, VideoSpec, VideoWriter};
 use motion_engine::telemetry::timing::timed;
 use motion_engine::{Diagnostic, Kind, Quality, RenderOptions, Result, Session};
 
@@ -201,6 +201,8 @@ pub struct Written {
     pub size: (u32, u32),
     /// Its frames per second.
     pub fps: f64,
+    /// Whether it holds the scene's sound.
+    pub sound: bool,
 }
 
 impl std::fmt::Display for Written {
@@ -210,12 +212,13 @@ impl std::fmt::Display for Written {
         let seconds = (self.frames as f64 / self.fps * 100.0).round() / 100.0;
         write!(
             f,
-            "{} {noun} written to {} ({}, {}, {width}x{height}, {} fps, {seconds} s)",
+            "{} {noun} written to {} ({}, {}, {width}x{height}, {} fps, {seconds} s{})",
             self.frames,
             self.out.display(),
             self.codec.label(),
             self.quality,
             self.fps,
+            if self.sound { ", with sound" } else { "" },
         )
     }
 }
@@ -252,6 +255,18 @@ pub fn video(
     let fps = session.scene().root.fps;
     let codec = encoding.codec.unwrap_or_default();
     let quality = encoding.quality.unwrap_or(codec.default_quality());
+    // The sound of the frames drawn, when the scene plays any.
+    let sound = match session.plays_sound()? {
+        true => {
+            let range = f64::from(frames.start)..f64::from(frames.end);
+            let mix = session.mix(range)?;
+            Some(Soundtrack {
+                rate: mix.rate(),
+                channels: mix.channels().to_vec(),
+            })
+        }
+        false => None,
+    };
     // The writer takes its size from the first frame, as drawn.
     let mut writer: Option<VideoWriter> = None;
     let mut size = (0, 0);
@@ -266,7 +281,11 @@ pub fn video(
                         height: size.1,
                         fps,
                     };
-                    writer.insert(VideoWriter::create(out, spec, codec, quality)?)
+                    let mut created = VideoWriter::create(out, spec, codec, quality)?;
+                    if let Some(sound) = &sound {
+                        created.set_sound(sound)?;
+                    }
+                    writer.insert(created)
                 }
             };
             writer.push(image.pixels())
@@ -286,6 +305,7 @@ pub fn video(
         quality,
         size,
         fps,
+        sound: sound.is_some(),
     })
 }
 

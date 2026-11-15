@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use motion_format::{Diagnostic, Kind, Result};
 
 use crate::colour::{Ayuv16, Planes, to_ayuv16, to_planes};
+use crate::sound::{EncodedSound, Soundtrack, encode_sound};
 #[cfg(target_os = "macos")]
 use motion_videotoolbox::Codec as System;
 
@@ -95,11 +96,11 @@ pub trait Muxer: Send {
     fn write(&mut self, packet: &Packet) -> Result<()>;
 
     /// Writes what the container needs after the last packet, `config`
-    /// among it, and closes the file.
+    /// among it, and the sound when there is one, and closes the file.
     ///
     /// # Errors
     /// A diagnostic when the file cannot be finished.
-    fn finish(self: Box<Self>, config: &DecoderConfig) -> Result<()>;
+    fn finish(self: Box<Self>, config: &DecoderConfig, sound: Option<&EncodedSound>) -> Result<()>;
 }
 
 /// The codecs this build has, by the name `--codec` takes.
@@ -269,6 +270,10 @@ pub struct VideoWriter {
     /// Whether frames keep alpha for the codec.
     keeps_alpha: bool,
     muxer: Box<dyn Muxer>,
+    /// The container, which picks how sound is encoded.
+    container: Container,
+    /// The sound, encoded when it was given.
+    sound: Option<EncodedSound>,
     /// The file being written, renamed to `path` when finished.
     partial: PathBuf,
     path: PathBuf,
@@ -355,10 +360,22 @@ impl VideoWriter {
             encoder,
             keeps_alpha: codec.keeps_alpha(),
             muxer,
+            container,
+            sound: None,
             partial,
             path: path.to_owned(),
             frames: 0,
         })
+    }
+
+    /// Gives the video `track` as its sound, encoded now as the container
+    /// holds it ([`encode_sound`]); it is written when the file is finished.
+    ///
+    /// # Errors
+    /// As [`encode_sound`].
+    pub fn set_sound(&mut self, track: &Soundtrack) -> Result<()> {
+        self.sound = Some(encode_sound(track, self.container)?);
+        Ok(())
     }
 
     /// Converts, compresses and writes the next frame, straight-alpha RGBA8
@@ -398,7 +415,8 @@ impl VideoWriter {
         for packet in self.encoder.finish()? {
             self.muxer.write(&packet)?;
         }
-        self.muxer.finish(&self.encoder.config())?;
+        self.muxer
+            .finish(&self.encoder.config(), self.sound.as_ref())?;
         fs::rename(&self.partial, &self.path)
             .map_err(|e| Diagnostic::io("write", &self.path, &e))?;
         Ok(self.frames)

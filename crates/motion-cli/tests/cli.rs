@@ -604,6 +604,57 @@ fn render_to_a_wav_file_writes_the_mix() {
     );
 }
 
+/// A one-second scene at 10 fps that plays the test tick, in its own folder.
+fn ticking(name: &str) -> (PathBuf, PathBuf) {
+    let dir = scratch(name);
+    let sound = fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../motion-format/tests/compat/v1/sounds/tick.wav"
+    ))
+    .expect("read the tick");
+    fs::write(dir.join("tick.wav"), sound).expect("write the tick");
+    let scene = dir.join("scene.json");
+    fs::write(
+        &scene,
+        r##"{"motion":1,"size":"64x48","fps":10,"dur":"1s","layers":[
+          {"id":"card","rect":"20x20","fill":"#FFFFFF","at":"center center"},{"id":"tick","audio":"tick.wav"}]}"##,
+    )
+    .expect("write the scene");
+    (dir, scene)
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_video_of_a_scene_with_sound_holds_the_mix() {
+    let (dir, scene) = ticking("render-sound");
+    for name in ["tick.mp4", "tick.mov"] {
+        let out = dir.join(name);
+        let file = out.to_str().expect("utf-8 path");
+        let run = motion(&["render", scene.to_str().expect("utf-8 path"), "--out", file]);
+        assert_eq!(run.status.code(), Some(0), "{}", stderr(&run));
+        assert!(
+            stdout(&run).ends_with(", 1 s, with sound)\n"),
+            "{}",
+            stdout(&run)
+        );
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn an_mp4_of_a_scene_with_sound_needs_an_aac_encoder() {
+    let (dir, scene) = ticking("render-no-aac");
+    let out = dir.join("tick.mp4");
+    let run = motion(&[
+        "render",
+        scene.to_str().expect("utf-8 path"),
+        "--out",
+        out.to_str().unwrap(),
+    ]);
+    assert_ne!(run.status.code(), Some(0));
+    assert!(stderr(&run).contains("no AAC encoder"), "{}", stderr(&run));
+}
+
 #[test]
 fn render_takes_a_codec_and_a_video_quality_and_times_the_encoding() {
     let (dir, scene) = small_scene("render-video-quality");

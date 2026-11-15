@@ -1,5 +1,5 @@
-//! H.264, HEVC and ProRes 4444 from the system's VideoToolbox, on macOS
-//! ([D48]).
+//! H.264, HEVC and ProRes 4444 from the system's VideoToolbox, and AAC from
+//! its AudioToolbox, on macOS ([D48]).
 //!
 //! The system's encoders run on the media engine where the Mac has one, and
 //! in software where it has not, and Apple's licence covers the codecs
@@ -13,6 +13,8 @@
 //! [D48]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d48-unsafe-code-lives-only-in-platform-bindings
 #![cfg(target_os = "macos")]
 
+mod aac;
 mod encoder;
 
+pub use aac::{Aac, FRAMES_PER_PACKET, encode_aac};
 pub use encoder::{Codec, Encoder, Error, Image, Packet, Planes, Settings};

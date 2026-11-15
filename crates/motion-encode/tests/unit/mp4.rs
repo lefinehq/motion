@@ -50,7 +50,7 @@ fn the_index_comes_first_and_points_at_the_samples() {
     for frame in 0..5 {
         mp4.write(&packet(frame, frame % 3 == 0)).unwrap();
     }
-    mp4.finish(&config()).unwrap();
+    mp4.finish(&config(), None).unwrap();
     assert!(
         !path.with_extension("mp4.mdat").exists(),
         "the scratch file is removed"
@@ -80,7 +80,7 @@ fn the_index_comes_first_and_points_at_the_samples() {
 fn offsets_past_four_gib_take_64_bits() {
     let mp4 = Mp4::create(&scratch("co64"), SPEC, Container::Mp4).unwrap();
     let stbl = mp4
-        .moov(&config(), 1 << 33)
+        .moov(&config(), None, 1 << 33)
         .unwrap()
         .trak
         .remove(0)
@@ -109,7 +109,11 @@ fn the_prores_entry_is_renamed_in_place() {
     let mut mp4 = Mp4::create(&path, SPEC, Container::Mov).unwrap();
     mp4.sizes = vec![10];
     let mut bytes = Vec::new();
-    encode(&mp4.moov(&DecoderConfig::ProRes, 100).unwrap(), &mut bytes).unwrap();
+    encode(
+        &mp4.moov(&DecoderConfig::ProRes, None, 100).unwrap(),
+        &mut bytes,
+    )
+    .unwrap();
     let length = bytes.len();
     assert!(rename_entry(&mut bytes, b"jpeg", b"ap4h"));
     assert_eq!(bytes.len(), length);

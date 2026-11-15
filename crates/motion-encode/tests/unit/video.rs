@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use mp4_atom::{Decode, Ftyp, Moov};
+use mp4_atom::{Decode, Ftyp, Moov, StszSamples};
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 
@@ -240,4 +240,87 @@ fn prores_writes_a_quicktime_file_with_alpha() {
     // The visual fields' depth, 32 bits for alpha, sits 74 bytes in.
     assert_eq!(&body[74..76], &[0, 32]);
     assert_eq!(stbl.stss.as_ref().unwrap().entries, vec![1, 2, 3]);
+}
+
+/// A second of a quiet tone, stereo at 48 kHz.
+fn tone() -> Soundtrack {
+    let wave: Vec<f32> = (0..48_000)
+        .map(|i| (0.2 * (std::f64::consts::TAU * 220.0 * f64::from(i) / 48_000.0).sin()) as f32)
+        .collect();
+    Soundtrack {
+        rate: 48_000,
+        channels: vec![wave.clone(), wave],
+    }
+}
+
+/// The index of a video of 30 frames with [`tone`] as its sound.
+#[cfg(target_os = "macos")]
+fn with_sound(path: &Path, codec: Codec) -> (Moov, Vec<u8>) {
+    let mut writer = VideoWriter::create(path, SPEC, codec, codec.default_quality()).unwrap();
+    writer.set_sound(&tone()).unwrap();
+    for _ in 0..30 {
+        writer.push(&[20, 20, 60, 255].repeat(48 * 32)).unwrap();
+    }
+    writer.finish().unwrap();
+    let bytes = fs::read(path).unwrap();
+    let buf = &mut bytes.as_slice();
+    Ftyp::decode(buf).unwrap();
+    (Moov::decode(buf).unwrap(), bytes)
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_quicktime_file_holds_its_sound_as_pcm_after_the_frames() {
+    let (moov, bytes) = with_sound(&scratch("pcm").join("tone.mov"), Codec::H264);
+    assert_eq!((moov.trak.len(), moov.mvhd.next_track_id), (2, 3));
+    let sound = &moov.trak[1];
+    assert_eq!(sound.mdia.hdlr.handler, b"soun".into());
+    assert_eq!(
+        (sound.mdia.mdhd.timescale, sound.mdia.mdhd.duration),
+        (48_000, 48_000)
+    );
+    // One second in the movie's ticks, as long as the 30 frames.
+    assert_eq!((sound.tkhd.duration, moov.mvhd.duration), (30_000, 30_000));
+    let stbl = &sound.mdia.minf.stbl;
+    let mp4_atom::Codec::Sowt(sowt) = &stbl.stsd.codecs[0] else {
+        panic!("16-bit PCM");
+    };
+    assert_eq!((sowt.audio.channel_count, sowt.audio.sample_size), (2, 16));
+    // The samples end the file.
+    let start = stbl.stco.as_ref().unwrap().entries[0] as usize;
+    assert_eq!(bytes.len() - start, 48_000 * 4);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn an_mp4_file_holds_aac_with_its_priming_edited_out() {
+    let (moov, bytes) = with_sound(&scratch("aac").join("tone.mp4"), Codec::H264);
+    let sound = &moov.trak[1];
+    let stbl = &sound.mdia.minf.stbl;
+    let mp4_atom::Codec::Mp4a(mp4a) = &stbl.stsd.codecs[0] else {
+        panic!("AAC");
+    };
+    let config = &mp4a.esds.es_desc.dec_config;
+    assert_eq!(
+        (config.object_type_indication, config.avg_bitrate),
+        (0x40, 192_000)
+    );
+    let elst = sound.edts.as_ref().unwrap().elst.as_ref().unwrap();
+    let edit = &elst.entries[0];
+    assert!(edit.media_time.is_some_and(|t| t > 0), "{edit:?}");
+    assert_eq!(edit.segment_duration, 30_000);
+    let StszSamples::Different { sizes } = &stbl.stsz.samples else {
+        panic!("packets of their own sizes");
+    };
+    let start = stbl.stco.as_ref().unwrap().entries[0] as usize;
+    assert_eq!(bytes.len() - start, sizes.iter().sum::<u32>() as usize);
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn an_mp4_file_without_an_aac_encoder_refuses_sound() {
+    let path = scratch("no-aac").join("tone.mp4");
+    let mut writer = VideoWriter::create(&path, SPEC, Codec::Av1, VideoQuality::Web).unwrap();
+    let refused = writer.set_sound(&tone()).unwrap_err();
+    assert!(refused.to_string().contains(".mov"), "{refused}");
 }
