@@ -188,3 +188,27 @@ fn a_name_wins_over_an_id() {
     let first = project.items[1].id.to_string();
     assert_ne!(width(&project, &comp(&first)), "300");
 }
+
+#[test]
+fn a_stored_value_outside_the_range_is_clamped_and_reported() {
+    use crate::test_support::build::{comp, layer, number, project, property, transform};
+    let title = layer(
+        1,
+        "Title",
+        vec![transform(vec![property("ADBE Opacity", number(1.5))])],
+    );
+    let import = import(
+        &project(vec![(5, "Main", comp(vec![title], 2.0))]),
+        &Options::default(),
+    )
+    .expect("a value outside the range still imports");
+    assert_eq!(import.json["layers"][0]["opacity"], serde_json::json!(1));
+    assert_eq!(import.mapping.clamped.len(), 1);
+    assert_eq!(import.mapping.clamped[0].what, "1 value outside 0..=1");
+    assert!(
+        import
+            .mapping
+            .to_string()
+            .contains("clamped into the scene's range")
+    );
+}

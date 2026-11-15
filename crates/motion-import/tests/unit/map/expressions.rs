@@ -157,3 +157,39 @@ fn controls_and_whole_sources_are_kept_in_the_report() {
         "// spin\nthisComp.layer(\"CONTROLS\").effect(\"Speed\")(\"Slider\") * time"
     );
 }
+
+#[test]
+fn what_an_expression_gives_outside_the_range_is_clamped_frame_by_frame() {
+    // 50% plus 100% a second passes 100% after half a second.
+    let import = imported(vec![expressed(
+        "ADBE Opacity",
+        number(0.5),
+        "value + time * 100",
+    )]);
+    let keys = title(&import)["anim"]["opacity"]
+        .as_array()
+        .expect("a track")
+        .clone();
+    assert!(
+        keys.iter()
+            .all(|k| k["v"].as_f64().is_some_and(|v| v <= 1.0)),
+        "{keys:?}"
+    );
+    assert_eq!(keys.last().map(|k| k["v"].clone()), Some(json!(1)));
+    assert_eq!(import.mapping.clamped.len(), 1);
+    assert_eq!(
+        import.mapping.clamped[0].what,
+        "14 frames of 20 an expression gives outside 0..=1"
+    );
+}
+
+#[test]
+fn a_constant_outside_the_range_is_clamped_to_a_still_value() {
+    let import = imported(vec![expressed("ADBE Opacity", number(0.5), "-5")]);
+    assert_eq!(title(&import)["opacity"], json!(0));
+    assert!(title(&import)["anim"].get("opacity").is_none());
+    assert_eq!(
+        import.mapping.clamped[0].what,
+        "20 frames of 20 an expression gives outside 0..=1"
+    );
+}

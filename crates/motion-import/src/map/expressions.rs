@@ -14,7 +14,7 @@ use motion_expr::fit::{Fitted, fit, fit_together};
 use motion_format::property::Target;
 
 use super::Walk;
-use super::items::Place;
+use super::items::{Place, plural, range_text};
 use super::keys::{Convert, Written, fitted};
 use super::report::{ExpressionReport, Outcome};
 use crate::bake::{Bake, Sampled, Samples};
@@ -105,6 +105,22 @@ impl<'p> Walk<'p> {
             );
             return None;
         };
+        let range = found.and_then(|t| t.prop.spec().range);
+        let (channels, clamped) = clamp_samples(channels, range, convert.factor());
+        if clamped > 0
+            && let Some(range) = range
+        {
+            self.mapping.clamped(
+                &place.at,
+                format!(
+                    "{} of {} an expression gives outside {}",
+                    plural(clamped, "frame"),
+                    samples.times.len(),
+                    range_text(range)
+                ),
+            );
+        }
+        let channels = &channels;
         let template = property.value.value_at(samples.times[0]);
         let spatial = found.is_some_and(Target::moves_in_space);
         let mut tracks = Vec::new();
@@ -255,6 +271,35 @@ fn with_text(document: &TextDocument, text: &str) -> TextDocument {
     }
     changed.lines.clear();
     changed
+}
+
+/// `channels` with every sample clamped into `range`, given in the scene's
+/// units, which are the project's times `factor`: the original clamps what
+/// an expression gives at each frame. Also how many frames were clamped.
+fn clamp_samples(
+    channels: &[Vec<f64>],
+    range: Option<(f64, f64)>,
+    factor: f64,
+) -> (std::borrow::Cow<'_, [Vec<f64>]>, usize) {
+    let Some((lo, hi)) = range.filter(|_| factor > 0.0) else {
+        return (std::borrow::Cow::Borrowed(channels), 0);
+    };
+    let (lo, hi) = (lo / factor, hi / factor);
+    let frames = channels.first().map_or(0, Vec::len);
+    let outside = |f: usize| {
+        channels
+            .iter()
+            .any(|c| c.get(f).is_some_and(|&v| v < lo || v > hi))
+    };
+    let clamped = (0..frames).filter(|&f| outside(f)).count();
+    if clamped == 0 {
+        return (std::borrow::Cow::Borrowed(channels), 0);
+    }
+    let owned = channels
+        .iter()
+        .map(|c| c.iter().map(|v| v.clamp(lo, hi)).collect())
+        .collect();
+    (std::borrow::Cow::Owned(owned), clamped)
 }
 
 /// Whether fitted channels hold one value all the time: each a constant.

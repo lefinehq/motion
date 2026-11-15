@@ -188,7 +188,30 @@ impl Walk<'_> {
                     }
                 }
                 match written(&property.value, row.convert, spatial, place.clock) {
-                    Some(written) => {
+                    Some(mut written) => {
+                        if let Some(range) = sink
+                            .registry
+                            .target(target)
+                            .and_then(|t| t.prop.spec().range)
+                        {
+                            let clamped = written.clamp(range);
+                            if clamped.count > 0 {
+                                let between = match clamped.between_keys {
+                                    true => {
+                                        "; the motion between those keys can differ, as the original clamps after it interpolates"
+                                    }
+                                    false => "",
+                                };
+                                self.mapping.clamped(
+                                    &place.at,
+                                    format!(
+                                        "{} outside {}{between}",
+                                        plural(clamped.count, "value"),
+                                        range_text(range)
+                                    ),
+                                );
+                            }
+                        }
                         let writable = match (&written, &property.value, &property.origin) {
                             _ if expression => Some(Writable::Expression),
                             (Written::Track { .. }, ..) => Some(Writable::Keyed),
@@ -575,4 +598,24 @@ fn default_value(row: &Row, place: &Place<'_>) -> Option<Value> {
             }
         }
     })
+}
+
+/// `n` and `noun`, in the plural when `n` is not one.
+pub(super) fn plural(n: usize, noun: &str) -> String {
+    match n {
+        1 => format!("1 {noun}"),
+        _ => format!("{n} {noun}s"),
+    }
+}
+
+/// A property's range as the format writes it: `0..=1`, or `0..` with no top.
+pub(super) fn range_text((lo, hi): (f64, f64)) -> String {
+    match hi {
+        f64::INFINITY => format!("{}..", motion_format::fmt_num(lo)),
+        _ => format!(
+            "{}..={}",
+            motion_format::fmt_num(lo),
+            motion_format::fmt_num(hi)
+        ),
+    }
 }

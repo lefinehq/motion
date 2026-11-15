@@ -289,3 +289,38 @@ fn a_track_names_its_first_value_and_refuses_a_foreign_one() {
         Some(Written::Value(json!(2.5)))
     );
 }
+
+#[test]
+fn clamping_a_track_says_whether_the_motion_between_keys_changes() {
+    let held = |curve: &str| Written::Track {
+        keys: json!([
+            {"t": "0s", "v": 0.5, "curve": curve},
+            {"t": "1s", "v": 5.5, "curve": "hold"},
+            {"t": "2s", "v": [0.2, -3]},
+        ]),
+        first: json!(0.5),
+    };
+    let mut holds = held("hold");
+    assert_eq!(
+        holds.clamp((0.0, 1.0)),
+        Clamped {
+            count: 2,
+            between_keys: false
+        }
+    );
+    let Written::Track { keys, .. } = &holds else {
+        unreachable!()
+    };
+    assert_eq!(keys[1]["v"], json!(1));
+    assert_eq!(keys[2]["v"], json!([0.2, 0]));
+    let mut eased = held("ease");
+    assert!(
+        eased.clamp((0.0, 1.0)).between_keys,
+        "the key after an ease"
+    );
+    let mut still = Written::Value(json!(-179));
+    assert_eq!(still.clamp((0.0, f64::INFINITY)).count, 1);
+    assert!(matches!(still, Written::Value(v) if v == json!(0)));
+    let mut inside = Written::Value(json!([0.1, 0.2]));
+    assert_eq!(inside.clamp((0.0, 1.0)), Clamped::default());
+}
