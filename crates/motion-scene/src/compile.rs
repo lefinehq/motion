@@ -221,7 +221,11 @@ fn item_node(item: &Item, fps: f64) -> ItemNode {
         .iter()
         .map(|track| Written {
             target: track.target,
-            keys: anim_keys(track, fps),
+            keys: anim_keys(
+                track,
+                &track.target.rest_of(item.rest(track.target.prop)),
+                fps,
+            ),
         })
         .collect();
     ItemNode {
@@ -342,9 +346,12 @@ fn tracks(
     // Parsing forbids `anim` on an entrance target; this wins only in code-built scenes.
     for track in &layer.anim {
         written.retain(|w| !w.target.overlaps(track.target));
+        let rest = track
+            .target
+            .rest_of(layer.rest(track.target.prop, extent, own));
         written.push(Written {
             target: track.target,
-            keys: anim_keys(track, fps),
+            keys: anim_keys(track, &rest, fps),
         });
     }
     Prop::all()
@@ -404,14 +411,15 @@ fn entrance_keys(behaviour: &Behaviour, from: Start, rest: Value, fps: f64) -> V
     ]
 }
 
-/// An `anim` track's keys with their times in frames.
-fn anim_keys(track: &AnimTrack, fps: f64) -> Vec<KeySpec> {
+/// An `anim` track's keys with their times in frames, and values written
+/// against the rest resolved against `rest`, the target's resting value.
+fn anim_keys(track: &AnimTrack, rest: &Value, fps: f64) -> Vec<KeySpec> {
     track
         .keys
         .iter()
         .map(|k| KeySpec {
             frame: k.time.to_frames(fps),
-            value: k.value.clone(),
+            value: k.value.resolve(rest),
             easing: k.easing.clone(),
             path: k.path,
         })

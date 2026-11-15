@@ -2,6 +2,7 @@
 //! the defaults.
 
 use crate::address::ID_RULE;
+use crate::anim::KeyValue;
 use crate::parse_document;
 use crate::shorthand::{Coord, Position};
 use crate::units::{Color, Size, Time};
@@ -418,13 +419,16 @@ fn object_keys_carry_a_path_and_curves_per_component() {
     let anim = &d.scene().root.layers[0].anim;
     let position = &anim[0].keys;
     assert_eq!(position[0].path, Some([[10.0, 0.0], [0.0, -10.0]]));
-    assert_eq!(position[1].value, Value::Point([100.0, 100.0]));
+    assert_eq!(
+        position[1].value,
+        KeyValue::Set(Value::Point([100.0, 100.0]))
+    );
     assert!(matches!(
         position[0].easing,
         Easing::All(Curve::Speed { .. })
     ));
     let scale = &anim[1].keys;
-    assert_eq!(scale[0].value, Value::Point([1.0, 1.0]));
+    assert_eq!(scale[0].value, KeyValue::Set(Value::Point([1.0, 1.0])));
     assert_eq!(
         scale[0].easing,
         Easing::Each(vec![Curve::named("ease-in").unwrap(), Curve::Hold])

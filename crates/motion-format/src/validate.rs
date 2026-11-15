@@ -13,8 +13,8 @@ use kurbo::Rect;
 use crate::{Diagnostic, Kind, Result};
 
 use crate::anim::{
-    AnimKey, AnimTrack, EASING_EXPECTED, Easing, KEYS_EXPECTED, PATH_EXPECTED, RANGE_EXPECTED,
-    Span, TrackLine,
+    AnimKey, AnimTrack, EASING_EXPECTED, Easing, KEYS_EXPECTED, KeyValue, PATH_EXPECTED,
+    RANGE_EXPECTED, Span, TrackLine, rest_word,
 };
 use crate::doc::{
     AnimDoc, CompDoc, CompsDoc, EasingDoc, KeyDoc, KeyTime, LayerDoc, LayersDoc, List, Number,
@@ -822,7 +822,12 @@ fn one_shape(keys: &[AnimKey]) -> Result<()> {
     let Some(first) = keys.first() else {
         return Ok(());
     };
-    match keys.iter().position(|k| !k.value.same_shape(&first.value)) {
+    // Paths have no relative form, so their keys are all set.
+    let shape = |k: &AnimKey| k.value.set().cloned();
+    match keys.iter().position(|k| match (shape(k), shape(first)) {
+        (Some(a), Some(b)) => !a.same_shape(&b),
+        _ => false,
+    }) {
         None => Ok(()),
         Some(i) => Err(Diagnostic::new(
             Kind::Invalid,
@@ -837,16 +842,23 @@ fn one_shape(keys: &[AnimKey]) -> Result<()> {
 /// range that runs forward.
 fn line(text: &str, target: Target, fps: f64) -> Result<Vec<AnimKey>> {
     let line: TrackLine = text.parse()?;
-    let from = word_value(&line.from, target)?;
-    let to = word_value(&line.to, target)?;
+    let values = line
+        .values
+        .iter()
+        .map(|(word, _)| word_value(word, target))
+        .collect::<Result<Vec<_>>>()?;
     runs_forward(line.span, fps)?;
-    Ok(line.keys(from, to))
+    Ok(line.keys(values, fps))
 }
 
-/// A value word of a string form, read as the target's type and range-checked.
-fn word_value(word: &str, target: Target) -> Result<Value> {
-    let value = Value::parse(word, target.value_type(), broadcasts(target))?;
-    in_range(value, target.prop.spec())
+/// A value word of a string form, read as the target's type and
+/// range-checked, or written against the rest.
+fn word_value(word: &str, target: Target) -> Result<KeyValue> {
+    let (ty, broadcast) = (target.value_type(), broadcasts(target));
+    if let Some(change) = rest_word(word, ty, broadcast) {
+        return change.map(KeyValue::Rest);
+    }
+    in_range(Value::parse(word, ty, broadcast)?, target.prop.spec()).map(KeyValue::Set)
 }
 
 /// Whether a lone number sets every component of the target.
@@ -911,7 +923,11 @@ fn key(doc: &KeyDoc, target: Target) -> Result<AnimKey> {
     };
     Ok(AnimKey {
         time,
-        value: typed_value(&doc.value, target).map_err(|e| e.under(doc.value_path()))?,
+        value: match &doc.value {
+            ValueDoc::Text(text) => word_value(text, target),
+            numbers => typed_value(numbers, target).map(KeyValue::Set),
+        }
+        .map_err(|e| e.under(doc.value_path()))?,
         easing: easing(doc.curve.as_ref(), target).map_err(|e| e.under(doc.curve_path()))?,
         path: doc.path.map(|path| bends(path, target)).transpose()?,
     })

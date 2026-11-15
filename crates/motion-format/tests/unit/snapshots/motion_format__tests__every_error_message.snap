@@ -91,12 +91,14 @@ expression: "report.join(\"\\n\\n\")"
 `"overrides":{"x":{}}` → a.overrides: `overrides` only applies to `comp` layers; expected `overrides` only next to `comp`
 
 ## anim
-`"x":3` → a.anim.x: invalid type: integer `3`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", or a list of keys, each [time, value, curve] or {"t":time,"v":value,"curve":curve,"path":[[out-x,out-y],[in-x,in-y]]}
+`"x":3` → a.anim.x: invalid type: integer `3`; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out" or "rest+40 -> rest @0-12f", or a list of keys, each [time, value, curve] or {"t":time,"v":value,"curve":curve,"path":[[out-x,out-y],[in-x,in-y]]}
 `"glow":"0 -> 1 @0-5f"` → a.anim.glow: unknown layer property `glow`; expected one of position, anchor, scale, rotate, opacity, x, y, anchor-x, anchor-y, scale-x, scale-y
-`"x":"0 1 @0-5f"` → a.anim.x: missing `->` after the start value in `0 1 @0-5f`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
+`"x":"0 1 @0-5f"` → a.anim.x: missing `->` after the start value in `0 1 @0-5f`; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", "0 -> 200@40% -> 150 @0-30f" or "rest+40 -> rest @0-12f"
 `"x":"0 -> 1 @5-0f"` → a.anim.x: `@5f-0f` starts after it ends; expected `@<start>-<end>` with a unit, e.g. `@0-30f`, `@0.5s-1s`
 `"x":"inf -> 1 @0-5f"` → a.anim.x: `inf` is not a number; expected a number, e.g. `0.5`
 `"x":"a -> 1 @0-5f"` → a.anim.x: `a` is not a number; expected a number, e.g. `0.5`
+`"x":"rest*x -> rest @0-5f"` → a.anim.x: `rest*x` is not a value against the rest; expected `rest`, `rest+<value>`, `rest-<value>` or `rest*<factor>`, e.g. `rest+40`, `rest+0,-40` or `rest*1.2`, on a number or a point
+`"x":[[0,"rest/2"],[5,"rest"]]` → a.anim.x[0][1]: `rest/2` is not a value against the rest; expected `rest`, `rest+<value>`, `rest-<value>` or `rest*<factor>`, e.g. `rest+40`, `rest+0,-40` or `rest*1.2`, on a number or a point
 `"scale":"1,2,3 -> 1 @0-5f"` → a.anim.scale: `1,2,3` is not a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
 `"position":"1 -> 2 @0-5f"` → a.anim.position: `1` is not a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
 `"fill":"0 -> 1 @0-5f"` → a.anim.fill: unknown layer property `fill`; expected one of position, anchor, scale, rotate, opacity, x, y, anchor-x, anchor-y, scale-x, scale-y
@@ -191,12 +193,16 @@ expression: "report.join(\"\\n\\n\")"
 `fade ease-in cubic(.2,0,0,1)` → curve given twice: `ease-in` and `cubic(.2,0,0,1)`; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>] [char|char-no-space|word|line] [stagger <time>] [first|last|center|edges|random]`, e.g. `fade-up 40px 12f ease-out @0f` or `fade-up word stagger 3f`; a curve is a name such as `ease-out`, `out-expo` or `hold`, `out-back(2)`, `steps(4)`, `spring(.3)`, or `cubic(x1,y1,x2,y2)`
 
 ## track
-`` → missing the start value in ``; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
-`0 1 @0-5f` → missing `->` after the start value in `0 1 @0-5f`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
-`0 -> 1` → missing `@<start>-<end>` after the end value in `0 -> 1`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
-`0 -> 1 2 @0-5f` → missing `@<start>-<end>` after the end value in `0 -> 1 2 @0-5f`; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
+`` → missing the start value in ``; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", "0 -> 200@40% -> 150 @0-30f" or "rest+40 -> rest @0-12f"
+`0 1 @0-5f` → missing `->` after the start value in `0 1 @0-5f`; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", "0 -> 200@40% -> 150 @0-30f" or "rest+40 -> rest @0-12f"
+`0 -> 1` → missing `@<start>-<end>` after the end value in `0 -> 1`; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", "0 -> 200@40% -> 150 @0-30f" or "rest+40 -> rest @0-12f"
+`0 -> 1 2 @0-5f` → missing `@<start>-<end>` after the end value in `0 -> 1 2 @0-5f`; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", "0 -> 200@40% -> 150 @0-30f" or "rest+40 -> rest @0-12f"
 `0 -> 1 @0-5f bouncy` → unknown curve `bouncy`; expected one of linear, hold, ease, ease-in, ease-out, ease-in-out, or <shape>-<family> (e.g. out-expo) or cubic(x1,y1,x2,y2) or speed(out,out-reach,in,in-reach) or steps(n) or spring(bounce)
-`0 -> 1 @0-5f ease ease` → unexpected `ease` after the curve; expected "<from> -> <to> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out"
+`0 -> 1 @0-5f ease ease` → unexpected `ease` after the curve; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", "0 -> 200@40% -> 150 @0-30f" or "rest+40 -> rest @0-12f"
+`0 -> 1@50% -> 2@40% -> 3 @0-10f` → `2@40%`: positions run forward, strictly between 0% and 100%, each after the one before it; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", "0 -> 200@40% -> 150 @0-30f" or "rest+40 -> rest @0-12f"
+`0@10% -> 1 @0-10f` → `0@10%`: the first value falls at the start and the last at the end, so only a value between them takes a position; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", "0 -> 200@40% -> 150 @0-30f" or "rest+40 -> rest @0-12f"
+`0 -> 1@half -> 2 @0-10f` → `1@half` is not a position; a value says where it falls as `@<n>%`; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", "0 -> 200@40% -> 150 @0-30f" or "rest+40 -> rest @0-12f"
+`0 -> 1 -> @0-10f` → missing a value after the last `->` in `0 -> 1 -> @0-10f`; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", "0 -> 200@40% -> 150 @0-30f" or "rest+40 -> rest @0-12f"
 
 ## contents
 `{"id":"a","shapes":[],"comp":"x"}` → a.comp: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg" or "pivot":true

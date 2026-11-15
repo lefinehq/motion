@@ -293,3 +293,40 @@ fn pivots_draw_nothing_and_children_follow_them() {
     // 20 px along the pivot's x axis, which points down after a quarter turn.
     assert_eq!((child.center().x, child.center().y), (100.0, 120.0));
 }
+
+#[test]
+fn a_move_from_rest_follows_the_layer_where_layout_puts_it() {
+    // The child rests on `at` in its parent's box; the text's rest is its
+    // measured box's place; the item's is the value it sets.
+    let g = graph(
+        r##"{"motion":1,"dur":"2s","fps":10,"layers":[
+        {"id":"p","rect":"400x200","at":"300 300"},
+        {"id":"c","rect":"20x20","parent":"p","at":"380 180","anim":{"y":"rest+60 -> rest @0-10f","scale":"rest*0.5 -> rest @0-10f"}},
+        {"id":"t","text":"Hi","at":"200 100","anim":{"position":[{"t":0,"v":"rest-10,40"},{"t":10,"v":"rest"}]}},
+        {"id":"s","shapes":[{"rect":[30,10],"anim":{"width":"rest*2 -> rest @0-10f"}},{"fill":"#FFFFFF"}]}]}"##,
+    );
+    let at = |frame| evaluate(&g, frame);
+    let (start, end) = (at(0.0), at(10.0));
+    assert_eq!(y(&start.nodes[1]) - y(&end.nodes[1]), 60.0);
+    assert_eq!(start.nodes[1].point(Prop::SCALE), [0.5, 0.5]);
+    assert_eq!(end.nodes[1].point(Prop::SCALE), [1.0, 1.0]);
+    let (t0, t1) = (
+        start.nodes[2].point(Prop::POSITION),
+        end.nodes[2].point(Prop::POSITION),
+    );
+    assert_eq!([t1[0] - t0[0], t1[1] - t0[1]], [10.0, 40.0]);
+    let width = |state: &FrameState| match &state.nodes[3].content {
+        ContentState::Shapes(draws) => kurbo::Shape::bounding_box(&draws[0].outline).width(),
+        other => panic!("not shapes: {other:?}"),
+    };
+    assert_eq!((width(&start), width(&end)), (60.0, 30.0));
+    // Moving the parent's anchor point moves the whole motion with it.
+    let moved = graph(
+        r##"{"motion":1,"dur":"2s","fps":10,"layers":[
+        {"id":"p","rect":"400x200","at":"300 300"},
+        {"id":"c","rect":"20x20","parent":"p","at":"20 20","anim":{"y":"rest+60 -> rest @0-10f"}}]}"##,
+    );
+    let shift = y(&evaluate(&moved, 0.0).nodes[1]) - y(&evaluate(&moved, 10.0).nodes[1]);
+    assert_eq!(shift, 60.0);
+    assert_ne!(y(&evaluate(&moved, 10.0).nodes[1]), y(&end.nodes[1]));
+}

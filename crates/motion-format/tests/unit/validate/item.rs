@@ -56,7 +56,15 @@ fn paths_animate_with_key_lists_of_one_shape() {
     let track = &items[0].anim[0];
     assert_eq!(track.target.prop, props::PATH_PATH);
     assert_eq!(track.keys.len(), 2);
-    assert!(track.keys[1].value.as_path().unwrap().closed());
+    assert!(
+        track.keys[1]
+            .value
+            .set()
+            .unwrap()
+            .as_path()
+            .unwrap()
+            .closed()
+    );
 }
 
 #[test]
