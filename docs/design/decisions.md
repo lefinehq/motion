@@ -536,3 +536,14 @@ D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that t
   - More samples for faster layers, as the original's adaptive limit does, keeps fast layers smooth without paying for slow ones.
   - Drawing a composition or an effect stack once per frame keeps the cost of nested compositions and heavy effects from multiplying by the samples at each level.
 - **Not now:** frame blending, and motion blur of masks separately from their layer.
+
+### D58. 2.5D layers are planes projected through a camera
+
+- **Decision:** a layer with `"3d":true` is a flat plane in its composition's 3D space. It has depth, X and Y rotation and an orientation besides the 2D transform, and is seen through the composition's camera: the topmost `camera` layer shown, or a default with a 39.6° view. Its content, masks and effects are drawn flat in its own coordinates. The result is then laid onto the canvas through a projective matrix, sampled trilinearly from a mip chain. Pixels whose ray meets the plane behind the camera are left out. Adjacent 3D layers draw back to front by the camera-space depth of their centres; a flat layer between them splits them into separate runs. Orientation keys interpolate spherically. The matrices come from `glam`.
+- **Why:**
+  - It is the model of D1's first step, and the one the projects the import reads use, so their 3D layers and cameras carry over as data.
+  - Drawing in the layer's own space before projecting keeps effects, masks and text exactly as they are for flat layers. Only the last step, laying the buffer down, changes.
+  - Inverse mapping with a behind-camera test cuts planes that cross the camera correctly without clipping polygons. Mip-mapped sampling keeps planes seen edge-on from aliasing.
+  - Depth sorting by layer, with flat layers splitting the runs, is the order the classic renderer of those projects uses. Splitting planes that intersect would need geometry, and no sample needs it yet.
+  - A tested maths crate for 4×4 matrices and quaternions beats our own.
+- **Not now:** lights, shadows, materials, extrusion, depth of field, intersecting planes and per-character 3D text.
