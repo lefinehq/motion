@@ -45,6 +45,18 @@ fn unsafe_area(
     violation(Severity::Warning, Code::Unsafe, id, frames, amount_px, fix)
 }
 
+/// A move at one speed over `frames`: a peak no higher than its mean.
+fn linear(id: &str, frames: RangeInclusive<u32>) -> Violation {
+    Violation {
+        measure: Measure::Below {
+            value: 1.0,
+            limit: 1.4,
+            unit: Unit::Number,
+        },
+        ..violation(Severity::Warning, Code::Easing, id, frames, 0.0, None)
+    }
+}
+
 fn violation(
     severity: Severity,
     code: Code,
@@ -82,8 +94,9 @@ fn has_hint(report: &Report) -> bool {
 #[rstest]
 #[case::clean_scene_reports_ok_count(
     include_str!("../../../../examples/launch.json"),
-    // Bounds on both layers, a judder pass on each entrance, a text hold.
-    report(vec![], 7)
+    // Bounds on both layers, a judder and an easing pass on each entrance,
+    // a text hold, no crowd.
+    report(vec![], 10)
 )]
 #[case::offscreen_reports_range_amount_and_fix(
     r#"{"motion":1,"dur":"5s","layers":[{"id":"card","rect":"300x400","at":"center 1000"}]}"#,
@@ -102,7 +115,8 @@ fn has_hint(report: &Report) -> bool {
 // hint on x would never converge.
 #[case::absolute_preset_start_gets_no_hint_on_that_axis(
     r#"{"motion":1,"dur":"1s","presets":{"swoop":{"x":1900}},"layers":[{"id":"a","rect":"300x100","at":"center center","in":"swoop 12f linear"}]}"#,
-    // It swoops in from x 1900 in 12 frames: about 79 px a frame.
+    // It swoops in from x 1900 in 12 frames at one speed: about 79 px a
+    // frame.
     report(
         vec![
             offscreen("a", 0..=1, 130.0, None),
@@ -121,8 +135,10 @@ fn has_hint(report: &Report) -> bool {
                     Some("a mblur=true"),
                 )
             },
+            linear("a", 0..=12),
         ],
-        0,
+        // The crowd passes.
+        1,
     )
 )]
 #[case::empty_scene_is_ok_zero(r#"{"motion":1,"dur":"1s","layers":[]}"#, report(vec![], 0))]
@@ -134,8 +150,15 @@ fn reports(#[case] json: &str, #[case] expected: Report) {
 #[rstest]
 #[case::entrance_overshoot_is_caught_only_while_visible(
     r#"{"id":"card","rect":"300x100","at":"center 1000","in":"fade-up 60px 12f linear @0f"}"#,
-    // The 60 px rise takes 5 px a frame: a judder pass.
-    report(vec![offscreen("card", 1..=5, 25.0, Some(r#"card at="center 921""#))], 1)
+    // The 60 px rise takes 5 px a frame, at one speed: a judder pass, an
+    // easing finding and a crowd pass.
+    report(
+        vec![
+            offscreen("card", 1..=5, 25.0, Some(r#"card at="center 921""#)),
+            linear("card", 1..=12),
+        ],
+        2,
+    )
 )]
 #[case::left_edge_fix_adds_and_resolves_only_the_moving_axis(
     r#"{"id":"a","rect":"200x100","at":"50 center"}"#,
@@ -250,7 +273,12 @@ fn run_shows_the_worst_overshoot_not_the_first() {
     let found = one(
         r#"{"id":"card","rect":"300x100","at":"center 1050","in":"fade-down 60px 12f linear @0f"}"#,
     );
-    let [run] = &found.violations[..] else {
+    let runs: Vec<&Violation> = found
+        .violations
+        .iter()
+        .filter(|v| v.code == Code::Offscreen)
+        .collect();
+    let [run] = runs[..] else {
         panic!("one run: {found:?}");
     };
     assert_eq!(
@@ -424,8 +452,12 @@ fn a_fast_move_judders_until_motion_blur_is_on() {
         limit: 11.0,
         unit: Unit::PxPerFrame,
     };
+    let judders: Vec<&Violation> = craft(&found)
+        .into_iter()
+        .filter(|v| v.code == Code::Judder)
+        .collect();
     assert_eq!(
-        craft(&found),
+        judders,
         [&violation(
             Severity::Warning,
             Code::Judder,
@@ -444,7 +476,7 @@ fn a_fast_move_judders_until_motion_blur_is_on() {
     let blurred = one(&format!(
         r#"{{"id":"card","rect":"100x100","mblur":true,{fast}}}"#
     ));
-    assert_eq!(craft(&blurred), Vec::<&Violation>::new());
+    assert!(craft(&blurred).iter().all(|v| v.code != Code::Judder));
 }
 
 #[test]
@@ -469,4 +501,59 @@ fn text_shown_too_briefly_is_found_with_its_reading_time() {
     );
     let long_enough = one(r#"{"id":"title","text":"Launch week"}"#);
     assert_eq!(craft(&long_enough), Vec::<&Violation>::new());
+}
+
+#[test]
+fn a_move_at_one_speed_is_found_and_an_eased_one_passes() {
+    let linear = one(r#"{"id":"card","rect":"100x100","anim":{"x":"300 -> 900 @0-20f"}}"#);
+    let found: Vec<(Code, Measure)> = craft(&linear).iter().map(|v| (v.code, v.measure)).collect();
+    assert!(
+        found.contains(&(
+            Code::Easing,
+            Measure::Below {
+                value: 1.0,
+                limit: 1.4,
+                unit: Unit::Number
+            }
+        )),
+        "{linear}"
+    );
+    let eased = one(r#"{"id":"card","rect":"100x100","anim":{"x":"300 -> 900 @0-20f out-cubic"}}"#);
+    assert!(
+        craft(&eased).iter().all(|v| v.code != Code::Easing),
+        "{eased}"
+    );
+}
+
+#[test]
+fn five_layers_moving_at_once_crowd_the_scene() {
+    let layer = |i: usize| {
+        format!(
+            r#"{{"id":"l{i}","rect":"50x50","at":"200 {}","anim":{{"x":"200 -> 400 @0-20f out-cubic"}}}}"#,
+            150 + i * 150
+        )
+    };
+    let five = (0..5).map(layer).collect::<Vec<_>>().join(",");
+    let found = check_json(&format!(r#"{{"motion":1,"dur":"1s","layers":[{five}]}}"#));
+    let crowds: Vec<&Violation> = craft(&found)
+        .into_iter()
+        .filter(|v| v.code == Code::Crowd)
+        .collect();
+    let [crowd] = crowds[..] else {
+        panic!("one crowd: {found}");
+    };
+    assert_eq!(
+        (crowd.address.to_string(), crowd.measure),
+        (
+            "scene".into(),
+            Measure::Above {
+                value: 5.0,
+                limit: 4.0,
+                unit: Unit::Number
+            }
+        )
+    );
+    let four = (0..4).map(layer).collect::<Vec<_>>().join(",");
+    let calm = check_json(&format!(r#"{{"motion":1,"dur":"1s","layers":[{four}]}}"#));
+    assert!(craft(&calm).iter().all(|v| v.code != Code::Crowd), "{calm}");
 }

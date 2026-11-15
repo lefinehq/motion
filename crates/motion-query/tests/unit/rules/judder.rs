@@ -97,12 +97,12 @@ fn the_fix_turns_motion_blur_on_where_the_shutter_is_open() {
     let address: Address = "card".parse().unwrap();
     let (node, comp) = graph.node_at(&["card"]).unwrap();
     assert_eq!(
-        fix(&address, node, comp).as_deref(),
+        fix(&address, None, node, comp).as_deref(),
         Some("card mblur=true")
     );
 
     scene.root.shutter = "0".parse().unwrap();
     let closed = motion_scene::compile(&scene, &mut typesetter).unwrap();
     let (node, comp) = closed.node_at(&["card"]).unwrap();
-    assert_eq!(fix(&address, node, comp), None);
+    assert_eq!(fix(&address, None, node, comp), None);
 }

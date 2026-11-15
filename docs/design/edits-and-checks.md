@@ -159,17 +159,21 @@ Analytic checks are computed directly from the scene, for every frame. Nothing i
 - **Colour:** text without enough contrast against what is behind it.
 - **Assets:** missing fonts or files.
 
-**Built so far:** `offscreen` (an error), `unsafe`, and the first craft rules of [D59](decisions.md#d59-craft-lint-measures-motion-from-the-scene-and-reports-numbers), `judder` and `text_hold` (warnings). Each finding is one line: severity, rule, layer, frames, then what was measured. A layout rule prints how far the layer leaves its area, `+12px`. A craft rule prints the worst value with its unit, then the limit it misses, `24px/f >11` or `0.4s <1.3`. A fix follows when one edit clears it, and the last line counts the rules that ran and found nothing:
+**Built so far:** `offscreen` (an error), `unsafe`, and the craft rules of [D59](decisions.md#d59-craft-lint-measures-motion-from-the-scene-and-reports-numbers) that read the scene, `judder`, `text_hold`, `easing` and `crowd` (warnings). Each finding is one line: severity, rule, layer, frames, then what was measured. A layout rule prints how far the layer leaves its area, `+12px`. A craft rule prints the worst value with its unit, then the limit it misses, `24px/f >11`, `0.4s <1.3` or `6 >4`. A fix follows when one edit clears it, and the last line counts the rules that ran and found nothing:
 
 ```
 E offscreen card 0-12f +40px; fix: card at="center 980"
 W judder badge 1-10f 150px/f >11; fix: badge mblur=true
 W text_hold title 0-9f 0.3s <0.9
+W easing card 0-20f 1 <1.4
+W crowd scene 4-18f 5 >4
 OK 12
 ```
 
 - **`judder`:** a layer that moves on its own steps farther in one frame than 11 px on a 1080-px-tall canvas (scaled by the canvas's height). Its own box's corners are measured on the canvas, and a layer moved only by its parent or composition is left to that one. A layer with `mblur` under an open shutter is smooth, so it is skipped, and turning `mblur` on is the fix.
 - **`text_hold`:** a text layer stays readable (shown, at least 90% opaque, moving no faster than the judder limit) for less than its characters at 20 a second, and never less than 5/6 s.
+- **`easing`:** a move at one speed. A move is a run of at least 6 frames in which a layer's own transform carries the centre of its box; its peak speed over its mean speed is at least 1.4 when it eases (constant speed is 1). A drift slower than 2 px a frame is left alone. No fix is printed yet, since an edit cannot set a key's curve.
+- **`crowd`:** more than 4 layers moving on their own at once, each faster than 2 px a frame. It is the scene's, printed on `scene`, and counted only once something moves. No fix: which layers to hold back is a choice.
 
 Placement checks use the **transformed bounding box**: the layer's size times `scale`, turned by `rotate`, at every frame. A card that is on screen at rest but swings out while it rotates is reported.
 

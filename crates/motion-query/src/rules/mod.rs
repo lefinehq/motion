@@ -16,12 +16,14 @@
 //! [D59]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d59-craft-lint-measures-motion-from-the-scene-and-reports-numbers
 
 mod bounds;
+pub(crate) mod crowd;
+mod easing;
 mod judder;
 mod text_hold;
 
 use crate::report::{Code, Measure, Severity};
 use kurbo::{Affine, Point, Rect, Vec2};
-use motion_format::Address;
+use motion_format::{Address, Layer};
 use motion_scene::{CompGraph, Node, SceneGraph, Visit};
 
 /// A rule's finding on one frame.
@@ -96,6 +98,12 @@ impl Sample {
             .fold(0.0, f64::max)
     }
 
+    /// The middle of its own box on the canvas.
+    pub fn centre(&self) -> Point {
+        let [a, _, c, _] = self.corners;
+        a.midpoint(c)
+    }
+
     /// Whether it moves on its own from `before`, not only with what holds it.
     pub fn moves_from(&self, before: &Sample) -> bool {
         self.local
@@ -130,6 +138,40 @@ pub(crate) enum Reads {
         /// The finding on a stretch of this many frames, if any.
         judge: fn(u32, &Sample, &SceneGraph) -> Option<Finding>,
     },
+    /// Moves: runs of steps in which `speed` is some, each judged once it
+    /// ends.
+    Moves {
+        /// How fast the layer moves on its own over the step, in px of the
+        /// canvas per frame, or `None` when it does not.
+        speed: fn(&Sample, &Sample) -> Option<f64>,
+        /// What a whole move comes to.
+        judge: fn(&Move, &SceneGraph) -> Measured,
+    },
+}
+
+/// One move of a layer: consecutive steps it takes on its own.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Move {
+    /// The frame it starts from, the one before its first step.
+    pub first: u32,
+    /// The frame its last step ends on.
+    pub last: u32,
+    /// Its speeds added up, one per step.
+    pub total: f64,
+    /// Its fastest step.
+    pub peak: f64,
+}
+
+impl Move {
+    /// How many steps it takes.
+    pub fn steps(&self) -> u32 {
+        self.last - self.first
+    }
+
+    /// Its mean speed per step.
+    pub fn mean(&self) -> f64 {
+        self.total / f64::from(self.steps())
+    }
 }
 
 /// A craft rule ([D59]): it measures a layer's motion over its frames and
@@ -145,18 +187,24 @@ pub(crate) struct Craft {
     pub reads: Reads,
     /// How the worst finding of a run prints.
     pub measure: fn(Finding) -> Measure,
-    /// The edit that clears its findings on the layer at the address, which
-    /// the node draws in the composition, when one edit can.
-    pub fix: fn(&Address, &Node, &CompGraph) -> Option<String>,
+    /// The edit that clears its findings on the layer at the address, as the
+    /// scene writes it and the node draws it in the composition, when one
+    /// edit can.
+    pub fix: fn(&Address, Option<&Layer>, &Node, &CompGraph) -> Option<String>,
 }
 
 /// Every craft rule, in report order, after [`RULES`].
-pub(crate) const CRAFT: &[Craft] = &[judder::JUDDER, text_hold::TEXT_HOLD];
+pub(crate) const CRAFT: &[Craft] = &[judder::JUDDER, easing::EASING, text_hold::TEXT_HOLD];
 
 /// The most a layer may move in one frame, in px of the canvas, before the
 /// eye sees it jump: 11 px on a 1080-px-tall canvas, scaled by its height.
 pub(crate) fn judder_limit(graph: &SceneGraph) -> f64 {
-    11.0 * graph.root.height / 1080.0
+    11.0 * px(graph)
+}
+
+/// One px of a 1080-px-tall canvas, in px of this one.
+pub(crate) fn px(graph: &SceneGraph) -> f64 {
+    graph.root.height / 1080.0
 }
 
 /// Float noise below this many pixels is not an overshoot.

@@ -1,11 +1,13 @@
 //! The `check` query: every rule over every frame, with consecutive failing frames
 //! merged into one [`Violation`] so the report stays short.
 
-use crate::report::{Code, Measure, Report, Violation};
+use crate::report::{Code, Measure, Report, Severity, Violation};
 use crate::rules::{
-    CRAFT, Craft, EPSILON, Finding, Measured, Overshoot, RULES, Reads, Rule, Sample, shift, visible,
+    CRAFT, Craft, EPSILON, Finding, Measured, Move, Overshoot, RULES, Reads, Rule, Sample, crowd,
+    shift, visible,
 };
 use kurbo::{Affine, Point, Rect, Vec2};
+use motion_format::address::SCENE;
 use motion_format::key::AT;
 use motion_format::shorthand::{Coord, Position};
 use motion_format::{Address, Layer, Scene};
@@ -43,10 +45,18 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
             LayerScan::new(blurred)
         })
         .collect();
+    // How many layers catch the eye at each frame, for `crowd`.
+    let mut crowds: Vec<Run> = Vec::new();
+    let mut anything_moved = false;
     for frame in 0..frame_count {
         let state = evaluate(graph, f64::from(frame));
+        let mut movers = 0;
         for visit in walk(graph, &state) {
-            scans[visit.index].observe(frame, &visit, graph);
+            movers += usize::from(scans[visit.index].observe(frame, &visit, graph));
+        }
+        anything_moved |= movers > 0;
+        if let Some(found) = crowd::judge(movers) {
+            add(&mut crowds, frame, found);
         }
     }
 
@@ -61,6 +71,26 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
         let layer = scene.layer(&address.layers);
         let placed = layer.zip(graph.node_at(ids));
         rules_run += scan.finish(&address, placed, graph, &mut report);
+    }
+    // The crowd is the scene's: one rule over the whole clip, measured
+    // once something moves.
+    if anything_moved {
+        rules_run += 1;
+        if crowds.is_empty() {
+            report.passed += 1;
+        }
+        let scene: Address = SCENE.parse().expect("the scene's address");
+        report
+            .violations
+            .extend(crowds.into_iter().map(|run| Violation {
+                severity: Severity::Warning,
+                code: Code::Crowd,
+                address: scene.clone(),
+                first_frame: run.first,
+                last_frame: run.last,
+                measure: crowd::measure(run.worst),
+                fix: None,
+            }));
     }
     Span::current()
         .record("rules_run", rules_run)
@@ -95,6 +125,8 @@ struct CraftScan {
     /// The stretch now open, for a stretch rule: its first sample and its
     /// last frame.
     open: Option<(Sample, u32)>,
+    /// The move now open, for a move rule.
+    moving: Option<Move>,
     /// Whether it measured anything: a step between two shown frames, or a
     /// whole stretch.
     ran: bool,
@@ -130,6 +162,55 @@ impl CraftScan {
                     None => self.open = Some((now.clone(), now.frame)),
                 }
             }
+            Reads::Moves { speed, judge } => {
+                let Some(fast) = before.and_then(|b| speed(b, now)) else {
+                    self.stop(judge, graph);
+                    return;
+                };
+                match &mut self.moving {
+                    Some(going) => {
+                        going.last = now.frame;
+                        going.total += fast;
+                        going.peak = going.peak.max(fast);
+                    }
+                    None => {
+                        self.moving = Some(Move {
+                            first: now.frame - 1,
+                            last: now.frame,
+                            total: fast,
+                            peak: fast,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Judges the open move, if any, and ends it.
+    fn stop(&mut self, judge: fn(&Move, &SceneGraph) -> Measured, graph: &SceneGraph) {
+        let Some(going) = self.moving.take() else {
+            return;
+        };
+        match judge(&going, graph) {
+            Measured::Skipped => {}
+            Measured::Passed => self.ran = true,
+            Measured::Found(found) => {
+                self.ran = true;
+                self.runs.push(Run {
+                    first: going.first,
+                    last: going.last,
+                    worst: found,
+                });
+            }
+        }
+    }
+
+    /// Ends whatever is still open once the frames run out.
+    fn end(&mut self, rule: &Craft, graph: &SceneGraph) {
+        match rule.reads {
+            Reads::Step(_) => {}
+            Reads::Stretch { judge, .. } => self.close(judge, graph),
+            Reads::Moves { judge, .. } => self.stop(judge, graph),
         }
     }
 
@@ -195,19 +276,29 @@ impl LayerScan {
         }
     }
 
-    /// Feeds the layer's state at `frame` to every rule and to the sweep.
-    fn observe(&mut self, frame: u32, visit: &Visit<'_>, graph: &SceneGraph) {
-        for (runs, rule) in self.runs.iter_mut().zip(RULES) {
-            if let Some(found) = (rule.evaluate)(visit, graph) {
-                runs.add(frame, found);
-            }
-        }
+    /// Feeds the layer's state at `frame` to every rule and to the sweep, and
+    /// says whether it catches the eye over the step to it.
+    fn observe(&mut self, frame: u32, visit: &Visit<'_>, graph: &SceneGraph) -> bool {
+        self.layout(frame, visit, graph);
         let now = self.sample(frame, visit);
         let before = self.previous.take().filter(|b| b.frame + 1 == frame);
         for (scan, rule) in self.craft.iter_mut().zip(CRAFT) {
             scan.observe(rule, &now, before.as_ref(), graph);
         }
+        let catches = before
+            .as_ref()
+            .is_some_and(|b| crowd::catches_the_eye(b, &now, graph));
         self.previous = Some(now);
+        catches
+    }
+
+    /// Feeds the layer's state at `frame` to the layout rules and the sweep.
+    fn layout(&mut self, frame: u32, visit: &Visit<'_>, graph: &SceneGraph) {
+        for (runs, rule) in self.runs.iter_mut().zip(RULES) {
+            if let Some(found) = (rule.evaluate)(visit, graph) {
+                runs.add(frame, found);
+            }
+        }
         if let Some(b) = visit.drawn().filter(|_| visible(visit)) {
             // Its parents' transform is its own world transform without its local one.
             let parent = visit.transform * local_transform(&visit.node.values).inverse();
@@ -274,9 +365,7 @@ impl LayerScan {
             report.violations.extend(violations);
         }
         for (rule, mut scan) in CRAFT.iter().zip(self.craft) {
-            if let Reads::Stretch { judge, .. } = rule.reads {
-                scan.close(judge, graph);
-            }
+            scan.end(rule, graph);
             if !scan.ran {
                 continue;
             }
@@ -285,7 +374,8 @@ impl LayerScan {
                 report.passed += 1;
                 continue;
             }
-            let fix = placed.and_then(|(_, (node, comp))| (rule.fix)(address, node, comp));
+            let fix = placed
+                .and_then(|(layer, (node, comp))| (rule.fix)(address, Some(layer), node, comp));
             report
                 .violations
                 .extend(scan.runs.into_iter().map(|run| Violation {

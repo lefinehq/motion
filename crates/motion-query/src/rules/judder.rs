@@ -3,8 +3,8 @@
 
 use super::{Craft, Finding, Measured, Reads, Sample, judder_limit};
 use crate::report::{Code, Measure, Severity, Unit};
-use motion_format::Address;
 use motion_format::key::MBLUR;
+use motion_format::{Address, Layer};
 use motion_scene::{CompGraph, Node, SceneGraph};
 
 /// A layer that moves on its own should not step farther than the limit in
@@ -36,7 +36,7 @@ fn step(before: &Sample, now: &Sample, graph: &SceneGraph) -> Measured {
 }
 
 /// Turning motion blur on, where its composition's shutter is open.
-fn fix(address: &Address, node: &Node, comp: &CompGraph) -> Option<String> {
+fn fix(address: &Address, _: Option<&Layer>, node: &Node, comp: &CompGraph) -> Option<String> {
     (!node.mblur && comp.shutter.open()).then(|| format!("{address} {MBLUR}=true"))
 }
 

@@ -4,7 +4,7 @@
 
 use super::{Craft, Finding, Reads, Sample, judder_limit};
 use crate::report::{Code, Measure, Severity, Unit};
-use motion_format::Address;
+use motion_format::{Address, Layer};
 use motion_scene::{CompGraph, Node, SceneGraph};
 
 /// Characters read in a second.
@@ -49,7 +49,7 @@ fn judge(frames: u32, first: &Sample, graph: &SceneGraph) -> Option<Finding> {
 
 /// Which span would hold it long enough depends on what follows it, so no
 /// single edit is offered.
-fn fix(_: &Address, _: &Node, _: &CompGraph) -> Option<String> {
+fn fix(_: &Address, _: Option<&Layer>, _: &Node, _: &CompGraph) -> Option<String> {
     None
 }
 
