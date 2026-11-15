@@ -53,7 +53,7 @@ Every layer has an `id`: lowercase letters, digits, `-` and `_`, starting with a
 |---|---|
 | `text` | Text, with full shaping for any script |
 | `rect` | A rectangle the size of its box, with an optional corner radius (`"300x100 r12"`) |
-| `shapes` | Shape items: groups, rectangles, ellipses and free paths, drawn by fills and strokes (see [Shapes](#shapes-masks-effects-and-compositions)) |
+| `shapes` | Shape items: groups, rectangles, ellipses, stars and polygons, and free paths, drawn by fills and strokes (see [Shapes](#shapes-masks-effects-and-compositions)) |
 | `svg` | An SVG file as shapes |
 | `image` | A PNG or JPEG file stretched over the layer's `box` (see [Images](#images)) |
 | `video` | A video clip played in the layer's own time and stretched over its `box` (see [Videos](#videos)) |
@@ -186,12 +186,15 @@ Each kind lists its properties in `crates/motion-format/src/item.rs`; this table
 | `group` | its items | `position`, `anchor`, `scale`, `rotate`, `opacity` | |
 | `rect` | `size` | `size`, `position`, `round` | |
 | `ellipse` | `size` | `size`, `position` | |
+| `star` | `points` | `points`, `position`, `rotate`, `outer-radius`, `inner-radius`, `outer-roundness`, `inner-roundness` | `type`: `star`, `polygon`; `direction`: `clockwise`, `counterclockwise` |
 | `path` | `path` | `path` | |
 | `fill` | `color` | `color`, `opacity` | `rule`: `nonzero`, `evenodd` |
 | `stroke` | `color` | `color`, `opacity`, `width`, `miter` | `cap`: `butt`, `round`, `square`; `join`: `miter`, `round`, `bevel` |
 | `trim` | `end` | `end`, `start`, `offset` | `mode`: `each`, `joined` |
 
 `size` splits into `width` and `height`, and `position` into `x` and `y`, for tracks. A rectangle's `round` is capped at half its shorter side. A `path` is SVG path data with absolute `M`, `L`, `C` and `Z` (`"M0,0 C40,0 80,40 80,80 Z"`), and, as in SVG, `""` is the path with no vertex, which draws nothing; a track on it uses a key list, and every key keeps the same number of vertices and the same closure, so the outline moves vertex by vertex.
+
+A `star` puts its corners at equal angles around `position`, the first straight up from it, turned clockwise by `rotate` degrees; its outline runs from there clockwise, or the other way round with `"direction":"counterclockwise"`. A `star` (the default `type`) alternates `points` points `outer-radius` px out with as many inner corners `inner-radius` px out; a `polygon` has `points` corners `outer-radius` px out, and no inner ones. `points` runs from 0 to 100, and only its whole part counts: 4.9 draws four. A roundness gives each corner of its circle two handles along that circle, one each way, as long as the roundness times a quarter of the arc between two neighbouring points, `2π r / (4 points)`; 0 is sharp, with straight sides between sharp corners, and a negative roundness turns the handles back so the sides loop. `{"star":5,"outer-radius":60,"inner-radius":25}` is a five-pointed star, `{"star":6,"type":"polygon","outer-radius":40,"outer-roundness":0.3}` a softened hexagon.
 
 A `trim` keeps the stretch from `start` to `end`, shares of the length from 0 to 1 (`{"trim":0.5}` keeps the first half), swapped if `start` is after `end`. `offset` moves the stretch along in degrees, 360 once around; a stretch that runs past the end goes on around a closed outline as one line and continues an open one as a second piece. `each` cuts every outline the same way, `joined` cuts them as one line in order. Equal `start` and `end` draw nothing, not even a cap. A cut closed outline is open: a stroke ends in its caps, and a fill closes it with a straight line. Lengths are arc lengths in the space each outline sits in.
 

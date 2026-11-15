@@ -767,3 +767,68 @@ fn motion_blur_follows_the_switches_and_the_composition_keeps_its_shutter() {
         off.mapping.unsupported
     );
 }
+
+#[test]
+fn a_star_maps_its_rows_settings_and_defaults_and_reports_an_unknown_direction() {
+    use crate::model::{Child, LayerKind};
+    use crate::test_support::build::{comp, group, layer, number, point, project, property};
+    let star = |properties: Vec<(&str, crate::model::Stream)>| {
+        Child::Group(group(
+            "ADBE Vector Shape - Star",
+            properties
+                .into_iter()
+                .map(|(name, value)| Child::Property(property(name, value)))
+                .collect(),
+        ))
+    };
+    let mut shape = layer(1, "Shape", vec![]);
+    shape.kind = LayerKind::Shape;
+    shape.properties.children = vec![Child::Group(group(
+        "ADBE Root Vectors Group",
+        vec![
+            star(vec![
+                ("ADBE Vector Star Type", number(2.0)),
+                ("ADBE Vector Star Points", number(6.0)),
+                ("ADBE Vector Star Position", point(3.0, -4.0)),
+                ("ADBE Vector Star Rotation", number(30.0)),
+                ("ADBE Vector Star Inner Radius", number(20.0)),
+                ("ADBE Vector Star Outer Radius", number(80.0)),
+                ("ADBE Vector Star Inner Roundess", number(10.0)),
+                ("ADBE Vector Star Outer Roundess", number(67.0)),
+                ("ADBE Vector Shape Direction", number(3.0)),
+            ]),
+            star(vec![]),
+            star(vec![("ADBE Vector Shape Direction", number(2.0))]),
+            Child::Group(group("ADBE Vector Graphic - Fill", vec![])),
+        ],
+    ))];
+    let import = import(
+        &project(vec![(2, "Main", comp(vec![shape], 2.0))]),
+        &Options::default(),
+    )
+    .unwrap();
+    let shapes = &import.json["layers"][0]["shapes"];
+    assert_eq!(
+        shapes[0],
+        serde_json::json!({
+            "star": 6, "type": "polygon", "position": [3, -4], "rotate": 30,
+            "inner-radius": 20, "outer-radius": 80, "inner-roundness": 0.1,
+            "outer-roundness": 0.67, "direction": "counterclockwise"
+        })
+    );
+    // Left out, a star is the original's default: five points, 100 and 50 px.
+    assert_eq!(shapes[1], serde_json::json!({ "star": 5 }));
+    let found: Vec<(&str, &str)> = import
+        .mapping
+        .unsupported
+        .iter()
+        .map(|f| (f.at.as_str(), f.what.as_str()))
+        .collect();
+    assert_eq!(
+        found,
+        [(
+            "Main/Shape/ADBE Root Vectors Group/ADBE Vector Shape - Star/ADBE Vector Shape Direction",
+            "a `direction` the scene does not have"
+        )]
+    );
+}

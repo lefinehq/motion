@@ -24,6 +24,11 @@ use rstest::rstest;
 // Rects with rounded corners, both fill rules, a stroke under a squash, caps,
 // joins and miters, and opacity on paints, groups and layers.
 #[case::shapes("shapes", 0)]
+// Stars and polygons: a star filled and stroked, one with rounded points and
+// inner corners, a rounded hexagon stroked, a rounded square, a star whose
+// negative roundness loops its points, and two polygons cut to 40 % of their
+// outline, one each way round from the top.
+#[case::stars("stars", 0)]
 // Lines rising and fading in one at a time, half way: fill under a stroke,
 // a line half faded, glyphs turned, scaled and recoloured one by one.
 #[case::text_animator_half_way("text_animator", 10)]

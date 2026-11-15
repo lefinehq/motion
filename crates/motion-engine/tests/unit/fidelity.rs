@@ -87,35 +87,28 @@ fn a_sample_measured_against_its_own_frames_has_no_error() {
         settled: Some(1.0),
         excluded: None,
     };
-    // The reference: the imported scene itself, drawn every second.
+    // The reference: the imported scene itself, drawn every two seconds,
+    // as a sample at half a frame a second compares it.
     let import = import_scene(STAR, &Options::default(), None).unwrap();
     let session: Session = write_document(&import.json).parse().unwrap();
+    let fps = import.json["fps"].as_f64().unwrap();
     fs::create_dir_all(&first.reference).unwrap();
-    for (i, frame) in [0.0, 60.0, 120.0].iter().enumerate() {
+    for (i, frame) in [0.0, 2.0 * fps, 4.0 * fps].iter().enumerate() {
         let png = session.render(*frame).unwrap().to_png().unwrap();
         fs::write(first.reference.join(format!("f{i}.png")), png).unwrap();
     }
     let sample = Sample { fps: 0.5, ..first };
     let measure = measure(&sample, &work, true).unwrap();
-    assert_eq!(
-        measure.unsupported.values().sum::<usize>(),
-        1,
-        "{measure:?}"
-    );
+    assert!(measure.unsupported.is_empty(), "{measure:?}");
     assert_eq!((measure.texts, measure.text_worst), (0, Some(0.0)));
     assert_eq!(measure.all.frames, 3);
     assert_eq!(measure.all.union_failing, 0.0);
     assert_eq!(measure.all.content_failing, Some(0.0));
     assert_eq!(measure.all.frames_passing, Some(3));
-    // The unsupported star draws nothing, in the scene and so in its own
-    // frames: every frame passes, but none shows anything, so it fails on
-    // its one gap.
-    assert_eq!(measure.all.frames_empty, Some(3));
-    assert!(
-        matches!(measure.verdict(None), Verdict::Blocked(gaps) if gaps.len() == 1),
-        "{:?}",
-        measure.verdict(None)
-    );
+    // The star is drawn, in the scene and so in its own frames: every frame
+    // passes and shows it, so the sample passes.
+    assert_eq!(measure.all.frames_empty, Some(0));
+    assert_eq!(measure.verdict(None), Verdict::Passes);
     assert_eq!(measure.settled.as_ref().map(|w| w.frames), Some(2));
     assert!(work.join("star/scene.json").exists());
     assert!(work.join("star/errors/f0.png").exists());

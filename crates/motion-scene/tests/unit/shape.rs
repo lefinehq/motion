@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::{ContentState, FrameState, compile, evaluate};
-use kurbo::{ParamCurveArclen, PathEl};
+use kurbo::{ParamCurve, ParamCurveArclen, PathEl};
 use motion_format::item::SHAPES;
 use motion_format::parse_document;
 use motion_format::property::LAYER;
@@ -98,6 +98,99 @@ fn an_ellipse_is_four_quarter_arcs_from_the_top() {
     assert_eq!(
         outline.elements()[0],
         PathEl::MoveTo(Point::new(0.0, -50.0))
+    );
+}
+
+/// The corners of a star's outline, in order: the end of every segment.
+fn corners(star: &str) -> Vec<Point> {
+    let draws = draws_of(&format!(r##"{star},{{"fill":"#FFFFFF"}}"##));
+    draws[0].outline.segments().map(|s| s.eval(1.0)).collect()
+}
+
+fn near(a: Point, b: Point) {
+    assert!((a - b).hypot() < 1e-9, "{a:?} vs {b:?}");
+}
+
+#[test]
+fn a_polygon_starts_straight_up_and_runs_clockwise() {
+    let at = corners(r#"{"star":4,"type":"polygon","outer-radius":10,"position":[5,0]}"#);
+    let expected = [(15.0, 0.0), (5.0, 10.0), (-5.0, 0.0), (5.0, -10.0)];
+    assert_eq!(at.len(), 4);
+    for (got, want) in at.iter().zip(expected) {
+        near(*got, Point::from(want));
+    }
+    // Sharp corners join with straight sides.
+    let draws = draws_of(r##"{"star":4,"type":"polygon"},{"fill":"#FFFFFF"}"##);
+    assert!(
+        draws[0]
+            .outline
+            .elements()
+            .iter()
+            .all(|e| !matches!(e, PathEl::CurveTo(..)))
+    );
+}
+
+#[test]
+fn a_star_alternates_its_points_with_its_inner_corners() {
+    let at = corners(r#"{"star":2,"outer-radius":10,"inner-radius":4}"#);
+    let expected = [(4.0, 0.0), (0.0, 10.0), (-4.0, 0.0), (0.0, -10.0)];
+    for (got, want) in at.iter().zip(expected) {
+        near(*got, Point::from(want));
+    }
+    // Five points by default, each with an inner corner.
+    assert_eq!(corners(r#"{"star":5}"#).len(), 10);
+}
+
+#[test]
+fn rotate_turns_the_first_point_clockwise() {
+    let at = corners(r#"{"star":3,"type":"polygon","outer-radius":10,"rotate":90}"#);
+    // The last segment closes back to the first point, now to the right.
+    near(at[2], Point::new(10.0, 0.0));
+}
+
+#[test]
+fn counterclockwise_walks_the_same_corners_the_other_way() {
+    let ahead = corners(r#"{"star":5,"rotate":10}"#);
+    let back = corners(r#"{"star":5,"rotate":10,"direction":"counterclockwise"}"#);
+    // Both start, and close, at the first point; between, one is the other reversed.
+    near(ahead[9], back[9]);
+    for (a, b) in ahead[..9].iter().zip(back[..9].iter().rev()) {
+        near(*a, *b);
+    }
+}
+
+#[test]
+fn points_count_by_their_whole_part() {
+    assert_eq!(corners(r#"{"star":4.9,"type":"polygon"}"#).len(), 4);
+    let none = draws_of(r##"{"star":0.5},{"fill":"#FFFFFF"}"##);
+    assert!(none.is_empty(), "{none:?}");
+}
+
+#[test]
+fn roundness_sets_handles_along_the_circle_a_quarter_arc_long() {
+    let n = 4.0;
+    let (r, ri) = (100.0, 40.0);
+    let draws = draws_of(
+        r##"{"star":4,"outer-radius":100,"inner-radius":40,"outer-roundness":0.5,"inner-roundness":-0.25},{"fill":"#FFFFFF"}"##,
+    );
+    let PathEl::CurveTo(leaving, arriving, inner) = draws[0].outline.elements()[1] else {
+        panic!("a curve: {:?}", draws[0].outline.elements());
+    };
+    let quarter = |radius: f64| radius * std::f64::consts::TAU / (4.0 * n);
+    // The first point is straight up: its handle runs right, along the circle.
+    near(leaving, Point::new(0.5 * quarter(r), -r));
+    // The first inner corner is 45° on; a negative roundness turns its handle back.
+    let angle = (-45.0_f64).to_radians();
+    near(inner, Point::new(ri * angle.cos(), ri * angle.sin()));
+    let along = Vec2::new(-angle.sin(), angle.cos());
+    near(arriving, inner - along * (-0.25 * quarter(ri)));
+}
+
+#[test]
+fn a_polygon_ignores_the_inner_corners() {
+    assert_eq!(
+        corners(r#"{"star":6,"type":"polygon","inner-radius":1,"inner-roundness":1}"#),
+        corners(r#"{"star":6,"type":"polygon"}"#)
     );
 }
 

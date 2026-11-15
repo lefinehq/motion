@@ -19,7 +19,7 @@ Words in *italics* are defined in the [glossary](../glossary.md).
 - Per-character, per-word and per-line text motion
 
 **Shapes and paths**
-- Rectangles, ellipses, paths and SVG
+- Rectangles, ellipses, stars and polygons, paths and SVG
 - Path operations:
   - *draw-on*, where a stroke draws itself
   - clone arrays

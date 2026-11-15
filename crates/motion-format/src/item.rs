@@ -313,6 +313,53 @@ pub static ELLIPSE: Registry = Registry {
     ],
 };
 
+/// The properties of a star or a polygon.
+pub static STAR: Registry = Registry {
+    kind: "star",
+    rows: &[
+        number(
+            "points",
+            5.0,
+            Some((0.0, 100.0)),
+            "how many points a star has, or corners a polygon; the whole part counts",
+        ),
+        centre("the shape's centre, in px of its group"),
+        number(
+            "rotate",
+            0.0,
+            None,
+            "how far the shape is turned, clockwise in degrees; at 0 its first point is \
+             straight up from `position`",
+        ),
+        number(
+            "outer-radius",
+            100.0,
+            Some((0.0, f64::INFINITY)),
+            "how far the points, or a polygon's corners, are from `position`, in px",
+        ),
+        number(
+            "inner-radius",
+            50.0,
+            Some((0.0, f64::INFINITY)),
+            "how far a star's inner corners, between its points, are from `position`, in px",
+        ),
+        number(
+            "outer-roundness",
+            0.0,
+            None,
+            "how round the points, or a polygon's corners, are: each one's handles run along \
+             the circle through it, as long as this share of a quarter of the arc to the next \
+             point; negative loops them inwards",
+        ),
+        number(
+            "inner-roundness",
+            0.0,
+            None,
+            "how round a star's inner corners are, as `outer-roundness` is for its points",
+        ),
+    ],
+};
+
 /// The properties of a free path.
 pub static PATH: Registry = Registry {
     kind: "path",
@@ -1232,7 +1279,7 @@ pub static TRIM: Registry = Registry {
 };
 
 /// Every kind of shape item.
-pub static SHAPES: [ItemKind; 7] = [
+pub static SHAPES: [ItemKind; 8] = [
     ItemKind {
         name: "group",
         role: Role::Group,
@@ -1260,6 +1307,29 @@ pub static SHAPES: [ItemKind; 7] = [
         settings: &[],
         input: None,
         doc: "an ellipse centred on `position`",
+    },
+    ItemKind {
+        name: "star",
+        role: Role::Geometry,
+        registry: &STAR,
+        primary: Primary::Property("points"),
+        settings: &[
+            SettingSpec {
+                name: "type",
+                choices: &["star", "polygon"],
+                default: "star",
+                doc: "`star` alternates points and inner corners; `polygon` has only corners, \
+                      and leaves `inner-radius` and `inner-roundness` unused",
+            },
+            SettingSpec {
+                name: "direction",
+                choices: &["clockwise", "counterclockwise"],
+                default: "clockwise",
+                doc: "which way the outline runs from its first point, which a trim follows",
+            },
+        ],
+        input: None,
+        doc: "a star or a regular polygon centred on `position`, its first point straight up",
     },
     ItemKind {
         name: "path",
@@ -2160,7 +2230,7 @@ pub fn effect_kind(name: &str) -> Option<&'static ItemKind> {
 /// The properties code depends on, for the drawing and measuring of items.
 pub mod props {
     use super::{
-        ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, MASK, PATH, Prop, RANGE, RECT, STROKE, TRIM,
+        ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, MASK, PATH, Prop, RANGE, RECT, STAR, STROKE, TRIM,
     };
 
     /// A rectangle's width and height.
@@ -2173,6 +2243,20 @@ pub mod props {
     pub const ELLIPSE_SIZE: Prop = Prop::of(&ELLIPSE, 0);
     /// An ellipse's centre.
     pub const ELLIPSE_POSITION: Prop = Prop::of(&ELLIPSE, 1);
+    /// How many points a star has, or corners a polygon.
+    pub const STAR_POINTS: Prop = Prop::of(&STAR, 0);
+    /// A star's centre.
+    pub const STAR_POSITION: Prop = Prop::of(&STAR, 1);
+    /// How far a star is turned, in degrees.
+    pub const STAR_ROTATE: Prop = Prop::of(&STAR, 2);
+    /// How far a star's points are from its centre.
+    pub const STAR_OUTER_RADIUS: Prop = Prop::of(&STAR, 3);
+    /// How far a star's inner corners are from its centre.
+    pub const STAR_INNER_RADIUS: Prop = Prop::of(&STAR, 4);
+    /// How round a star's points are.
+    pub const STAR_OUTER_ROUNDNESS: Prop = Prop::of(&STAR, 5);
+    /// How round a star's inner corners are.
+    pub const STAR_INNER_ROUNDNESS: Prop = Prop::of(&STAR, 6);
     /// A free path's outline.
     pub const PATH_PATH: Prop = Prop::of(&PATH, 0);
     /// A fill's colour.

@@ -80,6 +80,25 @@ fn a_cut_circle_follows_its_arc() {
 }
 
 #[test]
+fn a_cut_star_follows_its_corners_in_its_direction() {
+    let square = r#"{"star":4,"type":"polygon","outer-radius":50}"#;
+    let path = one(&format!(r#"{square},{{"trim":0.25}},{STROKE}"#));
+    let whole = one(&format!(r#"{square},{STROKE}"#));
+    near(length(&whole), 4.0 * 50.0 * std::f64::consts::SQRT_2);
+    near(length(&path), length(&whole) / 4.0);
+    // From the top corner to the next one clockwise, or the other way round.
+    let end = path.segments().last().unwrap().end();
+    near(end.x, 50.0);
+    near(end.y, 0.0);
+    let back = one(&format!(
+        r#"{{"star":4,"type":"polygon","outer-radius":50,"direction":"counterclockwise"}},{{"trim":0.25}},{STROKE}"#
+    ));
+    let end = back.segments().last().unwrap().end();
+    near(end.x, -50.0);
+    near(end.y, 0.0);
+}
+
+#[test]
 fn start_after_end_swaps() {
     let a = one(&format!(r#"{LINE},{{"trim":0.25,"start":0.75}},{STROKE}"#));
     let b = one(&format!(r#"{LINE},{{"trim":0.75,"start":0.25}},{STROKE}"#));
