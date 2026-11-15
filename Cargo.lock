@@ -1719,6 +1719,7 @@ name = "motion-video"
 version = "0.0.0"
 dependencies = [
  "motion-format",
+ "motion-videotoolbox",
  "rstest",
  "zune-jpeg",
 ]

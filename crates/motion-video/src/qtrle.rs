@@ -5,7 +5,7 @@
 
 use motion_format::{Diagnostic, Kind, Result};
 
-use crate::{Decoder, Frame};
+use crate::{Decoder, Frame, Picture};
 
 /// Decodes one clip's frames in order, keeping the last frame each one
 /// changes.
@@ -58,16 +58,16 @@ impl Decoder for Animation {
         self.pixels = opaque_black(self.width * self.height);
     }
 
-    fn decode(&mut self, sample: &[u8]) -> Result<Frame> {
+    fn decode(&mut self, sample: &[u8]) -> Result<Box<dyn Picture>> {
         // Under 8 bytes, a frame changes nothing.
         if sample.len() >= 8 {
             self.apply(sample)?;
         }
-        Ok(Frame {
+        Ok(Box::new(Frame {
             width: self.width as u32,
             height: self.height as u32,
             pixels: self.pixels.clone(),
-        })
+        }))
     }
 }
 

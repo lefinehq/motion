@@ -115,7 +115,8 @@ fn a_found_clip_is_read_for_its_codec_and_a_still_is_not() {
         video(&root.join("Footage/movie.mp4")),
         Some(Video {
             codec: "H.264".into(),
-            decodes: false
+            // Through the system's decoder (D60).
+            decodes: cfg!(target_os = "macos")
         })
     );
     assert_eq!(video(&root.join("Footage/broken.mov")), None);

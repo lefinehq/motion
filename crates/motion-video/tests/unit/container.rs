@@ -48,6 +48,42 @@ fn an_mp4_track_shows_its_frames_in_order_through_its_edit_list() {
 }
 
 #[test]
+fn without_an_edit_list_the_first_frame_shows_at_0() {
+    // Its composition offsets start at two frames, as an encoder that
+    // reorders frames writes them, and nothing shifts them back.
+    let t = track("h264-count-noedit.mp4");
+    assert!(t.samples.iter().all(|s| s.show >= 2002));
+    assert_eq!(t.shift, -2002);
+    let mut shown: Vec<i64> = t.samples.iter().map(|s| s.show + t.shift).collect();
+    shown.sort_unstable();
+    assert_eq!(shown, (0..20).map(|i| i * 1001).collect::<Vec<_>>());
+    // With an edit list, the list says the same.
+    assert_eq!(track("h264-count.mp4").shift, -2002);
+}
+
+#[test]
+fn decoding_a_leading_picture_starts_from_the_group_before() {
+    let t = track("h264-opengop.mp4");
+    let samples = &t.samples;
+    // A sync sample after the first, with pictures decoded after it that
+    // show before it.
+    let sync = (1..samples.len()).find(|&i| samples[i].sync).unwrap();
+    let leading = (sync + 1..samples.len())
+        .find(|&i| samples[i].show < samples[sync].show)
+        .expect("a leading picture");
+    let after = (leading + 1..samples.len())
+        .find(|&i| samples[i].show > samples[sync].show)
+        .expect("a picture after the sync sample");
+    assert_eq!(t.start_for(sync), sync);
+    // Both the leading picture and a later one decoded after it go back.
+    assert_eq!(t.start_for(leading), t.sync_before(sync - 1));
+    assert_eq!(t.start_for(after), t.sync_before(sync - 1));
+    // In a closed group, every picture starts from its own sync sample.
+    let t = track("h264-count.mp4");
+    assert!((0..20).all(|i| t.start_for(i) == t.sync_before(i)));
+}
+
+#[test]
 fn a_file_that_is_not_a_clip_says_so() {
     let mut bytes = std::io::Cursor::new(b"\x00\x00\x00\x08free".to_vec());
     let e = read(&mut bytes).unwrap_err();

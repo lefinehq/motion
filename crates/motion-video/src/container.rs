@@ -35,7 +35,8 @@ pub struct Track {
     pub samples: Vec<Sample>,
     /// Where the track's media time 0 falls on the clip's own time, in
     /// track ticks: its edit list's leading empty edits, less the media time
-    /// its first edit starts at.
+    /// its first edit starts at; without an edit list, less the time its
+    /// first frame shows at.
     pub shift: i64,
 }
 
@@ -70,9 +71,27 @@ impl Track {
         (end + self.shift).max(0) as f64 / f64::from(self.timescale)
     }
 
-    /// The sync sample at or before sample `i`, where decoding it starts.
+    /// The sync sample at or before sample `i`.
     pub fn sync_before(&self, i: usize) -> usize {
         (0..=i).rev().find(|&j| self.samples[j].sync).unwrap_or(0)
+    }
+
+    /// Where decoding sample `i` starts: the last sync sample at or before
+    /// it after which nothing up to `i` shows before it. A picture decoded
+    /// after a sync sample but shown before it (a leading picture of an
+    /// open group of pictures) may refer to pictures before that sync
+    /// sample, so decoding through it starts from an earlier one.
+    pub fn start_for(&self, i: usize) -> usize {
+        // The earliest time shown by the samples after `j` up to `i`.
+        let mut earliest = self.samples[i].show;
+        for j in (0..=i).rev() {
+            let sample = self.samples[j];
+            if sample.sync && sample.show <= earliest {
+                return j;
+            }
+            earliest = earliest.min(sample.show);
+        }
+        0
     }
 }
 
@@ -222,7 +241,7 @@ fn track(trak: &[u8], movie_scale: u32) -> Result<Track> {
         None => None,
     };
     let mut time = 0i64;
-    let samples = (0..sizes.len())
+    let samples: Vec<Sample> = (0..sizes.len())
         .map(|i| {
             let start = time;
             time += i64::from(decode[i]);
@@ -245,8 +264,9 @@ fn track(trak: &[u8], movie_scale: u32) -> Result<Track> {
         depth: description.depth,
         extensions: description.extensions,
         timescale: scale,
+        shift: shift(trak, movie_scale, scale)?
+            .unwrap_or_else(|| -samples.iter().map(|s| s.show).min().unwrap_or(0)),
         samples,
-        shift: shift(trak, movie_scale, scale)?,
     })
 }
 
@@ -404,10 +424,12 @@ fn numbers(stss: &[u8]) -> Result<Vec<u32>> {
 
 /// The track's media time 0 on the clip's own time, in track ticks, from
 /// its edit list: leading empty edits delay it, and the first edit with
-/// media skips the media before its start.
-fn shift(trak: &[u8], movie_scale: u32, scale: u32) -> Result<i64> {
+/// media skips the media before its start. `None` without an edit list
+/// (or with nothing but empty edits): the track then starts at its first
+/// frame, as players start one whose composition offsets are all above 0.
+fn shift(trak: &[u8], movie_scale: u32, scale: u32) -> Result<Option<i64>> {
     let Some(elst) = find(trak, &[b"edts", b"elst"])? else {
-        return Ok(0);
+        return Ok(None);
     };
     let wide = elst.first() == Some(&1);
     let n = count(elst, 4)?;
@@ -427,9 +449,9 @@ fn shift(trak: &[u8], movie_scale: u32, scale: u32) -> Result<i64> {
             continue;
         }
         let delay = delay * i64::from(scale) / i64::from(movie_scale.max(1));
-        return Ok(delay - media);
+        return Ok(Some(delay - media));
     }
-    Ok(0)
+    Ok(None)
 }
 
 fn be16(bytes: &[u8], at: usize) -> Result<u16> {

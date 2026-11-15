@@ -350,7 +350,7 @@ A video layer plays a clip: `video` names an `.mov` or `.mp4` file, relative to 
 ```
 
 - **Time.** The clip plays in the layer's own time: at its own time `t`, the layer draws the frame showing `t` seconds into the clip. So `offset` starts it later and `stretch` slows it (`2`) or speeds it (`0.5`). Before the clip starts and from its end on, the layer draws nothing.
-- **Codecs.** QuickTime Animation (`rle `, RGB, or ARGB with its alpha) and Photo JPEG decode today; a clip in any other codec is an error that names the file and the codec. The container is read by motion itself, with no system library.
+- **Codecs.** QuickTime Animation (`rle `, RGB, or ARGB with its alpha) and Photo JPEG decode everywhere. H.264 decodes on macOS through the system's decoder ([D60](decisions.md#d60-h264-footage-decodes-through-the-systems-decoder)), in the matrix and range its tags give, or BT.709 limited range for an untagged HD clip; on other platforms it is an error that says so. A clip in any other codec is an error that names the file and the codec. The container is read by motion itself, with no system library.
 - **Files.** A render opens each clip once and decodes frames as they are shown, keeping the last ones, so a render going forward decodes each frame once. A file no frame shows is never read.
 - Like any layer, a video has a transform, parent, opacity, span and time, can be a matte, and can be matted. Its sound is not played yet: an `audio` layer of the same file plays it once AAC can be read.
 

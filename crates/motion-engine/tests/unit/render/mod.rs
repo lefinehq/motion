@@ -320,6 +320,31 @@ fn a_video_layer_shows_the_clip_frame_of_its_own_time() {
     assert!(off_clip_frame(&slow, 8.0, 4) < 0.5);
 }
 
+/// An H.264 clip draws through the system's decoder (D60), frame by frame
+/// in its own time: frame `n` of the counting clip is grey 16 + 10 `n` in
+/// limited range, at 24000/1001 frames a second.
+#[cfg(target_os = "macos")]
+#[test]
+fn an_h264_layer_shows_the_frame_of_its_own_time() {
+    let layer =
+        format!(r#"{{"id":"v","video":"{CLIPS}/h264-count.mp4","box":[64,32],"at":"32 16"}}"#);
+    let scene = format!(
+        r##"{{"motion":1,"size":"64x32","fps":23.976023976023978,"dur":"20f","bg":"#000000","layers":[{layer}]}}"##
+    );
+    let s = session(&scene);
+    for n in [0usize, 3, 6, 13, 19] {
+        let drawn = s
+            .render_with(n as f64, motion_raster::RenderOptions::GOLDEN)
+            .unwrap();
+        let grey = drawn.pixels()[4 * (16 * 64 + 32)];
+        let want = (10.0 * n as f64 * 255.0 / 219.0).round() as u8;
+        assert!(
+            grey.abs_diff(want) <= 2,
+            "frame {n}: grey {grey}, not {want}"
+        );
+    }
+}
+
 #[test]
 fn a_video_layer_draws_nothing_outside_its_clip() {
     let layer = format!(
@@ -333,16 +358,31 @@ fn a_video_layer_draws_nothing_outside_its_clip() {
     assert!(s.display_list(15.0).unwrap().nodes.is_empty());
 }
 
+/// The B-frame test clip with its codec renamed to MPEG-4 Part 2, which
+/// motion has no decoder for, in a scratch file.
+fn undecodable_clip() -> std::path::PathBuf {
+    let mut bytes = std::fs::read(format!("{CLIPS}/bframes.mp4")).unwrap();
+    let stsd = bytes.windows(4).position(|w| w == b"stsd").unwrap();
+    let at = stsd + bytes[stsd..].windows(4).position(|w| w == b"avc1").unwrap();
+    bytes[at..at + 4].copy_from_slice(b"mp4v");
+    let path = std::env::temp_dir().join(format!("motion-engine-mp4v-{}.mp4", std::process::id()));
+    std::fs::write(&path, bytes).unwrap();
+    path
+}
+
 #[test]
 fn a_clip_without_a_decoder_is_an_error_at_its_layers_video() {
+    let clip = undecodable_clip();
     let e = session(&scene(&format!(
-        r#"{{"id":"v","video":"{CLIPS}/bframes.mp4","box":[32,16]}}"#
+        r#"{{"id":"v","video":"{}","box":[32,16]}}"#,
+        clip.display()
     )))
     .display_list(0.0)
     .unwrap_err();
+    std::fs::remove_file(&clip).unwrap();
     assert_eq!(e.path_text().as_deref(), Some("v.video"));
     assert!(
-        e.message.contains("H.264") && e.message.contains("bframes.mp4"),
+        e.message.contains("MPEG-4 Part 2") && e.message.contains("motion-engine-mp4v"),
         "{e}"
     );
     let e = session(&scene(
