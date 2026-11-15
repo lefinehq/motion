@@ -230,6 +230,53 @@ fn a_transform_value_left_out_at_its_default_follows_its_slot() {
 }
 
 #[test]
+fn a_position_kept_as_separate_dimensions_does_not_follow_a_slot() {
+    let mut main = comp(
+        vec![layer(
+            3,
+            "L3",
+            vec![transform(vec![
+                property("ADBE Position_0", number(40.0)),
+                property("ADBE Position_1", number(30.0)),
+            ])],
+        )],
+        2.0,
+    );
+    main.panel = vec![PanelControl {
+        id: "pos".into(),
+        kind: ControlKind::Point,
+        targets: vec![ControlTarget {
+            composition: 5,
+            layer: 3,
+            path: vec![
+                step("ADBE Transform Group", None),
+                step("ADBE Position", None),
+            ],
+        }],
+    }];
+    let import = import(
+        &project(vec![(5, "Main", main)]),
+        &Options {
+            panel: vec![offered(
+                "pos",
+                ControlKind::Point,
+                "Place",
+                json!({"x": 40, "y": 30}),
+            )],
+            ..Options::default()
+        },
+    )
+    .expect("it imports");
+    assert_eq!(import.json.get("slots"), None);
+    assert_ne!(import.json["layers"][0]["position"], json!("$place"));
+    let report = import.mapping.to_string();
+    assert!(
+        report.contains("left out: Place (the property it drives is not one a slot can follow"),
+        "{report}"
+    );
+}
+
+#[test]
 fn a_text_control_named_for_a_role_proposes_it() {
     use crate::model::{Child, LayerKind, Stream, Value};
     use crate::test_support::{build::group, sample_document};

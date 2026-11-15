@@ -87,7 +87,9 @@ impl<'p> Walk<'p> {
             if held.is_empty() {
                 report
                     .left_out
-                    .push(left_out("the property it drives is not in the project"));
+                    .push(left_out(
+                        "the property it drives is not one a slot can follow (missing, or kept as separate dimensions)",
+                    ));
                 continue;
             }
             let index = self.slots.offer(Offered {
@@ -124,7 +126,8 @@ const TRANSFORM: &str = "ADBE Transform Group";
 /// among its siblings where the path gives one, then the property by match
 /// name. A property the project leaves out at its default is held by its
 /// group, or by the layer for its transform, which the project may leave
-/// out whole.
+/// out whole. A transform property kept as separate dimensions is held by
+/// nothing one slot can follow.
 fn resolve<'a>(layer: &'a Layer, path: &[PathStep]) -> Option<(Held, Option<&'a Property>)> {
     let (last, groups) = path.split_last()?;
     let found = |group: &'a Group| group.properties().find(|p| p.match_name == last.match_name);
@@ -136,7 +139,16 @@ fn resolve<'a>(layer: &'a Layer, path: &[PathStep]) -> Option<(Held, Option<&'a 
         && group.match_name == TRANSFORM
     {
         let transform = child_groups(&layer.properties).find(|g| g.match_name == TRANSFORM);
-        return Some(held(address(layer), transform.and_then(found)));
+        let property = transform.and_then(found);
+        // A position kept as separate dimensions is not left out: its
+        // `_0` and `_1` hold it, and no one point follows a slot.
+        let separated = format!("{}_0", last.match_name);
+        if property.is_none()
+            && transform.is_some_and(|t| t.properties().any(|p| p.match_name == separated))
+        {
+            return None;
+        }
+        return Some(held(address(layer), property));
     }
     let mut here = &layer.properties;
     for step in groups {
