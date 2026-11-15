@@ -16,7 +16,7 @@ use crate::curve::CUBIC_PREFIX;
 use crate::doc::Form;
 use crate::units::{Time, time};
 
-pub(crate) const EXPECTED: &str = "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `out-expo` or `hold`, `out-back(2)`, `steps(4)`, or `cubic(x1,y1,x2,y2)`";
+pub(crate) const EXPECTED: &str = "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `out-expo` or `hold`, `out-back(2)`, `steps(4)`, `spring(.3)`, or `cubic(x1,y1,x2,y2)`";
 
 /// Must be in `NAMED_CURVES`.
 const DEFAULT_CURVE: &str = "ease-out";
@@ -28,7 +28,8 @@ pub struct Behaviour {
     pub preset: String,
     /// Travel distance in pixels; 40 by default.
     pub distance: f64,
-    /// How long the motion lasts; 12 frames by default.
+    /// How long the motion lasts; 12 frames by default, or a spring's settle
+    /// time when the curve is a spring.
     pub duration: Time,
     /// Easing curve; `ease-out` by default.
     pub curve: Curve,
@@ -52,9 +53,20 @@ impl Behaviour {
             curve: Curve::named(DEFAULT_CURVE).expect("the default curve is in NAMED_CURVES"),
             start: Time::Frames(0.0),
         };
-        tokens
+        let timed = tokens
+            .iter()
+            .any(|(tuning, _)| matches!(tuning, Tuning::Duration(_)));
+        let behaviour = tokens
             .into_iter()
-            .fold(defaults, |behaviour, (tuning, _)| tuning.apply(behaviour))
+            .fold(defaults, |behaviour, (tuning, _)| tuning.apply(behaviour));
+        // A spring without a duration lasts until it comes to rest.
+        match behaviour.curve {
+            Curve::Spring(spring) if !timed => Behaviour {
+                duration: spring.settle(),
+                ..behaviour
+            },
+            _ => behaviour,
+        }
     }
 }
 

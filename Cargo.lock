@@ -1337,6 +1337,7 @@ dependencies = [
  "indexmap",
  "insta",
  "kurbo",
+ "libm",
  "pretty_assertions",
  "proptest",
  "rstest",

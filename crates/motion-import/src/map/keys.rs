@@ -325,7 +325,7 @@ fn curve_text(curve: Curve) -> String {
             format!("cubic({},{},{},{})", text(x1), text(y1), text(x2), text(y2))
         }
         // A project's keys are béziers and holds; these only print as written.
-        Curve::Shaped(..) | Curve::Steps { .. } => curve.to_string(),
+        Curve::Shaped(..) | Curve::Steps { .. } | Curve::Spring(_) => curve.to_string(),
     }
 }
 

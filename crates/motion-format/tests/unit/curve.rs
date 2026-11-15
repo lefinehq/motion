@@ -262,3 +262,29 @@ fn steps_parse_and_print() {
         assert_eq!(e.expected.as_deref(), Some(STEPS_EXPECTED), "{token}");
     }
 }
+
+#[test]
+fn springs_parse_print_and_name_their_form() {
+    let parse = |t: &str| t.parse::<Curve>().unwrap();
+    assert_eq!(
+        parse("spring(.3)"),
+        Curve::Spring(Spring {
+            bounce: 0.3,
+            perceived: None
+        })
+    );
+    assert_eq!(parse("spring(.3)").to_string(), "spring(0.3)");
+    assert_eq!(parse("spring(-.5,12f)").to_string(), "spring(-0.5,12f)");
+    assert_eq!(parse("spring(0, .4s)").to_string(), "spring(0,0.4s)");
+    for token in [
+        "spring(1)",
+        "spring(-1)",
+        "spring(.3,0f)",
+        "spring(.3,12)",
+        "spring()",
+        "spring(.3",
+    ] {
+        let e = token.parse::<Curve>().unwrap_err();
+        assert_eq!(e.expected.as_deref(), Some(SPRING_EXPECTED), "{token}");
+    }
+}

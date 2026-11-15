@@ -264,3 +264,15 @@ fn behaviour_reads_a_curve_with_parameters() {
     let e = "fade out-back(-1)".parse::<Behaviour>().unwrap_err();
     assert_eq!(e.kind, Kind::Syntax, "a bad parameter is the curve's error");
 }
+
+#[test]
+fn a_spring_without_a_duration_lasts_until_it_rests() {
+    let b: Behaviour = "pop spring(.3,10f)".parse().unwrap();
+    let Curve::Spring(spring) = b.curve else {
+        panic!("a spring");
+    };
+    assert_eq!(b.duration, spring.settle());
+    assert!(matches!(b.duration, Time::Frames(f) if f > 10.0));
+    let timed: Behaviour = "pop 12f spring(.3)".parse().unwrap();
+    assert_eq!(timed.duration, Time::Frames(12.0), "a duration given wins");
+}

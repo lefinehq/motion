@@ -234,6 +234,12 @@ A curve is a cubic bézier, as in CSS, a family's curve, steps, or `hold`. The n
   - Elastic's amplitude (at least 1) and period (above 0, at most 2): `out-elastic(1.2,.4)`; `1` and `.3` by default.
 - **Overshoot:** back and elastic go past the end value as a `cubic` with `y` beyond 1 does. A moving point carries on along the path's direction, and a property's range still clamps the value.
 
+**Springs.** `spring(bounce)` moves like a spring released from rest that settles on the end value.
+- **Bounce** lies between -1 and 1. At 0 the spring settles as fast as it can without overshooting. Above 0 it overshoots and rings: `spring(.5)` overshoots by about 16%. Below 0 it creeps in more slowly.
+- **Perceived duration:** `spring(bounce,perceived)` sets how long the move feels, as a time such as `10f` or `.5s`; 0.5 s by default. It is one period of the spring without damping.
+- **Timing:** in a key span the spring is scaled to fit the span. A behaviour that gives no duration lasts until the spring comes to rest, within 1/2000 of the change: `pop spring(.4,10f)`.
+- **Exact:** the rest time is solved exactly, and the end meets the key.
+
 **Steps.** `steps(n)` moves in `n` equal steps, jumping at the end of each, and reaches the end value at the next key. `steps(n,start)` jumps at the start of each. At the key itself a property is always that key's value. `hold` is `steps(1)`.
 
 ### Presets
