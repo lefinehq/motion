@@ -449,24 +449,29 @@ fn render_writes_one_numbered_png_per_frame() {
     );
 }
 
-#[test]
-fn render_to_an_mp4_file_writes_a_video() {
-    // Small, so the encoder is quick in a debug build.
-    let dir = scratch("render-video");
+/// A small scene in a scratch folder, so the encoder is quick in a debug
+/// build; returns the folder and the scene's path.
+fn small_scene(name: &str) -> (PathBuf, String) {
+    let dir = scratch(name);
     let scene = dir.join("scene.json");
     fs::write(
         &scene,
         r##"{"motion":1,"size":"160x90","fps":30,"dur":"1s","bg":"#0B0D12","layers":[]}"##,
     )
     .expect("write the scene");
+    (dir, scene.to_str().expect("utf-8 path").to_string())
+}
+
+#[test]
+fn render_to_an_mp4_file_writes_a_video() {
+    let (dir, scene) = small_scene("render-video");
     let out = dir.join("small.mp4");
     let file = out.to_str().expect("utf-8 path");
-    let scene = scene.to_str().expect("utf-8 path");
-    let run = motion(&["render", scene, "--frames", "0-5", "--out", file]);
+    let run = motion(&["render", &scene, "--frames", "0-5", "--out", file]);
     assert_eq!(run.status.code(), Some(0), "{}", stderr(&run));
     assert_eq!(
         stdout(&run),
-        format!("6 frames written to {file} (AV1, 160x90, 30 fps, 0.2 s)\n")
+        format!("6 frames written to {file} (AV1, web, 160x90, 30 fps, 0.2 s)\n")
     );
     let bytes = fs::read(&out).expect("read the video");
     // The file type, then the index ahead of the samples.
@@ -482,6 +487,60 @@ fn render_to_an_mp4_file_writes_a_video() {
         ["scene.json", "small.mp4"],
         "nothing but the video is left"
     );
+}
+
+#[test]
+fn render_takes_a_codec_and_a_video_quality_and_times_the_encoding() {
+    let (dir, scene) = small_scene("render-video-quality");
+    let file = dir.join("draft.mp4");
+    let file = file.to_str().expect("utf-8 path");
+    let args = [
+        "--timings",
+        "render",
+        &scene,
+        "--frames",
+        "0-2",
+        "--out",
+        file,
+    ];
+    let run = motion(&[&args[..], &["--codec", "av1", "--video-quality", "draft"]].concat());
+    assert_eq!(run.status.code(), Some(0), "{}", stderr(&run));
+    assert!(
+        stdout(&run).contains("(AV1, draft, 160x90"),
+        "{}",
+        stdout(&run)
+    );
+    let timings = stderr(&run);
+    assert!(timings.contains("encode"), "{timings}");
+}
+
+#[rstest]
+#[case::codec(&["--codec", "h265"], "h265")]
+#[case::quality(&["--video-quality", "best"], "best")]
+fn render_refuses_a_codec_or_quality_it_lacks(#[case] extra: &[&str], #[case] name: &str) {
+    let (dir, scene) = small_scene(&format!("render-video-{name}"));
+    let file = dir.join("a.mp4");
+    let args = [
+        "render",
+        &scene,
+        "--out",
+        file.to_str().expect("utf-8 path"),
+    ];
+    let run = motion(&[&args[..], extra].concat());
+    assert_eq!(run.status.code(), Some(2), "{}", stderr(&run));
+    assert!(stderr(&run).contains(name), "{}", stderr(&run));
+    assert!(!file.exists());
+}
+
+#[test]
+fn render_refuses_a_codec_for_png_frames() {
+    let (dir, scene) = small_scene("render-png-codec");
+    let frames = dir.join("frames");
+    let out = frames.to_str().expect("utf-8 path");
+    let run = motion(&["render", &scene, "--out", out, "--codec", "av1"]);
+    assert_eq!(run.status.code(), Some(2), "{}", stderr(&run));
+    assert!(stderr(&run).contains("--codec"), "{}", stderr(&run));
+    assert!(!frames.exists());
 }
 
 #[test]

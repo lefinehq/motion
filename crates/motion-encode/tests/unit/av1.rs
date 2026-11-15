@@ -54,7 +54,7 @@ fn every_frame_comes_out_in_order_and_the_first_is_a_keyframe() {
         height: 16,
         fps: 24.0,
     };
-    let mut encoder = Av1::new(spec).unwrap();
+    let mut encoder = Av1::new(spec, VideoQuality::Web).unwrap();
     let mut packets = Vec::new();
     for level in 0..6u8 {
         let rgba = [level * 40, 0, 255 - level * 40, 255].repeat(32 * 16);
@@ -70,4 +70,77 @@ fn every_frame_comes_out_in_order_and_the_first_is_a_keyframe() {
     assert_eq!(record[0], 0x81);
     assert_eq!((record[4] >> 3) & 0xf, 1);
     assert_eq!(Some(&record[4..]), sequence_header(&packets[0].data));
+}
+
+/// Every packet of six frames of a moving gradient, `width` by `height`.
+fn encode(encoder: &mut Av1, width: u32, height: u32) -> Vec<Packet> {
+    let mut packets = Vec::new();
+    for frame in 0..6u32 {
+        let rgba: Vec<u8> = (0..width * height)
+            .flat_map(|i| {
+                let (x, y) = (i % width, i / width);
+                [(x + frame * 7) as u8, y as u8, (x ^ y) as u8, 255]
+            })
+            .collect();
+        packets.extend(encoder.encode(&to_planes(&rgba, width, height)).unwrap());
+    }
+    packets.extend(encoder.finish().unwrap());
+    packets
+}
+
+#[test]
+fn the_number_of_threads_does_not_change_the_bytes() {
+    let spec = VideoSpec {
+        width: 640,
+        height: 360,
+        fps: 30.0,
+    };
+    assert_eq!(tiles(spec), 2);
+    let one = encode(
+        &mut Av1::with_threads(spec, VideoQuality::Draft, 1).unwrap(),
+        640,
+        360,
+    );
+    let four = encode(
+        &mut Av1::with_threads(spec, VideoQuality::Draft, 4).unwrap(),
+        640,
+        360,
+    );
+    assert_eq!(one, four);
+}
+
+#[test]
+fn higher_quality_keeps_more() {
+    let spec = VideoSpec {
+        width: 64,
+        height: 64,
+        fps: 30.0,
+    };
+    let size = |quality| -> usize {
+        encode(&mut Av1::new(spec, quality).unwrap(), 64, 64)
+            .iter()
+            .map(|p| p.data.len())
+            .sum()
+    };
+    let (draft, web, master) = (
+        size(VideoQuality::Draft),
+        size(VideoQuality::Web),
+        size(VideoQuality::Master),
+    );
+    assert!(draft < web && web < master, "{draft} < {web} < {master}");
+}
+
+#[rstest]
+#[case(320, 180, 1)]
+#[case(640, 360, 2)]
+#[case(1920, 1080, 8)]
+#[case(1080, 1920, 8)]
+#[case(3840, 2160, 16)]
+fn tiles_follow_the_frame_size(#[case] width: u32, #[case] height: u32, #[case] expected: usize) {
+    let spec = VideoSpec {
+        width,
+        height,
+        fps: 30.0,
+    };
+    assert_eq!(tiles(spec), expected);
 }

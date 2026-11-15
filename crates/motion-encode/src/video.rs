@@ -79,12 +79,74 @@ pub trait Muxer: Send {
 
 /// The codecs this build has, by the name `--codec` takes.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, strum::Display, strum::EnumString, strum::VariantNames,
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    strum::Display,
+    strum::EnumString,
+    strum::VariantNames,
 )]
 #[strum(serialize_all = "lowercase")]
 pub enum Codec {
     /// AV1, through `rav1e`, on every platform.
+    #[default]
     Av1,
+}
+
+impl Codec {
+    /// The codec named `name`.
+    ///
+    /// # Errors
+    /// An unknown-name diagnostic listing the codecs this build has.
+    pub fn named(name: &str) -> Result<Codec> {
+        name.parse().map_err(|_| {
+            Diagnostic::unknown("codec", name, <Codec as strum::VariantNames>::VARIANTS)
+        })
+    }
+}
+
+/// How much a video keeps of the drawn frames, against its size and the
+/// time it takes: a use, not a bitrate. Each codec has its own settings for
+/// each.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    strum::Display,
+    strum::EnumString,
+    strum::VariantNames,
+)]
+#[strum(serialize_all = "lowercase")]
+pub enum VideoQuality {
+    /// Fast and small, for checking timing and layout.
+    Draft,
+    /// For delivery: text and edges stay crisp.
+    #[default]
+    Web,
+    /// Close to the drawn frames, for editing or encoding again.
+    Master,
+}
+
+impl VideoQuality {
+    /// The quality named `name`.
+    ///
+    /// # Errors
+    /// An unknown-name diagnostic listing the qualities.
+    pub fn named(name: &str) -> Result<VideoQuality> {
+        name.parse().map_err(|_| {
+            Diagnostic::unknown(
+                "video quality",
+                name,
+                <VideoQuality as strum::VariantNames>::VARIANTS,
+            )
+        })
+    }
 }
 
 /// The containers, by file extension.
@@ -124,12 +186,17 @@ pub struct VideoWriter {
 
 impl VideoWriter {
     /// A writer of `spec`-sized frames into `path`, whose extension picks
-    /// the container, compressed with `codec`.
+    /// the container, compressed with `codec` at `quality`.
     ///
     /// # Errors
     /// A diagnostic for an extension that names no container, a size or
     /// rate the codec refuses, or a file that cannot be created.
-    pub fn create(path: &Path, spec: VideoSpec, codec: Codec) -> Result<VideoWriter> {
+    pub fn create(
+        path: &Path,
+        spec: VideoSpec,
+        codec: Codec,
+        quality: VideoQuality,
+    ) -> Result<VideoWriter> {
         let container = Container::of(path).ok_or_else(|| {
             Diagnostic::unknown(
                 "video file extension",
@@ -147,7 +214,7 @@ impl VideoWriter {
             .expected("a size above zero and a frame rate above zero"));
         }
         let encoder: Box<dyn VideoEncoder> = match codec {
-            Codec::Av1 => Box::new(crate::av1::Av1::new(spec)?),
+            Codec::Av1 => Box::new(crate::av1::Av1::new(spec, quality)?),
         };
         let partial = partial_path(path);
         let muxer: Box<dyn Muxer> = match container {

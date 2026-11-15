@@ -13,12 +13,8 @@ use rav1e::data::{EncoderStatus, FrameType, Rational};
 use rav1e::{Config, Context, EncoderConfig};
 
 use crate::colour::Planes;
-use crate::video::{DecoderConfig, Packet, VideoEncoder, VideoSpec};
+use crate::video::{DecoderConfig, Packet, VideoEncoder, VideoQuality, VideoSpec};
 
-/// The speed preset, from 0 (slowest, smallest) to 10 (fastest).
-const SPEED: u8 = 8;
-/// The quantizer, from 0 (lossless) to 255: low enough that text stays crisp.
-const QUANTIZER: usize = 80;
 /// A keyframe at least this often, in frames, so a player can seek.
 const MAX_KEYFRAME_INTERVAL: u64 = 240;
 
@@ -29,9 +25,42 @@ pub(crate) struct Av1 {
     sequence_header: Option<Vec<u8>>,
 }
 
+/// Each quality's speed preset, from 0 (slowest, smallest) to 10 (fastest),
+/// and quantizer, from 0 (lossless) to 255.
+fn settings(quality: VideoQuality) -> (u8, usize) {
+    match quality {
+        // Quick to make, for looking at timing and layout.
+        VideoQuality::Draft => (10, 150),
+        // Text stays crisp; the measured gap to the drawn frames is under
+        // what the eye sees on screen.
+        VideoQuality::Web => (8, 80),
+        // For handing on to be edited or encoded again.
+        VideoQuality::Master => (6, 30),
+    }
+}
+
+/// How many tiles a frame is cut into, which are encoded in parallel. It
+/// follows the frame's size, never the machine, so the file is the same
+/// whatever the number of cores.
+fn tiles(spec: VideoSpec) -> usize {
+    match u64::from(spec.width) * u64::from(spec.height) {
+        pixels if pixels >= 3840 * 2160 => 16,
+        pixels if pixels >= 1280 * 720 => 8,
+        pixels if pixels >= 640 * 360 => 2,
+        _ => 1,
+    }
+}
+
 impl Av1 {
-    /// An encoder of `spec`-sized frames, tagged BT.709 limited range.
-    pub(crate) fn new(spec: VideoSpec) -> Result<Av1> {
+    /// An encoder of `spec`-sized frames at `quality`, tagged BT.709
+    /// limited range, on every core.
+    pub(crate) fn new(spec: VideoSpec, quality: VideoQuality) -> Result<Av1> {
+        Av1::with_threads(spec, quality, 0)
+    }
+
+    /// As [`Av1::new`], on `threads` threads, or every core when zero.
+    fn with_threads(spec: VideoSpec, quality: VideoQuality, threads: usize) -> Result<Av1> {
+        let (speed, quantizer) = settings(quality);
         let encoder = EncoderConfig {
             width: spec.width as usize,
             height: spec.height as usize,
@@ -44,15 +73,17 @@ impl Av1 {
                 transfer_characteristics: TransferCharacteristics::BT709,
                 matrix_coefficients: MatrixCoefficients::BT709,
             }),
-            speed_settings: SpeedSettings::from_preset(SPEED),
-            quantizer: QUANTIZER,
+            speed_settings: SpeedSettings::from_preset(speed),
+            quantizer,
+            tiles: tiles(spec),
             max_key_frame_interval: MAX_KEYFRAME_INTERVAL,
             ..EncoderConfig::default()
         };
-        // One thread: the same frames always give the same bytes.
+        // The tiles are fixed by the frame's size, so the same frames give
+        // the same bytes on any number of threads.
         let context = Config::new()
             .with_encoder_config(encoder)
-            .with_threads(1)
+            .with_threads(threads)
             .new_context()
             .map_err(|e| {
                 Diagnostic::new(

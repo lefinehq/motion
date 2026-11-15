@@ -23,7 +23,7 @@ const SPEC: VideoSpec = VideoSpec {
 
 /// Writes `count` frames of a moving bar and returns the file's bytes.
 fn write(path: &Path, count: u32) -> Vec<u8> {
-    let mut writer = VideoWriter::create(path, SPEC, Codec::Av1).unwrap();
+    let mut writer = VideoWriter::create(path, SPEC, Codec::Av1, VideoQuality::Web).unwrap();
     for frame in 0..count {
         let mut rgba = [20, 20, 60, 255].repeat(48 * 32);
         for y in 0..32 {
@@ -47,9 +47,14 @@ fn the_extension_picks_the_container(#[case] path: &str, #[case] expected: Optio
 
 #[test]
 fn an_unknown_extension_names_the_known_ones() {
-    let err = VideoWriter::create(&scratch("ext").join("a.avi"), SPEC, Codec::Av1)
-        .err()
-        .unwrap();
+    let err = VideoWriter::create(
+        &scratch("ext").join("a.avi"),
+        SPEC,
+        Codec::Av1,
+        VideoQuality::Web,
+    )
+    .err()
+    .unwrap();
     assert_eq!(err.kind, Kind::UnknownName);
     assert!(err.message.contains("avi"), "{}", err.message);
 }
@@ -58,16 +63,21 @@ fn an_unknown_extension_names_the_known_ones() {
 #[case::no_rate(VideoSpec { fps: 0.0, ..SPEC })]
 #[case::no_width(VideoSpec { width: 0, ..SPEC })]
 fn an_empty_spec_is_refused(#[case] spec: VideoSpec) {
-    let err = VideoWriter::create(&scratch("spec").join("a.mp4"), spec, Codec::Av1)
-        .err()
-        .unwrap();
+    let err = VideoWriter::create(
+        &scratch("spec").join("a.mp4"),
+        spec,
+        Codec::Av1,
+        VideoQuality::Web,
+    )
+    .err()
+    .unwrap();
     assert_eq!(err.kind, Kind::Invalid);
 }
 
 #[test]
 fn a_frame_of_another_size_is_refused() {
     let path = scratch("size").join("a.mp4");
-    let mut writer = VideoWriter::create(&path, SPEC, Codec::Av1).unwrap();
+    let mut writer = VideoWriter::create(&path, SPEC, Codec::Av1, VideoQuality::Web).unwrap();
     let err = writer.push(&[0; 16]).unwrap_err();
     assert!(err.message.contains("16 bytes"), "{}", err.message);
 }
@@ -106,4 +116,21 @@ fn a_video_reads_back_with_every_frame() {
 fn the_same_frames_give_the_same_file() {
     let dir = scratch("same");
     assert_eq!(write(&dir.join("a.mp4"), 6), write(&dir.join("b.mp4"), 6));
+}
+
+#[test]
+fn a_codec_this_build_lacks_names_the_ones_it_has() {
+    assert_eq!(Codec::named("av1").unwrap(), Codec::Av1);
+    let err = Codec::named("h264").unwrap_err();
+    assert_eq!(err.kind, Kind::UnknownName);
+    assert_eq!(err.message, "unknown codec `h264`");
+    assert_eq!(err.expected.as_deref(), Some("one of av1"));
+}
+
+#[test]
+fn qualities_are_named_by_use() {
+    assert_eq!(VideoQuality::named("master").unwrap(), VideoQuality::Master);
+    assert_eq!(VideoQuality::default(), VideoQuality::Web);
+    let err = VideoQuality::named("high").unwrap_err();
+    assert_eq!(err.expected.as_deref(), Some("one of draft, web, master"));
 }

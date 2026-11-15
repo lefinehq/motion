@@ -7,10 +7,13 @@ mod commands;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use clap::builder::PossibleValuesParser;
 use clap::{Parser, Subcommand, ValueEnum};
+use motion_encode::{Codec, VideoQuality};
 use motion_engine::Quality;
 use motion_engine::telemetry::timing::{REPORT_TARGET, Timings, millis};
 use motion_engine::telemetry::{Format, LevelFilter, Options};
+use strum::VariantNames;
 use tracing::info;
 
 /// Check, query, edit and render motion scenes, and inspect `.aep` projects.
@@ -118,6 +121,17 @@ enum Command {
         /// for previews.
         #[arg(long, value_enum, default_value = "precise")]
         quality: QualityArg,
+        /// The codec of a video file; the first this build has of H.264 and
+        /// AV1 when not given.
+        #[arg(long, value_parser = PossibleValuesParser::new(<Codec as VariantNames>::VARIANTS))]
+        codec: Option<String>,
+        /// What a video file is for: `draft` to check timing, `web` to
+        /// deliver, `master` to edit or encode again.
+        #[arg(
+            long,
+            value_parser = PossibleValuesParser::new(<VideoQuality as VariantNames>::VARIANTS)
+        )]
+        video_quality: Option<String>,
     },
     /// Compare a scene with a reference render's frames: the error where the
     /// scene draws, and over everything it draws in the compared frames.
@@ -293,12 +307,18 @@ fn main() -> ExitCode {
             frame,
             out,
             quality,
-        } => commands::render::run(
-            &scene,
-            frames.or(frame.map(commands::render::Frames::one)),
-            &out,
-            quality.into(),
-        ),
+            codec,
+            video_quality,
+        } => commands::render::Encoding::named(codec.as_deref(), video_quality.as_deref())
+            .and_then(|encoding| {
+                commands::render::run(
+                    &scene,
+                    frames.or(frame.map(commands::render::Frames::one)),
+                    &out,
+                    quality.into(),
+                    encoding,
+                )
+            }),
         Command::Diff {
             scene,
             reference,
