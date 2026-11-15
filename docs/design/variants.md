@@ -56,6 +56,7 @@ beats   hook 0-3s | intro 3-9s | features 9-24s | cta 24-30s
 text    title "Launch Week" max 18ch · end/cta "Try it free" max 14ch
 style   ease out-expo, in-out-quint · dur 10-18f · stagger 4f · palette #0B0D12 #3B82F6 #FFF · type Inter 700/400
 locks   logo, palette, typefaces, end card
+slots   $accent color #E63946 (14) · $headline text "Launch Week" (1) · card-2 $title "Sale"
 ```
 
 **Roles** say which layer is the headline, the logo, the call to action, the product and the background. A role names a layer by its address, so it can sit inside a composition.
@@ -72,6 +73,8 @@ locks   logo, palette, typefaces, end card
 - palette
 - type scale
 - margins and grid
+
+**Slots** are the values the template names for change ([D44](decisions.md#d44-slots-are-named-values-that-layers-follow)): each has a type and a label, and every value written `"$id"` follows it, so one edit, `$accent=#2A9D8F`, changes them all. The import makes them from the expression controls a template reads, and an instance of a composition gives its slots values of its own. `motion slots --json` lists them with the place of each value that follows, which is the first thing an agent reads.
 
 **Locks** are what a variant may never change. The default locks are the logo, the palette, the typefaces and the end card. The designer can add or remove locks.
 
