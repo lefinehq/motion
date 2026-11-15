@@ -545,3 +545,87 @@ fn an_entrance_on_parts_leaves_the_layer_tracks_to_anim() {
         r#"{"motion":1,"dur":"1s","layers":[{"id":"t","text":"ab","in":"fade char stagger 2f","anim":{"opacity":"0 -> 1 @0-4f"}}]}"#,
     );
 }
+
+/// The span and offset of every root layer of `json`.
+fn timings(json: &str) -> Vec<(Option<(Time, Time)>, Time)> {
+    doc(json)
+        .scene()
+        .root
+        .layers
+        .iter()
+        .map(|l| (l.span.map(|s| (s.start, s.end)), l.offset))
+        .collect()
+}
+
+#[test]
+fn layer_times_follow_labels_and_the_layer_before() {
+    use Time::{Frames, Seconds};
+    let t = timings(
+        r#"{"motion":1,"fps":30,"dur":"10s","labels":{"outro":"cta+2s","intro":"0.5s","cta":"6s"},
+        "comps":{"card":{"size":"100x100","dur":"2s","layers":[]}},
+        "layers":[
+        {"id":"title","text":"Hi","span":"intro-cta"},
+        {"id":"card","comp":"card","offset":"<-6f","stretch":2},
+        {"id":"next","rect":"1x1","span":"<<+1s-<+30f"},
+        {"id":"cta","rect":"1x1","span":"cta-outro+1s"},
+        {"id":"tail","rect":"1x1","offset":"<","span":"intro-2s"},
+        {"id":"rest","rect":"1x1","offset":"1s"},
+        {"id":"last","rect":"1x1","span":"<<-<"}]}"#,
+    );
+    assert_eq!(t[0], (Some((Seconds(0.5), Seconds(6.0))), Frames(0.0)));
+    // Six frames before the title ends, in frames since the units differ.
+    assert_eq!(t[1], (None, Frames(174.0)));
+    // The card runs its 2 s composition at half speed: 4 s from frame 174.
+    assert_eq!(t[2].0, Some((Frames(204.0), Frames(324.0))));
+    // A label written after the one it follows still resolves.
+    assert_eq!(t[3].0, Some((Seconds(6.0), Seconds(9.0))));
+    // `intro-2s` has no end if the dash moves `intro`, so it separates.
+    assert_eq!(t[4], (Some((Seconds(0.5), Seconds(2.0))), Seconds(9.0)));
+    // A layer without a span lasts from its offset to the end of the timeline.
+    assert_eq!(t[6].0, Some((Seconds(1.0), Seconds(10.0))));
+    let labels = &doc(r#"{"motion":1,"dur":"1s","labels":{"b":"a+1f","a":"2f"},"layers":[]}"#)
+        .scene()
+        .root
+        .labels
+        .clone();
+    assert_eq!(
+        labels,
+        &[("b".to_owned(), Frames(3.0)), ("a".to_owned(), Frames(2.0))]
+    );
+}
+
+#[test]
+fn relative_times_say_what_they_cannot_find() {
+    let first = fails(r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":"1x1","offset":"<"}]}"#);
+    assert_eq!(first, at(Kind::Invalid, "a.offset"));
+    let e = err(
+        r#"{"motion":1,"dur":"1s","labels":{"cta":"1s"},"layers":[{"id":"a","rect":"1x1","span":"intro-cta"}]}"#,
+    );
+    assert_eq!(
+        (e.kind, e.path_text().as_deref()),
+        (Kind::UnknownName, Some("a.span"))
+    );
+    assert!(e.message.contains("`intro`"), "{}", e.message);
+    let e = err(r#"{"motion":1,"dur":"1s","labels":{"a":"b","b":"c+1f","c":"a"},"layers":[]}"#);
+    assert_eq!(
+        (e.kind, e.path_text().as_deref()),
+        (Kind::Invalid, Some("labels.a"))
+    );
+    assert!(e.message.contains("a → b → c → a"), "{}", e.message);
+    let e = err(r#"{"motion":1,"dur":"1s","labels":{"part-2":"1s"},"layers":[]}"#);
+    assert_eq!(
+        (e.kind, e.path_text().as_deref()),
+        (Kind::Invalid, Some("labels.part-2"))
+    );
+    let e = err(r#"{"motion":1,"dur":"1s","labels":{"a":"<"},"layers":[]}"#);
+    assert!(e.message.contains("cannot follow a layer"), "{}", e.message);
+    let backwards = fails(
+        r#"{"motion":1,"dur":"1s","labels":{"a":"10f"},"layers":[{"id":"x","rect":"1x1","span":"a-5f"}]}"#,
+    );
+    assert_eq!(backwards, at(Kind::Invalid, "x.span"));
+    // A composition's labels are its own.
+    let e = err(
+        r#"{"motion":1,"dur":"1s","labels":{"a":"1f"},"comps":{"c":{"size":"1x1","dur":"1s","layers":[{"id":"x","rect":"1x1","offset":"a"}]}},"layers":[]}"#,
+    );
+    assert_eq!(e.kind, Kind::UnknownName);
+}

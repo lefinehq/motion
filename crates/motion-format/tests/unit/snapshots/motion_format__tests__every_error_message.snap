@@ -21,7 +21,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"motion":1,"dur":"1s","size":3,"layers":[]}` → size: invalid type: integer `3`; expected a size name such as `1080p`, or `<width>x<height>`
 `{"motion":1,"dur":"1s","size":"huge","layers":[]}` → size: unknown size `huge`; expected one of 720p, 1080p, 4k, square, vertical, or <width>x<height>
 `{"motion":1,"dur":"1s","bg":0,"layers":[]}` → bg: invalid type: integer `0`; expected `#RGB`, `#RRGGBB` or `#RRGGBBAA`
-`{"motion":1,"dur":"1s","colour":"x","layers":[]}` → colour: unknown field `colour`; expected one of motion, size, fps, dur, bg, presets, fonts, comps, layers
+`{"motion":1,"dur":"1s","colour":"x","layers":[]}` → colour: unknown field `colour`; expected one of motion, size, fps, dur, bg, labels, presets, fonts, comps, layers
 `{"motion":1,"dur":"1s","layers":{}}` → layers: invalid type: map; expected a list of layer objects, e.g. [{"id":"box","rect":"100x100"}]
 
 ## layers
@@ -70,7 +70,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","matte":true}` → a.matte: invalid type: boolean `true`; expected `<layer id> [alpha|alpha-inverted|luma|luma-inverted]`, e.g. `reveal alpha`
 `{"id":"a","rect":"1x1","span":"5f"}` → a.span: `5f` has no `-` between start and end; expected `<start>-<end>` with a unit, e.g. `0-30f`, `0.5s-1s`; a bare start takes the end's unit
 `{"id":"a","rect":"1x1","span":"5-1f"}` → a.span: `5f-1f` starts after it ends; expected `<start>-<end>` with a unit, e.g. `0-30f`, `0.5s-1s`; a bare start takes the end's unit
-`{"id":"a","rect":"1x1","offset":"-1x"}` → a.offset: `-1x` is not a valid time; expected `<number>f` or `<number>s`, which may be negative, e.g. `12f` or `-0.4s`
+`{"id":"a","rect":"1x1","offset":"-1x"}` → a.offset: `-1x` is not a time or a moment; expected a time such as `2s` or `-6f`, or a base moved by a time: a label (`cta`, `cta+12f`, `cta-0.5s`), `<` where the layer before ends (`<+6f`) or `<<` where it starts (`<<-3f`)
 `{"id":"a","rect":"1x1","stretch":0}` → a.stretch: must be a number other than zero; expected e.g. `2` for half speed, `-1` for backwards
 `{"id":"a","rect":"10x10","in":"fade-up","anim":{"opacity":"0 -> 1 @0-5f"}}` → a.anim.opacity: `opacity` is already animated by `in` (preset `fade-up`); expected `a in=none anim={"opacity":"0 -> 1 @0-12f ease-out","y":"580 -> 540 @0-12f ease-out"}` (the entrance as anim tracks; then adjust `opacity`), or define a scene preset without `opacity` under "presets"
 `{"id":"a","rect":"10x10","in":"fade-up","anim":{"position":"0,0 -> 1,1 @0-5f"}}` → a.anim.position: `position` is already animated by `in` (preset `fade-up`); expected `a in=none anim={"opacity":"0 -> 1 @0-12f ease-out","y":"580 -> 540 @0-12f ease-out","position":"0,0 -> 1,1 @0-5f"}` (the entrance as anim tracks; then adjust `position`), or define a scene preset without `position` under "presets"
@@ -204,6 +204,19 @@ expression: "report.join(\"\\n\\n\")"
 `0 -> 1@half -> 2 @0-10f` → `1@half` is not a position; a value says where it falls as `@<n>%`; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", "0 -> 200@40% -> 150 @0-30f" or "rest+40 -> rest @0-12f"
 `0 -> 1 -> @0-10f` → missing a value after the last `->` in `0 -> 1 -> @0-10f`; expected "<value> -> <value>[@<n>%] ... -> <value> @<start>-<end> [<curve>]", e.g. "0 -> 1 @0-12f ease-out", "0 -> 200@40% -> 150 @0-30f" or "rest+40 -> rest @0-12f"
 
+## labels
+`[]` → labels: invalid type: sequence; expected an object of named moments, e.g. {"intro":"0.5s","cta":"6s","outro":"cta+2s"}
+`{"part-2":"1s"}` → labels.part-2: `part-2` is not a valid label name; expected label names use lowercase letters, digits and `_`, starting with a letter
+`{"a":"b","b":"a+1f"}` → labels.a: labels in a circle: a → b → a; expected labels that each lead back to a time
+`{"a":"<"}` → labels.a: a label cannot follow a layer, as `<` does; expected a time, or another label moved by a time
+`{"a":"soon"}` → labels.a: unknown label `soon`; expected one of a
+
+## relative times
+`{"id":"a","rect":"1x1","offset":"<"}` → a.offset: `<` follows the layer before, and this layer is the first; expected a time or a label on the first layer
+`{"id":"a","rect":"1x1","span":"intro-2s"}` → a.span: unknown label `intro`: the composition has no labels; expected a label in the composition's "labels", e.g. "labels":{"intro":"0.5s"}
+`{"id":"a","rect":"1x1","offset":"Intro"}` → a.offset: `Intro` is not a time or a moment; expected a time such as `2s` or `-6f`, or a base moved by a time: a label (`cta`, `cta+12f`, `cta-0.5s`), `<` where the layer before ends (`<+6f`) or `<<` where it starts (`<<-3f`)
+`{"id":"a","rect":"1x1","span":"intro"}` → a.span: `intro` is not a span; expected `<start>-<end>`, each a time or a base moved by a time, e.g. `0-30f`, `intro-cta`, `<-<+2s` or `cta-6f-outro`; a bare start takes the end's unit
+
 ## contents
 `{"id":"a","shapes":[],"comp":"x"}` → a.comp: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg" or "pivot":true
 `{"id":"a","pivot":false}` → a.pivot: `pivot` is `true` or left out; expected "pivot":true
@@ -293,7 +306,7 @@ expression: "report.join(\"\\n\\n\")"
 `"card":{"size":"1x1","layers":[]}` → comps.card: missing `dur`; expected e.g. "dur":"5s"
 `"card":{"size":"1x1","dur":"1s"}` → comps.card: missing `layers`; expected e.g. "layers":[]
 `"card":{"size":"1x1","dur":"1s","fps":0,"layers":[]}` → comps.card.fps: must be a number above zero; expected e.g. `30`
-`"card":{"size":"1x1","dur":"1s","layers":[],"tint":1}` → comps.card.tint: unknown field `tint`; expected one of size, fps, dur, bg, layers
+`"card":{"size":"1x1","dur":"1s","layers":[],"tint":1}` → comps.card.tint: unknown field `tint`; expected one of size, fps, dur, bg, labels, layers
 `"card":{"size":"1x1","dur":"1s","layers":[{"id":"x"}]}` → comps.card.layers[x]: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg" or "pivot":true
 `"card":{"size":"1x1","dur":"1s","layers":[{"id":"x","comp":"card"}]}` → comps.card.layers[x].comp: composition `card` would draw itself through its layers; expected compositions that never lead back to themselves
 `"card":{"size":"1x1","dur":"1s","layers":[{"id":"x","comp":"b"}]},"b":{"size":"1x1","dur":"1s","layers":[{"id":"y","comp":"card"}]}` → comps.card.layers[x].comp: composition `card` would draw itself through its layers; expected compositions that never lead back to themselves

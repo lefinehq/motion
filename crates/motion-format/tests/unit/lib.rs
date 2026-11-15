@@ -322,6 +322,31 @@ fn every_error_message() {
             ],
         ),
         section(
+            "labels",
+            &[
+                r#"[]"#,
+                r#"{"part-2":"1s"}"#,
+                r#"{"a":"b","b":"a+1f"}"#,
+                r#"{"a":"<"}"#,
+                r#"{"a":"soon"}"#,
+            ],
+            |labels| {
+                parse_document(&format!(
+                    r#"{{"motion":1,"dur":"1s","labels":{labels},"layers":[]}}"#
+                ))
+            },
+        ),
+        section(
+            "relative times",
+            &[
+                r#"{"id":"a","rect":"1x1","offset":"<"}"#,
+                r#"{"id":"a","rect":"1x1","span":"intro-2s"}"#,
+                r#"{"id":"a","rect":"1x1","offset":"Intro"}"#,
+                r#"{"id":"a","rect":"1x1","span":"intro"}"#,
+            ],
+            layers,
+        ),
+        section(
             "contents",
             &[
                 r#"{"id":"a","shapes":[],"comp":"x"}"#,

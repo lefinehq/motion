@@ -25,6 +25,7 @@ pub mod text;
 pub mod units;
 mod validate;
 pub mod value;
+pub mod when;
 mod write;
 
 pub use address::{Address, Id, Step};
