@@ -19,7 +19,8 @@ use crate::Curve;
 use crate::anim::{EASING_EXPECTED, KEY_EXPECTED, PATH_EXPECTED, TRACK_EXPECTED};
 use crate::preset::Start;
 use crate::shorthand::{Behaviour, Font, Matte, Position, RectShape};
-use crate::units::{Color, SignedTime, Size, Time, TimeSpan};
+use crate::units::{Color, SignedTime, Size, Time};
+use crate::when::{Moment, Moments};
 
 /// The accepted form of a document value, told to a value of the wrong JSON
 /// type instead of serde's "a string" or "a map".
@@ -37,6 +38,7 @@ pub(crate) struct SceneDoc {
     pub(crate) fps: Present<Number>,
     pub(crate) dur: Present<Shorthand<Time>>,
     pub(crate) bg: Present<Shorthand<Color>>,
+    pub(crate) labels: Object<LabelsDoc>,
     pub(crate) presets: Object<PresetsDoc>,
     pub(crate) fonts: Present<List<FontsDoc>>,
     pub(crate) comps: Object<CompsDoc>,
@@ -74,8 +76,8 @@ pub(crate) struct LayerDoc {
     pub(crate) enter: Present<Shorthand<Behaviour>>,
     pub(crate) anim: Object<AnimDoc>,
     pub(crate) parent: Present<String>,
-    pub(crate) span: Present<Shorthand<TimeSpan>>,
-    pub(crate) offset: Present<Shorthand<SignedTime>>,
+    pub(crate) span: Present<Shorthand<Moments>>,
+    pub(crate) offset: Present<Shorthand<Moment>>,
     pub(crate) stretch: Present<Number>,
     pub(crate) fx: Present<List<ItemsDoc>>,
     pub(crate) hidden: Present<bool>,
@@ -153,7 +155,16 @@ pub(crate) struct CompDoc {
     pub(crate) fps: Present<Number>,
     pub(crate) dur: Present<Shorthand<Time>>,
     pub(crate) bg: Present<Shorthand<Color>>,
+    pub(crate) labels: Object<LabelsDoc>,
     pub(crate) layers: Present<List<LayersDoc>>,
+}
+
+/// A composition's `labels`: named moments of its timeline.
+pub(crate) type LabelsDoc = IndexMap<String, Shorthand<Moment>>;
+
+impl Form for LabelsDoc {
+    const FORM: &str =
+        r#"an object of named moments, e.g. {"intro":"0.5s","cta":"6s","outro":"cta+2s"}"#;
 }
 
 impl Form for CompDoc {

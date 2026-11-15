@@ -25,6 +25,8 @@ pub mod key {
     pub const PRESETS: &str = "presets";
     /// The scene's compositions.
     pub const COMPS: &str = "comps";
+    /// A composition's named moments.
+    pub const LABELS: &str = "labels";
     /// The font files and folders a scene uses.
     pub const FONTS: &str = "fonts";
     /// The layers.
@@ -101,19 +103,27 @@ pub mod key {
 }
 
 /// The keys allowed at the top level, in the order of `SceneDoc`'s fields.
-pub const SCENE_KEYS: [&str; 9] = [
+pub const SCENE_KEYS: [&str; 10] = [
     key::MOTION,
     key::SIZE,
     key::FPS,
     key::DUR,
     key::BG,
+    key::LABELS,
     key::PRESETS,
     key::FONTS,
     key::COMPS,
     key::LAYERS,
 ];
 /// The keys allowed on a composition, in the order of `CompDoc`'s fields.
-pub const COMP_KEYS: [&str; 5] = [key::SIZE, key::FPS, key::DUR, key::BG, key::LAYERS];
+pub const COMP_KEYS: [&str; 6] = [
+    key::SIZE,
+    key::FPS,
+    key::DUR,
+    key::BG,
+    key::LABELS,
+    key::LAYERS,
+];
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.

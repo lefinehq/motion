@@ -50,6 +50,8 @@ pub struct Comp {
     pub background: Color,
     /// Its layers in paint order: the first is at the back.
     pub layers: Vec<Layer>,
+    /// Its named moments, resolved, in the order written.
+    pub labels: Vec<(String, Time)>,
 }
 
 impl Scene {

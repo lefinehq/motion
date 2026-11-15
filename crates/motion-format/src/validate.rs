@@ -17,23 +17,24 @@ use crate::anim::{
     RANGE_EXPECTED, Span, TrackLine, rest_word,
 };
 use crate::doc::{
-    AnimDoc, CompDoc, CompsDoc, EasingDoc, KeyDoc, KeyTime, LayerDoc, LayersDoc, List, Number,
-    Object, OverridesDoc, PathDoc, Present, PresetDoc, PresetsDoc, SceneDoc, Shorthand, StartDoc,
-    TrackDoc, ValueDoc,
+    AnimDoc, CompDoc, CompsDoc, EasingDoc, KeyDoc, KeyTime, LabelsDoc, LayerDoc, LayersDoc, List,
+    Number, Object, OverridesDoc, PathDoc, Present, PresetDoc, PresetsDoc, SceneDoc, Shorthand,
+    StartDoc, TrackDoc, ValueDoc,
 };
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, SHAPES};
 use crate::parse::key::{
-    ANIM, ANIMATE, AT, BG, BOX, COMP, COMPS, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN, LAYERS,
-    MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS,
+    ANIM, ANIMATE, AT, BG, BOX, COMP, COMPS, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN, LABELS,
+    LAYERS, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS,
     SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
 use crate::property::{LAYER, Prop, PropertySpec, Registry, Rest, Target};
 use crate::shorthand::{Behaviour, Coord, Font, Position};
-use crate::units::{Color, SPAN_EXPECTED, SignedTime, Size, Time, TimeSpan};
+use crate::units::{Color, SPAN_EXPECTED, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
+use crate::when::{Base, Moment, Moments, add, label_name};
 use crate::{Address, Comp, CompContent, Content, Curve, ImageContent, Layer, Scene, fmt_num};
 
 use crate::Place;
@@ -82,6 +83,10 @@ struct Canvas {
     id: String,
     size: Size,
     fps: f64,
+    /// Its length, so a layer before another knows where it ends.
+    duration: Time,
+    /// Its labels, resolved.
+    labels: Vec<(String, Time)>,
 }
 
 /// A composition's frames per second, length and background.
@@ -98,6 +103,10 @@ struct Context<'a> {
     fps: f64,
     /// The canvas of the layer's composition.
     size: Size,
+    /// The length of the layer's composition.
+    duration: Time,
+    /// The labels of the layer's composition, resolved.
+    labels: &'a [(String, Time)],
 }
 
 /// Validates a scene document into a [`Scene`], with the defaults of the keys left out.
@@ -127,7 +136,9 @@ pub(crate) fn scene(doc: &SceneDoc, raw: &serde_json::Value) -> Result<Scene> {
             listed_comp(canvas, comp_doc, &shared).map_err(|e| e.under(comp_path(id)))
         })
         .collect::<Result<Vec<_>>>()?;
-    let root = comp(SCENE, size, clock, layer_docs, &shared)?;
+    let Object(own_labels) = &doc.labels;
+    let root_labels = labels(own_labels, fps)?;
+    let root = comp(SCENE, size, clock, root_labels, layer_docs, &shared)?;
     no_comp_draws_itself(&comps)?;
     Ok(Scene {
         version: VERSION,
@@ -143,14 +154,13 @@ pub(crate) fn scene(doc: &SceneDoc, raw: &serde_json::Value) -> Result<Scene> {
 /// loop, and no
 /// track fighting an entrance.
 fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
-    let layers = docs
-        .iter()
-        .enumerate()
-        .map(|(i, Object(layer_doc))| {
-            let id = layer_doc.id.as_deref().unwrap_or_default();
-            layer(layer_doc, context).map_err(|e| e.under(Place::layer(id, i)))
-        })
-        .collect::<Result<Vec<_>>>()?;
+    // In order, so each layer can follow the one before it.
+    let mut layers: Vec<Layer> = Vec::with_capacity(docs.len());
+    for (i, Object(layer_doc)) in docs.iter().enumerate() {
+        let id = layer_doc.id.as_deref().unwrap_or_default();
+        let before = layers.last().map(|layer| extent(layer, context));
+        layers.push(layer(layer_doc, context, before).map_err(|e| e.under(Place::layer(id, i)))?);
+    }
     unique_ids(&layers)?;
     links(
         &layers,
@@ -192,10 +202,17 @@ fn canvases(docs: &CompsDoc, scene_fps: f64) -> Result<Vec<Canvas>> {
                 .and_then(|s| s.parse_at(SIZE))
                 .map_err(place)?;
             let fps = doc.fps.map_or(Ok(scene_fps), fps).map_err(place)?;
+            let duration = required(doc.dur.as_ref(), DUR, r#""5s""#)
+                .and_then(|d| d.parse_at(DUR))
+                .map_err(place)?;
+            let Object(written) = &doc.labels;
+            let labels = labels(written, fps).map_err(place)?;
             Ok(Canvas {
                 id: id.clone(),
                 size,
                 fps,
+                duration,
+                labels,
             })
         })
         .collect()
@@ -206,7 +223,80 @@ fn canvases(docs: &CompsDoc, scene_fps: f64) -> Result<Vec<Canvas>> {
 fn listed_comp(canvas: &Canvas, doc: &CompDoc, shared: &Shared) -> Result<Comp> {
     let clock = clock(canvas.fps, &doc.dur, &doc.bg, CLEAR)?;
     let List(layer_docs) = required(doc.layers.as_ref(), LAYERS, "[]")?;
-    comp(&canvas.id, canvas.size, clock, layer_docs, shared)
+    comp(
+        &canvas.id,
+        canvas.size,
+        clock,
+        canvas.labels.clone(),
+        layer_docs,
+        shared,
+    )
+}
+
+/// A composition's labels, each resolved against the others it names, in
+/// the order written. Paths are relative to the composition.
+fn labels(written: &LabelsDoc, fps: f64) -> Result<Vec<(String, Time)>> {
+    let at = |name: &str, e: Diagnostic| e.at(name).under(LABELS);
+    let moments = written
+        .iter()
+        .map(|(name, moment)| {
+            label_name(name).map_err(|e| at(name, e))?;
+            moment.parse_at(name).map_err(|e| e.under(LABELS))
+        })
+        .collect::<Result<Vec<Moment>>>()?;
+    let names: Vec<&str> = written.keys().map(String::as_str).collect();
+    let mut resolved = vec![None; names.len()];
+    for i in 0..names.len() {
+        resolve_label(i, &names, &moments, &mut resolved, &mut Vec::new(), fps)
+            .map_err(|e| at(names[i], e))?;
+    }
+    Ok(names
+        .iter()
+        .zip(resolved)
+        .map(|(name, time)| ((*name).to_owned(), time.expect("every label resolved")))
+        .collect())
+}
+
+/// Label `i`, resolving the labels it names first; `path` holds the labels
+/// being resolved, to find a circle.
+fn resolve_label(
+    i: usize,
+    names: &[&str],
+    moments: &[Moment],
+    resolved: &mut [Option<Time>],
+    path: &mut Vec<usize>,
+    fps: f64,
+) -> Result<Time> {
+    if let Some(time) = resolved[i] {
+        return Ok(time);
+    }
+    if let Some(from) = path.iter().position(|&j| j == i) {
+        let circle: Vec<&str> = path[from..].iter().chain([&i]).map(|&j| names[j]).collect();
+        return Err(Diagnostic::new(
+            Kind::Invalid,
+            format!("labels in a circle: {}", circle.join(" → ")),
+        )
+        .expected("labels that each lead back to a time"));
+    }
+    path.push(i);
+    let time = moments[i].resolve(
+        |base| match base {
+            Base::Label(name) => match names.iter().position(|n| n == name) {
+                Some(j) => resolve_label(j, names, moments, resolved, path, fps),
+                None => Err(Diagnostic::unknown("label", name, names)),
+            },
+            Base::Before | Base::BeforeStart => Err(Diagnostic::new(
+                Kind::Invalid,
+                format!("a label cannot follow a layer, as `{base}` does"),
+            )
+            .expected("a time, or another label moved by a time")),
+            Base::Zero => unreachable!("a zero base resolves without a lookup"),
+        },
+        fps,
+    )?;
+    path.pop();
+    resolved[i] = Some(time);
+    Ok(time)
 }
 
 /// A composition's clock and background, from the keys the scene's root
@@ -230,6 +320,7 @@ fn comp(
     id: &str,
     size: Size,
     clock: Clock,
+    labels: Vec<(String, Time)>,
     layer_docs: &LayersDoc,
     shared: &Shared,
 ) -> Result<Comp> {
@@ -237,14 +328,18 @@ fn comp(
         shared,
         fps: clock.fps,
         size,
+        duration: clock.duration,
+        labels: &labels,
     };
+    let layers = layers(layer_docs, &context)?;
     Ok(Comp {
         id: id.to_owned(),
         size,
         fps: clock.fps,
         duration: clock.duration,
         background: clock.background,
-        layers: layers(layer_docs, &context)?,
+        layers,
+        labels,
     })
 }
 
@@ -336,7 +431,70 @@ fn optional<T: FromStr<Err = Diagnostic>>(
 }
 
 /// Validates one layer, with paths relative to it.
-fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
+/// Where a layer starts and ends on its composition's timeline, for the
+/// layer after it: its span, or from its offset to where its composition
+/// ends at its stretch for a `comp` layer, or to the end of the timeline.
+fn extent(layer: &Layer, context: &Context) -> (Time, Time) {
+    if let Some(span) = layer.span {
+        return (span.start, span.end);
+    }
+    let end = match &layer.content {
+        Content::Comp(comp) => {
+            let canvas = context
+                .shared
+                .comps
+                .iter()
+                .find(|c| c.id == comp.id)
+                .expect("a composition the layer draws exists");
+            let seconds = canvas.duration.to_frames(canvas.fps) / canvas.fps * layer.stretch.abs();
+            add(layer.offset, Time::Seconds(seconds), context.fps)
+        }
+        _ => context.duration,
+    };
+    (layer.offset, end)
+}
+
+/// A layer's `offset` or an end of its `span`, resolved against the
+/// composition's labels and `before`, the extent of the layer before it.
+fn moment(moment: &Moment, context: &Context, before: Option<(Time, Time)>) -> Result<Time> {
+    moment.resolve(
+        |base| match base {
+            Base::Label(name) => context
+                .labels
+                .iter()
+                .find(|(label, _)| label == name)
+                .map(|&(_, time)| time)
+                .ok_or_else(|| match context.labels.is_empty() {
+                    true => Diagnostic::new(
+                        Kind::UnknownName,
+                        format!("unknown label `{name}`: the composition has no labels"),
+                    )
+                    .expected(
+                        r#"a label in the composition's "labels", e.g. "labels":{"intro":"0.5s"}"#,
+                    ),
+                    false => {
+                        Diagnostic::unknown("label", name, context.labels.iter().map(|(l, _)| l))
+                    }
+                }),
+            Base::Before | Base::BeforeStart => before
+                .map(|(start, end)| match base {
+                    Base::Before => end,
+                    _ => start,
+                })
+                .ok_or_else(|| {
+                    Diagnostic::new(
+                        Kind::Invalid,
+                        format!("`{base}` follows the layer before, and this layer is the first"),
+                    )
+                    .expected("a time or a label on the first layer")
+                }),
+            Base::Zero => unreachable!("a zero base resolves without a lookup"),
+        },
+        context.fps,
+    )
+}
+
+fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Result<Layer> {
     // Unknown keys first, as serde reports them for documents that deny them.
     let values = resting_values(doc)?;
     let id = required(doc.id.as_deref(), ID, r#""title""#)?;
@@ -358,9 +516,19 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
             .transpose()?,
         anim: anim(tracks, &LAYER, context.fps).map_err(|e| e.under(ANIM))?,
         parent: doc.parent.clone(),
-        span: optional(doc.span.as_ref(), SPAN)?,
+        span: optional(doc.span.as_ref(), SPAN)?
+            .map(|Moments { start, end }| {
+                Ok::<_, Diagnostic>(TimeSpan {
+                    start: moment(&start, context, before)?,
+                    end: moment(&end, context, before)?,
+                })
+            })
+            .transpose()
+            .map_err(|e| e.at(SPAN))?,
         offset: optional(doc.offset.as_ref(), OFFSET)?
-            .map_or(Time::Frames(0.0), |SignedTime(time)| time),
+            .map(|written| moment(&written, context, before).map_err(|e| e.at(OFFSET)))
+            .transpose()?
+            .unwrap_or(Time::Frames(0.0)),
         stretch: doc.stretch.map_or(Ok(1.0), stretch)?,
         fx: match &*doc.fx {
             Some(List(docs)) => item::items(docs, &EFFECTS, context.fps)
@@ -687,6 +855,8 @@ fn instance(canvas: &Canvas, overrides: &OverridesDoc, shared: &Shared) -> Resul
         shared,
         fps: canvas.fps,
         size: canvas.size,
+        duration: canvas.duration,
+        labels: &canvas.labels,
     };
     layers(&docs, &context)
 }

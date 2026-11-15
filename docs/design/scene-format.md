@@ -93,6 +93,26 @@ Every animatable value of a layer is a **property**. They are listed once, in `c
 
 **Parenting and time.** A layer can move with another (`"parent":"card"`): its position, rotation and scale apply on top of the parent's, while opacity stays its own. Its `at` is then read in the parent's box, so `"at":"center center"` is the middle of the parent, and `motion at` prints where its anchor lands on the canvas. `"span":"1s-16s"` sets when a layer shows, on the scene's timeline (parenting moves a layer, not its time). `"offset":"1s"` says where the layer's own time starts: its keys and its entrance are in its own time, so moving a layer later is one edit. An offset may be negative, so a layer can start partway through its own time. `"stretch":2` plays its own time at half speed, and a negative stretch runs it backwards from `offset`. Speeds in `speed(...)` are per second of the layer's own time, so a stretch slows them too.
 
+**Labels and relative times.** A composition, the scene's root included, may name moments of its timeline: `"labels":{"intro":"0.5s","cta":"6s","outro":"cta+2s"}`. A label name is a lowercase letter followed by lowercase letters, digits and `_` (no `-`), and a label is a time or another label of the same composition moved by a time, in any order but not in a circle. A layer's `offset` and the ends of its `span` may then be written against a base:
+
+| Written | Means |
+|---|---|
+| `2s`, `-6f` | an absolute time |
+| `cta`, `cta+12f`, `cta-0.5s` | a label of the layer's composition, moved |
+| `<`, `<+6f` | where the layer before it in the list ends, moved |
+| `<<`, `<<-3f` | where the layer before it starts, moved |
+
+```json
+{"id":"title","text":"Hello","span":"intro-cta"},
+{"id":"card","comp":"card","offset":"<-6f"},
+{"id":"cta","text":"Try it","span":"cta-outro+1s"}
+```
+
+- The layer before starts at its span's start, or at its `offset` without a span. It ends at its span's end; without one, a `comp` layer ends when its composition does at its stretch, and any other layer at the end of the timeline. The first layer has no layer before it.
+- In a span, a `-` right after a base followed by a number moves the base; otherwise it separates the ends. `intro-6f-cta` runs from six frames before `intro` to `cta`, and `intro-2s`, which would have no end the other way, from `intro` to 2 s.
+- A base and its move add in the unit they share, else in frames.
+- Times resolve when the scene is read; the file keeps what was written, so moving a label or a layer moves everything written against it.
+
 Checks measure the transformed box: the layer's box through its anchor, scale, rotation and position, and its parents'.
 
 ## Shapes, effects and compositions
@@ -140,7 +160,7 @@ A `trim` keeps the stretch from `start` to `end`, shares of the length from 0 to
 |---|---|---|---|
 | `fill` | `color` | `color`, `opacity` | |
 
-**Compositions.** `comps` holds compositions by id. Each has its own `size`, `dur`, optional `fps` (the scene's by default) and `bg` (clear by default), and its own `layers`. A layer with `"comp":"card"` draws it in a box of the composition's size. The composition's time is the layer's own time, so `offset` and `stretch` move and slow it, and the layer shows nothing outside the composition's length. Compositions may draw other compositions, but never themselves.
+**Compositions.** `comps` holds compositions by id. Each has its own `size`, `dur`, optional `fps` (the scene's by default), `bg` (clear by default) and `labels`, and its own `layers`. A layer with `"comp":"card"` draws it in a box of the composition's size. The composition's time is the layer's own time, so `offset` and `stretch` move and slow it, and the layer shows nothing outside the composition's length. Compositions may draw other compositions, but never themselves.
 
 ```json
 "comps":{"card":{"size":"600x400","dur":"5s","layers":[{"id":"title","text":"Hello"}]}},
