@@ -21,8 +21,8 @@ mod mp4;
 mod toolbox;
 mod video;
 
-pub use colour::Planes;
+pub use colour::{Ayuv16, Planes};
 pub use video::{
-    Codec, Container, DecoderConfig, Muxer, Packet, VideoEncoder, VideoQuality, VideoSpec,
+    Codec, Container, DecoderConfig, Frame, Muxer, Packet, VideoEncoder, VideoQuality, VideoSpec,
     VideoWriter,
 };

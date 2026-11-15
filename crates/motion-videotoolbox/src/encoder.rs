@@ -12,18 +12,21 @@ use objc2_core_foundation::{
 use objc2_core_media::{
     CMSampleBuffer, CMTime, CMVideoCodecType,
     kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms, kCMSampleAttachmentKey_NotSync,
-    kCMTimeInvalid, kCMVideoCodecType_H264, kCMVideoCodecType_HEVC,
+    kCMTimeInvalid, kCMVideoCodecType_AppleProRes4444, kCMVideoCodecType_H264,
+    kCMVideoCodecType_HEVC,
 };
 use objc2_core_video::{
-    CVPixelBuffer, CVPixelBufferCreate, CVPixelBufferGetBaseAddressOfPlane,
+    CVPixelBuffer, CVPixelBufferCreate, CVPixelBufferGetBaseAddress,
+    CVPixelBufferGetBaseAddressOfPlane, CVPixelBufferGetBytesPerRow,
     CVPixelBufferGetBytesPerRowOfPlane, CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags,
     CVPixelBufferUnlockBaseAddress, kCVImageBufferColorPrimaries_ITU_R_709_2,
     kCVImageBufferTransferFunction_ITU_R_709_2, kCVImageBufferYCbCrMatrix_ITU_R_709_2,
-    kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+    kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_4444AYpCbCr16,
 };
 use objc2_video_toolbox::{
     VTCompressionSession, VTEncodeInfoFlags, VTSessionSetProperty,
-    kVTCompressionPropertyKey_AllowFrameReordering, kVTCompressionPropertyKey_ColorPrimaries,
+    kVTAlphaChannelMode_StraightAlpha, kVTCompressionPropertyKey_AllowFrameReordering,
+    kVTCompressionPropertyKey_AlphaChannelMode, kVTCompressionPropertyKey_ColorPrimaries,
     kVTCompressionPropertyKey_ExpectedFrameRate, kVTCompressionPropertyKey_MaxKeyFrameInterval,
     kVTCompressionPropertyKey_ProfileLevel, kVTCompressionPropertyKey_Quality,
     kVTCompressionPropertyKey_RealTime, kVTCompressionPropertyKey_TransferFunction,
@@ -42,6 +45,9 @@ pub enum Codec {
     H264,
     /// HEVC, Main profile.
     Hevc,
+    /// Apple ProRes 4444, with straight alpha: every frame a keyframe, for
+    /// handing on to be edited.
+    ProRes4444,
 }
 
 impl Codec {
@@ -49,14 +55,25 @@ impl Codec {
         match self {
             Codec::H264 => kCMVideoCodecType_H264,
             Codec::Hevc => kCMVideoCodecType_HEVC,
+            Codec::ProRes4444 => kCMVideoCodecType_AppleProRes4444,
         }
     }
 
-    /// The name of the box that holds the decoder's configuration in MP4.
-    fn record_box(self) -> &'static str {
+    /// The name of the box that holds the decoder's configuration in MP4,
+    /// for the codecs that have one.
+    fn record_box(self) -> Option<&'static str> {
         match self {
-            Codec::H264 => "avcC",
-            Codec::Hevc => "hvcC",
+            Codec::H264 => Some("avcC"),
+            Codec::Hevc => Some("hvcC"),
+            Codec::ProRes4444 => None,
+        }
+    }
+
+    /// The pixels the codec takes.
+    fn pixel_format(self) -> u32 {
+        match self {
+            Codec::H264 | Codec::Hevc => kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+            Codec::ProRes4444 => kCVPixelFormatType_4444AYpCbCr16,
         }
     }
 }
@@ -90,7 +107,19 @@ pub struct Planes<'a> {
     pub cr: &'a [u8],
 }
 
-/// One compressed frame: NAL units, each after its length in four bytes.
+/// One frame, in the pixels its codec takes.
+#[derive(Debug, Clone, Copy)]
+pub enum Image<'a> {
+    /// For H.264 and HEVC.
+    Yuv420(Planes<'a>),
+    /// For ProRes 4444: per pixel alpha, luma, blue and red difference, in
+    /// that order, rows without padding; alpha in full range and straight,
+    /// the rest in BT.709 limited range, scaled to 16 bits.
+    Ayuv16(&'a [u16]),
+}
+
+/// One compressed frame: for H.264 and HEVC, NAL units, each after its
+/// length in four bytes; for ProRes, one frame of its own bitstream.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Packet {
     /// The NAL units.
@@ -205,52 +234,64 @@ impl Encoder {
         Ok(encoder)
     }
 
-    /// Sets the session's properties.
+    /// Sets the session's properties: the colour for every codec, and the
+    /// profile, quality and frame order for those with a choice of them.
     fn configure(&self) -> Result<(), Error> {
-        let profile = match self.settings.codec {
-            // SAFETY: reading a constant of the framework.
-            Codec::H264 => unsafe { kVTProfileLevel_H264_High_AutoLevel },
-            // SAFETY: reading a constant of the framework.
-            Codec::Hevc => unsafe { kVTProfileLevel_HEVC_Main_AutoLevel },
-        };
-        let quality = CFNumber::new_f32(self.settings.quality);
-        let interval = CFNumber::new_i32(self.settings.keyframe_interval as i32);
-        let rate = CFNumber::new_f64(self.settings.fps);
-        // SAFETY: reading constants of the framework.
+        // SAFETY: reading a constant of the framework.
         let primaries = unsafe { kCVImageBufferColorPrimaries_ITU_R_709_2 };
-        // SAFETY: reading constants of the framework.
+        // SAFETY: reading a constant of the framework.
         let transfer = unsafe { kCVImageBufferTransferFunction_ITU_R_709_2 };
-        // SAFETY: reading constants of the framework.
+        // SAFETY: reading a constant of the framework.
         let matrix = unsafe { kCVImageBufferYCbCrMatrix_ITU_R_709_2 };
-        // SAFETY: reading a constant of the framework.
-        let real_time = unsafe { kVTCompressionPropertyKey_RealTime };
-        // SAFETY: reading a constant of the framework.
-        let reordering = unsafe { kVTCompressionPropertyKey_AllowFrameReordering };
-        // SAFETY: reading a constant of the framework.
-        let profile_key = unsafe { kVTCompressionPropertyKey_ProfileLevel };
-        // SAFETY: reading a constant of the framework.
-        let quality_key = unsafe { kVTCompressionPropertyKey_Quality };
-        // SAFETY: reading a constant of the framework.
-        let interval_key = unsafe { kVTCompressionPropertyKey_MaxKeyFrameInterval };
-        // SAFETY: reading a constant of the framework.
-        let rate_key = unsafe { kVTCompressionPropertyKey_ExpectedFrameRate };
         // SAFETY: reading a constant of the framework.
         let primaries_key = unsafe { kVTCompressionPropertyKey_ColorPrimaries };
         // SAFETY: reading a constant of the framework.
         let transfer_key = unsafe { kVTCompressionPropertyKey_TransferFunction };
         // SAFETY: reading a constant of the framework.
         let matrix_key = unsafe { kVTCompressionPropertyKey_YCbCrMatrix };
-        let properties: [(&CFString, &CFType); 9] = [
-            (real_time, CFBoolean::new(false)),
-            (reordering, CFBoolean::new(false)),
-            (profile_key, profile),
-            (quality_key, &quality),
-            (interval_key, &interval),
-            (rate_key, &rate),
+        // SAFETY: reading a constant of the framework.
+        let real_time = unsafe { kVTCompressionPropertyKey_RealTime };
+        let rate = CFNumber::new_f64(self.settings.fps);
+        // SAFETY: reading a constant of the framework.
+        let rate_key = unsafe { kVTCompressionPropertyKey_ExpectedFrameRate };
+        let quality = CFNumber::new_f32(self.settings.quality);
+        let interval = CFNumber::new_i32(self.settings.keyframe_interval as i32);
+        let mut properties: Vec<(&CFString, &CFType)> = vec![
             (primaries_key, primaries),
             (transfer_key, transfer),
             (matrix_key, matrix),
+            (real_time, CFBoolean::new(false)),
+            (rate_key, &rate),
         ];
+        let profile = match self.settings.codec {
+            // SAFETY: reading a constant of the framework.
+            Codec::H264 => Some(unsafe { kVTProfileLevel_H264_High_AutoLevel }),
+            // SAFETY: reading a constant of the framework.
+            Codec::Hevc => Some(unsafe { kVTProfileLevel_HEVC_Main_AutoLevel }),
+            Codec::ProRes4444 => None,
+        };
+        if let Some(profile) = profile {
+            // SAFETY: reading a constant of the framework.
+            let reordering = unsafe { kVTCompressionPropertyKey_AllowFrameReordering };
+            // SAFETY: reading a constant of the framework.
+            let profile_key = unsafe { kVTCompressionPropertyKey_ProfileLevel };
+            // SAFETY: reading a constant of the framework.
+            let quality_key = unsafe { kVTCompressionPropertyKey_Quality };
+            // SAFETY: reading a constant of the framework.
+            let interval_key = unsafe { kVTCompressionPropertyKey_MaxKeyFrameInterval };
+            properties.extend([
+                (reordering, CFBoolean::new(false) as &CFType),
+                (profile_key, profile),
+                (quality_key, &quality),
+                (interval_key, &interval),
+            ]);
+        } else {
+            // SAFETY: reading a constant of the framework.
+            let alpha_key = unsafe { kVTCompressionPropertyKey_AlphaChannelMode };
+            // SAFETY: reading a constant of the framework.
+            let straight = unsafe { kVTAlphaChannelMode_StraightAlpha };
+            properties.push((alpha_key, straight));
+        }
         for (key, value) in properties {
             // SAFETY: each key is a compression property, and each value
             // the type the framework documents for it.
@@ -263,9 +304,10 @@ impl Encoder {
     /// Takes the next frame, and returns the packets ready so far.
     ///
     /// # Errors
-    /// When the planes are not of the session's size, or the system fails.
-    pub fn encode(&mut self, planes: Planes<'_>) -> Result<Vec<Packet>, Error> {
-        let buffer = self.pixel_buffer(planes)?;
+    /// When the image is not of the session's size or pixels, or the
+    /// system fails.
+    pub fn encode(&mut self, image: Image<'_>) -> Result<Vec<Packet>, Error> {
+        let buffer = self.pixel_buffer(image)?;
         let frame = self.frames;
         // SAFETY: making a time value has no preconditions.
         let shown = unsafe { CMTime::new(frame as i64 * FRAME_TICKS, self.timescale) };
@@ -321,16 +363,24 @@ impl Encoder {
         Ok(std::mem::take(&mut output.packets))
     }
 
-    /// A pixel buffer holding `planes`, luma and interleaved chroma.
-    fn pixel_buffer(&self, planes: Planes<'_>) -> Result<CFRetained<CVPixelBuffer>, Error> {
+    /// A pixel buffer holding `image`, in the pixels the codec takes.
+    fn pixel_buffer(&self, image: Image<'_>) -> Result<CFRetained<CVPixelBuffer>, Error> {
         let (width, height) = (self.settings.width as usize, self.settings.height as usize);
-        let (chroma_width, chroma_height) = (width.div_ceil(2), height.div_ceil(2));
-        if planes.y.len() != width * height
-            || planes.cb.len() != chroma_width * chroma_height
-            || planes.cr.len() != chroma_width * chroma_height
-        {
+        let fits = match image {
+            Image::Yuv420(planes) => {
+                let chroma = width.div_ceil(2) * height.div_ceil(2);
+                self.settings.codec != Codec::ProRes4444
+                    && planes.y.len() == width * height
+                    && planes.cb.len() == chroma
+                    && planes.cr.len() == chroma
+            }
+            Image::Ayuv16(samples) => {
+                self.settings.codec == Codec::ProRes4444 && samples.len() == width * height * 4
+            }
+        };
+        if !fits {
             return Err(Error {
-                doing: "taking planes of another size",
+                doing: "taking an image of another size or kind",
                 status: -1,
             });
         }
@@ -342,7 +392,7 @@ impl Encoder {
                 None,
                 width,
                 height,
-                kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                self.settings.codec.pixel_format(),
                 None,
                 NonNull::from(&mut raw),
             )
@@ -358,33 +408,9 @@ impl Encoder {
         // SAFETY: locking for writing a buffer we own.
         let status = unsafe { CVPixelBufferLockBaseAddress(&buffer, lock) };
         check("locking a pixel buffer", status)?;
-        let written = match (plane(&buffer, 0), plane(&buffer, 1)) {
-            (Some((luma, luma_stride)), Some((chroma, chroma_stride))) => {
-                // SAFETY: the buffer is locked and ours alone until unlocked;
-                // plane 0 holds `height` rows of `luma_stride` bytes.
-                let luma =
-                    unsafe { slice::from_raw_parts_mut(luma.as_ptr(), luma_stride * height) };
-                // SAFETY: as above, plane 1 holds `chroma_height` rows of
-                // `chroma_stride` bytes, apart from plane 0.
-                let chroma = unsafe {
-                    slice::from_raw_parts_mut(chroma.as_ptr(), chroma_stride * chroma_height)
-                };
-                for (row, line) in planes.y.chunks_exact(width).enumerate() {
-                    luma[row * luma_stride..][..width].copy_from_slice(line);
-                }
-                let rows = planes
-                    .cb
-                    .chunks_exact(chroma_width)
-                    .zip(planes.cr.chunks_exact(chroma_width));
-                for (row, (cb, cr)) in rows.enumerate() {
-                    let line = &mut chroma[row * chroma_stride..][..chroma_width * 2];
-                    for (pair, (&b, &r)) in line.chunks_exact_mut(2).zip(cb.iter().zip(cr)) {
-                        pair.copy_from_slice(&[b, r]);
-                    }
-                }
-                true
-            }
-            _ => false,
+        let written = match image {
+            Image::Yuv420(planes) => write_yuv420(&buffer, planes, width, height),
+            Image::Ayuv16(samples) => write_ayuv16(&buffer, samples, width, height),
         };
         // SAFETY: unlocking the lock taken above, with the same flags.
         let unlocked = unsafe { CVPixelBufferUnlockBaseAddress(&buffer, lock) };
@@ -397,6 +423,58 @@ impl Encoder {
         check("unlocking a pixel buffer", unlocked)?;
         Ok(buffer)
     }
+}
+
+/// Writes 4:2:0 `planes` into a locked bi-planar `buffer`: luma, then
+/// chroma interleaved. False when the system gives no address.
+fn write_yuv420(buffer: &CVPixelBuffer, planes: Planes<'_>, width: usize, height: usize) -> bool {
+    let (chroma_width, chroma_height) = (width.div_ceil(2), height.div_ceil(2));
+    let (Some((luma, luma_stride)), Some((chroma, chroma_stride))) =
+        (plane(buffer, 0), plane(buffer, 1))
+    else {
+        return false;
+    };
+    // SAFETY: the buffer is locked and ours alone until unlocked; plane 0
+    // holds `height` rows of `luma_stride` bytes.
+    let luma = unsafe { slice::from_raw_parts_mut(luma.as_ptr(), luma_stride * height) };
+    // SAFETY: as above, plane 1 holds `chroma_height` rows of
+    // `chroma_stride` bytes, apart from plane 0.
+    let chroma =
+        unsafe { slice::from_raw_parts_mut(chroma.as_ptr(), chroma_stride * chroma_height) };
+    for (row, line) in planes.y.chunks_exact(width).enumerate() {
+        luma[row * luma_stride..][..width].copy_from_slice(line);
+    }
+    let rows = planes
+        .cb
+        .chunks_exact(chroma_width)
+        .zip(planes.cr.chunks_exact(chroma_width));
+    for (row, (cb, cr)) in rows.enumerate() {
+        let line = &mut chroma[row * chroma_stride..][..chroma_width * 2];
+        for (pair, (&b, &r)) in line.chunks_exact_mut(2).zip(cb.iter().zip(cr)) {
+            pair.copy_from_slice(&[b, r]);
+        }
+    }
+    true
+}
+
+/// Writes 16-bit AYCbCr `samples` into a locked single-plane `buffer`, each
+/// sample little-endian. False when the system gives no address.
+fn write_ayuv16(buffer: &CVPixelBuffer, samples: &[u16], width: usize, height: usize) -> bool {
+    let base = CVPixelBufferGetBaseAddress(buffer);
+    let stride = CVPixelBufferGetBytesPerRow(buffer);
+    let Some(base) = NonNull::new(base.cast::<u8>()) else {
+        return false;
+    };
+    // SAFETY: the buffer is locked and ours alone until unlocked; it holds
+    // `height` rows of `stride` bytes.
+    let bytes = unsafe { slice::from_raw_parts_mut(base.as_ptr(), stride * height) };
+    for (row, line) in samples.chunks_exact(width * 4).enumerate() {
+        let out = &mut bytes[row * stride..][..width * 8];
+        for (pair, sample) in out.chunks_exact_mut(2).zip(line) {
+            pair.copy_from_slice(&sample.to_le_bytes());
+        }
+    }
+    true
 }
 
 impl Drop for Encoder {
@@ -511,7 +589,7 @@ fn config(sample: &CMSampleBuffer, codec: Codec) -> Option<Vec<u8>> {
     let atoms = atoms.downcast::<CFDictionary>().ok()?;
     // SAFETY: the extension atoms are keyed by box name.
     let atoms = unsafe { atoms.cast_unchecked::<CFString, CFType>() };
-    let name = CFString::from_static_str(codec.record_box());
+    let name = CFString::from_static_str(codec.record_box()?);
     let record = atoms.get(&name)?.downcast::<CFData>().ok()?;
     Some(record.to_vec())
 }

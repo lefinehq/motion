@@ -38,7 +38,7 @@ fn encode(encoder: &mut Encoder, count: u64) -> Vec<Packet> {
             cb: &cb,
             cr: &cr,
         };
-        packets.extend(encoder.encode(planes).unwrap());
+        packets.extend(encoder.encode(Image::Yuv420(planes)).unwrap());
     }
     packets.extend(encoder.finish().unwrap());
     packets
@@ -76,6 +76,35 @@ fn planes_of_another_size_are_refused() {
         cb: &[0; 1],
         cr: &[0; 1],
     };
-    let error = encoder.encode(planes).unwrap_err();
-    assert_eq!(error.doing, "taking planes of another size");
+    let error = encoder.encode(Image::Yuv420(planes)).unwrap_err();
+    assert_eq!(error.doing, "taking an image of another size or kind");
+    let error = encoder
+        .encode(Image::Ayuv16(&[0; WIDTH * HEIGHT * 4]))
+        .unwrap_err();
+    assert_eq!(error.doing, "taking an image of another size or kind");
+}
+
+#[test]
+fn prores_takes_alpha_and_makes_every_frame_a_keyframe() {
+    let mut encoder = Encoder::new(settings(Codec::ProRes4444)).unwrap();
+    let mut packets = Vec::new();
+    for frame in 0..4u16 {
+        // Half clear, half opaque mid grey.
+        let samples: Vec<u16> = (0..WIDTH * HEIGHT)
+            .flat_map(|i| {
+                let alpha = if i % WIDTH < WIDTH / 2 { 0 } else { 0xffff };
+                [alpha, 0x7e00 + frame, 0x8000, 0x8000]
+            })
+            .collect();
+        packets.extend(encoder.encode(Image::Ayuv16(&samples)).unwrap());
+    }
+    packets.extend(encoder.finish().unwrap());
+    assert_eq!(
+        packets.iter().map(|p| p.frame).collect::<Vec<_>>(),
+        [0, 1, 2, 3]
+    );
+    assert!(packets.iter().all(|p| p.keyframe));
+    // A ProRes frame starts with its size and `icpf`.
+    assert_eq!(&packets[0].data[4..8], b"icpf");
+    assert_eq!(encoder.config(), None);
 }

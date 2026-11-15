@@ -81,3 +81,26 @@ proptest! {
         prop_assert!(luma(low) <= luma(high));
     }
 }
+
+#[test]
+fn ayuv16_keeps_straight_alpha_and_scales_to_16_bits() {
+    // Half-clear white keeps its white; a clear pixel keeps its colour.
+    let frame = to_ayuv16(&[255, 255, 255, 128, 255, 0, 0, 0], 2, 1);
+    assert_eq!(
+        frame.samples[..4],
+        [128 * 257, 235 * 256, 128 * 256, 128 * 256]
+    );
+    assert_eq!(frame.samples[4], 0);
+    let red = to_planes(&[255, 0, 0, 255], 1, 1);
+    let scaled = |v: u8| (f32::from(v) * 256.0) as i32;
+    for (sample, eight) in frame.samples[5..]
+        .iter()
+        .zip([red.y[0], red.cb[0], red.cr[0]])
+    {
+        // The same level as 8 bits, to within the 8-bit rounding.
+        assert!(
+            (i32::from(*sample) - scaled(eight)).abs() <= 128,
+            "{sample} {eight}"
+        );
+    }
+}

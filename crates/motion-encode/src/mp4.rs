@@ -15,12 +15,12 @@ use std::path::{Path, PathBuf};
 
 use motion_format::{Diagnostic, Kind, Result};
 use mp4_atom::{
-    Atom, Av01, Avc1, Co64, Colr, Decode, Dinf, Dref, Encode, Ftyp, Hdlr, Hvc1, Mdhd, Mdia, Minf,
-    Moov, Mvhd, Stbl, Stco, Stsc, StscEntry, Stsd, Stss, Stsz, StszSamples, Stts, SttsEntry, Tkhd,
-    Trak, Url, Visual, Vmhd,
+    Atom, Av01, Avc1, Co64, Colr, Decode, Dinf, Dref, Encode, Ftyp, Hdlr, Hvc1, Jpeg, Mdhd, Mdia,
+    Minf, Moov, Mvhd, Stbl, Stco, Stsc, StscEntry, Stsd, Stss, Stsz, StszSamples, Stts, SttsEntry,
+    Tkhd, Trak, Url, Visual, Vmhd,
 };
 
-use crate::video::{DecoderConfig, Muxer, Packet, VideoSpec};
+use crate::video::{Container, DecoderConfig, Muxer, Packet, VideoSpec};
 
 /// The ticks of a frame: the track's timescale is the frame rate times
 /// this, so a rate to a thousandth of a frame per second is exact.
@@ -31,6 +31,8 @@ const MDAT_HEADER: u64 = 16;
 /// An MP4 file being written.
 pub(crate) struct Mp4 {
     spec: VideoSpec,
+    /// MP4, or QuickTime: the same boxes under another file type.
+    container: Container,
     /// Where the file goes once whole.
     path: PathBuf,
     /// The samples, in order, until the file is laid out.
@@ -46,7 +48,7 @@ pub(crate) struct Mp4 {
 
 impl Mp4 {
     /// A new MP4 file at `path` for a `spec` video.
-    pub(crate) fn create(path: &Path, spec: VideoSpec) -> Result<Mp4> {
+    pub(crate) fn create(path: &Path, spec: VideoSpec, container: Container) -> Result<Mp4> {
         let mut scratch_path = path.as_os_str().to_owned();
         scratch_path.push(".mdat");
         let scratch_path = PathBuf::from(scratch_path);
@@ -54,6 +56,7 @@ impl Mp4 {
             File::create(&scratch_path).map_err(|e| Diagnostic::io("create", &scratch_path, &e))?;
         Ok(Mp4 {
             spec,
+            container,
             path: path.to_owned(),
             scratch: BufWriter::new(scratch),
             scratch_path,
@@ -91,6 +94,7 @@ impl Mp4 {
                 ..Avc1::default()
             }
             .into(),
+            DecoderConfig::ProRes => prores(visual),
             DecoderConfig::Hevc { record } => Hvc1 {
                 visual,
                 hvcc: record_box(b"hvcC", record)?,
@@ -192,7 +196,7 @@ impl Mp4 {
     /// copied from the scratch file.
     fn lay_out(&self, config: &DecoderConfig) -> Result<()> {
         let mut head = Vec::new();
-        encode(&ftyp(config), &mut head)?;
+        encode(&ftyp(self.container, config), &mut head)?;
         // The index holds the samples' offset, which follows the index:
         // measure it once, then write it with the offset it gives.
         let mut moov = Vec::new();
@@ -200,6 +204,12 @@ impl Mp4 {
         let offset = (head.len() + moov.len()) as u64 + MDAT_HEADER;
         moov.clear();
         encode(&self.moov(config, offset)?, &mut moov)?;
+        if *config == DecoderConfig::ProRes && !rename_entry(&mut moov, b"jpeg", b"ap4h") {
+            return Err(Diagnostic::new(
+                Kind::Invalid,
+                "the ProRes sample entry is not where the index puts it",
+            ));
+        }
         head.extend_from_slice(&moov);
         head.extend_from_slice(&1u32.to_be_bytes());
         head.extend_from_slice(b"mdat");
@@ -262,18 +272,99 @@ impl Muxer for Mp4 {
     }
 }
 
-/// The file type: ISO base media, with the codec's brand where it has one.
-fn ftyp(config: &DecoderConfig) -> Ftyp {
+/// The file type: QuickTime's, or ISO base media with the codec's brand
+/// where it has one.
+fn ftyp(container: Container, config: &DecoderConfig) -> Ftyp {
+    if container == Container::Mov {
+        return Ftyp {
+            major_brand: b"qt  ".into(),
+            minor_version: 512,
+            compatible_brands: vec![b"qt  ".into()],
+        };
+    }
     let brand: Option<&[u8; 4]> = match config {
         DecoderConfig::Av1 { .. } => Some(b"av01"),
         DecoderConfig::Avc { .. } => Some(b"avc1"),
-        DecoderConfig::Hevc { .. } => None,
+        DecoderConfig::Hevc { .. } | DecoderConfig::ProRes => None,
     };
     let brands = [b"isom", b"iso2", b"mp41"].into_iter().chain(brand);
     Ftyp {
         major_brand: b"isom".into(),
         minor_version: 512,
         compatible_brands: brands.map(|&brand| brand.into()).collect(),
+    }
+}
+
+/// A stand-in for the sample entry of ProRes 4444 (`ap4h`), which
+/// `mp4-atom` has no type for and will not write as an unknown entry:
+/// QuickTime's `jpeg` entry has the same fields, the visual ones, 32 bits
+/// deep for alpha, then the colour. [`rename_entry`] gives it its name once
+/// encoded.
+fn prores(mut visual: Visual) -> mp4_atom::Codec {
+    visual.depth = 32;
+    visual.compressor = "Apple ProRes 4444".into();
+    Jpeg {
+        visual,
+        colr: vec![Colr::Nclc {
+            colour_primaries: 1,
+            transfer_characteristics: 1,
+            matrix_coefficients: 1,
+        }],
+        ..Jpeg::default()
+    }
+    .into()
+}
+
+/// The path from `moov` to the sample description, box by box.
+const STSD_PATH: [&[u8; 4]; 5] = [b"trak", b"mdia", b"minf", b"stbl", b"stsd"];
+
+/// Renames the first sample entry of an encoded `moov` from `from` to `to`,
+/// which have the same size. False when the boxes do not lead to such an
+/// entry.
+fn rename_entry(moov: &mut [u8], from: &[u8; 4], to: &[u8; 4]) -> bool {
+    /// The first child of kind `kind` in `range` of `bytes`, as the range of
+    /// its body.
+    fn child(
+        bytes: &[u8],
+        range: std::ops::Range<usize>,
+        kind: &[u8; 4],
+    ) -> Option<std::ops::Range<usize>> {
+        let mut at = range.start;
+        while at + 8 <= range.end {
+            let size = u32::from_be_bytes(bytes[at..at + 4].try_into().ok()?) as usize;
+            let (header, size) = match size {
+                1 => (
+                    16,
+                    u64::from_be_bytes(bytes.get(at + 8..at + 16)?.try_into().ok()?) as usize,
+                ),
+                0 => (8, range.end - at),
+                size => (8, size),
+            };
+            let end = at
+                .checked_add(size)
+                .filter(|&end| end <= range.end && size >= header)?;
+            if &bytes[at + 4..at + 8] == kind {
+                return Some(at + header..end);
+            }
+            at = end;
+        }
+        None
+    }
+    let mut body = 8..moov.len();
+    for kind in STSD_PATH {
+        match child(moov, body, kind) {
+            Some(inner) => body = inner,
+            None => return false,
+        }
+    }
+    // The description's version, flags and entry count, then the entry.
+    let kind = body.start + 8 + 4;
+    match moov.get_mut(kind..kind + 4) {
+        Some(name) if name == from => {
+            name.copy_from_slice(to);
+            true
+        }
+        _ => false,
     }
 }
 

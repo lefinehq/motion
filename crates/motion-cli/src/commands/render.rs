@@ -153,7 +153,7 @@ fn video(
 ) -> Result<ExitCode> {
     let fps = session.scene().root.fps;
     let codec = encoding.codec.unwrap_or_default();
-    let quality = encoding.quality.unwrap_or_default();
+    let quality = encoding.quality.unwrap_or(codec.default_quality());
     // The writer takes its size from the first frame, as drawn.
     let mut writer: Option<VideoWriter> = None;
     let mut size = (0, 0);

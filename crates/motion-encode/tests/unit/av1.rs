@@ -58,7 +58,11 @@ fn every_frame_comes_out_in_order_and_the_first_is_a_keyframe() {
     let mut packets = Vec::new();
     for level in 0..6u8 {
         let rgba = [level * 40, 0, 255 - level * 40, 255].repeat(32 * 16);
-        packets.extend(encoder.encode(&to_planes(&rgba, 32, 16)).unwrap());
+        packets.extend(
+            encoder
+                .encode(&Frame::Yuv420(to_planes(&rgba, 32, 16)))
+                .unwrap(),
+        );
     }
     packets.extend(encoder.finish().unwrap());
     let frames: Vec<u64> = packets.iter().map(|p| p.frame).collect();
@@ -84,7 +88,11 @@ fn encode(encoder: &mut Av1, width: u32, height: u32) -> Vec<Packet> {
                 [(x + frame * 7) as u8, y as u8, (x ^ y) as u8, 255]
             })
             .collect();
-        packets.extend(encoder.encode(&to_planes(&rgba, width, height)).unwrap());
+        packets.extend(
+            encoder
+                .encode(&Frame::Yuv420(to_planes(&rgba, width, height)))
+                .unwrap(),
+        );
     }
     packets.extend(encoder.finish().unwrap());
     packets
@@ -145,4 +153,16 @@ fn tiles_follow_the_frame_size(#[case] width: u32, #[case] height: u32, #[case] 
         fps: 30.0,
     };
     assert_eq!(tiles(spec), expected);
+}
+
+#[test]
+fn a_frame_with_alpha_is_refused() {
+    let spec = VideoSpec {
+        width: 16,
+        height: 16,
+        fps: 30.0,
+    };
+    let mut encoder = Av1::new(spec, VideoQuality::Web).unwrap();
+    let frame = Frame::Ayuv16(crate::colour::to_ayuv16(&[0; 16 * 16 * 4], 16, 16));
+    assert!(encoder.encode(&frame).is_err());
 }
