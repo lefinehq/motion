@@ -33,6 +33,8 @@ pub enum Role {
     Animator,
     /// Chooses how much of each character, word or line an animator applies to.
     Selector,
+    /// Cuts what the layer it is on draws, before its effects.
+    Mask,
 }
 
 /// What an item's kind key holds.
@@ -1887,6 +1889,73 @@ pub static SELECTORS: [ItemKind; 1] = [ItemKind {
     doc: "chooses the parts between `start` and `end`, moved by `offset`",
 }];
 
+/// The properties of a mask.
+pub static MASK: Registry = Registry {
+    kind: "mask",
+    rows: &[
+        PropertySpec {
+            name: "path",
+            ty: ValueType::Path,
+            rest: Rest::Value(Value::Path(Path::EMPTY)),
+            components: &[],
+            range: None,
+            broadcast: false,
+            spatial: false,
+            doc: "the outline it cuts along, as SVG path data in px of the layer; \
+                  an open outline closes; keys of one track share their vertex count",
+        },
+        PropertySpec {
+            name: "feather",
+            ty: ValueType::Point,
+            rest: Rest::Value(Value::Point([0.0, 0.0])),
+            components: &["feather-x", "feather-y"],
+            range: Some((0.0, f64::INFINITY)),
+            broadcast: true,
+            spatial: false,
+            doc: "how far its edge fades, in px, on each axis; one number fades both",
+        },
+        opacity("how much it covers, 0 to 1"),
+        number(
+            "expand",
+            0.0,
+            None,
+            "how far its edge moves out, in px; a negative value moves it in",
+        ),
+    ],
+};
+
+/// The one kind of mask.
+pub static MASKS: [ItemKind; 1] = [ItemKind {
+    name: "mask",
+    role: Role::Mask,
+    registry: &MASK,
+    primary: Primary::Property("path"),
+    settings: &[
+        SettingSpec {
+            name: "mode",
+            choices: &[
+                "add",
+                "subtract",
+                "intersect",
+                "lighten",
+                "darken",
+                "difference",
+                "none",
+            ],
+            default: "add",
+            doc: "how it combines with the masks before it",
+        },
+        SettingSpec {
+            name: "keep",
+            choices: &["inside", "outside"],
+            default: "inside",
+            doc: "whether it covers what is inside its outline, or what is outside",
+        },
+    ],
+    input: None,
+    doc: "cuts what the layer draws to an outline, before its effects",
+}];
+
 /// The shape item kind called `name`, if there is one.
 pub fn shape_kind(name: &str) -> Option<&'static ItemKind> {
     table::lookup(&SHAPES, name)
@@ -1904,7 +1973,9 @@ pub fn effect_kind(name: &str) -> Option<&'static ItemKind> {
 
 /// The properties code depends on, for the drawing and measuring of items.
 pub mod props {
-    use super::{ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, PATH, Prop, RANGE, RECT, STROKE, TRIM};
+    use super::{
+        ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, MASK, PATH, Prop, RANGE, RECT, STROKE, TRIM,
+    };
 
     /// A rectangle's width and height.
     pub const RECT_SIZE: Prop = Prop::of(&RECT, 0);
@@ -1972,6 +2043,14 @@ pub mod props {
     pub const RANGE_AMOUNT: Prop = Prop::of(&RANGE, 3);
     /// How smooth a square range selector's edges are.
     pub const RANGE_SMOOTH: Prop = Prop::of(&RANGE, 4);
+    /// A mask's outline.
+    pub const MASK_PATH: Prop = Prop::of(&MASK, 0);
+    /// How far a mask's edge fades.
+    pub const MASK_FEATHER: Prop = Prop::of(&MASK, 1);
+    /// How much a mask covers.
+    pub const MASK_OPACITY: Prop = Prop::of(&MASK, 2);
+    /// How far a mask's edge moves out.
+    pub const MASK_EXPAND: Prop = Prop::of(&MASK, 3);
 }
 
 #[cfg(test)]

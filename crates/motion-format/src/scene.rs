@@ -168,6 +168,8 @@ pub struct Layer {
     /// How slowly its own time runs: 2 plays at half speed; a negative value
     /// runs backwards from `offset`, so its keys play before `offset`.
     pub stretch: f64,
+    /// Masks that cut what it draws, combined in order, before its effects.
+    pub mask: Vec<Item>,
     /// Effects on what it draws, applied in order.
     pub fx: Vec<Item>,
     /// Its effects apply to what is below it in its composition instead,
