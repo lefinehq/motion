@@ -1,0 +1,25 @@
+[package]
+name = "motion-encode"
+description = "Turns drawn frames into video files: BT.709 colour, one trait per codec and container (D46)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+motion-format = { path = "../motion-format" }
+# AV1, in pure Rust under BSD-2-Clause, without its assembly (D13, D46).
+rav1e = { version = "0.8", default-features = false }
+# MP4 boxes; the layout and streaming are ours (D46).
+mp4-atom = "0.17"
+strum.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+proptest.workspace = true
+rstest.workspace = true
+
+[lints]
+workspace = true

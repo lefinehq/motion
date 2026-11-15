@@ -1,12 +1,13 @@
 //! A scene being worked on: read once, compiled on demand, edited and saved.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::num::NonZero;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::sync::{Condvar, Mutex, OnceLock, PoisonError};
 use std::thread;
 
 use motion_edit::{apply_edit, parse_edit};
@@ -284,6 +285,67 @@ impl Session {
         options: RenderOptions,
         each: impl Fn(u32, Image) -> Result<()> + Sync,
     ) -> Result<()> {
+        self.render_each(frames, options, |frame, drawn| {
+            drawn
+                .and_then(|image| each(frame, image))
+                .map_err(|d| (frame, d))
+        })
+    }
+
+    /// Draws every frame of `frames` as [`Session::render_frames`] does, and
+    /// hands each image to `each` in frame order, one at a time: how frames
+    /// reach an encoder. A thread that draws a frame too far ahead waits, so
+    /// at most two frames per thread are held however long the range.
+    ///
+    /// # Errors
+    /// As [`Session::render_frames`]. Once one fails, no frame after it is
+    /// handed over.
+    pub fn render_in_order(
+        &self,
+        frames: Range<u32>,
+        options: RenderOptions,
+        each: impl FnMut(u32, Image) -> Result<()> + Send,
+    ) -> Result<()> {
+        let window = 2 * workers(frames.len());
+        let order = Mutex::new(InOrder {
+            next: frames.start,
+            waiting: BTreeMap::new(),
+            failed: false,
+            each,
+        });
+        let turn = Condvar::new();
+        self.render_each(frames, options, |frame, drawn| {
+            let mut order = order.lock().unwrap_or_else(PoisonError::into_inner);
+            // The next frame is being drawn by a thread that does not wait,
+            // so this wait ends, unless that frame fails.
+            while frame >= order.next + window && !order.failed {
+                order = turn.wait(order).unwrap_or_else(PoisonError::into_inner);
+            }
+            if order.failed {
+                // The failure that stopped the render is the one reported.
+                return Ok(());
+            }
+            // A frame handed over may be another thread's, so the failure
+            // names its own frame.
+            let handed = drawn
+                .map_err(|d| (frame, d))
+                .and_then(|image| order.hand(frame, image));
+            if handed.is_err() {
+                order.failed = true;
+            }
+            turn.notify_all();
+            handed
+        })
+    }
+
+    /// The worker loop of both renders: `each` gets every frame's image, or
+    /// the failure to draw it, and fails with the frame that failed.
+    fn render_each(
+        &self,
+        frames: Range<u32>,
+        options: RenderOptions,
+        each: impl Fn(u32, Result<Image>) -> std::result::Result<(), (u32, Diagnostic)> + Sync,
+    ) -> Result<()> {
         let scene = self.frames()?;
         if frames.start > frames.end || frames.end > scene.end {
             return Err(Diagnostic::new(
@@ -298,21 +360,16 @@ impl Session {
         let next = AtomicU32::new(frames.start);
         let stop = AtomicBool::new(false);
         let failure: Mutex<Option<(u32, Diagnostic)>> = Mutex::new(None);
-        let workers = thread::available_parallelism()
-            .map_or(1, NonZero::get)
-            .min(frames.len().max(1));
         thread::scope(|scope| {
-            for _ in 0..workers {
+            for _ in 0..workers(frames.len()) {
                 scope.spawn(|| {
                     while !stop.load(Ordering::Relaxed) {
                         let frame = next.fetch_add(1, Ordering::Relaxed);
                         if frame >= frames.end {
                             break;
                         }
-                        let drawn = self
-                            .render_with(f64::from(frame), options)
-                            .and_then(|image| each(frame, image));
-                        if let Err(mut d) = drawn {
+                        let drawn = each(frame, self.render_with(f64::from(frame), options));
+                        if let Err((frame, mut d)) = drawn {
                             stop.store(true, Ordering::Relaxed);
                             d.message = format!("frame {frame}: {}", d.message);
                             let mut first = failure.lock().unwrap_or_else(PoisonError::into_inner);
@@ -447,6 +504,37 @@ fn temp_path(path: &Path) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(".tmp");
     path.with_file_name(name)
+}
+
+/// How many threads draw `frames` frames: one per processor, no more than
+/// there are frames.
+fn workers(frames: usize) -> u32 {
+    let threads = thread::available_parallelism().map_or(1, NonZero::get);
+    threads.min(frames.max(1)) as u32
+}
+
+/// The frames of [`Session::render_in_order`] drawn ahead of their turn.
+struct InOrder<F> {
+    /// The frame to hand over next.
+    next: u32,
+    waiting: BTreeMap<u32, Image>,
+    /// Whether a frame failed, so none after it is handed over.
+    failed: bool,
+    each: F,
+}
+
+impl<F: FnMut(u32, Image) -> Result<()>> InOrder<F> {
+    /// Takes `frame`'s image, and hands over every frame whose turn it is.
+    /// A failure names the frame that failed.
+    fn hand(&mut self, frame: u32, image: Image) -> std::result::Result<(), (u32, Diagnostic)> {
+        self.waiting.insert(frame, image);
+        while let Some(image) = self.waiting.remove(&self.next) {
+            let at = self.next;
+            self.next += 1;
+            (self.each)(at, image).map_err(|d| (at, d))?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

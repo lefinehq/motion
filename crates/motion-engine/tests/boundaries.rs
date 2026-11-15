@@ -1,4 +1,4 @@
-//! D37, D38 and D39. Engines stay behind our own types. No crate's public API names an
+//! D37, D38, D39 and D46. Engines stay behind our own types. No crate's public API names an
 //! engine (the shaper, the rasteriser, the parsers): a `pub` line in any
 //! crate's source that names one fails here, with where. Vocabulary crates
 //! (`kurbo`, `peniko`, `linebender_resource_handle`) are allowed.
@@ -25,6 +25,8 @@ const ENGINES: &[&str] = &[
     "boa_parser",
     "boa_ast",
     "boa_interner",
+    "rav1e",
+    "mp4_atom",
 ];
 
 /// The workspace's crates folder.
@@ -158,5 +160,72 @@ fn nothing_that_renders_links_the_script_engine() {
         found.is_empty(),
         "only the CLI's import may run expressions (D38):\n{}",
         found.join("\n")
+    );
+}
+
+/// D46: video is the CLI's last step. No crate that reads, compiles or
+/// draws a scene links the encoder; frames reach it through the CLI.
+#[test]
+fn nothing_that_renders_links_the_encoder() {
+    let found = linking(&["motion-encode"], &["motion-cli", "motion-encode"]);
+    assert!(
+        found.is_empty(),
+        "only the CLI may link the encoder (D46):\n{}",
+        found.join("\n")
+    );
+}
+
+/// Encoders under the GPL, or software encoders of patented codecs
+/// compiled in (D13).
+const BARRED_CODECS: &[&str] = &[
+    "x264",
+    "x264-sys",
+    "x265",
+    "x265-sys",
+    "ffmpeg-next",
+    "ffmpeg-sys-next",
+    "rsmpeg",
+    "rusty_ffmpeg",
+];
+
+/// D13: the binary holds no GPL encoder and no H.264 or HEVC software
+/// encoder compiled in. OpenH264 may come only as a binary loaded at run
+/// time, so its `source` feature, which compiles it in, is never on.
+#[test]
+fn no_barred_encoder_is_compiled_in() {
+    let found = linking(BARRED_CODECS, &[]);
+    assert!(
+        found.is_empty(),
+        "barred encoders (D13):\n{}",
+        found.join("\n")
+    );
+    let out = Command::new(env!("CARGO"))
+        .args([
+            "tree",
+            "--offline",
+            "--quiet",
+            "--workspace",
+            "-e",
+            "normal",
+        ])
+        .args(["--prefix", "none", "--format", "{p} [{f}]"])
+        .current_dir(CRATES)
+        .output()
+        .expect("run cargo tree");
+    assert!(
+        out.status.success(),
+        "cargo tree: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let compiled: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|line| line.starts_with("openh264"))
+        .filter(|line| line.contains("[source") || line.contains(",source"))
+        .map(str::to_owned)
+        .collect();
+    assert!(
+        compiled.is_empty(),
+        "OpenH264 compiled in (D13):\n{}",
+        compiled.join("\n")
     );
 }

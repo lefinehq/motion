@@ -3,11 +3,27 @@
 
 [graph]
 all-features = true
+# The platforms motion is built for. Dependencies that only other
+# configurations pull in (such as a codec's fuzzing harness under
+# `cfg(fuzzing)`) are not part of any binary, so they are not checked.
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
+]
 
 [advisories]
 version = 2
 # Known vulnerabilities and unmaintained or yanked crates fail the check.
 yanked = "deny"
+ignore = [
+  # `paste` is unmaintained, not unsafe: a finished macro crate that `rav1e`
+  # uses at build time only. Drop this once `rav1e` moves off it.
+  { id = "RUSTSEC-2024-0436", reason = "build-time macro of rav1e, unmaintained but sound" },
+]
 
 [licenses]
 version = 2

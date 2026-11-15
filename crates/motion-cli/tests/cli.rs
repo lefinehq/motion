@@ -450,6 +450,41 @@ fn render_writes_one_numbered_png_per_frame() {
 }
 
 #[test]
+fn render_to_an_mp4_file_writes_a_video() {
+    // Small, so the encoder is quick in a debug build.
+    let dir = scratch("render-video");
+    let scene = dir.join("scene.json");
+    fs::write(
+        &scene,
+        r##"{"motion":1,"size":"160x90","fps":30,"dur":"1s","bg":"#0B0D12","layers":[]}"##,
+    )
+    .expect("write the scene");
+    let out = dir.join("small.mp4");
+    let file = out.to_str().expect("utf-8 path");
+    let scene = scene.to_str().expect("utf-8 path");
+    let run = motion(&["render", scene, "--frames", "0-5", "--out", file]);
+    assert_eq!(run.status.code(), Some(0), "{}", stderr(&run));
+    assert_eq!(
+        stdout(&run),
+        format!("6 frames written to {file} (AV1, 160x90, 30 fps, 0.2 s)\n")
+    );
+    let bytes = fs::read(&out).expect("read the video");
+    // The file type, then the index ahead of the samples.
+    assert_eq!(&bytes[4..8], b"ftyp");
+    assert_eq!(&bytes[36..40], b"moov");
+    let mut names: Vec<_> = fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        ["scene.json", "small.mp4"],
+        "nothing but the video is left"
+    );
+}
+
+#[test]
 fn render_takes_one_frame_and_makes_the_folder() {
     let out = scratch("render-one").join("deeper");
     let dir = out.to_str().expect("utf-8 path");

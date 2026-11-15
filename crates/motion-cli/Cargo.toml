@@ -13,6 +13,7 @@ name = "motion"
 path = "src/main.rs"
 
 [dependencies]
+motion-encode = { path = "../motion-encode" }
 motion-engine = { path = "../motion-engine", features = ["bake"] }
 motion-fonts = { path = "../motion-fonts", features = ["fetch"] }
 clap = { workspace = true }
