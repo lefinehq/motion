@@ -45,6 +45,8 @@ pub(crate) struct SceneDoc {
     pub(crate) slots: Present<serde_json::Value>,
     /// Read by `crate::roles` once the scene is.
     pub(crate) roles: Present<serde_json::Value>,
+    /// Read by `crate::locks` once the roles are.
+    pub(crate) locks: Present<serde_json::Value>,
     pub(crate) comps: Object<CompsDoc>,
     pub(crate) layers: Present<List<LayersDoc>>,
 }

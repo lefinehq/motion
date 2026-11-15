@@ -10,6 +10,7 @@
 
 mod apply;
 mod key_path;
+mod lock;
 mod parse;
 mod path;
 mod problem;

@@ -126,6 +126,11 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
     walk.mapping.roles = roles::propose(&document, &walk.named_roles);
     if !walk.mapping.roles.is_empty() {
         json["roles"] = roles::written(&walk.mapping.roles);
+        // A master with a logo locks it, its palette and its typefaces.
+        if walk.mapping.roles.iter().any(|r| r.role == "logo") {
+            json["locks"] = serde_json::json!(roles::DEFAULT_LOCKS);
+            walk.mapping.locks = roles::DEFAULT_LOCKS.map(str::to_owned).to_vec();
+        }
         document = read_back(&json)?;
     }
     Ok(Import {

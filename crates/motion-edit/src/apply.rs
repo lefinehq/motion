@@ -138,6 +138,7 @@ fn validated(doc: &Document, edit: &Edit) -> Result<Document> {
 fn apply_changes(doc: &Document, edit: &Edit) -> Result<(Value, Target)> {
     // Keys first, so a typo is reported even for a bad target.
     check_keys(edit)?;
+    crate::lock::check(doc, edit)?;
     let target = Target::find(doc, &edit.target)?;
     let mut raw = doc.raw().clone();
     let changes = slot::split(doc, edit, &mut raw)?;

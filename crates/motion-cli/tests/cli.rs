@@ -185,7 +185,7 @@ fn roles_list_what_each_holds_and_an_edit_goes_through_one() {
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(
         stdout(&out),
-        "headline  tag/word  text \"Launch\"\nplate     plate     rect\naccent    $accent   color \"#E63946\"\n"
+        "headline  tag/word  text \"Launch\"\nplate     plate     rect  locked\naccent    $accent   color \"#E63946\"\n"
     );
     let out = motion(&["edit", &path, "@accent=#2A9D8F"]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));

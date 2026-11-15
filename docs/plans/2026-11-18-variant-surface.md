@@ -80,7 +80,7 @@ Each step is one pull request, with its tests.
 1. **Decisions.** D50 to D52 and this plan.
 2. **Roles in the format.** `roles`, its check, `@role` edit targets and `motion roles` with `--json`. Done.
 3. **Roles at import.** `@role` names, the vocabulary, the report lines, measured on the corpus. Done.
-4. **Locks.** `locks`, the four kinds, refusals in `apply_edit`, the import's defaults.
+4. **Locks.** `locks`, the four kinds, refusals in `apply_edit`, the import's defaults. Done: on the corpus, the 15 masters with a logo get the defaults.
 5. **Batches.** `motion batch`, its manifest, report and `--json`.
 6. **Docs.** `variants.md`, `edits-and-checks.md`, the glossary and the CHANGELOG.
 

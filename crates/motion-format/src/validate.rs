@@ -168,8 +168,10 @@ pub(crate) fn scene(
         fonts,
         comps,
         roles: Vec::new(),
+        locks: Vec::new(),
     };
     scene.roles = crate::roles::read(doc.roles.as_ref(), &scene)?;
+    scene.locks = crate::locks::read(doc.locks.as_ref(), &scene)?;
     Ok(scene)
 }
 

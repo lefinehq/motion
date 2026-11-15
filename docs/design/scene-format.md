@@ -241,6 +241,19 @@ A scene's `roles` say what its layers and slots do ([D50](decisions.md#d50-roles
 
 A role that names no layer or slot is an error at it, `roles.headline`. An edit may target a role: `@headline text="Sale"` edits `title`, and `@accent=#2A9D8F` sets the slot. `motion roles` lists them with what each holds.
 
+## Locks
+
+A scene's `locks` list what a variant may not change ([D51](decisions.md#d51-locks-are-refused-in-the-edit)):
+
+```json
+"locks":["@logo","end","$accent","palette","typefaces"]
+```
+
+- `@logo`: what the role names. `end`: that layer and everything inside it. `$accent`: that slot of the scene.
+- `palette`: an edit may only set colours the scene already has. `typefaces`: an edit may only set font families it already uses.
+
+A lock that names no role, layer or slot is an error at it, `locks[1]`. An edit that touches a lock is refused before it is made, naming the lock: `` `end/cta` is inside `end`, which is locked by `end` ``. `motion roles` marks the roles a lock holds.
+
 ## Images
 
 An image layer draws a picture file: `image` names a PNG or JPEG file, relative to the scene file (an absolute path also works), and `box` says where its pixels go in the layer's own coordinates, `[width, height]` from the origin or `[x, y, width, height]`, as for box text. The picture is stretched to fill the box, so its size in the file does not have to match; an import writes the size the project gave it.
