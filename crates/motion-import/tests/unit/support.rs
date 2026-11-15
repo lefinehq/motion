@@ -33,6 +33,7 @@ pub(crate) fn sample_project() -> Project {
         enabled: true,
         hidden: false,
         children,
+        mask: None,
     };
     let key = |time, value| Keyframe {
         time,
@@ -468,6 +469,7 @@ pub(crate) mod build {
             enabled: true,
             hidden: false,
             children,
+            mask: None,
         }
     }
 

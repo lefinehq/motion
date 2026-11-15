@@ -4,7 +4,7 @@
 //! supported property is adding a row; a test checks every row's target
 //! against the scene format's registries.
 
-use motion_format::item::{ANIMATORS, EFFECTS, ItemKind, SELECTORS, SHAPES};
+use motion_format::item::{ANIMATORS, EFFECTS, ItemKind, MASKS, SELECTORS, SHAPES};
 
 use super::keys::Convert;
 
@@ -159,6 +159,20 @@ pub(super) enum Policy {
     /// the report keeps it with its values for live links (D44).
     Control,
 }
+
+/// A mask path, in the mask space until the import knows the layer's.
+const MASK_PATH: Convert = Convert::PathIn([1.0, 1.0]);
+
+/// The scene's mask modes by the project's (`PF_MaskMode`).
+pub(super) const MASK_MODES: &[(u32, &str)] = &[
+    (0, "none"),
+    (1, "add"),
+    (2, "subtract"),
+    (3, "intersect"),
+    (4, "lighten"),
+    (5, "darken"),
+    (6, "difference"),
+];
 
 const LINE_CAPS: &[(i64, &str)] = &[(1, "butt"), (2, "round"), (3, "square")];
 const LINE_JOINS: &[(i64, &str)] = &[(1, "miter"), (2, "round"), (3, "bevel")];
@@ -667,7 +681,37 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 34] = [
+pub(super) static KINDS: [Kind; 35] = [
+    // A mask: its path in the mask space, which the import scales to the
+    // layer's px; its mode and side come from its `mkif`.
+    Kind {
+        match_name: "ADBE Mask Atom",
+        item: "mask",
+        table: &MASKS,
+        rows: &[
+            row("ADBE Mask Shape", To::Prop("path"), MASK_PATH, Absent),
+            row(
+                "ADBE Mask Feather",
+                To::Prop("feather"),
+                Point,
+                Missing::Vector([0.0, 0.0]),
+            ),
+            row(
+                "ADBE Mask Opacity",
+                To::Prop("opacity"),
+                Percent,
+                Missing::Number(100.0),
+            ),
+            row(
+                "ADBE Mask Offset",
+                To::Prop("expand"),
+                Number,
+                Missing::Number(0.0),
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
     Kind {
         match_name: "ADBE Vector Group",
         item: "group",
@@ -2507,7 +2551,7 @@ pub(super) static POLICIES: [(&str, Policy); 28] = [
     ("ADBE Root Vectors Group", Policy::Through),
     ("ADBE Effect Parade", Policy::Through),
     ("ADBE Text Animators", Policy::Through),
-    ("ADBE Mask Parade", Policy::OnlyEmpty("masks")),
+    ("ADBE Mask Parade", Policy::Through),
     ("ADBE Layer Styles", Policy::Styles),
     (
         "ADBE Plane Options Group",

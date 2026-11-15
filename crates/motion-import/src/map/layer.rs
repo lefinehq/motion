@@ -67,6 +67,7 @@ const TRANSFORM_GROUP: &str = "ADBE Transform Group";
 const VECTORS: &str = "ADBE Root Vectors Group";
 const TEXT: &str = "ADBE Text Properties";
 const EFFECTS: &str = "ADBE Effect Parade";
+const MASKS: &str = "ADBE Mask Parade";
 
 impl<'p> Walk<'p> {
     /// The scene layer for `layer`, in `composition` called `comp_name`,
@@ -107,6 +108,11 @@ impl<'p> Walk<'p> {
                 Some(ItemKind::Composition(c)) => [f64::from(c.width), f64::from(c.height)],
                 Some(ItemKind::Footage(f)) => [f64::from(f.width), f64::from(f.height)],
                 _ => [f64::from(composition.width), f64::from(composition.height)],
+            },
+            mask_space: match source.map(|item| &item.kind) {
+                Some(ItemKind::Composition(c)) => [f64::from(c.width), f64::from(c.height)],
+                Some(ItemKind::Footage(f)) => [f64::from(f.width), f64::from(f.height)],
+                _ => [1.0, 1.0],
             },
             origin: match (source, layer.kind) {
                 (None, LayerKind::Shape | LayerKind::Text) => {
@@ -165,6 +171,13 @@ impl<'p> Walk<'p> {
                             out.keys.insert("shapes".into(), Json::Array(shapes));
                         }
                         TEXT if layer.kind == LayerKind::Text => self.text(group, &mut out, &here),
+                        MASKS => {
+                            self.mapping.count(MASKS, Fate::Mapped);
+                            let masks = self.items(group, &here);
+                            if !masks.is_empty() {
+                                out.keys.insert("mask".into(), Json::Array(masks));
+                            }
+                        }
                         EFFECTS => {
                             self.mapping.count(EFFECTS, Fate::Mapped);
                             let effects = self.items(group, &here);

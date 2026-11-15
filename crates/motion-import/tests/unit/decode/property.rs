@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use pretty_assertions::assert_eq;
 
 use super::*;
-use crate::model::Interpolation;
+use crate::model::{Interpolation, MaskSettings};
 use crate::test_support::{chunk, list, record, text_body, text_document};
 
 /// A `tdmn` holding `match_name`, NUL-padded to 40 bytes.
@@ -276,6 +276,9 @@ fn reads_effects_masks_and_wrapped_values_by_their_body() {
         &[group_body(1, "", &[tdmn("ADBE Slider Control"), effect])],
     );
     let mask = list(b"tdgp", &[group_body(1, "Mask 1", &[])]);
+    // Inverted, motion blur on, linear falloff, subtract.
+    let mut mkif = [0u8; 48];
+    mkif[..8].copy_from_slice(&[1, 0, 2, 1, 0, 0, 0, 2]);
     let text = list(
         b"btds",
         &[
@@ -290,7 +293,7 @@ fn reads_effects_masks_and_wrapped_values_by_their_body() {
             tdmn("ADBE Effect Parade"),
             parade,
             tdmn("ADBE Mask Atom"),
-            chunk(b"mkif", &[0; 48]),
+            chunk(b"mkif", &mkif),
             mask,
             tdmn("ADBE Text Document"),
             text,
@@ -307,11 +310,20 @@ fn reads_effects_masks_and_wrapped_values_by_their_body() {
         Stream::Static(Value::Number(3.0))
     );
     assert_eq!(subgroup(&group, 1).name.as_deref(), Some("Mask 1"));
+    assert_eq!(
+        subgroup(&group, 1).mask,
+        Some(MaskSettings {
+            inverted: true,
+            motion_blur: 2,
+            linear_falloff: true,
+            mode: 2,
+        })
+    );
     let opaque = |reason| Stream::Static(Value::Opaque { reason });
     assert_eq!(text_of(&property(&group, 2).value), ["Hi"]);
     assert_eq!(property(&group, 3).value, opaque(Reason::OtherBody));
     let skipped: Vec<&str> = skipped.keys().map(String::as_str).collect();
-    assert_eq!(skipped, ["blsv", "mkif"]);
+    assert_eq!(skipped, ["blsv"]);
 }
 
 #[test]

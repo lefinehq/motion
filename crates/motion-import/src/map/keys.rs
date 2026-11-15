@@ -6,7 +6,7 @@ use serde_json::{Value as Json, json};
 
 use motion_format::Curve;
 
-use crate::model::{Color, Keyframe, Path, Stream, Value};
+use crate::model::{Color, Keyframe, Path, Stream, Value, Vertex};
 
 /// How a project value becomes a scene value.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -37,6 +37,9 @@ pub(crate) enum Convert {
     Color,
     /// A bezier path, to SVG path data.
     Path,
+    /// A bezier path in a space of this size per unit, as a mask stores its
+    /// path, to SVG path data in px.
+    PathIn([f64; 2]),
 }
 
 impl Convert {
@@ -100,6 +103,9 @@ impl Convert {
             ) => Some(json!([num(scene(*x, 0)), num(scene(*y, 1))])),
             (Convert::Color, Value::Color(color)) => Some(color_json(color)),
             (Convert::Path, Value::Path(path)) => Some(Json::String(svg(path))),
+            (Convert::PathIn(size), Value::Path(path)) => {
+                Some(Json::String(svg(&path_scaled(path, size))))
+            }
             _ => None,
         }
     }
@@ -130,6 +136,58 @@ fn text(n: f64) -> String {
 /// A colour as `[r, g, b, a]`.
 pub(super) fn color_json(color: &Color) -> Json {
     json!([num(color.r), num(color.g), num(color.b), num(color.a)])
+}
+
+/// `path` with every point and tangent scaled by `size`, per axis.
+pub(super) fn path_scaled(path: &Path, [w, h]: [f64; 2]) -> Path {
+    let scale = |[x, y]: [f64; 2]| [x * w, y * h];
+    Path {
+        vertices: path
+            .vertices
+            .iter()
+            .map(|v| Vertex {
+                point: scale(v.point),
+                in_tangent: scale(v.in_tangent),
+                out_tangent: scale(v.out_tangent),
+            })
+            .collect(),
+        ..path.clone()
+    }
+}
+
+/// The paths of a mask's keys, closed, each with as many vertices as the
+/// one with the most, as the scene's path keys must be. A path with fewer
+/// repeats its first vertex at its end: the segment that closed it is drawn
+/// as before, and the one from the copy back to the first has no length.
+fn matched(keys: &[Keyframe]) -> Vec<Value> {
+    let most = keys
+        .iter()
+        .filter_map(|k| match &k.value {
+            Value::Path(path) => Some(path.vertices.len()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
+    keys.iter()
+        .map(|key| match &key.value {
+            Value::Path(path) if !path.vertices.is_empty() => {
+                let mut vertices = path.vertices.clone();
+                let first = vertices[0];
+                vertices.resize(
+                    most,
+                    Vertex {
+                        out_tangent: [0.0, 0.0],
+                        ..first
+                    },
+                );
+                Value::Path(Path {
+                    closed: true,
+                    vertices,
+                })
+            }
+            other => other.clone(),
+        })
+        .collect()
 }
 
 /// A path as absolute SVG path data: a cubic for every segment, so every key
@@ -274,10 +332,14 @@ pub(super) fn written(
     match stream {
         Stream::Static(value) => convert.value(value).map(Written::Value),
         Stream::Animated(keys) => {
-            let values: Vec<Json> = keys
-                .iter()
-                .map(|k| convert.value(&k.value))
-                .collect::<Option<_>>()?;
+            let matched = matches!(convert, Convert::PathIn(_)).then(|| matched(keys));
+            let values: Vec<Json> = match &matched {
+                Some(paths) => paths
+                    .iter()
+                    .map(|p| convert.value(p))
+                    .collect::<Option<_>>(),
+                None => keys.iter().map(|k| convert.value(&k.value)).collect(),
+            }?;
             let first = values.first()?.clone();
             let written: Vec<Json> = keys
                 .iter()

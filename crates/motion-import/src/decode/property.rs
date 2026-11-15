@@ -9,12 +9,12 @@ use motion_format::{Diagnostic, Kind, Place, Result};
 
 use super::{Decoder, Scan, UTF8};
 use crate::model::{
-    Child, Color, Ease, Expression, Group, Keyframe, Origin, Path, Property, Reason, Spatial,
-    Stream, Value, Vertex,
+    Child, Color, Ease, Expression, Group, Keyframe, MaskSettings, Origin, Path, Property, Reason,
+    Spatial, Stream, Value, Vertex,
 };
 use crate::record::{
-    Bound, Cdat, KeyBody, KeyItem, Layout, Lhd3, OneEase, Otda, Points, Record, Shph, Tdb4, Tdsb,
-    text,
+    Bound, Cdat, KeyBody, KeyItem, Layout, Lhd3, Mkif, OneEase, Otda, Points, Record, Shph, Tdb4,
+    Tdsb, text,
 };
 use crate::rifx::{Chunk, Name, Tag};
 
@@ -244,6 +244,7 @@ impl Decoder {
             enabled: flags.enabled,
             hidden: flags.hidden,
             children,
+            mask: None,
         })
     }
 
@@ -265,8 +266,15 @@ impl Decoder {
             .iter()
             .position(|chunk| chunk.name.list == Some(ARBS))
             .filter(|_| matches!(main, Some((.., Body::Stream))));
+        // A mask keeps its settings just before its group.
+        let settings = body
+            .iter()
+            .position(|chunk| chunk.name == Mkif::NAME)
+            .filter(|_| matches!(main, Some((.., Body::Group))));
         let others = body.iter().enumerate().filter(|(index, _)| {
-            main.is_none_or(|(main, ..)| main != *index) && data != Some(*index)
+            main.is_none_or(|(main, ..)| main != *index)
+                && data != Some(*index)
+                && settings != Some(*index)
         });
         self.skip(others.map(|(_, chunk)| chunk.name));
         let Some((_, chunk, kind)) = main else {
@@ -274,7 +282,21 @@ impl Decoder {
         };
         let mut scan = parent.open(chunk, parent.child_path(&match_name))?;
         Ok(match kind {
-            Body::Group => Child::Group(self.group(scan, match_name, timing)?),
+            Body::Group => {
+                let mask = settings
+                    .map(|index| parent.parse::<Mkif>(body[index], ()))
+                    .transpose()?
+                    .map(|mkif| MaskSettings {
+                        inverted: mkif.inverted == 1,
+                        motion_blur: mkif.motion_blur,
+                        linear_falloff: mkif.falloff == 1,
+                        mode: mkif.mode,
+                    });
+                Child::Group(Group {
+                    mask,
+                    ..self.group(scan, match_name, timing)?
+                })
+            }
             Body::Effect => {
                 self.define_effect(&mut scan, &match_name)?;
                 Child::Group(self.group(scan.require_list(TDGP)?, match_name, timing)?)

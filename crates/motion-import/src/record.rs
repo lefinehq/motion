@@ -555,6 +555,26 @@ impl Bound {
     pub const MAX: Name = Name::chunk(b"tduM");
 }
 
+/// `mkif`: a mask's settings
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#mkif)).
+#[derive(BinRead, Debug)]
+pub(crate) struct Mkif {
+    /// 1 when the mask is inverted.
+    pub inverted: u8,
+    /// Whether the mask is locked, which changes nothing drawn.
+    pub _locked: u8,
+    /// Its motion blur: 0 as the layer's, 1 off, 2 on.
+    pub motion_blur: u8,
+    /// Its feather falloff: 0 smooth, 1 linear.
+    pub falloff: u8,
+    /// Its mode, `PF_MaskMode`.
+    pub mode: u32,
+}
+
+impl Record for Mkif {
+    const NAME: Name = Name::chunk(b"mkif");
+}
+
 /// `shph`: a path's flags and the box its points are normalized to
 /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#shph)).
 #[derive(BinRead, Debug)]
