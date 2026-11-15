@@ -119,6 +119,28 @@ pub(crate) fn wrap(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
     }
 }
 
+/// `mirror`: the side of the line through `center` that `angle` faces
+/// shows the other side reflected across the line. At 0° the line is
+/// upright and the right side shows the left; the angle turns it
+/// clockwise, so at 90° the bottom shows the top. Nothing shows outside
+/// the layer's box, where the layer has nothing to reflect into.
+pub(crate) fn mirror(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let center = point(values, 0);
+    let (sin, cos) = number(values, 1).to_radians().sin_cos();
+    let bounds = layer_box(pixels, space);
+    remap(pixels, space, |[x, y]| {
+        if !bounds.contains(Point::new(f64::from(x), f64::from(y))) {
+            return None;
+        }
+        // How far the point lies on the reflected side of the line.
+        let beyond = (x - center[0]) * cos + (y - center[1]) * sin;
+        Some(match beyond > 0.0 {
+            true => [x - 2.0 * beyond * cos, y - 2.0 * beyond * sin],
+            false => [x, y],
+        })
+    });
+}
+
 /// `turbulent-displace`: every pixel read from up to `amount`/100 of `size`
 /// px away, in a direction a smooth noise of cells `size` px wide gives,
 /// in `complexity` octaves moved by `evolution`. Pinned edges of the

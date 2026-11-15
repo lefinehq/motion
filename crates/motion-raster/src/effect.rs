@@ -1195,6 +1195,31 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "mirror",
+        params: &[
+            ParamSpec {
+                name: "center",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "a point of the line it reflects across, in px of the layer",
+            },
+            ParamSpec {
+                name: "angle",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "which way the reflected side faces, in degrees clockwise",
+            },
+        ],
+        doc: "reflects one side of a line through the layer onto the other",
+        reach: in_box,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: distort::mirror,
+        },
+    },
+    EffectSpec {
         name: "ramp",
         params: &[
             ParamSpec {

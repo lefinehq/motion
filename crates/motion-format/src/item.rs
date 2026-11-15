@@ -733,6 +733,27 @@ pub static TURBULENT_DISPLACE: Registry = Registry {
     ],
 };
 
+/// The properties of `mirror`.
+pub static MIRROR: Registry = Registry {
+    kind: "mirror",
+    rows: &[
+        point(
+            "center",
+            [0.0, 0.0],
+            &[],
+            false,
+            "a point of the line it reflects across, in px of the layer",
+        ),
+        number(
+            "angle",
+            0.0,
+            None,
+            "which way the reflected side faces, in degrees clockwise: at 0 the \
+                line is upright and the right side shows the left",
+        ),
+    ],
+};
+
 /// The properties of the gradient ramp.
 pub static RAMP: Registry = Registry {
     kind: "ramp",
@@ -1395,7 +1416,7 @@ pub static SHAPES: [ItemKind; 8] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 26] = [
+pub static EFFECTS: [ItemKind; 27] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -1726,6 +1747,15 @@ pub static EFFECTS: [ItemKind; 26] = [
         ],
         input: None,
         doc: "moves each pixel by a smooth noise",
+    },
+    ItemKind {
+        name: "mirror",
+        role: Role::Effect,
+        registry: &MIRROR,
+        primary: Primary::Property("center"),
+        settings: &[],
+        input: None,
+        doc: "reflects one side of a line through the layer onto the other",
     },
     ItemKind {
         name: "ramp",

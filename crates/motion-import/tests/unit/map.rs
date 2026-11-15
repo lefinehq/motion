@@ -272,6 +272,14 @@ mod effects {
     /// A 200 by 100 comp holding one shape layer with the effect groups
     /// `effects`, imported.
     fn imported(effects: Vec<Group>) -> motion_format::Result<Import> {
+        defined(effects, vec![("ADBE Geometry2", geometry())])
+    }
+
+    /// Like [`imported`], with the project keeping `definitions`.
+    fn defined(
+        effects: Vec<Group>,
+        definitions: Vec<(&str, EffectDefinition)>,
+    ) -> motion_format::Result<Import> {
         let mut shape = layer(1, "Shape", vec![]);
         shape.kind = LayerKind::Shape;
         shape.properties.children = vec![
@@ -285,7 +293,9 @@ mod effects {
             )),
         ];
         let mut project = project(vec![(2, "Main", comp(vec![shape], 2.0))]);
-        project.effects.insert("ADBE Geometry2".into(), geometry());
+        for (name, definition) in definitions {
+            project.effects.insert(name.into(), definition);
+        }
         import(&project, &Options::default())
     }
 
@@ -525,6 +535,51 @@ mod effects {
         assert_eq!(fx[2]["threshold"], 0.4, "{fx}");
         let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
         assert_eq!(what, ["a glow operation other than add"]);
+    }
+
+    /// A mirror's centre is a point of the layer's effect space; one the
+    /// project leaves out is its definition's, the right edge's middle.
+    #[test]
+    fn a_mirror_takes_its_centre_in_pixels_and_its_angle_in_degrees() {
+        let definition = EffectDefinition {
+            name: "Mirror".into(),
+            parameters: vec![
+                parameter("ADBE Mirror-0000", Control::Layer),
+                parameter(
+                    "ADBE Mirror-0001",
+                    Control::Point {
+                        default: vec![1.0, 0.5],
+                    },
+                ),
+                parameter("ADBE Mirror-0002", Control::Angle { default: 0.0 }),
+            ],
+        };
+        let import = defined(
+            vec![
+                group(
+                    "ADBE Mirror",
+                    vec![
+                        Child::Property(property(
+                            "ADBE Mirror-0001",
+                            Stream::Static(Value::Vector2([0.25, 0.5])),
+                        )),
+                        Child::Property(number("ADBE Mirror-0002", 90.0)),
+                    ],
+                ),
+                group("ADBE Mirror", vec![]),
+            ],
+            vec![("ADBE Mirror", definition)],
+        )
+        .expect("imports");
+        assert_eq!(
+            import.json["layers"][0]["fx"],
+            json!([{"mirror":[-50,0],"angle":90},{"mirror":[100,0]}])
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
     }
 
     #[test]
