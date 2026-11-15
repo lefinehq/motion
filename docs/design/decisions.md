@@ -483,3 +483,12 @@ D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that t
   - The archive only wraps a project the reader already reads, so a second reader would duplicate it.
   - A control names its target by composition, layer and property path, ids the reader already keeps, so the binding needs no guessing.
 - **Not now:** templates without a project; the font, size and style a text control may also offer; responsive timing and pinning; writing a `.mogrt` back, which waits until `motion export` has a reason to patch an archive.
+
+### D54. A collapsed composition draws into the canvas it sits in
+
+- **Decision:** a `comp` layer with `"collapse":true` draws its composition's layers straight into the canvas it sits in, each under the layer's transform on top of its own, with the layer's opacity and matte. Nothing is clipped to the composition's canvas, and its background is not drawn. The layer's effects run over the canvas it sits in, so their points and lengths are in that canvas's coordinates. Without effects, and without an adjusting layer inside, the layers are not isolated, so their blend modes reach what is below.
+- **Why:**
+  - Imported projects use it widely: 66 of 193 corpus samples have a collapsed composition, and its layers often reach outside the composition's canvas, which the old clipped drawing cut off.
+  - Its effects are measured in the parent's space in the project, which is why the same ramp copied onto a collapsed title and onto a shape lines up there. Measuring them in the composition's own space put the title's ramp out of place.
+  - One flag on the existing `comp` layer keeps addresses, overrides and slots working unchanged; flattening the layers into the parent at import would lose the composition as a unit to edit.
+- **Not now:** 3D layers inside a collapsed composition sharing the parent's camera and lights. Masks on the collapsed layer wait for masks.

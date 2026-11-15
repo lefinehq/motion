@@ -40,6 +40,8 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","fx":[{"fill":"#FFFFFF"}],"box":[1,1]}` → a.box: `box` only applies to `text` or `image` or `video` layers; expected `box` only next to `text` or `image` or `video`
 `{"id":"a","rect":"1x1","adjust":true}` → a.adjust: `adjust` applies the layer's `fx` to what is below it, and it has none; expected "fx":[{"fill":"#FFFFFF"}] next to "adjust":true
 `{"id":"a","rect":"1x1","adjust":1,"fx":[]}` → a.adjust: invalid type: integer `1`; expected a boolean
+`{"id":"a","rect":"1x1","collapse":true}` → a.collapse: `collapse` only applies to `comp` layers; expected `collapse` only next to `comp`
+`{"id":"a","fx":[{"fill":"#FFFFFF"}],"collapse":true}` → a.collapse: `collapse` only applies to `comp` layers; expected `collapse` only next to `comp`
 `{"id":"a","rect":"1x1","text":"x"}` → a.rect: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`, or only `fx` for a filter layer; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
 `{"id":"a","text":null}` → a.text: invalid type: null; expected a string
 `{"id":"a","text":3}` → a.text: invalid type: integer `3`; expected a string
@@ -58,7 +60,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","in":"zoom"}` → a.in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in
 `{"id":"a","rect":"1x1","anim":null}` → a.anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
 `{"id":"a","rect":"1x1","anim":[]}` → a.anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
-`{"id":"a","rect":"1x1","x":1}` → a.x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, overrides, image, video, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, adjust, hidden, matte, position, anchor, scale, rotate, opacity
+`{"id":"a","rect":"1x1","x":1}` → a.x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, overrides, image, video, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, adjust, collapse, hidden, matte, position, anchor, scale, rotate, opacity
 `{"id":"a","rect":"1x1","at":"1 2","position":[1,2]}` → a.position: `position` and `at` both place the layer; expected one of them: "at":"540 960" places it in the parent's box, "position":[540,960] at an exact point in the parent's own coordinates
 `{"id":"a","rect":"1x1","rotate":"x"}` → a.rotate: `x` is not a number; expected a number, e.g. `0.5`
 `{"id":"a","rect":"1x1","scale":[1,2,3]}` → a.scale: 3 numbers do not make a point; expected a point, `[x, y]` in JSON or `x,y` in a string, e.g. `[540, 960]`
@@ -95,8 +97,12 @@ expression: "report.join(\"\\n\\n\")"
 `"overrides":{"title":{"rect":"1x1"}}` → card/title.rect: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video` or `pivot`, or only `fx` for a filter layer; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov" or "pivot":true
 `"overrides":{"title":{"fill":"red"}}` → card/title.fill: `red` is not a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
 `"overrides":{"title/x":{"text":"x"}}` → card/title.overrides: `overrides` only applies to `comp` layers; expected `overrides` only next to `comp`
-`"overrides":{"title":{"zoom":1}}` → card/title.zoom: unknown layer key `zoom`; expected one of id, text, rect, shapes, comp, overrides, image, video, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, adjust, hidden, matte, position, anchor, scale, rotate, opacity
+`"overrides":{"title":{"zoom":1}}` → card/title.zoom: unknown layer key `zoom`; expected one of id, text, rect, shapes, comp, overrides, image, video, pivot, font, fill, style, runs, paragraphs, box, animate, at, in, anim, parent, span, offset, stretch, fx, adjust, collapse, hidden, matte, position, anchor, scale, rotate, opacity
 `"overrides":{"$ghost":"x"}` → card.overrides.$ghost: unknown slot `$ghost`; expected a slot of the composition, which declares none
+
+## collapse
+`"collapse":1` → card.collapse: invalid type: integer `1`; expected a boolean
+`"collapse":true,"adjust":true,"fx":[{"fill":"#FFFFFF"}]` → card.collapse: `adjust` keeps the layer from drawing, so it has nothing to `collapse`; expected `adjust` or `collapse`, not both
 
 ## overrides on a layer that draws no composition
 `"overrides":{"x":{}}` → a.overrides: `overrides` only applies to `comp` layers; expected `overrides` only next to `comp`

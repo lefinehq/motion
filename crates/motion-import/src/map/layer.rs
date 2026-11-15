@@ -81,6 +81,8 @@ impl<'p> Walk<'p> {
         self.writing = Some((composition, layer));
         let source = layer.source.and_then(|id| self.items.get(&id).copied());
         let half = |w: f64, h: f64| [w / 2.0, h / 2.0];
+        let collapsed =
+            layer.kind == LayerKind::Av && layer.switches.collapse && !layer.switches.adjustment;
         let place = Place {
             at: format!("{comp_name}/{}", layer.name),
             clock: Clock {
@@ -93,7 +95,12 @@ impl<'p> Walk<'p> {
                 Some(ItemKind::Footage(f)) => half(f64::from(f.width), f64::from(f.height)),
                 _ => [0.0, 0.0],
             },
+            // A collapsed composition's effects run over the composition it
+            // sits in, in that composition's coordinates.
             size: match source.map(|item| &item.kind) {
+                Some(ItemKind::Composition(_)) if collapsed => {
+                    [f64::from(composition.width), f64::from(composition.height)]
+                }
                 Some(ItemKind::Composition(c)) => [f64::from(c.width), f64::from(c.height)],
                 Some(ItemKind::Footage(f)) => [f64::from(f.width), f64::from(f.height)],
                 _ => [f64::from(composition.width), f64::from(composition.height)],
@@ -231,12 +238,10 @@ impl<'p> Walk<'p> {
                 Some((item, ItemKind::Composition(_))) => {
                     let comp = self.comp_id(item);
                     out.keys.insert("comp".into(), json!(comp));
-                    // On a vector layer the switch changes nothing we draw.
-                    if layer.switches.collapse {
-                        self.mapping.unsupported(
-                            &place.at,
-                            "collapsed transformations (drawn as a clipped composition)",
-                        );
+                    // On a vector layer the switch changes nothing we draw,
+                    // and an adjustment layer draws nothing to collapse.
+                    if layer.switches.collapse && !layer.switches.adjustment {
+                        out.keys.insert("collapse".into(), json!(true));
                     }
                 }
                 Some((_, ItemKind::Footage(footage))) => self.footage(footage, out, place, pivot),

@@ -24,8 +24,8 @@ use crate::doc::{
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, SHAPES};
 use crate::parse::key::{
-    ADJUST, ANIM, ANIMATE, AT, BG, BOX, COMP, COMPS, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN,
-    LABELS, LAYERS, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT,
+    ADJUST, ANIM, ANIMATE, AT, BG, BOX, COLLAPSE, COMP, COMPS, DUR, FILL, FONT, FPS, FX, ID, IMAGE,
+    IN, LABELS, LAYERS, MATTE, MOTION, OFFSET, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT,
     RUNS, SHAPES as SHAPES_KEY, SIZE, SPAN, STRETCH, STYLE, TEXT, VIDEO, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
@@ -567,6 +567,7 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
             None => Vec::new(),
         },
         adjust: false,
+        collapse: doc.collapse.unwrap_or(false),
         hidden: doc.hidden.unwrap_or(false),
         matte: optional(doc.matte.as_ref(), MATTE)?,
     };
@@ -588,6 +589,14 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
 /// to apply.
 fn adjusts(doc: &LayerDoc, layer: &Layer) -> Result<bool> {
     let adjust = matches!(layer.content, Content::Filter) || doc.adjust.unwrap_or(false);
+    if adjust && layer.collapse {
+        return Err(Diagnostic::new(
+            Kind::Conflict,
+            "`adjust` keeps the layer from drawing, so it has nothing to `collapse`",
+        )
+        .at(COLLAPSE)
+        .expected("`adjust` or `collapse`, not both"));
+    }
     if adjust && layer.fx.is_empty() {
         return Err(Diagnostic::new(
             Kind::Missing,
@@ -833,6 +842,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
         (None, _) if doc.fx.as_ref().is_some_and(|List(fx)| !fx.is_empty()) => {
             only_on(doc.fill.is_some(), FILL, FX, &[TEXT, RECT])?;
             only_on(doc.frame.is_some(), BOX, FX, &[TEXT, IMAGE, VIDEO])?;
+            only_on(doc.collapse.is_some(), COLLAPSE, FX, &[COMP])?;
             return Ok(Content::Filter);
         }
         (None, _) => return Err(Diagnostic::new(Kind::Missing, one_of()).expected(EXAMPLE)),
@@ -844,6 +854,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
     };
     only_on(doc.fill.is_some(), FILL, key, &[TEXT, RECT])?;
     only_on(!doc.overrides.0.is_empty(), OVERRIDES, key, &[COMP])?;
+    only_on(doc.collapse.is_some(), COLLAPSE, key, &[COMP])?;
     only_on(doc.frame.is_some(), BOX, key, &[TEXT, IMAGE, VIDEO])?;
     let Object(style) = &doc.style;
     for (written, name) in [

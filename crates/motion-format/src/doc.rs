@@ -88,6 +88,7 @@ pub(crate) struct LayerDoc {
     pub(crate) stretch: Present<Number>,
     pub(crate) fx: Present<List<ItemsDoc>>,
     pub(crate) adjust: Present<bool>,
+    pub(crate) collapse: Present<bool>,
     pub(crate) hidden: Present<bool>,
     pub(crate) matte: Present<Shorthand<Matte>>,
     /// Every other key, kept as JSON until its name is checked, so an unknown

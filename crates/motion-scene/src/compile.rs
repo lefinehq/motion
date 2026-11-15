@@ -327,6 +327,7 @@ fn node(
         fx: item_nodes(&layer.fx, fps),
         hidden: layer.hidden,
         adjust: layer.adjust,
+        collapse: layer.collapse,
         matte: None,
         inputs: Vec::new(),
     }

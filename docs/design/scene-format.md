@@ -52,7 +52,7 @@ Every layer has an `id`: lowercase letters, digits, `-` and `_`, starting with a
 | `image` | A PNG or JPEG file stretched over the layer's `box` (see [Images](#images)) |
 | `video` | A video clip played in the layer's own time and stretched over its `box` (see [Videos](#videos)) |
 | `solid` | A flat colour |
-| `comp` | A composition from `comps`, drawn in the layer's box at the layer's own time; `overrides` changes its layers for this layer alone |
+| `comp` | A composition from `comps`, drawn in the layer's box at the layer's own time; `overrides` changes its layers for this layer alone, and `collapse` draws them straight into the canvas the layer sits in |
 | `pivot` | An invisible layer (`"pivot":true`) that only carries a position, rotation and scale. Other layers can use it as a parent. |
 | filter layer | A layer with only an `fx` list. It applies the effects to everything below it in its composition (see `adjust`). |
 | `camera` | The viewpoint for 2.5D layers |
@@ -69,6 +69,7 @@ Every layer can also have:
 - **`matte`:** another layer of the same list whose drawing is a stencil: `"matte":"reveal alpha"` shows the layer where `reveal` is opaque. The modes are `alpha` (the default), `alpha-inverted`, `luma` and `luma-inverted`; luma reads transparency as black. The matte layer is drawn as it would be at that moment, with its transform, parents, opacity, effects, span and its own matte. Whether it is also drawn in the frame is up to its `hidden`, and a hidden layer still mattes
 - **`fx`:** a list of effects
 - **`adjust`:** `true` applies the layer's `fx` to everything below it in its composition instead of to its own content, which is not drawn but says where they apply, by its alpha. A filter layer, with no content, applies them everywhere. The change is mixed in by the layer's opacity and matte; points and lengths of its effects are in the layer's own coordinates ([D49](decisions.md#d49-effects-that-read-pixels-run-on-a-canvas-of-their-own))
+- **`collapse`:** on a `comp` layer, `true` draws the composition's layers straight into the canvas the layer sits in, under the layer's transform and opacity: they are not clipped to the composition's canvas, its background is not drawn, and their blend modes reach what is below unless the layer has effects ([D54](decisions.md#d54-a-collapsed-composition-draws-into-the-canvas-it-sits-in)). The layer's effects then run over that canvas, so their points and lengths are in its coordinates, not the layer's
 - **`hidden`:** `true` leaves it out of the frame but keeps it in the scene; its children still move with it
 - **`mblur`:** motion blur
 - in and out points, and a time offset

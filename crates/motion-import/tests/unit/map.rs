@@ -354,6 +354,41 @@ mod effects {
         );
     }
 
+    /// A collapsed composition draws into the one it sits in, and its
+    /// effects measure their points in that one's box, from its top left.
+    #[test]
+    fn a_collapsed_composition_takes_its_points_in_its_parents_box() {
+        let mut nested = layer(1, "Nested", vec![]);
+        nested.source = Some(3);
+        nested.switches.collapse = true;
+        nested.properties.children = vec![Child::Group(group(
+            "ADBE Effect Parade",
+            vec![Child::Group(transform(vec![property(
+                "ADBE Geometry2-0002",
+                Stream::Static(Value::Vector2([0.25, 0.5])),
+            )]))],
+        ))];
+        let mut inner = comp(vec![], 2.0);
+        (inner.width, inner.height) = (40, 20);
+        let mut project = project(vec![
+            (2, "Main", comp(vec![nested], 2.0)),
+            (3, "Inner", inner),
+        ]);
+        project.effects.insert("ADBE Geometry2".into(), geometry());
+        let import = import(&project, &Options::default()).expect("imports");
+        let layer = &import.json["layers"][0];
+        assert_eq!(layer["collapse"], true);
+        assert_eq!(
+            layer["fx"],
+            json!([{"transform":[1,1],"anchor":[100,50],"position":[50,50]}])
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
     #[test]
     fn a_scale_set_apart_goes_to_each_axis() {
         let import = imported(vec![transform(vec![
