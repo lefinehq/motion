@@ -572,3 +572,18 @@ D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that t
   - Converting only the frames asked for keeps a seek's cost in decoding, which the system does in about 2 ms a 1080p frame, and not in conversion, which takes longer.
   - The fidelity references are untagged HD H.264, and read right only as BT.709 limited range ([fidelity notes](../research/2026-11-14-fidelity-first-sample.md)); footage made the same way is read the same way.
 - **Not now:** HEVC and ProRes, which the same session decodes once their configuration and colour are read; Windows, Linux and OpenH264; colour management of primaries and transfer (BT.2020, HDR).
+
+### D61. A font is found by the names its face gives itself
+
+- **Decision:** before an import substitutes a font it was not given ([D40](#d40-missing-fonts-are-substituted-at-import)), it looks for a face that answers to the font's name by the names the face's own `name` table gives it.
+  - A face answers to its PostScript name (name ID 6), its full name (4), and its family with its style, both the typographic pair (16, 17) and the legacy one (1, 2), where a `Regular` style is left out. A named instance answers to its family with its subfamily. Names are compared in lower case, without spaces or punctuation.
+  - A face with the exact PostScript name wins; else the first face added that answers. A name of another style never answers, so `BebasNeueBold` is still a substitute when only `Bebas Neue Regular` is there.
+  - The scene names the face by its own PostScript name. The import's report lists each such font under `renamed_fonts`, and does not count it as unsupported. The fetch of `motion import --fetch-fonts` leaves such fonts out.
+  - A render still finds a face only by its exact PostScript name, or by family, weight and slant ([D33](#d33-text-is-shaped-from-font-assets)).
+  - The typesetter registers each face of a font collection (`.ttc`) alone, as a copy of the collection whose header lists only that face, made the first time text uses it.
+- **Why:**
+  - Families rename faces between builds while the face stays the one the project means. Open Sans 1 calls its 800 weight `OpenSans-Extrabold` and Open Sans 3 `OpenSans-ExtraBold`. IBM's own releases of IBM Plex Sans call the regular `IBMPlexSans`, and the Google Fonts build calls it `IBMPlexSans-Regular`.
+  - The face's own names say which names it goes by. A hand-kept list of aliases would only grow, and it would still miss the next family.
+  - Counting such fonts as substitutes hid fonts that were there. In the local corpus, 8 samples reported 17 uses this way, and one was blocked by it alone. Their text lies against the stored layout exactly as before, since the same file set it, so the rename is the face the project meant. Whether it is the version the project used is the lock's concern ([D39](#d39-fonts-are-resolved-before-a-render)).
+  - Registering a whole collection put all its faces under one face's family, so every face after the first was set in the collection's first face, or failed on a glyph that face lacks. No face after the first of a `.ttc` could set text. Copying a collection only for the faces used keeps a large collection cheap.
+- **Not now:** matching by name in `motion fonts fetch` (it still picks files by the PostScript name), names a face does not give itself (a family renamed, as Muli became Mulish, or styles renamed by a build, as Google Fonts' Lato 2 calls Lato's Hairline `Thin`), and names in languages other than English (a face's English names are read, else its first ones).

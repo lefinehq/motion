@@ -1,6 +1,8 @@
 //! One usable font face, read from font bytes with `skrifa`: its names,
 //! weight and style, and for a variable font the axis settings of the named
-//! instance it stands for.
+//! instance it stands for. A face also answers to the other names its own
+//! `name` table gives it ([`Face::answers_to`]), so a project that stored an
+//! earlier build's name for it still finds it.
 
 use std::sync::Arc;
 
@@ -34,6 +36,16 @@ pub struct Face {
     /// The family, such as `Lato`: the typographic family when the font
     /// names one, else its family name.
     pub family: String,
+    /// The style within the family, such as `Bold Italic`: the typographic
+    /// subfamily when the font names one, else its subfamily; for a named
+    /// instance of a variable font, the instance's subfamily.
+    pub style: String,
+    /// The other names the font gives this face, as it writes them: its full
+    /// name (name ID 4), and its family with its style, both the
+    /// typographic pair (16, 17) and the legacy one (1, 2), where a
+    /// `Regular` style is left out, as a regular face's name leaves it out
+    /// (`IBM Plex Sans`). Once each, without the PostScript name.
+    pub names: Vec<String>,
     /// The version its file names, such as `Version 3.100`; empty when it
     /// names none.
     pub version: String,
@@ -71,9 +83,14 @@ pub(crate) fn faces(bytes: Bytes, source: &str) -> Result<Vec<Face>> {
 
 /// The faces one font offers.
 fn faces_of(font: &FontRef, data: &FontData, source: &str) -> Result<Vec<Face>> {
+    let legacy_family = name(font, StringId::FAMILY_NAME);
     let family = name(font, StringId::TYPOGRAPHIC_FAMILY_NAME)
-        .or_else(|| name(font, StringId::FAMILY_NAME))
+        .or_else(|| legacy_family.clone())
         .ok_or_else(|| missing_name(source, "family"))?;
+    let legacy_style = name(font, StringId::SUBFAMILY_NAME);
+    let style = name(font, StringId::TYPOGRAPHIC_SUBFAMILY_NAME)
+        .or_else(|| legacy_style.clone())
+        .unwrap_or_default();
     let version = name(font, StringId::VERSION_STRING).unwrap_or_default();
     let attributes = font.attributes();
     let slant = slant(attributes.style);
@@ -81,9 +98,19 @@ fn faces_of(font: &FontRef, data: &FontData, source: &str) -> Result<Vec<Face>> 
     if instances.is_empty() {
         let postscript_name = name(font, StringId::POSTSCRIPT_NAME)
             .ok_or_else(|| missing_name(source, "PostScript"))?;
+        let names = other_names(
+            &postscript_name,
+            [
+                name(font, StringId::FULL_NAME),
+                Some(with_style(&family, &style)),
+                legacy_family.map(|f| with_style(&f, legacy_style.as_deref().unwrap_or_default())),
+            ],
+        );
         return Ok(vec![Face {
             postscript_name,
             family,
+            style,
+            names,
             version,
             weight: attributes.weight.value(),
             slant,
@@ -99,14 +126,17 @@ fn faces_of(font: &FontRef, data: &FontData, source: &str) -> Result<Vec<Face>> 
     instances
         .iter()
         .map(|instance| {
+            let style = name(font, instance.subfamily_name_id()).unwrap_or_default();
             let postscript_name = instance
                 .postscript_name_id()
                 .and_then(|id| name(font, id))
                 .or_else(|| {
-                    name(font, instance.subfamily_name_id())
-                        .map(|sub| format!("{prefix}-{}", sub.replace(' ', "")))
+                    (!style.is_empty()).then(|| format!("{prefix}-{}", style.replace(' ', "")))
                 })
                 .ok_or_else(|| missing_name(source, "instance"))?;
+            // An instance's full name is its family and subfamily, as for
+            // the font's own default instance.
+            let names = other_names(&postscript_name, [Some(with_style(&family, &style))]);
             let variations: Vec<(Tag, f32)> =
                 axes.iter().copied().zip(instance.user_coords()).collect();
             let weight = variations
@@ -116,6 +146,8 @@ fn faces_of(font: &FontRef, data: &FontData, source: &str) -> Result<Vec<Face>> 
             Ok(Face {
                 postscript_name,
                 family: family.clone(),
+                style,
+                names,
                 version: version.clone(),
                 weight,
                 slant,
@@ -124,6 +156,58 @@ fn faces_of(font: &FontRef, data: &FontData, source: &str) -> Result<Vec<Face>> 
             })
         })
         .collect()
+}
+
+impl Face {
+    /// Whether this face is the one `name` names: its PostScript name or one
+    /// of its [`names`](Face::names), compared in lower case, without spaces
+    /// or punctuation. `OpenSans-Extrabold` is the face named
+    /// `OpenSans-ExtraBold`, and `IBMPlexSans` the one whose family is
+    /// `IBM Plex Sans` and whose style is `Regular`. A name of another style
+    /// never is: `BebasNeueBold` is not `Bebas Neue Regular`.
+    pub fn answers_to(&self, name: &str) -> bool {
+        let wanted = name_key(name);
+        !wanted.is_empty()
+            && std::iter::once(&self.postscript_name)
+                .chain(&self.names)
+                .any(|own| name_key(own) == wanted)
+    }
+}
+
+/// `name` as names are compared: in lower case, without spaces or
+/// punctuation, so `Open Sans ExtraBold`, `OpenSans-Extrabold` and
+/// `opensans_extrabold` are one name.
+pub(crate) fn name_key(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// The style a regular face's names leave out.
+const REGULAR: &str = "Regular";
+
+/// `family` and `style` as one name, `family` alone when `style` is empty
+/// or [`REGULAR`].
+fn with_style(family: &str, style: &str) -> String {
+    match style.is_empty() || style.eq_ignore_ascii_case(REGULAR) {
+        true => family.to_owned(),
+        false => format!("{family} {style}"),
+    }
+}
+
+/// `names`, once each by [`name_key`], without any that is `postscript`.
+fn other_names<const N: usize>(postscript: &str, names: [Option<String>; N]) -> Vec<String> {
+    let mut seen = vec![name_key(postscript)];
+    let mut out = Vec::new();
+    for name in names.into_iter().flatten() {
+        let key = name_key(&name);
+        if !key.is_empty() && !seen.contains(&key) {
+            seen.push(key);
+            out.push(name);
+        }
+    }
+    out
 }
 
 /// The weight axis of a variable font.

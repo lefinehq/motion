@@ -680,3 +680,58 @@ proptest! {
         prop_assert_eq!(layout.lines.len() >= text.paragraphs.len(), !text.runs.is_empty());
     }
 }
+
+/// A collection of the fixture and the built-in upright Inter, in that order.
+fn fixture_and_inter() -> FontSet {
+    let bytes =
+        crate::test_support::collection(&[crate::test_support::FIXTURE, crate::set::BUILTIN[0].1]);
+    let mut set = FontSet::new();
+    set.add_bytes(bytes, "pair.ttc").expect("a collection");
+    set
+}
+
+#[test]
+fn a_face_of_a_collection_sets_its_text_in_itself() {
+    let set = fixture_and_inter();
+    assert_eq!(set.faces()[0].postscript_name, "FixtureSans-Black");
+    assert_eq!(set.faces()[0].data.index, 0);
+    assert_eq!(set.faces()[7].postscript_name, BOLD);
+    assert_eq!(set.faces()[7].data.index, 1);
+    let mut typesetter = Typesetter::new(set);
+    // The fixture has no `H`: text set in the collection's other face would
+    // fail as a glyph its face lacks.
+    let layout = typesetter
+        .layout(&StyledText::plain("Hello", style(BOLD, 40.0)))
+        .expect("the second face sets its text");
+    let inter = plain("Hello", BOLD, 40.0);
+    let ids = |l: &TextLayout| {
+        l.runs
+            .iter()
+            .flat_map(|r| r.glyphs.iter().map(|g| g.id))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ids(&layout), ids(&inter));
+    assert!(close(layout.lines[0].width, inter.lines[0].width));
+    typesetter
+        .layout(&StyledText::plain("AB", style("FixtureSans-Black", 40.0)))
+        .expect("the first face sets its text too");
+}
+
+#[test]
+fn a_face_of_a_collection_is_registered_alone() {
+    let set = fixture_and_inter();
+    let face = &set.faces()[7].data;
+    let own = alone(face);
+    let bytes = own.data.data();
+    let original = face.data.data();
+    assert_eq!(own.index, 0);
+    assert_eq!(&bytes[..12], b"ttcf\0\x01\0\0\0\0\0\x01");
+    assert_eq!(bytes[12..16], original[16..20]);
+    assert_eq!(bytes[20..], original[20..]);
+    let font = FontRef::from_index(bytes, 0).expect("the copy is a font");
+    assert!(font.charmap().map('H').is_some());
+    // A lone font is registered as it is.
+    let builtin = FontSet::builtin();
+    let lone = &builtin.faces()[0].data;
+    assert_eq!(alone(lone).data.id(), lone.data.id());
+}

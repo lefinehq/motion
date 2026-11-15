@@ -1,7 +1,7 @@
 //! The mapping report: every match name the import met, with how often it
 //! was mapped, left at its default, ignored or not supported, each reason
 //! not supported with where it was met (fonts set in a substitute among
-//! them), and the id every name became.
+//! them), the fonts found under another name, and the id every name became.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -67,6 +67,11 @@ pub struct Mapping {
     pub counts: BTreeMap<String, Counts>,
     /// Everything not supported, in the order met.
     pub unsupported: Vec<Finding>,
+    /// The fonts the project names by another name of a face the import
+    /// has, with that face's PostScript name, which the scene names it by
+    /// ([`Import::rename_fonts`](super::Import::rename_fonts)).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub renamed_fonts: BTreeMap<String, String>,
     /// Why things were ignored, with how often each reason applied.
     pub ignored: BTreeMap<String, usize>,
     /// Every composition and layer, with its id.
@@ -313,6 +318,18 @@ impl fmt::Display for Mapping {
                 "  clamped into the scene's range, as the original draws them ({}): {}{more}",
                 self.clamped.len(),
                 shown.join("; ")
+            )?;
+        }
+        if !self.renamed_fonts.is_empty() {
+            let shown: Vec<String> = self
+                .renamed_fonts
+                .iter()
+                .map(|(from, to)| format!("`{from}` is `{to}`"))
+                .collect();
+            writeln!(
+                f,
+                "  fonts under another name of their face: {}",
+                shown.join(", ")
             )?;
         }
         let groups = self.by_what();

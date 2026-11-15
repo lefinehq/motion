@@ -148,6 +148,26 @@ fn lists_the_fonts_the_set_lacks() {
     );
 }
 
+#[test]
+fn a_font_a_face_answers_to_by_its_own_names_is_not_fetched() {
+    let session: Session = SCENE
+        .replace("FixtureSans-Black 40", "fixturesans black 40")
+        .parse()
+        .unwrap();
+    let mut fonts = FontSet::builtin();
+    assert_eq!(
+        unnamed_fonts(session.scene(), &fonts),
+        ["fixturesans black"]
+    );
+    fonts.add_bytes(FIXTURE.to_vec(), "fixture").unwrap();
+    // The scene still names no face exactly; the import renames it.
+    assert_eq!(
+        missing_fonts(session.scene(), &fonts),
+        ["fixturesans black"]
+    );
+    assert!(unnamed_fonts(session.scene(), &fonts).is_empty());
+}
+
 /// The title as the fixture font sets it, stored as a project stores it:
 /// one glyph per character, the paragraph's end a space.
 fn stored_title(scene: &Scene) -> StoredText {

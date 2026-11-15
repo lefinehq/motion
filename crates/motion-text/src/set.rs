@@ -126,6 +126,20 @@ impl FontSet {
         &self.faces
     }
 
+    /// The face a project means by `name`, a PostScript name it stored: the
+    /// first face added under that PostScript name, else the first that
+    /// [answers to](Face::answers_to) it by the names its font gives it,
+    /// such as `OpenSans-ExtraBold` for `OpenSans-Extrabold` or
+    /// `IBMPlexSans-Regular` for `IBMPlexSans`. Never a face of another
+    /// style or family: that is [`FontSet::fallback`]'s choice, and a
+    /// substitute.
+    pub fn named(&self, name: &str) -> Option<&Face> {
+        self.faces
+            .iter()
+            .find(|f| f.postscript_name == name)
+            .or_else(|| self.faces.iter().find(|f| f.answers_to(name)))
+    }
+
     /// The face `query` asks for: by PostScript name the first face added
     /// under it, by family the face with exactly that weight and slant.
     ///

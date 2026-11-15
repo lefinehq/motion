@@ -4,6 +4,7 @@ use motion_format::Kind;
 use rstest::rstest;
 
 use super::*;
+use crate::test_support::with_names;
 
 fn builtin(index: usize) -> Vec<Face> {
     let bytes: Bytes = Arc::new(crate::set::BUILTIN[index].1);
@@ -85,4 +86,114 @@ fn a_face_without_names_is_refused() {
 #[case(skrifa::attribute::Style::Oblique(None), Slant::Oblique)]
 fn styles_map_to_slants(#[case] style: skrifa::attribute::Style, #[case] expected: Slant) {
     assert_eq!(slant(style), expected);
+}
+
+/// The one face of the fixture under `names`.
+fn named(names: &[(u16, &str)]) -> Face {
+    let mut faces = faces(Arc::new(with_names(names)), "named.ttf").expect("a font");
+    assert_eq!(faces.len(), 1);
+    faces.remove(0)
+}
+
+/// A face whose PostScript name abbreviates its style, whose typographic
+/// names part the style from the family, and whose legacy names fold the
+/// weight into the family, as `Open Sans` 3's do.
+fn extra_bold() -> Face {
+    named(&[
+        (1, "Brand Sans ExtraBold"),
+        (2, "Regular"),
+        (4, "Brand Sans ExtraBold"),
+        (6, "BrandSans-ExtBd"),
+        (16, "Brand Sans"),
+        (17, "ExtraBold"),
+    ])
+}
+
+/// A regular face with only legacy names: `IBM Plex Sans` as Google Fonts
+/// builds it.
+fn regular() -> Face {
+    named(&[
+        (1, "Brand Sans"),
+        (2, "Regular"),
+        (4, "Brand Sans Regular"),
+        (6, "BrandSans-Regular"),
+    ])
+}
+
+#[test]
+fn a_face_reads_its_style_and_other_names_from_its_name_table() {
+    let face = extra_bold();
+    assert_eq!(
+        (
+            face.family.as_str(),
+            face.style.as_str(),
+            face.names.as_slice()
+        ),
+        (
+            "Brand Sans",
+            "ExtraBold",
+            ["Brand Sans ExtraBold".to_owned()].as_slice()
+        )
+    );
+    let face = regular();
+    assert_eq!(
+        (
+            face.family.as_str(),
+            face.style.as_str(),
+            face.names.as_slice()
+        ),
+        (
+            "Brand Sans",
+            "Regular",
+            ["Brand Sans".to_owned()].as_slice()
+        )
+    );
+}
+
+#[test]
+fn a_named_instance_is_named_by_its_family_and_subfamily() {
+    let upright = builtin(0);
+    let names = |i: usize| (upright[i].style.as_str(), upright[i].names.clone());
+    // `Inter Variable Bold` and, for the regular instance, the family alone
+    // are their PostScript names but for spaces and hyphens, so neither is
+    // another name.
+    assert_eq!(names(6), ("Bold", Vec::new()));
+    assert_eq!(names(3), ("Regular", Vec::new()));
+    assert!(upright[6].answers_to("Inter Variable Bold"));
+    assert!(upright[3].answers_to("Inter Variable"));
+}
+
+#[rstest]
+#[case::its_postscript_name("BrandSans-ExtBd", true)]
+#[case::its_family_and_style("BrandSans-ExtraBold", true)]
+#[case::another_case("BrandSans-Extrabold", true)]
+#[case::other_punctuation("brand_sans extrabold", true)]
+#[case::its_full_name("Brand Sans ExtraBold", true)]
+#[case::the_family_alone("BrandSans", false)]
+#[case::another_style("BrandSans-Bold", false)]
+#[case::nothing("", false)]
+#[case::punctuation_only("-", false)]
+fn a_face_answers_to_its_names_in_any_case_and_punctuation(
+    #[case] name: &str,
+    #[case] answers: bool,
+) {
+    assert_eq!(extra_bold().answers_to(name), answers);
+}
+
+#[rstest]
+#[case::without_its_regular_style("BrandSans", true)]
+#[case::with_it("Brand Sans Regular", true)]
+#[case::bold("BrandSansBold", false)]
+#[case::italic("BrandSans-Italic", false)]
+fn a_regular_face_answers_to_its_family(#[case] name: &str, #[case] answers: bool) {
+    assert_eq!(regular().answers_to(name), answers);
+}
+
+#[rstest]
+#[case("Open Sans ExtraBold", "opensansextrabold")]
+#[case("OpenSans-Extrabold", "opensansextrabold")]
+#[case("Grotesk Ä-Bold", "groteskäbold")]
+#[case("- _", "")]
+fn names_are_compared_without_case_spaces_or_punctuation(#[case] name: &str, #[case] key: &str) {
+    assert_eq!(name_key(name), key);
 }

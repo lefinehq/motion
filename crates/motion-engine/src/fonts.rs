@@ -53,6 +53,19 @@ pub fn missing_fonts(scene: &Scene, fonts: &FontSet) -> Vec<String> {
         .collect()
 }
 
+/// The names among [`missing_fonts`] that no face of `fonts` answers to by
+/// the names its font gives it either ([`FontSet::named`]): what the fetch
+/// of an import has to find. The import names the others by their faces'
+/// own names ([D61]).
+///
+/// [D61]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d61-a-font-is-found-by-the-names-its-face-gives-itself
+pub fn unnamed_fonts(scene: &Scene, fonts: &FontSet) -> Vec<String> {
+    missing_fonts(scene, fonts)
+        .into_iter()
+        .filter(|name| fonts.named(name).is_none())
+        .collect()
+}
+
 /// Whether `fonts` has a face for `name`, by PostScript name or family.
 pub(crate) fn has_face(fonts: &FontSet, name: &str) -> bool {
     fonts

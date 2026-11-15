@@ -1,17 +1,38 @@
-//! Fonts the import was not given ([D40]): the scene's text is set in the
-//! faces chosen to stand in for them, and every use is reported with the
-//! fonts it swaps, so the gap stays counted.
+//! Fonts the import finds under another name or was not given.
+//!
+//! - A font the project names by another name of a face the import has,
+//!   such as an earlier build's PostScript name ([D61]), is renamed to the
+//!   face's own name. It is the same face, so it is listed, not counted.
+//! - A font the import was not given ([D40]) is set in the face chosen to
+//!   stand in for it, and every use is reported with the fonts it swaps, so
+//!   the gap stays counted.
 //!
 //! [D40]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d40-missing-fonts-are-substituted-at-import
+//! [D61]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d61-a-font-is-found-by-the-names-its-face-gives-itself
 
 use std::collections::BTreeMap;
 
 use motion_format::{Result, key};
 use serde_json::Value as Json;
 
-use super::{Import, read_back};
+use super::{Import, Mapping, read_back};
 
 impl Import {
+    /// Names the faces the project's fonts are by their own names: each
+    /// font named in `renames`, by the name the project stored, becomes the
+    /// PostScript name of the face it is, the same face under the name its
+    /// font gives it. Each is listed in [`Mapping::renamed_fonts`], and not
+    /// as unsupported: nothing is lost.
+    ///
+    /// # Errors
+    /// An invalid diagnostic, as a bug in the import, when the scene with
+    /// the new names is not a valid scene.
+    pub fn rename_fonts(&mut self, renames: &BTreeMap<String, String>) -> Result<()> {
+        self.swap_fonts(renames, |mapping, _, from, to| {
+            mapping.renamed_fonts.insert(from.to_owned(), to.to_owned());
+        })
+    }
+
     /// Sets the scene's text in other faces: each font named in
     /// `substitutes`, by PostScript name, becomes the one it maps to. Every
     /// place it was used is reported as unsupported, as
@@ -22,7 +43,20 @@ impl Import {
     /// An invalid diagnostic, as a bug in the import, when the scene with
     /// the new faces is not a valid scene.
     pub fn substitute_fonts(&mut self, substitutes: &BTreeMap<String, String>) -> Result<()> {
-        let swapped: BTreeMap<&str, &str> = substitutes
+        self.swap_fonts(substitutes, |mapping, at, from, to| {
+            mapping.unsupported(at, format!("missing fonts, substituted (`{from} → {to}`)"));
+        })
+    }
+
+    /// Writes each font of `swaps` the scene uses as the one it maps to,
+    /// moves its places in [`Import::fonts`] to that one, and tells `report`
+    /// of each place, with the two names.
+    fn swap_fonts(
+        &mut self,
+        swaps: &BTreeMap<String, String>,
+        mut report: impl FnMut(&mut Mapping, &str, &str, &str),
+    ) -> Result<()> {
+        let swapped: BTreeMap<&str, &str> = swaps
             .iter()
             .filter(|(from, to)| from != to && self.fonts.contains_key(*from))
             .map(|(from, to)| (from.as_str(), to.as_str()))
@@ -34,8 +68,7 @@ impl Import {
             let places = self.fonts.remove(*from).unwrap_or_default();
             let uses = self.fonts.entry((*to).to_owned()).or_default();
             for at in places {
-                self.mapping
-                    .unsupported(&at, format!("missing fonts, substituted (`{from} → {to}`)"));
+                report(&mut self.mapping, &at, from, to);
                 if !uses.contains(&at) {
                     uses.push(at);
                 }

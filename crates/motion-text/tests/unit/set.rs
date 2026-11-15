@@ -6,6 +6,7 @@ use motion_format::Kind;
 use rstest::rstest;
 
 use super::*;
+use crate::test_support::with_names;
 
 /// A fresh, empty folder under the system's temporary folder.
 fn scratch(name: &str) -> PathBuf {
@@ -119,4 +120,41 @@ fn a_file_that_cannot_be_read_is_an_io_error() {
 #[case("ttf", false)]
 fn font_files_are_known_by_extension(#[case] path: &str, #[case] font: bool) {
     assert_eq!(is_font_file(Path::new(path)), font);
+}
+
+/// A set of the fixture under each of `faces`, a PostScript name and a
+/// family with `Regular` legacy style each, in that order.
+fn named_set(faces: &[(&str, &str)]) -> FontSet {
+    let mut set = FontSet::new();
+    for (postscript, family) in faces {
+        let bytes = with_names(&[(1, family), (2, "Regular"), (6, postscript)]);
+        set.add_bytes(bytes, postscript).expect("a font");
+    }
+    set
+}
+
+#[rstest]
+#[case::exactly("BrandSans-Regular", Some("BrandSans-Regular"))]
+#[case::in_another_case("brandsans-regular", Some("BrandSans-Regular"))]
+#[case::by_its_family("BrandSans", Some("BrandSans-Regular"))]
+#[case::another_style("BrandSans-Bold", None)]
+#[case::another_family("OtherSans", None)]
+fn a_face_is_named_by_its_own_names(#[case] name: &str, #[case] face: Option<&str>) {
+    let set = named_set(&[("BrandSans-Regular", "Brand Sans")]);
+    assert_eq!(set.named(name).map(|f| f.postscript_name.as_str()), face);
+}
+
+#[test]
+fn a_postscript_name_wins_over_an_earlier_face_that_answers_to_it() {
+    let set = named_set(&[
+        ("BrandSans-Regular", "Brand Sans"),
+        ("Brand-Sans", "Brand Sans Old"),
+        ("BrandSans", "Brand Sans Legacy"),
+    ]);
+    assert_eq!(set.named("BrandSans").unwrap().family, "Brand Sans Legacy");
+    // Of the faces that only answer to a name, the first added.
+    assert_eq!(
+        set.named("brand sans").unwrap().postscript_name,
+        "BrandSans-Regular"
+    );
 }

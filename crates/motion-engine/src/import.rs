@@ -103,24 +103,39 @@ pub fn import_scene(
     stage("map", || map::import(&project, &options))
 }
 
-/// Sets every font of `import`'s text that `fonts` has no face for in the
-/// face [`FontSet::fallback`] chooses (step `substitute`): one of the same
-/// family, else the built-in Inter, at the same slant and the nearest
-/// weight. Each use is in the import's report. `fonts` are the fonts the
-/// scene will have: the built-in ones, those the import was given, and any
-/// fetched for it.
+/// Gives every font of `import`'s text that `fonts` has no face for by
+/// that name a face (step `substitute`).
+///
+/// - When a face [answers to](motion_text::Face::answers_to) the name, by
+///   the names its font gives it ([D61]), the scene names that face by its
+///   own PostScript name. It is the same face, so it is listed under
+///   [`Mapping::renamed_fonts`](motion_import::map::Mapping::renamed_fonts)
+///   and not counted as unsupported.
+/// - Otherwise the face [`FontSet::fallback`] chooses stands in for it: one
+///   of the same family, else the built-in Inter, at the same slant and the
+///   nearest weight ([D40]). Each use is in the import's report.
+///
+/// `fonts` are the fonts the scene will have: the built-in ones, those the
+/// import was given, and any fetched for it.
 ///
 /// # Errors
 /// An invalid diagnostic, as a bug in the import, when the scene with the
 /// new faces is not a valid scene.
+///
+/// [D40]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d40-missing-fonts-are-substituted-at-import
+/// [D61]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d61-a-font-is-found-by-the-names-its-face-gives-itself
 pub fn substitute_fonts(import: &mut Import, fonts: &FontSet) -> Result<()> {
     stage("substitute", || {
-        let substitutes: BTreeMap<String, String> = import
-            .fonts
-            .keys()
-            .filter(|name| !has_face(fonts, name))
-            .filter_map(|name| Some((name.clone(), fonts.fallback(name)?.postscript_name.clone())))
-            .collect();
+        let mut renames = BTreeMap::new();
+        let mut substitutes = BTreeMap::new();
+        for name in import.fonts.keys().filter(|name| !has_face(fonts, name)) {
+            if let Some(face) = fonts.named(name) {
+                renames.insert(name.clone(), face.postscript_name.clone());
+            } else if let Some(face) = fonts.fallback(name) {
+                substitutes.insert(name.clone(), face.postscript_name.clone());
+            }
+        }
+        import.rename_fonts(&renames)?;
         import.substitute_fonts(&substitutes)
     })
 }
