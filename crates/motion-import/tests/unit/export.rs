@@ -198,6 +198,19 @@ fn a_point_keeps_the_projects_depth_and_a_percent_scales_back() {
     );
 }
 
+#[test]
+fn a_depth_goes_back_as_the_third_number_and_an_orientation_whole() {
+    let template = Value::Vector3([1.0, 2.0, 7.0]);
+    assert_eq!(
+        project_value(&json!(-300), Convert::Depth, &template),
+        Ok(Value::Vector3([1.0, 2.0, -300.0]))
+    );
+    assert_eq!(
+        project_value(&json!([0, 90, 45]), Convert::Angles, &template),
+        Ok(Value::Vector3([0.0, 90.0, 45.0]))
+    );
+}
+
 /// Every `.aep` under `dir`, at any depth.
 fn projects(dir: &std::path::Path) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = fs::read_dir(dir)

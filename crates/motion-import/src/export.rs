@@ -284,9 +284,12 @@ fn project_value(
     template: &Value,
 ) -> std::result::Result<Value, String> {
     let (ty, broadcast) = match convert {
-        Convert::Number | Convert::Percent | Convert::Level | Convert::Times(_) => {
-            (ValueType::Number, false)
-        }
+        Convert::Number
+        | Convert::Percent
+        | Convert::Level
+        | Convert::Times(_)
+        | Convert::Depth => (ValueType::Number, false),
+        Convert::Angles => (ValueType::Orientation, false),
         Convert::Point | Convert::PointPercent | Convert::Sized { .. } => (ValueType::Point, true),
         Convert::Color => (ValueType::Color, false),
         Convert::Path | Convert::PathIn(_) => {
@@ -317,13 +320,15 @@ fn project_value(
     if numbers.iter().any(|n| !n.is_finite()) {
         return Err("a value that is not a finite number".into());
     }
-    Ok(match template {
-        Value::Color(_) => match *numbers.as_slice() {
+    Ok(match (template, convert) {
+        // A depth is the third number of the vector it was read from.
+        (Value::Vector3([x, y, _]), Convert::Depth) => Value::Vector3([*x, *y, numbers[0]]),
+        (Value::Color(_), _) => match *numbers.as_slice() {
             [r, g, b, a] => Value::Color(Color { r, g, b, a }),
             [r, g, b] => Value::Color(Color { r, g, b, a: 1.0 }),
             _ => return Err("a colour of other than 3 or 4 channels".into()),
         },
-        other => other.with_numbers(&numbers),
+        (other, _) => other.with_numbers(&numbers),
     })
 }
 

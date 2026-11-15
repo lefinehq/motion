@@ -11,8 +11,8 @@ use std::fmt;
 use motion_format::fmt_num;
 
 use crate::model::{
-    Child, Composition, Footage, Group, ItemKind, Layer, Project, Property, Source, Stream,
-    Switches, TextDocument, TextFrame, Value,
+    AutoOrient, Child, Composition, Footage, Group, ItemKind, Layer, Project, Property, Source,
+    Stream, Switches, TextDocument, TextFrame, Value,
 };
 
 /// The width of one level of indentation.
@@ -70,7 +70,8 @@ fn write_children(f: &mut fmt::Formatter<'_>, group: &Group, level: usize) -> fm
     })
 }
 
-/// A composition's size, rate, duration and work area.
+/// A composition's size, rate, duration and work area, and its 3D
+/// renderer when it is not the classic one.
 impl fmt::Display for Composition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -82,7 +83,13 @@ impl fmt::Display for Composition {
             fmt_num(self.duration),
             fmt_num(self.work_area.start),
             fmt_num(self.work_area.end)
-        )
+        )?;
+        match &self.renderer {
+            Some(renderer) if !renderer.is_classic() => {
+                write!(f, ", renderer `{}`", renderer.name)
+            }
+            _ => Ok(()),
+        }
     }
 }
 
@@ -133,12 +140,17 @@ impl fmt::Display for Layer {
         printed(&self.switches)
             .iter()
             .filter(|(_, on)| *on)
-            .try_for_each(|(name, _)| write!(f, ", {name}"))
+            .try_for_each(|(name, _)| write!(f, ", {name}"))?;
+        match self.switches.orient {
+            AutoOrient::Off => Ok(()),
+            orient => write!(f, ", orient {}", orient.to_string().replace('_', " ")),
+        }
     }
 }
 
 /// Each switch of `s` as `inspect` prints it, with whether it shows: one
-/// entry per field of [`Switches`], `enabled` printed as `off`.
+/// entry per field of [`Switches`] but `orient`, which prints by its name,
+/// and `enabled` printed as `off`.
 fn printed(s: &Switches) -> [(&'static str, bool); 10] {
     [
         ("off", !s.enabled),

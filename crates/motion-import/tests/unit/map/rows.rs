@@ -47,13 +47,64 @@ fn check(
             "{at}: `{}` names a layer, which its kind does not read",
             row.match_name
         ),
+        To::Split(point, depth) => {
+            let point = registry.target(point);
+            assert!(
+                point.is_some_and(|t| t.value_type() == motion_format::ValueType::Point),
+                "{at}: `{}` splits into a point the registry lacks",
+                row.match_name
+            );
+            assert!(
+                registry
+                    .target(depth)
+                    .is_some_and(|t| t.value_type() == motion_format::ValueType::Number),
+                "{at}: `{}` splits off a depth `{depth}` the registry lacks",
+                row.match_name
+            );
+        }
         To::Ignore(_) | To::OnlyDefault(_) => {}
     });
 }
 
+/// The transform tables of every kind of layer, with their names.
+const TRANSFORMS: [(&[Row], &str); 5] = [
+    (&TRANSFORM, "flat transform"),
+    (&TRANSFORM_3D, "3D transform"),
+    (&CAMERA_AIMED, "two-node camera"),
+    (&CAMERA_FREE, "one-node camera"),
+    (&LIGHT_TRANSFORM, "light"),
+];
+
+#[test]
+fn every_transform_table_reads_the_same_properties() {
+    let names = |rows: &[Row]| rows.iter().map(|row| row.match_name).collect::<Vec<_>>();
+    for (rows, at) in TRANSFORMS {
+        assert_eq!(names(rows), names(&TRANSFORM), "{at}");
+    }
+}
+
+#[test]
+fn only_3d_tables_write_depth() {
+    let depth = |rows: &[Row]| {
+        rows.iter().any(|row| {
+            matches!(row.to, To::Split(..))
+                || matches!(row.to, To::Prop(name) if LAYER
+                    .target(name)
+                    .is_some_and(|t| motion_format::property::Prop::DEPTH.contains(&t.prop)))
+        })
+    };
+    assert!(!depth(&TRANSFORM), "a flat layer drops its depth");
+    for (rows, at) in &TRANSFORMS[1..] {
+        assert!(depth(rows), "{at}");
+    }
+}
+
 #[test]
 fn every_row_targets_a_property_or_setting_the_scene_has() {
-    check(&TRANSFORM, &LAYER, None, "transform");
+    for (rows, at) in TRANSFORMS {
+        check(rows, &LAYER, None, at);
+    }
+    check(&CAMERA_OPTIONS, &LAYER, None, "camera options");
     check(&LAYER_ROOT, &LAYER, None, "layer");
     KINDS.iter().for_each(|kind| {
         let scene = kind.scene_kind();

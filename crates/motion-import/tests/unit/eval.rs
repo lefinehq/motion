@@ -112,10 +112,160 @@ fn a_spatial_key_moves_along_its_path_at_an_even_speed() {
     let Value::Vector3([x, y, z]) = stream.value_at(0.5) else {
         panic!("a vector");
     };
-    // The bend is symmetric, so halfway along it is the middle, raised.
+    // The bend is symmetric in space too, so halfway along it is the
+    // middle, raised.
     assert!((x - 50.0).abs() < 1e-6, "{x}");
     assert!((y - 37.5).abs() < 1e-6, "{y}");
-    assert!((z - 5.0).abs() < 1e-6, "depth moves with the distance: {z}");
+    assert!((z - 5.0).abs() < 1e-6, "{z}");
+}
+
+/// Spatial handles leaving and arriving, in px with depth.
+fn handles(out: [f64; 3], into: [f64; 3]) -> Spatial {
+    Spatial {
+        in_tangent: into.to_vec(),
+        out_tangent: out.to_vec(),
+        continuous: false,
+        auto_bezier: false,
+    }
+}
+
+/// Two linear keys a second apart from `from` to `to`, bent by `out` and
+/// `into`.
+fn span(from: [f64; 3], to: [f64; 3], out: [f64; 3], into: [f64; 3]) -> (Keyframe, Keyframe) {
+    let mut a = key(0.0, Value::Vector3(from), 0.0, None);
+    let mut b = key(1.0, Value::Vector3(to), 0.0, None);
+    a.spatial = Some(handles(out, [0.0; 3]));
+    b.spatial = Some(handles([0.0; 3], into));
+    (a, b)
+}
+
+#[test]
+fn a_span_moves_in_depth_level_straight_or_bent() {
+    let origin = [0.0; 3];
+    let cases = [
+        // One depth, bent in the screen's plane: a flat path.
+        (
+            (
+                origin,
+                [100.0, 0.0, 0.0],
+                [0.0, 50.0, 0.0],
+                [0.0, 50.0, 0.0],
+            ),
+            Depth::Level,
+        ),
+        // No handles: a line in space.
+        (
+            (origin, [300.0, 0.0, 400.0], origin, origin),
+            Depth::Straight,
+        ),
+        // Handles on the line, as automatic ones lie on a move in a line.
+        (
+            (
+                origin,
+                [300.0, 0.0, 400.0],
+                [30.0, 0.0, 40.0],
+                [-60.0, 0.0, -80.0],
+            ),
+            Depth::Straight,
+        ),
+        // A handle past the far end turns the path back over itself.
+        (
+            (origin, [300.0, 0.0, 400.0], [600.0, 0.0, 800.0], origin),
+            Depth::Bent,
+        ),
+        // A handle off the line bends it.
+        (
+            (origin, [300.0, 0.0, 400.0], [0.0, 10.0, 0.0], origin),
+            Depth::Bent,
+        ),
+        // A depth handle bends a path whose ends share their depth.
+        (
+            (origin, [100.0, 0.0, 0.0], [0.0, 0.0, 30.0], origin),
+            Depth::Bent,
+        ),
+    ];
+    for ((from, to, out, into), expected) in cases {
+        let (a, b) = span(from, to, out, into);
+        assert_eq!(
+            depth(&a, &b),
+            expected,
+            "{from:?} -> {to:?}, {out:?} {into:?}"
+        );
+    }
+}
+
+#[test]
+fn a_path_in_space_is_as_long_as_its_curve() {
+    // A curve in the plane of X and depth, measured as a flat curve there.
+    let (from, to, out, into) = (
+        [0.0, 7.0, 0.0],
+        [100.0, 7.0, 100.0],
+        [55.0, 0.0, 0.0],
+        [0.0, 0.0, -55.0],
+    );
+    let path = Path3::new(from, to, [out, into]);
+    let flat = kurbo::CubicBez::new((0.0, 0.0), (55.0, 0.0), (100.0, 45.0), (100.0, 100.0));
+    let expected = kurbo::ParamCurveArclen::arclen(&flat, 1e-9);
+    assert!(
+        (path.length - expected).abs() < 1e-6,
+        "{} vs {expected}",
+        path.length
+    );
+    // A point along it is that far along the curve.
+    let along = path.at_length(expected / 3.0);
+    let t = kurbo::ParamCurveArclen::inv_arclen(&flat, expected / 3.0, 1e-9);
+    let flat_point = kurbo::ParamCurve::eval(&flat, t);
+    let gap = [
+        along[0] - flat_point.x,
+        along[1] - 7.0,
+        along[2] - flat_point.y,
+    ];
+    assert!(
+        gap.iter().all(|g| g.abs() < 1e-4),
+        "{along:?} vs {flat_point:?}"
+    );
+    // Past the end it carries on along the last handle.
+    let past = path.at_length(expected + 10.0);
+    assert!(
+        (past[2] - 110.0).abs() < 1e-9 && (past[0] - 100.0).abs() < 1e-9,
+        "{past:?}"
+    );
+}
+
+#[test]
+fn a_point_with_depth_is_timed_along_its_length_in_space() {
+    // A straight move of 500 px in space, eased: halfway in time is
+    // halfway along the line.
+    let mut a = key(0.0, Value::Vector3([0.0, 0.0, 0.0]), 0.0, Some(0.5));
+    let mut b = key(1.0, Value::Vector3([300.0, 0.0, 400.0]), 0.0, Some(0.5));
+    a.spatial = Some(handles([0.0; 3], [0.0; 3]));
+    b.spatial = a.spatial.clone();
+    let stream = Stream::Animated(vec![a, b]);
+    let Value::Vector3([x, y, z]) = stream.value_at(0.5) else {
+        panic!("a vector");
+    };
+    assert!((x - 150.0).abs() < 1e-6 && y.abs() < 1e-9 && (z - 200.0).abs() < 1e-6);
+    // A bent one sits on its curve, at the time its length gives.
+    let (a, b) = span(
+        [0.0; 3],
+        [100.0, 0.0, 100.0],
+        [55.0, 0.0, 0.0],
+        [0.0, 0.0, -55.0],
+    );
+    let path = Path3::new(
+        [0.0; 3],
+        [100.0, 0.0, 100.0],
+        [[55.0, 0.0, 0.0], [0.0, 0.0, -55.0]],
+    );
+    let stream = Stream::Animated(vec![a, b]);
+    let Value::Vector3(got) = stream.value_at(0.25) else {
+        panic!("a vector");
+    };
+    let expected = path.at_length(path.length / 4.0);
+    assert!(
+        got.iter().zip(expected).all(|(g, e)| (g - e).abs() < 1e-9),
+        "{got:?} vs {expected:?}"
+    );
 }
 
 #[test]

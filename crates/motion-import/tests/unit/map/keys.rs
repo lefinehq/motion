@@ -324,3 +324,131 @@ fn clamping_a_track_says_whether_the_motion_between_keys_changes() {
     let mut inside = Written::Value(json!([0.1, 0.2]));
     assert_eq!(inside.clamp((0.0, 1.0)), Clamped::default());
 }
+
+/// The point and depth parts a stream of 3D vectors is written as.
+fn parts(stream: &Stream, spatial: bool, fps: f64) -> (serde_json::Value, serde_json::Value) {
+    let json = |w: Written| match w {
+        Written::Value(v) => v,
+        Written::Track { keys, .. } => keys,
+    };
+    let (point, depth) = split(stream, Convert::Point, spatial, SAME, fps).expect("it splits");
+    (json(point), json(depth.expect("a depth")))
+}
+
+/// A linear key at `time` at `[x, y, z]`, with spatial handles `out` and
+/// `into` in space.
+fn spatial_key(time: f64, value: [f64; 3], out: [f64; 3], into: [f64; 3]) -> Keyframe {
+    Keyframe {
+        spatial: Some(Spatial {
+            in_tangent: into.to_vec(),
+            out_tangent: out.to_vec(),
+            continuous: false,
+            auto_bezier: false,
+        }),
+        ..key(time, Value::Vector3(value), Interpolation::Linear, 0.0, 0.0)
+    }
+}
+
+#[test]
+fn a_3d_vector_splits_into_a_point_and_its_depth() {
+    let still = Stream::Static(Value::Vector3([10.0, 20.0, -300.0]));
+    assert_eq!(parts(&still, true, 10.0), (json!([10, 20]), json!(-300)));
+    // Scale keeps an ease per dimension: the depth takes the third.
+    let mut a = key(
+        0.0,
+        Value::Vector3([1.0, 1.0, 1.0]),
+        Interpolation::Bezier,
+        0.0,
+        0.5,
+    );
+    let b = key(
+        1.0,
+        Value::Vector3([2.0, 2.0, 3.0]),
+        Interpolation::Bezier,
+        0.0,
+        0.5,
+    );
+    a.out_ease = vec![
+        Ease {
+            speed: 1.0,
+            influence: 0.5,
+        },
+        Ease {
+            speed: 1.0,
+            influence: 0.5,
+        },
+        Ease {
+            speed: 4.0,
+            influence: 0.25,
+        },
+    ];
+    let (point, depth) = parts(&Stream::Animated(vec![a, b]), false, 10.0);
+    assert_eq!(point[0]["curve"], "speed(1,0.5,0,0.5)");
+    assert_eq!(depth[0]["v"], 1);
+    assert_eq!(depth[0]["curve"], "speed(4,0.25,0,0.5)");
+    // A flat vector has no depth to write.
+    let flat = Stream::Static(Value::Vector2([1.0, 2.0]));
+    let (_, depth) = split(&flat, Convert::Point, false, SAME, 10.0).expect("it splits");
+    assert!(depth.is_none());
+}
+
+#[test]
+fn a_path_at_one_depth_keeps_its_flat_bend() {
+    let keys = vec![
+        spatial_key(0.0, [0.0, 0.0, 50.0], [0.0, 40.0, 0.0], [0.0; 3]),
+        spatial_key(1.0, [100.0, 0.0, 50.0], [0.0; 3], [0.0, 40.0, 0.0]),
+    ];
+    let (point, depth) = parts(&Stream::Animated(keys), true, 10.0);
+    assert_eq!(point[0]["path"], json!([[0, 40], [0, 40]]));
+    assert_eq!(point.as_array().map(Vec::len), Some(2));
+    assert_eq!(depth, json!(50), "a depth that never moves is one value");
+}
+
+#[test]
+fn a_straight_move_in_space_shares_its_speed_between_point_and_depth() {
+    // 500 px in space, of which 300 across and 400 in depth, leaving at
+    // 1000 px a second.
+    let mut a = spatial_key(0.0, [0.0, 0.0, 0.0], [0.0; 3], [0.0; 3]);
+    let mut b = spatial_key(1.0, [300.0, 0.0, 400.0], [0.0; 3], [0.0; 3]);
+    for k in [&mut a, &mut b] {
+        k.in_interpolation = Interpolation::Bezier;
+        k.out_interpolation = Interpolation::Bezier;
+    }
+    a.out_ease = vec![Ease {
+        speed: 1000.0,
+        influence: 0.25,
+    }];
+    b.in_ease = vec![Ease {
+        speed: 0.0,
+        influence: 0.5,
+    }];
+    let (point, depth) = parts(&Stream::Animated(vec![a, b]), true, 10.0);
+    assert_eq!(point[0]["curve"], "speed(600,0.25,0,0.5)");
+    assert!(point[0].get("path").is_none(), "a straight line");
+    assert_eq!(depth[0]["curve"], "speed(800,0.25,0,0.5)");
+    assert_eq!(depth[1]["v"], 400);
+}
+
+#[test]
+fn a_path_that_bends_in_depth_is_keyed_at_every_frame() {
+    let keys = vec![
+        spatial_key(0.0, [0.0, 0.0, 0.0], [55.0, 0.0, 0.0], [0.0; 3]),
+        spatial_key(1.0, [100.0, 0.0, 100.0], [0.0; 3], [0.0, 0.0, -55.0]),
+    ];
+    let stream = Stream::Animated(keys);
+    let (point, depth) = parts(&stream, true, 4.0);
+    let times: Vec<&str> = point
+        .as_array()
+        .expect("keys")
+        .iter()
+        .filter_map(|k| k["t"].as_str())
+        .collect();
+    assert_eq!(times, ["0s", "0.25s", "0.5s", "0.75s", "1s"]);
+    let Value::Vector3([x, _, z]) = stream.value_at(0.25) else {
+        panic!("a vector");
+    };
+    assert_eq!(point[1]["v"], json!([num(x), 0]));
+    assert_eq!(depth[1]["v"], num(z));
+    assert_eq!(point[1]["curve"], "linear");
+    assert!(point[0].get("path").is_none());
+}

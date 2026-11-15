@@ -3,15 +3,16 @@
 //! and every other group follows its policy.
 
 use motion_format::item::{ItemKind, Primary};
-use motion_format::property::{Registry, Rest, Target};
+use motion_format::property::{Registry, Rest, Target, default_zoom};
 use serde_json::{Map, Value as Json, json};
 
-use super::keys::{Clock, Convert, Written, num, written};
+use super::keys::{Clock, Convert, Written, num, split, written};
 use super::report::{ControlReport, Fate};
 use super::rows::{self, Kind, Missing, Part, Policy, Row, To};
 use super::slots::{Held, address};
 use super::sources::{Marks, Writable};
 use super::{Walk, curves};
+use crate::bake::Bake;
 use crate::model::{
     Child, ComposedLine, Control, EffectDefinition, Group, Property, Stream, Value,
 };
@@ -27,8 +28,11 @@ pub(super) struct Place<'p> {
     pub at: String,
     /// The layer's clock.
     pub clock: Clock,
-    /// The centre of the layer's composition.
-    pub comp_centre: [f64; 2],
+    /// The size of the layer's composition.
+    pub comp_size: [f64; 2],
+    /// The frame rate of the layer's composition, at which what the scene
+    /// cannot key exactly is keyed at every frame.
+    pub frame_rate: f64,
     /// The centre of the layer's source, or the origin.
     pub source_centre: [f64; 2],
     /// The layer's size: its source's, else its composition's, which an
@@ -161,7 +165,7 @@ impl Walk<'_> {
             return self.mapping.ignore(name, NOT_APPLYING);
         }
         let baked = self.evaluated(property, place);
-        if baked.is_some() && !matches!(row.to, To::Prop(_)) {
+        if baked.is_some() && !matches!(row.to, To::Prop(_) | To::Split(..)) {
             self.mapping.unsupported(
                 &place.at,
                 "an expression on a property the scene does not animate (its value is kept)",
@@ -177,92 +181,17 @@ impl Walk<'_> {
                 }
             },
             To::Prop(target) => {
-                let convert = convert(row, place);
-                let spatial = sink
-                    .registry
-                    .target(target)
-                    .is_some_and(|t| t.component.is_none() && t.prop.spec().spatial);
-                let component = sink
-                    .registry
-                    .target(target)
-                    .filter(|t| t.component.is_some());
-                let expression = property.expression.as_ref().is_some_and(|e| e.enabled);
-                if let Some(bake) = baked {
-                    let found = sink.registry.target(target);
-                    if let Some(mut tracks) =
-                        self.baked_tracks(bake, property, (target, found), convert, place)
-                    {
-                        self.follow_slot(&bake.source, convert, &mut tracks);
-                        let source = self.source(Writable::Expression);
-                        for track in tracks {
-                            let (name, component) = (&track.name, track.component);
-                            insert(out, sink, name, component, track.written, Some(source));
-                        }
-                        return self.mapping.count(name, Fate::Mapped);
-                    }
-                }
-                match written(&property.value, convert, spatial, place.clock) {
-                    Some(mut written) => {
-                        if let Some(range) = sink
-                            .registry
-                            .target(target)
-                            .and_then(|t| t.prop.spec().range)
-                        {
-                            let clamped = written.clamp(range);
-                            if clamped.count > 0 {
-                                let between = match clamped.between_keys {
-                                    true => {
-                                        "; the motion between those keys can differ, as the original clamps after it interpolates"
-                                    }
-                                    false => "",
-                                };
-                                self.mapping.clamped(
-                                    &place.at,
-                                    format!(
-                                        "{} outside {}{between}",
-                                        plural(clamped.count, "value"),
-                                        range_text(range)
-                                    ),
-                                );
-                            }
-                        }
-                        // A still value a panel control drives follows its
-                        // slot, and goes back through the slot.
-                        let followed = match &mut written {
-                            Written::Value(value) if !expression => self
-                                .follow_panel(
-                                    &Held::Stored(address(property)),
-                                    value,
-                                    Some(convert),
-                                )
-                                .map(|marked| *value = marked)
-                                .is_some(),
-                            _ => false,
-                        };
-                        let writable = match (&written, &property.value, &property.origin) {
-                            _ if followed => None,
-                            _ if expression => Some(Writable::Expression),
-                            (Written::Track { .. }, ..) => Some(Writable::Keyed),
-                            (Written::Value(_), Stream::Static(value), Some(origin)) => {
-                                Some(Writable::Static {
-                                    origin: origin.clone(),
-                                    convert,
-                                    template: value.clone(),
-                                })
-                            }
-                            _ => None,
-                        };
-                        let source = writable.map(|w| self.source(w));
-                        insert(out, sink, target, component, written, source);
-                    }
-                    None => {
-                        self.mapping.count(name, Fate::Unsupported);
-                        return self
-                            .mapping
-                            .unsupported(&place.at, "a value of a type its row does not take");
-                    }
-                }
-                self.mapping.count(name, Fate::Mapped);
+                self.put_value(row, (property, baked), (target, None), sink, out, place);
+            }
+            To::Split(point, depth) => {
+                self.put_value(
+                    row,
+                    (property, baked),
+                    (point, Some(depth)),
+                    sink,
+                    out,
+                    place,
+                );
             }
             To::Input => {
                 let named = match &property.value {
@@ -357,11 +286,124 @@ impl Walk<'_> {
         }
     }
 
+    /// Writes `property` to `target`, and its depth to `depth` when the row
+    /// splits a 3D vector: what its expression gave where it was `baked`,
+    /// else its value or keys.
+    fn put_value(
+        &mut self,
+        row: &Row,
+        (property, baked): (&Property, Option<&Bake>),
+        (target, depth): (&str, Option<&str>),
+        sink: Sink,
+        out: &mut Out,
+        place: &Place<'_>,
+    ) {
+        let name = row.match_name;
+        let convert = convert(row, place);
+        let found = sink.registry.target(target);
+        let spatial = found.is_some_and(Target::moves_in_space);
+        if let Some(bake) = baked {
+            let depth = depth.and_then(|d| Some((d, sink.registry.target(d)?)));
+            if let Some(mut tracks) =
+                self.baked_tracks(bake, property, (target, found), depth, convert, place)
+            {
+                self.follow_slot(&bake.source, convert, &mut tracks);
+                let source = self.source(Writable::Expression);
+                for track in tracks {
+                    let (name, component) = (&track.name, track.component);
+                    insert(out, sink, name, component, track.written, Some(source));
+                }
+                return self.mapping.count(name, Fate::Mapped);
+            }
+        }
+        let parts = match depth {
+            None => written(&property.value, convert, spatial, place.clock).map(|w| (w, None)),
+            Some(_) => split(
+                &property.value,
+                convert,
+                spatial,
+                place.clock,
+                place.frame_rate,
+            ),
+        };
+        let Some((point, in_depth)) = parts else {
+            self.mapping.count(name, Fate::Unsupported);
+            return self
+                .mapping
+                .unsupported(&place.at, "a value of a type its row does not take");
+        };
+        self.place_written(point, (target, convert), property, sink, out, place);
+        if let (Some(depth), Some(written)) = (depth, in_depth) {
+            self.place_written(written, (depth, Convert::Depth), property, sink, out, place);
+        }
+        self.mapping.count(name, Fate::Mapped);
+    }
+
+    /// Puts `written`, read from `property` through `convert`, at `target`:
+    /// clamped into the property's range, following the slot of a panel
+    /// control that drives it, and marked with how it goes back.
+    fn place_written(
+        &mut self,
+        mut written: Written,
+        (target, convert): (&str, Convert),
+        property: &Property,
+        sink: Sink,
+        out: &mut Out,
+        place: &Place<'_>,
+    ) {
+        let found = sink.registry.target(target);
+        let component = found.filter(|t| t.component.is_some());
+        let expression = property.expression.as_ref().is_some_and(|e| e.enabled);
+        if let Some(range) = found.and_then(|t| t.prop.spec().range) {
+            let clamped = written.clamp(range);
+            if clamped.count > 0 {
+                let between = match clamped.between_keys {
+                    true => {
+                        "; the motion between those keys can differ, as the original clamps after it interpolates"
+                    }
+                    false => "",
+                };
+                self.mapping.clamped(
+                    &place.at,
+                    format!(
+                        "{} outside {}{between}",
+                        plural(clamped.count, "value"),
+                        range_text(range)
+                    ),
+                );
+            }
+        }
+        // A still value a panel control drives follows its slot, and goes
+        // back through the slot. A control drives a point, not its depth.
+        let followed = match &mut written {
+            Written::Value(value) if !expression && convert != Convert::Depth => self
+                .follow_panel(&Held::Stored(address(property)), value, Some(convert))
+                .map(|marked| *value = marked)
+                .is_some(),
+            _ => false,
+        };
+        let writable = match (&written, &property.value, &property.origin) {
+            _ if followed => None,
+            _ if expression => Some(Writable::Expression),
+            (Written::Track { .. }, ..) => Some(Writable::Keyed),
+            (Written::Value(_), Stream::Static(value), Some(origin)) => Some(Writable::Static {
+                origin: origin.clone(),
+                convert,
+                template: value.clone(),
+            }),
+            _ => None,
+        };
+        let source = writable.map(|w| self.source(w));
+        insert(out, sink, target, component, written, source);
+    }
+
     /// Writes the default of a row the project leaves out, where the scene's
     /// own rest differs from it.
     fn put_default(&mut self, row: &Row, sink: Sink, out: &mut Out, place: &Place<'_>) {
-        let To::Prop(target) = row.to else {
-            return;
+        let (target, depth) = match row.to {
+            To::Prop(target) => (target, None),
+            To::Split(point, depth) => (point, Some(depth)),
+            _ => return,
         };
         let Some(value) = default_value(row, place) else {
             return;
@@ -370,6 +412,16 @@ impl Walk<'_> {
             return;
         };
         self.mapping.count(row.match_name, Fate::Defaulted);
+        // A default with depth writes it where it is not the scene's rest.
+        if let Some((depth, at)) = depth.zip(Convert::Depth.value(&value)) {
+            let differs = sink
+                .registry
+                .target(depth)
+                .is_none_or(|target| rest_json(target).is_none_or(|rest| rest != at));
+            if differs {
+                out.keys.insert(depth.into(), at);
+            }
+        }
         // A transform value the project leaves out at its default can still
         // be driven by a panel control: it follows the slot, written even
         // at rest.
@@ -711,7 +763,12 @@ fn default_value(row: &Row, place: &Place<'_>) -> Option<Value> {
         Missing::Number(n) => Value::Number(n),
         Missing::Vector(v) => Value::Vector2(v),
         Missing::Color([r, g, b, a]) => Value::Color(crate::model::Color { r, g, b, a }),
-        Missing::CompCentre => Value::Vector2(place.comp_centre),
+        Missing::CompCentre => Value::Vector2(place.comp_size.map(|n| n / 2.0)),
+        Missing::CameraZoom => Value::Number(default_zoom(place.comp_size[0])),
+        Missing::CameraPosition => {
+            let [width, height] = place.comp_size;
+            Value::Vector3([width / 2.0, height / 2.0, -default_zoom(width)])
+        }
         Missing::SourceCentre => Value::Vector2(place.source_centre),
         Missing::Parameter => {
             let parameter = place.effect?.parameter(row.match_name)?;

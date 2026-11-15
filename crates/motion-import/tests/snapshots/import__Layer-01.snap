@@ -1,6 +1,5 @@
 ---
 source: crates/motion-import/tests/import.rs
-assertion_line: 88
 expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ---
 {"motion":1,"size":"1920x1080","fps":60,"dur":"60s","bg":"#000000",
@@ -15,7 +14,7 @@ expression: "format!(\"{scene}\\n{}\", import.mapping)"
 {"id":"pixel-motion","pivot":true,"anchor":[0,0],"position":[960,540]},
 {"id":"guide","pivot":true,"anchor":[0,0],"position":[960,540],"hidden":true},
 {"id":"solo","pivot":true,"anchor":[0,0],"position":[960,540]},
-{"id":"layer-3d","pivot":true,"rotate":0,"anchor":[0,0],"position":[960,540]},
+{"id":"layer-3d","pivot":true,"rotate":0,"anchor":[0,0],"position":[960,540],"3d":true},
 {"id":"adjustment","pivot":true,"anchor":[0,0],"position":[960,540]},
 {"id":"shy","pivot":true,"anchor":[0,0],"position":[960,540]},
 {"id":"locked","pivot":true,"anchor":[0,0],"position":[960,540]},
@@ -25,11 +24,10 @@ expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ]}
 
 imported `Comp 01`
-  20 mapped, 86 defaulted, 250 ignored, 0 unsupported, over 27 match names
+  20 mapped, 88 defaulted, 250 ignored, 0 unsupported, over 27 match names
   ignored, drawing nothing:
     empty (1)
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (248)
-    materials of 3D layers (1)
+    materials of 3D layers, which only lights change (they are reported) (1)
   unsupported:
-    3D layers (drawn flat) (1): Comp 01/3D
     solo layers (2): Comp 01/Solo; Comp 01/Transformations Collapsed
