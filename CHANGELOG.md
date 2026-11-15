@@ -62,6 +62,7 @@ All notable changes to this project are documented here. The format is based on 
 - The import report keeps each expression's whole source, and every expression control with its values, for live links (D44).
 - Curve families: `<shape>-<family>` names, such as `out-expo` or `in-out-quint`, with shapes `in`, `out`, `in-out` and `out-in`, and families `quad`, `cubic`, `quart`, `quint`, `sine`, `circ`, `expo`, `back`, `elastic` and `bounce`. Parameters go in parentheses: `in-out(2.5)`, `out-back(2)`, `out-elastic(1.2,.4)`. Also `steps(n)` and `steps(n,start)`. They are evaluated exactly at every frame, and behaviours take them too (`pop 18f out-back(2)`).
 - Spring curves: `spring(bounce)` and `spring(bounce,perceived)`, a damped spring released from rest that settles on the end value, overshooting for a bounce above 0. In a key span it is scaled to the span. A behaviour without a duration lasts until it rests (`pop spring(.4,10f)`), and that settle time is solved exactly rather than by stepping.
+- Trim: a `trim` shape item cuts the outlines listed before it, those in earlier groups included, down to a stretch from `start` to `end`, moved by `offset` in degrees, each on its own or `joined` as one line in order. Every paint that draws a cut outline draws the cut one, and inner groups' trims cut first. The import maps trim paths onto it (65 of the 241 local sample projects use them).
 
 ### Changed
 

@@ -127,6 +127,9 @@ pub(super) enum Policy {
 const LINE_CAPS: &[(i64, &str)] = &[(1, "butt"), (2, "round"), (3, "square")];
 const LINE_JOINS: &[(i64, &str)] = &[(1, "miter"), (2, "round"), (3, "bevel")];
 const FILL_RULES: &[(i64, &str)] = &[(1, "nonzero"), (2, "evenodd")];
+/// Trim Multiple Shapes: simultaneously cuts each outline the same way,
+/// individually cuts them one after another as one line.
+const TRIM_MODES: &[(i64, &str)] = &[(1, "each"), (2, "joined")];
 const BASED_ON: &[(i64, &str)] = &[(1, "char"), (2, "char-no-space"), (3, "word"), (4, "line")];
 const MODES: &[(i64, &str)] = &[
     (1, "add"),
@@ -231,7 +234,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 9] = [
+pub(super) static KINDS: [Kind; 10] = [
     Kind {
         match_name: "ADBE Vector Group",
         item: "group",
@@ -405,6 +408,38 @@ pub(super) static KINDS: [Kind; 9] = [
                 To::OnlyDefault("drawing over earlier paints"),
                 Number,
                 Missing::Number(1.0),
+            ),
+        ],
+        parts: &[],
+    },
+    Kind {
+        match_name: "ADBE Vector Filter - Trim",
+        item: "trim",
+        table: &SHAPES,
+        rows: &[
+            row(
+                "ADBE Vector Trim Start",
+                To::Prop("start"),
+                Percent,
+                Missing::Number(0.0),
+            ),
+            row(
+                "ADBE Vector Trim End",
+                To::Prop("end"),
+                Percent,
+                Missing::Number(100.0),
+            ),
+            row(
+                "ADBE Vector Trim Offset",
+                To::Prop("offset"),
+                Number,
+                Missing::Number(0.0),
+            ),
+            row(
+                "ADBE Vector Trim Type",
+                To::Setting("mode", TRIM_MODES),
+                Number,
+                Absent,
             ),
         ],
         parts: &[],

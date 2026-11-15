@@ -43,5 +43,6 @@ Before `content`, a scene that drew nothing in its settled frames scored a perfe
 | s737 | 15 expressions | 2 of 5 | 97.6% | expressions: the title's colours come from colour controls through expressions, and two elements are timed by them |
 | s553 | 9 expressions, 3 masks, 2 strokes, time remapping, a text selector | 1 of 4 (worst 15 px) | 93.4% | masks, and the centring of tracked text (B3); glyphs and widths match exactly with Montserrat 7.200 |
 | s611 | 6 expressions, audio spectrum, mirror, drop shadow, an adjustment layer | 1 of 1 | 100% | the audio-driven spectrum and the effects; the text matches exactly |
+| s562 | stars, zigzag, drop shadows, motion blur, footage it cannot read (the logo) | 0 of 1 (a substituted font) | 0.27% | the logo and the stars; its lines draw on with trims (9), which took it from 69.6% to 4.2% failing over all frames |
 
 **A correction.** The first version of this page blamed s737's numbers on its track mattes, saying their layers drew as plain white. That was wrong. The white was the full-frame solid the manifest ignores. Since mattes are supported (track mattes plan), s737's title shows in the right shape and place. But it is white where the reference's is black: its colour comes from a colour control through an expression. s737 now measures expressions more than anything else.

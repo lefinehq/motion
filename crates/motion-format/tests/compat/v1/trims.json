@@ -1,0 +1,17 @@
+{"motion":1,"size":"480x480","fps":24,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"ring","at":"140 140","shapes":[
+ {"ellipse":[160,160]},
+ {"stroke":"#3B82F6","width":12,"cap":"round"},
+ {"trim":0,"start":0,"offset":0,"mode":"each","anim":{"end":"0 -> 1 @0-18f out-cubic","offset":"0 -> 90 @0-1s"}}]},
+{"id":"lines","at":"340 140","shapes":[
+ {"group":[{"path":"M-80,-40 L80,-40"},{"stroke":"#E4572E","width":8}]},
+ {"group":[{"path":"M-80,0 L80,0"},{"path":"M-80,40 L80,40"}]},
+ {"stroke":"#101010","width":4,"cap":"butt"},
+ {"trim":1,"start":0,"mode":"joined","anim":{"end":"0 -> 1 @0-1s","start":"0 -> 0.5 @12f-24f"}}]},
+{"id":"wrap","at":"240 340","shapes":[
+ {"rect":[200,100],"round":20},
+ {"fill":"#FFE000"},
+ {"stroke":"#101010","width":6,"join":"round"},
+ {"trim":0.25,"start":0,"offset":300,"anim":{"offset":"300 -> 420 @0-1s"}}]}
+]}
