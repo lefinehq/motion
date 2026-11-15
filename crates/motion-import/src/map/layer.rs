@@ -191,6 +191,11 @@ impl<'p> Walk<'p> {
                             &group.match_name,
                             "what a layer draws where an effect draws in its place",
                         ),
+                        VECTORS | TEXT if adjusts_nothing(layer) => self.mapping.ignore(
+                            &group.match_name,
+                            "the content of an adjustment layer with no effect the scene \
+                             draws, which changes nothing",
+                        ),
                         VECTORS if layer.kind == LayerKind::Shape => {
                             self.mapping.count(VECTORS, Fate::Mapped);
                             let shapes = self.items(group, &here);
@@ -243,8 +248,9 @@ impl<'p> Walk<'p> {
             let here = place.inside(CAMERA_OPTIONS_GROUP);
             self.rows(&options, &CAMERA_OPTIONS, sink, &mut out, &here);
         }
-        if layer.kind == LayerKind::Av
-            && layer.switches.adjustment
+        // Any layer can adjust: its content, a solid's, a shape's or a
+        // text's, says where its effects apply to what is below it.
+        if layer.switches.adjustment
             && out.keys.contains_key("fx")
             && !out.keys.contains_key("pivot")
         {
@@ -291,17 +297,17 @@ impl<'p> Walk<'p> {
             );
         }
         match layer.kind {
+            // An adjustment layer applies its effects to what is below it,
+            // where its content draws; without an effect the scene draws,
+            // it changes nothing.
+            LayerKind::Av | LayerKind::Shape | LayerKind::Text if adjusts_nothing(layer) => {
+                pivot(self, out, None)
+            }
             LayerKind::Shape => {
                 out.keys.insert("shapes".into(), json!([]));
             }
             LayerKind::Text => {
                 out.keys.insert("text".into(), json!(""));
-            }
-            // An adjustment layer applies its effects to what is below it,
-            // where its content draws; without an effect the scene draws,
-            // it changes nothing.
-            LayerKind::Av if layer.switches.adjustment && !draws_an_effect(layer) => {
-                pivot(self, out, None)
             }
             LayerKind::Av if layer.switches.null => pivot(self, out, None),
             LayerKind::Av => match source.map(|item| (item, &item.kind)) {
@@ -664,6 +670,12 @@ pub(super) fn effects(layer: &Layer) -> impl Iterator<Item = &Group> {
 }
 
 /// Whether `layer` has an effect, switched on, that the scene draws.
+/// Whether `layer` is an adjustment layer none of whose effects the scene
+/// draws, so it changes nothing and draws nothing of its own.
+fn adjusts_nothing(layer: &Layer) -> bool {
+    layer.switches.adjustment && !draws_an_effect(layer)
+}
+
 fn draws_an_effect(layer: &Layer) -> bool {
     layer.properties.children.iter().any(|child| match child {
         Child::Group(parade) if parade.match_name == EFFECTS => {
