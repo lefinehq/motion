@@ -174,6 +174,11 @@ pub struct Layer {
     /// where it draws (everywhere for a filter layer, which draws nothing),
     /// and it does not draw itself.
     pub adjust: bool,
+    /// A `comp` layer whose composition's layers draw straight into the
+    /// canvas it sits in, under its transform: not clipped to the
+    /// composition's canvas, without its background, and with its effects
+    /// run over the canvas it sits in, in that canvas's coordinates.
+    pub collapse: bool,
     /// Left out of the frame, yet kept in the scene; its children still move with it.
     pub hidden: bool,
     /// The layer of its own list whose drawing decides where it shows.

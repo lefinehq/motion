@@ -180,6 +180,9 @@ pub struct Node {
     pub hidden: bool,
     /// Its effects apply to what is below it, where it draws.
     pub adjust: bool,
+    /// A composition whose layers draw straight into this node's canvas,
+    /// with its effects over that canvas.
+    pub collapse: bool,
     /// The node of its own list whose drawing decides where it shows, and how.
     pub matte: Option<(usize, MatteMode)>,
     /// For each of `fx`, the node of its own list whose drawing it reads,

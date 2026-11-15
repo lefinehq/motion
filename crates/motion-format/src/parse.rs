@@ -87,6 +87,8 @@ pub mod key {
     pub const FX: &str = "fx";
     /// A layer whose effects apply to what is below it, where it draws.
     pub const ADJUST: &str = "adjust";
+    /// A `comp` layer whose composition draws straight into its canvas.
+    pub const COLLAPSE: &str = "collapse";
     /// Left out of the frame, yet kept in the scene.
     pub const HIDDEN: &str = "hidden";
     /// Layer key: the layer whose drawing decides where this one shows.
@@ -141,7 +143,7 @@ pub const COMP_KEYS: [&str; 7] = [
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 27] = [
+pub const LAYER_KEYS: [&str; 28] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -167,6 +169,7 @@ pub const LAYER_KEYS: [&str; 27] = [
     key::STRETCH,
     key::FX,
     key::ADJUST,
+    key::COLLAPSE,
     key::HIDDEN,
     key::MATTE,
 ];

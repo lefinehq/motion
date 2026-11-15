@@ -201,6 +201,49 @@ fn a_comp_is_an_isolated_layer_clipped_to_its_canvas_over_its_background() {
     assert_eq!(dot.opacity, 0.5);
 }
 
+/// [`COMP`] with its layer moved and collapsed, with or without its effect.
+fn collapsed(effect: bool) -> String {
+    let collapsed = COMP.replace(
+        r#""offset":"2f","#,
+        r#""offset":"2f","position":[50,20],"collapse":true,"#,
+    );
+    match effect {
+        true => collapsed,
+        false => collapsed.replace(r##","fx":[{"fill":"#FF0000"}]"##, ""),
+    }
+}
+
+#[test]
+fn a_collapsed_comp_draws_into_its_canvas_with_its_effects_over_it() {
+    let session = session(&collapsed(true));
+    let state = session.frame(7.0).unwrap();
+    let frame = session.display_list(7.0).unwrap();
+    let layer = only_layer(&frame);
+    // Its effects run in the scene's coordinates, over the scene's canvas,
+    // and its layers are moved there, without the card's clip or background.
+    assert_eq!(layer.transform, Affine::IDENTITY);
+    assert_eq!(layer.clip, None);
+    assert_eq!(layer.bounds, Some(Rect::new(0.0, 0.0, 200.0, 100.0)));
+    assert_eq!(layer.effects.len(), 1);
+    assert!(layer.isolate);
+    let [Node::Layer(moved)] = layer.children.as_slice() else {
+        panic!("one moving layer: {:?}", layer.children)
+    };
+    assert_eq!(moved.transform, state.nodes[0].transform);
+    assert_ne!(moved.transform, Affine::IDENTITY);
+    let [Node::Layer(dot)] = moved.children.as_slice() else {
+        panic!("the dot alone: {:?}", moved.children)
+    };
+    assert_eq!(dot.opacity, 0.5);
+}
+
+#[test]
+fn a_collapsed_comp_without_effects_lets_its_blends_reach_below() {
+    let frame = list(&collapsed(false), 7.0);
+    let layer = only_layer(&frame);
+    assert!(!layer.isolate && layer.effects.is_empty() && layer.clip.is_none());
+}
+
 #[test]
 fn a_clear_comp_background_draws_nothing() {
     let frame = list(&COMP.replace("#102030", "#10203000"), 7.0);

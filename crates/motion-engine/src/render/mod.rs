@@ -7,7 +7,9 @@
 //! image layer's leaf is its picture, which the caller decodes. A nested
 //! composition is a layer clipped to the composition's canvas and isolated,
 //! holding the composition's background and its own nodes at the time the
-//! scene evaluated it.
+//! scene evaluated it. A collapsed one is neither clipped nor given its
+//! background: its nodes draw straight into the canvas it sits in, under its
+//! transform, and its effects run over that canvas in its coordinates.
 //!
 //! Frames blend gamma-encoded values, as the rasteriser does: the scene
 //! format has no colour-space key yet, and linear-light blending ([D21]) is
@@ -29,7 +31,7 @@ use motion_raster::{
     Blending, Clip, Color, DrawStyle, FillRule, Frame, ImageDraw, Layer, Matte,
     MatteMode as RasterMatte, Node, Paint, PathDraw, Picture,
 };
-use motion_scene::{ContentState, FrameState, Node as GraphNode, NodeState, SceneGraph};
+use motion_scene::{CompGraph, ContentState, FrameState, Node as GraphNode, NodeState, SceneGraph};
 
 /// How closely curves are flattened into the outlines this module builds
 /// from shapes, such as a rounded rectangle's corners, in pixels.
@@ -68,28 +70,39 @@ pub(crate) fn display_list(sources: Sources<'_>, state: &FrameState) -> Result<F
     Ok(Frame {
         background: opaque_enough(background).then(|| color(background)),
         blending: Blending::Gamma,
-        nodes: nodes(sources, &graph.root.nodes, state)?,
+        nodes: nodes(sources, &graph.root.nodes, canvas(&graph.root), state)?,
     })
 }
 
 /// The layers of one canvas's nodes, back to front: `list` is the canvas's
-/// compiled nodes, `state` their state at this frame.
-fn nodes(sources: Sources<'_>, list: &[GraphNode], state: &FrameState) -> Result<Vec<Node>> {
+/// compiled nodes, `area` the canvas, `state` their state at this frame.
+fn nodes(
+    sources: Sources<'_>,
+    list: &[GraphNode],
+    area: Rect,
+    state: &FrameState,
+) -> Result<Vec<Node>> {
     (0..state.nodes.len())
         .filter(|&i| state.nodes[i].visible())
-        .filter_map(|i| matted(sources, list, state, i).transpose())
+        .filter_map(|i| matted(sources, list, area, state, i).transpose())
         .collect()
 }
 
-/// The layer of node `i` of a canvas, with its matte if it has one, or
-/// `None` when it draws nothing.
+/// The canvas of `comp`, from its top left.
+fn canvas(comp: &CompGraph) -> Rect {
+    Rect::new(0.0, 0.0, comp.width, comp.height)
+}
+
+/// The layer of node `i` of the canvas `area`, with its matte if it has
+/// one, or `None` when it draws nothing.
 fn matted(
     sources: Sources<'_>,
     list: &[GraphNode],
+    area: Rect,
     state: &FrameState,
     i: usize,
 ) -> Result<Option<Node>> {
-    let Some(Node::Layer(mut drawn)) = layer(sources, &state.nodes[i])? else {
+    let Some(Node::Layer(mut drawn)) = layer(sources, &list[i], area, &state.nodes[i])? else {
         return Ok(None);
     };
     // An adjusting layer applies its effects to what is below it, where it
@@ -103,7 +116,7 @@ fn matted(
             continue;
         };
         let read = match state.nodes[source].shown {
-            true => layer(sources, &state.nodes[source])?,
+            true => layer(sources, &list[source], area, &state.nodes[source])?,
             false => None,
         };
         let read = match read {
@@ -123,7 +136,7 @@ fn matted(
     // nothing outside its span; it may be matted in turn.
     let matte = &state.nodes[source];
     let source = match matte.shown {
-        true => matted(sources, list, state, source)?,
+        true => matted(sources, list, area, state, source)?,
         false => None,
     };
     Ok(Some(Node::Layer(Layer {
@@ -140,8 +153,14 @@ fn matted(
     })))
 }
 
-/// The layer of one node without its matte, or `None` when it draws nothing.
-fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
+/// The layer of one node of the canvas `area`, compiled as `compiled`,
+/// without its matte, or `None` when it draws nothing.
+fn layer(
+    sources: Sources<'_>,
+    compiled: &GraphNode,
+    area: Rect,
+    node: &NodeState,
+) -> Result<Option<Node>> {
     let opacity = node.number(Prop::OPACITY) as f32;
     if opacity <= 0.0 {
         return Ok(None);
@@ -174,9 +193,30 @@ fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
                 .into_iter()
                 .collect()
         }
+        ContentState::Comp(index, Some(inner)) if compiled.collapse => {
+            let comp = &sources.graph.comps[*index];
+            let children = nodes(sources, &comp.nodes, canvas(comp), inner)?;
+            if children.is_empty() {
+                return Ok(None);
+            }
+            let effects =
+                effect::effects(&node.fx).map_err(|e| e.under(Place::of_layer(&node.id)))?;
+            // Its own blend modes reach what is below unless its effects
+            // need its drawing on its own, or an adjusting layer inside
+            // needs only its composition below it.
+            let isolate = !effects.is_empty() || comp.nodes.iter().any(|n| n.adjust);
+            return Ok(Some(Node::Layer(Layer {
+                opacity: opacity.min(1.0),
+                effects,
+                isolate,
+                bounds: Some(area),
+                time: node.seconds,
+                ..Layer::new(moved(node.transform, children))
+            })));
+        }
         ContentState::Comp(index, Some(inner)) => {
             let comp = &sources.graph.comps[*index];
-            let canvas = Rect::new(0.0, 0.0, comp.width, comp.height);
+            let canvas = canvas(comp);
             clip = Some(Clip::Rect(canvas));
             bounds = Some(canvas);
             isolate = true;
@@ -184,7 +224,7 @@ fn layer(sources: Sources<'_>, node: &NodeState) -> Result<Option<Node>> {
             if opaque_enough(comp.background) {
                 children.push(fill(canvas.to_path(TOLERANCE), color(comp.background)));
             }
-            children.extend(nodes(sources, &comp.nodes, inner)?);
+            children.extend(nodes(sources, &comp.nodes, canvas, inner)?);
             children
         }
         ContentState::Comp(_, None) | ContentState::Pivot => Vec::new(),

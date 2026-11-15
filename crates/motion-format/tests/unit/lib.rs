@@ -128,6 +128,8 @@ fn every_error_message() {
                 r##"{"id":"a","fx":[{"fill":"#FFFFFF"}],"box":[1,1]}"##,
                 r#"{"id":"a","rect":"1x1","adjust":true}"#,
                 r#"{"id":"a","rect":"1x1","adjust":1,"fx":[]}"#,
+                r#"{"id":"a","rect":"1x1","collapse":true}"#,
+                r##"{"id":"a","fx":[{"fill":"#FFFFFF"}],"collapse":true}"##,
                 r#"{"id":"a","rect":"1x1","text":"x"}"#,
                 r#"{"id":"a","text":null}"#,
                 r#"{"id":"a","text":3}"#,
@@ -189,6 +191,18 @@ fn every_error_message() {
                 r#""overrides":{"title/x":{"text":"x"}}"#,
                 r#""overrides":{"title":{"zoom":1}}"#,
                 r#""overrides":{"$ghost":"x"}"#,
+            ],
+            |kv| {
+                parse_document(&format!(
+                    r#"{{"motion":1,"dur":"1s","comps":{{"label":{{"size":"10x10","dur":"1s","layers":[{{"id":"title","text":"Hi"}}]}}}},"layers":[{{"id":"card","comp":"label",{kv}}}]}}"#
+                ))
+            },
+        ),
+        section(
+            "collapse",
+            &[
+                r#""collapse":1"#,
+                r##""collapse":true,"adjust":true,"fx":[{"fill":"#FFFFFF"}]"##,
             ],
             |kv| {
                 parse_document(&format!(

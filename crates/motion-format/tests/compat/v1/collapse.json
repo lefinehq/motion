@@ -1,0 +1,8 @@
+{"motion":1,"size":"480x270","fps":24,"dur":"1s","bg":"#FFFFFF",
+"comps":{"card":{"size":"120x80","dur":"1s","bg":"#E4E4E7","layers":[
+ {"id":"bar","rect":"200x24","fill":"#101010","at":"60 40"}]}},
+"layers":[
+{"id":"clipped","comp":"card","at":"120 80"},
+{"id":"collapsed","comp":"card","at":"120 190","collapse":true,
+ "fx":[{"ramp":0,"start":[0,0],"start-color":"#E4572E","end":[480,0],"end-color":"#3B82F6"}]}
+]}
