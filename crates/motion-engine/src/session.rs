@@ -75,6 +75,12 @@ impl Session {
         self.doc.scene()
     }
 
+    /// Every slot of the scene, its own and then each composition's, with
+    /// the values that follow it ([`Document::slots`]).
+    pub fn slots(&self) -> Vec<motion_format::Listed> {
+        self.doc.slots()
+    }
+
     /// The fonts (step `fonts`): Inter, which is built in, and every file and
     /// folder the scene's `fonts` names, relative to the scene file's folder
     /// (the working folder for a scene without a file). Read once per edit.

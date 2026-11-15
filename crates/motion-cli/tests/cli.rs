@@ -12,6 +12,10 @@ use rstest::rstest;
 
 const LAUNCH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/launch.json");
 const OFFSCREEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/offscreen.json");
+const SLOTS: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../motion-format/tests/compat/v1/slots.json"
+);
 
 /// Runs `motion` with the given arguments, without a `MOTION_LOG` from the
 /// environment.
@@ -87,7 +91,7 @@ fn help_describes_the_tool_and_lists_its_commands() {
         ),
         "{text}"
     );
-    for command in ["check", "at", "edit", "render", "inspect"] {
+    for command in ["check", "at", "slots", "edit", "render", "inspect"] {
         assert!(
             text.lines().any(|l| l.trim_start().starts_with(command)),
             "{command}: {text}"
@@ -152,6 +156,26 @@ fn edit_writes_canonical_file_and_prints_report() {
     let text = fs::read_to_string(&path).expect("read back");
     assert!(motion_format::parse_document(&text).is_ok());
     assert_eq!(text.lines().nth(1), Some("\"layers\":["));
+}
+
+#[test]
+fn slots_lists_each_slot_and_an_edit_changes_one() {
+    let path = copy_to("slots", SLOTS);
+    let out = motion(&["slots", &path]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        stdout(&out).lines().take(2).collect::<Vec<_>>(),
+        [
+            "scene",
+            r##"  $accent color "#E63946"  "Accent"  (2 values follow)"##
+        ]
+    );
+    let out = motion(&["edit", &path, "$accent=#2A9D8F"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let out = motion(&["slots", &path, "--json"]);
+    let listed: serde_json::Value = serde_json::from_str(&stdout(&out)).expect("JSON");
+    assert_eq!(listed[0]["value"], "#2A9D8F");
+    assert_eq!(listed[0]["followers"][0], "plate.fill");
 }
 
 #[test]

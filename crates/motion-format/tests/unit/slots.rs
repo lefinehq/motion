@@ -225,3 +225,33 @@ fn an_instance_value_that_does_not_fit_is_placed_at_its_entry(
     let err = error(&card(given));
     assert_eq!((err.kind, err.path_text().as_deref()), (kind, Some(place)));
 }
+
+#[test]
+fn a_listed_slot_has_the_values_that_follow_it_and_no_others() {
+    let doc = parse_document(
+        &scene(json!({
+            "slots":{"accent":"#E63946","unused":1},
+            "comps":{"card":{"size":"10x10","dur":"1s","slots":{"accent":"#00FF00"},
+                "layers":[{"id":"r","rect":"1x1","fill":"$accent"}]}},
+            "layers":[{"id":"p","rect":"1x1","fill":"$accent"},{"id":"c","comp":"card"}]
+        }))
+        .to_string(),
+    )
+    .unwrap();
+    let slots = doc.slots();
+    let listed: Vec<(Option<&str>, &str, Vec<&str>)> = slots
+        .iter()
+        .map(|l| {
+            let followers = l.followers.iter().map(String::as_str).collect();
+            (l.comp.as_deref(), &*l.slot.id, followers)
+        })
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            (None, "accent", vec!["p.fill"]),
+            (None, "unused", vec![]),
+            (Some("card"), "accent", vec!["comps.card.layers[r].fill"]),
+        ]
+    );
+}

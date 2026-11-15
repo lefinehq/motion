@@ -94,6 +94,15 @@ enum Command {
         /// every layer at any depth when none are given.
         ids: Vec<String>,
     },
+    /// List the slots of a scene and of its compositions, with how many
+    /// values follow each.
+    Slots {
+        /// Path to the scene file.
+        scene: PathBuf,
+        /// Print them as JSON, with the place of each value that follows.
+        #[arg(long)]
+        json: bool,
+    },
     /// Apply an edit line such as `card fill=#FF0000` and save the scene.
     Edit {
         /// Path to the scene file.
@@ -270,6 +279,7 @@ impl Command {
         match self {
             Command::Check { scene }
             | Command::At { scene, .. }
+            | Command::Slots { scene, .. }
             | Command::Edit { scene, .. }
             | Command::Render { scene, .. }
             | Command::Diff { scene, .. }
@@ -299,6 +309,7 @@ fn main() -> ExitCode {
     );
     let result = match cli.command {
         Command::Check { scene } => commands::check::run(&scene),
+        Command::Slots { scene, json } => commands::slots::run(&scene, json),
         Command::At { scene, time, ids } => commands::at::run(&scene, &time, &ids),
         Command::Edit { scene, line } => commands::edit::run(&scene, &line),
         Command::Render {
