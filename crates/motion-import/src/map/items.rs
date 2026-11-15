@@ -620,7 +620,6 @@ fn rest_json(target: Target) -> Option<Json> {
     }
 }
 
-/// A row's default as a project value, if it has one here.
 /// How `row`'s values become the scene's at `place`: an effect's point
 /// parameter is stored in fractions of the layer's size, so it becomes
 /// pixels of that size.
@@ -635,6 +634,7 @@ fn convert(row: &Row, place: &Place<'_>) -> Convert {
     }
 }
 
+/// A row's default as a project value, if it has one here.
 fn default_value(row: &Row, place: &Place<'_>) -> Option<Value> {
     Some(match row.default {
         Missing::Absent => return None,

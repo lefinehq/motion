@@ -1,0 +1,338 @@
+//! Generators: effects that draw something of their own on the layer, a
+//! gradient, a grid, noise, or cut it into blinds. Each is worked out at
+//! every pixel in the layer's own coordinates, so it moves, turns and
+//! scales with the layer.
+//!
+//! A generator draws where the layer is: where what the layer drew has
+//! alpha, which for a solid, the usual canvas of a generator, is its box.
+
+use vello_cpu::kurbo::{Affine, Point};
+
+use crate::colour::{choice, number, rgb};
+use crate::effect::{ParamValue, Space};
+use crate::pixels::Pixels;
+
+/// The point in `values[i]`.
+fn point(values: &[ParamValue], i: usize) -> [f32; 2] {
+    match values[i] {
+        ParamValue::Point(p) => p,
+        _ => unreachable!("`Effect::new` checks the parameter types"),
+    }
+}
+
+/// The alpha of colour `values[i]`.
+fn alpha(values: &[ParamValue], i: usize) -> f32 {
+    match values[i] {
+        ParamValue::Color(c) => c.a,
+        _ => unreachable!("`Effect::new` checks the parameter types"),
+    }
+}
+
+/// Runs `paint` on every pixel the layer covers, with the pixel's centre
+/// in the layer's coordinates and its straight colour; `paint` gives the
+/// straight colour and alpha the pixel takes, the alpha as a share of the
+/// layer's there.
+fn each_in_layer(
+    pixels: &mut Pixels,
+    space: &Space,
+    paint: impl Fn([f32; 2], [f32; 4]) -> [f32; 4],
+) {
+    let back: Affine = space.transform.inverse();
+    let width = usize::from(pixels.width());
+    for (i, pixel) in pixels.data_mut().iter_mut().enumerate() {
+        let coverage = pixel[3];
+        if coverage <= 0.0 {
+            continue;
+        }
+        let at = back * Point::new((i % width) as f64 + 0.5, (i / width) as f64 + 0.5);
+        let straight = [
+            pixel[0] / coverage,
+            pixel[1] / coverage,
+            pixel[2] / coverage,
+            1.0,
+        ];
+        let [r, g, b, a] = paint([at.x as f32, at.y as f32], straight).map(|c| c.clamp(0.0, 1.0));
+        let a = a * coverage;
+        *pixel = [r * a, g * a, b * a, a];
+    }
+}
+
+/// What a generator does with what the layer drew: replacing it, the
+/// generator is drawn alone at `amount`; otherwise it is laid over the
+/// layer by `amount`.
+fn composite(replace: bool, under: [f32; 4], over: [f32; 3], amount: f32) -> [f32; 4] {
+    match replace {
+        true => [over[0], over[1], over[2], amount],
+        false => {
+            let mix = |c: usize| under[c] + (over[c] - under[c]) * amount;
+            [mix(0), mix(1), mix(2), 1.0]
+        }
+    }
+}
+
+/// `ramp`: a gradient from `start-color` at `start` to `end-color` at
+/// `end`, along the line between them or around `start`; `blend` keeps
+/// that much of the layer's own colour.
+pub(crate) fn ramp(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let (start, from, end, to) = (
+        point(values, 0),
+        rgb(values, 1),
+        point(values, 2),
+        rgb(values, 3),
+    );
+    let (from_a, to_a) = (alpha(values, 1), alpha(values, 3));
+    let blend = number(values, 4);
+    let radial = choice(values, 5) == 1;
+    let d = [end[0] - start[0], end[1] - start[1]];
+    let length2 = d[0] * d[0] + d[1] * d[1];
+    each_in_layer(pixels, space, |[x, y], under| {
+        let v = [x - start[0], y - start[1]];
+        let t = match (radial, length2 > 0.0) {
+            (_, false) => 1.0,
+            (false, true) => (v[0] * d[0] + v[1] * d[1]) / length2,
+            (true, true) => ((v[0] * v[0] + v[1] * v[1]) / length2).sqrt(),
+        }
+        .clamp(0.0, 1.0);
+        let c: [f32; 3] = std::array::from_fn(|i| from[i] + (to[i] - from[i]) * t);
+        let a = from_a + (to_a - from_a) * t;
+        let mix = |i: usize| c[i] + (under[i] - c[i]) * blend;
+        [mix(0), mix(1), mix(2), a + (1.0 - a) * blend]
+    });
+}
+
+/// `four-color`: four colours at four points, each pixel the mean of them
+/// weighted by the inverse of its distance to each to the power
+/// 2 × 100 / `blend`, so a larger `blend` mixes them further.
+pub(crate) fn four_color(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let points: [[f32; 2]; 4] = std::array::from_fn(|i| point(values, 2 * i));
+    let colors: [[f32; 3]; 4] = std::array::from_fn(|i| rgb(values, 2 * i + 1));
+    let power = 2.0 * 100.0 / number(values, 8).max(1.0);
+    let (opacity, replace) = (number(values, 9), choice(values, 10) == 0);
+    each_in_layer(pixels, space, |[x, y], under| {
+        let mut weights = [0.0f32; 4];
+        for (w, p) in weights.iter_mut().zip(&points) {
+            let d2 = (x - p[0]).powi(2) + (y - p[1]).powi(2);
+            *w = match d2 > 1e-6 {
+                true => d2.powf(-power / 2.0),
+                false => f32::INFINITY,
+            };
+        }
+        let c: [f32; 3] = match weights.iter().position(|w| w.is_infinite()) {
+            Some(at) => colors[at],
+            None => {
+                let total: f32 = weights.iter().sum();
+                std::array::from_fn(|i| {
+                    weights
+                        .iter()
+                        .zip(&colors)
+                        .map(|(w, c)| w * c[i])
+                        .sum::<f32>()
+                        / total
+                })
+            }
+        };
+        composite(replace, under, c, opacity)
+    });
+}
+
+/// `grid`: lines `border` px wide around cells from `anchor`, each cell
+/// reaching to `corner`, or `width` square, or `width` by `height`; with
+/// `invert`, the cells instead of the lines.
+pub(crate) fn grid(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let (anchor, corner) = (point(values, 0), point(values, 1));
+    let (width, height, border) = (number(values, 2), number(values, 3), number(values, 4));
+    let (color, opacity) = (rgb(values, 5), number(values, 6));
+    let (size, cells) = (choice(values, 7), choice(values, 8) == 1);
+    let replace = choice(values, 9) == 0;
+    let cell = match size {
+        0 => [(corner[0] - anchor[0]).abs(), (corner[1] - anchor[1]).abs()],
+        1 => [width, width],
+        _ => [width, height],
+    }
+    .map(|c| c.max(1e-3));
+    // A pixel's share of a line, in px of the layer's own units.
+    let line = |at: f32, step: f32| {
+        let off = (at / step).rem_euclid(1.0) * step;
+        let distance = off.min(step - off);
+        (border / 2.0 - distance + 0.5).clamp(0.0, 1.0)
+    };
+    each_in_layer(pixels, space, |[x, y], under| {
+        let on = line(x - anchor[0], cell[0]).max(line(y - anchor[1], cell[1]));
+        let on = if cells { 1.0 - on } else { on };
+        composite(replace, under, color, on * opacity)
+    });
+}
+
+/// `venetian-blinds`: the layer cut into stripes `width` px wide, running
+/// across `direction` (0° horizontal stripes), each hidden from one side
+/// by `completion`, with a soft edge `feather` px wide.
+pub(crate) fn venetian_blinds(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let (completion, direction) = (number(values, 0), number(values, 1).to_radians());
+    let (width, feather) = (number(values, 2).max(1e-3), number(values, 3));
+    let (sin, cos) = direction.sin_cos();
+    each_in_layer(pixels, space, |[x, y], under| {
+        let along = (x * sin + y * cos).rem_euclid(width);
+        let edge = completion * width;
+        let shown = match feather > 0.0 {
+            true => ((along - edge) / feather + 0.5).clamp(0.0, 1.0),
+            false => f32::from(u8::from(along >= edge)),
+        };
+        [under[0], under[1], under[2], shown]
+    });
+}
+
+/// The layer's px across one noise cell at a `scale` of 1.
+pub const NOISE_CELL: f32 = 100.0;
+
+/// `fractal-noise`: grey value noise in `complexity` octaves, each
+/// `sub-scaling` the size of the one before, turned by `sub-rotation`,
+/// moved by `sub-offset` and weighed by `sub-influence`; `evolution` moves
+/// through a third dimension, one turn a cell. Contrast and brightness
+/// apply around mid grey, then `overflow` brings the level into 0 to 1.
+pub(crate) fn fractal_noise(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let noise = Noise::from_values(values);
+    let (opacity, replace) = (number(values, 14), choice(values, 19) == 1);
+    each_in_layer(pixels, space, |at, under| {
+        let v = noise.at(at);
+        composite(replace, under, [v; 3], opacity)
+    });
+}
+
+/// The settings of fractal noise, read once.
+struct Noise {
+    contrast: f32,
+    brightness: f32,
+    rotation: f32,
+    scale: [f32; 2],
+    offset: [f32; 2],
+    complexity: f32,
+    influence: f32,
+    scaling: f32,
+    sub_rotation: f32,
+    sub_offset: [f32; 2],
+    evolution: f32,
+    seed: u32,
+    fractal: usize,
+    kind: usize,
+    overflow: usize,
+    invert: bool,
+}
+
+impl Noise {
+    fn from_values(values: &[ParamValue]) -> Noise {
+        let scale = number(values, 3);
+        Noise {
+            contrast: number(values, 0),
+            brightness: number(values, 1),
+            rotation: number(values, 2).to_radians(),
+            scale: [
+                scale * number(values, 4) * NOISE_CELL,
+                scale * number(values, 5) * NOISE_CELL,
+            ]
+            .map(|s| s.max(1e-3)),
+            offset: point(values, 6),
+            complexity: number(values, 7).max(1.0),
+            influence: number(values, 8),
+            scaling: number(values, 9).max(0.01),
+            sub_rotation: number(values, 10).to_radians(),
+            sub_offset: point(values, 11),
+            evolution: number(values, 12) / 360.0,
+            seed: number(values, 13).max(0.0) as u32,
+            fractal: choice(values, 15),
+            kind: choice(values, 16),
+            overflow: choice(values, 17),
+            invert: choice(values, 18) == 1,
+        }
+    }
+
+    /// The level at `at`, in the layer's coordinates.
+    fn at(&self, [x, y]: [f32; 2]) -> f32 {
+        let (sin, cos) = self.rotation.sin_cos();
+        let (dx, dy) = (x - self.offset[0], y - self.offset[1]);
+        let mut p = [
+            (dx * cos + dy * sin) / self.scale[0],
+            (-dx * sin + dy * cos) / self.scale[1],
+        ];
+        let (sub_sin, sub_cos) = self.sub_rotation.sin_cos();
+        let turbulent = self.fractal > 0;
+        let (mut sum, mut total, mut weight) = (0.0f32, 0.0f32, 1.0f32);
+        let octaves = self.complexity.ceil() as u32;
+        for octave in 0..octaves {
+            // The last octave weighs by the fraction of complexity left.
+            let share = (self.complexity - octave as f32).min(1.0);
+            let n = self.value([p[0], p[1], self.evolution], self.seed.wrapping_add(octave));
+            let n = if turbulent { (2.0 * n - 1.0).abs() } else { n };
+            sum += n * weight * share;
+            total += weight * share;
+            weight *= self.influence;
+            let scaled = [p[0] / self.scaling, p[1] / self.scaling];
+            p = [
+                scaled[0] * sub_cos + scaled[1] * sub_sin + self.sub_offset[0] / NOISE_CELL,
+                -scaled[0] * sub_sin + scaled[1] * sub_cos + self.sub_offset[1] / NOISE_CELL,
+            ];
+        }
+        let mut v = if total > 0.0 { sum / total } else { 0.5 };
+        if self.fractal == 1 {
+            // Turbulent smooth: the creases rounded off.
+            v = v * v * (3.0 - 2.0 * v);
+        } else if self.fractal == 3 {
+            v = v.sqrt();
+        }
+        let v = (v - 0.5) * self.contrast + 0.5 + self.brightness;
+        let v = match self.overflow {
+            1 => 1.0 / (1.0 + (-4.0 * (v - 0.5)).exp()),
+            2 => {
+                let t = v.rem_euclid(2.0);
+                if t > 1.0 { 2.0 - t } else { t }
+            }
+            _ => v.clamp(0.0, 1.0),
+        };
+        if self.invert { 1.0 - v } else { v }
+    }
+
+    /// Value noise at `p`, 0 to 1, between lattice values blended as the
+    /// noise kind says: `spline`, `soft-linear`, `linear` or `block`.
+    fn value(&self, p: [f32; 3], seed: u32) -> f32 {
+        let cell = p.map(f32::floor);
+        let f: [f32; 3] = std::array::from_fn(|i| p[i] - cell[i]);
+        let at = cell.map(|c| c as i32);
+        if self.kind == 3 {
+            return lattice(at, seed);
+        }
+        let ease = |t: f32| match self.kind {
+            0 => t * t * t * (t * (t * 6.0 - 15.0) + 10.0),
+            1 => t * t * (3.0 - 2.0 * t),
+            _ => t,
+        };
+        let w = f.map(ease);
+        let corner =
+            |dx: i32, dy: i32, dz: i32| lattice([at[0] + dx, at[1] + dy, at[2] + dz], seed);
+        let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+        let plane = |dz: i32| {
+            lerp(
+                lerp(corner(0, 0, dz), corner(1, 0, dz), w[0]),
+                lerp(corner(0, 1, dz), corner(1, 1, dz), w[0]),
+                w[1],
+            )
+        };
+        lerp(plane(0), plane(1), w[2])
+    }
+}
+
+/// A lattice point's value, 0 to 1, hashed from its coordinates and seed.
+fn lattice([x, y, z]: [i32; 3], seed: u32) -> f32 {
+    let mut h = seed.wrapping_mul(0x9E37_79B9)
+        ^ (x as u32).wrapping_mul(0x85EB_CA6B)
+        ^ (y as u32).wrapping_mul(0xC2B2_AE35)
+        ^ (z as u32).wrapping_mul(0x27D4_EB2F);
+    h ^= h >> 15;
+    h = h.wrapping_mul(0x2C1B_3C6D);
+    h ^= h >> 12;
+    h = h.wrapping_mul(0x297A_2D39);
+    h ^= h >> 15;
+    (h >> 8) as f32 / (1u32 << 24) as f32
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/generate.rs"]
+mod tests;
