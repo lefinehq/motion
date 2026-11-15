@@ -1,8 +1,11 @@
 //! Ids from names: lower case ASCII letters and digits, `-` for every run of
 //! other characters, starting with a letter, and a number added when two
-//! names in one scope would share an id.
+//! names in one scope would share an id, or a name would take `scene`,
+//! which names the scene itself (D43).
 
 use std::collections::HashSet;
+
+use motion_format::address::SCENE;
 
 /// The ids given out in one scope: a scene's compositions, or one
 /// composition's layers.
@@ -26,7 +29,7 @@ impl Ids {
                 1 => base.clone(),
                 n => format!("{base}-{n}"),
             })
-            .find(|id| !self.taken.contains(id))
+            .find(|id| id != SCENE && !self.taken.contains(id))
             .expect("some number is free");
         self.taken.insert(id.clone());
         id

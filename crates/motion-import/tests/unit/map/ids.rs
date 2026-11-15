@@ -40,3 +40,10 @@ fn scopes_give_ids_on_their_own() {
     let (mut a, mut b) = (Ids::default(), Ids::default());
     assert_eq!(a.give("Title", "layer"), b.give("Title", "layer"));
 }
+
+#[test]
+fn a_name_never_becomes_the_scene() {
+    let mut ids = Ids::default();
+    assert_eq!(ids.give("Scene", "layer"), "scene-2");
+    assert_eq!(ids.give("scene", "layer"), "scene-3");
+}

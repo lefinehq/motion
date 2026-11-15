@@ -120,6 +120,7 @@ fn every_error_message() {
                 r#"{"id":1.5,"rect":"1x1"}"#,
                 r#"{"id":1e300,"rect":"1x1"}"#,
                 r#"{"id":"Bad Id","rect":"1x1"}"#,
+                r#"{"id":"scene","rect":"1x1"}"#,
                 r#"{"id":"a","rect":"1x1"},{"id":"a","rect":"1x1"}"#,
                 r#"{"id":"a"}"#,
                 r#"{"id":"a","rect":"1x1","text":"x"}"#,
@@ -405,6 +406,8 @@ fn every_error_message() {
         ),
         section("range", &["@x-5f", "@05f", "@0-5"], TimeSpan::from_range),
         shorthand::<TimeSpan>("span", &["x-5f", "05f", "0-5", "@0-5f"]),
+        shorthand::<crate::Address>("address", &["", "scene/card", "card.fx[glow"]),
+        shorthand::<crate::Id>("id", &["Card"]),
         section("serde", &["{}", r#""dim""#], serde),
     ];
     insta::assert_snapshot!(report.join("\n\n"));

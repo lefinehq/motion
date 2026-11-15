@@ -11,10 +11,10 @@ use winnow::prelude::*;
 use winnow::token::{one_of, rest, take_till};
 
 use crate::Curve;
+use crate::address::{ID_RULE, Id};
 use crate::curve::CUBIC_PREFIX;
 use crate::doc::Form;
 use crate::units::{Time, time};
-use crate::validate::{ID_RULE, is_valid_id};
 
 pub(crate) const EXPECTED: &str = "`<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>]`, e.g. `fade-up 40px 12f ease-out @0f`; a curve is a name such as `ease-out`, `hold`, or `cubic(x1,y1,x2,y2)`";
 
@@ -199,7 +199,7 @@ fn behaviour<'s>(input: &mut &'s str) -> Parsed<Behaviour, Problem<'s>> {
 /// The preset name; only its shape is checked, since presets depend on the scene.
 fn preset<'s>(input: &mut &'s str) -> Parsed<&'s str, Problem<'s>> {
     word.try_map(|name| {
-        is_valid_id(name)
+        Id::is_valid(name)
             .then_some(name)
             .ok_or(Problem::Preset(name))
     })

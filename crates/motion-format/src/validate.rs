@@ -35,9 +35,7 @@ use crate::units::{Color, SPAN_EXPECTED, SignedTime, Size, Time, TimeSpan};
 use crate::value::{Value, ValueType};
 use crate::{Comp, Content, Curve, ImageContent, Layer, Scene, fmt_num};
 
-/// The id rule, as an accepted form.
-pub(crate) const ID_RULE: &str =
-    "ids use lowercase letters, digits, `-` and `_`, starting with a letter";
+use crate::address::{ID_RULE, Id, SCENE};
 
 /// The only format version.
 const VERSION: u32 = 1;
@@ -156,7 +154,7 @@ fn comp_sizes(docs: &CompsDoc) -> Result<Vec<(String, Size)>> {
     docs.iter()
         .map(|(id, Object(doc))| {
             let place = |e: Diagnostic| e.under(comp_path(id));
-            if !is_valid_id(id) {
+            if !Id::is_valid(id) {
                 return Err(Diagnostic::new(
                     Kind::Invalid,
                     format!("invalid composition id `{id}`"),
@@ -293,7 +291,7 @@ fn layer(doc: &LayerDoc, context: &Context) -> Result<Layer> {
     // Unknown keys first, as serde reports them for documents that deny them.
     let values = resting_values(doc)?;
     let id = required(doc.id.as_deref(), ID, r#""title""#)?;
-    follows_id_rule(id)?;
+    layer_id(id)?;
     let Object(tracks) = &doc.anim;
     let layer = Layer {
         id: id.to_owned(),
@@ -410,20 +408,24 @@ fn links(
     Ok(())
 }
 
+/// An id follows the id rule.
 fn follows_id_rule(id: &str) -> Result<()> {
-    if is_valid_id(id) {
-        return Ok(());
-    }
-    Err(Diagnostic::new(Kind::Invalid, format!("invalid id `{id}`"))
-        .at(ID)
-        .expected(ID_RULE))
+    id.parse::<Id>().map(drop).map_err(|e| e.at(ID))
 }
 
-/// `[a-z][a-z0-9_-]*`
-pub(crate) fn is_valid_id(id: &str) -> bool {
-    let mut chars = id.chars();
-    chars.next().is_some_and(|c| c.is_ascii_lowercase())
-        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+/// A layer's id follows the id rule, and is not `scene`, which names the
+/// scene itself in an address (D43).
+fn layer_id(id: &str) -> Result<()> {
+    follows_id_rule(id)?;
+    if id == SCENE {
+        return Err(Diagnostic::new(
+            Kind::Conflict,
+            format!("`{SCENE}` names the scene itself, so no layer may take it"),
+        )
+        .at(ID)
+        .expected("another id, such as `scene-2`"));
+    }
+    Ok(())
 }
 
 /// The keys that say what a layer draws, of which it has exactly one.
@@ -866,7 +868,7 @@ fn in_number_range(value: f64, spec: &PropertySpec) -> Result<f64> {
 
 /// One preset: a valid name and at least one property start.
 fn preset(name: &str, body: &PresetDoc) -> Result<PresetSpec> {
-    if !is_valid_id(name) {
+    if !Id::is_valid(name) {
         return Err(
             Diagnostic::new(Kind::Invalid, format!("invalid preset name `{name}`"))
                 .expected(ID_RULE),

@@ -41,6 +41,8 @@ The top of the file sets the canvas:
 
 Layers are stacked from bottom to top, in the order they are listed.
 
+Every layer has an `id`: lowercase letters, digits, `-` and `_`, starting with a letter, and unique in its list. `scene` is reserved, because it names the scene itself in an address. A layer anywhere in a scene is addressed by the ids down to it, joined by `/`: `card/title` is the layer `title` inside the comp that `card` shows ([D43](decisions.md#d43-one-layer-address-and-edits-per-instance)).
+
 | Layer | What it is |
 |---|---|
 | `text` | Text, with full shaping for any script |

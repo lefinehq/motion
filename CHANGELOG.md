@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Added
 
+- `motion_format::Address` and `Id` ([D43](docs/design/decisions.md#d43-one-layer-address-and-edits-per-instance)): one grammar and printer for a layer at any depth and the keys inside it (`card/title.fx[glow].radius`). The id rule lives in `Id` instead of a hand-written loop. `scene` is reserved: a layer may not take it, and the import gives such a layer `scene-2`.
 - Cargo workspace, repository documents and CI.
 - `motion-format`: time, colour and size shorthand parsing, and `fmt_num`.
 - First slice: scene format, check, at, edit.

@@ -1,7 +1,7 @@
 //! Unit tests for `src/validate.rs`: the rules beyond the JSON shape, and
 //! the defaults.
 
-use super::ID_RULE;
+use crate::address::ID_RULE;
 use crate::parse_document;
 use crate::shorthand::{Coord, Position};
 use crate::units::{Color, Size, Time};
@@ -235,6 +235,12 @@ fn ids_follow_the_id_rule_and_are_unique() {
         (Kind::Invalid, Some("layers[0].id"))
     );
     assert_eq!(e.expected.as_deref(), Some(ID_RULE));
+    let e = err(&scene(r#"{"id":"scene","rect":"1x1"}"#));
+    assert_eq!(
+        (e.kind, e.path.as_deref()),
+        (Kind::Conflict, Some("layers[0].id"))
+    );
+    assert!(e.expected.is_some());
     assert_eq!(
         fails(&scene(r#"{"id":"a","rect":"1x1"},{"id":"a","rect":"1x1"}"#)),
         at(Kind::Conflict, "layers[1].id")

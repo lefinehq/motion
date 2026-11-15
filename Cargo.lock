@@ -1333,9 +1333,11 @@ dependencies = [
 name = "motion-format"
 version = "0.0.0"
 dependencies = [
+ "derive_more",
  "indexmap",
  "insta",
  "kurbo",
+ "pretty_assertions",
  "proptest",
  "rstest",
  "serde",

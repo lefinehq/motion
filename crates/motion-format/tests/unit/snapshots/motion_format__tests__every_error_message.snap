@@ -32,6 +32,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":1.5,"rect":"1x1"}` → layers[0].id: invalid type: floating point `1.5`; expected a string
 `{"id":1e300,"rect":"1x1"}` → layers[0].id: invalid type: floating point `1e300`; expected a string
 `{"id":"Bad Id","rect":"1x1"}` → layers[0].id: invalid id `Bad Id`; expected ids use lowercase letters, digits, `-` and `_`, starting with a letter
+`{"id":"scene","rect":"1x1"}` → layers[0].id: `scene` names the scene itself, so no layer may take it; expected another id, such as `scene-2`
 `{"id":"a","rect":"1x1"},{"id":"a","rect":"1x1"}` → layers[1].id: duplicate id `a`; expected every layer to have its own id
 `{"id":"a"}` → layers[0]: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg" or "pivot":true
 `{"id":"a","rect":"1x1","text":"x"}` → layers[0].rect: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image` or `pivot`; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg" or "pivot":true
@@ -282,6 +283,14 @@ expression: "report.join(\"\\n\\n\")"
 `05f` → `05f` has no `-` between start and end; expected `<start>-<end>` with a unit, e.g. `0-30f`, `0.5s-1s`; a bare start takes the end's unit
 `0-5` → `0-5` needs a unit (`f` or `s`) after the end; expected `<start>-<end>` with a unit, e.g. `0-30f`, `0.5s-1s`; a bare start takes the end's unit
 `@0-5f` → `@0-5f` is not a valid range; expected `<start>-<end>` with a unit, e.g. `0-30f`, `0.5s-1s`; a bare start takes the end's unit
+
+## address
+`` → `` is not a valid address; expected `scene` or layer ids joined by `/`, then `.key`s, each with an optional `[id]` or `[index]`, e.g. `card/title.fx[glow].radius`
+`scene/card` → `scene/card` is not a valid address; expected `scene` or layer ids joined by `/`, then `.key`s, each with an optional `[id]` or `[index]`, e.g. `card/title.fx[glow].radius`
+`card.fx[glow` → `card.fx[glow` is not a valid address; expected `scene` or layer ids joined by `/`, then `.key`s, each with an optional `[id]` or `[index]`, e.g. `card/title.fx[glow].radius`
+
+## id
+`Card` → invalid id `Card`; expected ids use lowercase letters, digits, `-` and `_`, starting with a letter
 
 ## serde
 `{}` → missing field `key`
