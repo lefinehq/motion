@@ -272,6 +272,9 @@ const OFF_ON: &[(i64, &str)] = &[(0, "off"), (1, "on")];
 const AUDIO_PATHS: &[(i64, &str)] = &[(0, "line"), (1, "circle")];
 const AUDIO_DISPLAYS: &[(i64, &str)] = &[(1, "digital"), (2, "lines"), (3, "dots")];
 const AUDIO_SIDES: &[(i64, &str)] = &[(1, "a"), (2, "b"), (3, "both")];
+/// The tilings the scene draws, of the 16 the project offers: the
+/// others are reported.
+const TILINGS: &[(i64, &str)] = &[(1, "repeat"), (4, "unfold"), (17, "brick"), (11, "none")];
 const POLAR_CONVERSIONS: &[(i64, &str)] = &[(1, "rect-to-polar"), (2, "polar-to-rect")];
 const GENERATOR_MODES: &[(i64, &str)] = &[(1, "replace"), (2, "over")];
 const GRID_SIZES: &[(i64, &str)] = &[(1, "corner"), (2, "width"), (3, "width-height")];
@@ -940,7 +943,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 39] = [
+pub(super) static KINDS: [Kind; 40] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -2374,6 +2377,43 @@ pub(super) static KINDS: [Kind; 39] = [
             row(
                 "ADBE Polar Coordinates-0002",
                 To::Setting("conversion", POLAR_CONVERSIONS),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "CC RepeTile",
+        item: "repeat-tile",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "CC RepeTile-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("CC RepeTile-0001", To::Prop("right"), Number, Parameter),
+            row("CC RepeTile-0002", To::Prop("left"), Number, Parameter),
+            row("CC RepeTile-0003", To::Prop("down"), Number, Parameter),
+            row("CC RepeTile-0004", To::Prop("up"), Number, Parameter),
+            row(
+                "CC RepeTile-0005",
+                To::Setting("tiling", TILINGS),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC RepeTile-0006",
+                To::OnlyDefault("tiles blended across their borders"),
                 Number,
                 Parameter,
             ),

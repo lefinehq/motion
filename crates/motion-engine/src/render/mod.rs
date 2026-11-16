@@ -9,7 +9,9 @@
 //! holding the composition's background and its own nodes at the time the
 //! scene evaluated it. A collapsed one is neither clipped nor given its
 //! background: its nodes draw straight into the canvas it sits in, under its
-//! transform, and its effects run over that canvas in its coordinates.
+//! transform, and its effects run over that canvas in its coordinates, with
+//! its own canvas where it lands there as its box (the box around it, when
+//! it is turned).
 //!
 //! Frames blend gamma-encoded values, as the rasteriser does: the scene
 //! format has no colour-space key yet, and linear-light blending ([D21]) is
@@ -126,16 +128,16 @@ pub(crate) fn display_list(sources: Sources<'_>, state: &FrameState) -> Result<F
     Ok(Frame {
         background: opaque_enough(background).then(|| color(background)),
         blending: Blending::Gamma,
-        nodes: nodes(sources, Canvas::Root, canvas(&graph.root), state)?,
+        nodes: nodes(sources, Canvas::Root, state)?,
     })
 }
 
-/// The layers of one canvas's nodes, back to front: `list` is the canvas's
-/// compiled nodes, `area` the canvas, `state` their state at this frame.
-fn nodes(sources: Sources<'_>, at: Canvas, area: Rect, state: &FrameState) -> Result<Vec<Node>> {
+/// The layers of one canvas's nodes, back to front: `at` is the canvas,
+/// `state` its nodes' state at this frame.
+fn nodes(sources: Sources<'_>, at: Canvas, state: &FrameState) -> Result<Vec<Node>> {
     paint_order(state)
         .into_iter()
-        .filter_map(|i| matted(sources, at, area, state, i).transpose())
+        .filter_map(|i| matted(sources, at, state, i).transpose())
         .collect()
 }
 
@@ -249,19 +251,13 @@ fn canvas(comp: &CompGraph) -> Rect {
     Rect::new(0.0, 0.0, comp.width, comp.height)
 }
 
-/// The layer of node `i` of the canvas `area`, with its matte if it has
+/// The layer of node `i` of the canvas `at`, with its matte if it has
 /// one, or `None` when it draws nothing.
-fn matted(
-    sources: Sources<'_>,
-    at: Canvas,
-    area: Rect,
-    state: &FrameState,
-    i: usize,
-) -> Result<Option<Node>> {
+fn matted(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Result<Option<Node>> {
     let list = &at.graph(sources.graph).nodes;
     let drawn = match blurs(&list[i]) {
-        true => blurred(sources, at, area, state, i)?,
-        false => layer(sources, &list[i], area, &state.view, &state.nodes[i])?,
+        true => blurred(sources, at, state, i)?,
+        false => layer(sources, &list[i], &state.view, &state.nodes[i])?,
     };
     let Some(Node::Layer(mut drawn)) = drawn else {
         return Ok(None);
@@ -280,13 +276,7 @@ fn matted(
             continue;
         };
         let read = match state.nodes[source].shown {
-            true => layer(
-                sources,
-                &list[source],
-                area,
-                &state.view,
-                &state.nodes[source],
-            )?,
+            true => layer(sources, &list[source], &state.view, &state.nodes[source])?,
             false => None,
         };
         let read = match read {
@@ -307,7 +297,7 @@ fn matted(
     // nothing outside its span; it may be matted in turn.
     let matte = &state.nodes[source];
     let source = match matte.shown {
-        true => matted(sources, at, area, state, source)?,
+        true => matted(sources, at, state, source)?,
         false => None,
     };
     Ok(Some(Node::Layer(Layer {
@@ -411,19 +401,13 @@ const MOVED_GROWTH: u32 = 2;
 ///   projects the import reads.
 ///
 /// [D57]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter
-fn blurred(
-    sources: Sources<'_>,
-    at: Canvas,
-    area: Rect,
-    state: &FrameState,
-    i: usize,
-) -> Result<Option<Node>> {
+fn blurred(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Result<Option<Node>> {
     let graph = sources.graph;
     let comp = at.graph(graph);
     let node = &comp.nodes[i];
     let shutter = comp.shutter;
     if !shutter.open() {
-        return layer(sources, node, area, &state.view, &state.nodes[i]);
+        return layer(sources, node, &state.view, &state.nodes[i]);
     }
     let moment = |frame: f64| sources.moments.at(graph, at, frame);
     let opens = moment(state.frame + shutter.phase / 360.0);
@@ -441,7 +425,7 @@ fn blurred(
         false => most,
     };
     if moved {
-        let Some(Node::Layer(drawn)) = layer(sources, node, area, &state.view, frame_node)? else {
+        let Some(Node::Layer(drawn)) = layer(sources, node, &state.view, frame_node)? else {
             return Ok(None);
         };
         // A 3D node is laid through its plane at each moment, as a whole
@@ -481,7 +465,7 @@ fn blurred(
                 &outside
             }
         };
-        if let Some(Node::Layer(drawn)) = layer(sources, node, area, &at_moment.view, sampled)? {
+        if let Some(Node::Layer(drawn)) = layer(sources, node, &at_moment.view, sampled)? {
             samples.push(Node::Layer(Layer {
                 opacity: drawn.opacity / n as f32,
                 blend: BlendMode::Add,
@@ -521,12 +505,11 @@ fn travel(from: &NodeState, to: &NodeState) -> f64 {
         .fold(0.0, f64::max)
 }
 
-/// The layer of one node of the canvas `area`, compiled as `compiled`,
-/// without its matte, or `None` when it draws nothing.
+/// The layer of one node, compiled as `compiled`, without its matte, or
+/// `None` when it draws nothing.
 fn layer(
     sources: Sources<'_>,
     compiled: &GraphNode,
-    area: Rect,
     view: &View,
     node: &NodeState,
 ) -> Result<Option<Node>> {
@@ -565,7 +548,7 @@ fn layer(
         ContentState::Comp(index, Some(inner)) if compiled.collapse => {
             let comp = &sources.graph.comps[*index];
             let inner = joined(inner, view, node);
-            let children = nodes(sources, Canvas::Comp(*index), canvas(comp), &inner)?;
+            let children = nodes(sources, Canvas::Comp(*index), &inner)?;
             if children.is_empty() {
                 return Ok(None);
             }
@@ -579,7 +562,9 @@ fn layer(
                 opacity: opacity.min(1.0),
                 effects,
                 isolate,
-                bounds: Some(area),
+                // Its box is its composition's canvas where it lands: the
+                // box effects tile and wrap, as an uncollapsed one's.
+                bounds: Some(node.transform.transform_rect_bbox(canvas(comp))),
                 time: node.seconds,
                 ..Layer::new(moved(node.transform, children))
             })));
@@ -594,7 +579,7 @@ fn layer(
             if opaque_enough(comp.background) {
                 children.push(fill(canvas.to_path(TOLERANCE), color(comp.background)));
             }
-            children.extend(nodes(sources, Canvas::Comp(*index), canvas, inner)?);
+            children.extend(nodes(sources, Canvas::Comp(*index), inner)?);
             children
         }
         ContentState::Comp(_, None)

@@ -149,6 +149,60 @@ fn mirror_reflects_one_side_of_the_line_onto_the_other() {
 }
 
 #[test]
+fn repeat_tile_repeats_flips_or_bricks_the_box_around_it() {
+    let [red, green, blue, white] = [
+        [1.0, 0.0, 0.0, 1.0],
+        [0.0, 1.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0, 1.0],
+        [1.0; 4],
+    ];
+    // A 4 by 1 box at x 4 to 8 of a 12 by 3 frame, one colour per pixel.
+    let drawn = || {
+        let mut pixels = Pixels::transparent(12, 3);
+        pixels.data_mut()[4..8].copy_from_slice(&[red, green, blue, white]);
+        let space = Space {
+            transform: Affine::IDENTITY,
+            bounds: Some(Rect::new(4.0, 0.0, 8.0, 1.0)),
+            input: None,
+            time: 0.0,
+            sound: None,
+        };
+        (pixels, space)
+    };
+    let tiled = |tiling: u8| {
+        let (mut pixels, space) = drawn();
+        let values = [
+            Number(4.0),
+            Number(4.0),
+            Number(1.0),
+            Number(0.0),
+            Choice(tiling),
+        ];
+        repeat_tile(&mut pixels, &values, &space);
+        let row = |y| (0..12).map(|x| pixels.get(x, y)).collect::<Vec<_>>();
+        (row(0), row(1), row(2))
+    };
+    let (top, below, beyond) = tiled(0);
+    assert_eq!(top, [red, green, blue, white].repeat(3));
+    assert_eq!(below, top);
+    // Nothing past how far the tiles reach.
+    assert_eq!(beyond, [[0.0; 4]; 12]);
+    // Unfolded, the columns either side of the box flip across.
+    let (top, ..) = tiled(1);
+    let flipped = [white, blue, green, red];
+    assert_eq!(top, [flipped, [red, green, blue, white], flipped].concat());
+    // Bricked, the row below shifts by half a tile.
+    let (top, below, _) = tiled(2);
+    assert_eq!(top, [red, green, blue, white].repeat(3));
+    assert_eq!(below, [blue, white, red, green].repeat(3));
+    // With none, the box alone.
+    let (top, below, _) = tiled(3);
+    let empty = [[0.0; 4]; 4];
+    assert_eq!(top, [empty, [red, green, blue, white], empty].concat());
+    assert_eq!(below, [[0.0; 4]; 12]);
+}
+
+#[test]
 fn motion_tile_repeats_the_box_beyond_itself() {
     let (mut pixels, space) = stripes();
     let values = [

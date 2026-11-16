@@ -254,6 +254,37 @@ pub enum Clip {
     Path(BezPath, FillRule),
 }
 
+impl Layer {
+    /// The clip its drawing shows within: its clip, grown with its box by
+    /// the effects that draw beyond it ([`Reach::Grows`]). Its content is
+    /// cut to its own clip before those effects run. A grown outline
+    /// becomes the grown box around it.
+    ///
+    /// [`Reach::Grows`]: crate::Reach::Grows
+    pub fn shown_clip(&self) -> Option<Clip> {
+        let clip = self.clip.as_ref()?;
+        if !self.effects_grow() {
+            return Some(clip.clone());
+        }
+        let outline = match clip {
+            Clip::Rect(rect) => *rect,
+            Clip::Path(path, _) => path.bounding_box(),
+        };
+        Some(Clip::Rect(
+            self.effects
+                .iter()
+                .fold(outline, |b, effect| effect.grown(b)),
+        ))
+    }
+
+    /// Whether an effect of it draws beyond its box.
+    pub(crate) fn effects_grow(&self) -> bool {
+        self.effects
+            .iter()
+            .any(|effect| matches!(effect.reach(), crate::Reach::Grows(_)))
+    }
+}
+
 impl Clip {
     /// The clip as an outline and the rule that says what is inside.
     pub(crate) fn outline(&self) -> (BezPath, FillRule) {

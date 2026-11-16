@@ -177,6 +177,11 @@ pub enum Reach {
     /// Anywhere in the layer's box ([`Layer::bounds`](crate::Layer::bounds)),
     /// reading anywhere in it; anywhere at all for a layer without one.
     Bounds,
+    /// Anywhere in the layer's box grown by these px on its left, top,
+    /// right and bottom, reading anywhere in its box: the box it leaves to
+    /// the effects after it, and the one its layer's clip grows to. For a
+    /// layer without a box, anywhere at all.
+    Grows([f32; 4]),
     /// Anywhere on the layer's plane, reading anywhere on it.
     Anywhere,
 }
@@ -1245,6 +1250,53 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "repeat-tile",
+        params: &[
+            ParamSpec {
+                name: "right",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 100_000.0)),
+                choices: &[],
+                doc: "how far the tiles reach right of the layer's box, in px of the layer",
+            },
+            ParamSpec {
+                name: "left",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 100_000.0)),
+                choices: &[],
+                doc: "how far the tiles reach left of the box",
+            },
+            ParamSpec {
+                name: "down",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 100_000.0)),
+                choices: &[],
+                doc: "how far the tiles reach below the box",
+            },
+            ParamSpec {
+                name: "up",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 100_000.0)),
+                choices: &[],
+                doc: "how far the tiles reach above the box",
+            },
+            ParamSpec {
+                name: "tiling",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["repeat", "unfold", "brick", "none"],
+                doc: "how the tiles lie: alike, every other one flipped, every other row \
+                      shifted by half a tile, or none, the box grown empty",
+            },
+        ],
+        doc: "repeats the layer's box around it",
+        reach: repeat_tile_reach,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: distort::repeat_tile,
+        },
+    },
+    EffectSpec {
         name: "ramp",
         params: &[
             ParamSpec {
@@ -2063,6 +2115,20 @@ impl Effect {
         (self.spec.reach)(&self.values)
     }
 
+    /// The layer's box once it has run: `bounds` grown on each side by as
+    /// much as it draws beyond them ([`Reach::Grows`]).
+    pub fn grown(&self, bounds: Rect) -> Rect {
+        match self.reach() {
+            Reach::Grows([left, top, right, bottom]) => Rect::new(
+                bounds.x0 - f64::from(left),
+                bounds.y0 - f64::from(top),
+                bounds.x1 + f64::from(right),
+                bounds.y1 + f64::from(bottom),
+            ),
+            _ => bounds,
+        }
+    }
+
     /// How it moves the content, if it is a moving one.
     pub fn movement(&self) -> Option<Move> {
         match self.spec.apply {
@@ -2250,6 +2316,12 @@ fn displacement_reach(values: &[ParamValue]) -> Reach {
 /// steeper, so twice that.
 fn turbulent_reach(values: &[ParamValue]) -> Reach {
     Reach::Within(2.0 * (number_at(values, 0) / 100.0 * number_at(values, 1)).abs())
+}
+
+/// `repeat-tile` grows the box by how far its tiles reach each way.
+fn repeat_tile_reach(values: &[ParamValue]) -> Reach {
+    let [right, left, down, up] = std::array::from_fn(|i| number_at(values, i));
+    Reach::Grows([left, up, right, down])
 }
 
 /// `gaussian-blur` spreads by its Gaussian.

@@ -496,6 +496,54 @@ mod effects {
         assert_eq!(fx["channel"], "red", "{fx}");
     }
 
+    /// Tiles keep their reach in px and their tiling; a tiling the scene
+    /// does not draw, and tiles blended across their borders, are
+    /// reported.
+    #[test]
+    fn repeated_tiles_take_their_reach_and_tiling() {
+        let tiles = |properties: Vec<Property>| {
+            group(
+                "CC RepeTile",
+                properties.into_iter().map(Child::Property).collect(),
+            )
+        };
+        let import = imported(vec![
+            tiles(vec![
+                number("CC RepeTile-0001", 743.0),
+                number("CC RepeTile-0002", 741.0),
+            ]),
+            tiles(vec![
+                number("CC RepeTile-0003", 500.0),
+                number("CC RepeTile-0004", 400.0),
+                number("CC RepeTile-0005", 17.0),
+            ]),
+            tiles(vec![
+                number("CC RepeTile-0001", 30.0),
+                number("CC RepeTile-0005", 11.0),
+            ]),
+            tiles(vec![
+                number("CC RepeTile-0005", 9.0),
+                number("CC RepeTile-0006", 0.5),
+            ]),
+        ])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"];
+        assert_eq!(
+            fx[0],
+            json!({"repeat-tile":"repeat","right":743,"left":741})
+        );
+        assert_eq!(fx[1], json!({"repeat-tile":"brick","down":500,"up":400}));
+        assert_eq!(fx[2], json!({"repeat-tile":"none","right":30}));
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert_eq!(
+            what,
+            [
+                "a `tiling` the scene does not have",
+                "tiles blended across their borders"
+            ]
+        );
+    }
+
     #[test]
     fn blurs_take_their_settings_and_levels() {
         let import = imported(vec![

@@ -633,6 +633,19 @@ fn extents_grow_by_effects_and_shrink_to_the_clip() {
     assert!((read_reach(&layer).unwrap() - 12.0).abs() < 1e-4);
     layer.clip = Some(Clip::Rect(Rect::new(0.0, 0.0, 50.0, 200.0)));
     assert!(near(extent(&layer), Rect::new(0.0, 0.0, 50.0, 62.0)));
+    // Tiles grow the box and the clip with it, by how far they reach.
+    layer.effects = vec![
+        Effect::new(
+            "repeat-tile",
+            &[
+                ("right", ParamValue::Number(30.0)),
+                ("up", ParamValue::Number(5.0)),
+            ],
+        )
+        .unwrap(),
+    ];
+    assert!(near(extent(&layer), Rect::new(0.0, -5.0, 80.0, 50.0)));
+    assert_eq!(read_reach(&layer), None);
     layer.effects = vec![Effect::new("particles", &[]).unwrap()];
     layer.clip = None;
     assert_eq!(extent(&layer), Extent::Everywhere);
