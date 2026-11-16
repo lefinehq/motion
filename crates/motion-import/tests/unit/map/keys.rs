@@ -74,6 +74,17 @@ fn values_convert_to_the_scenes_units() {
     for (convert, value, expected) in cases {
         assert_eq!(convert.value(&value), Some(expected), "{convert:?}");
     }
+    // The project draws its colours opaque, whatever alpha they carry.
+    let clear = Value::Color(Color {
+        r: 0.29,
+        g: 0.14,
+        b: 0.44,
+        a: 0.0,
+    });
+    assert_eq!(
+        Convert::Color.value(&clear),
+        Some(json!([0.29, 0.14, 0.44, 1]))
+    );
     assert_eq!(Convert::Point.value(&Value::Number(1.0)), None);
     assert_eq!(Convert::Color.value(&Value::Vector2([1.0, 2.0])), None);
 }

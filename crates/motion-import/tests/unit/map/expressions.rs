@@ -193,3 +193,36 @@ fn a_constant_outside_the_range_is_clamped_to_a_still_value() {
         "20 frames of 20 an expression gives outside 0..=1"
     );
 }
+
+#[test]
+fn a_colour_an_expression_gives_is_opaque_whatever_its_alpha() {
+    // A fill whose colour an expression takes from a control that stores
+    // alpha 0: the original draws it opaque.
+    use crate::model::{Child, Color};
+    use crate::test_support::build::group;
+    let stored = Stream::Static(Value::Color(Color {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+    }));
+    let fill = Child::Group(group(
+        "ADBE Effect Parade",
+        vec![Child::Group(group(
+            "ADBE Fill",
+            vec![Child::Property(expressed(
+                "ADBE Fill-0002",
+                stored,
+                "[0.25, 0.5, 0.75, 0]",
+            ))],
+        ))],
+    ));
+    let filled = layer(1, "Title", vec![fill]);
+    let import = import(
+        &project(vec![(5, "Main", comp(vec![filled], 2.0))]),
+        &Options::default(),
+    )
+    .expect("it imports");
+    let effect = &title(&import)["fx"][0];
+    assert_eq!(effect["fill"], json!([0.25, 0.5, 0.75, 1]), "{effect}");
+}

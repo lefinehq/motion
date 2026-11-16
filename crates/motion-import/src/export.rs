@@ -323,9 +323,10 @@ fn project_value(
     Ok(match (template, convert) {
         // A depth is the third number of the vector it was read from.
         (Value::Vector3([x, y, _]), Convert::Depth) => Value::Vector3([*x, *y, numbers[0]]),
-        (Value::Color(_), _) => match *numbers.as_slice() {
-            [r, g, b, a] => Value::Color(Color { r, g, b, a }),
-            [r, g, b] => Value::Color(Color { r, g, b, a: 1.0 }),
+        // The project draws its colours opaque, so the scene's alpha, which
+        // the import writes as 1, goes nowhere: the stored alpha is kept.
+        (Value::Color(stored), _) => match *numbers.as_slice() {
+            [r, g, b] | [r, g, b, _] => Value::Color(Color { r, g, b, ..*stored }),
             _ => return Err("a colour of other than 3 or 4 channels".into()),
         },
         (other, _) => other.with_numbers(&numbers),
