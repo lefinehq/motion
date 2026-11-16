@@ -99,6 +99,20 @@ Other things we take without evidence:
 - **Exclude with more than two outlines.** The one exclusion of the corpus, m648's, has two outlines, and its reference is drawn by an extruding 3D renderer the scene does not have. With more, `exclude` combines in turn, so a point inside three outlines is kept; "the union less where they overlap" would drop it.
 - **m631, m642 and m809.** m631's 38 half circles are an ellipse less a rectangle, but its reference shows other footage at those moments. m642 fills its merge with a gradient the scene does not draw yet. m809's merges change no pixel at the sampled frames.
 
+## Round corners
+
+A round corners group (`ADBE Vector Filter - RC`) becomes a `round-corners` item ([D66](decisions.md#d66-round-corners-cut-sharp-corners-back-along-their-sides)). The 3 corpus samples that use one, m548, m550 and m594, hold 17 such groups; the corners the measurements below cover all meet square. The beliefs were measured as those on merging outlines were: variants of one imported scene, compared with the reference at the pixels where they differ.
+
+| Belief | Evidence | Held, 2026-11-16 |
+|---|---|---|
+| R1. A group that stores no `ADBE Vector RoundCorner Radius` has radius 10. | m550's audio bars store none. Drawn with radius 10 they err by 22.7 to 24.9 at the 413 to 426 pixels the radius changes, with 0 by 61.2 to 65.9, with 5 by 49.4 to 52.7 and with 20 by 85.1 to 90.5 (frames 4 to 9). | 2 groups of m550 |
+| R2. The stored radius cuts each square corner back by that many px along both sides, at most half of each side, and the cut points are joined by a quarter circle. | m548's bars store 4 and 10. As stored they err by 32.9 to 37.9 at the 494 to 533 pixels the radius changes, sharp by 50.1 to 53.0 and doubled by 60.4 to 74.5 (frames 5 to 12); at frame 4, on 136 pixels, doubled errs least (35.4 against 46.7), and the share of those pixels past 25 is lower sharp (49 to 51 %) than as stored (61 to 71 %). | 6 groups of m548 |
+
+Other things we take without evidence:
+- **Corners that do not meet square.** Every rounded corner measured here is a right angle, where cutting back by the radius and drawing a circle of that radius are the same. The scene cuts back by the radius whatever the angle, so a sharp corner gets a shorter arc than a circle of that radius would.
+- **Which vertices count as corners.** Only a vertex with no handle on either side is rounded. m594 rounds the tip of a heart whose neighbours each have one handle; its hearts are not on screen at the sampled frames.
+- **The handle length.** 0.5519 of the cut, against the 0.5523 a quarter circle needs: the two differ by less than a hundredth of a pixel at these radii.
+
 ## Anchor points
 
 A layer's anchor point is where its own space is pinned to its position, and its children's positions are measured in that space. These beliefs were measured once, by hand, over the 198 corpus projects and their reference frames; the sweep does not check them yet.

@@ -623,3 +623,13 @@ D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that t
   - A setting, because the original's mode is a menu: no project in the corpus animates it, and an animated menu holds its choice between keys anyway.
 - **Not now:** a fill rule per operand other than nonzero, which no project in the corpus needs to tell apart.
 Status: Draft · 2026-11-16
+
+### D66. Round corners cut sharp corners back along their sides
+
+- **Decision:** a `round-corners` shape item is a modifier with one property, `radius`. Like a trim, it changes in place every outline listed before it in its group, including those of earlier groups, each in its own space. Every paint that draws an outline draws it rounded. A sharp corner is a vertex with no handle on either side. It is cut back along each side by `radius`, or by half the way to the next vertex when that is shorter. The two cut points are joined by a cubic whose handles reach 0.5519 of the cut back towards the corner. Smooth vertices and the ends of an open outline stay as they are. `radius` rests at 10.
+- **Why:**
+  - It is the original's modifier, and the corpus confirms its default and its cut (evidence R1 and R2 in [what we know about `.aep`](aep-evidence.md#round-corners)). Rounding at the outline level, rather than as a stroke join, rounds fills too, and makes a trim after it follow the rounded line.
+  - It is one more row in the modifier table merges introduced ([D64](#d64-a-merge-replaces-the-outlines-above-it-by-one)), so nothing that draws needs to know about it.
+  - A rectangle's own `round` stays, because that rounding is part of the shape. Round corners rounds whatever outlines reach it.
+- **Not now:** an arc of `radius` at corners that do not meet square. Every corner measured in the corpus is a right angle, where the two rules agree.
+Status: Draft · 2026-11-16
