@@ -30,6 +30,7 @@ fn measure_at(error: f64) -> Measure {
         frames_passing: Some(if error <= DiffOptions::PASSING { 3 } else { 1 }),
         frames_passing_floor: Some(if error <= DiffOptions::PASSING { 3 } else { 1 }),
         floor: None,
+        error_floor: None,
         frames_empty: Some(0),
         drawn_error: error,
         drawn_failing: error,
@@ -373,9 +374,14 @@ fn floors_read_by_frame_and_must_cover_the_reference() {
     .unwrap();
     let floors = Floors::read(&path).unwrap();
     let frames = |names: &[&str]| -> Vec<PathBuf> { names.iter().map(|n| dir.join(n)).collect() };
+    // A file without error floors holds the failing share alone.
+    let only = |failing: f64| Floor {
+        failing,
+        error: None,
+    };
     assert_eq!(
         floors.of(&frames(&["f1.png", "f2.png"])).unwrap(),
-        [0.0128, 0.0]
+        [only(0.0128), only(0.0)]
     );
     let missing = floors
         .of(&frames(&["f1.png", "f2.png", "f3.png"]))
@@ -393,7 +399,28 @@ fn floors_read_by_frame_and_must_cover_the_reference() {
         "{}",
         extra.message
     );
+    fs::write(
+        &path,
+        r#"{"frames":{"f1.png":0.0128,"f2.png":0},"errors":{"f1.png":0.002,"f2.png":0}}"#,
+    )
+    .unwrap();
+    let both = Floors::read(&path).unwrap();
+    let floors = both.of(&frames(&["f1.png", "f2.png"])).unwrap();
+    assert_eq!(floors[0].error, Some(0.002));
+    fs::write(
+        &path,
+        r#"{"frames":{"f1.png":0.0128,"f2.png":0},"errors":{"f1.png":0.002}}"#,
+    )
+    .unwrap();
+    let short = Floors::read(&path).unwrap();
+    let missing = short.of(&frames(&["f1.png", "f2.png"])).unwrap_err();
+    assert!(
+        missing.message.contains("no error floor for `f2.png`"),
+        "{}",
+        missing.message
+    );
     for bad in [
+        r#"{"frames":{"f1.png":0.1},"errors":{"f1.png":2}}"#,
         r#"{"frames":{"f1.png":1.5}}"#,
         r#"{"frames":{"f1.png":-0.1}}"#,
         r#"{"floors":{}}"#,
@@ -413,9 +440,33 @@ fn a_frame_passes_over_its_floor_plus_the_limit() {
         failing,
         ..crate::diff::Error::default()
     };
-    assert!(frame(0.0228).passes_over(0.0128) && !frame(0.0229).passes_over(0.0128));
+    let floor = |failing: f64| Floor {
+        failing,
+        error: None,
+    };
+    assert!(frame(0.0228).passes_over(floor(0.0128)) && !frame(0.0229).passes_over(floor(0.0128)));
     assert!(!frame(0.0228).passes(), "strictly, the same frame fails");
-    assert_eq!(frame(0.01).passes_over(0.0), frame(0.01).passes());
+    assert_eq!(frame(0.01).passes_over(Floor::NONE), frame(0.01).passes());
+    // With an error floor, the mean error must stay within its margin too.
+    let both = Floor {
+        failing: 0.5,
+        error: Some(0.02),
+    };
+    let at = |mean: f64| crate::diff::Error {
+        failing: 0.4,
+        mean,
+        ..crate::diff::Error::default()
+    };
+    let limit = 0.02 + DiffOptions::ERROR_MARGIN;
+    assert!(at(limit).passes_over(both), "the margin passes");
+    assert!(
+        !at(limit + 1e-6).passes_over(both),
+        "a failing share within its floor is not enough"
+    );
+    assert!(
+        at(0.2).passes_over(floor(0.5)),
+        "without an error floor, as before"
+    );
 }
 
 /// A frame of the content window failing on `failing`, at `time`.
@@ -441,7 +492,11 @@ fn a_window_counts_its_frames_under_both_rules() {
         frame_at(1.0, 0.015),
         frame_at(2.0, 0.03),
     ];
-    let floored = window(&frames, Some(&[0.0, 0.008, 0.01]), 0.0);
+    let floors = [0.0, 0.008, 0.01].map(|failing| Floor {
+        failing,
+        error: Some(0.0),
+    });
+    let floored = window(&frames, Some(&floors), 0.0);
     assert_eq!(floored.frames_passing, Some(1));
     assert_eq!(
         floored.frames_passing_floor,
@@ -449,8 +504,12 @@ fn a_window_counts_its_frames_under_both_rules() {
         "0.015 <= 0.008 + 0.01"
     );
     assert_eq!(floored.floor.map(|f| (f * 1e6).round() / 1e6), Some(0.006));
+    assert_eq!(floored.error_floor, Some(0.0));
     let plain = window(&frames, None, 0.0);
-    assert_eq!((plain.frames_passing_floor, plain.floor), (Some(1), None));
+    assert_eq!(
+        (plain.frames_passing_floor, plain.floor, plain.error_floor),
+        (Some(1), None, None)
+    );
 }
 
 #[test]

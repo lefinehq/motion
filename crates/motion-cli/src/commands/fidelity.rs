@@ -124,11 +124,16 @@ fn window(name: &str, w: &Window) -> String {
         _ => String::new(),
     };
     let passing = match (w.passing(Rule::Floor), w.frames_passing, w.floor) {
-        (Some(n), Some(strict), Some(floor)) => format!(
-            ", {n} of {} frames pass over a floor of {:.2}%{empty}, {strict} strictly",
-            w.frames,
-            floor * 100.0
-        ),
+        (Some(n), Some(strict), Some(floor)) => {
+            let error = w
+                .error_floor
+                .map_or(String::new(), |error| format!(" and {error:.4}"));
+            format!(
+                ", {n} of {} frames pass over a floor of {:.2}%{error}{empty}, {strict} strictly",
+                w.frames,
+                floor * 100.0
+            )
+        }
         (Some(n), _, _) => format!(", {n} of {} frames pass{empty}", w.frames),
         (None, _, _) => String::new(),
     };

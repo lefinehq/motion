@@ -58,6 +58,15 @@ impl DiffOptions {
     /// [Quality](https://github.com/lefinehq/motion/blob/main/docs/design/quality.md#fidelity).
     pub const PASSING: f64 = 0.01;
 
+    /// How far a frame's mean content error may lie above its codec's own
+    /// mean error, on a 0 to 1 scale, and still pass over its floor ([D69]):
+    /// the smallest that keeps passing the local samples drawn right, whose
+    /// frames lie up to 0.0038 above their error floors (m650), the floor
+    /// being measured with another x264 build than the references'.
+    ///
+    /// [D69]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d69-a-reference-frame-passes-over-its-codec-floor
+    pub const ERROR_MARGIN: f64 = 0.004;
+
     /// The PNG files in `dir`, sorted by name, as reference frames.
     ///
     /// # Errors
@@ -101,19 +110,44 @@ impl Error {
     /// Whether these pixels pass the strict rule: no more than
     /// [`DiffOptions::PASSING`] of them past the tolerance.
     pub fn passes(&self) -> bool {
-        self.passes_over(0.0)
+        self.passes_over(Floor::NONE)
     }
 
     /// Whether these pixels pass over a codec floor ([D69]): no more than
-    /// `floor` plus [`DiffOptions::PASSING`] of them past the tolerance,
-    /// `floor` being the share a perfect render fails against a lossy
-    /// reference, such as an x264 encode, only because it is lossy. A floor
-    /// of 0 is the strict rule.
+    /// its failing share plus [`DiffOptions::PASSING`] of them past the
+    /// tolerance, and, when the floor has a mean error, a mean error no more
+    /// than it plus [`DiffOptions::ERROR_MARGIN`]. [`Floor::NONE`] is the
+    /// strict rule.
     ///
     /// [D69]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d69-a-reference-frame-passes-over-its-codec-floor
-    pub fn passes_over(&self, floor: f64) -> bool {
-        self.failing <= floor + DiffOptions::PASSING
+    pub fn passes_over(&self, floor: Floor) -> bool {
+        self.failing <= floor.failing + DiffOptions::PASSING
+            && floor
+                .error
+                .is_none_or(|error| self.mean <= error + DiffOptions::ERROR_MARGIN)
     }
+}
+
+/// A reference frame's codec floor ([D69]): what a render identical to the
+/// original's errs against a lossy reference, such as an x264 encode, only
+/// because the reference is lossy.
+///
+/// [D69]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d69-a-reference-frame-passes-over-its-codec-floor
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Floor {
+    /// The share of the content past the tolerance, 0 to 1.
+    pub failing: f64,
+    /// The mean content error, 0 to 1; none when it was not measured, and
+    /// then only the failing share is held to the floor.
+    pub error: Option<f64>,
+}
+
+impl Floor {
+    /// No floor: the strict rule.
+    pub const NONE: Floor = Floor {
+        failing: 0.0,
+        error: None,
+    };
 }
 
 /// One reference frame against the scene.

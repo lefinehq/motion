@@ -9,8 +9,10 @@
 //!
 //! A reference that is a lossy encode fails some pixels of even a perfect
 //! render. A sample may give each reference frame its codec floor, the share
-//! that fails for that reason alone ([`Floors`]); a frame passes when its
-//! failing share is at most its floor plus [`DiffOptions::PASSING`] ([D69]),
+//! that fails and the mean error for that reason alone ([`Floors`]); a frame
+//! passes when its failing share is at most its floor plus
+//! [`DiffOptions::PASSING`] and its mean error at most its error floor plus
+//! [`DiffOptions::ERROR_MARGIN`] ([D69]),
 //! and the score is given both that way and strictly ([`Rule`]).
 //!
 //! [D35]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d35-fidelity-is-measured-against-reference-renders
@@ -24,7 +26,7 @@ use motion_format::{Address, Diagnostic, Kind, Result};
 use motion_import::map::Options;
 use serde::{Deserialize, Serialize};
 
-use crate::diff::{FrameDiff, file_name};
+use crate::diff::{Floor, FrameDiff, file_name};
 use crate::{
     DiffOptions, Session, import_scene, measure_layouts, substitute_fonts, write_document,
 };
@@ -79,9 +81,11 @@ pub struct Sample {
 }
 
 /// The codec floor of each reference frame of a sample, as its floor file
-/// holds them ([D69]): `{"frames":{"f0001.png":0.0128}}`, by the reference
-/// frame's file name, each the share of content, 0 to 1, that fails the
-/// tolerance only because the reference is a lossy encode. It is measured
+/// holds them ([D69]): `{"frames":{"f0001.png":0.0128},"errors":{"f0001.png":0.0021}}`,
+/// by the reference frame's file name, in `frames` the share of content, 0
+/// to 1, that fails the tolerance only because the reference is a lossy
+/// encode, and in `errors` the mean content error it causes. A file without
+/// `errors` holds the failing share alone to its floor. It is measured
 /// outside motion, on motion's own render encoded and decoded as the
 /// reference was; other keys of the file, such as what it was measured
 /// from, are not read.
@@ -89,8 +93,12 @@ pub struct Sample {
 /// [D69]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d69-a-reference-frame-passes-over-its-codec-floor
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Floors {
-    /// Each reference frame's floor, by its file name.
+    /// Each reference frame's failing-share floor, by its file name.
     pub frames: BTreeMap<String, f64>,
+    /// Each reference frame's mean-error floor, by its file name, if
+    /// measured.
+    #[serde(default)]
+    pub errors: Option<BTreeMap<String, f64>>,
 }
 
 impl Floors {
@@ -105,16 +113,15 @@ impl Floors {
             Diagnostic::new(Kind::Invalid, format!("{}: {e}", path.display()))
                 .expected(r#"{"frames":{"f0001.png":0.0128}}"#)
         })?;
-        if let Some((file, floor)) = floors
-            .frames
-            .iter()
+        if let Some((file, floor)) = (floors.frames.iter())
+            .chain(floors.errors.iter().flatten())
             .find(|(_, floor)| !(0.0..=1.0).contains(*floor))
         {
             return Err(Diagnostic::new(
                 Kind::Invalid,
                 format!("{}: the floor of `{file}` is {floor}", path.display()),
             )
-            .expected("a share of the content from 0 to 1"));
+            .expected("a share or an error from 0 to 1"));
         }
         Ok(floors)
     }
@@ -122,15 +129,20 @@ impl Floors {
     /// The floor of each of `frames`, reference frame files, in order.
     ///
     /// # Errors
-    /// An invalid diagnostic when a frame has no floor, or a floor names a
-    /// frame the reference lacks: floors measured for other frames.
-    pub fn of(&self, frames: &[PathBuf]) -> Result<Vec<f64>> {
+    /// An invalid diagnostic when a frame has no floor or no error floor
+    /// while others have one, or a floor names a frame the reference lacks:
+    /// floors measured for other frames.
+    pub fn of(&self, frames: &[PathBuf]) -> Result<Vec<Floor>> {
         let names: Vec<String> = frames.iter().map(|f| file_name(f)).collect();
         let stale = |what: String| {
             Diagnostic::new(Kind::Invalid, what)
                 .expected("floors measured on the reference's own frames, one for each")
         };
-        if let Some(extra) = self.frames.keys().find(|name| !names.contains(name)) {
+        let named = self
+            .frames
+            .keys()
+            .chain(self.errors.iter().flat_map(|e| e.keys()));
+        if let Some(extra) = named.into_iter().find(|name| !names.contains(name)) {
             return Err(stale(format!(
                 "the floors name `{extra}`, which the reference lacks"
             )));
@@ -138,10 +150,16 @@ impl Floors {
         names
             .iter()
             .map(|name| {
-                self.frames
-                    .get(name)
-                    .copied()
-                    .ok_or_else(|| stale(format!("the floors give no floor for `{name}`")))
+                let failing = self.frames.get(name).copied();
+                let failing = failing
+                    .ok_or_else(|| stale(format!("the floors give no floor for `{name}`")))?;
+                let error = match &self.errors {
+                    Some(errors) => Some(errors.get(name).copied().ok_or_else(|| {
+                        stale(format!("the floors give no error floor for `{name}`"))
+                    })?),
+                    None => None,
+                };
+                Ok(Floor { failing, error })
             })
             .collect()
     }
@@ -214,7 +232,9 @@ pub struct Window {
     #[serde(default)]
     pub frames_passing: Option<usize>,
     /// How many frames pass over their codec floor: no more than their
-    /// floor plus [`DiffOptions::PASSING`] past the tolerance. The strict
+    /// floor plus [`DiffOptions::PASSING`] past the tolerance, and a mean
+    /// error no more than their error floor plus
+    /// [`DiffOptions::ERROR_MARGIN`] when they have one. The strict
     /// count when the sample gives no floor. None in a ledger written
     /// before floors, whose frames were measured strictly
     /// ([`Window::passing`]).
@@ -225,6 +245,10 @@ pub struct Window {
     /// how well motion draws.
     #[serde(default)]
     pub floor: Option<f64>,
+    /// The frames' mean error floor, 0 to 1; none when the sample gives
+    /// none. Recorded, not compared, as `floor` is.
+    #[serde(default)]
+    pub error_floor: Option<f64>,
     /// How many frames have no content at all: the scene draws nothing and
     /// the reference is its background. They pass without showing anything,
     /// so a window of only these proves nothing. None in a ledger written
@@ -384,12 +408,17 @@ pub fn measure(sample: &Sample, work: &Path, images: bool) -> Result<Measure> {
         text_worst: worst.is_finite().then_some(worst),
         all: window(&diff.frames, floors.as_deref(), sample.start),
         settled: sample.settled.map(|from| {
-            let (frames, held): (Vec<FrameDiff>, Vec<f64>) = diff
+            let (frames, held): (Vec<FrameDiff>, Vec<Floor>) = diff
                 .frames
                 .iter()
                 .enumerate()
                 .filter(|(_, f)| f.time >= from)
-                .map(|(i, f)| (f.clone(), floors.as_ref().map_or(0.0, |floors| floors[i])))
+                .map(|(i, f)| {
+                    (
+                        f.clone(),
+                        floors.as_ref().map_or(Floor::NONE, |floors| floors[i]),
+                    )
+                })
                 .unzip();
             window(&frames, floors.is_some().then_some(&held[..]), from)
         }),
@@ -403,12 +432,16 @@ fn absolute(path: &Path) -> PathBuf {
 
 /// The mean errors of `frames`, from `from`, each frame held to its
 /// codec floor in `floors`, if given.
-fn window(frames: &[FrameDiff], floors: Option<&[f64]>, from: f64) -> Window {
+fn window(frames: &[FrameDiff], floors: Option<&[Floor]>, from: f64) -> Window {
     let mean = |get: fn(&FrameDiff) -> f64| match frames.len() {
         0 => 0.0,
         n => frames.iter().map(get).sum::<f64>() / n as f64,
     };
-    let floor = |i: usize| floors.map_or(0.0, |floors| floors[i]);
+    let floor = |i: usize| floors.map_or(Floor::NONE, |floors| floors[i]);
+    let average = |values: Vec<f64>| match values.len() {
+        0 => 0.0,
+        n => values.iter().sum::<f64>() / n as f64,
+    };
     Window {
         from,
         frames: frames.len(),
@@ -420,10 +453,10 @@ fn window(frames: &[FrameDiff], floors: Option<&[f64]>, from: f64) -> Window {
                 .filter(|(i, f)| f.content.passes_over(floor(*i)))
                 .count(),
         ),
-        floor: floors.map(|floors| match floors.len() {
-            0 => 0.0,
-            n => floors.iter().sum::<f64>() / n as f64,
-        }),
+        floor: floors.map(|floors| average(floors.iter().map(|f| f.failing).collect())),
+        error_floor: floors
+            .and_then(|floors| floors.iter().map(|f| f.error).collect::<Option<Vec<f64>>>())
+            .map(average),
         frames_empty: Some(frames.iter().filter(|f| f.content.pixels == 0).count()),
         drawn_error: mean(|f| f.drawn.mean),
         drawn_failing: mean(|f| f.drawn.failing),
