@@ -45,7 +45,7 @@ Layers 0–3 run in CI on every change. Layer 4 runs at milestones.
 Each test escalates only if the previous one fails:
 
 1. **Exact match** against the golden image.
-2. **Small tolerance:** a pixel may differ by up to 0.016 per channel, on at most 1% of pixels. This is the rule Blender's render tests use.
+2. **Small tolerance:** a pixel may differ by up to 0.016 per channel, on at most 1% of pixels. This is the rule Blender's render tests use. Against a reference that is a lossy encode, the 1% comes on top of the frame's codec floor, the share its encode alone fails; the strict figure is kept beside it ([D69](decisions.md#d69-a-reference-frame-passes-over-its-codec-floor)).
 3. **Perceptual difference:** the ꟻLIP mean, plus a high percentile of its error map so that one broken letter isn't averaged away. Results above a calibrated limit go to a person.
 4. **Delivered files:** SSIMULACRA2 per frame on the encoded output. 90 or above means visually lossless. VMAF and banding checks run on the final MP4 only.
 

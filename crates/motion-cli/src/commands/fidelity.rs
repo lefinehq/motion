@@ -1,5 +1,6 @@
 //! `motion fidelity`: measure every sample of a local manifest, print one
-//! line of numbers per sample, and compare them with a ledger.
+//! line of numbers per sample, and compare them with a ledger. The score is
+//! given over each frame's codec floor, then strictly (D69).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -7,7 +8,8 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use motion_engine::{
-    Change, Diagnostic, Ledger, Manifest, Measure, Result, Scoreboard, Verdict, Window,
+    Change, Diagnostic, Ledger, Manifest, Measure, Result, Rule, Sample, Scoreboard, Verdict,
+    Window,
 };
 
 /// What to measure and where to keep it.
@@ -58,11 +60,26 @@ pub fn run(args: &Args<'_>) -> Result<ExitCode> {
     if args.ledger.is_some() {
         print_changes(&changes);
     }
-    let chosen = manifest
+    let chosen: Vec<&Sample> = manifest
         .samples
         .iter()
-        .filter(|s| args.only.is_empty() || args.only.contains(&s.id));
-    print_score(&Scoreboard::new(chosen, &after));
+        .filter(|s| args.only.is_empty() || args.only.contains(&s.id))
+        .collect();
+    let floored = chosen
+        .iter()
+        .filter(|s| s.excluded.is_none())
+        .filter(|s| {
+            after
+                .samples
+                .get(&s.id)
+                .is_some_and(|m| m.all.floor.is_some())
+        })
+        .count();
+    print_score(
+        &Scoreboard::new(chosen.iter().copied(), &after, Rule::Floor),
+        &Scoreboard::new(chosen.iter().copied(), &after, Rule::Strict),
+        floored,
+    );
     if let (Some(path), true) = (args.ledger, args.write) {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir).map_err(|e| Diagnostic::io("create", dir, &e))?;
@@ -99,14 +116,21 @@ fn print_measure(id: &str, measure: &Measure) {
     }
 }
 
-/// A window's errors, the content's first.
+/// A window's errors, the content's first; with a codec floor, the frames
+/// passing over it, then strictly.
 fn window(name: &str, w: &Window) -> String {
-    let passing = match (w.frames_passing, w.frames_empty) {
-        (Some(n), Some(empty)) if empty > 0 => {
-            format!(", {n} of {} frames pass ({empty} empty)", w.frames)
-        }
-        (Some(n), _) => format!(", {n} of {} frames pass", w.frames),
-        (None, _) => String::new(),
+    let empty = match w.frames_empty {
+        Some(empty) if empty > 0 => format!(" ({empty} empty)"),
+        _ => String::new(),
+    };
+    let passing = match (w.passing(Rule::Floor), w.frames_passing, w.floor) {
+        (Some(n), Some(strict), Some(floor)) => format!(
+            ", {n} of {} frames pass over a floor of {:.2}%{empty}, {strict} strictly",
+            w.frames,
+            floor * 100.0
+        ),
+        (Some(n), _, _) => format!(", {n} of {} frames pass{empty}", w.frames),
+        (None, _, _) => String::new(),
     };
     format!(
         "{name} ({}): content {:.4}, {:.2}% failing{passing}; where drawn {:.4}, {:.2}% failing; over all drawn {:.4}, {:.2}% failing",
@@ -150,20 +174,32 @@ fn print_changes(changes: &[Change]) {
     }
 }
 
-/// The score: how many samples pass, and the failing ones nearest to
-/// passing, those with nothing named unsupported and those one gap away.
-fn print_score(board: &Scoreboard) {
+/// The score: how many samples pass over their codec floors, then how many
+/// pass strictly, and the failing ones nearest to passing over their
+/// floors, those with nothing named unsupported and those one gap away.
+/// `floored` scored samples give a floor.
+fn print_score(board: &Scoreboard, strict: &Scoreboard, floored: usize) {
     let passes = board.ids(|v| *v == Verdict::Passes);
     let settles = board.ids(|v| *v == Verdict::Settles);
     let excluded = board.ids(|v| matches!(v, Verdict::Excluded(_)));
     let unscored = board.ids(|v| *v == Verdict::Unscored);
     println!(
-        "score: {} of {} pass every frame, {} more once settled ({} excluded, {} not yet scored)",
+        "score: {} of {} pass every frame, {} more once settled, {} of {} frames pass, over the codec floor ({floored} with a floor, {} excluded, {} not yet scored)",
         passes.len(),
         board.scored(),
         settles.len(),
+        board.frames_passing,
+        board.frames,
         excluded.len(),
         unscored.len()
+    );
+    println!(
+        "strict: {} of {} pass every frame, {} more once settled, {} of {} frames pass",
+        strict.ids(|v| *v == Verdict::Passes).len(),
+        strict.scored(),
+        strict.ids(|v| *v == Verdict::Settles).len(),
+        strict.frames_passing,
+        strict.frames
     );
     let list = |title: &str, ids: &[&str]| {
         if !ids.is_empty() {
