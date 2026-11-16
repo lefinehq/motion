@@ -141,15 +141,29 @@ function $velocity(id, t, own) {
 
 // Keys: their time, index and value, and the value's components by index;
 // a component the value lacks throws, as scripts that probe it expect.
+// A marker key carries its marker's fields, and a marker is found by its
+// comment too: `marker.key("Out")`.
 function $key(id, n) {
+  if (typeof n === "string") n = $markerNamed(id, n);
   if (!(n >= 1 && n <= __numKeys(id))) throw new Error("key " + n + " out of range");
   var v = __keyValue(id, n), k = { time: __keyTime(id, n), index: n, value: v };
+  if (v !== null && typeof v === "object" && v.$marker) {
+    for (var f in v) if (f !== "$marker") k[f] = v[f];
+    return k;
+  }
   var dims = $isArr(v) ? v.length : 1;
   for (var i = 0; i < 4; i++) {
     if (i < dims) k[i] = $isArr(v) ? v[i] : v;
     else Object.defineProperty(k, i, { get: function () { throw new Error("index out of range"); } });
   }
   return k;
+}
+function $markerNamed(id, name) {
+  for (var i = 1; i <= __numKeys(id); i++) {
+    var v = __keyValue(id, i);
+    if (v !== null && typeof v === "object" && v.$marker && v.comment === name) return i;
+  }
+  throw new Error("no marker named " + name);
 }
 function $nearestKey(id, t) {
   var n = __numKeys(id), best = 1;

@@ -45,7 +45,7 @@ fn layers_stack_bottom_first_and_keep_their_parent() {
 fn reports_what_the_scene_cannot_hold() {
     let mapping = imported(&Options::default()).mapping;
     let what: Vec<&str> = mapping.by_what().into_keys().collect();
-    assert_eq!(what, ["`ADBE Marker`"]);
+    assert_eq!(what, ["`ADBE Layer Source Alternate`"]);
     assert_eq!(mapping.counts["ADBE Position"].mapped, 1);
     assert_eq!(mapping.counts["ADBE Slider Control"].ignored, 1);
 }

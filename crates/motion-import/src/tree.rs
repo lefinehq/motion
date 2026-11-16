@@ -182,7 +182,7 @@ impl fmt::Display for Property {
                     write!(f, " {}s-{}s", fmt_num(first.time), fmt_num(last.time))?;
                 }
                 match keyframes.first().map(|key| &key.value) {
-                    Some(value @ (Value::Opaque { .. } | Value::Text(_))) => {
+                    Some(value @ (Value::Opaque { .. } | Value::Text(_) | Value::Marker(_))) => {
                         write!(f, ", first {value}")
                     }
                     _ => Ok(()),
@@ -216,6 +216,12 @@ impl fmt::Display for Value {
             Value::Text(document) => write!(f, "{document}"),
             Value::Data(bytes) => write!(f, "data, {} bytes", bytes.len()),
             Value::Layer(id) => write!(f, "layer {id}"),
+            Value::Marker(marker) => write!(
+                f,
+                "marker {:?}, {}s",
+                marker.comment,
+                fmt_num(marker.duration)
+            ),
             Value::Opaque { reason } => write!(f, "opaque {reason}"),
         }
     }

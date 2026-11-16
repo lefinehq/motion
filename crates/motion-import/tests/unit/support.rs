@@ -83,9 +83,9 @@ pub(crate) fn sample_project() -> Project {
                 Stream::Static(Value::Text(Box::new(sample_document()))),
             )),
             Child::Property(property(
-                "ADBE Marker",
+                "ADBE Layer Source Alternate",
                 Stream::Static(Value::Opaque {
-                    reason: Reason::Markers,
+                    reason: Reason::OtherBody,
                 }),
             )),
         ],

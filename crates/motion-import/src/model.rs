@@ -479,11 +479,40 @@ pub enum Value {
     /// A layer of the same composition, by its id, as a layer parameter of
     /// an effect names it (its `tdpi`).
     Layer(u32),
+    /// A layer's or a composition's marker; its time is its keyframe's.
+    Marker(Box<Marker>),
     /// A value the reader does not decode yet.
     Opaque {
         /// What sort of value it is.
         reason: Reason,
     },
+}
+
+/// One marker
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#listnmrd)):
+/// what expressions read of it beside its time.
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
+pub struct Marker {
+    /// Its comment, the text shown on it.
+    pub comment: String,
+    /// How long it lasts, in seconds; 0 for a marker at one moment.
+    pub duration: f64,
+    /// Its chapter.
+    pub chapter: String,
+    /// Its web link.
+    pub url: String,
+    /// The frame target of its web link.
+    pub frame_target: String,
+    /// Its cue point's name.
+    pub cue_point_name: String,
+    /// Its cue point's parameters, key and value, in order.
+    pub parameters: Vec<(String, String)>,
+    /// Whether it is an event cue point; a navigation marker is not.
+    pub event_cue_point: bool,
+    /// Whether it marks a protected region.
+    pub protected_region: bool,
+    /// Its label colour, 1 to 16; 0 for none.
+    pub label: u32,
 }
 
 /// A bezier path
@@ -520,8 +549,6 @@ pub struct Vertex {
 pub enum Reason {
     /// The colour stops of a gradient.
     Gradient,
-    /// Layer markers.
-    Markers,
     /// A stream whose value lives in a record of its own, such as an
     /// effect's arbitrary data.
     Valueless,

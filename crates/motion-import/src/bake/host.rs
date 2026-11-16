@@ -506,6 +506,17 @@ fn to_val(value: &Value, unit: Unit) -> Result<Val, Missing> {
         Value::Number(n) => Ok(Val::Number(n * unit[0])),
         Value::Text(document) => Ok(Val::Text(document.text.clone())),
         Value::Path(_) => Err(Missing::Unknown("a path's shape".into())),
+        Value::Marker(marker) => Ok(Val::Marker(Box::new(motion_expr::Marker {
+            comment: marker.comment.clone(),
+            duration: marker.duration,
+            chapter: marker.chapter.clone(),
+            url: marker.url.clone(),
+            frame_target: marker.frame_target.clone(),
+            cue_point_name: marker.cue_point_name.clone(),
+            parameters: marker.parameters.clone(),
+            event_cue_point: marker.event_cue_point,
+            protected_region: marker.protected_region,
+        }))),
         Value::Opaque { reason } => Err(Missing::Unknown(format!(
             "a value the reader does not decode ({reason})"
         ))),

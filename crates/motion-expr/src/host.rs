@@ -40,6 +40,32 @@ pub enum Val {
     Vector(Vec<f64>),
     /// Text.
     Text(String),
+    /// A marker, as a marker key reads beside its time.
+    Marker(Box<Marker>),
+}
+
+/// What a marker key reads beside its time and index: `comment`,
+/// `duration` and the rest.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Marker {
+    /// Its comment.
+    pub comment: String,
+    /// How long it lasts, in seconds.
+    pub duration: f64,
+    /// Its chapter.
+    pub chapter: String,
+    /// Its web link.
+    pub url: String,
+    /// The frame target of its web link.
+    pub frame_target: String,
+    /// Its cue point's name.
+    pub cue_point_name: String,
+    /// Its cue point's parameters, key and value, in order.
+    pub parameters: Vec<(String, String)>,
+    /// Whether it is an event cue point, not a navigation one.
+    pub event_cue_point: bool,
+    /// Whether it marks a protected region.
+    pub protected_region: bool,
 }
 
 /// Why a value cannot be read now.

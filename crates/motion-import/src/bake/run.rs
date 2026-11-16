@@ -393,6 +393,7 @@ fn sampled(
                     "it gives text ({t:?}) for a value that is not text"
                 ));
             }
+            Val::Marker(_) => return Err("it gives a marker for a value that is not one".into()),
         };
         let own_now = property.value.value_at(time).numbers().unwrap_or_default();
         for (i, channel) in channels.iter_mut().enumerate() {
@@ -418,6 +419,7 @@ fn sampled(
 fn text_of(value: &Val) -> String {
     match value {
         Val::Text(t) => t.clone(),
+        Val::Marker(marker) => marker.comment.clone(),
         Val::Number(n) => number_text(*n),
         Val::Vector(v) => v
             .iter()
