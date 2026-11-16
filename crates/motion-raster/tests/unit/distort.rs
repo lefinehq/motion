@@ -39,6 +39,35 @@ fn wrap_wraps_the_content_around_its_box() {
 }
 
 #[test]
+fn mirror_reflects_one_side_of_the_line_onto_the_other() {
+    let [red, green, blue, white] = [
+        [1.0, 0.0, 0.0, 1.0],
+        [0.0, 1.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0, 1.0],
+        [1.0; 4],
+    ];
+    // Upright through the middle: the right half shows the left.
+    let (mut pixels, space) = stripes();
+    mirror(&mut pixels, &[At([2.0, 0.5]), Number(0.0)], &space);
+    let row: Vec<_> = (0..6).map(|x| pixels.get(x, 0)).collect();
+    assert_eq!(row, [red, green, green, red, [0.0; 4], [0.0; 4]]);
+    // Turned half a turn, the left half shows the right.
+    let (mut pixels, space) = stripes();
+    mirror(&mut pixels, &[At([2.0, 0.5]), Number(180.0)], &space);
+    let near = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-4);
+    for (x, expected) in [white, blue, blue, white].into_iter().enumerate() {
+        assert!(near(pixels.get(x as i64, 0), expected), "{x}");
+    }
+    // A line off the middle: what reaches the box's edge is reflected,
+    // and what the layer drew outside its box does not show.
+    let (mut pixels, space) = stripes();
+    pixels.data_mut()[5] = white;
+    mirror(&mut pixels, &[At([3.0, 0.5]), Number(0.0)], &space);
+    let row: Vec<_> = (0..6).map(|x| pixels.get(x, 0)).collect();
+    assert_eq!(row, [red, green, blue, blue, [0.0; 4], [0.0; 4]]);
+}
+
+#[test]
 fn motion_tile_repeats_the_box_beyond_itself() {
     let (mut pixels, space) = stripes();
     let values = [

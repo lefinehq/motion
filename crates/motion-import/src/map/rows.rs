@@ -939,7 +939,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 37] = [
+pub(super) static KINDS: [Kind; 38] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -2320,6 +2320,29 @@ pub(super) static KINDS: [Kind; 37] = [
                 Number,
                 Absent,
             ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Mirror",
+        item: "mirror",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Mirror-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Mirror-0001", To::Prop("center"), Point, Parameter),
+            row("ADBE Mirror-0002", To::Prop("angle"), Number, Parameter),
             row(
                 "ADBE Force CPU GPU",
                 To::Ignore("where the original renders it"),

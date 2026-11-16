@@ -72,3 +72,15 @@ A layer's anchor point is where its own space is pinned to its position, and its
 What is left open:
 - **Depth.** A 3D layer with a source stores its anchor's depth too. Only one template family stores one that is not 0 (`Null 33`, `[-3.33, 8.25, -1.32]`, in m571 to m575, m779 and m783), so its unit is unmeasured; the import keeps the depth in px.
 
+
+## Distortions
+
+Distortion effects keep no formula in the project, only their parameters. These beliefs say how each moves the layer's pixels. They were measured once, by hand, against the corpus's reference frames; the sweep does not check them yet.
+
+| Belief | Evidence | Held, 2026-11-16 |
+|---|---|---|
+| D1. `ADBE Mirror` reflects across the line through its `Reflection Center` (`-0001`, a point in fractions of the layer's effect space) turned by its `Reflection Angle` (`-0002`, degrees clockwise). At 0° the line is upright, the left side stays and the right side shows it reflected; what falls outside the layer's box does not show. | m611 draws two spectra from 0.32 to 0.50 of its 1,080 px width, left of a centre stored as `[0.5, 0.5]`. Its reference frames 10 and 16 show their white from x = 338 to 741, centred on 539.5. Folding that ink about x = 540 leaves 0.42 and 0.38 of it unmatched, about 535 or 545 between 0.72 and 0.87. Had the right side stayed, which these layers leave empty, nothing would show. | 15 mirrors in m611, m612, m621 and m812. All store the centre `[0.5, 0.5]` and none stores an angle. |
+
+What is left open:
+- **The angle.** No local sample turns the line, so the angle is taken clockwise, as the project's other angles turn, without a measurement. At 90° the bottom shows the top.
+- **Where the mirrors are drawn.** The four samples draw their mirrors on audio spectra. m612 and m812 draw theirs along a mask (`ADBE AudSpect-0004`, which stores 0 on layers that do have a mask), which the scene does not draw yet, and m611's reference shows a background and a title placement its imported frame does not, so mirroring moves their error little.
