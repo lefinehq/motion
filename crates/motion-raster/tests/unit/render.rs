@@ -146,6 +146,45 @@ fn the_fill_effect_mixes_towards_its_colour_and_keeps_alpha() {
     );
 }
 
+#[test]
+fn an_inverted_fill_fills_the_rest_of_the_box_and_clears_the_content() {
+    let inverted = Effect::new(
+        "fill",
+        &[
+            ("color", ParamValue::Color(Color::WHITE)),
+            ("inverted", ParamValue::Choice(1)),
+        ],
+    )
+    .unwrap();
+    // Exposure at its rest changes nothing but reads the pixels, so the
+    // fill runs on them rather than painted over the content.
+    let reads = Effect::new("exposure", &[]).unwrap();
+    assert!(reads.reads_pixels() && !inverted.reads_pixels());
+    // A red strip two pixels wide at the left of a box six pixels wide.
+    let strip = Node::Path(PathDraw {
+        path: Rect::new(0.0, 0.0, 2.0, 8.0).to_path(0.1),
+        paint: Paint::Solid(Color::rgba(1.0, 0.0, 0.0, 1.0)),
+        style: DrawStyle::Fill(FillRule::NonZero),
+    });
+    for effects in [vec![inverted.clone()], vec![reads, inverted]] {
+        let frame = Frame {
+            nodes: vec![Node::Layer(Layer {
+                effects,
+                bounds: Some(Rect::new(0.0, 0.0, 6.0, 8.0)),
+                ..Layer::new(vec![strip.clone()])
+            })],
+            ..Frame::default()
+        };
+        let image = render_with(&frame, 8, 8, RenderOptions::GOLDEN).unwrap();
+        // The strip is cleared, the rest of the box filled, and nothing
+        // shows beyond the box.
+        let [strip, rest, beyond] = [1, 4, 7].map(|x| image.pixel(x, 4).unwrap());
+        assert!(near(strip, [0, 0, 0, 0]), "{strip:?}");
+        assert!(near(rest, [255, 255, 255, 255]), "{rest:?}");
+        assert!(near(beyond, [0, 0, 0, 0]), "{beyond:?}");
+    }
+}
+
 /// The transform effect with `position`, `anchor`, `scale` and `opacity`.
 fn transform(position: [f32; 2], anchor: [f32; 2], scale: [f32; 2], opacity: f32) -> Effect {
     Effect::new(

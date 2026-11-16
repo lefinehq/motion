@@ -4,7 +4,7 @@
 
 use motion_format::{Diagnostic, Kind, Result};
 use std::sync::Arc;
-use vello_cpu::kurbo::{Affine, Point, Rect};
+use vello_cpu::kurbo::{Affine, Point, Rect, Shape};
 
 use vello_cpu::peniko::{ImageAlphaType, ImageQuality, ImageSampler};
 use vello_cpu::{
@@ -565,6 +565,7 @@ impl Painter {
                 ctx: &mut self.ctx,
                 width: self.width,
                 height: self.height,
+                bounds: layer.bounds.map(|b| transform * b.to_path(0.1)),
             };
             for effect in steps.drawing {
                 effect.paint_over(&mut effects);

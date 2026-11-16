@@ -1,6 +1,5 @@
 ---
 source: crates/motion-format/src/../tests/unit/lib.rs
-assertion_line: 541
 expression: "report.join(\"\\n\\n\")"
 ---
 ## document
@@ -108,11 +107,11 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","anim":{"scale":"1 -> 2 @level zz"}}` → a.anim.scale: unknown layer id `zz`; expected one of a
 `{"id":"m","audio":"m.wav","anim":{"volume":"0 -> 1 @level m"}}` → m.anim.volume: `volume` cannot follow a sound's level, which it would change; expected a property other than `volume`
 `{"id":"a","rect":"1x1","fx":[{"fill":"#FF0000","anim":{"opacity":"0 -> 1 @level q"}}]}` → a.fx[0].anim.opacity: unknown layer id `q`; expected one of a
-`{"id":"a","rect":"1x1","fx":[{"fill":"#FF0000","map":"a"}]}` → a.fx[0].map: unknown fill key `map`; expected one of fill, id, hidden, anim, opacity
+`{"id":"a","rect":"1x1","fx":[{"fill":"#FF0000","map":"a"}]}` → a.fx[0].map: unknown fill key `map`; expected one of fill, id, hidden, anim, inverted, opacity
 `{"id":"m","audio":"m.wav"},{"id":"a","rect":"1x1","fx":[{"audio-spectrum":5,"audio":"m","along":"ring"}]}` → a.fx[0].along: unknown mask id `ring`; expected the id of one of the layer's own masks
 `{"id":"m","audio":"m.wav"},{"id":"a","rect":"1x1","mask":[{"mask":"M0,0 L1,0 Z","id":"arc"}],"fx":[{"audio-waveform":5,"audio":"m","along":"ring"}]}` → a.fx[0].along: unknown mask id `ring`; expected one of arc
 `{"id":"m","audio":"m.wav"},{"id":"a","rect":"1x1","mask":[{"mask":"M0,0 L1,0 Z","id":"ring"}],"fx":[{"audio-spectrum":5,"audio":"m","along":3}]}` → a.fx[0].along: invalid type: integer `3`; expected a string
-`{"id":"a","rect":"1x1","mask":[{"mask":"M0,0 L1,0 Z","id":"ring"}],"fx":[{"fill":"#FF0000","along":"ring"}]}` → a.fx[0].along: unknown fill key `along`; expected one of fill, id, hidden, anim, opacity
+`{"id":"a","rect":"1x1","mask":[{"mask":"M0,0 L1,0 Z","id":"ring"}],"fx":[{"fill":"#FF0000","along":"ring"}]}` → a.fx[0].along: unknown fill key `along`; expected one of fill, id, hidden, anim, inverted, opacity
 `{"id":"a","rect":"1x1","span":"5f"}` → a.span: `5f` has no `-` between start and end; expected `<start>-<end>` with a unit, e.g. `0-30f`, `0.5s-1s`; a bare start takes the end's unit
 `{"id":"a","rect":"1x1","span":"5-1f"}` → a.span: `5f-1f` starts after it ends; expected `<start>-<end>` with a unit, e.g. `0-30f`, `0.5s-1s`; a bare start takes the end's unit
 `{"id":"a","rect":"1x1","offset":"-1x"}` → a.offset: `-1x` is not a time or a moment; expected a time such as `2s` or `-6f`, or a base moved by a time: a label (`cta`, `cta+12f`, `cta-0.5s`), `<` where the layer before ends (`<+6f`) or `<<` where it starts (`<<-3f`)
@@ -354,7 +353,7 @@ expression: "report.join(\"\\n\\n\")"
 ## effects
 `{"rect":[1,1]}` → a.fx[0]: needs the key of its kind; expected one kind key: `fill`, `transform`, `tint`, `hue-saturation`, `exposure`, `levels`, `particles`, `displacement-map`, `audio-spectrum`, `audio-waveform`, `motion-tile`, `wrap`, `turbulent-displace`, `mirror`, `polar-coordinates`, `repeat-tile`, `ramp`, `four-color`, `grid`, `venetian-blinds`, `fractal-noise`, `gaussian-blur`, `box-blur`, `drop-shadow`, `glow`, `sharpen`, `black-white`, `curves`, `invert`
 `{"fill":"#fff","opacity":3}` → a.fx[0].opacity: value 3 is outside 0..=1; expected a number from 0 to 1
-`{"fill":"#fff","rule":"evenodd"}` → a.fx[0].rule: unknown fill key `rule`; expected one of fill, id, hidden, anim, opacity
+`{"fill":"#fff","rule":"evenodd"}` → a.fx[0].rule: unknown fill key `rule`; expected one of fill, id, hidden, anim, inverted, opacity
 
 ## comps
 `"card":1` → comps.card: invalid type: integer `1`; expected a composition object, e.g. {"size":"600x400","dur":"5s","layers":[]}

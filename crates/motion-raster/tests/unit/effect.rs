@@ -53,7 +53,8 @@ fn left_out_parameters_take_their_defaults() {
         fill.values(),
         [
             ParamValue::Color(Color::rgba(1.0, 0.0, 0.0, 1.0)),
-            ParamValue::Number(1.0)
+            ParamValue::Number(1.0),
+            ParamValue::Choice(0)
         ]
     );
     let blue = Effect::new(
@@ -83,7 +84,10 @@ fn unknown_names_wrong_types_and_ranges_are_reported_at_the_parameter() {
         (e.kind, e.path_text().as_deref()),
         (Kind::UnknownName, Some("colour"))
     );
-    assert_eq!(e.expected.as_deref(), Some("one of color, opacity"));
+    assert_eq!(
+        e.expected.as_deref(),
+        Some("one of color, opacity, inverted")
+    );
 
     let e = Effect::new("fill", &[("color", ParamValue::Number(1.0))]).unwrap_err();
     assert_eq!(

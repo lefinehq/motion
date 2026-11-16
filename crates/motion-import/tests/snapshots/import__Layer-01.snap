@@ -24,7 +24,7 @@ expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ]}
 
 imported `Comp 01`
-  20 mapped, 88 defaulted, 250 ignored, 0 unsupported, over 27 match names
+  20 mapped, 89 defaulted, 250 ignored, 0 unsupported, over 28 match names
   ignored, drawing nothing:
     empty (1)
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (248)
