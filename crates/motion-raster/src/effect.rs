@@ -17,7 +17,7 @@ use std::fmt;
 
 use motion_format::{Diagnostic, Kind, Result};
 use vello_cpu::RenderContext;
-use vello_cpu::kurbo::{Affine, BezPath, Rect, Vec2};
+use vello_cpu::kurbo::{Affine, BezPath, Point, Rect, Vec2};
 use vello_cpu::peniko::{BlendMode, Compose, Mix};
 
 use crate::list::Node;
@@ -278,8 +278,17 @@ pub const EFFECTS: &[EffectSpec] = &[
                 choices: &[],
                 doc: "how much of the colour replaces the content's own, 0 to 1",
             },
+            ParamSpec {
+                name: "inverted",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["off", "on"],
+                doc: "whether the colour fills where the content is not, inside the layer's box, \
+                      with the content's transparency as its alpha",
+            },
         ],
-        doc: "recolours the content with one colour, keeping its alpha",
+        doc: "recolours the content with one colour, keeping its alpha; inverted, fills the \
+              rest of the layer's box and clears the content",
         reach: stays,
         apply: Apply::Pixels {
             over: Some(fill),
@@ -2210,6 +2219,8 @@ pub struct EffectContext<'a> {
     pub(crate) ctx: &'a mut RenderContext,
     pub(crate) width: u16,
     pub(crate) height: u16,
+    /// The layer's box on the frame's grid, when its content has one.
+    pub(crate) bounds: Option<BezPath>,
 }
 
 impl EffectContext<'_> {
@@ -2217,6 +2228,25 @@ impl EffectContext<'_> {
     /// by `compose`. Leaves the context's transform, paint and blend mode as
     /// it found them.
     pub fn cover(&mut self, color: Color, compose: Compose) {
+        let frame = Rect::new(0.0, 0.0, f64::from(self.width), f64::from(self.height));
+        self.paint(color, compose, |ctx| ctx.fill_rect(&frame));
+    }
+
+    /// Paints `color` over the layer's box, or the whole frame for a layer
+    /// without one, as [`EffectContext::cover`] does.
+    pub fn cover_box(&mut self, color: Color, compose: Compose) {
+        match self.bounds.take() {
+            Some(bounds) => {
+                self.paint(color, compose, |ctx| ctx.fill_path(&bounds));
+                self.bounds = Some(bounds);
+            }
+            None => self.cover(color, compose),
+        }
+    }
+
+    /// Runs `fill` on the grid with `color` as the paint, combined by
+    /// `compose`, then puts back the transform, paint and blend mode.
+    fn paint(&mut self, color: Color, compose: Compose, fill: impl FnOnce(&mut RenderContext)) {
         let ctx = &mut *self.ctx;
         let (transform, paint, blend) = (*ctx.transform(), ctx.paint().clone(), ctx.blend_mode());
         ctx.set_transform(Affine::IDENTITY);
@@ -2225,12 +2255,7 @@ impl EffectContext<'_> {
             mix: Mix::Normal,
             compose,
         });
-        ctx.fill_rect(&Rect::new(
-            0.0,
-            0.0,
-            f64::from(self.width),
-            f64::from(self.height),
-        ));
+        fill(ctx);
         ctx.set_transform(transform);
         ctx.set_paint(paint);
         ctx.set_blend_mode(blend);
@@ -2244,27 +2269,70 @@ impl EffectContext<'_> {
 /// per premultiplied pixel, `opacity * color * a + (1 - opacity) * content`,
 /// with alpha `a` unchanged: exactly that mix, done by the rasteriser's own
 /// compositing rather than a pass over the pixels.
+///
+/// Inverted, the colour takes `1 - a` as its alpha, and the content moves
+/// towards it by `opacity`: painting it with alpha `opacity` "xor" the
+/// content, over the layer's box, gives `opacity * color * (1 - a) +
+/// (1 - opacity) * content`, alpha `opacity * (1 - a) + (1 - opacity) * a`,
+/// that mix again.
 fn fill(ctx: &mut EffectContext<'_>, values: &[ParamValue]) {
-    let [ParamValue::Color(color), ParamValue::Number(opacity)] = values else {
+    let [
+        ParamValue::Color(color),
+        ParamValue::Number(opacity),
+        ParamValue::Choice(invert),
+    ] = values
+    else {
         unreachable!("`Effect::new` checks the fill parameters");
     };
-    ctx.cover(color.with_opacity(*opacity), Compose::SrcAtop);
+    match invert {
+        0 => ctx.cover(color.with_opacity(*opacity), Compose::SrcAtop),
+        _ => ctx.cover_box(color.with_opacity(*opacity), Compose::Xor),
+    }
 }
 
 /// The `fill` effect on pixels: the colour, at its alpha times `opacity`,
-/// laid "source-atop" each pixel, as [`fill`] paints it.
-fn fill_pixels(pixels: &mut Pixels, values: &[ParamValue], _: &Space) {
-    let [ParamValue::Color(color), ParamValue::Number(opacity)] = values else {
+/// laid "source-atop" each pixel, or "xor" each pixel of the layer's box
+/// when inverted, as [`fill`] paints it.
+fn fill_pixels(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let [
+        ParamValue::Color(color),
+        ParamValue::Number(opacity),
+        ParamValue::Choice(invert),
+    ] = values
+    else {
         unreachable!("`Effect::new` checks the fill parameters");
     };
     let share = color.a * opacity;
     let rgb = [color.r, color.g, color.b];
-    for pixel in pixels.data_mut() {
-        let alpha = pixel[3];
-        for c in 0..3 {
-            pixel[c] = rgb[c] * share * alpha + pixel[c] * (1.0 - share);
+    if *invert == 0 {
+        for pixel in pixels.data_mut() {
+            let alpha = pixel[3];
+            for c in 0..3 {
+                pixel[c] = rgb[c] * share * alpha + pixel[c] * (1.0 - share);
+            }
         }
+        return;
     }
+    let inside = box_test(space);
+    let width = usize::from(pixels.width());
+    for (i, pixel) in pixels.data_mut().iter_mut().enumerate() {
+        if !inside(i % width, i / width) {
+            continue;
+        }
+        let clear = 1.0 - pixel[3];
+        for c in 0..3 {
+            pixel[c] = rgb[c] * share * clear + pixel[c] * (1.0 - share);
+        }
+        pixel[3] = share * clear + pixel[3] * (1.0 - share);
+    }
+}
+
+/// Whether the centre of pixel `(x, y)` lies in the layer's box; every
+/// pixel does for a layer without one.
+fn box_test(space: &Space) -> impl Fn(usize, usize) -> bool {
+    let back = space.transform.inverse();
+    let bounds = space.bounds;
+    move |x, y| bounds.is_none_or(|b| b.contains(back * Point::new(x as f64 + 0.5, y as f64 + 0.5)))
 }
 
 /// The `transform` effect: the content's anchor goes to `position`, scaled

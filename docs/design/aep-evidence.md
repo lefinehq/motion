@@ -204,6 +204,19 @@ Other things we take without evidence:
 - **The other `InPlace` effects.** `ADBE AudWave`, `CC Particle World`, `tc Particular` and `tc Form` draw on a transparent layer by default, as their documentation says; `ADBE Laser` is checked in its own section once drawn. Nine samples hold Particle World; their references were not compared one by one.
 - **A composite-on-original switch.** Several of these effects can keep their layer's pixels under what they draw. No local sample turns one on; a project that does draws nothing where it should draw its layer.
 
+## Inverted fills
+
+`ADBE Fill` turns what its layer draws one colour. Its `Invert` checkbox (`ADBE Fill-0006`) becomes the fill effect's `inverted` setting ([scene format](scene-format.md#shapes-masks-effects-and-compositions)). Two local samples turn it on, both with no mask chosen (`Fill Mask` 0) and full opacity. The belief was measured once, by hand, against their reference frames; the sweep does not check it.
+
+| Belief | Evidence | Held, 2026-11-16 |
+|---|---|---|
+| F1. Inverted, with no mask chosen, the fill takes the layer's transparency as its coverage within the layer's box: it fills where the layer draws nothing and clears where it draws. Where the layer is opaque, nothing shows. Per premultiplied pixel, the colour at `1 − a`, mixed with the layer by the fill's opacity. | m651 lays `White Solid 1`, an opaque 3840 by 2160 solid with an inverted fill of the default red, under its player interface. The reference is black behind the interface (mean 0.005 a channel at 3.5 s and 7 s), not white (the solid kept) or red (the fill drawn as it is, our frame at 3.5 s half red). m649's `Adjustment Layer 1`, an adjustment layer at the bottom of its composition with an inverted white fill, has nothing below it, so it adjusts a transparent frame. Its reference is white from the first frame. Read this way, m649's frames at 0 s, 3 s and 5.5 s differ from the reference by 0.0000, 0.0009 and 0.0023 a channel, and m651's at 3.5 s and 7 s by 0.0010 and 0.0009. Read as a fill that leaves the layer as it is, both stay as far off as before (black for m649, white for m651). | 2 samples, every one holding an inverted fill |
+
+Other things we take without evidence:
+- **Partial alpha and opacity.** Both samples fill fully transparent or fully opaque pixels at full opacity. The mix at an edge's partial alpha and below full opacity follows the plain fill's.
+- **Layers without a box.** A shape or text layer has no box in the scene, so its inverted fill covers the whole frame. Its box in the original is the composition's size, in the layer's own coordinates; no sample shows where they differ.
+- **Masks.** `Fill Mask` and `All Masks` are still only read at their defaults; an inverted fill of a chosen mask is reported, as before.
+
 ## Effects that follow a mask
 
 A path parameter (`pard` control 12), such as Audio Spectrum's Path (`ADBE AudSpect-0004`), names one of its layer's masks. Its `cdat` holds 0 whatever it names; the mask is in a `tdli` beside it. These beliefs say how it is named and how the spectrum lays its bands along it. The first is checked by hand over every local sample, the layout measured against m812's reference frames; the sweep does not check them yet.

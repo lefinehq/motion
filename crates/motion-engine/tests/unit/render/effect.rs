@@ -75,7 +75,7 @@ fn every_scene_effect_has_a_raster_row_with_the_same_parameters() {
 fn a_layers_effects_keep_their_order_and_values() {
     let frame = list(
         &scene(
-            r##"{"id":"a","rect":"10x10","fx":[{"fill":"#FF0000","opacity":0.25},{"fill":"#0000FF80"}]}"##,
+            r##"{"id":"a","rect":"10x10","fx":[{"fill":"#FF0000","opacity":0.25},{"fill":"#0000FF80","inverted":"on"}]}"##,
         ),
         0.0,
     );
@@ -86,11 +86,13 @@ fn a_layers_effects_keep_their_order_and_values() {
         [
             &[
                 ParamValue::Color(motion_raster::Color::rgba(1.0, 0.0, 0.0, 1.0)),
-                ParamValue::Number(0.25)
+                ParamValue::Number(0.25),
+                ParamValue::Choice(0)
             ][..],
             &[
                 ParamValue::Color(motion_raster::Color::rgba(0.0, 0.0, 1.0, 128.0 / 255.0)),
-                ParamValue::Number(1.0)
+                ParamValue::Number(1.0),
+                ParamValue::Choice(1)
             ][..],
         ]
     );

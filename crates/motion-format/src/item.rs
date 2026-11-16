@@ -1663,10 +1663,18 @@ pub static EFFECTS: [ItemKind; 29] = [
         role: Role::Effect,
         registry: &FILL_EFFECT,
         primary: Primary::Property("color"),
-        settings: &[],
+        settings: &[SettingSpec {
+            name: "inverted",
+            choices: &["off", "on"],
+            default: "off",
+            doc: "`on` fills where the layer does not draw instead, inside its box: the colour \
+                  takes the layer's transparency as its coverage, and what the layer drew is \
+                  cleared",
+        }],
         input: None,
         outline: None,
-        doc: "turns every drawn pixel of the layer one colour, keeping its coverage",
+        doc: "turns every drawn pixel of the layer one colour, keeping its coverage; inverted, \
+              fills the rest of the layer's box",
     },
     ItemKind {
         name: "transform",

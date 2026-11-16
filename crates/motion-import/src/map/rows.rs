@@ -1433,7 +1433,7 @@ pub(super) static KINDS: [Kind; 45] = [
             row("ADBE Fill-0002", To::Prop("color"), Color, Parameter),
             row(
                 "ADBE Fill-0006",
-                To::OnlyDefault("inverted fill"),
+                To::Setting("inverted", OFF_ON),
                 Number,
                 Parameter,
             ),

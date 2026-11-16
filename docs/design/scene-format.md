@@ -247,7 +247,7 @@ An `expand` moves every side of an outline `amount` px to its left, which is out
 
 | Effect | Key holds | Properties | Settings |
 |---|---|---|---|
-| `fill` | `color` | `color`, `opacity` | |
+| `fill` | `color` | `color`, `opacity` | `inverted`: `off`, `on` |
 | `transform` | `scale` | `position`, `anchor`, `scale`, `rotate`, `opacity` | |
 | `tint` | `amount` | `black`, `white`, `amount` | |
 | `hue-saturation` | `hue` | `hue`, `saturation`, `lightness`, `colorize-hue`, `colorize-saturation`, `colorize-lightness` | `mode`: `adjust`, `colorize` |
