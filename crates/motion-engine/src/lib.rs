@@ -35,7 +35,7 @@ pub mod telemetry;
 #[path = "../tests/unit/support.rs"]
 mod test_support;
 
-pub use diff::{Diff, DiffOptions, Error as DiffError, FrameDiff, Pooled};
+pub use diff::{Diff, DiffOptions, Error as DiffError, Floor, FrameDiff, Pooled};
 pub use export::export_project;
 pub use fidelity::{
     Change, Floors, Ledger, Manifest, Measure, NOISE, Rule, Sample, Scoreboard, Verdict, Window,
