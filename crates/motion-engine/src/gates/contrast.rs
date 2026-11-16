@@ -3,8 +3,10 @@
 //! on a 1080-px-tall canvas.
 //!
 //! The scene is drawn twice for each readable text layer at a sample of
-//! frames: once without the layer, for what is behind it, and once with
-//! only the layer (and the `comp` layers it sits in), for its glyphs.
+//! frames: once without the layer, for what is behind it (the `bg` of the
+//! scene and of each composition it sits in, and the layers below it), and
+//! once with only the layer, inside the `comp` layers it sits in but with no
+//! `bg` drawn, for its glyphs.
 
 use std::sync::{Mutex, PoisonError};
 
@@ -48,10 +50,11 @@ pub(super) fn check(session: &Session) -> Result<Report> {
     let graph = session.graph()?;
     let frames = session.frames()?.end;
     let stride = ((graph.root.fps / SAMPLES_A_SECOND).round() as u32).max(1);
+    let bare = bare(graph);
     let seen = Mutex::new(Vec::new());
     session.on_threads(0..frames.div_ceil(stride), |sample| {
         let frame = sample * stride;
-        let found = measure(session, graph, frame).map_err(|d| (frame, d))?;
+        let found = measure(session, graph, &bare, frame).map_err(|d| (frame, d))?;
         seen.lock()
             .unwrap_or_else(PoisonError::into_inner)
             .extend(found);
@@ -93,8 +96,25 @@ pub(super) fn check(session: &Session) -> Result<Report> {
     Ok(report)
 }
 
-/// Every readable text layer of `frame`, measured.
-fn measure(session: &Session, graph: &SceneGraph, frame: u32) -> Result<Vec<Seen>> {
+/// `graph` with no composition drawing a background, for the glyphs alone:
+/// a `comp` layer draws its composition's `bg` across its canvas, which
+/// would cover the glyphs' surroundings and read as glyphs.
+fn bare(graph: &SceneGraph) -> SceneGraph {
+    let mut bare = graph.clone();
+    for comp in &mut bare.comps {
+        comp.background = [0.0; 4];
+    }
+    bare
+}
+
+/// Every readable text layer of `frame`, measured: `bare` is `graph` as
+/// [`bare`] gives it.
+fn measure(
+    session: &Session,
+    graph: &SceneGraph,
+    bare: &SceneGraph,
+    frame: u32,
+) -> Result<Vec<Seen>> {
     let state = session.frame(f64::from(frame))?;
     let height = graph.root.height;
     let mut found = Vec::new();
@@ -103,7 +123,7 @@ fn measure(session: &Session, graph: &SceneGraph, frame: u32) -> Result<Vec<Seen
             continue;
         };
         let behind = shrunk(session, session.list_of(&without(&state, &visit.ids))?)?;
-        let mut list = session.list_of(&alone(&state, &visit.ids))?;
+        let mut list = session.list_in(bare, &alone(&state, &visit.ids))?;
         list.background = None;
         let glyphs = shrunk(session, list)?;
         let Some(ratio) = ratio(&glyphs, &behind) else {
