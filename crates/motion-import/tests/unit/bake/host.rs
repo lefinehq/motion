@@ -90,7 +90,7 @@ fn scale_and_opacity_read_in_percent() {
     assert_eq!(host.value_at(opacity, 0.0, false), Ok(Val::Number(50.0)));
     assert_eq!(
         host.value_at(scale, 0.0, false),
-        Ok(Val::Vector(vec![100.0; 3]))
+        Ok(Val::Vector(vec![100.0; 2]))
     );
 }
 
@@ -106,7 +106,7 @@ fn a_property_under_an_expression_waits_until_baked() {
     // Its own value is what `value` reads inside its expression.
     assert_eq!(
         host.value_at(position, 0.5, true),
-        Ok(Val::Vector(vec![10.0, 20.0, 0.0]))
+        Ok(Val::Vector(vec![10.0, 20.0]))
     );
     host.baked.borrow_mut().insert(
         position,
@@ -156,6 +156,87 @@ fn a_sourced_layers_anchor_reads_in_pixels_of_its_source() {
             false,
         )
     };
-    assert_eq!(anchor("Null"), Ok(Val::Vector(vec![50.0, 25.0, 0.0])));
-    assert_eq!(anchor("Free"), Ok(Val::Vector(vec![0.5, 0.25, 0.0])));
+    assert_eq!(anchor("Null"), Ok(Val::Vector(vec![50.0, 25.0])));
+    assert_eq!(anchor("Free"), Ok(Val::Vector(vec![0.5, 0.25])));
+}
+
+#[test]
+fn a_2d_layers_transform_reads_in_two_components_a_3d_layers_in_three() {
+    use crate::model::{Interpolation, Keyframe, LayerKind};
+    // The project keeps three components of each; an expression sees two
+    // of a 2D layer's anchor point, position and scale, keyed or not.
+    let still = || Stream::Static(Value::Vector3([1.0, 2.0, 3.0]));
+    let keyed = Stream::Animated(vec![Keyframe {
+        time: 0.0,
+        value: Value::Vector3([4.0, 5.0, 6.0]),
+        in_interpolation: Interpolation::Linear,
+        out_interpolation: Interpolation::Linear,
+        in_ease: vec![],
+        out_ease: vec![],
+        spatial: None,
+        continuous: false,
+        auto_bezier: false,
+        roving: false,
+    }]);
+    let transformed = |id, name| {
+        layer(
+            id,
+            name,
+            vec![transform(vec![
+                property("ADBE Anchor Point", still()),
+                property("ADBE Position", keyed.clone()),
+                property("ADBE Scale", still()),
+                property("ADBE Orientation", still()),
+            ])],
+        )
+    };
+    let mut three_d = transformed(2, "Deep");
+    three_d.switches.three_d = true;
+    let camera = Layer {
+        kind: LayerKind::Camera,
+        ..transformed(3, "Camera")
+    };
+    let project = project(vec![(
+        5,
+        "Main",
+        comp(vec![transformed(1, "Flat"), three_d, camera], 2.0),
+    )]);
+    let (host, _) = ProjectHost::new(&project);
+    let main = child(&host, PROJECT, Select::Name("Main"));
+    let read = |name, attribute| {
+        let layer = child(&host, main, Select::Name(name));
+        let node = child(&host, layer, Select::Attribute(attribute));
+        (host.value_at(node, 0.0, false), host.key(node, 1))
+    };
+    assert_eq!(
+        read("Flat", "anchorPoint").0,
+        Ok(Val::Vector(vec![1.0, 2.0]))
+    );
+    assert_eq!(
+        read("Flat", "position"),
+        (
+            Ok(Val::Vector(vec![4.0, 5.0])),
+            Some((0.0, Val::Vector(vec![4.0, 5.0])))
+        )
+    );
+    assert_eq!(read("Flat", "scale").0, Ok(Val::Vector(vec![100.0, 200.0])));
+    assert_eq!(
+        read("Flat", "orientation").0,
+        Ok(Val::Vector(vec![1.0, 2.0, 3.0])),
+        "a 3D-only property keeps its three"
+    );
+    for name in ["Deep", "Camera"] {
+        assert_eq!(
+            read(name, "anchorPoint").0,
+            Ok(Val::Vector(vec![1.0, 2.0, 3.0]))
+        );
+        assert_eq!(
+            read(name, "position").0,
+            Ok(Val::Vector(vec![4.0, 5.0, 6.0]))
+        );
+        assert_eq!(
+            read(name, "scale").0,
+            Ok(Val::Vector(vec![100.0, 200.0, 300.0]))
+        );
+    }
 }

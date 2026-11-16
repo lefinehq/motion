@@ -10,6 +10,9 @@
 //!   `transform` or `sourceText` by the match names it stands for.
 //! - **Units.** Values are in the units an expression sees: a layer's scale
 //!   and opacity in percent, which the project keeps as fractions.
+//! - **Dimensions.** A 2D layer's anchor point, position and scale have two
+//!   components to an expression, as the original gives them; the project
+//!   keeps a third, which a 3D layer's have.
 //! - **Other expressions.** A property with an expression reads as what its
 //!   expression gave, once baked; until then it is [`Missing::Pending`], and
 //!   the time asked for is kept for the bake to evaluate first.
@@ -20,8 +23,8 @@ use std::collections::HashMap;
 use motion_expr::{Host, Missing, NodeId, NodeKind, Select, Val};
 
 use crate::model::{
-    Child, Color, Composition, Control, Group, Item, ItemKind, Layer, Parameter, Project, Property,
-    Stream, Value,
+    Child, Color, Composition, Control, Group, Item, ItemKind, Layer, LayerKind, Parameter,
+    Project, Property, Stream, Value,
 };
 
 /// A node of the project, with what an expression may read of it. Nodes own
@@ -82,6 +85,10 @@ struct Entry {
     /// How many of an expression's units make one of the project's, per
     /// component.
     unit: Unit,
+    /// How many components an expression sees of its value, where that is
+    /// fewer than the project keeps: two of a 2D layer's anchor point,
+    /// position and scale.
+    components: Option<usize>,
 }
 
 /// How many of an expression's units make one of the project's, per
@@ -162,6 +169,7 @@ impl ProjectHost {
                     name: String::new(),
                     index: 1,
                     unit: [1.0; 3],
+                    components: None,
                 }],
                 layers: HashMap::new(),
                 baked: RefCell::new(HashMap::new()),
@@ -234,6 +242,7 @@ impl ProjectHost {
             children: Vec::new(),
             match_name: match_name.to_owned(),
             unit: [unit(match_name); 3],
+            components: None,
             name,
             index,
         });
@@ -307,12 +316,15 @@ impl<'p> Build<'p> {
                             .to_owned()
                     });
                     let id = self.property(up, p, name, index, at);
+                    let transform = group.match_name == "ADBE Transform Group";
                     // A layer's anchor point is stored in fractions of its
                     // source, where it has one.
-                    let anchor = group.match_name == "ADBE Transform Group"
-                        && p.match_name == "ADBE Anchor Point";
+                    let anchor = transform && p.match_name == "ADBE Anchor Point";
                     if let Some([width, height]) = at.source.filter(|_| anchor) {
                         self.host.entries[id as usize].unit = [width, height, 1.0];
+                    }
+                    if transform && planar(at.layer, &p.match_name) {
+                        self.host.entries[id as usize].components = Some(2);
                     }
                 }
             }
@@ -352,6 +364,19 @@ impl<'p> Build<'p> {
     }
 }
 
+/// Whether `layer`'s transform property `match_name` has two components to
+/// an expression where the project keeps three: the anchor point, position
+/// and scale of a layer that is not 3D. A camera or a light is always 3D.
+fn planar(layer: &Layer, match_name: &str) -> bool {
+    let three_d =
+        layer.switches.three_d || matches!(layer.kind, LayerKind::Camera | LayerKind::Light);
+    !three_d
+        && matches!(
+            match_name,
+            "ADBE Anchor Point" | "ADBE Position" | "ADBE Scale"
+        )
+}
+
 /// The size of a layer's source, if it has a composition or footage as one.
 fn source_size(project: &Project, layer: &Layer) -> Option<[f64; 2]> {
     let source = layer
@@ -369,6 +394,20 @@ impl ProjectHost {
     /// component of `node`'s value.
     pub(super) fn unit(&self, node: NodeId) -> Unit {
         self.entries.get(node as usize).map_or([1.0; 3], |e| e.unit)
+    }
+
+    /// A project value of `node` as an expression reads it: in its units,
+    /// with as many components as it has to an expression.
+    fn read(&self, node: NodeId, value: &Value) -> Result<Val, Missing> {
+        let val = to_val(value, self.unit(node))?;
+        let components = self.entries.get(node as usize).and_then(|e| e.components);
+        Ok(match (val, components) {
+            (Val::Vector(mut v), Some(n)) => {
+                v.truncate(n);
+                Val::Vector(v)
+            }
+            (val, _) => val,
+        })
     }
 
     /// The comp node holding `node`.
@@ -389,7 +428,7 @@ impl ProjectHost {
         if property.separated && property.match_name == "ADBE Position" {
             return self.separated(node, time);
         }
-        to_val(&property.value.value_at(time), self.unit(node))
+        self.read(node, &property.value.value_at(time))
     }
 
     /// The `_0`, `_1` and `_2` siblings of a separated position that it has.
@@ -411,7 +450,8 @@ impl ProjectHost {
     /// A separated position: its `_0`, `_1` and `_2` siblings together.
     fn separated(&self, node: NodeId, time: f64) -> Result<Val, Missing> {
         let mut parts = Vec::new();
-        for sibling in self.parts(node) {
+        let components = self.entries[node as usize].components.unwrap_or(3);
+        for sibling in self.parts(node).into_iter().take(components) {
             match self.value_at(sibling, time, false)? {
                 Val::Number(n) => parts.push(n),
                 _ => {
@@ -781,7 +821,7 @@ impl Host for ProjectHost {
             return None;
         };
         let key = keys.get(n.checked_sub(1)?)?;
-        Some((key.time, to_val(&key.value, self.unit(node)).ok()?))
+        Some((key.time, self.read(node, &key.value).ok()?))
     }
 }
 

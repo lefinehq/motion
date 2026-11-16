@@ -346,3 +346,41 @@ fn a_legacy_project_repairs_its_forms_and_says_so() {
     let (_, channels) = numbers(bake);
     assert_eq!((channels[0][10], channels[0][11]), (0.0, 90.0));
 }
+
+#[test]
+fn an_expression_over_a_2d_layers_scale_loops_over_its_two_components() {
+    // A common rig: undo the parents' scale by walking up and dividing each
+    // component. The parent's scale expression gives two components, and a
+    // 2D layer's own scale reads in two, so no component is left undefined.
+    let size = layer(
+        1,
+        "Size",
+        vec![transform(vec![expressed(
+            "ADBE Scale",
+            Stream::Static(Value::Vector3([1.0, 1.0, 1.0])),
+            "[200, 50]",
+        )])],
+    );
+    let child = Layer {
+        parent: Some(1),
+        ..layer(
+            2,
+            "Child",
+            vec![transform(vec![expressed(
+                "ADBE Scale",
+                Stream::Static(Value::Vector3([1.0, 1.0, 1.0])),
+                "P = thisLayer; s = transform.scale.value; \
+                 while (P.hasParent) { P = P.parent; \
+                 for (i = 0; i < s.length; i++) s[i] *= 100 / P.transform.scale.value[i] } s",
+            )])],
+        )
+    };
+    let project = project(vec![(5, "Main", comp(vec![size, child], 2.0))]);
+    let bakes = bake(&project, Some(5));
+    let (_, channels) = numbers(bake_of(&bakes, &project, "Child", "ADBE Scale"));
+    assert_eq!(
+        [channels[0][0], channels[1][0], channels[2][0]],
+        [0.5, 2.0, 1.0],
+        "50% and 200%, and the depth it does not give stays its own"
+    );
+}
