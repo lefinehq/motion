@@ -407,6 +407,9 @@ impl Walk<'_> {
         let (target, depth) = match row.to {
             To::Prop(target) => (target, None),
             To::Split(point, depth) => (point, Some(depth)),
+            To::Setting(setting, choices) => {
+                return self.put_default_setting(row, (setting, choices), sink, out, place);
+            }
             _ => return,
         };
         let Some(value) = default_value(row, place) else {
@@ -444,6 +447,35 @@ impl Walk<'_> {
             .is_none_or(|target| rest_json(target).is_none_or(|rest| rest != json));
         if differs {
             out.keys.insert(target.into(), json);
+        }
+    }
+
+    /// Writes the default of a setting the project leaves out, the choice
+    /// its effect's definition gives, where the scene's own default differs.
+    fn put_default_setting(
+        &mut self,
+        row: &Row,
+        (setting, choices): (&str, &[(i64, &'static str)]),
+        sink: Sink,
+        out: &mut Out,
+        place: &Place<'_>,
+    ) {
+        let Some(Value::Number(code)) = default_value(row, place) else {
+            return;
+        };
+        let Some((_, choice)) = choices.iter().find(|(c, _)| *c == code.round() as i64) else {
+            self.mapping.count(row.match_name, Fate::Unsupported);
+            return self
+                .mapping
+                .unsupported(&place.at, format!("a `{setting}` the scene does not have"));
+        };
+        self.mapping.count(row.match_name, Fate::Defaulted);
+        let rest = sink
+            .kind
+            .and_then(|kind| kind.setting(setting))
+            .map(|spec| spec.default);
+        if rest != Some(*choice) {
+            out.keys.insert(setting.into(), json!(choice));
         }
     }
 

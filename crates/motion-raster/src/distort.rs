@@ -141,6 +141,49 @@ pub(crate) fn mirror(pixels: &mut Pixels, values: &[ParamValue], space: &Space) 
     });
 }
 
+/// `polar-coordinates`: with `rect-to-polar`, the point at angle φ
+/// counterclockwise from straight up of the box's middle, `r` px from it,
+/// shows the layer's point φ/2π of the way across the box and √2·`r` px
+/// down from its top: rows become rings, the top row the middle, and the
+/// columns run round them from straight up. The radius the box's height
+/// maps to is half the diagonal of a square that tall. `polar-to-rect`
+/// is the inverse, rings unrolled into rows. Each pixel goes
+/// `interpolation` of the way from where it is towards where the
+/// conversion takes it, and nothing shows outside the box.
+pub(crate) fn polar_coordinates(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let (amount, unroll) = (number(values, 0), choice(values, 1) == 1);
+    let bounds = layer_box(pixels, space);
+    let (left, top) = (bounds.x0 as f32, bounds.y0 as f32);
+    let (width, height) = (bounds.width() as f32, bounds.height() as f32);
+    let middle = [left + width / 2.0, top + height / 2.0];
+    let turn = std::f32::consts::TAU;
+    remap(pixels, space, |[x, y]| {
+        if !bounds.contains(Point::new(f64::from(x), f64::from(y))) {
+            return None;
+        }
+        let converted = match unroll {
+            false => {
+                let (dx, dy) = (x - middle[0], y - middle[1]);
+                let angle = (-dx).atan2(-dy).rem_euclid(turn);
+                [
+                    left + width * angle / turn,
+                    top + std::f32::consts::SQRT_2 * dx.hypot(dy),
+                ]
+            }
+            true => {
+                let angle = turn * (x - left) / width.max(1e-3);
+                let radius = (y - top) / std::f32::consts::SQRT_2;
+                let (sin, cos) = angle.sin_cos();
+                [middle[0] - radius * sin, middle[1] - radius * cos]
+            }
+        };
+        Some([
+            x + (converted[0] - x) * amount,
+            y + (converted[1] - y) * amount,
+        ])
+    });
+}
+
 /// `turbulent-displace`: every pixel read from up to `amount`/100 of `size`
 /// px away, in a direction a smooth noise of cells `size` px wide gives,
 /// in `complexity` octaves moved by `evolution`. Pinned edges of the

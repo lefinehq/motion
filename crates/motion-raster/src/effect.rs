@@ -1220,6 +1220,31 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "polar-coordinates",
+        params: &[
+            ParamSpec {
+                name: "interpolation",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how far each pixel goes towards where the conversion takes it",
+            },
+            ParamSpec {
+                name: "conversion",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["rect-to-polar", "polar-to-rect"],
+                doc: "rows into rings about the middle, or rings into rows",
+            },
+        ],
+        doc: "turns the layer between rows and columns and rings about its middle",
+        reach: in_box,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: distort::polar_coordinates,
+        },
+    },
+    EffectSpec {
         name: "ramp",
         params: &[
             ParamSpec {
