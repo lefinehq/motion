@@ -26,6 +26,9 @@ pub enum Role {
     /// Changes the outlines before it in its group and in the groups inside
     /// it, for every paint that draws them.
     Modifier,
+    /// Draws everything before it in its group again, outlines and paints
+    /// alike, as copies under transforms and opacities of their own.
+    Repeater,
     /// Changes the pixels of the layer it is on, after its content is drawn.
     Effect,
     /// Moves, scales, turns, fades or recolours the parts of a text its
@@ -1364,8 +1367,77 @@ pub static ROUND_CORNERS: Registry = Registry {
     )],
 };
 
+/// The properties of a repeater. Copy `k` of `n` takes the transform
+/// `k + offset` times over: moved by that many `position`s, turned by that
+/// many `rotate`s and scaled by `scale` to that power, both about `anchor`.
+pub static REPEATER: Registry = Registry {
+    kind: "repeater",
+    rows: &[
+        number(
+            "copies",
+            3.0,
+            Some((0.0, f64::INFINITY)),
+            "how many copies are drawn, the first in place; a fractional part draws one more, \
+             faded by that part",
+        ),
+        number(
+            "offset",
+            0.0,
+            None,
+            "how many steps of the transform every copy takes before its own, fractional or \
+             negative",
+        ),
+        PropertySpec {
+            name: "position",
+            ty: ValueType::Point,
+            rest: Rest::Value(Value::Point([100.0, 0.0])),
+            components: &["x", "y"],
+            range: None,
+            broadcast: false,
+            spatial: true,
+            doc: "how far each copy moves from the one before, in px of the group",
+        },
+        PropertySpec {
+            name: "anchor",
+            ty: ValueType::Point,
+            rest: Rest::Value(Value::Point([0.0, 0.0])),
+            components: &["anchor-x", "anchor-y"],
+            range: None,
+            broadcast: false,
+            spatial: true,
+            doc: "the point each copy turns and scales about, in px of the group",
+        },
+        point(
+            "scale",
+            [1.0, 1.0],
+            &["scale-x", "scale-y"],
+            true,
+            "the size factor of each copy over the one before, on each axis; one number scales \
+             both",
+        ),
+        number(
+            "rotate",
+            0.0,
+            None,
+            "the turn of each copy over the one before, in degrees, clockwise",
+        ),
+        number(
+            "start-opacity",
+            1.0,
+            Some((0.0, 1.0)),
+            "the opacity of the first copy, 0 (invisible) to 1 (solid)",
+        ),
+        number(
+            "end-opacity",
+            1.0,
+            Some((0.0, 1.0)),
+            "the opacity the copies fade towards, one step past the last",
+        ),
+    ],
+};
+
 /// Every kind of shape item.
-pub static SHAPES: [ItemKind; 10] = [
+pub static SHAPES: [ItemKind; 11] = [
     ItemKind {
         name: "group",
         role: Role::Group,
@@ -1515,6 +1587,23 @@ pub static SHAPES: [ItemKind; 10] = [
         outline: None,
         doc: "rounds the sharp corners of the outlines above it, and of those in the groups \
               above it, for every paint that draws them",
+    },
+    ItemKind {
+        name: "repeater",
+        role: Role::Repeater,
+        registry: &REPEATER,
+        primary: Primary::Property("copies"),
+        settings: &[SettingSpec {
+            name: "composite",
+            choices: &["below", "above"],
+            default: "below",
+            doc: "`below` draws each copy under the one before, so the first is on top; `above` \
+                  draws each over it",
+        }],
+        input: None,
+        outline: None,
+        doc: "draws everything above it in its group again as copies, outlines and paints \
+              alike, each moved, turned, scaled and faded one step further",
     },
 ];
 
@@ -2501,8 +2590,8 @@ pub fn effect_kind(name: &str) -> Option<&'static ItemKind> {
 /// The properties code depends on, for the drawing and measuring of items.
 pub mod props {
     use super::{
-        ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, MASK, PART, PATH, Prop, RANGE, RECT, ROUND_CORNERS,
-        STAR, STROKE, TRIM,
+        ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, MASK, PART, PATH, Prop, RANGE, RECT, REPEATER,
+        ROUND_CORNERS, STAR, STROKE, TRIM,
     };
 
     /// A rectangle's width and height.
@@ -2551,6 +2640,22 @@ pub mod props {
     pub const TRIM_OFFSET: Prop = Prop::of(&TRIM, 2);
     /// How far round corners cut back each side of a corner.
     pub const ROUND_CORNERS_RADIUS: Prop = Prop::of(&ROUND_CORNERS, 0);
+    /// How many copies a repeater draws.
+    pub const REPEATER_COPIES: Prop = Prop::of(&REPEATER, 0);
+    /// How many steps of its transform a repeater's copies start along.
+    pub const REPEATER_OFFSET: Prop = Prop::of(&REPEATER, 1);
+    /// How far each of a repeater's copies moves from the one before.
+    pub const REPEATER_POSITION: Prop = Prop::of(&REPEATER, 2);
+    /// The point a repeater's copies turn and scale about.
+    pub const REPEATER_ANCHOR: Prop = Prop::of(&REPEATER, 3);
+    /// The size factor of each of a repeater's copies over the one before.
+    pub const REPEATER_SCALE: Prop = Prop::of(&REPEATER, 4);
+    /// The turn of each of a repeater's copies over the one before.
+    pub const REPEATER_ROTATE: Prop = Prop::of(&REPEATER, 5);
+    /// The opacity of a repeater's first copy.
+    pub const REPEATER_START_OPACITY: Prop = Prop::of(&REPEATER, 6);
+    /// The opacity a repeater's copies fade towards.
+    pub const REPEATER_END_OPACITY: Prop = Prop::of(&REPEATER, 7);
     /// The fill effect's colour.
     pub const FILL_EFFECT_COLOR: Prop = Prop::of(&FILL_EFFECT, 0);
     /// The fill effect's opacity.

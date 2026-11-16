@@ -202,3 +202,22 @@ What is left open:
 - **Text.** A text run's fill and stroke come from its document, not a colour property; a run with neither is written clear, as before.
 - **Effects the scene does not draw yet.** The beams of `ADBE Laser` and Photo Filter store alphas below 1; they will draw opaque when mapped.
 
+
+## Repeaters
+
+A repeater (`ADBE Vector Filter - Repeater`) becomes a `repeater` item ([scene format](scene-format.md#shapes-masks-effects-and-compositions)). 13 local samples hold 65 of them, all at the end of their groups, after paths, paints, trims, zig zags or twists, and two of them twice in a row. None stores an offset, an anchor or a composite, and none animates the count. The beliefs were measured once, by hand: each sample's scene is drawn under two readings, and both are compared with the reference only at the pixels where the readings differ (more than 4 levels on a channel, premultiplied), as the mean of each pixel's largest channel error. The sweep does not check them yet.
+
+| Belief | Evidence | Held, 2026-11-16 |
+|---|---|---|
+| R1. Copy `k` of `n` has the opacity `start + (end − start) · k / n`: the last copy stops one step short of End Opacity. | m647 fades 3 copies to an End Opacity of 0 and m769 the same rig with keyed opacities. Against `k / (n − 1)`, which would hide m647's last copy, `k / n` errs by 0.0368 against 0.0802 over 205 862 pixels of 6 frames of m647, and by 0.0145 against 0.0334 over 42 381 pixels of 16 frames of m769; it errs less on every frame where they differ. | 2 samples, 22 frames |
+| R2. The repeater's match names: `Copies`, `Offset`, `Order` (the composite) and the group `Transform`, holding `Anchor`, `Position`, `Scale`, `Rotation`, `Opacity 1` (start) and `Opacity 2` (end), each after `ADBE Vector Repeater`. | The 129 repeaters in the 206 local projects store Copies, Position, Scale, Rotation and both opacities under these names, in the Transform group. Offset, Order and Anchor are stored by none; their names are the published ones. | 129 repeaters |
+| R3. A repeater that stores no Position holds it at the origin. The editor gives a new repeater a position of [100, 0] and writes it, so a stored [100, 0] is that default. | 112 of the 129 store a Position; the 17 that do not turn their copies (m564's 5 lines at 73°, m565's rings at `360 / copies`, m631's at 60°), as a ring about the anchor does. Drawn with the origin, m564 errs by 0.3145 against 0.4552 for [100, 0] (19 036 pixels) and m565 by 0.3368 against 0.4385 (22 876). m631 ties (0.6394 against 0.6438), its reference far off elsewhere. | 2 samples |
+
+Other things we take without evidence:
+- **Steps add up, they do not compound.** Copy `k` moves by `k` positions and turns and scales about the anchor by `k` steps, as both external readings of the original do; a copy's move is not turned by the copies before it. The samples that move and turn or scale at once, m607 and m608, are transitions laid over stock footage the projects leave out, and their references cannot tell the readings apart (m608: 0.5033 against 0.5053 for compounding steps).
+- **Scale is a power.** Copy `k` is scaled by Scale to the power `k`. m607's 20 copies at 105 % and m608's 3 at 91 % or 47 % are where it would show, behind the same footage.
+- **Composite.** `Order` 1 is `below`, each copy under the one before, so the first is on top; 2 is `above`. Every sample is at the default, and flipping the order changes no pixel of m574, m607, m608, m647, m760 or m769: their copies do not overlap in colour.
+- **Fractional counts.** None in the corpus. The scene draws one copy more, its opacity times the fraction, which is how the editor's users describe an animated count fading copies in; one external reading rounds the count, another takes its ceiling without a fade.
+- **Fractional and negative offsets.** None in the corpus. The scene takes the offset as more or fewer steps, fractional steps included, with Scale's power and a turn in proportion; it does not change the fade.
+- **Items after the repeater.** None in the corpus: a paint or trim after a repeater in its group reaches every copy's outlines in the scene, as the items after a group reach the group's. One external reading copies only the paints before the repeater, leaving its outlines to later paints once.
+- **Copies.** Every repeater stores its count, so the default count, 3 for the scene as for a new repeater in the editor, is not measured.

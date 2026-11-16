@@ -11,6 +11,12 @@
 //! groups' modifiers act before those of the groups around them. A merge
 //! replaces them by one outline of its own, so the paints before it draw
 //! nothing of them.
+//!
+//! A repeater draws everything listed before it in its group again, as
+//! copies: as if those items were replaced by one group per copy, each
+//! under the copy's transform and opacity. So the paints before it draw
+//! each copy faded by the copy's opacity, and the modifiers and paints after
+//! it reach the outlines of every copy.
 
 use kurbo::{Affine, BezPath, Point, Rect, Shape, Vec2};
 use motion_format::item::{Role, props};
@@ -18,7 +24,7 @@ use motion_format::property::GROUP;
 
 use crate::evaluate::local_transform;
 use crate::state::ItemState;
-use crate::{merge, round, trim};
+use crate::{merge, repeater, round, trim};
 
 /// The share of a quarter circle's radius at which a cubic's handles sit so
 /// that it follows the arc: `4/3 (√2 − 1)`.
@@ -171,8 +177,16 @@ impl Walk {
         transform: Affine,
         opacity: f64,
     ) -> Vec<(usize, Affine)> {
-        let mut above: Vec<(usize, Affine)> = Vec::new();
-        for item in items {
+        // The last repeater copies everything before it, earlier repeaters
+        // and their copies included.
+        let (mut above, rest) = match items.iter().rposition(|i| i.kind.role == Role::Repeater) {
+            Some(at) => (
+                self.repeat(&items[at], &items[..at], transform, opacity),
+                &items[at + 1..],
+            ),
+            None => (Vec::new(), items),
+        };
+        for item in rest {
             match item.kind.role {
                 Role::Geometry => {
                     above.push((self.outlines.len(), Affine::IDENTITY));
@@ -205,10 +219,43 @@ impl Walk {
                     transform,
                     opacity,
                 }),
-                Role::Paint | Role::Effect | Role::Animator | Role::Selector | Role::Mask => {}
+                Role::Paint
+                | Role::Repeater
+                | Role::Effect
+                | Role::Animator
+                | Role::Selector
+                | Role::Mask => {}
             }
         }
         above
+    }
+
+    /// Walks `items`, the items before the repeater `item`, once for each
+    /// of its copies, top first, each copy as a group of its own, and
+    /// returns the outlines of every copy in the order of the copies.
+    fn repeat(
+        &mut self,
+        item: &ItemState,
+        items: &[ItemState],
+        transform: Affine,
+        opacity: f64,
+    ) -> Vec<(usize, Affine)> {
+        let mut copies: Vec<(usize, Vec<(usize, Affine)>)> = repeater::copies(item)
+            .into_iter()
+            .map(|copy| {
+                let inner = self.group(items, transform * copy.transform, opacity * copy.opacity);
+                let outlines = inner
+                    .into_iter()
+                    .map(|(at, into)| (at, copy.transform * into))
+                    .collect();
+                (copy.index, outlines)
+            })
+            .collect();
+        copies.sort_by_key(|&(index, _)| index);
+        copies
+            .into_iter()
+            .flat_map(|(_, outlines)| outlines)
+            .collect()
     }
 }
 

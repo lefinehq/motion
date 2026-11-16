@@ -208,6 +208,7 @@ const MERGE_MODES: &[(i64, &str)] = &[
     (4, "intersect"),
     (5, "exclude"),
 ];
+const COMPOSITES: &[(i64, &str)] = &[(1, "below"), (2, "above")];
 const BASED_ON: &[(i64, &str)] = &[(1, "char"), (2, "char-no-space"), (3, "word"), (4, "line")];
 const MODES: &[(i64, &str)] = &[
     (1, "add"),
@@ -953,7 +954,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 43] = [
+pub(super) static KINDS: [Kind; 44] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -1288,6 +1289,72 @@ pub(super) static KINDS: [Kind; 43] = [
             Missing::Number(10.0),
         )],
         parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Vector Filter - Repeater",
+        item: "repeater",
+        table: &SHAPES,
+        rows: &[
+            row(
+                "ADBE Vector Repeater Copies",
+                To::Prop("copies"),
+                Number,
+                Missing::Number(3.0),
+            ),
+            row(
+                "ADBE Vector Repeater Offset",
+                To::Prop("offset"),
+                Number,
+                Missing::Number(0.0),
+            ),
+            row(
+                "ADBE Vector Repeater Order",
+                To::Setting("composite", COMPOSITES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Vector Repeater Anchor",
+                To::Prop("anchor"),
+                Point,
+                Missing::Vector([0.0, 0.0]),
+            ),
+            // The editor gives a new repeater a position of [100, 0] and
+            // stores it; a project that leaves the position out holds the
+            // origin (evidence R3).
+            row(
+                "ADBE Vector Repeater Position",
+                To::Prop("position"),
+                Point,
+                Missing::Vector([0.0, 0.0]),
+            ),
+            row(
+                "ADBE Vector Repeater Scale",
+                To::Prop("scale"),
+                PointPercent,
+                Missing::Vector([100.0, 100.0]),
+            ),
+            row(
+                "ADBE Vector Repeater Rotation",
+                To::Prop("rotate"),
+                Number,
+                Missing::Number(0.0),
+            ),
+            row(
+                "ADBE Vector Repeater Opacity 1",
+                To::Prop("start-opacity"),
+                Percent,
+                Missing::Number(100.0),
+            ),
+            row(
+                "ADBE Vector Repeater Opacity 2",
+                To::Prop("end-opacity"),
+                Percent,
+                Missing::Number(100.0),
+            ),
+        ],
+        parts: &[("ADBE Vector Repeater Transform", Part::Rows)],
         switch: None,
     },
     Kind {
