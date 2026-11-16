@@ -235,6 +235,23 @@ impl Painter {
         })
     }
 
+    /// How much of each pixel of the grid lies inside `clip`, drawn in
+    /// coordinates `transform` takes to the grid.
+    fn coverage(&self, clip: &Clip, transform: Affine) -> Vec<f32> {
+        let (path, rule) = clip.outline();
+        let mut painter = Painter::new(self.width, self.height, self.options);
+        painter.ctx.set_transform(transform);
+        painter.ctx.set_paint(Color::WHITE.to_vello());
+        painter.ctx.set_fill_rule(rule.to_vello());
+        painter.ctx.fill_path(&path);
+        painter
+            .finish()
+            .data()
+            .iter()
+            .map(|p| f32::from(p.a) / 255.0)
+            .collect()
+    }
+
     /// Draws `nodes` on a canvas of their own and returns its pixels.
     fn drawn_alone(&self, nodes: &[Node], transform: Affine) -> Result<Pixels> {
         let mut painter = Painter::new(self.width, self.height, self.options);
@@ -245,7 +262,13 @@ impl Painter {
     /// Where `effect` runs on a layer whose own coordinates `transform`
     /// takes to the frame: with the drawing of the layer it reads, if any,
     /// laid on those coordinates.
-    fn space(&self, effect: &Effect, transform: Affine, layer: &Layer) -> Result<Space> {
+    fn space(
+        &self,
+        effect: &Effect,
+        transform: Affine,
+        layer: &Layer,
+        bounds: Option<Rect>,
+    ) -> Result<Space> {
         let input = effect
             .input()
             .map(|node| {
@@ -259,7 +282,7 @@ impl Painter {
             .transpose()?;
         Ok(Space {
             transform,
-            bounds: layer.bounds,
+            bounds,
             input,
             time: layer.time,
             sound: effect.sound().cloned(),
@@ -377,9 +400,11 @@ impl Painter {
             }
         };
         let mut changed = drawn.clone();
+        let mut bounds = filter.bounds;
         for effect in &filter.effects {
-            let space = self.space(effect, transform, filter)?;
+            let space = self.space(effect, transform, filter, bounds)?;
             effect.apply(&mut changed, &space);
+            bounds = bounds.map(|b| effect.grown(b));
         }
         let matte = filter
             .matte
@@ -424,7 +449,7 @@ impl Painter {
             .map(|matte| self.mask(matte, parent))
             .transpose()?;
         self.ctx.set_transform(transform);
-        let clip = layer.clip.as_ref().map(Clip::outline);
+        let clip = layer.shown_clip().as_ref().map(Clip::outline);
         if let Some((_, rule)) = &clip {
             self.ctx.set_fill_rule(rule.to_vello());
         }
@@ -476,7 +501,7 @@ impl Painter {
             // The buffer holds the layer alone, so only a clip needs a
             // layer of its own in it: what effects paint over the content
             // composes with the buffer's own px either way.
-            let Some((path, rule)) = layer.clip.as_ref().map(Clip::outline) else {
+            let Some((path, rule)) = layer.shown_clip().as_ref().map(Clip::outline) else {
                 return sub.content(layer, steps, plan.local, Affine::IDENTITY);
             };
             sub.ctx.set_transform(plan.local);
@@ -546,14 +571,23 @@ impl Painter {
             return drawn;
         }
         let mut pixels = self.drawn_alone(&layer.children, transform * moved)?;
-        if let Some(cut) = &cut {
+        // An effect that draws beyond the box grows the clip the layer
+        // shows within, so the content is cut to its own clip first.
+        let clipped = match (&layer.clip, layer.effects_grow()) {
+            (Some(clip), true) => Some(self.coverage(clip, transform)),
+            _ => None,
+        };
+        for cut in [&cut, &clipped].into_iter().flatten() {
             for (pixel, kept) in pixels.data_mut().iter_mut().zip(cut) {
                 *pixel = pixel.map(|c| c * kept);
             }
         }
+        // Each effect sees the box the ones before it grew.
+        let mut bounds = layer.bounds;
         for effect in steps.on_pixels {
-            let space = self.space(effect, transform, layer)?;
+            let space = self.space(effect, transform, layer, bounds)?;
             effect.apply(&mut pixels, &space);
+            bounds = bounds.map(|b| effect.grown(b));
         }
         if !layer.motion.is_empty() {
             pixels = moved_average(&pixels, &layer.motion, parent);

@@ -184,6 +184,59 @@ pub(crate) fn polar_coordinates(pixels: &mut Pixels, values: &[ParamValue], spac
     });
 }
 
+/// `repeat-tile`: the layer's box repeated around itself, as far as
+/// `right`, `left`, `down` and `up` reach beyond it. With `repeat` every
+/// tile is the box; with `unfold` every other column of tiles flips
+/// across and every other row upside down, so neighbours meet at their
+/// edges; with `brick` every other row shifts by half a tile; with `none`
+/// the box only grows, for the effects after it, and nothing shows
+/// outside the box.
+pub(crate) fn repeat_tile(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let [right, left, down, up] = std::array::from_fn(|i| number(values, i));
+    let tiling = choice(values, 4);
+    let bounds = layer_box(pixels, space);
+    let reach = Rect::new(
+        bounds.x0 - f64::from(left),
+        bounds.y0 - f64::from(up),
+        bounds.x1 + f64::from(right),
+        bounds.y1 + f64::from(down),
+    );
+    let (origin, size) = (
+        [bounds.x0 as f32, bounds.y0 as f32],
+        [bounds.width() as f32, bounds.height() as f32],
+    );
+    if size[0] <= 0.0 || size[1] <= 0.0 {
+        return;
+    }
+    remap(pixels, space, |[x, y]| {
+        if !reach.contains(Point::new(f64::from(x), f64::from(y))) {
+            return None;
+        }
+        let row = ((y - origin[1]) / size[1]).floor();
+        if tiling == 3 && !bounds.contains(Point::new(f64::from(x), f64::from(y))) {
+            return None;
+        }
+        let shift = match tiling == 2 && row.rem_euclid(2.0) == 1.0 {
+            true => size[0] / 2.0,
+            false => 0.0,
+        };
+        let column = ((x - origin[0] - shift) / size[0]).floor();
+        let along = [
+            x - origin[0] - shift - column * size[0],
+            y - origin[1] - row * size[1],
+        ];
+        let flips = [column, row].map(|n| tiling == 1 && n.rem_euclid(2.0) == 1.0);
+        Some(std::array::from_fn(|i| {
+            origin[i]
+                + if flips[i] {
+                    size[i] - along[i]
+                } else {
+                    along[i]
+                }
+        }))
+    });
+}
+
 /// `turbulent-displace`: every pixel read from up to `amount`/100 of `size`
 /// px away, in a direction a smooth noise of cells `size` px wide gives,
 /// in `complexity` octaves moved by `evolution`. Pinned edges of the

@@ -765,6 +765,37 @@ pub static POLAR_COORDINATES: Registry = Registry {
     )],
 };
 
+/// The properties of `repeat-tile`.
+pub static REPEAT_TILE: Registry = Registry {
+    kind: "repeat-tile",
+    rows: &[
+        number(
+            "right",
+            0.0,
+            Some((0.0, 100_000.0)),
+            "how far the tiles reach right of the layer's box, in px of the layer",
+        ),
+        number(
+            "left",
+            0.0,
+            Some((0.0, 100_000.0)),
+            "how far the tiles reach left of the layer's box, in px of the layer",
+        ),
+        number(
+            "down",
+            0.0,
+            Some((0.0, 100_000.0)),
+            "how far the tiles reach below the layer's box, in px of the layer",
+        ),
+        number(
+            "up",
+            0.0,
+            Some((0.0, 100_000.0)),
+            "how far the tiles reach above the layer's box, in px of the layer",
+        ),
+    ],
+};
+
 /// The properties of the gradient ramp.
 pub static RAMP: Registry = Registry {
     kind: "ramp",
@@ -1427,7 +1458,7 @@ pub static SHAPES: [ItemKind; 8] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 28] = [
+pub static EFFECTS: [ItemKind; 29] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -1782,6 +1813,22 @@ pub static EFFECTS: [ItemKind; 28] = [
         }],
         input: None,
         doc: "turns the layer between rows and columns and rings about its middle",
+    },
+    ItemKind {
+        name: "repeat-tile",
+        role: Role::Effect,
+        registry: &REPEAT_TILE,
+        primary: Primary::Setting("tiling"),
+        settings: &[SettingSpec {
+            name: "tiling",
+            choices: &["repeat", "unfold", "brick", "none"],
+            default: "repeat",
+            doc: "how the tiles lie: all alike, every other column and row flipped so \
+                  neighbours meet at their edges, every other row shifted by half a tile, \
+                  or none, the box grown with nothing in it for the effects after",
+        }],
+        input: None,
+        doc: "repeats the layer's box around it, growing the box",
     },
     ItemKind {
         name: "ramp",

@@ -221,9 +221,15 @@ fn a_collapsed_comp_draws_into_its_canvas_with_its_effects_over_it() {
     let layer = only_layer(&frame);
     // Its effects run in the scene's coordinates, over the scene's canvas,
     // and its layers are moved there, without the card's clip or background.
+    // Its box is the card's canvas where it lands.
     assert_eq!(layer.transform, Affine::IDENTITY);
     assert_eq!(layer.clip, None);
-    assert_eq!(layer.bounds, Some(Rect::new(0.0, 0.0, 200.0, 100.0)));
+    let card = Rect::new(0.0, 0.0, 40.0, 30.0);
+    assert_eq!(
+        layer.bounds,
+        Some(state.nodes[0].transform.transform_rect_bbox(card))
+    );
+    assert_ne!(layer.bounds, Some(card));
     assert_eq!(layer.effects.len(), 1);
     assert!(layer.isolate);
     let [Node::Layer(moved)] = layer.children.as_slice() else {

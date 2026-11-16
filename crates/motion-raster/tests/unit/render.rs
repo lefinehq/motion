@@ -367,6 +367,57 @@ fn a_clip_hides_what_lies_outside_it() {
     assert_eq!(image.pixel(6, 4), Some([0, 0, 0, 0]));
 }
 
+#[test]
+fn an_effect_that_grows_the_box_grows_the_clip_with_it() {
+    // A black 8 by 8 square clipped to its left half, tiled 4 px right.
+    let tile = |right: f32| Layer {
+        clip: Some(Clip::Rect(Rect::new(0.0, 0.0, 4.0, 8.0))),
+        bounds: Some(Rect::new(0.0, 0.0, 4.0, 8.0)),
+        effects: vec![
+            Effect::new(
+                "repeat-tile",
+                &[
+                    ("right", ParamValue::Number(right)),
+                    ("tiling", ParamValue::Choice(1)),
+                ],
+            )
+            .unwrap(),
+        ],
+        ..Layer::new(vec![
+            cover(8.0, Color::BLACK),
+            Node::Path(PathDraw {
+                path: Rect::new(0.0, 0.0, 1.0, 8.0).to_path(0.1),
+                paint: Paint::Solid(Color::WHITE),
+                style: DrawStyle::Fill(FillRule::NonZero),
+            }),
+        ])
+    };
+    let drawn = |right| {
+        render_with(
+            &Frame {
+                nodes: vec![Node::Layer(tile(right))],
+                ..Frame::default()
+            },
+            8,
+            8,
+            RenderOptions::GOLDEN,
+        )
+        .unwrap()
+    };
+    // The content is cut to the clip before the tiles: the unfolded tile
+    // beside it shows its white column at its far edge, not the black
+    // beyond the clip.
+    let image = drawn(4.0);
+    assert_eq!(image.pixel(0, 4), Some([255, 255, 255, 255]));
+    assert_eq!(image.pixel(3, 4), Some([0, 0, 0, 255]));
+    assert_eq!(image.pixel(4, 4), Some([0, 0, 0, 255]));
+    assert_eq!(image.pixel(7, 4), Some([255, 255, 255, 255]));
+    // Tiles reaching 2 px show 2 px past the clip.
+    let image = drawn(2.0);
+    assert_eq!(image.pixel(5, 4), Some([0, 0, 0, 255]));
+    assert_eq!(image.pixel(6, 4), Some([0, 0, 0, 0]));
+}
+
 #[rstest]
 fn every_quality_and_instruction_set_draws_the_same_picture(
     #[values(Quality::Precise, Quality::Fast)] quality: Quality,

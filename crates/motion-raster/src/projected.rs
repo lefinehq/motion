@@ -123,38 +123,45 @@ impl Extent {
 }
 
 /// Where `layer` draws in its own coordinates: its box, or its children's,
-/// grown and moved by its effects in order and cut to its clip.
+/// grown and moved by its effects in order and cut to its clip, as its
+/// effects grow it.
 pub(crate) fn extent(layer: &Layer) -> Extent {
     let content = match layer.bounds {
         Some(bounds) => Extent::Box(bounds),
         None => nodes_extent(&layer.children),
     };
     let drawn = after_effects(content, &layer.effects, layer.bounds);
-    match &layer.clip {
-        Some(clip) => drawn.within(clip_box(clip)),
+    match layer.shown_clip() {
+        Some(clip) => drawn.within(clip_box(&clip)),
         None => drawn,
     }
 }
 
 /// Where `extent` draws once `effects` have run on it, for a layer whose
-/// box is `bounds`.
+/// box is `bounds`; an effect that grows the box leaves the grown box to
+/// the effects after it.
 fn after_effects(extent: Extent, effects: &[Effect], bounds: Option<Rect>) -> Extent {
-    effects.iter().fold(extent, |drawn, effect| {
-        if let Some(movement) = effect.movement() {
-            return drawn.moved(movement.transform);
-        }
-        match effect.reach() {
-            Reach::Within(by) => match drawn {
-                Extent::Box(b) => Extent::Box(b.inflate(f64::from(by), f64::from(by))),
-                e => e,
-            },
-            Reach::Bounds => match bounds {
-                Some(bounds) => drawn.union(Extent::Box(bounds)),
-                None => Extent::Everywhere,
-            },
-            Reach::Anywhere => Extent::Everywhere,
-        }
-    })
+    let (drawn, _) = effects
+        .iter()
+        .fold((extent, bounds), |(drawn, bounds), effect| {
+            if let Some(movement) = effect.movement() {
+                return (drawn.moved(movement.transform), bounds);
+            }
+            let grown = bounds.map(|b| effect.grown(b));
+            let drawn = match effect.reach() {
+                Reach::Within(by) => match drawn {
+                    Extent::Box(b) => Extent::Box(b.inflate(f64::from(by), f64::from(by))),
+                    e => e,
+                },
+                Reach::Bounds | Reach::Grows(_) => match grown {
+                    Some(grown) => drawn.union(Extent::Box(grown)),
+                    None => Extent::Everywhere,
+                },
+                Reach::Anywhere => Extent::Everywhere,
+            };
+            (drawn, grown)
+        });
+    drawn
 }
 
 /// The box of a clip's outline.
@@ -257,7 +264,7 @@ pub(crate) fn read_reach(layer: &Layer) -> Option<f64> {
         Some(_) => None,
         None => match effect.reach() {
             Reach::Within(by) => Some(sum + f64::from(by)),
-            Reach::Bounds | Reach::Anywhere => None,
+            Reach::Bounds | Reach::Grows(_) | Reach::Anywhere => None,
         },
     })
 }
