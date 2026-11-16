@@ -96,3 +96,9 @@ What is left open:
 - **The other 12 RepeTile tilings**, from `Checker Flip H` to `Slide`, are not set in any local project and are reported. So is `Blend Borders` (`-0006`) other than 0, which none sets.
 - **m713's dashes** needed its `Fill` effect drawn opaque for D4. The project's fill colour stores alpha 0 (from a colour control), the reference draws the dashes grey, and the scene's `fill` takes the alpha. So the original ignores a fill colour's alpha and the import does not yet. With it ignored, m713 would go from 67.84% to 65.25% failing over all frames.
 - **m583's text colour.** The reference draws the words white where the project's colour control stores black, so its error does not fall with the tiles.
+
+## What expressions read
+
+| Belief | Evidence | Held, 2026-11-16 |
+|---|---|---|
+| X1. An expression reads a 2D layer's anchor point, position and scale as two components, though the project stores three; a 3D layer's, a camera's and a light's as three. | A gaming lower-third family (m571 to m575, m739, m783) sizes its logo with a rig on a 2D null: its parent's scale expression gives `[thisComp.width, thisComp.height]`, two components, and the child divides each component of its own scale by its parent's, `for (i = 0; i < s.length; i++)`. With three components the third is `NaN` and the original would show an error; with two the logo's world scale is 2 by 2, and the logo lies on the reference's: m783 1.72 % → 0.93 % failing, m571 7.40 % → 1.85 %, m573 9.17 % → 1.78 %. | Over the 50 corpus samples under 25 % failing, 6 draw closer and none farther. |
