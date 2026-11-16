@@ -954,7 +954,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 44] = [
+pub(super) static KINDS: [Kind; 45] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -1355,6 +1355,45 @@ pub(super) static KINDS: [Kind; 44] = [
             ),
         ],
         parts: &[("ADBE Vector Repeater Transform", Part::Rows)],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Vector Filter - Offset",
+        item: "expand",
+        table: &SHAPES,
+        rows: &[
+            row(
+                "ADBE Vector Offset Amount",
+                To::Prop("amount"),
+                Number,
+                Missing::Number(10.0),
+            ),
+            row(
+                "ADBE Vector Offset Line Join",
+                To::Setting("join", LINE_JOINS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Vector Offset Miter Limit",
+                To::Prop("miter"),
+                Number,
+                Missing::Number(4.0),
+            ),
+            row(
+                "ADBE Vector Offset Copies",
+                To::Prop("copies"),
+                Number,
+                Missing::Number(1.0),
+            ),
+            row(
+                "ADBE Vector Offset Copy Offset",
+                To::Prop("copy-offset"),
+                Number,
+                Missing::Number(0.0),
+            ),
+        ],
+        parts: &[],
         switch: None,
     },
     Kind {

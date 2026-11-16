@@ -642,3 +642,13 @@ Status: Draft · 2026-11-16
   - The paints and trims after a repeater reach every copy's outlines as they reach a group's, so a stroke below a repeater strokes all the copies, and two repeaters in a row make a grid.
   - 13 corpus samples use it, 65 repeaters in all, for rings of strokes, grids of dots and trails. The beliefs, checked against their references, are in [aep-evidence.md](aep-evidence.md#repeaters).
 - **Not now:** a blend mode per copy, and copies that compound, each step turning the moves after it: no sample tells the two apart.
+
+### D68. An expansion moves outlines out by an amount
+
+- **Decision:** a shape layer has an `expand` item, a modifier like `trim`: it moves every outline listed before it in its group, those in earlier groups included, `amount` px to the left of the way it runs, so outward for the clockwise outlines `rect`, `ellipse` and `star` draw. Each side moves along its normal, a curve to its true parallel within 0.001 px. Sides that part are joined by `join` (`miter` within `miter` amounts of the corner, `round`, `bevel`); sides that cross are cut where they cross. An open outline becomes the closed outline around it. `copies` repeats the outline one `amount` further out each, shifted by `copy-offset` amounts.
+- **Why:**
+  - Boxes behind titles are drawn this way: a rectangle sized to the text, grown by a margin. 44 expansions in 10 corpus samples grow rectangles, most of them sized to a text by an expression, by 10 to 72 px a side.
+  - A modifier, not a grown `rect`, because the outlines it grows can be any of a group's, paths and stars included, and because the outline itself changes: every paint that draws it, and every trim after it, sees the grown one, as with a trim.
+  - Moving each side to its exact parallel and joining or cutting at the corners keeps the outline's own structure, one outline in, one out, which trims and fill rules after it count on. Growing by a stroke and a union of areas would merge outlines and lose their direction.
+  - The miter limit counts in amounts from the corner, as a stroke's counts in widths: m624's bar, grown 28 with the limit 4, has square corners in its reference, where a limit in px would bevel them.
+- **Not now:** removing the loops a large inward amount leaves where sides other than neighbours cross; they are filled by the fill's rule as drawn.

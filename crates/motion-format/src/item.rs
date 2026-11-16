@@ -1436,8 +1436,41 @@ pub static REPEATER: Registry = Registry {
     ],
 };
 
+/// The properties of an expansion.
+pub static EXPAND: Registry = Registry {
+    kind: "expand",
+    rows: &[
+        number(
+            "amount",
+            10.0,
+            None,
+            "how far the outlines move out, in px; a negative amount moves them in",
+        ),
+        number(
+            "miter",
+            4.0,
+            Some((1.0, f64::INFINITY)),
+            "how far a `miter` join may reach from its corner, in amounts, before it is \
+             bevelled",
+        ),
+        number(
+            "copies",
+            1.0,
+            Some((0.0, f64::INFINITY)),
+            "how many expanded outlines each outline becomes, each one amount further out; \
+             counts by its whole part",
+        ),
+        number(
+            "copy-offset",
+            0.0,
+            None,
+            "how many amounts every copy moves further out",
+        ),
+    ],
+};
+
 /// Every kind of shape item.
-pub static SHAPES: [ItemKind; 11] = [
+pub static SHAPES: [ItemKind; 12] = [
     ItemKind {
         name: "group",
         role: Role::Group,
@@ -1604,6 +1637,22 @@ pub static SHAPES: [ItemKind; 11] = [
         outline: None,
         doc: "draws everything above it in its group again as copies, outlines and paints \
               alike, each moved, turned, scaled and faded one step further",
+    },
+    ItemKind {
+        name: "expand",
+        role: Role::Modifier,
+        registry: &EXPAND,
+        primary: Primary::Property("amount"),
+        settings: &[SettingSpec {
+            name: "join",
+            choices: &["miter", "round", "bevel"],
+            default: "miter",
+            doc: "how the moved sides meet where the outline turns away from them",
+        }],
+        input: None,
+        outline: None,
+        doc: "moves the outlines above it, and those in the groups above it, out by an amount, \
+              for every paint that draws them",
     },
 ];
 
@@ -2590,8 +2639,8 @@ pub fn effect_kind(name: &str) -> Option<&'static ItemKind> {
 /// The properties code depends on, for the drawing and measuring of items.
 pub mod props {
     use super::{
-        ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, MASK, PART, PATH, Prop, RANGE, RECT, REPEATER,
-        ROUND_CORNERS, STAR, STROKE, TRIM,
+        ANIMATOR, ELLIPSE, EXPAND, FILL, FILL_EFFECT, MASK, PART, PATH, Prop, RANGE, RECT,
+        REPEATER, ROUND_CORNERS, STAR, STROKE, TRIM,
     };
 
     /// A rectangle's width and height.
@@ -2656,6 +2705,14 @@ pub mod props {
     pub const REPEATER_START_OPACITY: Prop = Prop::of(&REPEATER, 6);
     /// The opacity a repeater's copies fade towards.
     pub const REPEATER_END_OPACITY: Prop = Prop::of(&REPEATER, 7);
+    /// How far an expansion moves outlines out, in px.
+    pub const EXPAND_AMOUNT: Prop = Prop::of(&EXPAND, 0);
+    /// How far an expansion's miter joins may reach, in amounts.
+    pub const EXPAND_MITER: Prop = Prop::of(&EXPAND, 1);
+    /// How many expanded outlines an expansion makes of each.
+    pub const EXPAND_COPIES: Prop = Prop::of(&EXPAND, 2);
+    /// How many amounts an expansion's copies move further out.
+    pub const EXPAND_COPY_OFFSET: Prop = Prop::of(&EXPAND, 3);
     /// The fill effect's colour.
     pub const FILL_EFFECT_COLOR: Prop = Prop::of(&FILL_EFFECT, 0);
     /// The fill effect's opacity.

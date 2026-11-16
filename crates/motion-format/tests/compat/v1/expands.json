@@ -1,0 +1,19 @@
+{"motion":1,"size":"480x480","fps":24,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"box","at":"140 120","shapes":[
+ {"group":[{"rect":[140,50],"round":10},{"fill":"#3B82F6"}]},
+ {"expand":10,"join":"miter","miter":4,"anim":{"amount":"0 -> 24 @0-18f out-cubic"}}]},
+{"id":"spike","at":"340 120","shapes":[
+ {"path":"M-60,-30 L60,0 L-60,30 Z"},
+ {"expand":8,"join":"miter","miter":2},
+ {"fill":"#E4572E"}]},
+{"id":"rings","at":"140 340","shapes":[
+ {"rect":[40,40]},
+ {"expand":12,"join":"round","copies":3,"copy-offset":0,"anim":{"copy-offset":"0 -> 1 @0-1s"}},
+ {"stroke":"#101010","width":3}]},
+{"id":"line","at":"340 340","shapes":[
+ {"path":"M-80,20 L0,-30 L80,20"},
+ {"expand":-10,"join":"bevel"},
+ {"fill":"#FFE000"},
+ {"stroke":"#101010","width":2}]}
+]}
