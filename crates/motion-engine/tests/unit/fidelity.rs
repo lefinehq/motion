@@ -1,5 +1,6 @@
 //! Unit tests for `src/fidelity.rs`: a manifest read, a sample measured
-//! against its own frames, ledgers compared, and verdicts scored.
+//! against its own frames, floors read and applied, ledgers compared, and
+//! verdicts scored under both rules.
 
 use pretty_assertions::assert_eq;
 
@@ -27,6 +28,8 @@ fn measure_at(error: f64) -> Measure {
         content_error: Some(error),
         content_failing: Some(error),
         frames_passing: Some(if error <= DiffOptions::PASSING { 3 } else { 1 }),
+        frames_passing_floor: Some(if error <= DiffOptions::PASSING { 3 } else { 1 }),
+        floor: None,
         frames_empty: Some(0),
         drawn_error: error,
         drawn_failing: error,
@@ -52,7 +55,7 @@ fn a_manifest_reads_paths_from_its_own_folder() {
     let path = dir.join("samples.json");
     fs::write(
         &path,
-        r#"{"samples":[{"id":"s1","project":"p/a.aep","fonts":["fonts"],"reference":"/frames","fps":25,"ignore":["bg"]}]}"#,
+        r#"{"samples":[{"id":"s1","project":"p/a.aep","fonts":["fonts"],"reference":"/frames","fps":25,"ignore":["bg"],"floor":"refs/s1/floor.json"}]}"#,
     )
     .unwrap();
     let manifest = Manifest::read(&path).unwrap();
@@ -60,6 +63,7 @@ fn a_manifest_reads_paths_from_its_own_folder() {
     assert_eq!(sample.project, dir.join("p/a.aep"));
     assert_eq!(sample.fonts, [dir.join("fonts")]);
     assert_eq!(sample.reference, PathBuf::from("/frames"));
+    assert_eq!(sample.floor, Some(dir.join("refs/s1/floor.json")));
     assert_eq!((sample.start, sample.settled), (0.0, None));
     fs::write(&path, r#"{"samples":[{"id":"s1","name":"x"}]}"#).unwrap();
     let error = Manifest::read(&path).unwrap_err();
@@ -86,6 +90,7 @@ fn a_sample_measured_against_its_own_frames_has_no_error() {
         ignore: Vec::new(),
         settled: Some(1.0),
         excluded: None,
+        floor: None,
     };
     // The reference: the imported scene itself, drawn every two seconds,
     // as a sample at half a frame a second compares it.
@@ -108,10 +113,37 @@ fn a_sample_measured_against_its_own_frames_has_no_error() {
     // The star is drawn, in the scene and so in its own frames: every frame
     // passes and shows it, so the sample passes.
     assert_eq!(measure.all.frames_empty, Some(0));
-    assert_eq!(measure.verdict(None), Verdict::Passes);
+    assert_eq!(measure.verdict(None, Rule::Floor), Verdict::Passes);
     assert_eq!(measure.settled.as_ref().map(|w| w.frames), Some(2));
     assert!(work.join("star/scene.json").exists());
     assert!(work.join("star/errors/f0.png").exists());
+    assert_eq!(measure.all.floor, None, "no floor given");
+    // With floors, the window records their mean and counts over them.
+    let floor = dir.join("floor.json");
+    fs::write(
+        &floor,
+        r#"{"frames":{"f0.png":0.01,"f1.png":0.02,"f2.png":0.03}}"#,
+    )
+    .unwrap();
+    let floored = Sample {
+        floor: Some(floor.clone()),
+        ..sample.clone()
+    };
+    let measure = super::measure(&floored, &work, false).unwrap();
+    assert_eq!(measure.all.floor.map(|f| (f * 1e6).round()), Some(20_000.0));
+    assert_eq!(measure.all.frames_passing_floor, Some(3));
+    let settled = measure.settled.and_then(|w| w.floor);
+    assert_eq!(settled.map(|f| (f * 1e6).round()), Some(25_000.0));
+    // Floors made for other frames are refused, not applied.
+    fs::write(&floor, r#"{"frames":{"f0.png":0.01,"f1.png":0.02}}"#).unwrap();
+    let stale = super::measure(&floored, &work, false).unwrap_err();
+    assert!(
+        stale
+            .message
+            .contains("sample `star`: the floors give no floor for `f2.png`"),
+        "{}",
+        stale.message
+    );
 }
 
 #[test]
@@ -212,7 +244,7 @@ fn a_ledger_round_trips_rounded() {
         None
     );
     assert_eq!(
-        Ledger::read(&path).unwrap().samples["a"].verdict(None),
+        Ledger::read(&path).unwrap().samples["a"].verdict(None, Rule::Floor),
         Verdict::Unscored
     );
 }
@@ -230,16 +262,21 @@ fn sample(id: &str, excluded: Option<&str>) -> Sample {
         ignore: Vec::new(),
         settled: Some(1.0),
         excluded: excluded.map(str::to_owned),
+        floor: None,
     }
 }
 
 #[test]
 fn a_sample_passes_only_when_every_frame_does() {
     let mut measure = measure_at(DiffOptions::PASSING);
-    assert_eq!(measure.verdict(None), Verdict::Passes, "the limit passes");
+    assert_eq!(
+        measure.verdict(None, Rule::Strict),
+        Verdict::Passes,
+        "the limit passes"
+    );
     measure.all.frames_passing = Some(2);
     assert_eq!(
-        measure.verdict(None),
+        measure.verdict(None, Rule::Strict),
         Verdict::Settles,
         "its entrance fails"
     );
@@ -247,11 +284,15 @@ fn a_sample_passes_only_when_every_frame_does() {
     let mut hollow = measure.clone();
     hollow.settled.as_mut().unwrap().frames_empty = Some(3);
     assert!(
-        matches!(hollow.verdict(None), Verdict::Blocked(_)),
+        matches!(hollow.verdict(None, Rule::Strict), Verdict::Blocked(_)),
         "all empty"
     );
     hollow.settled.as_mut().unwrap().frames_empty = Some(2);
-    assert_eq!(hollow.verdict(None), Verdict::Settles, "one has content");
+    assert_eq!(
+        hollow.verdict(None, Rule::Strict),
+        Verdict::Settles,
+        "one has content"
+    );
     let none = Window {
         frames: 0,
         frames_passing: Some(0),
@@ -260,19 +301,19 @@ fn a_sample_passes_only_when_every_frame_does() {
     };
     hollow.settled = Some(none);
     assert!(
-        matches!(hollow.verdict(None), Verdict::Blocked(_)),
+        matches!(hollow.verdict(None, Rule::Strict), Verdict::Blocked(_)),
         "no frame"
     );
     let failing = measure_at(0.5);
     assert_eq!(
-        failing.verdict(None),
+        failing.verdict(None, Rule::Strict),
         Verdict::Blocked(vec!["stars".into()])
     );
     let mut silent = failing.clone();
     silent.unsupported.clear();
-    assert_eq!(silent.verdict(None), Verdict::Unexplained);
+    assert_eq!(silent.verdict(None, Rule::Strict), Verdict::Unexplained);
     assert_eq!(
-        silent.verdict(Some("other footage")),
+        silent.verdict(Some("other footage"), Rule::Strict),
         Verdict::Excluded("other footage".into())
     );
     let frame = |failing: f64| crate::diff::Error {
@@ -307,10 +348,188 @@ fn the_scoreboard_ranks_single_gaps_and_leaves_out_the_excluded() {
         sample("out", Some("an empty composition")),
         sample("unmeasured", None),
     ];
-    let board = Scoreboard::new(&samples, &ledger);
+    let board = Scoreboard::new(&samples, &ledger, Rule::Floor);
     assert_eq!(board.samples.len(), 6, "the unmeasured one is left out");
     assert_eq!(board.scored(), 5);
     assert_eq!(board.ids(|v| *v == Verdict::Passes), ["pass"]);
     assert_eq!(board.ids(|v| *v == Verdict::Unexplained), ["silent"]);
     assert_eq!(board.single_gaps(), [("stars", vec!["star1", "star2"])]);
+    // Frames are counted over the scored samples only, not the excluded.
+    assert_eq!(
+        (board.frames_passing, board.frames),
+        (3 + 1 + 1 + 1 + 1, 15)
+    );
+}
+
+#[test]
+fn floors_read_by_frame_and_must_cover_the_reference() {
+    let dir = scratch("floors");
+    let path = dir.join("floor.json");
+    // What the floors were measured from is the tooling's, and not read.
+    fs::write(
+        &path,
+        r#"{"frames":{"f1.png":0.0128,"f2.png":0},"made":{"x264":"crf=23.0"}}"#,
+    )
+    .unwrap();
+    let floors = Floors::read(&path).unwrap();
+    let frames = |names: &[&str]| -> Vec<PathBuf> { names.iter().map(|n| dir.join(n)).collect() };
+    assert_eq!(
+        floors.of(&frames(&["f1.png", "f2.png"])).unwrap(),
+        [0.0128, 0.0]
+    );
+    let missing = floors
+        .of(&frames(&["f1.png", "f2.png", "f3.png"]))
+        .unwrap_err();
+    assert!(
+        missing.message.contains("no floor for `f3.png`"),
+        "{}",
+        missing.message
+    );
+    let extra = floors.of(&frames(&["f1.png"])).unwrap_err();
+    assert!(
+        extra
+            .message
+            .contains("`f2.png`, which the reference lacks"),
+        "{}",
+        extra.message
+    );
+    for bad in [
+        r#"{"frames":{"f1.png":1.5}}"#,
+        r#"{"frames":{"f1.png":-0.1}}"#,
+        r#"{"floors":{}}"#,
+    ] {
+        fs::write(&path, bad).unwrap();
+        assert_eq!(
+            Floors::read(&path).unwrap_err().kind,
+            Kind::Invalid,
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn a_frame_passes_over_its_floor_plus_the_limit() {
+    let frame = |failing: f64| crate::diff::Error {
+        failing,
+        ..crate::diff::Error::default()
+    };
+    assert!(frame(0.0228).passes_over(0.0128) && !frame(0.0229).passes_over(0.0128));
+    assert!(!frame(0.0228).passes(), "strictly, the same frame fails");
+    assert_eq!(frame(0.01).passes_over(0.0), frame(0.01).passes());
+}
+
+/// A frame of the content window failing on `failing`, at `time`.
+fn frame_at(time: f64, failing: f64) -> FrameDiff {
+    let error = crate::diff::Error {
+        pixels: 100,
+        failing,
+        ..crate::diff::Error::default()
+    };
+    FrameDiff {
+        file: format!("f{time}.png"),
+        time,
+        content: error,
+        drawn: error,
+        union: error,
+    }
+}
+
+#[test]
+fn a_window_counts_its_frames_under_both_rules() {
+    let frames = [
+        frame_at(0.0, 0.0),
+        frame_at(1.0, 0.015),
+        frame_at(2.0, 0.03),
+    ];
+    let floored = window(&frames, Some(&[0.0, 0.008, 0.01]), 0.0);
+    assert_eq!(floored.frames_passing, Some(1));
+    assert_eq!(
+        floored.frames_passing_floor,
+        Some(2),
+        "0.015 <= 0.008 + 0.01"
+    );
+    assert_eq!(floored.floor.map(|f| (f * 1e6).round() / 1e6), Some(0.006));
+    let plain = window(&frames, None, 0.0);
+    assert_eq!((plain.frames_passing_floor, plain.floor), (Some(1), None));
+}
+
+#[test]
+fn a_sample_may_pass_over_its_floor_and_fail_strictly() {
+    let mut measure = measure_at(0.015);
+    for w in [&mut measure.all, measure.settled.as_mut().unwrap()] {
+        w.frames_passing = Some(1);
+        w.frames_passing_floor = Some(3);
+        w.floor = Some(0.008);
+    }
+    assert_eq!(measure.verdict(None, Rule::Floor), Verdict::Passes);
+    assert_eq!(
+        measure.verdict(None, Rule::Strict),
+        Verdict::Blocked(vec!["stars".into()])
+    );
+    measure.all.frames_passing_floor = Some(2);
+    assert_eq!(measure.verdict(None, Rule::Floor), Verdict::Settles);
+    let samples = [sample("a", None)];
+    let ledger = Ledger {
+        samples: BTreeMap::from([("a".to_owned(), measure)]),
+    };
+    let floor = Scoreboard::new(&samples, &ledger, Rule::Floor);
+    let strict = Scoreboard::new(&samples, &ledger, Rule::Strict);
+    assert_eq!(
+        (floor.rule, floor.frames_passing, floor.frames),
+        (Rule::Floor, 2, 3)
+    );
+    assert_eq!(
+        (
+            strict.frames_passing,
+            strict.ids(|v| *v == Verdict::Settles).len()
+        ),
+        (1, 0)
+    );
+}
+
+#[test]
+fn a_ledger_from_before_floors_reads_and_compares_as_strict() {
+    let dir = scratch("before-floors");
+    let path = dir.join("ledger.json");
+    let ledger = Ledger {
+        samples: BTreeMap::from([("a".to_owned(), measure_at(0.015))]),
+    };
+    let old: String = ledger
+        .to_json()
+        .lines()
+        .filter(|line| !line.contains("\"frames_passing_floor\"") && !line.contains("\"floor\""))
+        .collect();
+    fs::write(&path, old).unwrap();
+    let older = Ledger::read(&path).unwrap();
+    let window = &older.samples["a"].all;
+    assert_eq!((window.frames_passing_floor, window.floor), (None, None));
+    // Measured with no floor, its floor-rule count is its strict one.
+    assert_eq!(window.passing(Rule::Floor), Some(1));
+    assert_eq!(
+        older.samples["a"].verdict(None, Rule::Floor),
+        older.samples["a"].verdict(None, Rule::Strict)
+    );
+    // Floors coming in show as frames passing over them, and the floor
+    // itself, what the reference allows, is not compared.
+    let mut floored = measure_at(0.015);
+    floored.all.frames_passing_floor = Some(3);
+    floored.all.floor = Some(0.008);
+    let after = Ledger {
+        samples: BTreeMap::from([("a".to_owned(), floored)]),
+    };
+    let changes = compare(&older, &after);
+    let moved: Vec<(&str, Option<bool>)> = changes
+        .iter()
+        .map(|c| (c.metric.as_str(), c.better))
+        .collect();
+    assert_eq!(moved, [("all frames_passing_floor", Some(true))]);
+    // A text line wholly off before and after has not moved.
+    let mut off = after.clone();
+    off.samples.get_mut("a").unwrap().text_worst = None;
+    assert!(compare(&off, &off).is_empty());
+    assert!(
+        compare(&after, &older)
+            .iter()
+            .all(|c| c.better == Some(false))
+    );
 }

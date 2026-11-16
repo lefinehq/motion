@@ -98,10 +98,21 @@ pub struct Error {
 }
 
 impl Error {
-    /// Whether these pixels pass: no more than [`DiffOptions::PASSING`] of
-    /// them past the tolerance.
+    /// Whether these pixels pass the strict rule: no more than
+    /// [`DiffOptions::PASSING`] of them past the tolerance.
     pub fn passes(&self) -> bool {
-        self.failing <= DiffOptions::PASSING
+        self.passes_over(0.0)
+    }
+
+    /// Whether these pixels pass over a codec floor ([D69]): no more than
+    /// `floor` plus [`DiffOptions::PASSING`] of them past the tolerance,
+    /// `floor` being the share a perfect render fails against a lossy
+    /// reference, such as an x264 encode, only because it is lossy. A floor
+    /// of 0 is the strict rule.
+    ///
+    /// [D69]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d69-a-reference-frame-passes-over-its-codec-floor
+    pub fn passes_over(&self, floor: f64) -> bool {
+        self.failing <= floor + DiffOptions::PASSING
     }
 }
 
@@ -422,8 +433,8 @@ fn pooled(frames: &[FrameDiff], pick: fn(&FrameDiff) -> f64) -> Pooled {
     }
 }
 
-/// The file name of `path`.
-fn file_name(path: &Path) -> String {
+/// The file name of `path`, as a frame's diff names it.
+pub(crate) fn file_name(path: &Path) -> String {
     path.file_name()
         .map_or_else(String::new, |name| name.to_string_lossy().into_owned())
 }
