@@ -654,8 +654,10 @@ fn replacing_effect(layer: &Layer) -> Option<&str> {
                     Child::Group(effect)
                         if effect.enabled
                             && !effect.hidden
-                            && super::rows::kind(&effect.match_name).is_none()
-                            && super::rows::REPLACING.contains(&effect.match_name.as_str()) =>
+                            && matches!(
+                                super::rows::policy(&effect.match_name),
+                                Some(super::rows::Policy::InPlace)
+                            ) =>
                     {
                         Some(effect.match_name.as_str())
                     }

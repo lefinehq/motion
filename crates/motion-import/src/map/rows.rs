@@ -173,6 +173,17 @@ pub(super) enum Policy {
     /// An expression control: it draws nothing, and expressions read it, so
     /// the report keeps it with its values for live links (D44).
     Control,
+    /// An effect the scene does not draw yet that draws something sparse of
+    /// its own in place of what its layer draws: the original
+    /// keeps none of the layer's pixels, only what the effect draws from
+    /// them. The effect is unsupported, and its layer draws nothing rather
+    /// than the solid the effect would have covered.
+    ///
+    /// Effects that fill their layer, such as gradients and noise, are not
+    /// this: until the scene draws one, its solid stands closer to what it
+    /// draws than nothing does. Nor are those that draw over the layer, such
+    /// as a lens flare, which keep its pixels.
+    InPlace,
 }
 
 /// A mask path, in the mask space until the import knows the layer's.
@@ -3238,7 +3249,7 @@ pub(super) static KINDS: [Kind; 45] = [
 ];
 
 /// The policy for groups that are not items, by match name.
-pub(super) static POLICIES: [(&str, Policy); 28] = [
+pub(super) static POLICIES: [(&str, Policy); 34] = [
     ("ADBE Root Vectors Group", Policy::Through),
     ("ADBE Effect Parade", Policy::Through),
     ("ADBE Text Animators", Policy::Through),
@@ -3302,25 +3313,18 @@ pub(super) static POLICIES: [(&str, Policy); 28] = [
     ("ADBE Point Control", Policy::Control),
     ("ADBE Point3D Control", Policy::Control),
     ("ADBE Layer Control", Policy::Control),
+    // A waveform, a beam, particles and stars, each mapped once a project
+    // shows its parameters.
+    ("ADBE AudWave", Policy::InPlace),
+    ("ADBE Laser", Policy::InPlace),
+    ("CC Particle World", Policy::InPlace),
+    ("CC Star Burst", Policy::InPlace),
+    ("tc Particular", Policy::InPlace),
+    ("tc Form", Policy::InPlace),
     (
         "ADBE Light Options Group",
         Policy::Ignore("the options of a light layer, which is reported"),
     ),
-];
-
-/// Effects that draw something sparse of their own in place of what their
-/// layer draws: particles, beams, grids and audio shapes. While the scene
-/// cannot draw one, its layer draws nothing rather than the solid the
-/// effect would have covered. Effects that fill their layer, such as
-/// gradients and noise, are left out: until the scene draws them, their
-/// solid stands closer to what they draw than nothing does.
-pub(super) const REPLACING: &[&str] = &[
-    // Mapped once a project shows its parameters.
-    "ADBE AudWave",
-    "ADBE Laser",
-    "CC Particle World",
-    "tc Particular",
-    "tc Form",
 ];
 
 /// The kind for the group `match_name`, if it becomes an item.
