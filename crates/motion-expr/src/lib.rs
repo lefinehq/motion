@@ -27,7 +27,7 @@ mod rewrite;
 
 #[cfg(feature = "engine")]
 pub use engine::{Compiled, Engine, Failure, Limits, Program, Run, STACK_SIZE};
-pub use host::{Host, Missing, NodeId, NodeKind, Select, Val};
+pub use host::{Host, Marker, Missing, NodeId, NodeKind, Select, Val};
 #[cfg(feature = "engine")]
 pub use rewrite::{Rewritten, rewrite};
 

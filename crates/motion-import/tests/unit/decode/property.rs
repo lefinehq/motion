@@ -832,3 +832,110 @@ fn text_document_errors_name_the_key_path_inside_the_body() {
     let error = read(&body, true).0.unwrap_err();
     assert_eq!(error.kind, Kind::Missing);
 }
+
+/// A `LIST:Nmrd`: its `NmHd` with `flags`, `parameters` pairs and a
+/// duration of `dividend / divisor`, label 3, then the `Utf8` texts.
+fn nmrd(flags: u32, dividend: u32, divisor: u32, texts: &[&str]) -> Vec<u8> {
+    let parameters = u32::try_from(texts.len().saturating_sub(5) / 2).expect("a few");
+    let head = record(
+        20,
+        &[
+            (0x00, &flags.to_be_bytes()),
+            (0x04, &parameters.to_be_bytes()),
+            (0x08, &dividend.to_be_bytes()),
+            (0x0C, &divisor.to_be_bytes()),
+            (0x10, &3u32.to_le_bytes()),
+        ],
+    );
+    let texts: Vec<Vec<u8>> = texts.iter().map(|t| chunk(b"Utf8", t.as_bytes())).collect();
+    list(
+        b"Nmrd",
+        &[&[chunk(b"NmHd", &head)], texts.as_slice()].concat(),
+    )
+}
+
+#[test]
+fn reads_one_marker_per_keyframe_with_its_fields() {
+    let markers = list(
+        b"mrst",
+        &[
+            tdbs(&[
+                tdb4(1, 0x00, true, false),
+                keys(
+                    16,
+                    &[key_item(1140, 3, 0, &[0.0]), key_item(2262, 3, 0, &[0.0])],
+                ),
+            ]),
+            list(
+                b"mrky",
+                &[
+                    nmrd(0x04, 0, 600, &["In", "", "", "", ""]),
+                    nmrd(
+                        0x02,
+                        36,
+                        24,
+                        &[
+                            "Out",
+                            "Ch 2",
+                            "https://example.com",
+                            "_blank",
+                            "cue",
+                            "k",
+                            "v",
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    );
+    let keys = animated("ADBE Marker", markers);
+    let times: Vec<f64> = keys.iter().map(|key| key.time).collect();
+    assert_eq!(
+        times,
+        [4.8, 8.54],
+        "1.9 s and 3.77 s of a layer at 1 s, stretched 2"
+    );
+    assert_eq!(
+        keys[0].value,
+        Value::Marker(Box::new(Marker {
+            comment: "In".into(),
+            event_cue_point: true,
+            label: 3,
+            ..Marker::default()
+        }))
+    );
+    assert_eq!(
+        keys[1].value,
+        Value::Marker(Box::new(Marker {
+            comment: "Out".into(),
+            duration: 1.5,
+            chapter: "Ch 2".into(),
+            url: "https://example.com".into(),
+            frame_target: "_blank".into(),
+            cue_point_name: "cue".into(),
+            parameters: vec![("k".into(), "v".into())],
+            event_cue_point: true,
+            protected_region: true,
+            label: 3,
+        }))
+    );
+}
+
+#[test]
+fn a_marker_stream_without_markers_has_no_key() {
+    // A layer whose last marker was removed keeps the stream, static, and an
+    // empty `LIST:mrky`.
+    let markers = list(
+        b"mrst",
+        &[
+            tdbs(&[tdb4(1, 0x00, true, false), cdat(&[0.0])]),
+            list(b"mrky", &[]),
+        ],
+    );
+    let body = group_body(1, "", &[tdmn("ADBE Marker"), markers]);
+    let (group, _) = read(&body, true);
+    assert_eq!(
+        property(&group.unwrap(), 0).value,
+        Stream::Static(Value::Marker(Box::default()))
+    );
+}

@@ -9,12 +9,12 @@ use motion_format::{Diagnostic, Kind, Place, Result};
 
 use super::{Decoder, Scan, UTF8};
 use crate::model::{
-    Child, Color, Ease, Expression, Group, Keyframe, MaskSettings, Origin, Path, Property, Reason,
-    Spatial, Stream, Value, Vertex,
+    Child, Color, Ease, Expression, Group, Keyframe, Marker, MaskSettings, Origin, Path, Property,
+    Reason, Spatial, Stream, Value, Vertex,
 };
 use crate::record::{
-    Bound, Cdat, KeyBody, KeyItem, Layout, Lhd3, Mkif, OneEase, Otda, Points, Record, Shph, Tdb4,
-    Tdsb, text,
+    Bound, Cdat, KeyBody, KeyItem, Layout, Lhd3, Mkif, NmHd, OneEase, Otda, Points, Record, Shph,
+    Tdb4, Tdsb, text,
 };
 use crate::rifx::{Chunk, Name, Tag};
 
@@ -40,6 +40,10 @@ const SHAP: Name = Name::list(b"shap");
 const OTKY: Name = Name::list(b"otky");
 /// The text documents of a Source Text stream, as one object-syntax body.
 const BTDK: Name = Name::list(b"btdk");
+/// The markers of a marker stream, one `LIST:Nmrd` per keyframe.
+const MRKY: Name = Name::list(b"mrky");
+/// One marker: its `NmHd`, then its text fields.
+const NMRD: Name = Name::list(b"Nmrd");
 /// Data an effect keeps next to a parameter's stream, one `aRbp` per
 /// keyframe.
 const ARBS: Tag = Tag(*b"aRbs");
@@ -76,6 +80,8 @@ enum Wrapper {
     Orientations,
     /// Text documents, all in the one body of a `LIST:btdk`.
     TextDocuments,
+    /// Markers, one `LIST:Nmrd` per keyframe in a `LIST:mrky`.
+    Markers,
     /// Not decoded yet, for this reason.
     Opaque(Reason),
 }
@@ -90,10 +96,7 @@ const BODIES: [(Tag, Body); 8] = [
     (Tag(*b"om-s"), Body::Wrapped(Wrapper::Paths)),
     (Tag(*b"otst"), Body::Wrapped(Wrapper::Orientations)),
     (Tag(*b"btds"), Body::Wrapped(Wrapper::TextDocuments)),
-    (
-        Tag(*b"mrst"),
-        Body::Wrapped(Wrapper::Opaque(Reason::Markers)),
-    ),
+    (Tag(*b"mrst"), Body::Wrapped(Wrapper::Markers)),
     (
         Tag(*b"GCst"),
         Body::Wrapped(Wrapper::Opaque(Reason::Gradient)),
@@ -171,6 +174,21 @@ impl Wrapper {
                     .map(|document| Value::Text(Box::new(document)))
                     .collect();
                 listed(documents, "one document per keyframe in `LIST:btdk`")
+            }
+            Wrapper::Markers => {
+                let mut markers = match scan.list(MRKY)? {
+                    Some(mut mrky) => mrky
+                        .lists(NMRD)
+                        .map(|nmrd| marker(nmrd?).map(|m| Value::Marker(Box::new(m))))
+                        .collect::<Result<Vec<_>>>()?,
+                    None => Vec::new(),
+                };
+                // A layer whose last marker was removed keeps a static stream
+                // and an empty `LIST:mrky`: no key, and a value of no marker.
+                if markers.is_empty() {
+                    markers.push(Value::Marker(Box::default()));
+                }
+                listed(markers, "one `LIST:Nmrd` per keyframe in `LIST:mrky`")
             }
         })
     }
@@ -415,6 +433,36 @@ impl Decoder {
         let name = self.wrapped_text(scan, tdsn)?;
         Ok(Some(name).filter(|name| !name.is_empty() && name != DEFAULT_NAME))
     }
+}
+
+/// One marker from its `LIST:Nmrd`: the `NmHd`, then five text fields
+/// (comment, chapter, URL, frame target and cue-point name) and a key and a
+/// value per cue-point parameter, each a `Utf8`
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#listnmrd)).
+///
+/// # Errors
+/// A diagnostic when the `NmHd` is missing or too short.
+fn marker(mut scan: Scan<'_, '_>) -> Result<Marker> {
+    let head: NmHd = scan.record()?;
+    let mut next = || {
+        scan.find(UTF8)
+            .map(|chunk| text(chunk.body))
+            .unwrap_or_default()
+    };
+    let [comment, chapter, url, frame_target, cue_point_name] = std::array::from_fn(|_| next());
+    let parameters = (0..head.parameters).map(|_| (next(), next())).collect();
+    Ok(Marker {
+        comment,
+        duration: head.duration(),
+        chapter,
+        url,
+        frame_target,
+        cue_point_name,
+        parameters,
+        event_cue_point: head.flags & 0x01 == 0,
+        protected_region: head.flags & 0x02 != 0,
+        label: head.label,
+    })
 }
 
 /// A stream's static value, from its `cdat`

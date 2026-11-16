@@ -784,6 +784,42 @@ impl Alias {
 #[path = "../tests/unit/record.rs"]
 mod tests;
 
+/// `NmHd`: a marker's header: its flags, how many cue-point parameters
+/// follow its text fields, its duration as a fraction of seconds, and its
+/// label
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#nmhd)).
+#[derive(BinRead, Debug)]
+pub(crate) struct NmHd {
+    /// Bit 0: a navigation marker, not an event cue point; bit 1: a
+    /// protected region.
+    pub flags: u32,
+    /// How many cue-point parameters, key and value pairs, follow.
+    pub parameters: u32,
+    /// The duration's dividend.
+    pub dividend: u32,
+    /// The duration's divisor; 0 reads as 600.
+    pub divisor: u32,
+    /// The label colour, 0 for none; little-endian, unlike the fields
+    /// before it.
+    #[br(little)]
+    pub label: u32,
+}
+
+impl Record for NmHd {
+    const NAME: Name = Name::chunk(b"NmHd");
+}
+
+impl NmHd {
+    /// The duration in seconds.
+    pub fn duration(&self) -> f64 {
+        let divisor = match self.divisor {
+            0 => 600,
+            divisor => divisor,
+        };
+        f64::from(self.dividend) / f64::from(divisor)
+    }
+}
+
 /// `EfDC`: how many effect definitions a `LIST:EfdG` holds
 /// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#efdc)).
 #[derive(BinRead, Debug)]

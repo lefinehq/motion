@@ -384,3 +384,50 @@ fn an_expression_over_a_2d_layers_scale_loops_over_its_two_components() {
         "50% and 200%, and the depth it does not give stays its own"
     );
 }
+
+#[test]
+fn an_expression_reads_a_layers_markers() {
+    use crate::model::{Interpolation, Keyframe, Marker};
+    let marker = |time: f64, comment: &str, duration: f64| Keyframe {
+        time,
+        value: Value::Marker(Box::new(Marker {
+            comment: comment.into(),
+            duration,
+            ..Marker::default()
+        })),
+        in_interpolation: Interpolation::Hold,
+        out_interpolation: Interpolation::Hold,
+        in_ease: vec![],
+        out_ease: vec![],
+        spatial: None,
+        continuous: false,
+        auto_bezier: false,
+        roving: false,
+    };
+    let markers = property(
+        "ADBE Marker",
+        Stream::Animated(vec![marker(0.5, "In", 0.0), marker(1.5, "Out", 0.25)]),
+    );
+    // A duration-control rig's reads: the count, a time by index, a marker
+    // by its comment and its duration.
+    let title = layer(
+        2,
+        "Title",
+        vec![
+            Child::Property(markers),
+            transform(vec![expressed(
+                "ADBE Rotate Z",
+                number(0.0),
+                "var m = thisLayer.marker; m.numKeys * 100 + m.key(2).time * 10 + m.key(\"Out\").duration",
+            )]),
+        ],
+    );
+    let project = project(vec![(5, "Main", comp(vec![title], 2.0))]);
+    let bakes = bake(&project, Some(5));
+    let (_, channels) = numbers(bake_of(&bakes, &project, "Title", "ADBE Rotate Z"));
+    assert!(
+        (channels[0][0] - 215.25).abs() < 1e-9,
+        "2 markers, the second at 1.5 s, the one named Out 0.25 s long: {}",
+        channels[0][0]
+    );
+}

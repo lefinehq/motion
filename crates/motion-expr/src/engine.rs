@@ -6,6 +6,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use boa_engine::JsObject;
 use boa_engine::object::builtins::JsArray;
 use boa_engine::{
     Context, JsError, JsNativeError, JsResult, JsString, JsValue, NativeFunction, Script, Source,
@@ -14,7 +15,7 @@ use boa_engine::{
 use motion_format::{Diagnostic, Kind, Result};
 
 use crate::Dialect;
-use crate::host::{Host, Missing, NodeId, NodeKind, Select, Val};
+use crate::host::{Host, Marker, Missing, NodeId, NodeKind, Select, Val};
 use crate::noise;
 use crate::rewrite::rewrite;
 
@@ -180,7 +181,39 @@ fn to_js(value: Val, ctx: &mut Context) -> JsValue {
         Val::Number(n) => n.into(),
         Val::Vector(v) => JsArray::from_iter(v.into_iter().map(JsValue::from), ctx).into(),
         Val::Text(t) => JsString::from(t.as_str()).into(),
+        Val::Marker(marker) => marker_js(&marker, ctx),
     }
+}
+
+/// A marker as the object a marker key spreads over itself: its fields
+/// under the language's names, its cue-point parameters as an object.
+fn marker_js(marker: &Marker, ctx: &mut Context) -> JsValue {
+    let text = |s: &str| JsValue::from(JsString::from(s));
+    let parameters = JsObject::with_object_proto(ctx.intrinsics());
+    for (key, value) in &marker.parameters {
+        parameters
+            .set(JsString::from(key.as_str()), text(value), false, ctx)
+            .expect("a plain object takes any key");
+    }
+    let fields = [
+        ("comment", text(&marker.comment)),
+        ("duration", marker.duration.into()),
+        ("chapter", text(&marker.chapter)),
+        ("url", text(&marker.url)),
+        ("frameTarget", text(&marker.frame_target)),
+        ("cuePointName", text(&marker.cue_point_name)),
+        ("eventCuePoint", marker.event_cue_point.into()),
+        ("protectedRegion", marker.protected_region.into()),
+        ("parameters", parameters.into()),
+        ("$marker", true.into()),
+    ];
+    let object = JsObject::with_object_proto(ctx.intrinsics());
+    for (name, value) in fields {
+        object
+            .set(JsString::from(name), value, false, ctx)
+            .expect("a plain object takes any key");
+    }
+    object.into()
 }
 
 /// A JavaScript value as a value, or why it is not one.
