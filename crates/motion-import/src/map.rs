@@ -26,6 +26,7 @@ pub(crate) mod keys;
 mod layer;
 mod masks;
 mod panel;
+mod parts;
 mod report;
 mod roles;
 mod rows;
@@ -332,6 +333,9 @@ struct Walk<'p> {
     scope: Option<String>,
     /// The stored layout of each text layer written so far.
     texts: Vec<StoredText>,
+    /// What each expression selector of the text layers met counts, by its
+    /// amount's address, or why that cannot be known.
+    part_counts: HashMap<usize, std::result::Result<crate::parts::Counted, String>>,
     /// The fonts the text written so far is set in, with where.
     fonts: BTreeMap<String, Vec<String>>,
     /// The footage files found, and what the clips and sounds among them
@@ -375,6 +379,7 @@ impl<'p> Walk<'p> {
             mapping: Mapping::default(),
             scope: None,
             texts: Vec::new(),
+            part_counts: HashMap::new(),
             fonts: BTreeMap::new(),
             files,
             bakes,

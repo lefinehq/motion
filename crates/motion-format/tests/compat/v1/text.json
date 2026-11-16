@@ -14,7 +14,13 @@
    {"range":"word","shape":"ramp-down","mode":"intersect"},
    {"range":"line","shape":"triangle","mode":"min"},
    {"range":"char","shape":"round","mode":"max"},
-   {"range":"word","shape":"smooth","mode":"difference"}],
+   {"range":"word","shape":"smooth","mode":"difference"},
+   {"parts":[{"part":1},{"part":[1,0.5]},{"part":0.5,"anim":{"amount":"0.5 -> 0 @0-1s"}}],"by":"char","mode":"max"},
+   {"parts":[{"part":0.2}],"by":"char-no-space","mode":"add"},
+   {"parts":[{"part":0.1}],"by":"word","mode":"subtract"},
+   {"parts":[{"part":1},{"part":0.5}],"by":"line","mode":"intersect"},
+   {"parts":[{"part":1}],"by":"char","mode":"min"},
+   {"parts":[{"part":0.3}],"by":"char","mode":"difference"}],
   "position":[0,20],"anchor":[0,0],"scale":[1.2,1.2],"rotate":10,"opacity":0.5,"fill":"#FF0000","stroke":"#00FF00","stroke-width":1,"tracking":50,
   "anim":{"rotate":"10 -> 0 @0-1s"}}]}
 ]}

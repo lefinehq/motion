@@ -21,8 +21,12 @@
 //!   `bake` feature links. Without it every expression is reported as not
 //!   baked ([`OFF`]) and the keys under it stay, so a crate that renders
 //!   but does not import links no script engine (D38).
+//! - **Expression selectors.** The amount of an expression selector is
+//!   evaluated once per part of its layer's text, with `textIndex` and
+//!   `textTotal` set ([`Bakes::parts`], [D64]).
 //!
 //! [D38]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d38-expressions-are-baked-at-import
+//! [D64]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d64-a-selector-may-choose-each-part-by-its-own-amount
 
 use std::collections::HashMap;
 
@@ -46,6 +50,9 @@ pub const OFF: &str = "this build does not evaluate expressions (the `bake` feat
 pub struct Bakes {
     /// Each property's bake, by the property's address in the project.
     by_property: HashMap<usize, Bake>,
+    /// Each expression selector's amount, baked once per part of its text,
+    /// by the amount's address ([`Bakes::parts`]).
+    by_part: HashMap<usize, Result<Vec<Samples>, String>>,
     /// Why nothing was baked, when the engine could not run at all.
     pub stopped: Option<String>,
 }
@@ -55,6 +62,13 @@ impl Bakes {
     /// and the engine ran.
     pub fn get(&self, property: &Property) -> Option<&Bake> {
         self.by_property.get(&address(property))
+    }
+
+    /// The samples of an expression selector's `amount`, one list per part
+    /// of its text in reading order, `textIndex` running from 1; or why they
+    /// could not be taken. `None` when the bake did not reach it.
+    pub fn parts(&self, amount: &Property) -> Option<&Result<Vec<Samples>, String>> {
+        self.by_part.get(&address(amount))
     }
 
     /// How many properties were evaluated.

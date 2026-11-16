@@ -71,6 +71,19 @@ A range selector (`ADBE Text Selector`) becomes a `range` selector ([scene forma
 What is left open:
 - **Random order.** `ADBE Text Randomize Order` is still reported, and the order is not known. The open renderers do not record it: one shuffles with a generator seeded by a fixed number, ignoring `ADBE Text Random Seed`, and another draws from an unseeded generator, so neither repeats from one run to the next of the original. m569 shows two texts with seed 17, `GLITCH UP` and `GLITCH DOWN`, each part moved by its turn in a ramp, so one frame of its preview gives every part's turn. Taking turn 0 first, the parts in order are `I`, space, `U`, `L`, `T`, `C`, `G`, `P`, `H` for 9 parts and `T`, `D`, `O`, `L`, `C`, `H`, `G`, `W`, space, `N`, `I` for 11. The two agree as if the selector drew one number per turn from a sequence the seed fixes, and gave turn `k` to the part whose number ranks `k`-th: the first 9 turns of the 11 rank their parts as the 9 turns do. Neither the fixed-seed shuffle nor the common generators (the C libraries', the minimal standard, the Mersenne twister, xorshift, the 48-bit generator, published LCGs) seeded with 17 give those ranks. A seed of 0 is documented as taken from the animator group, which most corpus selectors use.
 
+## Expression selectors
+
+An expression selector (`ADBE Text Expressible Selector`) becomes a `parts` selector ([D64](decisions.md#d64-a-selector-may-choose-each-part-by-its-own-amount)): its amount's expression is evaluated once per part. These beliefs were measured once, by hand: two scenes are drawn at the reference's own times and compared with the reference only at the pixels where they differ. The sweep does not check them yet.
+
+| Belief | Evidence | Held, 2026-11-16 |
+|---|---|---|
+| E1. `textIndex` counts the parts from 1, and `textTotal` is how many there are; the expression's amount, in percent, chooses its part. | Every part given the amount of the one before it, as an index from 0 would give: m554 errs 0.666 against 0.315 as baked (32,000 px), m805 0.390 against 0.094 (159,000 px). Against the selector left out, as before: m805 0.067 against 0.427 (424,000 px). | 2 samples |
+
+What is left open:
+- **One number.** An expression that gives one number, such as `if (textIndex == n) {100} else {0}`, chooses its part by it along every axis, as an open renderer reads it. The samples measured give two or three numbers, so this is taken without evidence.
+- **Axes.** The amount holds three numbers. The scene takes the first for every value of one number (opacity, rotation, colours, tracking) and each axis its own for offsets and scales, as an open renderer does. On m618, whose keyed amounts run from `[100, 100, 100]` to `[-100, 0, 100]` under a position and an opacity, giving every value the second number errs less at the pixels it moves (0.205 against 0.224, base 0.208), and the first number everywhere much more (0.351). One sample does not settle it.
+- **After other selectors.** In m619 and m809 the expression selector follows a range selector, whose choice it replaces and reads as `selectorValue`. These stay reported.
+
 ## Anchor points
 
 A layer's anchor point is where its own space is pinned to its position, and its children's positions are measured in that space. These beliefs were measured once, by hand, over the 198 corpus projects and their reference frames; the sweep does not check them yet.

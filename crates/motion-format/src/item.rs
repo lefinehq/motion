@@ -2271,43 +2271,102 @@ pub static ANIMATORS: [ItemKind; 1] = [ItemKind {
           its turn when it staggers",
 }];
 
-/// Every kind of text selector.
-pub static SELECTORS: [ItemKind; 1] = [ItemKind {
-    name: "range",
+/// The properties of a `parts` selector: none of its own; each of its parts
+/// holds its amount.
+pub static PARTS: Registry = Registry {
+    kind: "parts",
+    rows: &[],
+};
+
+/// The properties of one part of a `parts` selector.
+pub static PART: Registry = Registry {
+    kind: "part",
+    rows: &[point(
+        "amount",
+        [0.0, 0.0],
+        &["amount-x", "amount-y"],
+        true,
+        "how strongly this part is chosen, from -1 to 1, for what the animator moves and \
+         scales across and down; one number chooses both, and values of one number take \
+         the first; negative reverses the animator",
+    )],
+};
+
+/// The one kind of item a `parts` selector holds.
+pub static PART_KINDS: [ItemKind; 1] = [ItemKind {
+    name: "part",
     role: Role::Selector,
-    registry: &RANGE,
-    primary: Primary::Setting("by"),
-    settings: &[
-        SettingSpec {
-            name: "by",
-            choices: &["char", "char-no-space", "word", "line"],
-            default: "char",
-            doc: "what it counts: characters, characters other than spaces, words or lines",
-        },
-        SettingSpec {
-            name: "shape",
-            choices: &[
-                "square",
-                "ramp-up",
-                "ramp-down",
-                "triangle",
-                "round",
-                "smooth",
-            ],
-            default: "square",
-            doc: "how the choice rises and falls across the range",
-        },
-        SettingSpec {
-            name: "mode",
-            choices: &["add", "subtract", "intersect", "min", "max", "difference"],
-            default: "add",
-            doc: "how it combines with the selectors before it",
-        },
-    ],
+    registry: &PART,
+    primary: Primary::Property("amount"),
+    settings: &[],
     input: None,
     outline: None,
-    doc: "chooses the parts between `start` and `end`, moved by `offset`",
+    doc: "how strongly one part is chosen, in the order the selector counts them",
 }];
+
+/// Every kind of text selector.
+pub static SELECTORS: [ItemKind; 2] = [
+    ItemKind {
+        name: "range",
+        role: Role::Selector,
+        registry: &RANGE,
+        primary: Primary::Setting("by"),
+        settings: &[
+            SettingSpec {
+                name: "by",
+                choices: &["char", "char-no-space", "word", "line"],
+                default: "char",
+                doc: "what it counts: characters, characters other than spaces, words or lines",
+            },
+            SettingSpec {
+                name: "shape",
+                choices: &[
+                    "square",
+                    "ramp-up",
+                    "ramp-down",
+                    "triangle",
+                    "round",
+                    "smooth",
+                ],
+                default: "square",
+                doc: "how the choice rises and falls across the range",
+            },
+            SettingSpec {
+                name: "mode",
+                choices: &["add", "subtract", "intersect", "min", "max", "difference"],
+                default: "add",
+                doc: "how it combines with the selectors before it",
+            },
+        ],
+        input: None,
+        outline: None,
+        doc: "chooses the parts between `start` and `end`, moved by `offset`",
+    },
+    ItemKind {
+        name: "parts",
+        role: Role::Selector,
+        registry: &PARTS,
+        primary: Primary::Items(&PART_KINDS),
+        settings: &[
+            SettingSpec {
+                name: "by",
+                choices: &["char", "char-no-space", "word", "line"],
+                default: "char",
+                doc: "what it counts: characters, characters other than spaces, words or lines",
+            },
+            SettingSpec {
+                name: "mode",
+                choices: &["add", "subtract", "intersect", "min", "max", "difference"],
+                default: "add",
+                doc: "how it combines with the selectors before it",
+            },
+        ],
+        input: None,
+        outline: None,
+        doc: "chooses each part by its own `part` item, the first part by the first item; a part \
+          past the last item is not chosen",
+    },
+];
 
 /// The properties of a mask.
 pub static MASK: Registry = Registry {
@@ -2395,7 +2454,8 @@ pub fn effect_kind(name: &str) -> Option<&'static ItemKind> {
 /// The properties code depends on, for the drawing and measuring of items.
 pub mod props {
     use super::{
-        ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, MASK, PATH, Prop, RANGE, RECT, STAR, STROKE, TRIM,
+        ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, MASK, PART, PATH, Prop, RANGE, RECT, STAR, STROKE,
+        TRIM,
     };
 
     /// A rectangle's width and height.
@@ -2482,6 +2542,8 @@ pub mod props {
     pub const RANGE_EASE_HIGH: Prop = Prop::of(&RANGE, 5);
     /// How a range selector's choice eases near not chosen.
     pub const RANGE_EASE_LOW: Prop = Prop::of(&RANGE, 6);
+    /// How strongly one part of a `parts` selector is chosen.
+    pub const PART_AMOUNT: Prop = Prop::of(&PART, 0);
     /// A mask's outline.
     pub const MASK_PATH: Prop = Prop::of(&MASK, 0);
     /// How far a mask's edge fades.

@@ -14,6 +14,7 @@ mod eval;
 pub mod export;
 pub mod map;
 mod model;
+mod parts;
 mod record;
 mod report;
 mod rifx;

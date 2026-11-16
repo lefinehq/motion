@@ -509,3 +509,26 @@ fn a_run_that_waits_is_not_taken_as_constant() {
     let source = "try { thisLayer.transform.rotation } catch (e) { 1 }";
     assert_eq!(eval(source, o, 0.0), Err(Failure::Pending(ids().rotation)));
 }
+
+#[test]
+fn an_expression_selector_reads_its_part() {
+    let (mut engine, ids) = engine(Dialect::Modern);
+    let source = "[selectorValue[0] * textIndex / textTotal, 0, 0]";
+    let compiled = engine.compile(source, Dialect::Modern).unwrap();
+    engine.set_part(Some((3, 4)));
+    let run = engine.run(compiled.program, ids.position, 0.0).unwrap();
+    assert_eq!(run.value, Val::Vector(vec![75.0, 0.0, 0.0]));
+    assert!(run.constant);
+}
+
+#[test]
+fn outside_an_expression_selector_a_part_cannot_be_known() {
+    let (mut engine, ids) = engine(Dialect::Modern);
+    let compiled = engine.compile("textIndex", Dialect::Modern).unwrap();
+    engine.set_part(None);
+    let failure = engine.run(compiled.program, ids.position, 0.0);
+    assert!(
+        matches!(&failure, Err(Failure::Unknown(what)) if what.contains("expression selector")),
+        "{failure:?}"
+    );
+}

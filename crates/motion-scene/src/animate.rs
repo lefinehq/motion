@@ -216,7 +216,7 @@ pub fn glyph_states(
         for (effect, glyph) in effects.iter_mut().zip(&parts.glyphs) {
             let item = animator.seen_by(glyph);
             let amount = chosen(&item.items, glyph, &parts.counts);
-            if amount != 0.0 {
+            if amount != Vec2::ZERO {
                 apply(item, &animator.applies, amount, effect);
             }
         }
@@ -225,37 +225,46 @@ pub fn glyph_states(
     effects.into_iter().map(|e| e.state).collect()
 }
 
-/// How much the selectors choose the part `glyph` belongs to, combined in
-/// order by their modes, from -1 to 1.
-fn chosen(selectors: &[ItemState], glyph: &GlyphParts, counts: &[usize; 4]) -> f64 {
+/// How much the selectors choose the part `glyph` belongs to, across and
+/// down, combined in order by their modes, each from -1 to 1: a `range` by
+/// its shape, the same both ways, and a `parts` selector by its item for
+/// that part.
+fn chosen(selectors: &[ItemState], glyph: &GlyphParts, counts: &[usize; 4]) -> Vec2 {
     let Some(first) = selectors.first() else {
-        return 0.0;
+        return Vec2::ZERO;
     };
     // Modes that remove from or narrow a choice start from everything chosen.
-    let mut amount = match first.setting("mode") {
+    let start = match first.setting("mode") {
         "subtract" | "intersect" | "min" => 1.0,
         _ => 0.0,
     };
+    let mut amount = [start, start];
     for selector in selectors {
         let by = COUNTS
             .iter()
             .position(|c| *c == selector.setting("by"))
             .expect("every count has a row");
         let v = match glyph.index[by] {
-            Some(i) => range(selector, i, counts[by]),
-            None => 0.0,
+            Some(i) if selector.kind.name == "parts" => selector
+                .items
+                .get(i)
+                .map_or([0.0; 2], |part| part.point(props::PART_AMOUNT)),
+            Some(i) => [range(selector, i, counts[by]); 2],
+            None => [0.0; 2],
         };
-        amount = match selector.setting("mode") {
-            "add" => amount + v,
-            "subtract" => amount - v,
-            "intersect" => amount * v,
-            "min" => amount.min(v),
-            "max" => amount.max(v),
-            "difference" => (amount - v).abs(),
-            mode => unreachable!("no mode `{mode}`"),
-        };
+        for (a, v) in amount.iter_mut().zip(v) {
+            *a = match selector.setting("mode") {
+                "add" => *a + v,
+                "subtract" => *a - v,
+                "intersect" => *a * v,
+                "min" => a.min(v),
+                "max" => a.max(v),
+                "difference" => (*a - v).abs(),
+                mode => unreachable!("no mode `{mode}`"),
+            };
+        }
     }
-    amount.clamp(-1.0, 1.0)
+    Vec2::new(amount[0].clamp(-1.0, 1.0), amount[1].clamp(-1.0, 1.0))
 }
 
 /// How much a range selector chooses part `i` of `n`, its amount included.
@@ -314,9 +323,11 @@ fn eased(v: f64, high: f64, low: f64) -> f64 {
 }
 
 /// Applies the properties of the animator `item` that `applies` lists to
-/// one glyph, chosen by `amount`.
-fn apply(item: &ItemState, applies: &[Prop], amount: f64, effect: &mut Effect) {
-    let toward = |from: f64, to: f64| from + (to - from) * amount;
+/// one glyph, chosen by `amounts` across and down: offsets and scales take
+/// each axis its own, every other value the first.
+fn apply(item: &ItemState, applies: &[Prop], amounts: Vec2, effect: &mut Effect) {
+    let amount = amounts.x;
+    let toward = |from: f64, to: f64, amount: f64| from + (to - from) * amount;
     // Colours and widths blend, so a negative choice cannot overshoot them.
     let blend = amount.clamp(0.0, 1.0);
     let mix =
@@ -327,19 +338,19 @@ fn apply(item: &ItemState, applies: &[Prop], amount: f64, effect: &mut Effect) {
             Vec2::new(x, y)
         };
         match prop {
-            p if p == props::ANIMATOR_POSITION => effect.offset += vec() * amount,
-            p if p == props::ANIMATOR_ANCHOR => effect.anchor += vec() * amount,
+            p if p == props::ANIMATOR_POSITION => effect.offset += across(vec(), amounts),
+            p if p == props::ANIMATOR_ANCHOR => effect.anchor += across(vec(), amounts),
             p if p == props::ANIMATOR_SCALE => {
                 let s = vec();
                 effect.scale = Vec2::new(
-                    effect.scale.x * toward(1.0, s.x),
-                    effect.scale.y * toward(1.0, s.y),
+                    effect.scale.x * toward(1.0, s.x, amounts.x),
+                    effect.scale.y * toward(1.0, s.y, amounts.y),
                 );
             }
             p if p == props::ANIMATOR_ROTATE => effect.rotate += item.number(prop) * amount,
             p if p == props::ANIMATOR_OPACITY => {
                 effect.state.opacity =
-                    (effect.state.opacity * toward(1.0, item.number(prop))).clamp(0.0, 1.0);
+                    (effect.state.opacity * toward(1.0, item.number(prop), amount)).clamp(0.0, 1.0);
             }
             p if p == props::ANIMATOR_FILL => {
                 effect.state.fill = mix(effect.state.fill, item.color(prop))
@@ -357,6 +368,11 @@ fn apply(item: &ItemState, applies: &[Prop], amount: f64, effect: &mut Effect) {
             p => unreachable!("`{}` is not an animator property", p.name()),
         }
     }
+}
+
+/// `v` with each axis scaled by its own amount.
+fn across(v: Vec2, amounts: Vec2) -> Vec2 {
+    Vec2::new(v.x * amounts.x, v.y * amounts.y)
 }
 
 /// Turns each glyph's accumulated effect into its transform: tracking

@@ -9,6 +9,7 @@ use motion_expr::{Dialect, Engine, Failure, Limits, NodeId, Program, STACK_SIZE,
 use super::host::{Baked, ProjectHost, Target};
 use super::{Bake, Bakes, MAX_DEPTH, Sampled, Samples, address, dialect};
 use crate::model::{Composition, ItemKind, Project, Property, Stream, Value};
+use crate::parts;
 
 /// The most frames one expression is evaluated at.
 const MAX_FRAMES: usize = 100_000;
@@ -83,12 +84,20 @@ fn bake_here(project: &Project, root: Option<u32>) -> Bakes {
         approximate: HashSet::new(),
         spans,
     };
+    let (selectors, targets): (Vec<&Target<'_>>, Vec<&Target<'_>>) = targets
+        .iter()
+        .partition(|t| t.property.match_name == parts::AMOUNT);
     let by_property = targets
         .iter()
         .map(|target| (address(target.property), baker.target(target)))
         .collect();
+    let by_part = selectors
+        .iter()
+        .map(|target| (address(target.property), baker.parts(target)))
+        .collect();
     Bakes {
         by_property,
+        by_part,
         stopped: None,
     }
 }
@@ -123,6 +132,62 @@ impl Baker {
             repairs: self.repairs.get(&target.node).cloned().unwrap_or_default(),
             outcome,
         }
+    }
+
+    /// An expression selector's amount, evaluated for each part of its
+    /// layer's text at the frames its layer shows.
+    fn parts(&mut self, target: &Target<'_>) -> Result<Vec<Samples>, String> {
+        let counted = parts::count(&target.layer.properties, target.property)?;
+        let total = u32::try_from(counted.total)
+            .map_err(|_| "its text has more parts than the bake takes".to_owned())?;
+        let samples = (1..=total)
+            .map(|index| {
+                self.engine.set_part(Some((index, total)));
+                self.samples_of_part(target)
+            })
+            .collect();
+        self.engine.set_part(None);
+        samples
+    }
+
+    /// [`Baker::samples`] for one part of an expression selector: each run
+    /// is the part's own, so none is remembered for other reads.
+    fn samples_of_part(&mut self, target: &Target<'_>) -> Result<Samples, String> {
+        let span = self
+            .spans
+            .get(&target.item)
+            .copied()
+            .unwrap_or((0.0, target.comp.duration));
+        let times = frames(target, span)?;
+        let mut values = Vec::with_capacity(times.len());
+        let mut constant = false;
+        for &time in &times {
+            let (value, still) = self.run(target.node, time, 0)?;
+            // One number chooses the part along every axis.
+            let value = match value {
+                Val::Number(n) => Val::Vector(vec![n; 3]),
+                other => other,
+            };
+            values.push(value);
+            if still {
+                values.resize(times.len(), values[0].clone());
+                constant = true;
+                break;
+            }
+        }
+        let template = target.property.value.value_at(times[0]);
+        Ok(Samples {
+            values: sampled(
+                target.property,
+                self.host.unit(target.node),
+                &template,
+                &times,
+                &values,
+            )?,
+            times,
+            approximate: self.approximate.contains(&target.node),
+            constant,
+        })
     }
 
     fn samples(&mut self, target: &Target<'_>) -> Result<Samples, String> {
