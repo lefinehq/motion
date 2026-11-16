@@ -8,6 +8,7 @@ mod boolean;
 mod compile;
 mod curve;
 mod evaluate;
+mod expand;
 mod graph;
 mod level;
 mod merge;

@@ -169,6 +169,22 @@ What is left open:
 - **What the layout does not match.** The rectangle is our layout's; where it differs from the stored one ([the composed-line cache](#the-composed-line-cache)), the box differs with it. m602's white bubbles come out 5 to 8 px narrower in the reference than ours with the padding, its green ones within 3 px.
 - **A property's own rectangle.** A layer whose content reads its own rectangle is measured with the expressions that wait drawn as the keys under them: what we take the original to read for a property while its own expression runs. m586 is the only such layer, and its expression fails first.
 
+## Expanded outlines
+
+Offset Paths (`ADBE Vector Filter - Offset`) becomes an `expand` item ([D68](decisions.md#d68-an-expansion-moves-outlines-out-by-an-amount)). Every one in the corpus grows a rectangle: 44 items in 10 samples, 40 of them storing an amount (23, 28, 45, 72 or 0) and nothing else, and 5 in m566 storing nothing. No local project of the 206 stores a line join, a miter limit, copies or a copy offset. These beliefs were measured once, by hand, on the reference frames; the sweep does not check them yet.
+
+| Belief | Evidence | Held, 2026-11-16 |
+|---|---|---|
+| O1. A side moves out by the amount along its normal, so a rounded corner of radius `r` grows to `r + amount`. | m543 rounds its speech bubbles by 20 and grows them by 23. Fitting a circle to the left corners of the three whole blue bubbles of reference frame 13 gives radii 43.0, 41.5 and 43.5 px (rms 0.6, 0.7 and 1.2 px). | 3 bubbles of m543 |
+| O2. The miter limit counts in amounts from the corner, as a stroke's counts in widths: at the default 4, a right-angled corner is mitred, square. | m624 grows its title bar, a sharp rectangle, by 28 under the default limit, and scales it by 0.93 by 0.11. The bar's rows in reference frames 3, 12, 16 and 20 all start at x = 2,503 or 2,504, its first and last ones too: square corners. A limit of 4 px, as one reading of the original's behaviour has it, would bevel them, cutting about 24 px from the first and last rows. | m624; m806, m808 and m813 use the same rig |
+| O3. An Offset Paths that stores no amount grows by 10. | m566 stores none on its 5 items; the editor's default. | not measured: m566's boxes are sized by expressions the bake cannot run yet |
+
+Other things we take without evidence:
+- **Direction.** A positive amount moves a side to its left, so outward on a clockwise outline, and inward on a counterclockwise one. Every expanded outline in the corpus is a clockwise rectangle.
+- **Space.** An expansion after a group grows that group's outlines in their own space, as a trim measures lengths. m624 grows a rectangle in a group whose scale animates, but its size and anchor come from expressions on the text's size, which the bake cannot run yet, so the frames cannot tell the two spaces apart.
+- **Open outlines, crossing sides and copies.** No sample expands an open outline, a concave one, or makes copies. An open outline becomes the closed one around it, sides that cross are cut where they cross, and copy `k` moves `amount · (k + copy-offset)`.
+- **The default match names** of the line join (`ADBE Vector Offset Line Join`), miter limit (`… Miter Limit`), copies (`… Copies`) and copy offset (`… Copy Offset`), which no local project stores.
+
 ## What expressions read
 
 | Belief | Evidence | Held, 2026-11-16 |
