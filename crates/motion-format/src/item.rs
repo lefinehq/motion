@@ -1347,8 +1347,14 @@ pub static TRIM: Registry = Registry {
     ],
 };
 
+/// The properties of a merge: none, its mode is a setting.
+pub static MERGE: Registry = Registry {
+    kind: "merge",
+    rows: &[],
+};
+
 /// Every kind of shape item.
-pub static SHAPES: [ItemKind; 8] = [
+pub static SHAPES: [ItemKind; 9] = [
     ItemKind {
         name: "group",
         role: Role::Group,
@@ -1468,6 +1474,25 @@ pub static SHAPES: [ItemKind; 8] = [
         outline: None,
         doc: "cuts the outlines above it, and those in the groups above it, down to a stretch \
               of their length, for every paint that draws them",
+    },
+    ItemKind {
+        name: "merge",
+        role: Role::Modifier,
+        registry: &MERGE,
+        primary: Primary::Setting("mode"),
+        settings: &[SettingSpec {
+            name: "mode",
+            choices: &["merge", "add", "subtract", "intersect", "exclude"],
+            default: "merge",
+            doc: "`merge` keeps the outlines as they are, one after another; the others combine \
+                  the areas inside them, the first outline with each next one in turn: `add` \
+                  takes either, `subtract` the first without the next, `intersect` both, \
+                  `exclude` one but not both",
+        }],
+        input: None,
+        outline: None,
+        doc: "replaces the outlines above it, and those in the groups above it, by one outline \
+              in its group; the paints above it no longer draw them",
     },
 ];
 

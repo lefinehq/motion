@@ -4,11 +4,13 @@
 
 mod animate;
 mod audio;
+mod boolean;
 mod compile;
 mod curve;
 mod evaluate;
 mod graph;
 mod level;
+mod merge;
 mod rect;
 mod shape;
 pub mod space;
