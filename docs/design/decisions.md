@@ -613,3 +613,13 @@ D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that t
   - A list of tracks keeps every part editable, keyed and eased like any other value. The alternative, writing one `range` selector per part, cannot stand for an expression selector in front of others under `intersect` or `subtract`, and hides that the parts belong together.
   - The parts are the scene's own counts, so the count the bake uses is the count the engine draws: characters other than line breaks, those other than spaces, words, and the lines the project last laid the text out in.
 - **Not now:** an expression selector after other selectors, whose choice it replaces and reads as `selectorValue`: the import bakes one that comes first, as in 14 of the 16 samples, and reports the others (m619, m809), which a `replace` mode would hold. Depth, which text does not draw yet. Text that changes over time, whose parts are reported.
+### D65. A merge replaces the outlines above it by one
+
+- **Decision:** a `merge` shape item is a modifier that takes every outline listed before it in its group, those inside earlier groups included, seen through their transforms, and puts one outline in their place, in its group's space. `merge` mode lays them one after another; `add`, `subtract`, `intersect` and `exclude` combine the areas they cover, each read by the nonzero rule, the first outline's with each next one's in turn, into simple closed contours. The paints listed before a merge draw nothing of what it takes; the paints and modifiers after it see the one outline. The mode is a setting, not a property.
+- **Why:**
+  - It is what the original does, and the corpus says so where it can tell (evidence M1 to M4 in [what we know about `.aep`](aep-evidence.md#merging-outlines)): 14 samples merge outlines, and a matte drawn by one, m712's, only matches its reference when the fills above the merge draw nothing.
+  - A merge is one more modifier in the walk that trims already use: it rewrites the outlines it reaches, so a paint never needs to know a merge was there, and trims before and after it compose by list order.
+  - Combining areas needs boolean operations on curves. `linesweeper`, built on the same `kurbo` paths the scene already uses, keeps cubic pieces of the inputs rather than flattening them, and reads each operand with its own fill rule; it sits in a module of its own (`motion-scene`'s `boolean`), for later modifiers that need areas too.
+  - A setting, because the original's mode is a menu: no project in the corpus animates it, and an animated menu holds its choice between keys anyway.
+- **Not now:** a fill rule per operand other than nonzero, which no project in the corpus needs to tell apart.
+Status: Draft · 2026-11-16

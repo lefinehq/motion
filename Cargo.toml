@@ -51,6 +51,8 @@ derive_more = { version = "2", features = [
   "into",
 ] }
 kurbo = { version = "0.13", features = ["serde"] }
+# Boolean operations on bézier outlines, on kurbo's own paths (D65).
+linesweeper = { version = "0.5", default-features = false }
 # Paint and font vocabulary shared with the rasteriser (D37).
 peniko = { version = "0.6", default-features = false, features = ["std"] }
 rstest = { version = "0.28", default-features = false }

@@ -276,9 +276,9 @@ expression: "report.join(\"\\n\\n\")"
 
 ## shapes
 `1` → a.shapes[0]: invalid type: integer `1`; expected an item object keyed by its kind, e.g. {"rect":[300,100],"round":12} or {"fill":"#FFE000"}
-`{}` → a.shapes[0]: needs the key of its kind; expected one kind key: `group`, `rect`, `ellipse`, `star`, `path`, `fill`, `stroke`, `trim`
-`{"round":3}` → a.shapes[0]: needs the key of its kind; expected one kind key: `group`, `rect`, `ellipse`, `star`, `path`, `fill`, `stroke`, `trim`
-`{"rect":[1,1],"fill":"#fff"}` → a.shapes[0].fill: `rect` and `fill` are both kinds; an item has one; expected one kind key: `group`, `rect`, `ellipse`, `star`, `path`, `fill`, `stroke`, `trim`
+`{}` → a.shapes[0]: needs the key of its kind; expected one kind key: `group`, `rect`, `ellipse`, `star`, `path`, `fill`, `stroke`, `trim`, `merge`
+`{"round":3}` → a.shapes[0]: needs the key of its kind; expected one kind key: `group`, `rect`, `ellipse`, `star`, `path`, `fill`, `stroke`, `trim`, `merge`
+`{"rect":[1,1],"fill":"#fff"}` → a.shapes[0].fill: `rect` and `fill` are both kinds; an item has one; expected one kind key: `group`, `rect`, `ellipse`, `star`, `path`, `fill`, `stroke`, `trim`, `merge`
 `{"rect":[1,1],"size":[2,2]}` → a.shapes[0].size: `size` is the value `rect` holds; expected `size` written as the value of `rect`
 `{"rect":[1,1],"colour":1}` → a.shapes[0].colour: unknown rect key `colour`; expected one of rect, id, hidden, anim, position, round
 `{"rect":[-1,1]}` → a.shapes[0].rect: value -1 is outside 0..; expected a number of at least 0

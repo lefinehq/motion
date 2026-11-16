@@ -8,7 +8,9 @@
 //!
 //! A modifier changes the outlines listed before it the same way, in place:
 //! every paint that draws them draws them changed, wherever it sits. Inner
-//! groups' modifiers act before those of the groups around them.
+//! groups' modifiers act before those of the groups around them. A merge
+//! replaces them by one outline of its own, so the paints before it draw
+//! nothing of them.
 
 use kurbo::{Affine, BezPath, Point, Rect, Shape, Vec2};
 use motion_format::item::{Role, props};
@@ -16,7 +18,7 @@ use motion_format::property::GROUP;
 
 use crate::evaluate::local_transform;
 use crate::state::ItemState;
-use crate::trim;
+use crate::{merge, trim};
 
 /// The share of a quarter circle's radius at which a cubic's handles sit so
 /// that it follows the arc: `4/3 (√2 − 1)`.
@@ -60,6 +62,29 @@ const OUTLINES: [(&str, Draw); 4] = [
     ("star", star),
     ("path", path),
 ];
+
+/// What a modifier reaches in the walk.
+pub(crate) struct Reach<'a> {
+    /// The outlines listed before it, each as its index in `outlines` and
+    /// its transform into the modifier's group space. A modifier that
+    /// replaces them leaves the new ones here.
+    pub(crate) above: &'a mut Vec<(usize, Affine)>,
+    /// Every outline of the layer so far, each in the space of the group it
+    /// sits in. A modifier may add outlines.
+    pub(crate) outlines: &'a mut Vec<BezPath>,
+}
+
+/// Changes the outlines a modifier reaches.
+type Modify = fn(&ItemState, Reach<'_>);
+
+/// What each modifier kind does, by name; every modifier kind has a row.
+const MODIFIERS: [(&str, Modify); 2] = [("trim", trim_outlines), ("merge", merge::apply)];
+
+/// Cuts the outlines a trim reaches, each in its own space.
+fn trim_outlines(item: &ItemState, reach: Reach<'_>) {
+    let at: Vec<usize> = reach.above.iter().map(|&(at, _)| at).collect();
+    trim::apply(item, &at, reach.outlines);
+}
 
 /// The outline a geometry item draws, in its group's space; `None` for
 /// any other item.
@@ -148,8 +173,17 @@ impl Walk {
                     above.extend(inner.into_iter().map(|(at, into)| (at, own * into)));
                 }
                 Role::Modifier => {
-                    let at: Vec<usize> = above.iter().map(|&(at, _)| at).collect();
-                    trim::apply(item, &at, &mut self.outlines);
+                    let (_, modify) = MODIFIERS
+                        .iter()
+                        .find(|(name, _)| *name == item.kind.name)
+                        .expect("every modifier kind has a row");
+                    modify(
+                        item,
+                        Reach {
+                            above: &mut above,
+                            outlines: &mut self.outlines,
+                        },
+                    );
                 }
                 Role::Paint if !above.is_empty() => self.paints.push(Paint {
                     paint: ItemState {

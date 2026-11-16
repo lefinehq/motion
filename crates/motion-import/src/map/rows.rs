@@ -200,6 +200,14 @@ const SHAPE_DIRECTIONS: &[(i64, &str)] = &[(1, "clockwise"), (3, "counterclockwi
 /// Trim Multiple Shapes: simultaneously cuts each outline the same way,
 /// individually cuts them one after another as one line.
 const TRIM_MODES: &[(i64, &str)] = &[(1, "each"), (2, "joined")];
+/// Merge Paths' modes, in the editor's order.
+const MERGE_MODES: &[(i64, &str)] = &[
+    (1, "merge"),
+    (2, "add"),
+    (3, "subtract"),
+    (4, "intersect"),
+    (5, "exclude"),
+];
 const BASED_ON: &[(i64, &str)] = &[(1, "char"), (2, "char-no-space"), (3, "word"), (4, "line")];
 const MODES: &[(i64, &str)] = &[
     (1, "add"),
@@ -945,7 +953,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 41] = [
+pub(super) static KINDS: [Kind; 42] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -1253,6 +1261,19 @@ pub(super) static KINDS: [Kind; 41] = [
                 Absent,
             ),
         ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Vector Filter - Merge",
+        item: "merge",
+        table: &SHAPES,
+        rows: &[row(
+            "ADBE Vector Merge Type",
+            To::Setting("mode", MERGE_MODES),
+            Number,
+            Absent,
+        )],
         parts: &[],
         switch: None,
     },
