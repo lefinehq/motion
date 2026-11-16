@@ -583,6 +583,12 @@ The layer's box is the box its lines cover, which for point text starts above an
 Above, every line starts 75 px low and invisible. As `offset` moves the range off the lines, from the first line to the last, each line rises and fades in.
 
 - **Selectors.** `range` counts characters (`char`), characters other than spaces (`char-no-space`), `word`s or `line`s; its key holds which. `start`, `end` and `offset` are fractions of the parts, from 0 (before the first) to 1 (after the last). `amount` scales the choice, and a negative amount reverses the animator. With the `square` shape, a part is chosen by how much of it the range covers, and `smooth` 0 makes that all or nothing, decided by the part's middle. The other shapes are read at each part's middle: `ramp-up` rises across the range and stays chosen after it, `ramp-down` is the reverse, and `triangle`, `round` and `smooth` rise and fall inside it. `ease-low` and `ease-high`, from -1 to 1, bend the choice a shape gives, before `amount`: it follows a cubic from 0 to 1 whose first handle lies `ease-low` along the bottom (or, negative, up the start) and whose second lies `ease-high` back along the top (or, negative, down the end). Above 0 the choice leaves 0 or nears 1 more slowly, below 0 more quickly ([D63](decisions.md#d63-a-range-selector-eases-its-choice-by-a-cubic)). `mode` combines a selector with the ones before it.
+- **Each part its own amount.** A `parts` selector holds one `part` item per part it counts by `by`, in reading order; each item's key is how strongly its part is chosen, from -1 to 1, and may be animated. Two numbers choose it across and down apart: `position`, `anchor` and `scale` take each axis its own amount, and the animator's other values the first. A part past the last item is not chosen. It combines with the selectors before it by `mode`, as `range` does. An import writes one where the original computed each part's choice by an expression ([D64](decisions.md#d64-a-selector-may-choose-each-part-by-its-own-amount)).
+
+  ```json
+  {"parts":[{"part":1},{"part":0,"anim":{"amount":"0 -> 1 @0-1s"}}],"by":"word"}
+  ```
+
 - **What applies.** `position` and `rotate` add. `scale` and `opacity` move from 1 toward the animator's value. `fill`, `stroke` and `stroke-width` move from the part's own toward the animator's. `tracking` adds space after each chosen part, and the parts after it on its line move along, keeping the line's alignment.
 - **Each part's anchor** is the middle of its baseline, moved by the animator's `anchor`; parts scale and turn about it.
 - **Stagger.** With `stagger` above 0, the parts counted by `by` take turns: each part sees the animator, its selectors included, as it was its wait earlier, so every part makes the whole motion with its own curve. A part waits `stagger` frames per turn. `order` sets the turns: `first` in reading order, `last` the reverse, `center` outward from the middle (the two middle parts of an even count go together, half a turn in), `edges` inward from both ends, and `random` a shuffle picked by `seed`. A glyph in no part, such as a space under `word`, sees the animator as it is.
@@ -594,6 +600,11 @@ Above, every line starts 75 px low and invisible. As `offset` moves the range of
 | Selector | Key holds | Properties | Settings |
 |---|---|---|---|
 | `range` | `by` | `start`, `end`, `offset`, `amount`, `smooth`, `ease-high`, `ease-low` | `shape`: `square`, `ramp-up`, `ramp-down`, `triangle`, `round`, `smooth`; `mode`: `add`, `subtract`, `intersect`, `min`, `max`, `difference` |
+| `parts` | its items | | `by`: `char`, `char-no-space`, `word`, `line`; `mode`: `add`, `subtract`, `intersect`, `min`, `max`, `difference` |
+
+| Part | Key holds | Properties | Settings |
+|---|---|---|---|
+| `part` | `amount` | `amount` | |
 
 ## Text motion
 

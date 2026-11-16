@@ -13,6 +13,8 @@
 //   __this()            the property being baked
 //   __vary(id, own)     marks the run as one that changes with time, unless
 //                       the property holds one value at every time (-1: none)
+//   __textPart(w)       the part an expression selector chooses: its index
+//                       from 1 (w = 0) or the count (w = 1); fails outside one
 // `$time` is the run's time. Reading `time` marks the run; the objects
 // read `$time` through `$now`, which marks it only when what they read
 // at that time changes, so an expression of values that never change is
@@ -253,6 +255,12 @@ $global("thisComp", function () { return $thisComp(); });
 $global("value", function () { return __valueAt(__this(), $now(__this(), true), true); });
 $global("velocity", function () { return $velocity(__this(), $now(__this(), true), true); });
 $global("numKeys", function () { return __numKeys(__this()); });
+// An expression selector's part: its index from 1 and the count. The
+// selectors before it, which `selectorValue` reads, choose every part fully:
+// the bake only takes an expression selector that comes first.
+$global("textIndex", function () { return __textPart(0); });
+$global("textTotal", function () { return __textPart(1); });
+$global("selectorValue", function () { __textPart(0); return [100, 100, 100]; });
 ["index", "inPoint", "outPoint", "startTime", "width", "height", "name", "hasParent", "parent",
  "transform", "anchorPoint", "position", "scale", "rotation", "opacity", "marker", "text",
  "timeRemap"].forEach(function (n) { $global(n, function () { return $thisLayer()[n]; }); });

@@ -431,3 +431,102 @@ fn an_expression_reads_a_layers_markers() {
         channels[0][0]
     );
 }
+
+/// A text layer `ab c` whose expression selector, counting `based_on` when
+/// set, gives each part `source`.
+fn selected(source: &str, based_on: Option<f64>) -> Project {
+    use crate::model::{Child, Value};
+    use crate::test_support::build::group;
+    use crate::test_support::sample_document;
+    let document = crate::model::TextDocument {
+        text: "ab c".into(),
+        ..sample_document()
+    };
+    let mut selector = vec![Child::Property(expressed(
+        "ADBE Text Expressible Amount",
+        Stream::Static(Value::Vector3([100.0, 100.0, 100.0])),
+        source,
+    ))];
+    if let Some(n) = based_on {
+        selector.push(Child::Property(property(
+            "ADBE Text Range Type2",
+            number(n),
+        )));
+    }
+    let animator = group(
+        "ADBE Text Animator",
+        vec![Child::Group(group(
+            "ADBE Text Selectors",
+            vec![Child::Group(group(
+                "ADBE Text Expressible Selector",
+                selector,
+            ))],
+        ))],
+    );
+    let text = group(
+        "ADBE Text Properties",
+        vec![
+            Child::Property(property(
+                "ADBE Text Document",
+                Stream::Static(Value::Text(Box::new(document))),
+            )),
+            Child::Group(group("ADBE Text Animators", vec![Child::Group(animator)])),
+        ],
+    );
+    let title = layer(1, "Title", vec![Child::Group(text)]);
+    project(vec![(5, "Main", comp(vec![title], 1.0))])
+}
+
+/// The amount of the expression selector of `project`.
+fn amount(project: &Project) -> &Property {
+    project
+        .items
+        .iter()
+        .filter_map(|item| match &item.kind {
+            ItemKind::Composition(comp) => Some(comp),
+            _ => None,
+        })
+        .flat_map(|comp| &comp.layers)
+        .flat_map(|l| l.properties.properties())
+        .find(|p| p.match_name == "ADBE Text Expressible Amount")
+        .expect("the amount")
+}
+
+#[test]
+fn an_expression_selector_is_baked_once_per_part() {
+    let project = selected("[100 * textIndex / textTotal, 0, 0]", None);
+    let bakes = bake(&project, Some(5));
+    let parts = bakes
+        .parts(amount(&project))
+        .expect("baked")
+        .as_ref()
+        .unwrap();
+    // `ab c` has four characters, the space among them.
+    let firsts: Vec<f64> = parts
+        .iter()
+        .map(|samples| match &samples.values {
+            Sampled::Numbers { channels, .. } => channels[0][0],
+            other => panic!("not numbers: {other:?}"),
+        })
+        .collect();
+    assert_eq!(firsts, [25.0, 50.0, 75.0, 100.0]);
+    assert!(parts.iter().all(|samples| samples.constant));
+    assert!(
+        bakes.get(amount(&project)).is_none(),
+        "not baked as one value"
+    );
+}
+
+#[test]
+fn an_expression_selector_counts_by_its_based_on() {
+    let project = selected("time * 100 + textIndex", Some(3.0));
+    let bakes = bake(&project, Some(5));
+    let parts = bakes
+        .parts(amount(&project))
+        .expect("baked")
+        .as_ref()
+        .unwrap();
+    assert_eq!(parts.len(), 2, "two words");
+    assert!(!parts[0].constant, "it reads the time");
+    assert_eq!(parts[1].times.len(), 10);
+}

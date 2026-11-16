@@ -117,6 +117,9 @@ struct State {
     /// Whether the run read something that changes with time.
     varies: Cell<bool>,
     time: Cell<f64>,
+    /// The part of a text the runs evaluate an expression selector for: its
+    /// index, from 1, and how many parts there are.
+    part: Cell<Option<(u32, u32)>>,
 }
 
 /// Compiles and runs expressions over one host. Not `Send`: an engine
@@ -435,6 +438,25 @@ fn natives() -> Vec<(&'static str, usize, NativeFunction)> {
             }),
         ),
         (
+            "__textPart",
+            1,
+            NativeFunction::from_fn_ptr(|_, a, ctx| {
+                let which = number(a, 0, ctx)?;
+                match state(ctx).part.get() {
+                    Some((index, _)) if which == 0.0 => Ok(index.into()),
+                    Some((_, total)) => Ok(total.into()),
+                    None => Err(missing(
+                        ctx,
+                        Missing::Unknown(
+                            "the part of the text it chooses, which only an expression \
+                             selector has"
+                                .into(),
+                        ),
+                    )),
+                }
+            }),
+        ),
+        (
             "__seedRandom",
             2,
             NativeFunction::from_fn_ptr(|_, a, ctx| {
@@ -536,6 +558,7 @@ impl Engine {
             timeless: Cell::new(false),
             varies: Cell::new(false),
             time: Cell::new(0.0),
+            part: Cell::new(None),
         });
         let failed = |e: JsError| {
             Diagnostic::new(Kind::Invalid, format!("the expression prelude failed: {e}"))
@@ -609,6 +632,14 @@ impl Engine {
             program: Program(self.programs.len() - 1),
             repairs: rewritten.repairs,
         })
+    }
+
+    /// Sets the part of a text the next runs evaluate an expression
+    /// selector for: its index, from 1, and how many parts there are; `None`
+    /// for any other expression. `textIndex`, `textTotal` and
+    /// `selectorValue` read it, and fail without one.
+    pub fn set_part(&mut self, part: Option<(u32, u32)>) {
+        state(&self.context).part.set(part);
     }
 
     /// Runs `program` as the expression of the property `this`, at `time`

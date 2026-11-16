@@ -24,6 +24,7 @@ impl Walk<'_> {
     /// The text in `group`, a layer's `ADBE Text Properties`, into `out`.
     pub(super) fn text(&mut self, group: &Group, out: &mut Out, place: &Place<'_>) {
         self.mapping.count(&group.match_name, Fate::Mapped);
+        self.count_parts(group);
         group.children.iter().for_each(|child| match child {
             Child::Property(property) if property.match_name == DOCUMENT => {
                 self.document(property, out, &place.inside(DOCUMENT));

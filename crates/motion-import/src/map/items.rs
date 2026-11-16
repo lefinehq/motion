@@ -606,6 +606,20 @@ impl Walk<'_> {
                 None => self.group(child, &place.inside(&child.match_name)),
             },
         });
+        // An expression selector's amount becomes its parts.
+        if let Some(at) = properties
+            .iter()
+            .position(|p| p.match_name == crate::parts::AMOUNT)
+        {
+            let amount = properties.remove(at);
+            self.mapping.count(&amount.match_name, Fate::Mapped);
+            let here = place.inside(&amount.match_name);
+            // One that cannot be baked keeps no parts, and chooses nothing.
+            if let Some((by, parts)) = self.part_items(amount, &here) {
+                out.keys.insert("by".into(), json!(by));
+                sub_items = parts;
+            }
+        }
         self.rows(
             &properties,
             kind.rows_for(&properties),

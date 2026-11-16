@@ -5,7 +5,13 @@ use crate::table::names;
 
 #[test]
 fn kind_names_are_unique_in_each_table() {
-    for kinds in [&SHAPES[..], &EFFECTS[..], &ANIMATORS[..], &SELECTORS[..]] {
+    for kinds in [
+        &SHAPES[..],
+        &EFFECTS[..],
+        &ANIMATORS[..],
+        &SELECTORS[..],
+        &PART_KINDS[..],
+    ] {
         let mut all: Vec<&str> = names(kinds).collect();
         let count = all.len();
         all.sort_unstable();
@@ -21,6 +27,7 @@ fn all_kinds() -> impl Iterator<Item = &'static ItemKind> {
         .chain(&EFFECTS)
         .chain(&ANIMATORS)
         .chain(&SELECTORS)
+        .chain(&PART_KINDS)
 }
 
 #[test]
@@ -29,8 +36,8 @@ fn every_kind_has_its_primary_settings_and_docs() {
         assert!(!kind.doc.is_empty(), "{}", kind.name);
         assert_eq!(
             kind.items().is_some(),
-            matches!(kind.role, Role::Group | Role::Animator),
-            "only groups and animators hold items: {}",
+            matches!(kind.role, Role::Group | Role::Animator) || kind.name == "parts",
+            "only groups, animators and the `parts` selector hold items: {}",
             kind.name
         );
         if let Some(prop) = kind.primary_prop() {
@@ -180,6 +187,7 @@ fn scene_format_doc_lists_every_kind_with_its_properties_and_settings() {
         ("| Effect |", &EFFECTS[..]),
         ("| Animator |", &ANIMATORS[..]),
         ("| Selector |", &SELECTORS[..]),
+        ("| Part |", &PART_KINDS[..]),
     ] {
         let rows = documented(header);
         assert_eq!(rows.len(), kinds.len(), "{header}");

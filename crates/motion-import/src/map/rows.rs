@@ -945,7 +945,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 40] = [
+pub(super) static KINDS: [Kind; 41] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -1453,6 +1453,27 @@ pub(super) static KINDS: [Kind; 40] = [
             ),
         ],
         parts: &[("ADBE Text Range Advanced", Part::Rows)],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Text Expressible Selector",
+        item: "parts",
+        table: &SELECTORS,
+        rows: &[
+            row(
+                "ADBE Text Expressible Amount",
+                To::Ignore("written as the selector's parts, one per part of the text"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Text Range Type2",
+                To::Setting("by", BASED_ON),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
         switch: None,
     },
     Kind {

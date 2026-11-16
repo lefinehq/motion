@@ -110,6 +110,34 @@ fn a_second_selector_combines_by_its_mode(#[case] mode: &str, #[case] expected: 
 }
 
 #[test]
+fn a_parts_selector_chooses_each_part_by_its_own_item() {
+    // The space is the third character; it and the fourth have no item, so
+    // they are not chosen.
+    let keys = r#""text":"ab c","animate":[{"animator":[{"parts":[{"part":1},{"part":0.25}]}],"opacity":0}]"#;
+    assert_eq!(opacities(keys, 0.0), [0.0, 0.75, 1.0, 1.0]);
+}
+
+#[test]
+fn a_parts_selector_counts_by_its_by_and_animates_each_part() {
+    // By words: the first word follows its keys, the second stays chosen,
+    // and the space between them is in no word.
+    let keys = r#""text":"ab cd","animate":[{"animator":[{"parts":[{"part":0,"anim":{"amount":"0 -> 1 @0-1s"}},{"part":1}],"by":"word"}],"opacity":0}]"#;
+    assert_eq!(opacities(keys, 0.0), [1.0, 1.0, 1.0, 0.0, 0.0]);
+    assert_eq!(opacities(keys, 10.0), [0.0, 0.0, 1.0, 0.0, 0.0]);
+}
+
+#[test]
+fn a_part_may_be_chosen_across_and_down_by_different_amounts() {
+    // Across fully, down not at all: the part moves right, not down, and
+    // fades by the first amount.
+    let keys = r#""text":"a","animate":[{"animator":[{"parts":[{"part":[1,0]}]}],"position":[10,20],"opacity":0.5}]"#;
+    let state = frame(keys, 0.0);
+    let (_, glyphs) = text_of(&state.nodes[0]);
+    assert_eq!(glyphs[0].transform.translation(), Vec2::new(10.0, 0.0));
+    assert_eq!(glyphs[0].opacity, 0.5);
+}
+
+#[test]
 fn a_subtracting_first_selector_takes_from_everything() {
     let keys = r#""text":"abcd","animate":[{"animator":[{"range":"char","end":0.5,"mode":"subtract"}],"opacity":0}]"#;
     assert_eq!(opacities(keys, 0.0), [1.0, 1.0, 0.0, 0.0]);
@@ -265,7 +293,7 @@ mod any_selector {
             let s = selector([start, end, offset, amount, smooth, high, low], [by, shape, mode]);
             let glyph = GlyphParts { index: [Some(i % n); 4] };
             let v = chosen(&[s.clone(), s], &glyph, &[n; 4]);
-            prop_assert!((-1.0..=1.0).contains(&v), "{v}");
+            prop_assert!((-1.0..=1.0).contains(&v.x) && v.x == v.y, "{v:?}");
         }
     }
 }

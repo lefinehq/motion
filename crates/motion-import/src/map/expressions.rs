@@ -378,7 +378,7 @@ fn still(fits: &[Fitted]) -> bool {
 }
 
 /// How many keys a stream has.
-fn key_count(stream: &Stream) -> usize {
+pub(super) fn key_count(stream: &Stream) -> usize {
     match stream {
         Stream::Static(_) => 0,
         Stream::Animated(keys) => keys.len(),
@@ -386,7 +386,7 @@ fn key_count(stream: &Stream) -> usize {
 }
 
 /// The report's name for a dialect.
-fn engine_name(dialect: Dialect) -> &'static str {
+pub(super) fn engine_name(dialect: Dialect) -> &'static str {
     match dialect {
         Dialect::Modern => "modern",
         Dialect::Legacy => "legacy",
