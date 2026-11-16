@@ -257,3 +257,95 @@ fn still_footage_that_cannot_be_found_is_reported_with_its_file() {
         "{what:?}"
     );
 }
+
+/// An import of the scene `json`, as the map writes one.
+fn import_of(json: &str) -> Import {
+    let json: serde_json::Value = serde_json::from_str(json).expect("json");
+    Import {
+        document: motion_format::parse_document(&json.to_string()).expect("a scene"),
+        json,
+        mapping: motion_import::map::Mapping::default(),
+        texts: Vec::new(),
+        fonts: std::collections::BTreeMap::new(),
+        sources: motion_import::map::Sources::default(),
+        unmeasured: Vec::new(),
+    }
+}
+
+/// An ask for layer `layer` of the comp with item id 1, at `time`.
+fn unmeasured(layer: u32, time: f64, at: Option<&str>, settled: bool) -> Unmeasured {
+    Unmeasured {
+        ask: motion_import::bake::Ask {
+            comp: 1,
+            layer,
+            time,
+            extents: false,
+        },
+        layer: at.map(|id| motion_format::Address::written(Some("card"), id.parse().unwrap())),
+        settled,
+    }
+}
+
+#[test]
+fn a_pass_measures_settled_layers_first() {
+    let asks = [
+        unmeasured(1, 0.0, Some("a"), false),
+        unmeasured(2, 0.0, Some("b"), true),
+    ];
+    let picked: Vec<u32> = to_measure(&asks).iter().map(|u| u.ask.layer).collect();
+    assert_eq!(picked, [2]);
+    let picked: Vec<u32> = to_measure(&asks[..1]).iter().map(|u| u.ask.layer).collect();
+    assert_eq!(picked, [1], "when none has settled, each as it draws now");
+}
+
+#[test]
+fn rectangles_are_measured_in_the_scene_the_import_wrote() {
+    let import = import_of(
+        r#"{"motion":1,"dur":"1s","fps":10,
+            "comps":{"card":{"size":"200x100","dur":"1s","layers":[
+              {"id":"title","text":"Hey"},{"id":"plate","rect":"30x20"}]}},
+            "layers":[{"id":"c","comp":"card"}]}"#,
+    );
+    let asks = [
+        unmeasured(1, 0.5, Some("title"), true),
+        unmeasured(2, 0.5, Some("plate"), true),
+        unmeasured(3, 0.5, None, true),
+        unmeasured(4, 0.5, Some("gone"), true),
+    ];
+    let mut layouts = motion_import::bake::Layouts::default();
+    measure(
+        &import,
+        &asks.iter().collect::<Vec<_>>(),
+        &FontSet::builtin(),
+        &mut layouts,
+    );
+    let title = layouts.get(&asks[0].ask).unwrap().clone().unwrap();
+    assert!(
+        title[0] > 0.0 && title[1] < 0.0 && title[2] > 20.0 && title[3] > 10.0,
+        "{title:?}"
+    );
+    assert_eq!(layouts.get(&asks[1].ask), Some(&Ok([0.0, 0.0, 30.0, 20.0])));
+    assert_eq!(
+        layouts.get(&asks[2].ask),
+        Some(&Err("the scene leaves the layer out".into()))
+    );
+    assert_eq!(
+        layouts.get(&asks[3].ask),
+        Some(&Err("the scene has no such layer".into()))
+    );
+}
+
+#[test]
+fn nothing_unmeasured_imports_nothing_again() {
+    let mut import = import_of(r#"{"motion":1,"dur":"1s","layers":[]}"#);
+    let before = import.json.clone();
+    measure_layouts(
+        "no such project.aep",
+        &Options::default(),
+        None,
+        &mut import,
+        &FontSet::builtin(),
+    )
+    .expect("the project is not read");
+    assert_eq!(import.json, before);
+}

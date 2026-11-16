@@ -75,6 +75,10 @@ pub enum Missing {
     Pending(NodeId),
     /// The value is something the import cannot know, with why.
     Unknown(String),
+    /// The rectangle a layer's content covers, which the host has not
+    /// measured yet but will: the import measures it from the scene it
+    /// writes and bakes again ([`Host::rect_at`]).
+    Unmeasured,
 }
 
 /// What an expression may read: the importer's view of a project. Every
@@ -119,12 +123,15 @@ pub trait Host {
     /// Key `n` of `node`, from 1: its time and value.
     fn key(&self, node: NodeId, n: usize) -> Option<(f64, Val)>;
     /// The rectangle a layer's content covers at `time`, `[left, top, width,
-    /// height]` in its own space.
+    /// height]` in its own space: what `sourceRectAtTime(time, extents)`
+    /// reads. With `extents`, a shape's strokes and a text box's frame
+    /// count.
     ///
     /// # Errors
-    /// [`Missing::Unknown`] when the host cannot lay the layer out.
-    fn rect_at(&self, layer: NodeId, time: f64) -> Result<[f64; 4], Missing> {
-        let _ = (layer, time);
+    /// [`Missing::Unmeasured`] when the host will measure it later, or
+    /// [`Missing::Unknown`] when it cannot lay the layer out.
+    fn rect_at(&self, layer: NodeId, time: f64, extents: bool) -> Result<[f64; 4], Missing> {
+        let _ = (layer, time, extents);
         Err(Missing::Unknown("the size of a layer's content".into()))
     }
 }

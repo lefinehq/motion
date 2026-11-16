@@ -14,6 +14,7 @@ use serde_json::{Map, Value as Json, json};
 
 use serde::Serialize;
 
+use crate::bake::{Ask, Layouts};
 use crate::model::{ComposedLine, Composition, Item, ItemKind, Layer, LayerKind, Project};
 
 mod curves;
@@ -73,6 +74,10 @@ pub struct Options {
     /// composition it was made from is the scene unless `comp` names
     /// another.
     pub panel: Vec<crate::template::Control>,
+    /// The rectangles of layers' content measured in the scene an earlier
+    /// import wrote, which expressions read (`sourceRectAtTime`); what they
+    /// read and this lacks is in [`Import::unmeasured`].
+    pub layouts: Layouts,
 }
 
 /// What a found clip is, as the caller read it from the file.
@@ -113,6 +118,24 @@ pub struct Import {
     ///
     /// [D45]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d45-export-patches-the-project-it-came-from
     pub sources: Sources,
+    /// The rectangles of layers' content its expressions read that
+    /// [`Options::layouts`] lacks: measured in this scene and given to the
+    /// next import, they let those expressions bake.
+    pub unmeasured: Vec<Unmeasured>,
+}
+
+/// A rectangle of a layer's content an expression read, not measured yet.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Unmeasured {
+    /// What was read.
+    pub ask: Ask,
+    /// Where the layer is written in the scene ([`Address::written`]);
+    /// none when the scene leaves it out.
+    pub layer: Option<Address>,
+    /// Whether every expression of the layer's content baked: what the
+    /// scene draws of it will not change when other rectangles are
+    /// measured.
+    pub settled: bool,
 }
 
 /// The lines a project laid one text layer out in, at its first text.
@@ -141,7 +164,7 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
         Some(root) => root,
         None => root(project, options.comp.as_deref())?,
     };
-    let bakes = crate::bake::bake(project, Some(root.0.id));
+    let bakes = crate::bake::bake_with(project, Some(root.0.id), &options.layouts);
     let files = footage::Files {
         found: &options.footage,
         videos: &options.videos,
@@ -168,6 +191,15 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
         .into_iter()
         .filter(|id| json["slots"][id.as_str()].get("text").is_some())
         .collect::<Vec<_>>();
+    let unmeasured = bakes
+        .asks
+        .iter()
+        .map(|ask| Unmeasured {
+            ask: *ask,
+            layer: walk.places.get(&(ask.comp, ask.layer)).cloned(),
+            settled: !bakes.unsettled.contains(&(ask.comp, ask.layer)),
+        })
+        .collect();
     walk.mapping.roles = roles::propose(&document, &walk.named_roles, &offered);
     if !walk.mapping.roles.is_empty() {
         json["roles"] = roles::written(&walk.mapping.roles);
@@ -185,6 +217,7 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
         texts: walk.texts,
         fonts: walk.fonts,
         sources,
+        unmeasured,
     })
 }
 
@@ -336,6 +369,8 @@ struct Walk<'p> {
     /// What each expression selector of the text layers met counts, by its
     /// amount's address, or why that cannot be known.
     part_counts: HashMap<usize, std::result::Result<crate::parts::Counted, String>>,
+    /// Where each layer written so far is, by comp item id and layer id.
+    places: HashMap<(u32, u32), Address>,
     /// The fonts the text written so far is set in, with where.
     fonts: BTreeMap<String, Vec<String>>,
     /// The footage files found, and what the clips and sounds among them
@@ -380,6 +415,7 @@ impl<'p> Walk<'p> {
             scope: None,
             texts: Vec::new(),
             part_counts: HashMap::new(),
+            places: HashMap::new(),
             fonts: BTreeMap::new(),
             files,
             bakes,
@@ -430,7 +466,7 @@ impl<'p> Walk<'p> {
         if !options.panel.is_empty() {
             self.offer_panel(&options.panel);
         }
-        let layers = self.layers(root, &item.name);
+        let layers = self.layers(item.id, root, &item.name);
         let mut comps = BTreeMap::new();
         while let Some(id) = self.pending.pop() {
             let Some(Item {
@@ -454,7 +490,7 @@ impl<'p> Walk<'p> {
                 comp.insert("shutter".into(), written);
             }
             self.scope = Some(self.comp_ids[&id].clone());
-            let layers = Json::Array(self.layers(composition, name));
+            let layers = Json::Array(self.layers(id, composition, name));
             comps.insert(self.comp_ids[&id].clone(), (comp, layers));
         }
         // A control's slot holds what most of its reads gave, so references
@@ -501,9 +537,9 @@ impl<'p> Walk<'p> {
         given
     }
 
-    /// The layers of `composition`, called `name`, bottom first as a scene
-    /// stacks them.
-    fn layers(&mut self, composition: &'p Composition, name: &str) -> Vec<Json> {
+    /// The layers of `composition`, the item `item` called `name`, bottom
+    /// first as a scene stacks them.
+    fn layers(&mut self, item: u32, composition: &'p Composition, name: &str) -> Vec<Json> {
         let mut ids = Ids::default();
         let given: HashMap<u32, String> = composition
             .layers
@@ -547,7 +583,14 @@ impl<'p> Walk<'p> {
                         self.mapping.ignore("layer", layer::DROPPED);
                         None
                     }
-                    false => Some(written),
+                    false => {
+                        let id = given[&layer.id]
+                            .parse()
+                            .expect("the import writes valid ids");
+                        let at = Address::written(self.scope.as_deref(), id);
+                        self.places.insert((item, layer.id), at);
+                        Some(written)
+                    }
                 }
             })
             .collect();

@@ -3,7 +3,8 @@
 use pretty_assertions::assert_eq;
 
 use super::*;
-use crate::model::{Child, ExpressionEngine, Layer};
+use crate::bake::{bake, bake_with};
+use crate::model::{Child, ExpressionEngine, Group, Layer};
 use crate::test_support::build::{
     comp, expressed, layer, number, point, project, property, slider, transform,
 };
@@ -517,6 +518,124 @@ fn an_expression_selector_is_baked_once_per_part() {
     );
 }
 
+/// Title, a text layer, and Box, a shape layer whose rectangle's size reads
+/// Title's rectangle at each frame and whose anchor reads it at 1 s, padded
+/// by its offset's amount; and Plate, a layer over a 640 by 360 solid.
+fn boxed() -> Project {
+    use crate::model::LayerKind;
+    let title = Layer {
+        kind: LayerKind::Text,
+        ..layer(2, "Title", vec![transform(vec![])])
+    };
+    let offset = Group {
+        name: Some("Offset Paths 1".into()),
+        ..crate::test_support::build::group(
+            "ADBE Vector Filter - Offset",
+            vec![Child::Property(property(
+                "ADBE Vector Offset Amount",
+                number(8.0),
+            ))],
+        )
+    };
+    let rect = crate::test_support::build::group(
+        "ADBE Vector Shape - Rect",
+        vec![Child::Property(expressed(
+            "ADBE Vector Rect Size",
+            point(0.0, 0.0),
+            r#"var r = thisComp.layer("Title").sourceRectAtTime(); [r.width, r.height]"#,
+        ))],
+    );
+    let contents = crate::test_support::build::group(
+        "ADBE Root Vectors Group",
+        vec![Child::Group(rect), Child::Group(offset)],
+    );
+    let shapes = Layer {
+        kind: LayerKind::Shape,
+        ..layer(
+            3,
+            "Box",
+            vec![
+                Child::Group(contents),
+                transform(vec![expressed(
+                    "ADBE Anchor Point",
+                    point(0.0, 0.0),
+                    r#"var r = thisComp.layer("Title").sourceRectAtTime(1, true); var o = content("Offset Paths 1").amount; [r.left - o, r.top - o]"#,
+                )]),
+            ],
+        )
+    };
+    let plate = Layer {
+        source: Some(9),
+        ..layer(
+            4,
+            "Plate",
+            vec![transform(vec![expressed(
+                "ADBE Rotate Z",
+                number(0.0),
+                "sourceRectAtTime().width + sourceRectAtTime(0, true).height",
+            )])],
+        )
+    };
+    let mut project = project(vec![(5, "Main", comp(vec![title, shapes, plate], 0.3))]);
+    project
+        .items
+        .push(crate::test_support::build::solid(9, 640, 360));
+    project
+}
+
+#[test]
+fn a_rectangle_not_measured_is_asked_for_at_every_frame_that_reads_it() {
+    let project = boxed();
+    let bakes = bake(&project, Some(5));
+    let size = bake_of(&bakes, &project, "Box", "ADBE Vector Rect Size");
+    assert_eq!(size.outcome, Err(crate::bake::UNMEASURED.into()));
+    let asked: Vec<(u32, f64, bool)> = bakes
+        .asks
+        .iter()
+        .map(|a| (a.layer, a.time, a.extents))
+        .collect();
+    // Frames 0, 0.1 and 0.2 s for the size; 1 s with extents for the
+    // anchor, once though it runs at every frame.
+    assert_eq!(
+        asked,
+        [
+            (2, 0.0, false),
+            (2, 0.1, false),
+            (2, 0.2, false),
+            (2, 1.0, true)
+        ]
+    );
+    // The size is part of what Box draws; the anchor is not, and Title's
+    // content holds no expression.
+    assert_eq!(bakes.unsettled.iter().collect::<Vec<_>>(), [&(5, 3)]);
+    // A layer with a source covers its source, at any time.
+    let (_, plate) = numbers(bake_of(&bakes, &project, "Plate", "ADBE Rotate Z"));
+    assert_eq!(plate[0], [1000.0, 1000.0, 1000.0]);
+}
+
+#[test]
+fn measured_rectangles_are_read_as_left_top_width_height() {
+    let project = boxed();
+    let mut layouts = Layouts::default();
+    for ask in &bake(&project, Some(5)).asks {
+        let grow = (ask.time * 10.0).round();
+        layouts.insert(ask, Ok([-5.0, -30.0, 100.0 + grow, 40.0]));
+    }
+    let bakes = bake_with(&project, Some(5), &layouts);
+    assert!(bakes.asks.is_empty() && bakes.unsettled.is_empty());
+    let (_, size) = numbers(bake_of(&bakes, &project, "Box", "ADBE Vector Rect Size"));
+    assert_eq!(
+        size[..2],
+        [vec![100.0, 101.0, 102.0], vec![40.0, 40.0, 40.0]]
+    );
+    let (_, anchor) = numbers(bake_of(&bakes, &project, "Box", "ADBE Anchor Point"));
+    assert_eq!(
+        [anchor[0][0], anchor[1][0]],
+        [-13.0, -38.0],
+        "less the offset's amount"
+    );
+}
+
 #[test]
 fn an_expression_selector_counts_by_its_based_on() {
     let project = selected("time * 100 + textIndex", Some(3.0));
@@ -529,4 +648,24 @@ fn an_expression_selector_counts_by_its_based_on() {
     assert_eq!(parts.len(), 2, "two words");
     assert!(!parts[0].constant, "it reads the time");
     assert_eq!(parts[1].times.len(), 10);
+}
+
+#[test]
+fn a_rectangle_that_could_not_be_measured_says_why() {
+    let project = boxed();
+    let mut layouts = Layouts::default();
+    for ask in &bake(&project, Some(5)).asks {
+        layouts.insert(ask, Err("the scene leaves the layer out".into()));
+    }
+    let bakes = bake_with(&project, Some(5), &layouts);
+    let size = bake_of(&bakes, &project, "Box", "ADBE Vector Rect Size");
+    assert_eq!(
+        size.outcome,
+        Err(
+            "it reads the size of a layer's content, which could not be measured (the scene \
+             leaves the layer out), which the import cannot know"
+                .into()
+        )
+    );
+    assert!(bakes.asks.is_empty() && bakes.unsettled.is_empty());
 }

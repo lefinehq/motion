@@ -101,6 +101,9 @@ pub enum Failure {
     Pending(NodeId),
     /// It read something the import cannot know.
     Unknown(String),
+    /// It read the rectangle of a layer's content, which the host has not
+    /// measured yet ([`Missing::Unmeasured`]).
+    Unmeasured,
     /// It threw, or gave something that is not a value.
     Error(String),
 }
@@ -145,6 +148,7 @@ fn missing(ctx: &mut Context, why: Missing) -> JsError {
     let message = match &why {
         Missing::Pending(node) => format!("waits for the expression on node {node}"),
         Missing::Unknown(what) => format!("reads {what}, which the import cannot know"),
+        Missing::Unmeasured => "reads the size of a layer's content, not measured yet".into(),
     };
     if let Some(state) = ctx.get_data::<State>() {
         state.missing.borrow_mut().get_or_insert(why);
@@ -393,11 +397,12 @@ fn natives() -> Vec<(&'static str, usize, NativeFunction)> {
         ),
         (
             "__rectAt",
-            2,
+            3,
             NativeFunction::from_fn_ptr(|_, a, ctx| {
                 let n = node(a, 0, ctx)?;
                 let t = number(a, 1, ctx)?;
-                let found = state(ctx).host.rect_at(n, t);
+                let extents = arg(a, 2).to_boolean();
+                let found = state(ctx).host.rect_at(n, t, extents);
                 match found {
                     Ok(r) => Ok(to_js(Val::Vector(r.to_vec()), ctx)),
                     Err(why) => Err(missing(ctx, why)),
@@ -676,6 +681,7 @@ impl Engine {
             return Err(match why {
                 Missing::Pending(node) => Failure::Pending(node),
                 Missing::Unknown(what) => Failure::Unknown(what),
+                Missing::Unmeasured => Failure::Unmeasured,
             });
         }
         let (approximate, constant) = (st.approximate.get(), !st.varies.get());

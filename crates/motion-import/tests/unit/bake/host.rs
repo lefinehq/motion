@@ -27,7 +27,7 @@ fn host() -> (ProjectHost, Vec<NodeId>) {
         )
     };
     let project = project(vec![(5, "Main", comp(vec![controls, title], 2.0))]);
-    let (host, targets) = ProjectHost::new(&project);
+    let (host, targets) = ProjectHost::new(&project, &super::super::Layouts::default());
     let nodes = targets.iter().map(|t| t.node).collect();
     (host, nodes)
 }
@@ -146,7 +146,7 @@ fn a_sourced_layers_anchor_reads_in_pixels_of_its_source() {
         comp(vec![null, anchored(2, "Free")], 2.0),
     )]);
     project.items.push(solid(9, 100, 100));
-    let (host, _) = ProjectHost::new(&project);
+    let (host, _) = ProjectHost::new(&project, &super::super::Layouts::default());
     let main = child(&host, PROJECT, Select::Name("Main"));
     let anchor = |name| {
         let layer = child(&host, main, Select::Name(name));
@@ -201,7 +201,7 @@ fn a_2d_layers_transform_reads_in_two_components_a_3d_layers_in_three() {
         "Main",
         comp(vec![transformed(1, "Flat"), three_d, camera], 2.0),
     )]);
-    let (host, _) = ProjectHost::new(&project);
+    let (host, _) = ProjectHost::new(&project, &super::super::Layouts::default());
     let main = child(&host, PROJECT, Select::Name("Main"));
     let read = |name, attribute| {
         let layer = child(&host, main, Select::Name(name));

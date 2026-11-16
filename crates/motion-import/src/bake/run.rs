@@ -7,7 +7,7 @@ use std::rc::Rc;
 use motion_expr::{Dialect, Engine, Failure, Limits, NodeId, Program, STACK_SIZE, Val};
 
 use super::host::{Baked, ProjectHost, Target};
-use super::{Bake, Bakes, MAX_DEPTH, Sampled, Samples, address, dialect};
+use super::{Bake, Bakes, Layouts, MAX_DEPTH, Sampled, Samples, UNMEASURED, address, dialect};
 use crate::model::{Composition, ItemKind, Project, Property, Stream, Value};
 use crate::parts;
 
@@ -17,13 +17,32 @@ const MAX_FRAMES: usize = 100_000;
 /// How often one run may wait on another expression before it is stopped.
 const MAX_WAITS: usize = 10_000;
 
-/// [`super::bake`], with the engine.
-pub(super) fn bake(project: &Project, root: Option<u32>) -> Bakes {
+/// Why an evaluation stopped without a value.
+#[derive(Debug, Clone, PartialEq)]
+enum Stop {
+    /// It cannot be baked, with why.
+    Failed(String),
+    /// It read a rectangle not measured yet, which a later pass may have.
+    Unmeasured,
+}
+
+impl Stop {
+    /// Why, as a report says it.
+    fn why(self) -> String {
+        match self {
+            Stop::Failed(why) => why,
+            Stop::Unmeasured => UNMEASURED.into(),
+        }
+    }
+}
+
+/// [`super::bake_with`], with the engine.
+pub(super) fn bake_all(project: &Project, root: Option<u32>, layouts: &Layouts) -> Bakes {
     let spawned = std::thread::scope(|scope| {
         std::thread::Builder::new()
             .name("motion-bake".into())
             .stack_size(STACK_SIZE)
-            .spawn_scoped(scope, || bake_here(project, root))
+            .spawn_scoped(scope, || bake_here(project, root, layouts))
             .map(|handle| handle.join())
     });
     match spawned {
@@ -40,8 +59,8 @@ pub(super) fn bake(project: &Project, root: Option<u32>) -> Bakes {
 }
 
 /// [`bake`], on the current thread.
-fn bake_here(project: &Project, root: Option<u32>) -> Bakes {
-    let (host, targets) = ProjectHost::new(project);
+fn bake_here(project: &Project, root: Option<u32>, layouts: &Layouts) -> Bakes {
+    let (host, targets) = ProjectHost::new(project, layouts);
     let spans = spans(project, root);
     let targets: Vec<Target<'_>> = targets
         .into_iter()
@@ -87,9 +106,16 @@ fn bake_here(project: &Project, root: Option<u32>) -> Bakes {
     let (selectors, targets): (Vec<&Target<'_>>, Vec<&Target<'_>>) = targets
         .iter()
         .partition(|t| t.property.match_name == parts::AMOUNT);
+    let mut unsettled = std::collections::BTreeSet::new();
     let by_property = targets
         .iter()
-        .map(|target| (address(target.property), baker.target(target)))
+        .map(|target| {
+            let (bake, waits) = baker.target(target);
+            if waits && target.content {
+                unsettled.insert((target.item, target.layer.id));
+            }
+            (address(target.property), bake)
+        })
         .collect();
     let by_part = selectors
         .iter()
@@ -99,6 +125,8 @@ fn bake_here(project: &Project, root: Option<u32>) -> Bakes {
         by_property,
         by_part,
         stopped: None,
+        asks: baker.host.asks.take(),
+        unsettled,
     }
 }
 
@@ -122,16 +150,19 @@ struct Baker {
 }
 
 impl Baker {
-    /// One property's bake, over the frames its layer shows.
-    fn target(&mut self, target: &Target<'_>) -> Bake {
+    /// One property's bake, over the frames its layer shows, and whether it
+    /// waits for a rectangle not measured yet.
+    fn target(&mut self, target: &Target<'_>) -> (Bake, bool) {
         let source = self.sources.get(&target.node).cloned().unwrap_or_default();
         let outcome = self.samples(target);
-        Bake {
+        let waits = matches!(outcome, Err(Stop::Unmeasured));
+        let bake = Bake {
             source,
             dialect: self.dialect,
             repairs: self.repairs.get(&target.node).cloned().unwrap_or_default(),
-            outcome,
-        }
+            outcome: outcome.map_err(Stop::why),
+        };
+        (bake, waits)
     }
 
     /// An expression selector's amount, evaluated for each part of its
@@ -162,7 +193,7 @@ impl Baker {
         let mut values = Vec::with_capacity(times.len());
         let mut constant = false;
         for &time in &times {
-            let (value, still) = self.run(target.node, time, 0)?;
+            let (value, still) = self.run(target.node, time, 0).map_err(Stop::why)?;
             // One number chooses the part along every axis.
             let value = match value {
                 Val::Number(n) => Val::Vector(vec![n; 3]),
@@ -190,25 +221,37 @@ impl Baker {
         })
     }
 
-    fn samples(&mut self, target: &Target<'_>) -> Result<Samples, String> {
+    fn samples(&mut self, target: &Target<'_>) -> Result<Samples, Stop> {
         if target.layer.stretch < 0.0 {
-            return Err("its layer runs backwards, which the bake does not follow yet".into());
+            return Err(Stop::Failed(
+                "its layer runs backwards, which the bake does not follow yet".into(),
+            ));
         }
         let span = self
             .spans
             .get(&target.item)
             .copied()
             .unwrap_or((0.0, target.comp.duration));
-        let times = frames(target, span)?;
+        let times = frames(target, span).map_err(Stop::Failed)?;
         let mut values = Vec::with_capacity(times.len());
         let mut constant = false;
+        let mut unmeasured = false;
         for &time in &times {
-            values.push(self.evaluate(target.node, time, 0)?);
+            // A frame that waits for a rectangle does not stop the others,
+            // so this pass asks for every rectangle they read.
+            match self.evaluate(target.node, time, 0) {
+                Ok(value) => values.push(value),
+                Err(Stop::Unmeasured) => unmeasured = true,
+                Err(stop) => return Err(stop),
+            }
             if let Some(Baked::Constant(value)) = self.host.baked.borrow().get(&target.node) {
                 values.resize(times.len(), value.clone());
                 constant = true;
                 break;
             }
+        }
+        if unmeasured {
+            return Err(Stop::Unmeasured);
         }
         let template = target.property.value.value_at(times[0]);
         Ok(Samples {
@@ -218,7 +261,8 @@ impl Baker {
                 &template,
                 &times,
                 &values,
-            )?,
+            )
+            .map_err(Stop::Failed)?,
             times,
             approximate: self.approximate.contains(&target.node),
             constant,
@@ -227,7 +271,10 @@ impl Baker {
 
     /// The value of the expression on `node` at `time`, evaluating the
     /// expressions it waits on first.
-    fn evaluate(&mut self, node: NodeId, time: f64, depth: usize) -> Result<Val, String> {
+    /// An expression that waits for a rectangle is not remembered as
+    /// failed: each read of it runs it again, and asks for the rectangle at
+    /// the time it is read.
+    fn evaluate(&mut self, node: NodeId, time: f64, depth: usize) -> Result<Val, Stop> {
         let bits = time.to_bits();
         match self.host.baked.borrow().get(&node) {
             Some(Baked::Values(values)) => {
@@ -236,16 +283,18 @@ impl Baker {
                 }
             }
             Some(Baked::Constant(value)) => return Ok(value.clone()),
-            Some(Baked::Failed(why)) => return Err(why.clone()),
+            Some(Baked::Failed(why)) => return Err(Stop::Failed(why.clone())),
             None => {}
         }
         if depth > MAX_DEPTH {
-            return Err(format!(
+            return Err(Stop::Failed(format!(
                 "expressions wait on one another more than {MAX_DEPTH} deep"
-            ));
+            )));
         }
         if !self.active.insert((node, bits)) {
-            return Err("it is part of a cycle of expressions that read one another".into());
+            return Err(Stop::Failed(
+                "it is part of a cycle of expressions that read one another".into(),
+            ));
         }
         let result = self.run(node, time, depth);
         self.active.remove(&(node, bits));
@@ -264,17 +313,18 @@ impl Baker {
                 }
                 Ok(value)
             }
-            Err(why) => {
+            Err(Stop::Failed(why)) => {
                 baked.insert(node, Baked::Failed(why.clone()));
-                Err(why)
+                Err(Stop::Failed(why))
             }
+            Err(Stop::Unmeasured) => Err(Stop::Unmeasured),
         }
     }
 
     /// Runs `node`'s expression at `time` until nothing it reads waits:
     /// its value, and whether it gives that value at every time.
-    fn run(&mut self, node: NodeId, time: f64, depth: usize) -> Result<(Val, bool), String> {
-        let program = self.program(node)?;
+    fn run(&mut self, node: NodeId, time: f64, depth: usize) -> Result<(Val, bool), Stop> {
+        let program = self.program(node).map_err(Stop::Failed)?;
         for _ in 0..MAX_WAITS {
             self.host.demand.set(None);
             match self.engine.run(program, node, time) {
@@ -286,23 +336,34 @@ impl Baker {
                 }
                 Err(Failure::Pending(_)) => {
                     let Some((other, at)) = self.host.demand.take() else {
-                        return Err("it waited on a value no read asked for".into());
-                    };
-                    if let Err(why) = self.evaluate(other, at, depth + 1) {
-                        return Err(format!(
-                            "it reads another expression, which could not be baked ({why})"
+                        return Err(Stop::Failed(
+                            "it waited on a value no read asked for".into(),
                         ));
+                    };
+                    match self.evaluate(other, at, depth + 1) {
+                        Ok(_) => {}
+                        Err(Stop::Unmeasured) => return Err(Stop::Unmeasured),
+                        Err(Stop::Failed(why)) => {
+                            return Err(Stop::Failed(format!(
+                                "it reads another expression, which could not be baked ({why})"
+                            )));
+                        }
                     }
                 }
                 Err(Failure::Unknown(what)) => {
-                    return Err(format!("it reads {what}, which the import cannot know"));
+                    return Err(Stop::Failed(format!(
+                        "it reads {what}, which the import cannot know"
+                    )));
                 }
-                Err(Failure::Error(error)) => return Err(format!("it fails: {error}")),
+                Err(Failure::Unmeasured) => return Err(Stop::Unmeasured),
+                Err(Failure::Error(error)) => {
+                    return Err(Stop::Failed(format!("it fails: {error}")));
+                }
             }
         }
-        Err(format!(
+        Err(Stop::Failed(format!(
             "it waited on other expressions more than {MAX_WAITS} times"
-        ))
+        )))
     }
 
     /// `node`'s expression, compiled the first time it is needed.

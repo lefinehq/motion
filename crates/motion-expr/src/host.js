@@ -9,7 +9,8 @@
 //   __valueAt(id, t, own)  the value at t; `own` is the property being baked,
 //                       whose value is the one under its expression
 //   __numKeys(id), __keyTime(id, n), __keyValue(id, n)
-//   __rectAt(id, t)     a layer's source rectangle [left, top, width, height]
+//   __rectAt(id, t, e)  the rectangle a layer's content covers [left, top,
+//                       width, height]; with `e`, strokes and text boxes count
 //   __this()            the property being baked
 //   __vary(id, own)     marks the run as one that changes with time, unless
 //                       the property holds one value at every time (-1: none)
@@ -72,8 +73,8 @@ function $layer(id) {
     effect: function (sel) { return $node($childOrThrow(__child(id, "effect", true), sel, "effect")); },
     mask: function (sel) { return $node($childOrThrow(__child(id, "mask", true), sel, "mask")); },
     content: function (sel) { return $node($childOrThrow(__child(id, "content", true), sel, "content")); },
-    sourceRectAtTime: function (t) {
-      var r = __rectAt(id, t === undefined ? $now(-1, false) : $v(t));
+    sourceRectAtTime: function (t, extents) {
+      var r = __rectAt(id, t === undefined ? $now(-1, false) : $v(t), !!$v(extents));
       return { left: r[0], top: r[1], width: r[2], height: r[3] };
     },
     get parent() { return $node(__link(id, "parent")); },
@@ -278,7 +279,7 @@ function wiggle(f, a, o, m, t) { return $wiggle(__this(), true, f, a, o, m, t); 
 function effect(sel) { return $thisLayer().effect(sel); }
 function mask(sel) { return $thisLayer().mask(sel); }
 function content(sel) { return $thisLayer().content(sel); }
-function sourceRectAtTime(t) { return $thisLayer().sourceRectAtTime(t); }
+function sourceRectAtTime(t, extents) { return $thisLayer().sourceRectAtTime(t, extents); }
 function posterizeTime(fps) { fps = $v(fps); if (fps > 0) $time = Math.floor($time * fps + 1e-9) / fps; return fps; }
 function seedRandom(offset, timeless) { __seedRandom($v(offset), !!timeless); }
 function random(a, b) {
