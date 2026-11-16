@@ -38,6 +38,87 @@ fn wrap_wraps_the_content_around_its_box() {
     assert_eq!(pixels.get(3, 0), [0.0, 0.0, 1.0, 1.0]);
 }
 
+/// A 64 by 64 box at the frame's origin whose red is its pixel's column
+/// over 64 and green its row over 64, so reading between pixels reads
+/// the point exactly.
+fn ramps() -> (Pixels, Space) {
+    let mut pixels = Pixels::transparent(64, 64);
+    for (i, p) in pixels.data_mut().iter_mut().enumerate() {
+        let (x, y) = ((i % 64) as f32, (i / 64) as f32);
+        *p = [(x + 0.5) / 64.0, (y + 0.5) / 64.0, 0.0, 1.0];
+    }
+    let space = Space {
+        transform: Affine::IDENTITY,
+        bounds: Some(Rect::new(0.0, 0.0, 64.0, 64.0)),
+        input: None,
+        time: 0.0,
+        sound: None,
+    };
+    (pixels, space)
+}
+
+/// The point of the box `ramps` reads at pixel `x`, `y`.
+fn read_at(pixels: &Pixels, x: i64, y: i64) -> [f32; 2] {
+    let [r, g, ..] = pixels.get(x, y);
+    [r * 64.0, g * 64.0]
+}
+
+fn near(a: [f32; 2], b: [f32; 2]) -> bool {
+    (a[0] - b[0]).abs() < 1e-3 && (a[1] - b[1]).abs() < 1e-3
+}
+
+#[test]
+fn polar_coordinates_wraps_rows_into_rings_and_back() {
+    // Rect to polar: the pixel straight left of the middle, 8 px away,
+    // shows the point a quarter of the way across and 8√2 down.
+    let (mut pixels, space) = ramps();
+    polar_coordinates(&mut pixels, &[Number(1.0), Choice(0)], &space);
+    let left = read_at(&pixels, 23, 31);
+    let r = 8.5f32.hypot(0.5);
+    let quarter = (8.5f32).atan2(0.5) / std::f32::consts::TAU;
+    assert!(
+        near(left, [64.0 * quarter, std::f32::consts::SQRT_2 * r]),
+        "{left:?}"
+    );
+    // Just left of straight below: a little short of half way across.
+    let below = read_at(&pixels, 31, 40);
+    let r = 0.5f32.hypot(8.5);
+    let short = 0.5 - 0.5f32.atan2(8.5) / std::f32::consts::TAU;
+    assert!(
+        near(below, [64.0 * short, std::f32::consts::SQRT_2 * r]),
+        "{below:?}"
+    );
+    // Polar to rect: the pixel at column x and row y shows the point at
+    // angle x/64 of a turn and y/√2 px from the middle.
+    let (mut pixels, space) = ramps();
+    polar_coordinates(&mut pixels, &[Number(1.0), Choice(1)], &space);
+    let at = read_at(&pixels, 16, 20);
+    let (angle, radius) = (
+        std::f32::consts::TAU * 16.5 / 64.0,
+        20.5 / std::f32::consts::SQRT_2,
+    );
+    assert!(
+        near(
+            at,
+            [32.0 - radius * angle.sin(), 32.0 - radius * angle.cos()]
+        ),
+        "{at:?}"
+    );
+    // Halfway, a pixel reads halfway between itself and the converted point.
+    let (mut pixels, space) = ramps();
+    polar_coordinates(&mut pixels, &[Number(0.5), Choice(1)], &space);
+    let half = read_at(&pixels, 16, 20);
+    assert!(
+        near(half, [(16.5 + at[0]) / 2.0, (20.5 + at[1]) / 2.0]),
+        "{half:?}"
+    );
+    // At 0 nothing moves.
+    let (mut pixels, space) = ramps();
+    let before = pixels.clone();
+    polar_coordinates(&mut pixels, &[Number(0.0), Choice(0)], &space);
+    assert_eq!(pixels, before);
+}
+
 #[test]
 fn mirror_reflects_one_side_of_the_line_onto_the_other() {
     let [red, green, blue, white] = [

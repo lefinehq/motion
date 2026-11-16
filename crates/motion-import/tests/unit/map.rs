@@ -616,6 +616,63 @@ mod effects {
         assert!(shape["fx"][1].get("map").is_none(), "{shape}");
     }
 
+    /// A conversion the project leaves out is its definition's default,
+    /// which is not the scene's.
+    #[test]
+    fn polar_coordinates_take_their_conversion_from_the_definition() {
+        let definition = EffectDefinition {
+            name: "Polar Coordinates".into(),
+            parameters: vec![
+                parameter("ADBE Polar Coordinates-0000", Control::Layer),
+                parameter(
+                    "ADBE Polar Coordinates-0001",
+                    Control::Slider {
+                        default: 0.0,
+                        min: Some(0.0),
+                        max: Some(1.0),
+                        percent: false,
+                    },
+                ),
+                parameter(
+                    "ADBE Polar Coordinates-0002",
+                    Control::Popup {
+                        default: 2,
+                        choices: vec!["Rect to Polar".into(), "Polar to Rect".into()],
+                    },
+                ),
+            ],
+        };
+        let polar = |properties: Vec<Property>| {
+            group(
+                "ADBE Polar Coordinates",
+                properties.into_iter().map(Child::Property).collect(),
+            )
+        };
+        let import = defined(
+            vec![
+                polar(vec![
+                    number("ADBE Polar Coordinates-0001", 0.81),
+                    number("ADBE Polar Coordinates-0002", 1.0),
+                ]),
+                polar(vec![number("ADBE Polar Coordinates-0001", 1.0)]),
+            ],
+            vec![("ADBE Polar Coordinates", definition)],
+        )
+        .expect("imports");
+        assert_eq!(
+            import.json["layers"][0]["fx"],
+            json!([
+                {"polar-coordinates":0.81,"conversion":"rect-to-polar"},
+                {"polar-coordinates":1,"conversion":"polar-to-rect"}
+            ])
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
     #[test]
     fn curves_come_from_the_data_kept_for_them() {
         let straight: &[[u16; 2]] = &[[0, 0], [255, 255]];

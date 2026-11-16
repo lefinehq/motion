@@ -272,6 +272,7 @@ const OFF_ON: &[(i64, &str)] = &[(0, "off"), (1, "on")];
 const AUDIO_PATHS: &[(i64, &str)] = &[(0, "line"), (1, "circle")];
 const AUDIO_DISPLAYS: &[(i64, &str)] = &[(1, "digital"), (2, "lines"), (3, "dots")];
 const AUDIO_SIDES: &[(i64, &str)] = &[(1, "a"), (2, "b"), (3, "both")];
+const POLAR_CONVERSIONS: &[(i64, &str)] = &[(1, "rect-to-polar"), (2, "polar-to-rect")];
 const GENERATOR_MODES: &[(i64, &str)] = &[(1, "replace"), (2, "over")];
 const GRID_SIZES: &[(i64, &str)] = &[(1, "corner"), (2, "width"), (3, "width-height")];
 const GRID_DRAWS: &[(i64, &str)] = &[(0, "lines"), (1, "cells")];
@@ -939,7 +940,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 38] = [
+pub(super) static KINDS: [Kind; 39] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -2343,6 +2344,39 @@ pub(super) static KINDS: [Kind; 38] = [
             ),
             row("ADBE Mirror-0001", To::Prop("center"), Point, Parameter),
             row("ADBE Mirror-0002", To::Prop("angle"), Number, Parameter),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Polar Coordinates",
+        item: "polar-coordinates",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Polar Coordinates-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Polar Coordinates-0001",
+                To::Prop("interpolation"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Polar Coordinates-0002",
+                To::Setting("conversion", POLAR_CONVERSIONS),
+                Number,
+                Parameter,
+            ),
             row(
                 "ADBE Force CPU GPU",
                 To::Ignore("where the original renders it"),

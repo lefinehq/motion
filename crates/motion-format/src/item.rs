@@ -754,6 +754,17 @@ pub static MIRROR: Registry = Registry {
     ],
 };
 
+/// The properties of `polar-coordinates`.
+pub static POLAR_COORDINATES: Registry = Registry {
+    kind: "polar-coordinates",
+    rows: &[number(
+        "interpolation",
+        0.0,
+        Some((0.0, 1.0)),
+        "how far each pixel goes towards where the conversion takes it",
+    )],
+};
+
 /// The properties of the gradient ramp.
 pub static RAMP: Registry = Registry {
     kind: "ramp",
@@ -1416,7 +1427,7 @@ pub static SHAPES: [ItemKind; 8] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 27] = [
+pub static EFFECTS: [ItemKind; 28] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -1756,6 +1767,21 @@ pub static EFFECTS: [ItemKind; 27] = [
         settings: &[],
         input: None,
         doc: "reflects one side of a line through the layer onto the other",
+    },
+    ItemKind {
+        name: "polar-coordinates",
+        role: Role::Effect,
+        registry: &POLAR_COORDINATES,
+        primary: Primary::Property("interpolation"),
+        settings: &[SettingSpec {
+            name: "conversion",
+            choices: &["rect-to-polar", "polar-to-rect"],
+            default: "rect-to-polar",
+            doc: "`rect-to-polar` wraps the layer's rows into rings about its middle, its \
+                  columns round them; `polar-to-rect` unrolls rings into rows",
+        }],
+        input: None,
+        doc: "turns the layer between rows and columns and rings about its middle",
     },
     ItemKind {
         name: "ramp",
