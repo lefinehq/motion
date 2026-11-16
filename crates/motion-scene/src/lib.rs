@@ -12,6 +12,7 @@ mod graph;
 mod level;
 mod merge;
 mod rect;
+mod repeater;
 mod round;
 mod shape;
 pub mod space;

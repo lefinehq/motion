@@ -629,7 +629,16 @@ Status: Draft · 2026-11-16
 - **Decision:** a `round-corners` shape item is a modifier with one property, `radius`. Like a trim, it changes in place every outline listed before it in its group, including those of earlier groups, each in its own space. Every paint that draws an outline draws it rounded. A sharp corner is a vertex with no handle on either side. It is cut back along each side by `radius`, or by half the way to the next vertex when that is shorter. The two cut points are joined by a cubic whose handles reach 0.5519 of the cut back towards the corner. Smooth vertices and the ends of an open outline stay as they are. `radius` rests at 10.
 - **Why:**
   - It is the original's modifier, and the corpus confirms its default and its cut (evidence R1 and R2 in [what we know about `.aep`](aep-evidence.md#round-corners)). Rounding at the outline level, rather than as a stroke join, rounds fills too, and makes a trim after it follow the rounded line.
-  - It is one more row in the modifier table merges introduced ([D64](#d64-a-merge-replaces-the-outlines-above-it-by-one)), so nothing that draws needs to know about it.
+  - It is one more row in the modifier table merges introduced ([D65](#d65-a-merge-replaces-the-outlines-above-it-by-one)), so nothing that draws needs to know about it.
   - A rectangle's own `round` stays, because that rounding is part of the shape. Round corners rounds whatever outlines reach it.
 - **Not now:** an arc of `radius` at corners that do not meet square. Every corner measured in the corpus is a right angle, where the two rules agree.
 Status: Draft · 2026-11-16
+
+### D67. A repeater copies the items above it as groups
+
+- **Decision:** a shape item `repeater` draws everything listed before it in its group again, `copies` times: as if those items were one group per copy, each under the copy's transform and opacity. Copy `k` stands `k + offset` steps along, each step a move by `position` and a turn and scale about `anchor`; the steps add up (moves by `t · position`, turns by `t · rotate`, scales by `scale` to the power `t`) rather than compound. Its opacity runs from `start-opacity` towards `end-opacity` by `k / copies`. A fractional count draws one copy more, faded by the fraction. `composite` says whether each copy draws under the one before (`below`, the default) or over it (`above`).
+- **Why:**
+  - It is the one shape operator the original has that neither changes outlines in place nor paints them: it multiplies paints as well as outlines. A new role, not a modifier, says so, and the walk that resolves shapes handles it by walking the items before it once per copy, so every rule a group follows (paints in their group's space, opacity on the paints inside, trims inside before trims outside) holds for copies without a rule of its own.
+  - The paints and trims after a repeater reach every copy's outlines as they reach a group's, so a stroke below a repeater strokes all the copies, and two repeaters in a row make a grid.
+  - 13 corpus samples use it, 65 repeaters in all, for rings of strokes, grids of dots and trails. The beliefs, checked against their references, are in [aep-evidence.md](aep-evidence.md#repeaters).
+- **Not now:** a blend mode per copy, and copies that compound, each step turning the moves after it: no sample tells the two apart.
