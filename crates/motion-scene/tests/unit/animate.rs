@@ -81,6 +81,15 @@ fn fade(selector: &str) -> String {
 #[case::half_amount(r#","amount":0.5"#, [0.5, 0.5, 0.5, 0.5])]
 // After the range, a ramp up stays chosen.
 #[case::ramp_up_after(r#","shape":"ramp-up","end":0.5"#, [0.75, 0.25, 0.0, 0.0])]
+// Easing both ends slows the ramp where it leaves 0 and nears 1: the
+// choices 1/8, 3/8, 5/8 and 7/8 follow `cubic-bezier(1, 0, 0, 1)`.
+#[case::ramp_eased_both(r#","shape":"ramp-up","ease-high":1,"ease-low":1"#, [0.994, 0.91, 0.09, 0.006])]
+// Easing low alone holds a choice near 0 longer, and a negative ease low
+// leaves 0 faster.
+#[case::ramp_eased_low(r#","shape":"ramp-up","ease-low":1"#, [0.994, 0.943, 0.81, 0.5])]
+#[case::ramp_eased_low_negative(r#","shape":"ramp-up","ease-low":-1"#, [0.473, 0.199, 0.072, 0.011])]
+// Easing high alone holds a choice near 1 longer.
+#[case::ramp_eased_high(r#","shape":"ramp-up","ease-high":1"#, [0.5, 0.19, 0.057, 0.006])]
 fn range_selectors_choose_by_their_shape(#[case] selector: &str, #[case] expected: [f64; 4]) {
     assert_eq!(opacities(&fade(selector), 0.0), expected);
 }
@@ -224,7 +233,7 @@ mod any_selector {
     use proptest::prelude::*;
 
     /// A range selector with `values` and the setting choices `settings`.
-    fn selector(values: [f64; 5], settings: [usize; 3]) -> ItemState {
+    fn selector(values: [f64; 7], settings: [usize; 3]) -> ItemState {
         ItemState {
             kind: &SELECTORS[0],
             id: None,
@@ -245,13 +254,15 @@ mod any_selector {
             offset in -1.0..1.0f64,
             amount in -1.0..1.0f64,
             smooth in 0.0..1.0f64,
+            high in -1.0..1.0f64,
+            low in -1.0..1.0f64,
             shape in 0..6usize,
             mode in 0..6usize,
             by in 0..4usize,
             n in 1..40usize,
             i in 0..40usize,
         ) {
-            let s = selector([start, end, offset, amount, smooth], [by, shape, mode]);
+            let s = selector([start, end, offset, amount, smooth, high, low], [by, shape, mode]);
             let glyph = GlyphParts { index: [Some(i % n); 4] };
             let v = chosen(&[s.clone(), s], &glyph, &[n; 4]);
             prop_assert!((-1.0..=1.0).contains(&v), "{v}");

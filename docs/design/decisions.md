@@ -596,3 +596,11 @@ D1 covers 2.5D in v1: card flips, perspective, camera moves, parallax. Is that t
   - A property, not a new kind of layer or a list of segments, keeps everything a track can do: keys, eases, holds, listening, and the expression bake, which writes what a remap expression gives as keys.
   - The content's time is evaluated where the layer's own time already is, so nested compositions, clips and their sound read one value. Nothing else moves.
 - **Not now:** frame blending between the content's frames, and remapping an audio layer by itself.
+
+### D63. A range selector eases its choice by a cubic
+
+- **Decision:** a `range` selector has `ease-high` and `ease-low`, from -1 to 1, default 0. The choice its shape gives a part, from 0 to 1, passes through a cubic from (0, 0) to (1, 1) before `amount` scales it: its first handle is (`ease-low`, 0) when `ease-low` is positive and (0, -`ease-low`) when it is negative, and its second is (1 - `ease-high`, 1) when `ease-high` is positive and (1, 1 + `ease-high`) when it is negative. The import maps `ADBE Text Levels Max Ease` to `ease-high` and `ADBE Text Levels Min Ease` to `ease-low`, in percent.
+- **Why:**
+  - It is how 21 corpus samples shape their reveals, and both open renderers that reproduce the original's text animators read the two values this way. Measured against references at the pixels the ease moves, the cubic errs about a tenth as much as no ease and as the two values swapped ([evidence T1](aep-evidence.md#text-selectors)).
+  - A cubic on the choice, not a new shape, keeps every shape easable, as in the original, and keeps the shapes' own definitions.
+- **Not now:** the order of ease and `smooth` on a `square` shape is taken from one of the two renderers (ease after smoothness); no sample tells them apart.

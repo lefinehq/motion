@@ -2227,6 +2227,20 @@ pub static RANGE: Registry = Registry {
             "for the `square` shape: 1 chooses a part by how much of it the range covers, \
              0 all or nothing by its middle",
         ),
+        number(
+            "ease-high",
+            0.0,
+            Some((-1.0, 1.0)),
+            "how the choice eases as it nears fully chosen: above 0 it arrives slower, below 0 \
+             faster",
+        ),
+        number(
+            "ease-low",
+            0.0,
+            Some((-1.0, 1.0)),
+            "how the choice eases as it leaves not chosen: above 0 it starts slower, below 0 \
+             faster",
+        ),
     ],
 };
 
@@ -2464,6 +2478,10 @@ pub mod props {
     pub const RANGE_AMOUNT: Prop = Prop::of(&RANGE, 3);
     /// How smooth a square range selector's edges are.
     pub const RANGE_SMOOTH: Prop = Prop::of(&RANGE, 4);
+    /// How a range selector's choice eases near fully chosen.
+    pub const RANGE_EASE_HIGH: Prop = Prop::of(&RANGE, 5);
+    /// How a range selector's choice eases near not chosen.
+    pub const RANGE_EASE_LOW: Prop = Prop::of(&RANGE, 6);
     /// A mask's outline.
     pub const MASK_PATH: Prop = Prop::of(&MASK, 0);
     /// How far a mask's edge fades.

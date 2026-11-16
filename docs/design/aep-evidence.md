@@ -60,6 +60,17 @@ Other things we take without evidence:
 - **Ranges.** The project stores 0 to 100 as the bounds of the point count, the radii and the roundnesses, yet m619 stores an outer radius of 588: these are the bounds of the slider, not of the value. The scene takes 0 to 100 points (m562 stores 100), radii from 0 and roundness of any sign and size.
 - **m625, m778 and m801.** Their stars are the only thing the import reported, but their references show other compositions: m778 and m801 show the title of the root composition `Neon Title 03`, not the three hexagons of the root composition `Frames` the manifest picks, and m625 shows a promotional reel, not `Pano 2`. Drawing the stars therefore makes them err more, not less, until the manifest picks the composition the preview shows.
 
+## Text selectors
+
+A range selector (`ADBE Text Selector`) becomes a `range` selector ([scene format](scene-format.md#text-animators)). Its ease was measured once, by hand, against the corpus's reference frames: the imported scene is drawn as imported, with `ease-high` and `ease-low` swapped and with neither, at the reference's own times, and each is compared with the reference only at the pixels where the three differ. The sweep does not check this belief yet.
+
+| Belief | Evidence | Held, 2026-11-16 |
+|---|---|---|
+| T1. A selector's choice from its shape, 0 to 1, passes through the cubic from (0, 0) to (1, 1) whose first handle is (low, 0), or (0, -low) when low is negative, and whose second is (1 - high, 1), or (1, 1 + high), before the amount; high is `ADBE Text Levels Max Ease`, low `ADBE Text Levels Min Ease`, in percent. | m788 eases low by 100 only (a square `Start` and a ramp-up `Offset`). Mean error at frames 8, 11 and 12: as stored 0.185, 0.045, 0.057; swapped 0.500, 0.520, 0.504; without ease 0.358, 0.412, 0.100. m773 eases high by 100 only (a ramp-up `Start`). At frames 12 and 13: as stored 0.017, 0.008; swapped 0.314, 0.307; without ease 0.185, 0.168. | 2 samples, 5 frames, 116,000 px |
+
+What is left open:
+- **Random order.** `ADBE Text Randomize Order` is still reported, and the order is not known. The open renderers do not record it: one shuffles with a generator seeded by a fixed number, ignoring `ADBE Text Random Seed`, and another draws from an unseeded generator, so neither repeats from one run to the next of the original. m569 shows two texts with seed 17, `GLITCH UP` and `GLITCH DOWN`, each part moved by its turn in a ramp, so one frame of its preview gives every part's turn. Taking turn 0 first, the parts in order are `I`, space, `U`, `L`, `T`, `C`, `G`, `P`, `H` for 9 parts and `T`, `D`, `O`, `L`, `C`, `H`, `G`, `W`, space, `N`, `I` for 11. The two agree as if the selector drew one number per turn from a sequence the seed fixes, and gave turn `k` to the part whose number ranks `k`-th: the first 9 turns of the 11 rank their parts as the 9 turns do. Neither the fixed-seed shuffle nor the common generators (the C libraries', the minimal standard, the Mersenne twister, xorshift, the 48-bit generator, published LCGs) seeded with 17 give those ranks. A seed of 0 is documented as taken from the animator group, which most corpus selectors use.
+
 ## Anchor points
 
 A layer's anchor point is where its own space is pinned to its position, and its children's positions are measured in that space. These beliefs were measured once, by hand, over the 198 corpus projects and their reference frames; the sweep does not check them yet.
