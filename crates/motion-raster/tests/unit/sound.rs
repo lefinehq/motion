@@ -35,6 +35,7 @@ fn space(width: f64, height: f64, sound: Option<Arc<Heard>>) -> Space {
         input: None,
         time: 0.0,
         sound,
+        outline: None,
     }
 }
 
@@ -217,6 +218,99 @@ fn digital_bands_are_columns_of_squares() {
     // Squares 2 px thick, 2 px apart: about half the column is drawn.
     let column = drawn(&pixels, 30, 25, 50);
     assert!((8..=16).contains(&column), "{column} px");
+}
+
+/// `path` measured, as an effect follows it.
+fn outline(svg: &str) -> Path {
+    Path::Outline(Outline::new(&BezPath::from_svg(svg).unwrap()).unwrap())
+}
+
+fn pt([x, y]: [f64; 2]) -> Point {
+    Point::new(x, y)
+}
+
+fn vec([x, y]: [f64; 2]) -> Vec2 {
+    Vec2::new(x, y)
+}
+
+/// Whether `a` and `b` are within a thousandth of each other.
+fn near(a: (Point, Vec2), b: ([f64; 2], [f64; 2])) -> bool {
+    (a.0 - pt(b.0)).hypot() < 1e-3 && (a.1 - vec(b.1)).hypot() < 1e-3
+}
+
+#[test]
+fn points_along_an_open_outline_run_end_to_end_by_length() {
+    // 60 px right then 40 down: 100 px, five points 25 px apart, the
+    // first and last on its ends. Left going right is up; going down, it
+    // is to the right of the picture.
+    let path = outline("M0,0 L60,0 L60,40");
+    assert!(!path.closed());
+    let want = [
+        ([0.0, 0.0], [0.0, -1.0]),
+        ([25.0, 0.0], [0.0, -1.0]),
+        ([50.0, 0.0], [0.0, -1.0]),
+        ([60.0, 15.0], [1.0, 0.0]),
+        ([60.0, 40.0], [1.0, 0.0]),
+    ];
+    for (k, want) in want.into_iter().enumerate() {
+        assert!(near(path.at(k, 5), want), "point {k}: {:?}", path.at(k, 5));
+    }
+    // A single point stands in the middle.
+    assert!(near(path.at(0, 1), ([50.0, 0.0], [0.0, -1.0])));
+}
+
+#[test]
+fn points_round_a_closed_outline_go_once_round_from_its_start() {
+    // A 40 px square: four points at its corners, the closing side
+    // counted, the last corner not repeated.
+    let path = outline("M0,0 L40,0 L40,40 L0,40 Z");
+    assert!(path.closed());
+    for (k, corner) in [[0.0, 0.0], [40.0, 0.0], [40.0, 40.0], [0.0, 40.0]]
+        .into_iter()
+        .enumerate()
+    {
+        assert!((path.at(k, 4).0 - pt(corner)).hypot() < 1e-3, "{k}");
+    }
+    // Round a circle drawn counterclockwise from its top, as a mask's
+    // ellipse runs, the points are a quarter apart and left is inward.
+    let r = 50.0;
+    let k = 0.552_284_75 * r;
+    let circle = outline(&format!(
+        "M0,{t} C{n},{t} {t},{n} {t},0 C{t},{k} {n},{r} 0,{r} C{k},{r} {r},{k} {r},0 \
+         C{r},{n} {k},{t} 0,{t} Z",
+        t = -r,
+        n = -k,
+    ));
+    for (j, (at, inward)) in [
+        ([0.0, -r], [0.0, 1.0]),
+        ([-r, 0.0], [1.0, 0.0]),
+        ([0.0, r], [0.0, -1.0]),
+        ([r, 0.0], [-1.0, 0.0]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (point, out) = circle.at(j, 4);
+        assert!((point - pt(at)).hypot() < 0.05, "{j}: {point:?}");
+        assert!((out - vec(inward)).hypot() < 1e-3, "{j}: {out:?}");
+    }
+}
+
+#[test]
+fn a_loud_band_rises_from_the_outline_it_follows() {
+    // Ten bands up the outline from (50, 90) to (50, 0): the fourth, 440
+    // Hz, stands at y = 60 and rises 20 px to the left going up, left
+    // of the picture.
+    let values = spectrum_values(100.0, 1_000.0, 10.0, 1, 1, 0);
+    let mut space = space(100.0, 100.0, Some(heard(sine(400.0, 0.5, 4320))));
+    space.outline = Some(Arc::new(BezPath::from_svg("M50,90 L50,0").unwrap()));
+    let mut pixels = Pixels::transparent(100, 100);
+    spectrum(&mut pixels, &values, &space);
+    let row = |x0: i64, x1: i64| (x0..x1).filter(|&x| pixels.get(x, 60)[3] > 0.5).count();
+    assert!((17..=21).contains(&row(20, 49)), "{} px", row(20, 49));
+    assert_eq!(row(52, 100), 0);
+    // The line of `start` and `end` is not used.
+    assert_eq!(drawn(&pixels, 30, 20, 49), 0);
 }
 
 #[test]

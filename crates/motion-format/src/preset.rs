@@ -195,6 +195,7 @@ pub fn parts_animator(spec: &PresetSpec, behaviour: &Behaviour, fps: f64) -> Opt
         anim: Vec::new(),
         hidden: false,
         input: None,
+        outline: None,
     };
     Some(Item {
         kind: &ANIMATORS[0],
@@ -211,6 +212,7 @@ pub fn parts_animator(spec: &PresetSpec, behaviour: &Behaviour, fps: f64) -> Opt
         anim,
         hidden: false,
         input: None,
+        outline: None,
     })
 }
 

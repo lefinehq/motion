@@ -69,8 +69,8 @@ fn matte_layer(layer: &Layer, composition: &Composition) -> Option<u32> {
 const TRANSFORM_GROUP: &str = "ADBE Transform Group";
 const VECTORS: &str = "ADBE Root Vectors Group";
 const TEXT: &str = "ADBE Text Properties";
-const EFFECTS: &str = "ADBE Effect Parade";
-const MASKS: &str = "ADBE Mask Parade";
+pub(super) const EFFECTS: &str = "ADBE Effect Parade";
+pub(super) const MASKS: &str = "ADBE Mask Parade";
 const AUDIO_GROUP: &str = "ADBE Audio Group";
 const AUDIO_LEVELS: &str = "ADBE Audio Levels";
 /// A layer's time remapping.
@@ -179,6 +179,8 @@ impl<'p> Walk<'p> {
             }
         }
         let mut root = Vec::new();
+        // The masks its effects follow get ids before either is written.
+        let outer = std::mem::replace(&mut self.mask_ids, super::masks::followed(layer));
         layer
             .properties
             .children
@@ -233,6 +235,7 @@ impl<'p> Walk<'p> {
                     }
                 }
             });
+        self.mask_ids = outer;
         self.rows(&root, &LAYER_ROOT, sink, &mut out, &place);
         // Only a composition or a clip plays in time; a still, a solid or a
         // null shows the same whatever time it is remapped to.

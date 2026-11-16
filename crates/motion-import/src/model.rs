@@ -321,6 +321,8 @@ pub struct MaskSettings {
     /// How it combines with the masks above it: 0 none, 1 add, 2 subtract,
     /// 3 intersect, 4 lighten, 5 darken, 6 difference.
     pub mode: u32,
+    /// The id an effect's path parameter names it by ([`Value::Mask`]).
+    pub id: u32,
 }
 
 impl Group {
@@ -481,6 +483,9 @@ pub enum Value {
     Layer(u32),
     /// A layer's or a composition's marker; its time is its keyframe's.
     Marker(Box<Marker>),
+    /// A mask of the same layer, by the id its `mkif` gives it, as a
+    /// path parameter of an effect names it (its `tdli`).
+    Mask(u32),
     /// A value the reader does not decode yet.
     Opaque {
         /// What sort of value it is.

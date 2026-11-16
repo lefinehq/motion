@@ -552,8 +552,8 @@ fn layer(
             if children.is_empty() {
                 return Ok(None);
             }
-            let effects =
-                effect::effects(&node.fx).map_err(|e| e.under(Place::of_layer(&node.id)))?;
+            let effects = effect::effects(node, &compiled.outlines)
+                .map_err(|e| e.under(Place::of_layer(&node.id)))?;
             // Its own blend modes reach what is below unless its effects
             // need its drawing on its own, or an adjusting layer inside
             // needs only its composition below it.
@@ -587,8 +587,8 @@ fn layer(
         | ContentState::Pivot
         | ContentState::Camera => Vec::new(),
         ContentState::Filter => {
-            let effects =
-                effect::effects(&node.fx).map_err(|e| e.under(Place::of_layer(&node.id)))?;
+            let effects = effect::effects(node, &compiled.outlines)
+                .map_err(|e| e.under(Place::of_layer(&node.id)))?;
             return Ok(Some(Node::Layer(Layer {
                 transform: node.transform,
                 projection: projection(node),
@@ -606,7 +606,8 @@ fn layer(
         // nothing for them to change.
         return Ok(None);
     }
-    let effects = effect::effects(&node.fx).map_err(|e| e.under(Place::of_layer(&node.id)))?;
+    let effects = effect::effects(node, &compiled.outlines)
+        .map_err(|e| e.under(Place::of_layer(&node.id)))?;
     Ok(Some(Node::Layer(Layer {
         transform: node.transform,
         projection: projection(node),

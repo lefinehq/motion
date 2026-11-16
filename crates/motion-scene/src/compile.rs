@@ -172,6 +172,23 @@ impl Build<'_> {
                     .collect()
             })
             .collect();
+        // Validation has checked that each outline names a mask of its own
+        // layer; a hidden mask is left out, so nothing follows it.
+        let outlines: Vec<Vec<Option<usize>>> = layers
+            .iter()
+            .map(|layer| {
+                let shown: Vec<&Item> = layer.mask.iter().filter(|m| !m.hidden).collect();
+                layer
+                    .fx
+                    .iter()
+                    .filter(|item| !item.hidden)
+                    .map(|item| {
+                        let id = item.outline.as_deref()?;
+                        shown.iter().position(|m| m.id.as_deref() == Some(id))
+                    })
+                    .collect()
+            })
+            .collect();
         Ok(layers
             .iter()
             .zip(contents)
@@ -182,6 +199,7 @@ impl Build<'_> {
                 Node {
                     matte: mattes[i],
                     inputs: inputs[i].clone(),
+                    outlines: outlines[i].clone(),
                     ..node(
                         layer,
                         self.scene,
@@ -385,6 +403,7 @@ fn node(
         mblur: layer.mblur,
         three_d: layer.three_d,
         inputs: Vec::new(),
+        outlines: Vec::new(),
     }
 }
 

@@ -29,6 +29,7 @@ fn item(doc: &ItemDoc, kinds: &'static [ItemKind], fps: f64) -> Result<Item> {
     let mut settings: Vec<usize> = kind.settings.iter().map(|s| s.default_index()).collect();
     let mut items = Vec::new();
     let mut input = None;
+    let mut outline = None;
     for (key, written) in &doc.values {
         let place = |e: Diagnostic| e.under(key.as_str());
         if key == kind.name {
@@ -53,6 +54,9 @@ fn item(doc: &ItemDoc, kinds: &'static [ItemKind], fps: f64) -> Result<Item> {
         } else if kind.input.is_some_and(|input| input.key == key) {
             let id: String = crate::de::from_value(written).map_err(place)?;
             input = Some(id);
+        } else if kind.outline == Some(key.as_str()) {
+            let id: String = crate::de::from_value(written).map_err(place)?;
+            outline = Some(id);
         } else if let Some(at) = table::position(kind.settings, key) {
             settings[at] = choice(written, kind, at).map_err(place)?;
         } else if let Some(prop) = kind.registry.prop(key) {
@@ -76,6 +80,7 @@ fn item(doc: &ItemDoc, kinds: &'static [ItemKind], fps: f64) -> Result<Item> {
         anim: anim(tracks, kind.registry, fps).map_err(|e| e.under(ANIM))?,
         hidden: doc.hidden.unwrap_or(false),
         input,
+        outline,
     })
 }
 
@@ -131,6 +136,7 @@ fn keys(kind: &'static ItemKind) -> impl Iterator<Item = &'static str> {
         .into_iter()
         .chain(kind.settings.iter().map(|s| s.name))
         .chain(kind.input.map(|input| input.key))
+        .chain(kind.outline)
         .chain(kind.registry.names())
         .filter(move |n| Some(*n) != primary)
 }

@@ -360,3 +360,21 @@ fn a_comp_layer_with_overrides_draws_a_composition_of_its_own() {
     assert_eq!(g.comps[0].nodes[0].bounds.width(), 10.0);
     assert_eq!(g.comps[1].nodes[0].bounds.width(), 40.0);
 }
+
+#[test]
+fn an_effect_follows_the_shown_mask_its_outline_names() {
+    let g = compile_json(
+        r#"{"motion":1,"size":"100x100","fps":30,"dur":"1s","layers":[
+            {"id":"m","audio":"m.wav"},
+            {"id":"a","rect":"100x100","mask":[
+                {"mask":"M0,0 L9,0 Z","id":"gone","hidden":true},
+                {"mask":"M0,0 L1,0 Z","id":"one"},
+                {"mask":"M0,0 L2,0 Z","id":"two"}],
+             "fx":[{"audio-spectrum":5,"audio":"m","along":"two"},
+                   {"audio-spectrum":5,"audio":"m","hidden":true},
+                   {"audio-waveform":5,"audio":"m"},
+                   {"audio-waveform":5,"audio":"m","along":"gone"}]}]}"#,
+    );
+    // Indices among the masks shown, for the effects shown.
+    assert_eq!(g.root.nodes[1].outlines, [Some(1), None, None]);
+}

@@ -286,6 +286,7 @@ impl Painter {
             input,
             time: layer.time,
             sound: effect.sound().cloned(),
+            outline: effect.outline().cloned(),
         })
     }
 

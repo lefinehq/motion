@@ -14,7 +14,7 @@ composition 68 "Add" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [91, 90.5, 0]
@@ -45,9 +45,9 @@ composition 212 "Add Add" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
-      ADBE Mask Atom "Mask 3"
+      ADBE Mask Atom "Mask 3", mask 6
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [91, 90.5, 0]
@@ -78,7 +78,7 @@ composition 284 "Add Inverted" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [91, 90.5, 0]
@@ -109,9 +109,9 @@ composition 188 "Add_Subtract" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [91, 90.5, 0]
@@ -200,9 +200,9 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [205.5, 320.5, 0]
@@ -232,9 +232,9 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [205.5, 251.5, 0]
@@ -264,9 +264,9 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [205.5, 192.5, 0]
@@ -296,9 +296,9 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [108.5, 319.5, 0]
@@ -328,9 +328,9 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [108.5, 258.5, 0]
@@ -360,9 +360,9 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [108.5, 190.5, 0]
@@ -392,9 +392,9 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [108.5, 105.5, 0]
@@ -424,9 +424,9 @@ composition 17 "Mask" 200x300, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [205.5, 105.5, 0]
@@ -578,7 +578,7 @@ composition 236 "Subtract" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [91, 90.5, 0]
@@ -609,7 +609,7 @@ composition 308 "Subtract Inverted" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [91, 90.5, 0]
@@ -640,9 +640,9 @@ composition 332 "Subtract Inverted Add Inverted" 50x50, 29.97 fps, 2.04s, work a
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [91, 90.5, 0]
@@ -673,9 +673,9 @@ composition 164 "Subtract Subtrct" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape: 2 keyframes 0s-2s
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 5
         ADBE Mask Shape: 2 keyframes 0s-2s
     ADBE Transform Group
       ADBE Position = [91, 90.5, 0]
@@ -706,9 +706,9 @@ composition 92 "Subtract_Add" 50x50, 29.97 fps, 2.04s, work area 0s-2.04s
         ADBE Vector Transform Group
           ADBE Vector Position = [15.66, 5.66]
     ADBE Mask Parade
-      ADBE Mask Atom "Mask 1"
+      ADBE Mask Atom "Mask 1", mask 2
         ADBE Mask Shape = path closed, 4 vertices
-      ADBE Mask Atom "Mask 2"
+      ADBE Mask Atom "Mask 2", mask 4
         ADBE Mask Shape = path closed, 4 vertices
     ADBE Transform Group
       ADBE Position = [91, 90.5, 0]

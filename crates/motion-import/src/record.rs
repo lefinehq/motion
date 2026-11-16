@@ -636,6 +636,9 @@ pub(crate) struct Mkif {
     pub falloff: u8,
     /// Its mode, `PF_MaskMode`.
     pub mode: u32,
+    /// The id an effect's path parameter names it by, unique on its layer:
+    /// neither its index nor the number in its default name.
+    pub id: u32,
 }
 
 impl Record for Mkif {
