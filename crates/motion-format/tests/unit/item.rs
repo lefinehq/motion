@@ -118,6 +118,8 @@ fn the_constants_name_the_rows_code_reads() {
         (RANGE_OFFSET, "range", "offset"),
         (RANGE_AMOUNT, "range", "amount"),
         (RANGE_SMOOTH, "range", "smooth"),
+        (RANGE_EASE_HIGH, "range", "ease-high"),
+        (RANGE_EASE_LOW, "range", "ease-low"),
     ];
     for (prop, kind, name) in expected {
         assert_eq!((prop.registry().kind, prop.name()), (kind, name));

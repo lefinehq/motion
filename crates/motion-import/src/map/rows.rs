@@ -1429,14 +1429,14 @@ pub(super) static KINDS: [Kind; 40] = [
             ),
             row(
                 "ADBE Text Levels Max Ease",
-                To::OnlyDefault("ease high"),
-                Number,
+                To::Prop("ease-high"),
+                Percent,
                 Missing::Number(0.0),
             ),
             row(
                 "ADBE Text Levels Min Ease",
-                To::OnlyDefault("ease low"),
-                Number,
+                To::Prop("ease-low"),
+                Percent,
                 Missing::Number(0.0),
             ),
             row(

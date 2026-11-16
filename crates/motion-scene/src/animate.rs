@@ -10,6 +10,9 @@ use motion_format::item::props;
 use motion_format::property::Prop;
 use motion_format::text::Align;
 
+use motion_format::Curve;
+
+use crate::curve::Ease;
 use crate::state::ItemState;
 use crate::text::TextNode;
 
@@ -286,7 +289,28 @@ fn range(selector: &ItemState, i: usize, n: usize) -> f64 {
         "smooth" => bell((1.0 - (std::f64::consts::TAU * across).cos()) / 2.0),
         shape => unreachable!("no shape `{shape}`"),
     };
-    v * selector.number(props::RANGE_AMOUNT)
+    let high = selector.number(props::RANGE_EASE_HIGH);
+    let low = selector.number(props::RANGE_EASE_LOW);
+    eased(v, high, low) * selector.number(props::RANGE_AMOUNT)
+}
+
+/// A shape's choice `v`, 0 to 1, eased by `high` and `low`, each -1 to 1: a
+/// cubic from 0 to 1 whose first handle lies `low` along the bottom when
+/// positive and `-low` up the start when negative, and whose second lies
+/// `high` back along the top or `-high` down the end. Positive values slow
+/// the choice where it leaves 0 (`low`) or nears 1 (`high`); negative values
+/// speed it there.
+fn eased(v: f64, high: f64, low: f64) -> f64 {
+    if high == 0.0 && low == 0.0 {
+        return v;
+    }
+    let (x1, y1) = if low >= 0.0 { (low, 0.0) } else { (0.0, -low) };
+    let (x2, y2) = if high >= 0.0 {
+        (1.0 - high, 1.0)
+    } else {
+        (1.0, 1.0 + high)
+    };
+    Ease::from_curve(Curve::Bezier(x1, y1, x2, y2), 1.0, 1.0).sample(0.0, 1.0, v)
 }
 
 /// Applies the properties of the animator `item` that `applies` lists to
