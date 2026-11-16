@@ -953,7 +953,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 42] = [
+pub(super) static KINDS: [Kind; 43] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -1273,6 +1273,19 @@ pub(super) static KINDS: [Kind; 42] = [
             To::Setting("mode", MERGE_MODES),
             Number,
             Absent,
+        )],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Vector Filter - RC",
+        item: "round-corners",
+        table: &SHAPES,
+        rows: &[row(
+            "ADBE Vector RoundCorner Radius",
+            To::Prop("radius"),
+            Number,
+            Missing::Number(10.0),
         )],
         parts: &[],
         switch: None,

@@ -18,7 +18,7 @@ use motion_format::property::GROUP;
 
 use crate::evaluate::local_transform;
 use crate::state::ItemState;
-use crate::{merge, trim};
+use crate::{merge, round, trim};
 
 /// The share of a quarter circle's radius at which a cubic's handles sit so
 /// that it follows the arc: `4/3 (√2 − 1)`.
@@ -78,12 +78,23 @@ pub(crate) struct Reach<'a> {
 type Modify = fn(&ItemState, Reach<'_>);
 
 /// What each modifier kind does, by name; every modifier kind has a row.
-const MODIFIERS: [(&str, Modify); 2] = [("trim", trim_outlines), ("merge", merge::apply)];
+const MODIFIERS: [(&str, Modify); 3] = [
+    ("trim", trim_outlines),
+    ("merge", merge::apply),
+    ("round-corners", round_outlines),
+];
 
 /// Cuts the outlines a trim reaches, each in its own space.
 fn trim_outlines(item: &ItemState, reach: Reach<'_>) {
     let at: Vec<usize> = reach.above.iter().map(|&(at, _)| at).collect();
     trim::apply(item, &at, reach.outlines);
+}
+
+/// Rounds the corners of the outlines round corners reach, each in its own
+/// space.
+fn round_outlines(item: &ItemState, reach: Reach<'_>) {
+    let at: Vec<usize> = reach.above.iter().map(|&(at, _)| at).collect();
+    round::apply(item, &at, reach.outlines);
 }
 
 /// The outline a geometry item draws, in its group's space; `None` for

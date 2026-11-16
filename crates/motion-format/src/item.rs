@@ -1353,8 +1353,19 @@ pub static MERGE: Registry = Registry {
     rows: &[],
 };
 
+/// The properties of round corners.
+pub static ROUND_CORNERS: Registry = Registry {
+    kind: "round-corners",
+    rows: &[number(
+        "radius",
+        10.0,
+        Some((0.0, f64::INFINITY)),
+        "how far back along each side a corner is cut, in px, at most half the side",
+    )],
+};
+
 /// Every kind of shape item.
-pub static SHAPES: [ItemKind; 9] = [
+pub static SHAPES: [ItemKind; 10] = [
     ItemKind {
         name: "group",
         role: Role::Group,
@@ -1493,6 +1504,17 @@ pub static SHAPES: [ItemKind; 9] = [
         outline: None,
         doc: "replaces the outlines above it, and those in the groups above it, by one outline \
               in its group; the paints above it no longer draw them",
+    },
+    ItemKind {
+        name: "round-corners",
+        role: Role::Modifier,
+        registry: &ROUND_CORNERS,
+        primary: Primary::Property("radius"),
+        settings: &[],
+        input: None,
+        outline: None,
+        doc: "rounds the sharp corners of the outlines above it, and of those in the groups \
+              above it, for every paint that draws them",
     },
 ];
 
@@ -2479,8 +2501,8 @@ pub fn effect_kind(name: &str) -> Option<&'static ItemKind> {
 /// The properties code depends on, for the drawing and measuring of items.
 pub mod props {
     use super::{
-        ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, MASK, PART, PATH, Prop, RANGE, RECT, STAR, STROKE,
-        TRIM,
+        ANIMATOR, ELLIPSE, FILL, FILL_EFFECT, MASK, PART, PATH, Prop, RANGE, RECT, ROUND_CORNERS,
+        STAR, STROKE, TRIM,
     };
 
     /// A rectangle's width and height.
@@ -2527,6 +2549,8 @@ pub mod props {
     pub const TRIM_START: Prop = Prop::of(&TRIM, 1);
     /// How far a trim's stretch is shifted, in degrees.
     pub const TRIM_OFFSET: Prop = Prop::of(&TRIM, 2);
+    /// How far round corners cut back each side of a corner.
+    pub const ROUND_CORNERS_RADIUS: Prop = Prop::of(&ROUND_CORNERS, 0);
     /// The fill effect's colour.
     pub const FILL_EFFECT_COLOR: Prop = Prop::of(&FILL_EFFECT, 0);
     /// The fill effect's opacity.
