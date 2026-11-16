@@ -342,6 +342,11 @@ fn timing(layer: &Layer, fps: f64) -> Timing {
             .map(|span| (span.start.to_frames(fps), span.end.to_frames(fps))),
         offset: layer.offset.to_frames(fps),
         stretch: layer.stretch,
+        remaps: layer.value(Prop::REMAP).is_some()
+            || layer
+                .anim
+                .iter()
+                .any(|track| track.target.prop == Prop::REMAP),
     }
 }
 

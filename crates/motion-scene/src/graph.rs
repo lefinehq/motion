@@ -106,6 +106,9 @@ pub struct Timing {
     pub offset: f64,
     /// How slowly its own time runs; negative runs backwards from `offset`.
     pub stretch: f64,
+    /// Its content plays the time its `remap` gives, not its own time
+    /// ([D62](https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d62-a-layer-may-remap-the-time-of-its-content)).
+    pub remaps: bool,
 }
 
 impl Timing {
@@ -114,11 +117,22 @@ impl Timing {
         span: None,
         offset: 0.0,
         stretch: 1.0,
+        remaps: false,
     };
 
     /// The node's own frame at the composition's `frame`.
     pub fn local(&self, frame: f64) -> f64 {
         (frame - self.offset) / self.stretch
+    }
+
+    /// The frame of its content it shows at its own frame `local`, given
+    /// its `remap` value there in seconds and the frame rate of its
+    /// composition: its own frame unless it remaps.
+    pub fn content(&self, local: f64, remap: f64, fps: f64) -> f64 {
+        match self.remaps {
+            true => remap * fps,
+            false => local,
+        }
     }
 
     /// Whether it shows at the composition's `frame`.

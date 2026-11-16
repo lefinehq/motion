@@ -84,6 +84,8 @@ fn rest_comes_from_at_the_box_or_the_row() {
             Value::Number(1920.0 * 50.0 / 36.0),
             Value::Point([100.0, 540.0]),
             Value::Number(0.0),
+            // Its own time, which a layer that remaps nothing never reads.
+            Value::Number(0.0),
         ]
     );
 }
@@ -94,11 +96,11 @@ fn names_list_follows_registry_order() {
         property_names().collect::<Vec<_>>(),
         [
             "position", "anchor", "scale", "rotate", "opacity", "volume", "z", "anchor-z",
-            "scale-z", "rotate-x", "rotate-y", "orient", "zoom", "target", "target-z"
+            "scale-z", "rotate-x", "rotate-y", "orient", "zoom", "target", "target-z", "remap"
         ]
     );
     assert_eq!(
-        target_names().skip(15).take(6).collect::<Vec<_>>(),
+        target_names().skip(16).take(6).collect::<Vec<_>>(),
         ["x", "y", "anchor-x", "anchor-y", "scale-x", "scale-y"]
     );
 }

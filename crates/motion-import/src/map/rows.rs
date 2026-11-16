@@ -3185,12 +3185,7 @@ pub(super) fn policy(match_name: &str) -> Option<Policy> {
 /// The properties of a layer's root group and their fate, by match name.
 pub(super) static LAYER_ROOT: [Row; 3] = [
     row("ADBE Marker", To::Ignore("markers"), Number, Absent),
-    row(
-        "ADBE Time Remapping",
-        To::OnlyDefault("time remapping"),
-        Number,
-        Absent,
-    ),
+    row("ADBE Time Remapping", To::Prop("remap"), Number, Absent),
     row(
         "ADBE Layer Source Alternate",
         To::Ignore("the source's alternate"),

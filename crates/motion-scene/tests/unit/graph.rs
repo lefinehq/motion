@@ -34,6 +34,7 @@ fn local_time_starts_at_the_offset_and_runs_at_one_over_stretch() {
         span: None,
         offset: 10.0,
         stretch: 2.0,
+        remaps: false,
     };
     assert_eq!((half.local(10.0), half.local(30.0)), (0.0, 10.0));
     let back = Timing {
@@ -71,4 +72,16 @@ fn a_split_track_joins_its_components() {
         Value::Point([1.0, 2.0])
     );
     assert!(whole.is_constant());
+}
+
+#[test]
+fn content_plays_its_own_time_unless_it_remaps() {
+    let own = Timing::ALWAYS;
+    let remapped = Timing {
+        remaps: true,
+        ..own
+    };
+    // At its own frame 30, remapped to 0.5 s at 25 fps.
+    assert_eq!(own.content(30.0, 0.5, 25.0), 30.0);
+    assert_eq!(remapped.content(30.0, 0.5, 25.0), 12.5);
 }

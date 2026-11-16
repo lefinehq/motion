@@ -57,6 +57,11 @@ fn evaluate_nodes(graph: &SceneGraph, comp: &CompGraph, frame: f64) -> FrameStat
         .zip(mattes)
         .map(|(((node, values), world), matte)| {
             let local = node.timing.local(frame);
+            let remap = values[Prop::REMAP.index()]
+                .as_number()
+                .expect("remap is a number");
+            // What its content shows: its own frame, or the time it remaps to.
+            let content_frame = node.timing.content(local, remap, fps);
             let mut shown = node.timing.shows_at(frame);
             let content = match &node.content {
                 NodeContent::Text { text, animators } => ContentState::Text {
@@ -84,7 +89,7 @@ fn evaluate_nodes(graph: &SceneGraph, comp: &CompGraph, frame: f64) -> FrameStat
                 NodeContent::Comp(index) => {
                     let comp = &graph.comps[*index];
                     // The node's own time, in seconds, is the composition's.
-                    let inner = local * comp.fps / fps;
+                    let inner = content_frame * comp.fps / fps;
                     shown &= (0.0..comp.duration_frames).contains(&inner);
                     let state = (shown && (!node.hidden || matte))
                         .then(|| Box::new(evaluate_comp(graph, *index, inner)));
@@ -93,7 +98,7 @@ fn evaluate_nodes(graph: &SceneGraph, comp: &CompGraph, frame: f64) -> FrameStat
                 NodeContent::Image(image) => ContentState::Image(Arc::clone(image)),
                 NodeContent::Video(video) => ContentState::Video {
                     video: Arc::clone(video),
-                    seconds: local / fps,
+                    seconds: content_frame / fps,
                 },
                 NodeContent::Audio(_) => ContentState::Audio,
                 NodeContent::Pivot => ContentState::Pivot,

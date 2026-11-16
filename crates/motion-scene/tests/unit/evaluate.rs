@@ -346,3 +346,47 @@ fn a_move_from_rest_follows_the_layer_where_layout_puts_it() {
     assert_eq!(shift, 60.0);
     assert_ne!(y(&evaluate(&moved, 10.0).nodes[1]), y(&end.nodes[1]));
 }
+
+/// `card` of [`COMP`] drawn by a layer that remaps its time with `remap`.
+fn remapped(remap: &str) -> SceneGraph {
+    graph(&format!(
+        r##"{{"motion":1,"dur":"10s","fps":25,
+  "comps":{{"card":{{"size":"400x200","fps":10,"dur":"2s","layers":[
+    {{"id":"dot","rect":"10x10","anim":{{"opacity":"0 -> 1 @0-10f"}}}}]}}}},
+  "layers":[{{"id":"c","comp":"card",{remap}}}]}}"##
+    ))
+}
+
+#[rstest]
+// It runs the card backwards, from its second 1 to its start, over 2 s.
+#[case::at_the_cards_second_1(0.0, Some(1.0))]
+#[case::half_way_back(25.0, Some(0.5))]
+#[case::at_the_cards_start(50.0, Some(0.0))]
+fn a_comp_shows_the_time_its_layer_remaps_to(#[case] frame: f64, #[case] dot: Option<f64>) {
+    let graph = remapped(r#""anim":{"remap":"1 -> 0 @0-50f"}"#);
+    assert!(graph.root.nodes[0].timing.remaps);
+    let state = evaluate(&graph, frame);
+    assert_eq!(inner(&state).map(|s| opacity(&s.nodes[0])), dot);
+}
+
+#[test]
+fn a_still_remap_holds_one_moment_and_one_past_the_end_shows_nothing() {
+    let held = remapped(r#""remap":0.5"#);
+    for frame in [0.0, 100.0, 200.0] {
+        assert_eq!(
+            inner(&evaluate(&held, frame)).map(|s| opacity(&s.nodes[0])),
+            Some(0.5)
+        );
+    }
+    // The card lasts 2 s: a remap past it, or before its start, shows nothing.
+    for remap in ["2.5", "-0.5"] {
+        let state = evaluate(&remapped(&format!(r#""remap":{remap}"#)), 0.0);
+        assert!(!state.nodes[0].shown, "remap {remap}");
+    }
+}
+
+#[test]
+fn a_layer_without_remap_plays_its_own_time() {
+    let graph = graph(COMP);
+    assert!(!graph.root.nodes[0].timing.remaps);
+}

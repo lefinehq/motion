@@ -27,6 +27,10 @@ pub enum Rest {
     /// which [`Layer::rest`](crate::Layer::rest) gives, so a camera that sets
     /// no depth sees a plane at depth 0 at 100 %.
     Depth,
+    /// The layer's own time: a layer that neither sets nor animates the
+    /// property shows its content at its own time, so the value its track
+    /// holds, 0, is never read.
+    OwnTime,
 }
 
 /// The default camera's focal length over its film width: a 50 mm lens on
@@ -77,7 +81,7 @@ impl PropertySpec {
             }
             Rest::BoxCentre => Value::Point([own.center().x, own.center().y]),
             Rest::Zoom => Value::Number(default_zoom(extent.width())),
-            Rest::Depth => Value::Number(0.0),
+            Rest::Depth | Rest::OwnTime => Value::Number(0.0),
         }
     }
 }
@@ -222,10 +226,12 @@ const fn number_row(
 }
 
 /// A layer's rows: its transform, the gain of the sound it plays, then the
-/// depth of a 3D layer and what a camera sees ([D58]).
+/// depth of a 3D layer and what a camera sees ([D58]), then the time of its
+/// content ([D62]).
 ///
 /// [D58]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
-const LAYER_ROWS: [PropertySpec; 15] = transform!(
+/// [D62]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d62-a-layer-may-remap-the-time-of-its-content
+const LAYER_ROWS: [PropertySpec; 16] = transform!(
     Rest::At,
     Rest::BoxCentre,
     "the point of the layer that sits at `position` and that it scales and turns about, \
@@ -315,6 +321,17 @@ const LAYER_ROWS: [PropertySpec; 15] = transform!(
         None,
         "the depth of a camera's `target`, in px",
     ),
+    PropertySpec {
+        name: "remap",
+        ty: ValueType::Number,
+        rest: Rest::OwnTime,
+        components: &[],
+        range: None,
+        broadcast: false,
+        spatial: false,
+        doc: "the time a `comp` or video layer shows of its content, in seconds, at each moment \
+              of its own time; without it, the layer shows its content at its own time",
+    },
 );
 
 const GROUP_ROWS: [PropertySpec; 5] = transform!(
@@ -411,6 +428,8 @@ impl Prop {
     pub const TARGET: Prop = Prop::layer(13);
     /// The depth of that point.
     pub const TARGET_Z: Prop = Prop::layer(14);
+    /// The time a layer shows of its content, in seconds.
+    pub const REMAP: Prop = Prop::layer(15);
 
     /// The rows only a 3D layer or a camera may set or animate.
     pub const DEPTH: [Prop; 6] = [

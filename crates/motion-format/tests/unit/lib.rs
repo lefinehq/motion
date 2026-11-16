@@ -137,6 +137,8 @@ fn every_error_message() {
                 r#"{"id":"a","rect":"1x1","volume":0.5}"#,
                 r#"{"id":"a","rect":"1x1","anim":{"volume":"0 -> 1 @0-5f"}}"#,
                 r#"{"id":"a","audio":"x.mp3","volume":5}"#,
+                r#"{"id":"a","rect":"1x1","remap":0.5}"#,
+                r#"{"id":"a","audio":"x.mp3","anim":{"remap":"0 -> 1 @0-5f"}}"#,
                 r##"{"id":"a","fx":[{"fill":"#FFFFFF"}],"collapse":true}"##,
                 r#"{"id":"a","rect":"1x1","text":"x"}"#,
                 r#"{"id":"a","text":null}"#,
