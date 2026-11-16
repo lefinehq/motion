@@ -78,3 +78,34 @@ fn what_is_behind_leaves_out_the_layer_and_alone_keeps_only_it() {
     assert_eq!(hidden(&without(&state, &["a"])), [true, false]);
     assert_eq!(hidden(&alone(&state, &["a"])), [false, true]);
 }
+
+/// A scene whose one layer is a composition with `bg`, holding a title in
+/// `fill`, over a scene `bg` of off-white.
+fn titled_in_comp(fill: &str, bg: &str) -> String {
+    let report = check(
+        &Session::from_str(&format!(
+            r##"{{"motion":1,"size":"1920x1080","fps":30,"dur":"2s","bg":"#f5f4f0",
+            "comps":{{"a":{{"size":"1920x1080","dur":"2s","bg":"{bg}","layers":[
+                {{"id":"h","text":"Hello there","font":"Inter Variable 96 500","fill":"{fill}","at":"center center"}}]}}}},
+            "layers":[{{"id":"a","comp":"a"}}]}}"##
+        ))
+        .expect("scene"),
+    )
+    .expect("contrast");
+    report.to_string()
+}
+
+#[test]
+fn a_composition_background_is_behind_its_text_not_its_glyphs() {
+    // Ink on yellow, about 13:1: the yellow drawn across the composition
+    // read as glyphs on yellow, 1:1.
+    assert_eq!(titled_in_comp("#0b0b0b", "#ffd23f"), "OK 1");
+}
+
+#[test]
+fn text_on_a_composition_background_of_its_own_tone_is_an_error() {
+    assert_eq!(
+        titled_in_comp("#111111", "#0b0b0b"),
+        "E contrast a/h 0-45f 1:1 <3\nOK 0"
+    );
+}

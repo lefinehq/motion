@@ -243,7 +243,13 @@ impl Session {
     /// The display list of `state`, a frame of the scene, perhaps with
     /// nodes hidden: as [`Session::display_list`].
     pub(crate) fn list_of(&self, state: &FrameState) -> Result<Frame> {
-        let graph = self.graph()?;
+        self.list_in(self.graph()?, state)
+    }
+
+    /// The display list of `state` drawn by `graph`, the scene's graph or a
+    /// copy of it with only what is drawn changed, such as its
+    /// compositions' backgrounds: as [`Session::list_of`].
+    pub(crate) fn list_in(&self, graph: &SceneGraph, state: &FrameState) -> Result<Frame> {
         let base = self.base();
         let pictures = |path: &str| self.pictures.get(&base.join(path));
         let clips = |path: &str, seconds: f64| self.clips.frame(&base.join(path), seconds);
