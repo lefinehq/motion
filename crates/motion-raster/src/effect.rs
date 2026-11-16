@@ -1450,6 +1450,88 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "beam",
+        params: &[
+            ParamSpec {
+                name: "start",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "where the line starts, in px of the layer's own coordinates",
+            },
+            ParamSpec {
+                name: "end",
+                default: ParamValue::Point([100.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "where the line ends, in px of the layer's own coordinates",
+            },
+            ParamSpec {
+                name: "length",
+                default: ParamValue::Number(0.25),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how long the beam is, as a share of the line",
+            },
+            ParamSpec {
+                name: "time",
+                default: ParamValue::Number(0.5),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how far the beam has travelled: its front is `time × (1 + length)` of \
+                      the way along the line",
+            },
+            ParamSpec {
+                name: "start-thickness",
+                default: ParamValue::Number(8.0),
+                range: Some((0.0, 4_000.0)),
+                choices: &[],
+                doc: "how thick the beam is at `start`, in px",
+            },
+            ParamSpec {
+                name: "end-thickness",
+                default: ParamValue::Number(8.0),
+                range: Some((0.0, 4_000.0)),
+                choices: &[],
+                doc: "how thick the beam is at `end`, in px",
+            },
+            ParamSpec {
+                name: "softness",
+                default: ParamValue::Number(0.5),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how much of the half thickness fades out at the edges, 0 to 1",
+            },
+            ParamSpec {
+                name: "inside-color",
+                default: ParamValue::Color(Color::rgba(1.0, 0.75, 0.98, 1.0)),
+                range: None,
+                choices: &[],
+                doc: "the colour along the beam's middle",
+            },
+            ParamSpec {
+                name: "outside-color",
+                default: ParamValue::Color(Color::rgba(1.0, 0.1, 0.1, 1.0)),
+                range: None,
+                choices: &[],
+                doc: "the colour at the beam's edges",
+            },
+            ParamSpec {
+                name: "composite",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["off", "on"],
+                doc: "whether the layer's own drawing stays under the beam",
+            },
+        ],
+        doc: "draws a beam travelling along a line, in place of the layer",
+        reach: in_box,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: generate::beam,
+        },
+    },
+    EffectSpec {
         name: "grid",
         params: &[
             ParamSpec {

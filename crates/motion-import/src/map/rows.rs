@@ -965,7 +965,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 45] = [
+pub(super) static KINDS: [Kind; 46] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -2746,6 +2746,62 @@ pub(super) static KINDS: [Kind; 45] = [
         switch: None,
     },
     Kind {
+        match_name: "ADBE Laser",
+        item: "beam",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Laser-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Laser-0001", To::Prop("start"), Point, Parameter),
+            row("ADBE Laser-0002", To::Prop("end"), Point, Parameter),
+            row("ADBE Laser-0003", To::Prop("length"), Number, Parameter),
+            row("ADBE Laser-0004", To::Prop("time"), Number, Parameter),
+            row(
+                "ADBE Laser-0005",
+                To::Prop("start-thickness"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Laser-0006",
+                To::Prop("end-thickness"),
+                Number,
+                Parameter,
+            ),
+            row("ADBE Laser-0007", To::Prop("softness"), Number, Parameter),
+            row(
+                "ADBE Laser-0008",
+                To::Prop("inside-color"),
+                Color,
+                Parameter,
+            ),
+            row(
+                "ADBE Laser-0009",
+                To::Prop("outside-color"),
+                Color,
+                Parameter,
+            ),
+            row(
+                "ADBE Laser-0010",
+                To::OnlyDefault("a beam drawn flat, without 3D perspective"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Laser-0011",
+                To::Setting("composite", OFF_ON),
+                Number,
+                Parameter,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
         match_name: "ADBE Grid",
         item: "grid",
         table: &EFFECTS,
@@ -3249,7 +3305,7 @@ pub(super) static KINDS: [Kind; 45] = [
 ];
 
 /// The policy for groups that are not items, by match name.
-pub(super) static POLICIES: [(&str, Policy); 34] = [
+pub(super) static POLICIES: [(&str, Policy); 33] = [
     ("ADBE Root Vectors Group", Policy::Through),
     ("ADBE Effect Parade", Policy::Through),
     ("ADBE Text Animators", Policy::Through),
@@ -3313,10 +3369,9 @@ pub(super) static POLICIES: [(&str, Policy); 34] = [
     ("ADBE Point Control", Policy::Control),
     ("ADBE Point3D Control", Policy::Control),
     ("ADBE Layer Control", Policy::Control),
-    // A waveform, a beam, particles and stars, each mapped once a project
-    // shows its parameters.
+    // A waveform, particles and stars, each mapped once a project shows its
+    // parameters.
     ("ADBE AudWave", Policy::InPlace),
-    ("ADBE Laser", Policy::InPlace),
     ("CC Particle World", Policy::InPlace),
     ("CC Star Burst", Policy::InPlace),
     ("tc Particular", Policy::InPlace),

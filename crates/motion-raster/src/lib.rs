@@ -25,6 +25,7 @@ mod image;
 mod list;
 mod mask;
 mod particles;
+mod pen;
 mod picture;
 mod pixels;
 mod projected;

@@ -862,6 +862,68 @@ pub static FOUR_COLOR: Registry = Registry {
     ],
 };
 
+/// The properties of `beam`.
+pub static BEAM: Registry = Registry {
+    kind: "beam",
+    rows: &[
+        point(
+            "start",
+            [0.0, 0.0],
+            &[],
+            false,
+            "where the line starts, in px of the layer",
+        ),
+        point(
+            "end",
+            [100.0, 0.0],
+            &[],
+            false,
+            "where the line ends, in px of the layer",
+        ),
+        number(
+            "length",
+            0.25,
+            Some((0.0, 1.0)),
+            "how long the beam is, as a share of the line",
+        ),
+        number(
+            "time",
+            0.5,
+            Some((0.0, 1.0)),
+            "how far the beam has travelled: its front is `time × (1 + length)` of the way \
+             along the line, so with `length` 1 it spans the line at 0.5",
+        ),
+        number(
+            "start-thickness",
+            8.0,
+            Some((0.0, 4_000.0)),
+            "how thick the beam is at `start`, in px",
+        ),
+        number(
+            "end-thickness",
+            8.0,
+            Some((0.0, 4_000.0)),
+            "how thick the beam is at `end`, in px",
+        ),
+        number(
+            "softness",
+            0.5,
+            Some((0.0, 1.0)),
+            "how much of the half thickness fades out at the edges, 0 to 1",
+        ),
+        color(
+            "inside-color",
+            [1.0, 0.75, 0.98, 1.0],
+            "the colour along the beam's middle",
+        ),
+        color(
+            "outside-color",
+            [1.0, 0.1, 0.1, 1.0],
+            "the colour at the beam's edges",
+        ),
+    ],
+};
+
 /// The properties of the grid.
 pub static GRID: Registry = Registry {
     kind: "grid",
@@ -1657,7 +1719,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 29] = [
+pub static EFFECTS: [ItemKind; 30] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -2084,6 +2146,23 @@ pub static EFFECTS: [ItemKind; 29] = [
         input: None,
         outline: None,
         doc: "fills the layer with four colours at four points, blended",
+    },
+    ItemKind {
+        name: "beam",
+        role: Role::Effect,
+        registry: &BEAM,
+        primary: Primary::Property("time"),
+        settings: &[SettingSpec {
+            name: "composite",
+            choices: &["off", "on"],
+            default: "off",
+            doc: "whether the layer's own drawing stays under the beam",
+        }],
+        input: None,
+        outline: None,
+        doc: "draws a beam `length` of the line from `start` to `end` long, travelling along \
+              it with `time`, its thickness running from `start-thickness` to \
+              `end-thickness`, in place of the layer, kept to its box",
     },
     ItemKind {
         name: "grid",

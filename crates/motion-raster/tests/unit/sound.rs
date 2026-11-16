@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use vello_cpu::kurbo::Rect;
+use vello_cpu::kurbo::{Affine, Rect};
 
 use super::*;
 use crate::style::Color;

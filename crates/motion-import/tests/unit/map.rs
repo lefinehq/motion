@@ -494,6 +494,34 @@ mod effects {
         assert_eq!(fx["channel"], "red", "{fx}");
     }
 
+    /// A laser is a beam: its length and time as they are, its thickness in
+    /// px, and a beam without 3D perspective reported.
+    #[test]
+    fn a_laser_is_a_beam() {
+        let import = imported(vec![group(
+            "ADBE Laser",
+            vec![
+                Child::Property(number("ADBE Laser-0003", 1.0)),
+                Child::Property(number("ADBE Laser-0004", 0.5)),
+                Child::Property(number("ADBE Laser-0005", 10.0)),
+                Child::Property(number("ADBE Laser-0010", 0.0)),
+                Child::Property(number("ADBE Laser-0011", 1.0)),
+            ],
+        )])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"][0];
+        assert_eq!(fx["beam"], 0.5, "{fx}");
+        assert_eq!(fx["length"], 1.0, "{fx}");
+        assert_eq!(fx["start-thickness"], 10.0, "{fx}");
+        assert_eq!(fx["composite"], "on", "{fx}");
+        assert!(import.json["layers"][0].get("pivot").is_none());
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert!(
+            what.contains(&"a beam drawn flat, without 3D perspective"),
+            "{what:?}"
+        );
+    }
+
     /// Tiles keep their reach in px and their tiling; a tiling the scene
     /// does not draw, and tiles blended across their borders, are
     /// reported.
