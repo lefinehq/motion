@@ -1,5 +1,5 @@
 //! Generators: effects that draw something of their own on the layer, a
-//! gradient, a grid, noise, or cut it into blinds. Each is worked out at
+//! gradient, a grid, noise, a beam, or cut it into blinds. Each is worked out at
 //! every pixel in the layer's own coordinates, so it moves, turns and
 //! scales with the layer.
 //!
@@ -10,6 +10,7 @@ use vello_cpu::kurbo::{Affine, Point};
 
 use crate::colour::{choice, number, rgb};
 use crate::effect::{ParamValue, Space};
+use crate::pen::Pen;
 use crate::pixels::Pixels;
 
 /// The point in `values[i]`.
@@ -334,6 +335,51 @@ fn lattice([x, y, z]: [i32; 3], seed: u32) -> f32 {
     h = h.wrapping_mul(0x297A_2D39);
     h ^= h >> 15;
     (h >> 8) as f32 / (1u32 << 24) as f32
+}
+
+/// `beam`: a straight beam along the line from `start` to `end`, `length`
+/// of the line long, its front `time × (1 + length)` of the way along: at
+/// `time` 0 it has not left `start`, at 1 its back has reached `end`, and
+/// with `length` 1 it spans the whole line at `time` 0.5. Its thickness runs
+/// from `start-thickness` at `start` to `end-thickness` at `end`, its ends
+/// are flat, and its edges fade over `softness` of its half thickness, from
+/// `inside-color` along its middle to `outside-color` at its edges. It
+/// draws in place of the layer, or over it with `composite` on, kept to
+/// the layer's box.
+pub(crate) fn beam(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    if choice(values, 9) == 0 {
+        pixels.data_mut().fill([0.0; 4]);
+    }
+    let (start, end) = (point(values, 0), point(values, 1));
+    let (length, time) = (number(values, 2), number(values, 3));
+    let front = (time * (1.0 + length)).clamp(0.0, 1.0);
+    let back = (time * (1.0 + length) - length).clamp(0.0, 1.0);
+    if front <= back {
+        return;
+    }
+    let along = |k: f32| {
+        let k = f64::from(k);
+        let at = |i: usize| f64::from(start[i]) + (f64::from(end[i]) - f64::from(start[i])) * k;
+        Point::new(at(0), at(1))
+    };
+    let (from, to) = (number(values, 4), number(values, 5));
+    let thickness = |k: f32| f64::from(from + (to - from) * k);
+    let color = |i: usize| {
+        let [r, g, b] = rgb(values, i);
+        [r, g, b, alpha(values, i)]
+    };
+    let mut pen = Pen::new(
+        pixels,
+        space,
+        thickness(back).max(thickness(front)),
+        f64::from(number(values, 6)),
+        [color(7), color(8)],
+    );
+    pen.beam(
+        along(back),
+        along(front),
+        [thickness(back), thickness(front)],
+    );
 }
 
 #[cfg(test)]

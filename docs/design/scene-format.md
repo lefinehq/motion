@@ -265,6 +265,7 @@ An `expand` moves every side of an outline `amount` px to its left, which is out
 | `repeat-tile` | `tiling` | `right`, `left`, `down`, `up` | |
 | `ramp` | `blend` | `start`, `start-color`, `end`, `end-color`, `blend` | `shape`: `linear`, `radial` |
 | `four-color` | `opacity` | `point-1`, `color-1`, `point-2`, `color-2`, `point-3`, `color-3`, `point-4`, `color-4`, `blend`, `opacity` | `mode`: `replace`, `over` |
+| `beam` | `time` | `start`, `end`, `length`, `time`, `start-thickness`, `end-thickness`, `softness`, `inside-color`, `outside-color` | `composite`: `off`, `on` |
 | `grid` | `border` | `anchor`, `corner`, `width`, `height`, `border`, `color`, `opacity` | `size`: `corner`, `width`, `width-height`; `draw`: `lines`, `cells`; `mode`: `replace`, `over` |
 | `venetian-blinds` | `completion` | `completion`, `direction`, `width`, `feather` | |
 | `fractal-noise` | `evolution` | `contrast`, `brightness`, `rotation`, `scale`, `scale-width`, `scale-height`, `offset`, `complexity`, `sub-influence`, `sub-scaling`, `sub-rotation`, `sub-offset`, `evolution`, `seed`, `opacity` | `fractal`: `basic`, `turbulent-smooth`, `turbulent-basic`, `turbulent-sharp`; `noise`: `spline`, `soft-linear`, `linear`, `block`; `overflow`: `clip`, `soft-clamp`, `wrap-back`; `polarity`: `normal`, `inverted`; `mode`: `over`, `replace` |

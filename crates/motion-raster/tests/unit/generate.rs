@@ -183,3 +183,59 @@ fn fractal_noise_is_grey_varied_and_moved_by_evolution_and_seed() {
     assert_ne!(render(&noise_values(90.0, 0.0)), base);
     assert_ne!(render(&noise_values(0.0, 7.0)), base);
 }
+
+/// A white beam along the middle row of a 20 by 5 layer, from x 0 to 20,
+/// `length` and `time` given, 3 px thick, its edges hard.
+fn beam_at(length: f32, time: f32, composite: u8) -> Pixels {
+    let values = [
+        At([0.0, 2.5]),
+        At([20.0, 2.5]),
+        Number(length),
+        Number(time),
+        Number(3.0),
+        Number(3.0),
+        Number(0.0),
+        color(1.0, 1.0, 1.0),
+        color(1.0, 1.0, 1.0),
+        Choice(composite),
+    ];
+    let mut pixels = solid(20, 5);
+    beam(&mut pixels, &values, &ONE);
+    pixels
+}
+
+#[test]
+fn a_beam_as_long_as_its_line_spans_it_halfway_through_its_time() {
+    let row = |pixels: &Pixels| (0..20).map(|x| pixels.get(x, 2)[3]).collect::<Vec<_>>();
+    // At 0.5 the front has reached the end and the back has not left the
+    // start.
+    assert!(row(&beam_at(1.0, 0.5, 0)).iter().all(|a| *a > 0.99));
+    // At 0.25 the front is halfway; at 0.75 the back is.
+    let quarter = beam_at(1.0, 0.25, 0);
+    close(quarter.get(4, 2), [1.0; 4]);
+    close(quarter.get(15, 2), [0.0; 4]);
+    let three = beam_at(1.0, 0.75, 0);
+    close(three.get(4, 2), [0.0; 4]);
+    close(three.get(15, 2), [1.0; 4]);
+    // At 0 and 1 it is gone, and in place of the layer nothing is left.
+    for time in [0.0, 1.0] {
+        assert!(row(&beam_at(1.0, time, 0)).iter().all(|a| *a == 0.0));
+    }
+}
+
+#[test]
+fn a_shorter_beam_runs_from_start_past_end() {
+    // Half the line long: at 0.5 its front is three quarters along and its
+    // back a quarter.
+    let half = beam_at(0.5, 0.5, 0);
+    close(half.get(2, 2), [0.0; 4]);
+    close(half.get(10, 2), [1.0; 4]);
+    close(half.get(17, 2), [0.0; 4]);
+}
+
+#[test]
+fn a_beam_draws_in_place_of_its_layer_unless_it_composites() {
+    // Off the beam, the grey layer is gone, or kept with `composite` on.
+    close(beam_at(1.0, 0.5, 0).get(10, 0), [0.0; 4]);
+    close(beam_at(1.0, 0.5, 1).get(10, 0), [0.5, 0.5, 0.5, 1.0]);
+}

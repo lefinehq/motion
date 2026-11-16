@@ -17,11 +17,12 @@
 use std::f64::consts::TAU;
 
 use vello_cpu::kurbo::{
-    Affine, BezPath, ParamCurve, ParamCurveArclen, ParamCurveDeriv, PathEl, PathSeg, Point, Vec2,
+    BezPath, ParamCurve, ParamCurveArclen, ParamCurveDeriv, PathEl, PathSeg, Point, Vec2,
 };
 
 use crate::colour::{choice, number, rgb};
 use crate::effect::{ParamValue, Space};
+use crate::pen::Pen;
 use crate::pixels::Pixels;
 
 /// The sound an effect reads: the window it asked for, per channel, at
@@ -213,132 +214,6 @@ fn direction(segment: PathSeg, t: f64) -> Vec2 {
     }
 }
 
-/// Draws into the frame's grid: strokes and dots in the layer's
-/// coordinates, mapped by `transform`, kept to the layer's box.
-struct Pen<'a> {
-    pixels: &'a mut Pixels,
-    transform: Affine,
-    back: Affine,
-    bounds: Option<vello_cpu::kurbo::Rect>,
-    /// Half the thickness, in pixels of the grid: where the edge is half
-    /// covered.
-    half: f64,
-    /// How far the edge fades, centred on `half`, in pixels of the grid.
-    fade: f64,
-    inside: [f32; 4],
-    outside: [f32; 4],
-}
-
-impl Pen<'_> {
-    /// The colour `across` of the way from a stroke's middle to its edge,
-    /// turned `hue` degrees.
-    fn color(&self, across: f64, hue: f64) -> [f32; 4] {
-        let t = across.clamp(0.0, 1.0) as f32;
-        let mixed: [f32; 4] =
-            std::array::from_fn(|i| self.inside[i] + (self.outside[i] - self.inside[i]) * t);
-        match hue == 0.0 {
-            true => mixed,
-            false => turned(mixed, hue),
-        }
-    }
-
-    /// Lays `color` with `cover` over the grid's pixel `(x, y)`.
-    fn lay(&mut self, x: i64, y: i64, color: [f32; 4], cover: f32) {
-        if let Some(bounds) = self.bounds {
-            let at = self.back * Point::new(x as f64 + 0.5, y as f64 + 0.5);
-            if !bounds.contains(at) {
-                return;
-            }
-        }
-        let width = i64::from(self.pixels.width());
-        let a = color[3] * cover;
-        if a <= 0.0 {
-            return;
-        }
-        let pixel = &mut self.pixels.data_mut()[(y * width + x) as usize];
-        for c in 0..3 {
-            pixel[c] = color[c] * a + pixel[c] * (1.0 - a);
-        }
-        pixel[3] = a + pixel[3] * (1.0 - a);
-    }
-
-    /// A stroke from `from` to `to`, both in the layer's coordinates, with
-    /// round ends, or ending flat at them when `square`.
-    fn stroke(&mut self, from: Point, to: Point, square: bool, hue: f64) {
-        let (a, b) = (self.transform * from, self.transform * to);
-        let reach = self.half + self.fade / 2.0;
-        let (x0, x1) = (
-            (a.x.min(b.x) - reach).floor() as i64,
-            (a.x.max(b.x) + reach).ceil() as i64,
-        );
-        let (y0, y1) = (
-            (a.y.min(b.y) - reach).floor() as i64,
-            (a.y.max(b.y) + reach).ceil() as i64,
-        );
-        let (width, height) = (
-            i64::from(self.pixels.width()),
-            i64::from(self.pixels.height()),
-        );
-        let ab = b - a;
-        let length2 = ab.hypot2();
-        for y in y0.max(0)..y1.min(height) {
-            for x in x0.max(0)..x1.min(width) {
-                let p = Point::new(x as f64 + 0.5, y as f64 + 0.5);
-                let t = match length2 > 0.0 {
-                    true => ((p - a).dot(ab) / length2).clamp(0.0, 1.0),
-                    false => 0.0,
-                };
-                let near = a + ab * t;
-                let distance = match square && length2 > 0.0 {
-                    // Butt ends: a box from `from` to `to`, its edges
-                    // across the stroke at its ends.
-                    true => {
-                        let length = length2.sqrt();
-                        let along = (p - a).dot(ab) / length;
-                        let past = (along - length).max(-along);
-                        (p - near).hypot().max(past + self.half)
-                    }
-                    false => (p - near).hypot(),
-                };
-                // A box filter a pixel wide over a hard edge, widened by
-                // the softness: half covered at `half`.
-                let cover = ((self.half - distance) / self.fade + 0.5).clamp(0.0, 1.0);
-                if cover <= 0.0 {
-                    continue;
-                }
-                let color = self.color(distance / reach.max(f64::MIN_POSITIVE), hue);
-                self.lay(x, y, color, cover as f32);
-            }
-        }
-    }
-}
-
-/// `color` with its hue turned `degrees`, keeping its luma: a rotation
-/// about the grey axis.
-fn turned(color: [f32; 4], degrees: f64) -> [f32; 4] {
-    let (sin, cos) = degrees.to_radians().sin_cos();
-    let (sin, cos) = (sin as f32, cos as f32);
-    let third: f32 = 1.0 / 3.0;
-    let root = third.sqrt();
-    let k = |i: usize, j: usize| {
-        let base = match i == j {
-            true => cos + (1.0 - cos) * third,
-            false => (1.0 - cos) * third,
-        };
-        let turn = match (i + 3 - j) % 3 {
-            1 => root * sin,
-            2 => -root * sin,
-            _ => 0.0,
-        };
-        base + turn
-    };
-    let [r, g, b, a] = color;
-    let c = [r, g, b];
-    let out: [f32; 3] =
-        std::array::from_fn(|i| (k(i, 0) * c[0] + k(i, 1) * c[1] + k(i, 2) * c[2]).clamp(0.0, 1.0));
-    [out[0], out[1], out[2], a]
-}
-
 /// The pen for `values`, over `pixels` in `space`, cleared first unless
 /// the layer's drawing stays under it.
 fn pen<'a>(
@@ -350,12 +225,6 @@ fn pen<'a>(
     if !composite {
         pixels.data_mut().fill([0.0; 4]);
     }
-    let scale = space.transform.determinant().abs().sqrt();
-    let thickness = f64::from(number(values, at::THICKNESS)) * scale;
-    let softness = f64::from(number(values, at::SOFTNESS)).clamp(0.0, 1.0);
-    let half = thickness / 2.0;
-    // At least a pixel of fade, so edges are smooth.
-    let fade = (half * softness * 2.0).max(1.0);
     let color = |i: usize| {
         let [r, g, b] = rgb(values, i);
         let a = match values.get(i) {
@@ -364,16 +233,13 @@ fn pen<'a>(
         };
         [r, g, b, a]
     };
-    Pen {
+    Pen::new(
         pixels,
-        transform: space.transform,
-        back: space.transform.inverse(),
-        bounds: space.bounds,
-        half,
-        fade,
-        inside: color(at::INSIDE),
-        outside: color(at::OUTSIDE),
-    }
+        space,
+        f64::from(number(values, at::THICKNESS)),
+        f64::from(number(values, at::SOFTNESS)),
+        [color(at::INSIDE), color(at::OUTSIDE)],
+    )
 }
 
 /// How far a band must reach, in px, to draw: below it is the rounding
