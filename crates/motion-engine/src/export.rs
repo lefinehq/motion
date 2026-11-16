@@ -12,7 +12,7 @@ use motion_import::map::Options;
 use serde_json::Value as Json;
 
 use crate::Session;
-use crate::import::{import_scene, substitute_fonts};
+use crate::import::{import_scene, measure_layouts, substitute_fonts};
 use crate::stage::stage;
 
 /// Writes the scene at `scene`, imported from the project at `project` and
@@ -65,7 +65,11 @@ pub fn export_project(
         ..Options::default()
     };
     let mut original = import_scene(project, &options, Some(scene))?;
-    substitute_fonts(&mut original, Session::open(scene)?.fonts()?)?;
+    let session = Session::open(scene)?;
+    let fonts = session.fonts()?;
+    substitute_fonts(&mut original, fonts)?;
+    // As `motion import` wrote the scene: with layers' content measured.
+    measure_layouts(project, &options, Some(scene), &mut original, fonts)?;
     let plan = stage("plan", || {
         Ok(export::plan(&original.json, &original.sources, &edited))
     })?;

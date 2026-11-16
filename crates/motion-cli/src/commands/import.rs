@@ -61,6 +61,8 @@ pub fn run(project: &Path, options: &ImportOptions, out: &Path, args: &Args) -> 
     // from the fonts the scene has where it was written.
     let available = Session::open(out)?;
     motion_engine::substitute_fonts(&mut import, available.fonts()?)?;
+    // What expressions read of layers' content is measured in these fonts.
+    motion_engine::measure_layouts(project, options, Some(out), &mut import, available.fonts()?)?;
     write(out, &import.json)?;
     let json = args.json;
     // Opened from where it was written, so `fonts` resolve as they will.

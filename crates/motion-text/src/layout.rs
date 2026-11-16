@@ -11,6 +11,8 @@ use std::ops::Range;
 
 use kurbo::{Rect, Size};
 use parley::FontData;
+use skrifa::instance::{LocationRef, NormalizedCoord, Size as FontSize};
+use skrifa::{FontRef, GlyphId, MetadataProvider};
 
 /// A laid-out text.
 #[derive(Debug, Clone, PartialEq)]
@@ -79,6 +81,42 @@ pub struct Glyph {
     pub advance: f64,
     /// The bytes of the source text it shows.
     pub cluster: Range<usize>,
+}
+
+impl GlyphRun {
+    /// The box each glyph's outline covers, in the layout's coordinates (y
+    /// down), at the run's size and the font's position on its axes; `None`
+    /// for a glyph that draws nothing, such as a space, and for every glyph
+    /// when the font cannot be read. One entry per glyph, in order.
+    pub fn inks(&self) -> Vec<Option<Rect>> {
+        let Ok(font) = FontRef::from_index(self.font.data.data(), self.font.index) else {
+            return vec![None; self.glyphs.len()];
+        };
+        let coords: Vec<NormalizedCoord> = self
+            .coords
+            .iter()
+            .map(|&c| NormalizedCoord::from_bits(c))
+            .collect();
+        #[expect(clippy::cast_possible_truncation, reason = "font sizes fit an f32")]
+        let metrics =
+            font.glyph_metrics(FontSize::new(self.size as f32), LocationRef::new(&coords));
+        self.glyphs
+            .iter()
+            .map(|glyph| {
+                let b = metrics.bounds(GlyphId::new(glyph.id))?;
+                // An empty outline has an empty box at its origin.
+                (b.x_min < b.x_max || b.y_min < b.y_max).then(|| {
+                    // Outlines are y-up, about the glyph's origin.
+                    Rect::new(
+                        glyph.x + f64::from(b.x_min),
+                        glyph.y - f64::from(b.y_max),
+                        glyph.x + f64::from(b.x_max),
+                        glyph.y - f64::from(b.y_min),
+                    )
+                })
+            })
+            .collect()
+    }
 }
 
 impl TextLayout {

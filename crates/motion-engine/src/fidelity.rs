@@ -18,7 +18,9 @@ use motion_import::map::Options;
 use serde::{Deserialize, Serialize};
 
 use crate::diff::FrameDiff;
-use crate::{DiffOptions, Session, import_scene, substitute_fonts, write_document};
+use crate::{
+    DiffOptions, Session, import_scene, measure_layouts, substitute_fonts, write_document,
+};
 
 /// The samples to measure, as a manifest file lists them.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -225,7 +227,9 @@ pub fn measure(sample: &Sample, work: &Path, images: bool) -> Result<Measure> {
     let mut import = import_scene(&sample.project, &options, None).map_err(under)?;
     // The sample's fonts are absolute, so the scene finds them from anywhere.
     let unset: Session = write_document(&import.json).parse().map_err(under)?;
-    substitute_fonts(&mut import, unset.fonts().map_err(under)?).map_err(under)?;
+    let fonts = unset.fonts().map_err(under)?;
+    substitute_fonts(&mut import, fonts).map_err(under)?;
+    measure_layouts(&sample.project, &options, None, &mut import, fonts).map_err(under)?;
     let scene = dir.join("scene.json");
     fs::write(&scene, write_document(&import.json))
         .map_err(|e| under(Diagnostic::io("write", &scene, &e)))?;

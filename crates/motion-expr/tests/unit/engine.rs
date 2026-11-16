@@ -221,6 +221,18 @@ impl Host for TestHost {
     fn key_count(&self, node: NodeId) -> usize {
         self.nodes[node as usize].keys.len()
     }
+    /// CONTROLS is not measured yet; Title covers `[time, extents, 30, 40]`.
+    fn rect_at(
+        &self,
+        layer: NodeId,
+        time: f64,
+        extents: bool,
+    ) -> std::result::Result<[f64; 4], Missing> {
+        match self.nodes[layer as usize].name.as_str() {
+            "CONTROLS" => Err(Missing::Unmeasured),
+            _ => Ok([time, f64::from(u8::from(extents)), 30.0, 40.0]),
+        }
+    }
     fn key(&self, node: NodeId, n: usize) -> Option<(f64, Val)> {
         self.nodes[node as usize]
             .keys
@@ -531,4 +543,31 @@ fn outside_an_expression_selector_a_part_cannot_be_known() {
         matches!(&failure, Err(Failure::Unknown(what)) if what.contains("expression selector")),
         "{failure:?}"
     );
+}
+
+#[test]
+fn a_layer_rectangle_reads_its_time_and_extents() {
+    let ids = ids();
+    // As a method of a layer and as the bare function of the layer the
+    // expression is on, at the run's time by default.
+    let run = |source: &str| value(eval(source, ids.rotation, 0.25));
+    assert_eq!(
+        run(
+            r#"var r = thisComp.layer("Title").sourceRectAtTime(2, true); [r.left, r.top, r.width, r.height]"#
+        ),
+        Val::Vector(vec![2.0, 1.0, 30.0, 40.0])
+    );
+    assert_eq!(
+        run("var r = sourceRectAtTime(); [r.left, r.top]"),
+        Val::Vector(vec![0.25, 0.0])
+    );
+    assert_eq!(run("sourceRectAtTime(1, false).top"), Val::Number(0.0));
+    assert!(matches!(
+        eval(
+            r#"thisComp.layer("CONTROLS").sourceRectAtTime().width"#,
+            ids.rotation,
+            0.0
+        ),
+        Err(Failure::Unmeasured)
+    ));
 }

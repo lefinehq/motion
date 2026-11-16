@@ -45,7 +45,7 @@ pub use fonts::{
     unnamed_fonts,
 };
 pub use geometry::{LineCheck, LineGeometry, TEXT_TOLERANCE, TextCheck, TextGeometry, check_text};
-pub use import::{import, import_scene, is_template, substitute_fonts};
+pub use import::{import, import_scene, is_template, measure_layouts, substitute_fonts};
 pub use motion_import::export::{Change as ExportChange, Plan as ExportPlan};
 pub use session::Session;
 

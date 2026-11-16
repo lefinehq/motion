@@ -13,15 +13,20 @@
 //! - **Dimensions.** A 2D layer's anchor point, position and scale have two
 //!   components to an expression, as the original gives them; the project
 //!   keeps a third, which a 3D layer's have.
+//! - **Rectangles.** A layer with a source covers its source's box; a text
+//!   or shape layer covers what its content draws, which the host reads
+//!   from the [`Layouts`] given and asks for when they lack it
+//!   ([`Missing::Unmeasured`]).
 //! - **Other expressions.** A property with an expression reads as what its
 //!   expression gave, once baked; until then it is [`Missing::Pending`], and
 //!   the time asked for is kept for the bake to evaluate first.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use motion_expr::{Host, Missing, NodeId, NodeKind, Select, Val};
 
+use super::{Ask, AskKey, Layouts};
 use crate::model::{
     Child, Color, Composition, Control, Group, Item, ItemKind, Layer, LayerKind, Parameter,
     Project, Property, Stream, Value,
@@ -62,12 +67,18 @@ struct Comp {
 /// What an expression reads of a layer.
 #[derive(Debug, Clone)]
 struct LayerInfo {
+    /// Its comp's item id and its own id.
+    item: u32,
+    id: u32,
+    kind: LayerKind,
     in_point: f64,
     out_point: f64,
     start_time: f64,
     stretch: f64,
     parent: Option<u32>,
     size: [f64; 2],
+    /// Its source's size, if it has a composition or footage as one.
+    source: Option<[f64; 2]>,
 }
 
 /// One node with where it sits.
@@ -120,10 +131,14 @@ pub(super) struct Target<'p> {
     pub comp: &'p Composition,
     /// The comp's item id.
     pub item: u32,
+    /// Whether it is part of what its layer draws: its text or its shapes,
+    /// which a rectangle of the layer measures.
+    pub content: bool,
 }
 
 /// Where the nodes being added sit: their layer, its comp and the comp's
-/// item id, the layer's size, and its source's size if it has a source.
+/// item id, the layer's size, its source's size if it has a source, and
+/// whether they are in its content.
 #[derive(Debug, Clone, Copy)]
 struct At<'p> {
     layer: &'p Layer,
@@ -131,7 +146,11 @@ struct At<'p> {
     item: u32,
     size: [f64; 2],
     source: Option<[f64; 2]>,
+    content: bool,
 }
+
+/// The groups that hold what a text or shape layer draws.
+const CONTENT_GROUPS: [&str; 2] = ["ADBE Text Properties", "ADBE Root Vectors Group"];
 
 /// The [`Host`] over a project.
 #[derive(Debug)]
@@ -143,6 +162,12 @@ pub(super) struct ProjectHost {
     pub(super) baked: RefCell<HashMap<NodeId, Baked>>,
     /// The last value asked for that is not baked yet, and when.
     pub(super) demand: Cell<Option<(NodeId, f64)>>,
+    /// The rectangles measured so far.
+    layouts: Layouts,
+    /// The rectangles read that [`ProjectHost::layouts`] lacks, in order.
+    pub(super) asks: RefCell<Vec<Ask>>,
+    /// What tells [`ProjectHost::asks`] apart, to keep each once.
+    asked: RefCell<BTreeSet<AskKey>>,
 }
 
 /// The project node.
@@ -156,8 +181,12 @@ struct Build<'p> {
 }
 
 impl ProjectHost {
-    /// The host over `project`, and the properties whose expressions are on.
-    pub(super) fn new(project: &Project) -> (ProjectHost, Vec<Target<'_>>) {
+    /// The host over `project`, reading layers' rectangles from `layouts`,
+    /// and the properties whose expressions are on.
+    pub(super) fn new<'p>(
+        project: &'p Project,
+        layouts: &Layouts,
+    ) -> (ProjectHost, Vec<Target<'p>>) {
         let mut build = Build {
             project,
             host: ProjectHost {
@@ -174,6 +203,9 @@ impl ProjectHost {
                 layers: HashMap::new(),
                 baked: RefCell::new(HashMap::new()),
                 demand: Cell::new(None),
+                layouts: layouts.clone(),
+                asks: RefCell::new(Vec::new()),
+                asked: RefCell::new(BTreeSet::new()),
             },
             targets: Vec::new(),
         };
@@ -199,12 +231,16 @@ impl ProjectHost {
                 let source = source_size(project, layer);
                 let size = source.unwrap_or([f64::from(comp.width), f64::from(comp.height)]);
                 let info = LayerInfo {
+                    item: item.id,
+                    id: layer.id,
+                    kind: layer.kind,
                     in_point: layer.in_point,
                     out_point: layer.out_point,
                     start_time: layer.start_time,
                     stretch: layer.stretch,
                     parent: layer.parent,
                     size,
+                    source,
                 };
                 let layer_id = build
                     .host
@@ -220,6 +256,7 @@ impl ProjectHost {
                         item: item.id,
                         size,
                         source,
+                        content: false,
                     },
                 );
             }
@@ -307,7 +344,10 @@ impl<'p> Build<'p> {
                     let effect = (group.match_name == "ADBE Effect Parade")
                         .then(|| self.project.effects.get(&g.match_name))
                         .flatten();
-                    self.children(id, g, effect, at);
+                    let on_layer = matches!(self.host.entries[up as usize].node, Node::Layer(_));
+                    let content =
+                        at.content || (on_layer && CONTENT_GROUPS.contains(&g.match_name.as_str()));
+                    self.children(id, g, effect, At { content, ..at });
                 }
                 Child::Property(p) => {
                     let name = p.name.clone().unwrap_or_else(|| {
@@ -348,6 +388,7 @@ impl<'p> Build<'p> {
                 layer: at.layer,
                 comp: at.comp,
                 item: at.item,
+                content: at.content,
             });
         }
         id
@@ -601,6 +642,9 @@ fn display_name(match_name: &str) -> Option<&'static str> {
         "ADBE Vector Trim Start" => "Start",
         "ADBE Vector Trim End" => "End",
         "ADBE Vector Trim Offset" => "Offset",
+        "ADBE Vector Offset Amount" => "Amount",
+        "ADBE Vector Offset Line Join" => "Line Join",
+        "ADBE Vector Offset Miter Limit" => "Miter Limit",
         "ADBE Mask Shape" => "Mask Path",
         "ADBE Mask Feather" => "Mask Feather",
         "ADBE Mask Opacity" => "Mask Opacity",
@@ -662,6 +706,9 @@ fn attribute_match_names(name: &str) -> Option<&'static [&'static str]> {
         "start" => &["ADBE Vector Trim Start"],
         "end" => &["ADBE Vector Trim End"],
         "offset" => &["ADBE Vector Trim Offset"],
+        "amount" => &["ADBE Vector Offset Amount"],
+        "lineJoin" => &["ADBE Vector Offset Line Join"],
+        "miterLimit" => &["ADBE Vector Offset Miter Limit"],
         "maskPath" => &["ADBE Mask Shape"],
         "maskFeather" => &["ADBE Mask Feather"],
         "maskOpacity" => &["ADBE Mask Opacity"],
@@ -810,6 +857,46 @@ impl Host for ProjectHost {
             }
             Some(Node::Default(..)) => true,
             _ => false,
+        }
+    }
+
+    fn rect_at(&self, layer: NodeId, time: f64, extents: bool) -> Result<[f64; 4], Missing> {
+        let Some(Node::Layer(info)) = self.entries.get(layer as usize).map(|e| &e.node) else {
+            return Err(Missing::Unknown(
+                "the content of something that is not a layer".into(),
+            ));
+        };
+        // A layer with a source covers its source, whatever its time.
+        if let Some([width, height]) = info.source {
+            return Ok([0.0, 0.0, width, height]);
+        }
+        if !matches!(info.kind, LayerKind::Text | LayerKind::Shape) {
+            return Err(Missing::Unknown(format!(
+                "the content of a {} layer, which draws none",
+                match info.kind {
+                    LayerKind::Camera => "camera",
+                    LayerKind::Light => "light",
+                    _ => "sourceless",
+                }
+            )));
+        }
+        let ask = Ask {
+            comp: info.item,
+            layer: info.id,
+            time,
+            extents,
+        };
+        match self.layouts.get(&ask) {
+            Some(Ok(rect)) => Ok(*rect),
+            Some(Err(why)) => Err(Missing::Unknown(format!(
+                "the size of a layer's content, which could not be measured ({why})"
+            ))),
+            None => {
+                if self.asked.borrow_mut().insert(ask.key()) {
+                    self.asks.borrow_mut().push(ask);
+                }
+                Err(Missing::Unmeasured)
+            }
         }
     }
 
