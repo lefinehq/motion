@@ -58,12 +58,17 @@ fn write_children(f: &mut fmt::Formatter<'_>, group: &Group, level: usize) -> fm
     group.children.iter().try_for_each(|child| match child {
         Child::Group(group) if group.properties().next().is_none() => Ok(()),
         Child::Group(group) => {
-            writeln!(
+            write!(
                 f,
                 "{:pad$}{}",
                 "",
                 Heading(&group.match_name, group.name.as_deref(), group.enabled)
             )?;
+            // The id a path parameter names a mask by.
+            match group.mask {
+                Some(mask) => writeln!(f, ", mask {}", mask.id)?,
+                None => writeln!(f)?,
+            }
             write_children(f, group, level + 1)
         }
         Child::Property(property) => writeln!(f, "{:pad$}{property}", ""),
@@ -222,6 +227,7 @@ impl fmt::Display for Value {
                 marker.comment,
                 fmt_num(marker.duration)
             ),
+            Value::Mask(id) => write!(f, "mask {id}"),
             Value::Opaque { reason } => write!(f, "opaque {reason}"),
         }
     }

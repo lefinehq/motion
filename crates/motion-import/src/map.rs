@@ -352,6 +352,9 @@ struct Walk<'p> {
     /// The slot of the panel control that drives each property, by what
     /// holds it.
     offered: HashMap<slots::Held, usize>,
+    /// The scene ids of the masks of the layer being written that its
+    /// effects follow, by the id the project gives each mask.
+    mask_ids: HashMap<u32, String>,
 }
 
 impl<'p> Walk<'p> {
@@ -381,6 +384,7 @@ impl<'p> Walk<'p> {
             slots: slots::Slots::default(),
             named_roles: Vec::new(),
             offered: HashMap::new(),
+            mask_ids: HashMap::new(),
         }
     }
 

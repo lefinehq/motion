@@ -11,6 +11,7 @@ const ONE: Space = Space {
     input: None,
     time: 0.0,
     sound: None,
+    outline: None,
 };
 
 /// A `width` by 1 opaque grey layer.
@@ -69,6 +70,7 @@ fn a_ramp_draws_only_where_the_layer_is_and_moves_with_it() {
         input: None,
         time: 0.0,
         sound: None,
+        outline: None,
     };
     ramp(&mut pixels, &values, &space);
     // Pixel 5's centre is (0.5, 0.5) in the layer, √0.5 px from `start`.

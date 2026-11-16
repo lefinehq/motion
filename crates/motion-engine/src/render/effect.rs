@@ -7,19 +7,28 @@
 
 use motion_format::{Diagnostic, Kind, Result, Value};
 use motion_raster::{Curve, Effect, ParamValue};
-use motion_scene::ItemState;
+use motion_scene::{ItemState, NodeState};
 
 use super::color;
 
-/// The rasteriser's effects for `fx`, in order.
+/// The rasteriser's effects for `node`'s `fx`, in order, each following
+/// the outline of the mask of `node`'s that `outlines` gives for it.
 ///
 /// # Errors
 /// A diagnostic at `fx[i]` for an effect or parameter the rasteriser has no
 /// row for, or a value it does not accept.
-pub(super) fn effects(fx: &[ItemState]) -> Result<Vec<Effect>> {
-    fx.iter()
+pub(super) fn effects(node: &NodeState, outlines: &[Option<usize>]) -> Result<Vec<Effect>> {
+    node.fx
+        .iter()
         .enumerate()
-        .map(|(i, item)| effect(item).map_err(|e| e.under(format!("fx[{i}]"))))
+        .map(|(i, item)| {
+            let effect = effect(item).map_err(|e| e.under(format!("fx[{i}]")))?;
+            let mask = outlines.get(i).copied().flatten();
+            Ok(match mask.and_then(|m| node.mask.get(m)) {
+                Some(mask) => effect.with_outline(super::mask::outline(mask)),
+                None => effect,
+            })
+        })
         .collect()
 }
 

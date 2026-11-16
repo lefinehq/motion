@@ -25,6 +25,7 @@ fn settings(mode: u32, inverted: bool) -> MaskSettings {
         motion_blur: 0,
         linear_falloff: false,
         mode,
+        id: 1,
     }
 }
 

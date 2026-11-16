@@ -87,7 +87,7 @@ Distortion effects keep no formula in the project, only their parameters. These 
 
 What is left open:
 - **The angle.** No local sample turns the line, so the angle is taken clockwise, as the project's other angles turn, without a measurement. At 90° the bottom shows the top.
-- **Where the mirrors are drawn.** The four samples draw their mirrors on audio spectra. m612 and m812 draw theirs along a mask (`ADBE AudSpect-0004`, which stores 0 on layers that do have a mask), which the scene does not draw yet, and m611's reference shows a background and a title placement its imported frame does not, so mirroring moves their error little.
+- **Where the mirrors are drawn.** The four samples draw their mirrors on audio spectra. m612 and m812 draw theirs along a mask ([E1](#effects-that-follow-a-mask)), and m611's reference shows a background and a title placement its imported frame does not, so mirroring moves their error little.
 - **Polar interpolation.** The overlap peaks a little past the stored share: 0.297 at 0.81, 0.314 at 0.83 and 0.307 at 0.85. The ring's centre sits 49 px above the layer's middle in the reference and 64 px with the share as stored, which 0.85 would match. The scene takes the share as stored.
 - **Polar coordinates on other shapes of layer.** One 16:9 layer cannot tell whether the radius scale follows the height, the width or neither: √2·`r` with the columns across the width is what it shows, and the scene takes that for every box.
 - **Polar to rect** is taken as the inverse, unmeasured: no local sample uses it.
@@ -102,3 +102,19 @@ What is left open:
 | Belief | Evidence | Held, 2026-11-16 |
 |---|---|---|
 | X1. An expression reads a 2D layer's anchor point, position and scale as two components, though the project stores three; a 3D layer's, a camera's and a light's as three. | A gaming lower-third family (m571 to m575, m739, m783) sizes its logo with a rig on a 2D null: its parent's scale expression gives `[thisComp.width, thisComp.height]`, two components, and the child divides each component of its own scale by its parent's, `for (i = 0; i < s.length; i++)`. With three components the third is `NaN` and the original would show an error; with two the logo's world scale is 2 by 2, and the logo lies on the reference's: m783 1.72 % → 0.93 % failing, m571 7.40 % → 1.85 %, m573 9.17 % → 1.78 %. | Over 42 corpus samples under 25 % failing, 5 draw closer and none farther. |
+
+## Effects that follow a mask
+
+A path parameter (`pard` control 12), such as Audio Spectrum's Path (`ADBE AudSpect-0004`), names one of its layer's masks. Its `cdat` holds 0 whatever it names; the mask is in a `tdli` beside it. These beliefs say how it is named and how the spectrum lays its bands along it. The first is checked by hand over every local sample, the layout measured against m812's reference frames; the sweep does not check them yet.
+
+| Belief | Evidence | Held, 2026-11-16 |
+|---|---|---|
+| E1. The `tdli` beside a path parameter holds the id of a mask of the same layer: the big-endian `u32` at byte 8 of that mask's `mkif`. 0 names none. The id is neither the mask's index nor the number in its name. | m812's spectra store `tdli` 6 on layers whose one mask, `Mask 5`, has `mkif` id 6, and 1 on layers whose `Mask 1` has id 1. m594's stroke stores 5 for its only mask, `Mask 1`, id 5; the Masks fixture's `Mask 1` and `Mask 2` have ids 2 and 4. m621's two spectra store 0 on layers with a mask, and its reference draws them as straight bars along their points. | 135 path parameters in 18 projects carry a `tdli`: 44 `ADBE AudSpect-0004`, 79 `ADBE Fill-0001`, 9 `ADBE Stroke-0001`, 3 `APC Vegas-0050`. The 27 that are not 0 each match the id of exactly one mask on their layer. Over all 1,305 masks, no layer has two with one id. |
+| E2. Audio Spectrum draws its bands along the mask its Path names, from the path's first vertex, evenly by length: band `k` of `n` at `k / (n − 1)` of an open path's length, both ends included, and at `k / n` round a closed one. Its points and its polar path go unused. Side A is to the left going along the path, as along the line from its start to its end. | m812, reference frame 5 (2.0 s), about the ring's centre at (540, 960), with our digital bands drawn as bars for the comparison. Round `Mask 1`, a circle of radius 220 drawn counterclockwise from its top, 100 bands: folded onto their 3.6° spacing, ours and the reference's ink line up with no shift, where bands centred in their spans (`(k + ½) / n`) would be 1.8° off. Their bars stand on the circle and reach inward, as side A says: the reference's ink runs from 195 to 220 px out, ours from 170 to 220. Along `Mask 5`, an open quarter circle of radius 239, 32 bands: the reference's bars are 2.90° apart, as `k / (n − 1)` gives (`k / n` gives 2.81°), and 14 of ours fall within 0.2° of one of its bars. | 21 spectra along a mask, in m549, m612 and m812. m549's and m612's projects ship their sound compositions empty (and m612 its background), so no frame of ours draws their bands. |
+
+What is left open:
+- **Heights.** m812's ring bars reach about twice as far as the reference's; the scale from loudness to px is the spectrum's own, not the path's.
+- **Digital bands.** m812's bands without a stored display, `Digital` by the definition, are solid bars in its reference at a thickness of 6, where the scene draws columns of squares; m621's 40 px digital bands are squares. How the original spaces its squares is not measured yet.
+- **Waveform.** Audio Waveform has the same Path parameter; no local sample uses the effect, so the scene's waveform follows a mask the same way without a measurement.
+- **Animated paths.** No sample keys a path parameter; one that does is reported.
+

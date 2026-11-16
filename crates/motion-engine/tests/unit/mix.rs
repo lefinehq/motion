@@ -161,3 +161,32 @@ fn a_spectrum_hears_the_sound_about_its_layers_time() {
     let late = lit(&dir, &layers("600"), 0.0);
     assert!((55..=80).contains(&late), "{late} px heard ahead");
 }
+
+#[test]
+fn a_spectrum_stands_along_the_mask_it_follows() {
+    let dir = folder("spectrum-along");
+    // One band at the tone's 1 kHz, in the middle of a mask's outline
+    // running down x = 30.5 from y = 20 to 81, on pixel centres: half scale
+    // reaches 20 px to its left going down, the right of the picture, from
+    // (30.5, 50.5), 3 px thick with round ends. The
+    // line of `start` and `end` along the bottom is not used, and the mask
+    // still cuts the layer's own drawing, which the spectrum clears.
+    let path = dir.join("drawn.json");
+    let scene = r##"{"motion":1,"size":"100x100","fps":10,"dur":"2s","layers":[
+        {"id":"t","audio":"tone.wav"},
+        {"id":"bars","rect":"100x100","fill":"#FFFFFF","position":[50,50],
+         "mask":[{"mask":"M30.5,20 L30.5,81","id":"edge","mode":"none"}],
+         "fx":[{"audio-spectrum":40,"audio":"t","along":"edge","start":[10,90],"end":[90,90],
+                "from":1000,"to":1000,"bands":1,"display":"lines","side":"a","softness":0}]}]}"##;
+    std::fs::write(&path, scene).unwrap();
+    let image = Session::open(&path).unwrap().render(5.0).unwrap();
+    let lit = |x0: usize, x1: usize, y0: usize, y1: usize| {
+        (y0..y1)
+            .flat_map(|y| (x0..x1).map(move |x| (x, y)))
+            .filter(|&(x, y)| image.pixels()[(y * 100 + x) * 4] > 128)
+            .count()
+    };
+    let band = lit(28, 60, 45, 56);
+    assert!((55..=80).contains(&band), "{band} px right of the outline");
+    assert_eq!(lit(0, 100, 0, 100), band, "nothing else draws");
+}

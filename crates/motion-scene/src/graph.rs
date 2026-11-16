@@ -220,6 +220,9 @@ pub struct Node {
     /// For each of `fx`, the node of its own list whose drawing it reads,
     /// if it reads one.
     pub inputs: Vec<Option<usize>>,
+    /// For each of `fx`, the index in `mask` of the mask whose outline it
+    /// follows, if it names one that is shown.
+    pub outlines: Vec<Option<usize>>,
 }
 
 #[cfg(test)]

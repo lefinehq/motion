@@ -149,6 +149,42 @@ fn reads_static_numbers_vectors_and_colours() {
 }
 
 #[test]
+fn reads_the_layer_and_the_mask_a_parameter_names_beside_its_value() {
+    let named = |name: &[u8; 4], id: u32| {
+        tdbs(&[
+            tdb4(1, 0x01, false, false),
+            cdat(&[0.0]),
+            chunk(name, &id.to_be_bytes()),
+        ])
+    };
+    let body = group_body(
+        1,
+        "",
+        &[
+            tdmn("ADBE AudSpect-0001"),
+            named(b"tdpi", 39),
+            tdmn("ADBE AudSpect-0004"),
+            named(b"tdli", 6),
+            // 0 names no mask: the value stays the stored number.
+            tdmn("ADBE Fill-0001"),
+            named(b"tdli", 0),
+        ],
+    );
+    let (group, skipped) = read(&body, true);
+    let group = group.unwrap();
+    let values: Vec<&Stream> = (0..3).map(|i| &property(&group, i).value).collect();
+    assert_eq!(
+        values,
+        [
+            &Stream::Static(Value::Layer(39)),
+            &Stream::Static(Value::Mask(6)),
+            &Stream::Static(Value::Number(0.0)),
+        ]
+    );
+    assert!(skipped.is_empty(), "{skipped:?}");
+}
+
+#[test]
 fn reads_names_flags_and_expressions() {
     let position = tdbs(&[
         tdb4(1, 0x01, false, false),
@@ -276,9 +312,9 @@ fn reads_effects_masks_and_wrapped_values_by_their_body() {
         &[group_body(1, "", &[tdmn("ADBE Slider Control"), effect])],
     );
     let mask = list(b"tdgp", &[group_body(1, "Mask 1", &[])]);
-    // Inverted, motion blur on, linear falloff, subtract.
+    // Inverted, motion blur on, linear falloff, subtract, id 6.
     let mut mkif = [0u8; 48];
-    mkif[..8].copy_from_slice(&[1, 0, 2, 1, 0, 0, 0, 2]);
+    mkif[..12].copy_from_slice(&[1, 0, 2, 1, 0, 0, 0, 2, 0, 0, 0, 6]);
     let text = list(
         b"btds",
         &[
@@ -317,6 +353,7 @@ fn reads_effects_masks_and_wrapped_values_by_their_body() {
             motion_blur: 2,
             linear_falloff: true,
             mode: 2,
+            id: 6,
         })
     );
     let opaque = |reason| Stream::Static(Value::Opaque { reason });

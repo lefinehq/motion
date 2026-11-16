@@ -1,6 +1,10 @@
 //! Effects that draw sound: `audio-spectrum`, a band for each frequency as
 //! tall as that frequency is loud, and `audio-waveform`, the wave itself.
 //!
+//! Either lays its bands or points along the line between its two
+//! points, round the circle they give, or along the outline of a mask it
+//! follows, evenly by length.
+//!
 //! The engine hands each the window of sound it asked for ([`Heard`]),
 //! centred `offset` after the layer's time and `duration` long, so a frame
 //! draws alone. Spectra come from our own radix-2 FFT of the Hann-windowed
@@ -12,7 +16,9 @@
 
 use std::f64::consts::TAU;
 
-use vello_cpu::kurbo::{Affine, Point, Vec2};
+use vello_cpu::kurbo::{
+    Affine, BezPath, ParamCurve, ParamCurveArclen, ParamCurveDeriv, PathEl, PathSeg, Point, Vec2,
+};
 
 use crate::colour::{choice, number, rgb};
 use crate::effect::{ParamValue, Space};
@@ -62,34 +68,148 @@ fn point(values: &[ParamValue], i: usize) -> Point {
 
 /// How the bands or the wave are laid: where each stands, in the layer's
 /// coordinates, and which way is out.
-struct Path {
-    start: Point,
-    end: Point,
-    circle: bool,
+enum Path {
+    /// Evenly from `start` to `end`, both included; out is to the left
+    /// going from `start` to `end`.
+    Line { start: Point, end: Point },
+    /// Evenly round the circle about `centre` through `through`, from
+    /// `through` on; out is away from `centre`.
+    Circle { centre: Point, through: Point },
+    /// Evenly along an outline by its length, from its first point: both
+    /// ends of an open one included, once round a closed one. Out is to
+    /// the left going along it, as for the line.
+    Outline(Outline),
 }
 
 impl Path {
+    /// The path `values` and `space` give: the outline the effect
+    /// follows, else the line or circle of its points.
+    fn of(values: &[ParamValue], space: &Space, circle: bool) -> Path {
+        let (start, end) = (point(values, at::START), point(values, at::END));
+        match (space.outline.as_deref().and_then(Outline::new), circle) {
+            (Some(outline), _) => Path::Outline(outline),
+            (None, false) => Path::Line { start, end },
+            (None, true) => Path::Circle {
+                centre: start,
+                through: end,
+            },
+        }
+    }
+
+    /// Whether the last point joins the first: round a circle or a closed
+    /// outline.
+    fn closed(&self) -> bool {
+        match self {
+            Path::Line { .. } => false,
+            Path::Circle { .. } => true,
+            Path::Outline(outline) => outline.closed,
+        }
+    }
+
     /// Where point `k` of `count` stands, and the unit vector out from the
-    /// line there: to the left going from `start` to `end`, or out of the
-    /// circle.
+    /// path there.
     fn at(&self, k: usize, count: usize) -> (Point, Vec2) {
-        let d = self.end - self.start;
-        match self.circle {
-            false => {
-                let t = match count > 1 {
-                    true => k as f64 / (count - 1) as f64,
-                    false => 0.5,
-                };
+        match self {
+            Path::Line { start, end } => {
+                let d = *end - *start;
                 let length = d.hypot().max(f64::MIN_POSITIVE);
-                (self.start + d * t, Vec2::new(d.y, -d.x) / length)
+                (*start + d * share(k, count, false), left(d / length))
             }
-            true => {
+            Path::Circle { centre, through } => {
+                let d = *through - *centre;
                 let radius = d.hypot();
-                let angle = d.y.atan2(d.x) + TAU * k as f64 / count.max(1) as f64;
+                let angle = d.y.atan2(d.x) + TAU * share(k, count, true);
                 let out = Vec2::new(angle.cos(), angle.sin());
-                (self.start + out * radius, out)
+                (*centre + out * radius, out)
+            }
+            Path::Outline(outline) => {
+                let (at, along) = outline.at(outline.length * share(k, count, outline.closed));
+                (at, left(along))
             }
         }
+    }
+}
+
+/// How far along a path point `k` of `count` stands, 0 to 1: from end to
+/// end of an open path, the middle for a single point, and once round a
+/// closed one, whose end is its start.
+fn share(k: usize, count: usize, closed: bool) -> f64 {
+    match (closed, count > 1) {
+        (true, _) => k as f64 / count.max(1) as f64,
+        (false, true) => k as f64 / (count - 1) as f64,
+        (false, false) => 0.5,
+    }
+}
+
+/// The unit vector to the left of `direction`, a unit vector, in
+/// coordinates whose y runs down: up for a path going right.
+fn left(direction: Vec2) -> Vec2 {
+    Vec2::new(direction.y, -direction.x)
+}
+
+/// How finely an outline's lengths are measured, in the layer's units.
+const ACCURACY: f64 = 1e-3;
+
+/// An outline measured by its length: its segments, each with the length
+/// along the outline at which it starts.
+struct Outline {
+    segments: Vec<(f64, PathSeg)>,
+    length: f64,
+    closed: bool,
+}
+
+impl Outline {
+    /// `path` measured, or `None` when it has no length. Its subpaths run
+    /// on one after another; it is closed when its last is.
+    fn new(path: &BezPath) -> Option<Outline> {
+        let mut segments = Vec::new();
+        let mut length = 0.0;
+        for segment in path.segments() {
+            let arclen = segment.arclen(ACCURACY);
+            if arclen > 0.0 {
+                segments.push((length, segment));
+                length += arclen;
+            }
+        }
+        let closed = matches!(path.elements().last(), Some(PathEl::ClosePath));
+        (length > 0.0).then_some(Outline {
+            segments,
+            length,
+            closed,
+        })
+    }
+
+    /// The point `distance` along the outline, held to it, and the unit
+    /// vector along the outline there.
+    fn at(&self, distance: f64) -> (Point, Vec2) {
+        let distance = distance.clamp(0.0, self.length);
+        let index = self
+            .segments
+            .partition_point(|(from, _)| *from <= distance)
+            .saturating_sub(1);
+        let (from, segment) = self.segments[index];
+        let t = segment.inv_arclen(distance - from, ACCURACY);
+        (segment.eval(t), direction(segment, t))
+    }
+}
+
+/// The unit vector along `segment` at `t`, from its derivative; where
+/// that vanishes, as at a cubic end whose handle is retracted, from the
+/// chord to a point just inside.
+fn direction(segment: PathSeg, t: f64) -> Vec2 {
+    let cubic = segment.to_cubic();
+    let d = cubic.deriv().eval(t).to_vec2();
+    if d.hypot() > 1e-9 {
+        return d / d.hypot();
+    }
+    let (a, b) = match t < 0.5 {
+        true => (cubic.eval(t), cubic.eval(t + 1e-3)),
+        false => (cubic.eval(t - 1e-3), cubic.eval(t)),
+    };
+    let d = b - a;
+    match d.hypot() > 0.0 {
+        true => d / d.hypot(),
+        false => Vec2::new(1.0, 0.0),
     }
 }
 
@@ -287,11 +407,7 @@ pub(crate) fn spectrum(pixels: &mut Pixels, values: &[ParamValue], space: &Space
         bands,
         average,
     );
-    let path = Path {
-        start: point(values, at::START),
-        end: point(values, at::END),
-        circle,
-    };
+    let path = Path::of(values, space, circle);
     let thickness = f64::from(number(values, at::THICKNESS));
     let mut pen = pen(pixels, values, space, composite);
     for (k, amplitude) in amplitudes.iter().enumerate() {
@@ -360,11 +476,7 @@ pub(crate) fn waveform(pixels: &mut Pixels, values: &[ParamValue], space: &Space
         _ => heard.mono(),
     };
     let height = f64::from(number(values, at::HEIGHT));
-    let path = Path {
-        start: point(values, at::START),
-        end: point(values, at::END),
-        circle,
-    };
+    let path = Path::of(values, space, circle);
     let mut pen = pen(pixels, values, space, composite);
     let points: Vec<(Point, Point)> = (0..count)
         .map(|k| {
@@ -376,9 +488,9 @@ pub(crate) fn waveform(pixels: &mut Pixels, values: &[ParamValue], space: &Space
     for (k, &(base, tip)) in points.iter().enumerate() {
         match display {
             0 => pen.stroke(base, tip, false, 0.0),
-            // A line through the points, closed round a circle.
+            // A line through the points, closed round a closed path.
             1 => {
-                let next = match (points.get(k + 1), circle) {
+                let next = match (points.get(k + 1), path.closed()) {
                     (Some(&(_, next)), _) => Some(next),
                     (None, true) => points.first().map(|&(_, first)| first),
                     (None, false) => None,

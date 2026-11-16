@@ -224,6 +224,38 @@ impl Walk<'_> {
                     (Some(_), None) => self.mapping.ignore(name, "a layer the scene does not read"),
                 }
             }
+            To::Outline => {
+                let key = sink.kind.and_then(|kind| kind.outline);
+                match (&property.value, key) {
+                    (Stream::Static(Value::Mask(mask)), Some(key)) => {
+                        match self.mask_ids.get(mask) {
+                            Some(id) => {
+                                out.keys.insert(key.into(), json!(id));
+                                self.mapping.count(name, Fate::Mapped);
+                            }
+                            None => {
+                                self.mapping.count(name, Fate::Unsupported);
+                                self.mapping.unsupported(
+                                    &place.at,
+                                    "a path parameter naming a mask its layer does not have",
+                                );
+                            }
+                        }
+                    }
+                    (Stream::Static(Value::Mask(_)), None) => {
+                        self.mapping
+                            .ignore(name, "a mask the scene does not follow");
+                    }
+                    // Its value without a mask is 0: the line or circle of
+                    // the effect's points.
+                    (Stream::Static(_), _) => self.mapping.count(name, Fate::Defaulted),
+                    (Stream::Animated(_), _) => {
+                        self.mapping.count(name, Fate::Unsupported);
+                        self.mapping
+                            .unsupported(&place.at, "a path parameter keyed to other masks");
+                    }
+                }
+            }
             To::Curves => {
                 let first = match &property.value {
                     Stream::Static(value) => Some(value),

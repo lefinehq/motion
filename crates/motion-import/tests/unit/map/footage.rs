@@ -204,7 +204,8 @@ mod sounds {
     use super::{footage, sound};
     use crate::map::Options;
     use crate::model::{
-        Child, Ease, Interpolation, Item, ItemKind, Keyframe, Layer, Project, Source, Stream, Value,
+        Child, Ease, Interpolation, Item, ItemKind, Keyframe, Layer, MaskSettings, Path, Project,
+        Source, Stream, Value, Vertex,
     };
     use crate::test_support::build::{comp, group, layer, project, property};
 
@@ -429,5 +430,105 @@ mod sounds {
             "{:?}",
             import.mapping.unsupported
         );
+    }
+
+    /// A layer whose masks are `masks`, each a name and the id its `mkif`
+    /// gives it, under a spectrum whose path parameter is `path`.
+    fn along(masks: &[(&str, u32)], path: Value) -> crate::map::Import {
+        let song = playing(1, vec![]);
+        let shape = Path {
+            closed: false,
+            vertices: [[0.0, 0.0], [10.0, 0.0]]
+                .map(|point| Vertex {
+                    point,
+                    in_tangent: [0.0, 0.0],
+                    out_tangent: [0.0, 0.0],
+                })
+                .to_vec(),
+        };
+        let masks = masks
+            .iter()
+            .map(|&(name, id)| {
+                Child::Group(crate::model::Group {
+                    name: Some(name.to_owned()),
+                    mask: Some(MaskSettings {
+                        inverted: false,
+                        motion_blur: 0,
+                        linear_falloff: false,
+                        mode: 1,
+                        id,
+                    }),
+                    ..group(
+                        "ADBE Mask Atom",
+                        vec![Child::Property(property(
+                            "ADBE Mask Shape",
+                            Stream::Static(Value::Path(shape.clone())),
+                        ))],
+                    )
+                })
+            })
+            .collect();
+        let spectrum = Child::Group(group(
+            "ADBE Effect Parade",
+            vec![Child::Group(group(
+                "ADBE AudSpect",
+                vec![
+                    Child::Property(property(
+                        "ADBE AudSpect-0001",
+                        Stream::Static(Value::Layer(1)),
+                    )),
+                    Child::Property(property("ADBE AudSpect-0004", Stream::Static(path))),
+                ],
+            ))],
+        ));
+        let bars = layer(
+            2,
+            "Bars",
+            vec![Child::Group(group("ADBE Mask Parade", masks)), spectrum],
+        );
+        import(&with_song(project(vec![(
+            3,
+            "Main",
+            comp(vec![song, bars], 2.0),
+        )])))
+    }
+
+    /// The layer `bars` of `import`.
+    fn bars_of(import: &crate::map::Import) -> Json {
+        import.json["layers"]
+            .as_array()
+            .expect("layers")
+            .iter()
+            .find(|l| l["id"] == "bars")
+            .expect("bars")
+            .clone()
+    }
+
+    #[test]
+    fn a_spectrum_follows_the_mask_its_path_names_by_the_masks_own_id() {
+        // The id is neither the mask's index nor the number in its name.
+        let import = along(&[("Mask 1", 2), ("Mask 5", 6)], Value::Mask(6));
+        let bars = bars_of(&import);
+        assert_eq!(bars["fx"][0]["along"], "mask-5", "{bars}");
+        assert_eq!(bars["mask"][1]["id"], "mask-5");
+        // A mask no effect follows keeps no id.
+        assert!(bars["mask"][0].get("id").is_none(), "{bars}");
+        assert!(import.mapping.unsupported.is_empty());
+    }
+
+    #[test]
+    fn a_path_naming_a_mask_the_layer_lacks_is_reported() {
+        let import = along(&[("Mask 1", 2)], Value::Mask(6));
+        let bars = bars_of(&import);
+        assert!(bars["fx"][0].get("along").is_none(), "{bars}");
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert_eq!(
+            what,
+            ["a path parameter naming a mask its layer does not have"]
+        );
+        // None, stored as 0, draws along the line.
+        let none = along(&[("Mask 1", 2)], Value::Number(0.0));
+        assert!(bars_of(&none)["fx"][0].get("along").is_none());
+        assert!(none.mapping.unsupported.is_empty());
     }
 }

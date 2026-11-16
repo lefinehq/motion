@@ -94,6 +94,10 @@ pub struct ItemKind {
     /// it, if it reads one: the map a displacement follows, the sound a
     /// spectrum shows.
     pub input: Option<Input>,
+    /// The key that names one of the layer's masks, by its id, whose
+    /// outline it follows, if it may follow one: the path a spectrum's
+    /// bands stand along.
+    pub outline: Option<&'static str>,
     /// What it draws or does, for people and agents.
     pub doc: &'static str,
 }
@@ -196,6 +200,8 @@ pub struct Item {
     pub hidden: bool,
     /// The id of the layer its kind's input key names, in the same list.
     pub input: Option<String>,
+    /// The id of the mask its kind's outline key names, among its layer's.
+    pub outline: Option<String>,
 }
 
 impl Item {
@@ -1350,6 +1356,7 @@ pub static SHAPES: [ItemKind; 8] = [
         primary: Primary::Items(&SHAPES),
         settings: &[],
         input: None,
+        outline: None,
         doc: "items under one transform and opacity; paints in it draw the outlines above them, \
               in it and in its groups",
     },
@@ -1360,6 +1367,7 @@ pub static SHAPES: [ItemKind; 8] = [
         primary: Primary::Property("size"),
         settings: &[],
         input: None,
+        outline: None,
         doc: "a rectangle centred on `position`, with rounded corners",
     },
     ItemKind {
@@ -1369,6 +1377,7 @@ pub static SHAPES: [ItemKind; 8] = [
         primary: Primary::Property("size"),
         settings: &[],
         input: None,
+        outline: None,
         doc: "an ellipse centred on `position`",
     },
     ItemKind {
@@ -1392,6 +1401,7 @@ pub static SHAPES: [ItemKind; 8] = [
             },
         ],
         input: None,
+        outline: None,
         doc: "a star or a regular polygon centred on `position`, its first point straight up",
     },
     ItemKind {
@@ -1401,6 +1411,7 @@ pub static SHAPES: [ItemKind; 8] = [
         primary: Primary::Property("path"),
         settings: &[],
         input: None,
+        outline: None,
         doc: "a bézier outline, open or closed",
     },
     ItemKind {
@@ -1415,6 +1426,7 @@ pub static SHAPES: [ItemKind; 8] = [
             doc: "which areas count as inside where outlines cross",
         }],
         input: None,
+        outline: None,
         doc: "paints the inside of the outlines above it",
     },
     ItemKind {
@@ -1437,6 +1449,7 @@ pub static SHAPES: [ItemKind; 8] = [
             },
         ],
         input: None,
+        outline: None,
         doc: "paints a line along the outlines above it",
     },
     ItemKind {
@@ -1452,6 +1465,7 @@ pub static SHAPES: [ItemKind; 8] = [
                   line, in order",
         }],
         input: None,
+        outline: None,
         doc: "cuts the outlines above it, and those in the groups above it, down to a stretch \
               of their length, for every paint that draws them",
     },
@@ -1466,6 +1480,7 @@ pub static EFFECTS: [ItemKind; 29] = [
         primary: Primary::Property("color"),
         settings: &[],
         input: None,
+        outline: None,
         doc: "turns every drawn pixel of the layer one colour, keeping its coverage",
     },
     ItemKind {
@@ -1475,6 +1490,7 @@ pub static EFFECTS: [ItemKind; 29] = [
         primary: Primary::Property("scale"),
         settings: &[],
         input: None,
+        outline: None,
         doc: "moves, scales, turns and fades everything the layer draws, inside the layer: \
               `anchor` sits at `position`, both at the origin by default, so a scale or turn \
               on its own is about the origin",
@@ -1486,6 +1502,7 @@ pub static EFFECTS: [ItemKind; 29] = [
         primary: Primary::Property("amount"),
         settings: &[],
         input: None,
+        outline: None,
         doc: "maps each colour's luminance from `black` to `white`",
     },
     ItemKind {
@@ -1501,6 +1518,7 @@ pub static EFFECTS: [ItemKind; 29] = [
                   every colour the `colorize-` hue and saturation, keeping its lightness",
         }],
         input: None,
+        outline: None,
         doc: "turns hues and changes saturation and lightness",
     },
     ItemKind {
@@ -1516,6 +1534,7 @@ pub static EFFECTS: [ItemKind; 29] = [
                   `gamma` works on the values as they are",
         }],
         input: None,
+        outline: None,
         doc: "changes exposure in stops, as a camera does",
     },
     ItemKind {
@@ -1530,6 +1549,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             doc: "the channel it works on; `rgb` is each of the three alike",
         }],
         input: None,
+        outline: None,
         doc: "maps the levels from `input-black`–`input-white` to `output-black`–`output-white` \
               through `gamma`, clipped to 0 to 1",
     },
@@ -1571,6 +1591,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             },
         ],
         input: None,
+        outline: None,
         doc: "draws particles a producer sends out over time, in place of the layer",
     },
     ItemKind {
@@ -1632,6 +1653,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             key: "map",
             reads: Reads::Drawing,
         }),
+        outline: None,
         doc: "moves each pixel by the levels of another layer, the map",
     },
     ItemKind {
@@ -1657,8 +1679,8 @@ pub static EFFECTS: [ItemKind; 29] = [
                 name: "path",
                 choices: &["line", "circle"],
                 default: "line",
-                doc: "where bands stand: along the line from `start` to `end`, or round a \
-                      circle about `start` through `end`",
+                doc: "where bands stand when `along` names no mask: along the line from \
+                      `start` to `end`, or round a circle about `start` through `end`",
             },
             SettingSpec {
                 name: "average",
@@ -1684,8 +1706,10 @@ pub static EFFECTS: [ItemKind; 29] = [
             key: "audio",
             reads: Reads::Sound,
         }),
+        outline: Some("along"),
         doc: "draws the spectrum of another layer's sound at the layer's time: one band a \
-              frequency from `from` to `to`, as tall as that frequency is loud",
+              frequency from `from` to `to`, as tall as that frequency is loud; `along` names \
+              one of the layer's masks by its id for the bands to stand along its outline",
     },
     ItemKind {
         name: "audio-waveform",
@@ -1710,8 +1734,8 @@ pub static EFFECTS: [ItemKind; 29] = [
                 name: "path",
                 choices: &["line", "circle"],
                 default: "line",
-                doc: "where the wave runs: along the line from `start` to `end`, or round a \
-                      circle about `start` through `end`",
+                doc: "where the wave runs when `along` names no mask: along the line from \
+                      `start` to `end`, or round a circle about `start` through `end`",
             },
             SettingSpec {
                 name: "composite",
@@ -1724,8 +1748,10 @@ pub static EFFECTS: [ItemKind; 29] = [
             key: "audio",
             reads: Reads::Sound,
         }),
+        outline: Some("along"),
         doc: "draws the wave of another layer's sound at the layer's time, `samples` points \
-              along the line from `start` to `end`",
+              along the line from `start` to `end`, or along the outline of the layer's mask \
+              whose id `along` names",
     },
     ItemKind {
         name: "motion-tile",
@@ -1747,6 +1773,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             },
         ],
         input: None,
+        outline: None,
         doc: "repeats the layer in tiles around a point",
     },
     ItemKind {
@@ -1756,6 +1783,7 @@ pub static EFFECTS: [ItemKind; 29] = [
         primary: Primary::Property("to"),
         settings: &[],
         input: None,
+        outline: None,
         doc: "moves the layer's content within its box, wrapping around",
     },
     ItemKind {
@@ -1788,6 +1816,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             },
         ],
         input: None,
+        outline: None,
         doc: "moves each pixel by a smooth noise",
     },
     ItemKind {
@@ -1797,6 +1826,7 @@ pub static EFFECTS: [ItemKind; 29] = [
         primary: Primary::Property("center"),
         settings: &[],
         input: None,
+        outline: None,
         doc: "reflects one side of a line through the layer onto the other",
     },
     ItemKind {
@@ -1812,6 +1842,7 @@ pub static EFFECTS: [ItemKind; 29] = [
                   columns round them; `polar-to-rect` unrolls rings into rows",
         }],
         input: None,
+        outline: None,
         doc: "turns the layer between rows and columns and rings about its middle",
     },
     ItemKind {
@@ -1828,6 +1859,7 @@ pub static EFFECTS: [ItemKind; 29] = [
                   or none, the box grown with nothing in it for the effects after",
         }],
         input: None,
+        outline: None,
         doc: "repeats the layer's box around it, growing the box",
     },
     ItemKind {
@@ -1842,6 +1874,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             doc: "`linear` along the line from `start` to `end`; `radial` around `start`",
         }],
         input: None,
+        outline: None,
         doc: "fills the layer with a gradient between two colours",
     },
     ItemKind {
@@ -1856,6 +1889,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             doc: "`replace` draws it alone where the layer is; `over` lays it over the layer",
         }],
         input: None,
+        outline: None,
         doc: "fills the layer with four colours at four points, blended",
     },
     ItemKind {
@@ -1884,6 +1918,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             },
         ],
         input: None,
+        outline: None,
         doc: "draws a grid of lines",
     },
     ItemKind {
@@ -1893,6 +1928,7 @@ pub static EFFECTS: [ItemKind; 29] = [
         primary: Primary::Property("completion"),
         settings: &[],
         input: None,
+        outline: None,
         doc: "hides the layer in stripes, from one side of each",
     },
     ItemKind {
@@ -1938,6 +1974,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             },
         ],
         input: None,
+        outline: None,
         doc: "fills the layer with grey noise in octaves",
     },
     ItemKind {
@@ -1960,6 +1997,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             },
         ],
         input: None,
+        outline: None,
         doc: "blurs the layer with a Gaussian",
     },
     ItemKind {
@@ -1982,6 +2020,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             },
         ],
         input: None,
+        outline: None,
         doc: "blurs the layer with boxes run one after another",
     },
     ItemKind {
@@ -1996,6 +2035,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             doc: "whether the layer is drawn over its shadow, or only the shadow",
         }],
         input: None,
+        outline: None,
         doc: "draws the layer's shape as a soft shadow behind it",
     },
     ItemKind {
@@ -2018,6 +2058,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             },
         ],
         input: None,
+        outline: None,
         doc: "adds the blurred light of the layer's bright colours to it",
     },
     ItemKind {
@@ -2027,6 +2068,7 @@ pub static EFFECTS: [ItemKind; 29] = [
         primary: Primary::Property("amount"),
         settings: &[],
         input: None,
+        outline: None,
         doc: "sharpens edges by moving pixels away from their neighbours",
     },
     ItemKind {
@@ -2036,6 +2078,7 @@ pub static EFFECTS: [ItemKind; 29] = [
         primary: Primary::Property("tint"),
         settings: &[],
         input: None,
+        outline: None,
         doc: "turns colours to grey, each hue as light as its share says",
     },
     ItemKind {
@@ -2045,6 +2088,7 @@ pub static EFFECTS: [ItemKind; 29] = [
         primary: Primary::Property("rgb"),
         settings: &[],
         input: None,
+        outline: None,
         doc: "maps each channel's levels through a curve: first the channel's own, then `rgb`",
     },
     ItemKind {
@@ -2059,6 +2103,7 @@ pub static EFFECTS: [ItemKind; 29] = [
             doc: "the channel it inverts; `rgb` is each of the three",
         }],
         input: None,
+        outline: None,
         doc: "turns each level of a channel into its opposite",
     },
 ];
@@ -2207,6 +2252,7 @@ pub static ANIMATORS: [ItemKind; 1] = [ItemKind {
         },
     ],
     input: None,
+    outline: None,
     doc: "applies its properties to the parts of the text its selectors choose, each part in \
           its turn when it staggers",
 }];
@@ -2245,6 +2291,7 @@ pub static SELECTORS: [ItemKind; 1] = [ItemKind {
         },
     ],
     input: None,
+    outline: None,
     doc: "chooses the parts between `start` and `end`, moved by `offset`",
 }];
 
@@ -2312,6 +2359,7 @@ pub static MASKS: [ItemKind; 1] = [ItemKind {
         },
     ],
     input: None,
+    outline: None,
     doc: "cuts what the layer draws to an outline, before its effects",
 }];
 

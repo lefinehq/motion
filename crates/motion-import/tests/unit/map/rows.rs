@@ -47,6 +47,11 @@ fn check(
             "{at}: `{}` names a layer, which its kind does not read",
             row.match_name
         ),
+        To::Outline => assert!(
+            kind.is_some_and(|kind| kind.outline.is_some()),
+            "{at}: `{}` names a mask, which its kind does not follow",
+            row.match_name
+        ),
         To::Split(point, depth) => {
             let point = registry.target(point);
             assert!(

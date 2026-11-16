@@ -17,7 +17,7 @@ use std::fmt;
 
 use motion_format::{Diagnostic, Kind, Result};
 use vello_cpu::RenderContext;
-use vello_cpu::kurbo::{Affine, Rect, Vec2};
+use vello_cpu::kurbo::{Affine, BezPath, Rect, Vec2};
 use vello_cpu::peniko::{BlendMode, Compose, Mix};
 
 use crate::list::Node;
@@ -220,6 +220,9 @@ pub struct Space {
     /// The sound the effect reads, if it reads one: the window it asked
     /// for.
     pub sound: Option<std::sync::Arc<crate::sound::Heard>>,
+    /// The outline the effect follows, if it follows one: one of the
+    /// layer's masks, in the layer's own coordinates.
+    pub outline: Option<std::sync::Arc<BezPath>>,
 }
 
 /// The drawing of a layer an effect reads, in that layer's own
@@ -2021,6 +2024,7 @@ pub struct Effect {
     values: Vec<ParamValue>,
     input: Option<Box<Node>>,
     sound: Option<std::sync::Arc<crate::sound::Heard>>,
+    outline: Option<std::sync::Arc<BezPath>>,
 }
 
 impl Effect {
@@ -2056,6 +2060,7 @@ impl Effect {
             values,
             input: None,
             sound: None,
+            outline: None,
         })
     }
 
@@ -2071,6 +2076,18 @@ impl Effect {
     pub fn with_sound(mut self, heard: crate::sound::Heard) -> Effect {
         self.sound = Some(std::sync::Arc::new(heard));
         self
+    }
+
+    /// The effect following `outline`, in the layer's own coordinates,
+    /// in place of the line or circle its parameters give.
+    pub fn with_outline(mut self, outline: BezPath) -> Effect {
+        self.outline = Some(std::sync::Arc::new(outline));
+        self
+    }
+
+    /// The outline it follows, if any.
+    pub fn outline(&self) -> Option<&std::sync::Arc<BezPath>> {
+        self.outline.as_ref()
     }
 
     /// The sound it reads, if any.

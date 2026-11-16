@@ -107,6 +107,14 @@ fn expected() -> BTreeSet<String> {
             for row in kind.registry.rows {
                 names.insert(format!("item {} {}", kind.name, row.name));
             }
+            for key in kind
+                .input
+                .map(|input| input.key)
+                .into_iter()
+                .chain(kind.outline)
+            {
+                names.insert(format!("item {} {key}", kind.name));
+            }
             for setting in kind.settings {
                 for choice in setting.choices {
                     names.insert(format!("item {} {}={choice}", kind.name, setting.name));
@@ -246,6 +254,16 @@ impl Used {
             for row in kind.registry.rows {
                 if item.contains_key(row.name) {
                     self.note(format!("item {} {}", kind.name, row.name));
+                }
+            }
+            for key in kind
+                .input
+                .map(|input| input.key)
+                .into_iter()
+                .chain(kind.outline)
+            {
+                if item.contains_key(key) {
+                    self.note(format!("item {} {key}", kind.name));
                 }
             }
             self.animated(

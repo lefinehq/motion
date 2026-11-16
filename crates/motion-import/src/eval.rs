@@ -55,6 +55,7 @@ impl Value {
             | Value::Data(_)
             | Value::Layer(_)
             | Value::Marker(_)
+            | Value::Mask(_)
             | Value::Opaque { .. } => {
                 return None;
             }

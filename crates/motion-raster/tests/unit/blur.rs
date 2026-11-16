@@ -11,6 +11,7 @@ const ONE: Space = Space {
     input: None,
     time: 0.0,
     sound: None,
+    outline: None,
 };
 
 /// A `width` by `height` grid, transparent but for one opaque white pixel.
@@ -85,6 +86,7 @@ fn a_blur_scales_with_the_layer() {
         input: None,
         time: 0.0,
         sound: None,
+        outline: None,
     };
     gaussian_blur(&mut twice, &values, &doubled);
     let (_, _, v1) = row_moments(&once, 0);

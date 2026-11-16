@@ -205,6 +205,7 @@ fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
         "mattes that never lead back to the layer",
     )?;
     inputs(&layers)?;
+    outlines(&layers)?;
     sounds(&layers)?;
     listens(&layers)?;
     for (layer, Object(doc)) in layers.iter().zip(docs) {
@@ -925,6 +926,30 @@ fn listens(layers: &[Layer]) -> Result<()> {
                     )
                     .expected("an `audio` layer, or a `comp` layer for its composition's sound"),
                 ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Every mask an effect follows (its outline) is one of its own layer's.
+fn outlines(layers: &[Layer]) -> Result<()> {
+    for layer in layers {
+        for (i, item) in layer.fx.iter().enumerate() {
+            let (Some(id), Some(key)) = (item.outline.as_deref(), item.kind.outline) else {
+                continue;
+            };
+            let ids: Vec<&str> = layer.mask.iter().filter_map(|m| m.id.as_deref()).collect();
+            if !ids.contains(&id) {
+                let unknown = Diagnostic::unknown("mask id", id, &ids);
+                let unknown = match ids.is_empty() {
+                    true => unknown.expected("the id of one of the layer's own masks"),
+                    false => unknown,
+                };
+                return Err(unknown
+                    .at(key)
+                    .under(format!("fx[{i}]"))
+                    .under(Place::of_layer(&layer.id)));
             }
         }
     }

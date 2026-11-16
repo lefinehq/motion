@@ -22,6 +22,8 @@ pub(super) enum To {
     Setting(&'static str, &'static [(i64, &'static str)]),
     /// The layer the kind's input key names, from a layer parameter.
     Input,
+    /// The mask the kind's outline key names, from a path parameter.
+    Outline,
     /// The five curves of a curves effect, from the data the project keeps
     /// for them (`aRbp`).
     Curves,
@@ -2052,12 +2054,7 @@ pub(super) static KINDS: [Kind; 40] = [
             row("ADBE AudSpect-0001", To::Input, Number, Absent),
             row("ADBE AudSpect-0002", To::Prop("start"), Point, Parameter),
             row("ADBE AudSpect-0003", To::Prop("end"), Point, Parameter),
-            row(
-                "ADBE AudSpect-0004",
-                To::OnlyDefault("drawing along a mask's path"),
-                Number,
-                Missing::Number(0.0),
-            ),
+            row("ADBE AudSpect-0004", To::Outline, Number, Absent),
             row(
                 "ADBE AudSpect-0005",
                 To::Setting("path", AUDIO_PATHS),
