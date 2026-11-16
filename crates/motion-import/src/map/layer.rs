@@ -73,6 +73,8 @@ const EFFECTS: &str = "ADBE Effect Parade";
 const MASKS: &str = "ADBE Mask Parade";
 const AUDIO_GROUP: &str = "ADBE Audio Group";
 const AUDIO_LEVELS: &str = "ADBE Audio Levels";
+/// A layer's time remapping.
+const TIME_REMAPPING: &str = "ADBE Time Remapping";
 const CAMERA_OPTIONS_GROUP: &str = "ADBE Camera Options Group";
 
 /// The scene key of an audio layer's file.
@@ -232,6 +234,15 @@ impl<'p> Walk<'p> {
                 }
             });
         self.rows(&root, &LAYER_ROOT, sink, &mut out, &place);
+        // Only a composition or a clip plays in time; a still, a solid or a
+        // null shows the same whatever time it is remapped to.
+        let timed = out.keys.contains_key("comp") || out.keys.contains_key("video");
+        if !timed && (out.keys.remove("remap").is_some() | out.anim.remove("remap").is_some()) {
+            self.mapping.ignore(
+                TIME_REMAPPING,
+                "on a layer whose content does not play in time",
+            );
+        }
         // A camera's options run even without the group, for its zoom.
         if layer.kind == LayerKind::Camera {
             let options: Vec<&Property> = layer

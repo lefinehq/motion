@@ -806,6 +806,21 @@ fn sounds(layers: &[Layer]) -> Result<()> {
                 .anim
                 .iter()
                 .any(|track| track.target.prop == Prop::VOLUME);
+        let remap = layer.value(Prop::REMAP).is_some()
+            || layer
+                .anim
+                .iter()
+                .any(|track| track.target.prop == Prop::REMAP);
+        if remap && !matches!(layer.content, Content::Comp(_) | Content::Video(_)) {
+            return Err(place(
+                Diagnostic::new(
+                    Kind::Conflict,
+                    "`remap` only applies to `comp` and video layers, which play content in time",
+                )
+                .at(Prop::REMAP.name())
+                .expected("`remap` on a `comp` or video layer"),
+            ));
+        }
         if volume && !matches!(layer.content, Content::Audio(_) | Content::Comp(_)) {
             return Err(place(
                 Diagnostic::new(
@@ -1803,7 +1818,9 @@ fn entrance_conflict(
                     .spec()
                     .rest(&layer.at, canvas, known_box(layer, context)?)
             }
-            (None, Rest::Zoom | Rest::Depth) => layer.rest(target.prop, canvas, Rect::ZERO),
+            (None, Rest::Zoom | Rest::Depth | Rest::OwnTime) => {
+                layer.rest(target.prop, canvas, Rect::ZERO)
+            }
         };
         Some(target.rest_of(whole))
     };

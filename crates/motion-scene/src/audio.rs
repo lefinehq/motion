@@ -135,7 +135,18 @@ impl Route {
             match &node.content {
                 NodeContent::Comp(index) => {
                     let comp = &graph.comps[*index];
-                    let inner = local * comp.fps / fps;
+                    let remap = |at: f64| {
+                        node.tracks[Prop::REMAP.index()]
+                            .sample(at, ValueType::Number)
+                            .as_number()
+                            .unwrap_or(0.0)
+                    };
+                    let content = node.timing.content(local, remap(local), fps);
+                    if node.timing.remaps {
+                        // Its sound runs as fast as the time it remaps to.
+                        speed *= (remap(local + 0.5) - remap(local - 0.5)) * fps;
+                    }
+                    let inner = content * comp.fps / fps;
                     if !(0.0..comp.duration_frames).contains(&inner) {
                         return None;
                     }

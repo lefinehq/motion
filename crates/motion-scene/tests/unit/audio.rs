@@ -84,3 +84,19 @@ fn a_hidden_layer_is_silent() {
     let graph = graph(SCENE);
     assert_eq!(routes(&graph)[2].at(&graph, 10.0), None);
 }
+
+#[test]
+fn a_remapped_composition_plays_the_time_it_remaps_to_at_its_speed() {
+    // The jingle's layer plays its second backwards, from 1 s to 0, over
+    // 2 s of its own time, which runs at half speed.
+    let graph = graph(&SCENE.replace(
+        r#""volume":0.5},"#,
+        r#""volume":0.5,"anim":{"remap":"1 -> 0 @0-20f linear"}},"#,
+    ));
+    let blip = &routes(&graph)[1];
+    // At 3 s, the layer's own time is 0.5 s, a quarter of the way back:
+    // 0.75 s into the jingle, read backwards at a quarter of the speed.
+    let playing = blip.at(&graph, 30.0).expect("it plays");
+    assert!((playing.seconds - 0.75).abs() < 1e-9, "{}", playing.seconds);
+    assert!((playing.speed + 0.25).abs() < 1e-9, "{}", playing.speed);
+}

@@ -308,3 +308,52 @@ fn a_renderer_other_than_the_classic_one_is_reported_where_it_draws_3d_layers() 
     );
     assert!(reported(&with(false)).is_empty());
 }
+
+#[test]
+fn time_remapping_becomes_remap_on_a_composition_layer_alone() {
+    // Main shows Inner (item 2) through a layer that runs its second 1 back
+    // to its start, and a null whose remapping changes nothing it shows.
+    let remapped = |id, name| Layer {
+        source: (id == 1).then_some(2),
+        ..layer(
+            id,
+            name,
+            vec![Child::Property(property(
+                "ADBE Time Remapping",
+                Stream::Animated(vec![
+                    linear(0.0, Value::Number(1.0)),
+                    linear(1.0, Value::Number(0.0)),
+                ]),
+            ))],
+        )
+    };
+    let main = comp(vec![remapped(1, "Shown"), remapped(3, "Null")], 2.0);
+    let inner = comp(Vec::new(), 2.0);
+    let import = import(
+        &project(vec![(1, "Main", main), (2, "Inner", inner)]),
+        &Options::default(),
+    )
+    .expect("it imports");
+    let by_id = |id: &str| {
+        import.json["layers"]
+            .as_array()
+            .and_then(|layers| layers.iter().find(|l| l["id"] == id))
+            .expect("the layer")
+    };
+    let remap = &by_id("shown")["anim"]["remap"];
+    assert_eq!(
+        (
+            remap[0]["v"].clone(),
+            remap[1]["t"].clone(),
+            remap[1]["v"].clone()
+        ),
+        (json!(1), json!("1s"), json!(0))
+    );
+    let null = by_id("null");
+    assert!(null.get("remap").is_none() && null.get("anim").is_none());
+    assert!(
+        !reported(&import)
+            .iter()
+            .any(|what| what.contains("time remapping"))
+    );
+}

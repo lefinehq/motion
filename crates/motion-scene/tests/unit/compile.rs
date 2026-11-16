@@ -306,7 +306,8 @@ fn parents_and_timing_are_resolved() {
         Timing {
             span: Some((10.0, 20.0)),
             offset: 10.0,
-            stretch: 2.0
+            stretch: 2.0,
+            remaps: false,
         }
     );
 }
