@@ -40,7 +40,9 @@ pub(crate) enum Convert {
         /// layer with a source, the middle for a shape or text layer.
         origin: [f64; 2],
     },
-    /// A colour, to `[r, g, b, a]`.
+    /// A colour, to `[r, g, b, 1]`: the project draws every colour it
+    /// stores opaque, whatever alpha the colour carries, and keeps opacity
+    /// in properties of its own.
     Color,
     /// A bezier path, to SVG path data.
     Path,
@@ -119,7 +121,7 @@ impl Convert {
             ) => Some(json!([num(scene(*x, 0)), num(scene(*y, 1))])),
             (Convert::Depth, Value::Vector3([_, _, z]) | Value::Number(z)) => Some(num(*z)),
             (Convert::Angles, Value::Vector3(angles)) => Some(json!(angles.map(num))),
-            (Convert::Color, Value::Color(color)) => Some(color_json(color)),
+            (Convert::Color, Value::Color(color)) => Some(color_json(&Color { a: 1.0, ..*color })),
             (Convert::Path, Value::Path(path)) => Some(Json::String(svg(path))),
             (Convert::PathIn(size), Value::Path(path)) => {
                 Some(Json::String(svg(&path_scaled(path, size))))

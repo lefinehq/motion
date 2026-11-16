@@ -169,6 +169,27 @@ fn a_colour_goes_back_as_alpha_red_green_blue_out_of_255() {
 }
 
 #[test]
+fn a_colour_keeps_the_alpha_the_project_stores() {
+    // The scene's alpha is always 1 for a project colour, which the
+    // project draws opaque: the stored alpha goes back as it was.
+    let template = Value::Color(Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 0.0,
+    });
+    let back = |json| project_value(&json, Convert::Color, &template).unwrap();
+    let want = Value::Color(Color {
+        r: 1.0,
+        g: 0.5,
+        b: 0.0,
+        a: 0.0,
+    });
+    assert_eq!(back(json!([1, 0.5, 0, 1])), want);
+    assert_eq!(back(json!([1, 0.5, 0])), want);
+}
+
+#[test]
 fn a_value_on_a_half_step_may_read_back_one_step_away() {
     // 0.1177975 rounds to 0.117798, and through the file, out of 255, it
     // comes back a hair under the half step, which rounds to 0.117797.

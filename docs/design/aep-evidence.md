@@ -94,7 +94,7 @@ What is left open:
 - **m799's dashes.** Its reference breaks the ring into short spokes; ours into short arcs. The spokes come from the venetian blinds drawn before the conversion, which the reference cuts into columns where the scene cuts rows at a direction of 0° (720° in m799). Turning m799's blinds by 90° in its scene takes it from 4.67% to 4.46% failing over all frames.
 - **RepeTile unfold** (`Tiling` 4) is taken as every other column flipped across and every other row upside down, as `motion-tile` mirrors. Its two samples do not show it: m595 tiles on adjustment layers a few px wide, and m819 inside a matte.
 - **The other 12 RepeTile tilings**, from `Checker Flip H` to `Slide`, are not set in any local project and are reported. So is `Blend Borders` (`-0006`) other than 0, which none sets.
-- **m713's dashes** needed its `Fill` effect drawn opaque for D4. The project's fill colour stores alpha 0 (from a colour control), the reference draws the dashes grey, and the scene's `fill` takes the alpha. So the original ignores a fill colour's alpha and the import does not yet. With it ignored, m713 would go from 67.84% to 65.25% failing over all frames.
+- **m713's dashes** needed its `Fill` effect drawn opaque for D4: the project's fill colour stores alpha 0 (from a colour control) and the reference draws the dashes grey. The import now writes colours opaque ([C1](#colours)), and they show.
 - **m583's text colour.** The reference draws the words white where the project's colour control stores black, so its error does not fall with the tiles.
 
 ## What expressions read
@@ -117,4 +117,16 @@ What is left open:
 - **Digital bands.** m812's bands without a stored display, `Digital` by the definition, are solid bars in its reference at a thickness of 6, where the scene draws columns of squares; m621's 40 px digital bands are squares. How the original spaces its squares is not measured yet.
 - **Waveform.** Audio Waveform has the same Path parameter; no local sample uses the effect, so the scene's waveform follows a mask the same way without a measurement.
 - **Animated paths.** No sample keys a path parameter; one that does is reported.
+
+## Colours
+
+A colour property stores four channels, its alpha among them. This belief says what the original draws of that alpha. It was checked by hand over every local sample; the sweep does not check it yet.
+
+| Belief | Evidence | Held, 2026-11-16 |
+|---|---|---|
+| C1. The original draws every colour it stores opaque: the alpha a colour carries, stored or given by an expression, changes nothing drawn. Where a colour can be see-through, an opacity of its own says so (a fill's opacity, a shape fill's). | m713, m714 and m716 colour their shapes and `ADBE Fill` effects by expressions that read colour controls storing alpha 0, so the fills, strokes and dashes they drive come out at alpha 0: 72 in m713, 44 in m714, 17 in m716. Their references show every one of them opaque. Written opaque, m713 goes from 67.84 % to 5.60 % failing over all frames, m714 from 87.70 % to 3.48 % and m716 from 29.72 % to 5.36 %; the 24 other samples whose scenes change score the same. | 10,982 stored colours under 122 match names in the 198 samples; the 145 with alpha below 1 are all effect parameters and colour controls: `ADBE Fill-0002` 48 (each driven by an expression), `ADBE Tint-0001` and `-0002` 77, `ADBE Laser-0009` 7, `ADBE PhotoFilterPS-0002` 1, `ADBE Color Control-0001` 12. No reference shows a colour see-through by its alpha. |
+
+What is left open:
+- **Text.** A text run's fill and stroke come from its document, not a colour property; a run with neither is written clear, as before.
+- **Effects the scene does not draw yet.** The beams of `ADBE Laser` and Photo Filter store alphas below 1; they will draw opaque when mapped.
 
