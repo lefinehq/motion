@@ -694,7 +694,8 @@ impl Walk<'_> {
                     }
                 });
             }
-            Some(Policy::Through) | None => {
+            // Its layer reports drawing nothing in its place.
+            Some(Policy::Through | Policy::InPlace) | None => {
                 self.mapping.count(name, Fate::Unsupported);
                 self.mapping.unsupported(&place.at, format!("`{name}`"));
             }

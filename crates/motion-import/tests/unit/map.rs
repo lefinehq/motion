@@ -464,21 +464,19 @@ mod effects {
 
     #[test]
     fn an_effect_drawing_in_place_of_its_layer_leaves_it_drawing_nothing() {
-        let import =
-            imported(vec![transform(vec![]), group("CC Particle World", vec![])]).expect("imports");
-        let layer = &import.json["layers"][0];
-        assert_eq!(layer["pivot"], true);
-        assert!(
-            layer.get("shapes").is_none() && layer.get("fx").is_none(),
-            "{layer}"
-        );
-        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
-        assert!(
-            what.contains(
-                &"layers whose `CC Particle World` draws in their place (drawn as nothing)"
-            ),
-            "{what:?}"
-        );
+        for effect in ["CC Particle World", "CC Star Burst"] {
+            let import = imported(vec![transform(vec![]), group(effect, vec![])]).expect("imports");
+            let layer = &import.json["layers"][0];
+            assert_eq!(layer["pivot"], true);
+            assert!(
+                layer.get("shapes").is_none() && layer.get("fx").is_none(),
+                "{layer}"
+            );
+            let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+            let drawn = format!("layers whose `{effect}` draws in their place (drawn as nothing)");
+            assert!(what.contains(&drawn.as_str()), "{what:?}");
+            assert!(what.contains(&format!("`{effect}`").as_str()), "{what:?}");
+        }
     }
 
     #[test]

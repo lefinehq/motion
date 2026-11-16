@@ -191,6 +191,19 @@ Other things we take without evidence:
 |---|---|---|
 | X1. An expression reads a 2D layer's anchor point, position and scale as two components, though the project stores three; a 3D layer's, a camera's and a light's as three. | A gaming lower-third family (m571 to m575, m739, m783) sizes its logo with a rig on a 2D null: its parent's scale expression gives `[thisComp.width, thisComp.height]`, two components, and the child divides each component of its own scale by its parent's, `for (i = 0; i < s.length; i++)`. With three components the third is `NaN` and the original would show an error; with two the logo's world scale is 2 by 2, and the logo lies on the reference's: m783 1.72 % → 0.93 % failing, m571 7.40 % → 1.85 %, m573 9.17 % → 1.78 %. | Over 42 corpus samples under 25 % failing, 5 draw closer and none farther. |
 
+## Effects that draw in place of their layer
+
+Some generators draw something sparse of their own, particles, stars, a beam, from their layer and keep none of its pixels. While the scene cannot draw one, the import draws its layer as nothing, rather than the solid the effect covers: the `Policy::InPlace` effects of the import's policy table, reported as unsupported with the layer. Generators that fill their layer (gradients, noise, cells) keep their solid as the nearer stand-in, and effects that draw over their layer's pixels (a lens flare) keep them. The beliefs were measured once, by hand, against the reference frames; the sweep does not check them.
+
+| Belief | Evidence | Held, 2026-11-16 |
+|---|---|---|
+| P1. `CC Star Burst` draws its stars in place of its layer: no pixel of the layer itself shows, whatever its colour and opacity. | m827, m845 and m846 lay `Skyback`, a white 3840 by 2160 solid at 40 % opacity holding only Star Burst, over `Sky`, a navy ramp. The references' background is (0.020 to 0.024, 0.035, 0.059 to 0.063) in m827's frames 1, 11 and 20; drawing the solid gives (0.416, 0.420, 0.439) there, drawing nothing (0.024, 0.035, 0.063). m774's `stars basckground` is an opaque white 1920 by 1080 solid with Star Burst first; its reference is black behind the title at 5 s and 9.5 s, where the solid drew the frame white. | 4 samples, every one holding the effect |
+| P2. What follows such an effect works on what it draws, so it goes with it. | m774's stars layer runs `CC Light Burst 2.5`, `ADBE Matte Choker` and `CC Toner` after Star Burst; m563 runs Light Burst after `CC Particle Systems II`. Light Burst streaks what is drawn before it, a filter, not a generator: drawn as nothing with the stars, m774's frame at 5 s errs by 0.069 a channel against 0.921 with the solid. | 2 samples |
+
+Other things we take without evidence:
+- **The other `InPlace` effects.** `ADBE AudWave`, `CC Particle World`, `tc Particular` and `tc Form` draw on a transparent layer by default, as their documentation says; `ADBE Laser` is checked in its own section once drawn. Nine samples hold Particle World; their references were not compared one by one.
+- **A composite-on-original switch.** Several of these effects can keep their layer's pixels under what they draw. No local sample turns one on; a project that does draws nothing where it should draw its layer.
+
 ## Effects that follow a mask
 
 A path parameter (`pard` control 12), such as Audio Spectrum's Path (`ADBE AudSpect-0004`), names one of its layer's masks. Its `cdat` holds 0 whatever it names; the mask is in a `tdli` beside it. These beliefs say how it is named and how the spectrum lays its bands along it. The first is checked by hand over every local sample, the layout measured against m812's reference frames; the sweep does not check them yet.
