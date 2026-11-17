@@ -108,6 +108,28 @@ fn check_clean_example_exits_zero() {
     assert_eq!(out.status.code(), Some(0));
 }
 
+/// The agent skill is the guide with its links made absolute, so an agent
+/// that has only the skill reads the same text.
+#[test]
+fn the_skill_is_the_guide() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let guide = fs::read_to_string(format!("{root}/docs/guide/from-scratch.md")).expect("guide");
+    let skill = fs::read_to_string(format!("{root}/skills/motion/SKILL.md")).expect("skill");
+    let base = "https://github.com/lefinehq/motion/blob/main/";
+    let linked = guide
+        .replace("](../../examples/", &format!("]({base}examples/"))
+        .replace("](../design/", &format!("]({base}docs/design/"));
+    let body = skill
+        .splitn(3, "---\n")
+        .nth(2)
+        .expect("the skill starts with frontmatter")
+        .trim_start_matches('\n');
+    assert_eq!(
+        body, linked,
+        "regenerate skills/motion/SKILL.md from the guide"
+    );
+}
+
 /// The scenes written from scratch in `examples/`, which agents read as a
 /// guide: each passes every rule and gate with nothing found.
 #[rstest]
