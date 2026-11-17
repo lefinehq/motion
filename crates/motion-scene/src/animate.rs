@@ -5,10 +5,10 @@
 //! Every glyph knows which part of each count it belongs to; selectors give
 //! each part an amount, and an animator applies its values scaled by it.
 
-use kurbo::{Affine, Rect, Vec2};
+use kurbo::{Affine, Point, Rect, Vec2};
 use motion_format::item::props;
 use motion_format::property::Prop;
-use motion_format::text::Align;
+use motion_format::text::{Align, AnchorBy};
 
 use motion_format::Curve;
 
@@ -221,7 +221,7 @@ pub fn glyph_states(
             }
         }
     }
-    place(node, &mut effects);
+    place(node, parts, &mut effects);
     effects.into_iter().map(|e| e.state).collect()
 }
 
@@ -377,8 +377,8 @@ fn across(v: Vec2, amounts: Vec2) -> Vec2 {
 
 /// Turns each glyph's accumulated effect into its transform: tracking
 /// shifts the glyphs after it on its line, keeping the line's alignment,
-/// and each glyph scales and turns about the middle of its baseline.
-fn place(node: &TextNode, effects: &mut [Effect]) {
+/// and each glyph scales and turns about its anchor ([`anchors`]).
+fn place(node: &TextNode, parts: &Parts, effects: &mut [Effect]) {
     // Each glyph's shift from the tracking before it on its line, and each line's total.
     let mut tracked = vec![0.0; node.layout.lines.len()];
     let mut shifts = Vec::with_capacity(effects.len());
@@ -391,6 +391,7 @@ fn place(node: &TextNode, effects: &mut [Effect]) {
             at += 1;
         }
     }
+    let anchors = anchors(node, parts);
     let mut at = 0;
     for run in &node.layout.runs {
         let line = &node.layout.lines[run.line];
@@ -401,9 +402,9 @@ fn place(node: &TextNode, effects: &mut [Effect]) {
             Align::Right | Align::JustifyRight => -total,
             _ => 0.0,
         };
-        for glyph in &run.glyphs {
+        for _ in &run.glyphs {
             let effect = &mut effects[at];
-            let pivot = Vec2::new(glyph.x + glyph.advance / 2.0, glyph.y) + effect.anchor;
+            let pivot = anchors[at].to_vec2() + effect.anchor;
             effect.state.transform =
                 Affine::translate(effect.offset + Vec2::new(shifts[at] + realign, 0.0))
                     * Affine::translate(pivot)
@@ -413,6 +414,52 @@ fn place(node: &TextNode, effects: &mut [Effect]) {
             at += 1;
         }
     }
+}
+
+/// Every glyph's anchor, in the layout's run order: the middle of the
+/// baseline of the part it takes its anchor from (`anchor-by`): itself,
+/// its word, its line or the whole text, whose baseline is the first
+/// glyph's. A glyph in no word, such as a space, takes its own. Each anchor
+/// then moves by `anchor-align`: across by fractions of the part's width,
+/// from its glyphs' first start to their last end, and down by fractions
+/// of the size of the part's first glyph.
+pub fn anchors(node: &TextNode, parts: &Parts) -> Vec<Point> {
+    let whole = node.content.whole;
+    let glyphs: Vec<(&motion_text::Glyph, f64)> = node
+        .layout
+        .runs
+        .iter()
+        .flat_map(|run| run.glyphs.iter().map(move |g| (g, run.size)))
+        .collect();
+    // The part each glyph takes its anchor from, as a key shared by its glyphs.
+    let part = |i: usize| -> (u8, usize) {
+        let own = (0, i);
+        match whole.anchor_by {
+            AnchorBy::Char => own,
+            AnchorBy::Word => parts.glyphs[i].index[2].map_or(own, |w| (1, w)),
+            AnchorBy::Line => parts.glyphs[i].index[3].map_or(own, |l| (2, l)),
+            AnchorBy::All => (3, 0),
+        }
+    };
+    // Each part's extent across, its first glyph's baseline and size.
+    let mut extents: std::collections::HashMap<(u8, usize), (f64, f64, f64, f64)> =
+        std::collections::HashMap::new();
+    for (i, (glyph, size)) in glyphs.iter().enumerate() {
+        extents
+            .entry(part(i))
+            .and_modify(|(lo, hi, _, _)| {
+                *lo = lo.min(glyph.x);
+                *hi = hi.max(glyph.x + glyph.advance);
+            })
+            .or_insert((glyph.x, glyph.x + glyph.advance, glyph.y, *size));
+    }
+    let [ax, ay] = whole.anchor_align;
+    (0..glyphs.len())
+        .map(|i| {
+            let (lo, hi, baseline, size) = extents[&part(i)];
+            Point::new((lo + hi) / 2.0 + ax * (hi - lo), baseline + ay * size)
+        })
+        .collect()
 }
 
 /// The box the visible glyphs cover in the layer's coordinates: each glyph's

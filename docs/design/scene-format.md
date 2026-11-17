@@ -561,7 +561,7 @@ A text layer sets its words (`text`, where `\n` ends a paragraph) from font asse
   "runs":[{"range":[0,4],"fill":"#FFE000"}]}]
 ```
 
-- **`style`** sets character and paragraph keys for the whole text. `font` and `fill` stay layer keys.
+- **`style`** sets character and paragraph keys for the whole text, and the keys of the text level, which only the whole text has. `font` and `fill` stay layer keys.
 - **`runs`** override character keys over `range`, `[start, end]` in characters; a later run wins where runs overlap.
 - **`paragraphs`** holds one object of paragraph keys per paragraph, in order.
 - **`box`** makes box text, which wraps inside the box: `[w, h]` from the layer's origin, or `[x, y, w, h]` from the box's top-left corner in the layer's own coordinates, as imported box text keeps it. Without it the text is point text: each paragraph is one line, aligned about the origin, and the origin is where the first line's baseline starts.
@@ -589,8 +589,13 @@ The layer's box is the box its lines cover, which for point text starts above an
 | `space-before` | paragraph | a number of px |
 | `space-after` | paragraph | a number of px |
 | `auto-leading` | paragraph | a number, at least 0 |
+| `anchor-by` | text | `char`, `word`, `line` or `all` |
+| `anchor-align` | text | `[x, y]`, fractions, e.g. `[0, -0.3]` |
+| `paint-across` | text | `each`, `fills-over` or `strokes-over` |
 
 `faux-bold` thickens the glyphs and adds 30 thousandths of an em after each character, the space the project files' own layouts give it.
+
+`paint-across` stacks fills and strokes across characters. With `each`, the default, every character draws its two paints in its own `paint` order over the characters before it, so a wide stroke can cover a neighbour's fill. `fills-over` draws every stroke and then every fill, so no stroke covers a fill; `strokes-over` draws every fill and then every stroke.
 
 ### Text animators
 
@@ -610,7 +615,7 @@ Above, every line starts 75 px low and invisible. As `offset` moves the range of
   ```
 
 - **What applies.** `position` and `rotate` add. `scale` and `opacity` move from 1 toward the animator's value. `fill`, `stroke` and `stroke-width` move from the part's own toward the animator's. `tracking` adds space after each chosen part, and the parts after it on its line move along, keeping the line's alignment.
-- **Each part's anchor** is the middle of its baseline, moved by the animator's `anchor`; parts scale and turn about it.
+- **Each part's anchor** is the middle of its baseline, moved by the animator's `anchor`; parts scale and turn about it. The text's `anchor-by` style key gives every character the anchor of its word, its line or the whole text instead of its own (a space keeps its own under `word`), and `anchor-align` moves every anchor across by fractions of its part's width and down by fractions of its font's size: `[-0.5, 0]` is the start of the part's baseline, `[0, -0.3]` 30 % of the size above it.
 - **Stagger.** With `stagger` above 0, the parts counted by `by` take turns: each part sees the animator, its selectors included, as it was its wait earlier, so every part makes the whole motion with its own curve. A part waits `stagger` frames per turn. `order` sets the turns: `first` in reading order, `last` the reverse, `center` outward from the middle (the two middle parts of an even count go together, half a turn in), `edges` inward from both ends, and `random` a shuffle picked by `seed`. A glyph in no part, such as a space under `word`, sees the animator as it is.
 
 | Animator | Key holds | Properties | Settings |

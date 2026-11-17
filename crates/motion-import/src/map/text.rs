@@ -11,6 +11,7 @@ use super::items::{Out, Place};
 use super::keys::{color_json, num};
 use super::report::Fate;
 use super::slots::{Held, address};
+use crate::bake::{Sampled, Samples};
 use crate::model::{
     BaselineOption, Caps, CharacterStyle, Child, Group, Justification, Kerning, LeadingType,
     ParagraphStyle, Property, Stream, TextDocument, TextFrame, Value,
@@ -19,6 +20,17 @@ use crate::model::{
 /// The match names of a text layer's document and its animators.
 const DOCUMENT: &str = "ADBE Text Document";
 const ANIMATORS: &str = "ADBE Text Animators";
+/// The match name of a text layer's options for the whole text.
+const MORE: &str = "ADBE Text More Options";
+
+/// The codes of the project's anchor grouping, by the scene's `anchor-by`.
+const ANCHORS_BY: [(i64, &str); 4] = [(1, "char"), (2, "word"), (3, "line"), (4, "all")];
+/// The codes of the project's fill and stroke order across characters, by
+/// the scene's `paint-across`.
+const PAINTS_ACROSS: [(i64, &str); 3] = [(1, "each"), (2, "fills-over"), (3, "strokes-over")];
+/// The code of blending between characters that blends nothing: each
+/// character drawn over the ones before it.
+const NORMAL_BLEND: i64 = 1;
 
 impl Walk<'_> {
     /// The text in `group`, a layer's `ADBE Text Properties`, into `out`.
@@ -39,8 +51,132 @@ impl Walk<'_> {
                     out.keys.insert("animate".into(), Json::Array(list));
                 }
             }
+            Child::Group(more) if more.match_name == MORE => {
+                self.whole_text(more, out, &place.inside(MORE));
+            }
             Child::Group(other) => self.group(other, &place.inside(&other.match_name)),
         });
+    }
+
+    /// The options of the whole text in `group`, `ADBE Text More Options`,
+    /// as `style` keys of the text level: whose anchor its characters take,
+    /// how far the anchors move, and how fills and strokes stack across
+    /// characters. Blending between characters is supported only where it
+    /// blends nothing.
+    fn whole_text(&mut self, group: &Group, out: &mut Out, place: &Place<'_>) {
+        if !group.properties().any(|property| !property.hidden) {
+            return self.mapping.ignore(MORE, "empty");
+        }
+        self.mapping.count(MORE, Fate::Mapped);
+        let mut keys = Map::new();
+        for child in &group.children {
+            let Child::Property(property) = child else {
+                if let Child::Group(other) = child {
+                    self.group(other, &place.inside(&other.match_name));
+                }
+                continue;
+            };
+            if property.hidden {
+                continue;
+            }
+            let at = place.inside(&property.match_name);
+            let name = property.match_name.as_str();
+            let value = self.still(property, &at);
+            let code = |table: &[(i64, &'static str)]| match value {
+                Some(Value::Number(n)) => table
+                    .iter()
+                    .find(|(c, _)| *c == n.round() as i64)
+                    .map(|(_, name)| *name),
+                _ => None,
+            };
+            let (key, json) = match name {
+                "ADBE Text Anchor Point Option" => {
+                    ("anchor-by", code(&ANCHORS_BY).map(|c| json!(c)))
+                }
+                "ADBE Text Render Order" => {
+                    ("paint-across", code(&PAINTS_ACROSS).map(|c| json!(c)))
+                }
+                // Percent of the part's width and of its size, as fractions.
+                "ADBE Text Anchor Point Align" => match value {
+                    Some(Value::Vector2([x, y]) | Value::Vector3([x, y, _])) => (
+                        "anchor-align",
+                        Some(json!([num(x / 100.0), num(y / 100.0)])),
+                    ),
+                    _ => ("anchor-align", None),
+                },
+                "ADBE Text Character Blend Mode" => match value {
+                    Some(Value::Number(n)) if n.round() as i64 == NORMAL_BLEND => {
+                        self.mapping.count(name, Fate::Defaulted);
+                        continue;
+                    }
+                    _ => {
+                        self.mapping.count(name, Fate::Unsupported);
+                        self.mapping
+                            .unsupported(&at.at, "blending between the characters of a text");
+                        continue;
+                    }
+                },
+                _ => {
+                    self.unknown_property(property, &at);
+                    continue;
+                }
+            };
+            match json {
+                Some(json) => {
+                    self.mapping.count(name, Fate::Mapped);
+                    if !is_default(key, &json) {
+                        keys.insert(key.to_owned(), json);
+                    }
+                }
+                None => {
+                    self.mapping.count(name, Fate::Unsupported);
+                    self.mapping
+                        .unsupported(&at.at, format!("an `{key}` the scene does not have"));
+                }
+            }
+        }
+        merge_style(out, keys);
+    }
+
+    /// The one value `property` holds for the whole text: its own, or what
+    /// its expression gives when that is the same at every frame. A value
+    /// that changes is reported, and its first is kept.
+    fn still(&mut self, property: &Property, place: &Place<'_>) -> Option<Value> {
+        if let Some(bake) = self.evaluated(property, place) {
+            let first = match &bake.outcome {
+                Ok(Samples {
+                    values: Sampled::Numbers { channels, .. },
+                    ..
+                }) if channels
+                    .iter()
+                    .all(|c| c.iter().all(|v| c.first() == Some(v))) =>
+                {
+                    channels
+                        .iter()
+                        .map(|c| c.first().copied())
+                        .collect::<Option<Vec<f64>>>()
+                }
+                _ => None,
+            };
+            return match (first.as_deref(), &property.value) {
+                (Some(&[n]), _) => Some(Value::Number(n)),
+                (Some(&[x, y]), _) => Some(Value::Vector2([x, y])),
+                (_, stream) => {
+                    self.mapping.unsupported(
+                        &place.at,
+                        "an expression on a property the scene does not animate (its value is kept)",
+                    );
+                    first_value(stream)
+                }
+            };
+        }
+        if let Stream::Animated(keys) = &property.value
+            && keys.len() > 1
+        {
+            self.mapping
+                .unsupported(&place.at, "an animated setting (its first value is kept)");
+        }
+        first_value(&property.value)
     }
 
     /// The document of a Source Text property.
@@ -144,9 +280,7 @@ impl Walk<'_> {
             }
             None => {}
         }
-        if !style.is_empty() {
-            out.keys.insert("style".into(), Json::Object(style));
-        }
+        merge_style(out, style);
         if let TextFrame::Box {
             left,
             top,
@@ -204,6 +338,28 @@ impl Walk<'_> {
         if !places.iter().any(|place| place == at) {
             places.push(at.to_owned());
         }
+    }
+}
+
+/// Adds `keys` to the layer's `style`, which is written only when it holds a key.
+fn merge_style(out: &mut Out, keys: Map<String, Json>) {
+    if keys.is_empty() {
+        return;
+    }
+    if let Json::Object(style) = out
+        .keys
+        .entry("style")
+        .or_insert_with(|| Json::Object(Map::new()))
+    {
+        style.extend(keys);
+    }
+}
+
+/// The value `stream` holds, or its first key's.
+fn first_value(stream: &Stream) -> Option<Value> {
+    match stream {
+        Stream::Static(value) => Some(value.clone()),
+        Stream::Animated(keys) => keys.first().map(|key| key.value.clone()),
     }
 }
 

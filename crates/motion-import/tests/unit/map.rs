@@ -1207,3 +1207,70 @@ fn a_star_maps_its_rows_settings_and_defaults_and_reports_an_unknown_direction()
         )]
     );
 }
+
+#[test]
+fn the_whole_text_options_become_style_keys_and_blending_is_reported() {
+    use crate::model::{Child, Group};
+    use crate::test_support::build::{group, number, point, property};
+    let imported = |options: Vec<(&str, crate::model::Stream)>| {
+        let mut sample = sample_project();
+        let more = Child::Group(group(
+            "ADBE Text More Options",
+            options
+                .into_iter()
+                .map(|(name, value)| Child::Property(property(name, value)))
+                .collect(),
+        ));
+        for item in &mut sample.items {
+            if let crate::model::ItemKind::Composition(c) = &mut item.kind {
+                for layer in &mut c.layers {
+                    for child in &mut layer.properties.children {
+                        if let Child::Group(Group {
+                            match_name,
+                            children,
+                            ..
+                        }) = child
+                            && match_name == "ADBE Text Properties"
+                        {
+                            children.push(more.clone());
+                        }
+                    }
+                }
+            }
+        }
+        import(&sample, &Options::default()).expect("the sample imports")
+    };
+    let words = imported(vec![
+        ("ADBE Text Anchor Point Option", number(2.0)),
+        ("ADBE Text Anchor Point Align", point(-25.0, -30.0)),
+        ("ADBE Text Render Order", number(2.0)),
+        ("ADBE Text Character Blend Mode", number(1.0)),
+    ]);
+    let style = &scene_layer(&words, "title")["style"];
+    assert_eq!(style["anchor-by"], "word");
+    assert_eq!(style["anchor-align"], serde_json::json!([-0.25, -0.3]));
+    assert_eq!(style["paint-across"], "fills-over");
+    assert!(
+        words
+            .mapping
+            .unsupported
+            .iter()
+            .all(|f| !f.at.contains("More"))
+    );
+    // At their defaults, the options write nothing.
+    let plain = imported(vec![
+        ("ADBE Text Anchor Point Option", number(1.0)),
+        ("ADBE Text Render Order", number(1.0)),
+    ]);
+    let style = &scene_layer(&plain, "title")["style"];
+    assert!(style.get("anchor-by").is_none() && style.get("paint-across").is_none());
+    // Blending between characters other than normal is reported.
+    let blended = imported(vec![("ADBE Text Character Blend Mode", number(3.0))]);
+    assert!(
+        blended
+            .mapping
+            .unsupported
+            .iter()
+            .any(|f| f.what == "blending between the characters of a text")
+    );
+}

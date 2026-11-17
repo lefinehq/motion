@@ -10,7 +10,7 @@ use crate::parse::key::{ANIMATE, BOX, FILL, FONT, PARAGRAPHS, RUNS, STYLE};
 use crate::shorthand::Font;
 use crate::text::{
     CharacterStyle, Level, ParagraphStyle, STYLE_KEYS, Setter, StyleKey, TextContent, TextRun,
-    color, style_key,
+    WholeStyle, color, style_key,
 };
 use crate::{Diagnostic, Kind, Result};
 
@@ -37,6 +37,7 @@ pub(super) fn text(
     };
     let mut base = CharacterStyle::new(font, fill);
     let mut paragraph = ParagraphStyle::default();
+    let mut whole = WholeStyle::default();
     let Object(style) = &doc.style;
     for (name, written) in style {
         let key = known(name, None).map_err(|e| e.at(name.as_str()).under(STYLE))?;
@@ -49,7 +50,7 @@ pub(super) fn text(
             .under(STYLE)
             .expected(format!("`{name}` as a layer key")));
         }
-        apply(key, written, &mut base, &mut paragraph)
+        apply(key, written, (&mut base, &mut paragraph, &mut whole))
             .map_err(|e| e.under(name.as_str()).under(STYLE))?;
     }
     let characters = text.chars().count();
@@ -76,8 +77,8 @@ pub(super) fn text(
             for (name, value) in style {
                 let key =
                     known(name, Some(Level::Paragraph)).map_err(|e| place(e.at(name.as_str())))?;
-                let mut unused = base.clone();
-                apply(key, value, &mut unused, &mut paragraphs[i])
+                let (mut unused, mut whole) = (base.clone(), WholeStyle::default());
+                apply(key, value, (&mut unused, &mut paragraphs[i], &mut whole))
                     .map_err(|e| place(e.under(name.as_str())))?;
             }
         }
@@ -87,6 +88,7 @@ pub(super) fn text(
         runs: runs_of(styles, &base),
         base,
         paragraphs,
+        whole,
         animators: match &*doc.animate {
             Some(List(docs)) => item::items(docs, &ANIMATORS, fps)
                 .and_then(|animators| item::unique_ids(&animators, "").map(|()| animators))
@@ -114,7 +116,7 @@ fn known(name: &str, level: Option<Level>) -> Result<&'static StyleKey> {
         let what = match level {
             Some(Level::Character) => "run key",
             Some(Level::Paragraph) => "paragraph key",
-            None => "style key",
+            Some(Level::Text) | None => "style key",
         };
         let mut names: Vec<&str> = allowed().collect();
         if level == Some(Level::Character) {
@@ -127,6 +129,7 @@ fn known(name: &str, level: Option<Level>) -> Result<&'static StyleKey> {
             let (here, there) = match level {
                 Level::Character => ("a run", "`style` or `paragraphs`"),
                 Level::Paragraph => ("a paragraph", "`style` or `runs`"),
+                Level::Text => ("the whole text only", "`style`"),
             };
             Err(
                 Diagnostic::new(Kind::Invalid, format!("`{name}` cannot be set on {here}"))
@@ -137,16 +140,16 @@ fn known(name: &str, level: Option<Level>) -> Result<&'static StyleKey> {
     }
 }
 
-/// Sets `key` from `written` on the character or paragraph style.
+/// Sets `key` from `written` on the character, paragraph or whole text's style.
 fn apply(
     key: &StyleKey,
     written: &Json,
-    character: &mut CharacterStyle,
-    paragraph: &mut ParagraphStyle,
+    (character, paragraph, whole): (&mut CharacterStyle, &mut ParagraphStyle, &mut WholeStyle),
 ) -> Result<()> {
     let result = match key.set {
         Setter::Character(set) => set(character, written),
         Setter::Paragraph(set) => set(paragraph, written),
+        Setter::Text(set) => set(whole, written),
     };
     result.map_err(|e| match e.expected {
         Some(_) => e,
@@ -167,10 +170,11 @@ fn run_onto(
     })?;
     let range = range(written, styles.len()).map_err(|e| e.at(RANGE))?;
     let mut style = base;
-    let mut unused = ParagraphStyle::default();
+    let (mut unused, mut whole) = (ParagraphStyle::default(), WholeStyle::default());
     for (name, value) in run.iter().filter(|(name, _)| *name != RANGE) {
         let key = known(name, Some(Level::Character)).map_err(|e| e.at(name.as_str()))?;
-        apply(key, value, &mut style, &mut unused).map_err(|e| e.under(name.as_str()))?;
+        apply(key, value, (&mut style, &mut unused, &mut whole))
+            .map_err(|e| e.under(name.as_str()))?;
     }
     for at in range {
         styles[at] = (style.clone(), Some(index));

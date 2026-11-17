@@ -11,6 +11,12 @@
 //! through the fill. A glyph with one paint folds its opacity into that
 //! paint's colour, which draws the same pixels without the buffer.
 //!
+//! Across characters, `paint-across` either keeps each character's own
+//! order, so a later character covers an earlier one's stroke and fill, or
+//! draws one paint of every glyph before the other paint of any: every
+//! stroke, then every fill (`fills-over`), or the reverse. Then each glyph
+//! folds its opacity into each paint, as a glyph with one paint does.
+//!
 //! Glyphs next to each other in a run whose states are equal, such as the
 //! glyphs of a line that an animator moves by line, are drawn as one run.
 //!
@@ -34,7 +40,7 @@
 //!   by [`ITALIC_SLANT_DEGREES`], the angle FreeType's synthetic oblique
 //!   uses: tops lean right, the baseline stays put.
 
-use motion_format::text::{CharacterStyle, PaintOrder};
+use motion_format::text::{CharacterStyle, PaintAcross, PaintOrder};
 use motion_raster::kurbo::Affine;
 use motion_raster::{
     Color, DrawStyle, FillRule, Glyph, GlyphDraw, Layer, Node, Paint, StrokeStyle,
@@ -60,6 +66,33 @@ pub(crate) fn bold_width(size: f64) -> f64 {
 /// Every glyph run of `text`, back to front. `glyphs` holds one state per
 /// glyph in the layout's run order, or none when no animator moves them.
 pub(super) fn draws(text: &TextNode, glyphs: &[GlyphState]) -> Vec<Node> {
+    match text.content.whole.paint_across {
+        PaintAcross::Each => pass(text, glyphs, None),
+        PaintAcross::FillsOver => [
+            pass(text, glyphs, Some(Paints::Stroke)),
+            pass(text, glyphs, Some(Paints::Fill)),
+        ]
+        .concat(),
+        PaintAcross::StrokesOver => [
+            pass(text, glyphs, Some(Paints::Fill)),
+            pass(text, glyphs, Some(Paints::Stroke)),
+        ]
+        .concat(),
+    }
+}
+
+/// One of a glyph's two paints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Paints {
+    /// The fill, with faux bold's thickening.
+    Fill,
+    /// The stroke.
+    Stroke,
+}
+
+/// Every glyph run of `text` with only the paint `only`, or both in each
+/// glyph's own order.
+fn pass(text: &TextNode, glyphs: &[GlyphState], only: Option<Paints>) -> Vec<Node> {
     debug_assert!(
         glyphs.is_empty()
             || glyphs.len()
@@ -74,7 +107,7 @@ pub(super) fn draws(text: &TextNode, glyphs: &[GlyphState]) -> Vec<Node> {
     let mut first = 0;
     for (r, run) in text.layout.runs.iter().enumerate() {
         let style = text.style_of(r);
-        let face = Face::new(run, style);
+        let face = Face::new(run, style, only);
         if glyphs.is_empty() {
             face.draw(&run.glyphs, &rest(style), &mut out);
             continue;
@@ -109,18 +142,22 @@ struct Face<'a> {
     bold: f64,
     /// The faux italic slant.
     slant: Option<Affine>,
+    /// The one paint it draws, or both.
+    only: Option<Paints>,
 }
 
 /// One paint of a glyph, and the drawing operations it is made of.
 struct Ink {
+    paint: Paints,
     color: [f64; 4],
     styles: Vec<DrawStyle>,
 }
 
 impl<'a> Face<'a> {
-    fn new(run: &'a GlyphRun, style: &CharacterStyle) -> Face<'a> {
+    fn new(run: &'a GlyphRun, style: &CharacterStyle, only: Option<Paints>) -> Face<'a> {
         Face {
             run,
+            only,
             order: style.paint,
             bold: match style.faux_bold {
                 true => bold_width(run.size),
@@ -174,10 +211,12 @@ impl<'a> Face<'a> {
             fill.push(DrawStyle::Stroke(StrokeStyle::new(self.bold)));
         }
         let fill = opaque_enough(state.fill).then_some(Ink {
+            paint: Paints::Fill,
             color: state.fill,
             styles: fill,
         });
         let stroke = (opaque_enough(state.stroke) && state.stroke_width > 0.0).then(|| Ink {
+            paint: Paints::Stroke,
             color: state.stroke,
             styles: vec![DrawStyle::Stroke(StrokeStyle::new(
                 state.stroke_width + self.bold,
@@ -187,7 +226,11 @@ impl<'a> Face<'a> {
             PaintOrder::FillOver => (stroke, fill),
             PaintOrder::StrokeOver => (fill, stroke),
         };
-        bottom.into_iter().chain(top).collect()
+        bottom
+            .into_iter()
+            .chain(top)
+            .filter(|ink| self.only.is_none_or(|only| ink.paint == only))
+            .collect()
     }
 
     /// The leaves of one paint over `glyphs`, at `opacity`.
