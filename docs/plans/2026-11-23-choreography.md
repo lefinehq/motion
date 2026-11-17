@@ -22,9 +22,9 @@ One pull request each, in this order.
 
 ### 1. Exits
 
-`out` is an exit, the mirror of `in`: `"out":"fade-down 12f"` plays its preset so the layer reaches the preset's pose as its span ends, and stays there.
+`out` is an exit, the mirror of `in`: `"out":"fade-down 12f"` plays its preset so the layer reaches the preset's pose on the last frame it shows, so a push is wholly off the canvas, and a fade wholly clear, before the layer goes.
 
-- **Where it ends:** at the end of the layer's span, or of its composition when it has none. `@6f` ends it 6 frames earlier.
+- **Where it ends:** on the last frame of the layer's span, or of its composition when it has none. `@6f` ends it 6 frames earlier.
 - **The pose:** a start relative to the rest (`"+d"`, `"-d"`) is mirrored, and an absolute one (`opacity 0`, `scale 0.6`) is kept, so a layer leaves the way its entrance moves: `fade-up` rises into place and rises out, `pop` grows in and shrinks out.
 - **Curves:** the curve applies from the rest to the pose, so `ease-in` leaves slowly and speeds away.
 - **Stagger** splits as an entrance's does, and the last part ends at the end.
