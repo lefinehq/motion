@@ -1,0 +1,20 @@
+%!PS-3.0 EPSF-3.0
+%%BoundingBox: 0 0 40 24
+%%HiResBoundingBox: 0.5 0.25 39.5 23.75
+%%EndComments
+% A small badge: a rounded plate in CMYK, a clipped stripe, a ring stroked
+% round and a dashed rule, drawn by procedures bound in their own
+% dictionary, as EPS writers lay out their programs.
+10 dict begin
+/plate { newpath 6 0.25 moveto 34 0.25 lineto 34 6 6 270 360 arc
+         39.5 18 lineto 34 18 5.75 0 90 arc 6 23.75 lineto 6 18 5.5 90 180 arc
+         0.5 6 lineto 6 6 5.75 180 270 arc closepath } bind def
+0.1 0.7 0.9 0 setcmykcolor plate fill
+gsave plate clip
+  0 0 0.6 0.2 setcmykcolor 0 9 40 6 rectfill
+grestore
+1 setgray 2 setlinewidth 1 setlinecap newpath 12 12 5 0 360 arc stroke
+0.2 setgray 0.75 setlinewidth [2 1] 0 setdash newpath 20 6 moveto 36 6 lineto stroke
+end
+showpage
+%%EOF

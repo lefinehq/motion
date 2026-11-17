@@ -4,7 +4,8 @@
 //!
 //! - **Formats.** Each format is a row of [`FORMATS`], recognised by how
 //!   its files start, never by a file name: PDF, and so the `.ai` files
-//!   that are PDF inside. A reader for another format adds a row.
+//!   that are PDF inside, and EPS, whose PostScript program our own
+//!   interpreter runs ([D71]). A reader for another format adds a row.
 //! - **One drawing model.** A reader interprets its file's operators and
 //!   paints on a [`Canvas`]: fills, strokes and pictures, inside clips and
 //!   transparency groups, in the page's own space. The canvas turns them
@@ -18,9 +19,11 @@
 //!   the import reports it on each layer that shows the file.
 //!
 //! [D70]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d70-vector-footage-is-drawn-from-its-outlines
+//! [D71]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d71-eps-footage-is-drawn-by-our-own-postscript-interpreter
 
 mod canvas;
 mod drawing;
+mod eps;
 mod pdf;
 
 pub use canvas::{Canvas, Group};
@@ -44,11 +47,18 @@ pub struct Format {
 pub const HEAD: usize = 1024;
 
 /// The vector formats, recognised by their files' first bytes.
-pub const FORMATS: &[Format] = &[Format {
-    name: "PDF",
-    recognise: pdf::recognise,
-    read: pdf::read,
-}];
+pub const FORMATS: &[Format] = &[
+    Format {
+        name: "PDF",
+        recognise: pdf::recognise,
+        read: pdf::read,
+    },
+    Format {
+        name: "EPS",
+        recognise: eps::recognise,
+        read: eps::read,
+    },
+];
 
 /// The vector format of a file starting with `head`, or `None` for one in
 /// no vector format: a raster picture, say. `head` may be the whole file

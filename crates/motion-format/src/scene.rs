@@ -299,8 +299,9 @@ pub struct CompContent {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImageContent {
     /// The picture file, as written: relative to the scene file's folder,
-    /// or absolute. A PNG or JPEG file, or vector footage (a PDF file, or an
-    /// `.ai` file that is PDF inside), recognised by how it starts.
+    /// or absolute. A PNG or JPEG file, or vector footage (a PDF file, an
+    /// `.ai` file that is PDF inside, or an EPS file), recognised by how it
+    /// starts.
     pub path: String,
     /// The layer's box, which the picture is stretched to fill, in the
     /// layer's own coordinates.

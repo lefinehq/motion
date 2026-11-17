@@ -1,0 +1,15 @@
+%!PS-3.0 EPSF-3.0
+%%BoundingBox: 0 0 100 100
+%%EndComments
+% A square by lines, a triangle by relative lines, a quarter disc by an
+% arc and a lens by curves, each filled in its own colour.
+newpath 10 10 moveto 40 10 lineto 40 40 lineto 10 40 lineto closepath
+1 0 0 setrgbcolor fill
+newpath 60 10 moveto 30 0 rlineto -15 30 rlineto closepath
+0 1 0 setrgbcolor fill
+newpath 10 60 moveto 10 60 30 0 90 arc closepath
+0 0 1 setrgbcolor fill
+newpath 60 75 moveto 70 95 80 95 90 75 curveto 80 55 70 55 60 75 curveto
+0 setgray fill
+showpage
+%%EOF

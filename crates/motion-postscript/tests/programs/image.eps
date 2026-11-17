@@ -1,0 +1,18 @@
+%!PS-3.0 EPSF-3.0
+%%BoundingBox: 0 0 40 20
+%%EndComments
+% A two by two RGB image read from the program itself, an image mask, and
+% a dictionary image whose data runs through a decoding filter.
+gsave 0 0 translate 10 10 scale
+2 2 8 [2 0 0 -2 0 2] currentfile /ASCIIHexDecode filter false 3 colorimage
+FF0000 00FF00 0000FF FFFFFF>
+grestore
+gsave 10 0 translate 10 10 scale 1 0 0 setrgbcolor
+8 2 true [8 0 0 -2 0 2] { <F00F> } imagemask
+grestore
+gsave 20 0 translate 20 20 scale /DeviceGray setcolorspace
+<< /ImageType 1 /Width 2 /Height 1 /BitsPerComponent 8 /Decode [0 1]
+   /ImageMatrix [2 0 0 -1 0 1] /DataSource currentfile /ASCII85Decode filter >> image
+!<3~>
+grestore
+showpage

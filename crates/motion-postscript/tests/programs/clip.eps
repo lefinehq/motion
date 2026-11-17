@@ -1,0 +1,16 @@
+%!PS-3.0 EPSF-3.0
+%%BoundingBox: 0 0 100 100
+%%EndComments
+% A clip narrows what a fill paints; grestore brings the wider clip back.
+gsave
+  20 20 30 30 rectclip
+  1 0 0 setrgbcolor 0 0 100 100 rectfill
+grestore
+0 0 1 setrgbcolor 60 60 30 30 rectfill
+% An even-odd clip with a hole: the fill shows only in the ring.
+gsave
+  newpath 60 5 moveto 95 5 lineto 95 40 lineto 60 40 lineto closepath
+  70 15 moveto 85 15 lineto 85 30 lineto 70 30 lineto closepath eoclip newpath
+  0 1 0 setrgbcolor 0 0 100 100 rectfill
+grestore
+showpage

@@ -1,0 +1,18 @@
+%!PS-3.0 EPSF-3.0
+%%BoundingBox: 0 0 100 100
+%%EndComments
+% Two squares wound the same way, one inside the other: the non-zero rule
+% fills the middle, the even-odd rule leaves it empty.
+/ring { newpath 2 copy moveto 1 index 40 add 1 index lineto
+        1 index 40 add 1 index 40 add lineto 1 index 1 index 40 add lineto closepath
+        exch 10 add exch 10 add 2 copy moveto 1 index 20 add 1 index lineto
+        1 index 20 add 1 index 20 add lineto 1 index 1 index 20 add lineto closepath
+        pop pop } def
+0 0 0 setrgbcolor 5 5 ring fill
+0 0 0 setrgbcolor 55 5 ring eofill
+% A wide stroke with round caps, a filled rectangle and a stroked one.
+1 0 0 setrgbcolor 8 setlinewidth 1 setlinecap
+newpath 10 70 moveto 40 70 lineto stroke
+0 0 1 setrgbcolor 55 55 30 10 rectfill
+0 1 0 setrgbcolor 2 setlinewidth [55 75 30 15] rectstroke
+showpage
