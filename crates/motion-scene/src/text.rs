@@ -123,6 +123,8 @@ fn styled(content: &TextContent, fonts: &FontSet) -> StyledText {
 fn character(style: &CharacterStyle, fonts: &FontSet) -> motion_text::CharacterStyle {
     let mut out = motion_text::CharacterStyle::new(query(style, fonts), style.font.size);
     out.tracking = style.tracking;
+    out.horizontal_scale = style.scale_x;
+    out.vertical_scale = style.scale_y;
     out.leading = match style.leading {
         Leading::Auto => motion_text::Leading::Auto,
         Leading::Px(px) => motion_text::Leading::Px(px),

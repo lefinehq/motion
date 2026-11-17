@@ -305,9 +305,6 @@ impl Walk<'_> {
             .iter()
             .map(|run| &run.style)
             .for_each(|style| {
-                if style.horizontal_scale != 1.0 || style.vertical_scale != 1.0 {
-                    found.push("scaled characters");
-                }
                 if style.baseline_option != BaselineOption::Normal {
                     found.push("superscript and subscript");
                 }
@@ -400,6 +397,8 @@ fn character(style: &CharacterStyle) -> Vec<(&'static str, Json)> {
     };
     keys.push(("paint", json!(paint)));
     keys.push(("tracking", num(style.tracking)));
+    keys.push(("horizontal-scale", num(style.horizontal_scale)));
+    keys.push(("vertical-scale", num(style.vertical_scale)));
     let leading = if style.auto_leading {
         json!("auto")
     } else {
