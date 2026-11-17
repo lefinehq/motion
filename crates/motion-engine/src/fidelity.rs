@@ -15,6 +15,12 @@
 //! [`DiffOptions::ERROR_MARGIN`] ([D69]),
 //! and the score is given both that way and strictly ([`Rule`]).
 //!
+//! Some references show the background in another colour than the
+//! project's, a property of how each was rendered that no project data
+//! tells apart. Such a sample gives the colour its reference shows (`bg`)
+//! and is measured over it; the import and the engine do not change, and
+//! the ledger records the colour.
+//!
 //! [D35]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d35-fidelity-is-measured-against-reference-renders
 //! [D69]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d69-a-reference-frame-passes-over-its-codec-floor
 
@@ -78,6 +84,12 @@ pub struct Sample {
     /// one, every frame's floor is 0 and the floor rule is the strict one.
     #[serde(default)]
     pub floor: Option<PathBuf>,
+    /// The background the reference shows where nothing covers it, when it
+    /// is not the project's, such as `#000000` for a reference rendered
+    /// over black; a colour as a scene's `bg` takes it. The imported scene
+    /// is measured over it in place of the project's.
+    #[serde(default)]
+    pub bg: Option<String>,
 }
 
 /// The codec floor of each reference frame of a sample, as its floor file
@@ -209,6 +221,11 @@ pub struct Measure {
     pub all: Window,
     /// The frames from when the sample has settled, if it says when.
     pub settled: Option<Window>,
+    /// The background measured over in place of the project's, when the
+    /// sample gives one (`bg`); none in a ledger written before it, whose
+    /// samples were measured over the project's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bg: Option<String>,
 }
 
 /// The errors over a run of frames, each the mean of the frames' own.
@@ -336,7 +353,9 @@ fn round(value: &mut serde_json::Value) {
 }
 
 /// Imports `sample`, writes its scene and error images under `work`, and
-/// measures it, each frame over its codec floor when the sample gives one.
+/// measures it, each frame over its codec floor when the sample gives one,
+/// and over the sample's background in place of the project's when it
+/// gives one.
 ///
 /// A font the sample does not give is set in the closest face it has
 /// ([`substitute_fonts`]), and every use counts as unsupported, so the
@@ -346,7 +365,8 @@ fn round(value: &mut serde_json::Value) {
 /// The import's, the session's or the diff's diagnostics, under the
 /// sample's id; text that cannot be laid out (a glyph no face has) is an
 /// error too, since a measure without it would flatter the sample, and so
-/// are floors that do not give one for each reference frame.
+/// are floors that do not give one for each reference frame and a
+/// background that is not a colour.
 pub fn measure(sample: &Sample, work: &Path, images: bool) -> Result<Measure> {
     let under = |d: Diagnostic| {
         let message = format!("sample `{}`: {}", sample.id, d.message);
@@ -372,6 +392,11 @@ pub fn measure(sample: &Sample, work: &Path, images: bool) -> Result<Measure> {
     let fonts = unset.fonts().map_err(under)?;
     substitute_fonts(&mut import, fonts).map_err(under)?;
     measure_layouts(&sample.project, &options, None, &mut import, fonts).map_err(under)?;
+    // Only the measured scene changes: the background is how the reference
+    // was rendered, not what the project holds.
+    if let (Some(bg), Some(scene)) = (&sample.bg, import.json.as_object_mut()) {
+        scene.insert("bg".into(), serde_json::json!(bg));
+    }
     let scene = dir.join("scene.json");
     fs::write(&scene, write_document(&import.json))
         .map_err(|e| under(Diagnostic::io("write", &scene, &e)))?;
@@ -422,6 +447,7 @@ pub fn measure(sample: &Sample, work: &Path, images: bool) -> Result<Measure> {
                 .unzip();
             window(&frames, floors.is_some().then_some(&held[..]), from)
         }),
+        bg: sample.bg.clone(),
     })
 }
 

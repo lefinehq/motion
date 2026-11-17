@@ -1,6 +1,7 @@
 //! Unit tests for `src/fidelity.rs`: a manifest read, a sample measured
-//! against its own frames, floors read and applied, ledgers compared, and
-//! verdicts scored under both rules.
+//! against its own frames, floors read and applied, a background given in
+//! place of the project's, ledgers compared, and verdicts scored under both
+//! rules.
 
 use pretty_assertions::assert_eq;
 
@@ -47,6 +48,7 @@ fn measure_at(error: f64) -> Measure {
             from: 1.0,
             ..window
         }),
+        bg: None,
     }
 }
 
@@ -66,6 +68,14 @@ fn a_manifest_reads_paths_from_its_own_folder() {
     assert_eq!(sample.reference, PathBuf::from("/frames"));
     assert_eq!(sample.floor, Some(dir.join("refs/s1/floor.json")));
     assert_eq!((sample.start, sample.settled), (0.0, None));
+    assert_eq!(sample.bg, None, "the project's background by default");
+    fs::write(
+        &path,
+        r##"{"samples":[{"id":"s1","project":"a.aep","reference":"r","fps":25,"bg":"#000000"}]}"##,
+    )
+    .unwrap();
+    let manifest = Manifest::read(&path).unwrap();
+    assert_eq!(manifest.samples[0].bg.as_deref(), Some("#000000"));
     fs::write(&path, r#"{"samples":[{"id":"s1","name":"x"}]}"#).unwrap();
     let error = Manifest::read(&path).unwrap_err();
     assert_eq!(error.kind, Kind::Invalid);
@@ -92,6 +102,7 @@ fn a_sample_measured_against_its_own_frames_has_no_error() {
         settled: Some(1.0),
         excluded: None,
         floor: None,
+        bg: None,
     };
     // The reference: the imported scene itself, drawn every two seconds,
     // as a sample at half a frame a second compares it.
@@ -144,6 +155,86 @@ fn a_sample_measured_against_its_own_frames_has_no_error() {
             .contains("sample `star`: the floors give no floor for `f2.png`"),
         "{}",
         stale.message
+    );
+}
+
+#[test]
+fn a_sample_is_measured_over_the_background_its_reference_shows() {
+    let dir = scratch("bg");
+    let work = dir.join("work");
+    // The reference: the scene drawn over another background than the
+    // project's, as some references were rendered.
+    let mut import = import_scene(STAR, &Options::default(), None).unwrap();
+    let own = import.json["bg"].as_str().unwrap().to_owned();
+    let other = if own == "#000000" {
+        "#FFFFFF"
+    } else {
+        "#000000"
+    };
+    import.json["bg"] = serde_json::json!(other);
+    let session: Session = write_document(&import.json).parse().unwrap();
+    let reference = dir.join("reference");
+    fs::create_dir_all(&reference).unwrap();
+    let fps = import.json["fps"].as_f64().unwrap();
+    for (i, frame) in [0.0, fps].iter().enumerate() {
+        let png = session.render(*frame).unwrap().to_png().unwrap();
+        fs::write(reference.join(format!("f{i}.png")), png).unwrap();
+    }
+    let project = Sample {
+        id: "star".into(),
+        project: STAR.into(),
+        comp: None,
+        fonts: Vec::new(),
+        reference,
+        fps: 1.0,
+        start: 0.0,
+        ignore: Vec::new(),
+        settled: None,
+        excluded: None,
+        floor: None,
+        bg: None,
+    };
+    // Over the project's background, everything the star leaves uncovered
+    // fails.
+    let measure = super::measure(&project, &work, false).unwrap();
+    assert_eq!(measure.all.frames_passing, Some(0));
+    assert_eq!(measure.bg, None);
+    // Over the reference's, nothing does, and the measure says what it was
+    // measured over; the import is not changed.
+    let given = Sample {
+        bg: Some(other.into()),
+        ..project.clone()
+    };
+    let measure = super::measure(&given, &work, false).unwrap();
+    assert_eq!(measure.all.content_failing, Some(0.0));
+    assert_eq!(measure.all.frames_passing, Some(2));
+    assert_eq!(measure.bg.as_deref(), Some(other));
+    let again = import_scene(STAR, &Options::default(), None).unwrap();
+    assert_eq!(again.json["bg"].as_str(), Some(own.as_str()));
+    // The ledger records it, and one written before it reads as measured
+    // over the project's.
+    let ledger = Ledger {
+        samples: BTreeMap::from([("star".to_owned(), measure)]),
+    };
+    let text = ledger.to_json();
+    assert!(text.contains(&format!(r#""bg": "{other}""#)), "{text}");
+    let path = dir.join("ledger.json");
+    fs::write(&path, &text).unwrap();
+    assert_eq!(
+        Ledger::read(&path).unwrap().samples["star"].bg.as_deref(),
+        Some(other)
+    );
+    assert!(!Ledger::default().to_json().contains("bg"));
+    // A background that is not a colour is refused, not measured.
+    let wrong = Sample {
+        bg: Some("dark".into()),
+        ..project
+    };
+    let error = super::measure(&wrong, &work, false).unwrap_err();
+    assert!(
+        error.message.starts_with("sample `star`: "),
+        "{}",
+        error.message
     );
 }
 
@@ -264,6 +355,7 @@ fn sample(id: &str, excluded: Option<&str>) -> Sample {
         settled: Some(1.0),
         excluded: excluded.map(str::to_owned),
         floor: None,
+        bg: None,
     }
 }
 
