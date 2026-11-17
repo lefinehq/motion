@@ -19,6 +19,8 @@ Read these in order. Each one takes about five minutes.
 
 Reference:
 
+- [Getting started](guide/getting-started.md): why nakkash, use cases, and every command with an example.
+- [Compatibility](compatibility.md): which project and footage formats nakkash reads today, and what is planned.
 - [The name](design/decisions.md#d73-the-project-is-named-nakkash): the project was named motion until 2026-11-17. Plans, research notes, decisions D1 to D72 and the changelog's earlier entries keep the old name as written.
 - [Writing a video from scratch](guide/from-scratch.md): the guide for agents, also shipped as the agent skill in `skills/nakkash/SKILL.md`.
 - [Glossary](glossary.md): the words we use and what they mean.
