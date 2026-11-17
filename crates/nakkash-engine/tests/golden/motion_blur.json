@@ -1,0 +1,10 @@
+{"nakkash":1,"size":"480x240","fps":24,"dur":"1s","bg":"#FFFFFF","shutter":"180 -90 16",
+"comps":{"orbit":{"size":"120x120","fps":24,"dur":"1s","shutter":"360 -180 8",
+  "layers":[{"id":"dot","shapes":[{"ellipse":[24,24]},{"fill":"#7C3AED"}],"at":"60 20","mblur":true,"anim":{"x":"20 -> 100 @0-6f"}}]}},
+"layers":[
+{"id":"fast","rect":"60x60","fill":"#E4572E","at":"80 60","mblur":true,"anim":{"x":"60 -> 420 @0-12f"}},
+{"id":"sharp","rect":"60x60","fill":"#2E7D32","at":"80 140","anim":{"x":"60 -> 420 @0-12f"}},
+{"id":"spin","shapes":[{"rect":[100,14]},{"fill":"#3B82F6"}],"at":"390 150","mblur":true,"anim":{"rotate":"0 -> 720 @0-24f"}},
+{"id":"fading","rect":"40x40","fill":"#0F172A","at":"240 200","mblur":true,"span":"6f-24f","anim":{"y":"210 -> 170 @6-8f"}},
+{"id":"orbit","comp":"orbit","at":"240 110","mblur":true,"anim":{"y":"90 -> 130 @0-12f"}}
+]}

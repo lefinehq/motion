@@ -1,0 +1,520 @@
+//! Unit tests for `src/animate.rs`: parts, selector shapes and modes, what
+//! animators do to glyphs, and the bounds of animated text.
+
+use super::*;
+use crate::{ContentState, FrameState, NodeState, compile, evaluate};
+use nakkash_format::parse_document;
+use nakkash_text::{FontSet, Typesetter};
+use rstest::rstest;
+
+/// The frame `frame` of a 10 fps scene whose one text layer `t` has `keys`.
+fn frame(keys: &str, frame: f64) -> FrameState {
+    let json = format!(r#"{{"nakkash":1,"dur":"2s","fps":10,"layers":[{{"id":"t",{keys}}}]}}"#);
+    let doc = parse_document(&json).unwrap();
+    let graph = compile(doc.scene(), &mut Typesetter::new(FontSet::builtin())).unwrap();
+    evaluate(&graph, frame)
+}
+
+fn text_of(node: &NodeState) -> (&TextNode, &[GlyphState]) {
+    match &node.content {
+        ContentState::Text { text, glyphs } => (text, glyphs),
+        other => panic!("not text: {other:?}"),
+    }
+}
+
+/// Each glyph's opacity, rounded to 3 places, at `frame` of `keys`.
+fn opacities(keys: &str, at: f64) -> Vec<f64> {
+    let state = frame(keys, at);
+    let (_, glyphs) = text_of(&state.nodes[0]);
+    glyphs
+        .iter()
+        .map(|g| (g.opacity * 1000.0).round() / 1000.0)
+        .collect()
+}
+
+#[test]
+fn every_glyph_knows_its_character_word_and_line() {
+    let state = frame(r#""text":"ab c\nd""#, 0.0);
+    let (text, _) = text_of(&state.nodes[0]);
+    let index: Vec<[Option<usize>; 4]> = text.parts.glyphs.iter().map(|g| g.index).collect();
+    assert_eq!(
+        index,
+        [
+            [Some(0), Some(0), Some(0), Some(0)],
+            [Some(1), Some(1), Some(0), Some(0)],
+            [Some(2), None, None, Some(0)],
+            [Some(3), Some(2), Some(1), Some(0)],
+            [Some(4), Some(3), Some(2), Some(1)],
+        ]
+    );
+    assert_eq!(text.parts.counts, [5, 4, 3, 2]);
+}
+
+#[test]
+fn without_animators_no_glyph_state_is_kept() {
+    let state = frame(r#""text":"ab""#, 0.0);
+    assert!(text_of(&state.nodes[0]).1.is_empty());
+}
+
+/// Four characters faded by a range selector of `selector` keys.
+fn fade(selector: &str) -> String {
+    format!(
+        r#""text":"abcd","animate":[{{"animator":[{{"range":"char"{selector}}}],"opacity":0}}]"#
+    )
+}
+
+#[rstest]
+// The whole range chooses every character fully.
+#[case::all(r#""#, [0.0, 0.0, 0.0, 0.0])]
+// Half way: two characters out, two in.
+#[case::offset_half(r#","offset":0.5"#, [1.0, 1.0, 0.0, 0.0])]
+// A range ending in the middle of the second character covers half of it.
+#[case::partial(r#","end":0.375"#, [0.0, 0.5, 1.0, 1.0])]
+// Without smoothing, the middle decides.
+#[case::hard_edge(r#","end":0.4,"smooth":0"#, [0.0, 0.0, 1.0, 1.0])]
+#[case::ramp_up(r#","shape":"ramp-up""#, [0.875, 0.625, 0.375, 0.125])]
+#[case::ramp_down(r#","shape":"ramp-down""#, [0.125, 0.375, 0.625, 0.875])]
+#[case::triangle(r#","shape":"triangle""#, [0.75, 0.25, 0.25, 0.75])]
+#[case::round(r#","shape":"round""#, [0.339, 0.032, 0.032, 0.339])]
+#[case::smooth(r#","shape":"smooth""#, [0.854, 0.146, 0.146, 0.854])]
+// Half the amount fades half way.
+#[case::half_amount(r#","amount":0.5"#, [0.5, 0.5, 0.5, 0.5])]
+// After the range, a ramp up stays chosen.
+#[case::ramp_up_after(r#","shape":"ramp-up","end":0.5"#, [0.75, 0.25, 0.0, 0.0])]
+// Easing both ends slows the ramp where it leaves 0 and nears 1: the
+// choices 1/8, 3/8, 5/8 and 7/8 follow `cubic-bezier(1, 0, 0, 1)`.
+#[case::ramp_eased_both(r#","shape":"ramp-up","ease-high":1,"ease-low":1"#, [0.994, 0.91, 0.09, 0.006])]
+// Easing low alone holds a choice near 0 longer, and a negative ease low
+// leaves 0 faster.
+#[case::ramp_eased_low(r#","shape":"ramp-up","ease-low":1"#, [0.994, 0.943, 0.81, 0.5])]
+#[case::ramp_eased_low_negative(r#","shape":"ramp-up","ease-low":-1"#, [0.473, 0.199, 0.072, 0.011])]
+// Easing high alone holds a choice near 1 longer.
+#[case::ramp_eased_high(r#","shape":"ramp-up","ease-high":1"#, [0.5, 0.19, 0.057, 0.006])]
+fn range_selectors_choose_by_their_shape(#[case] selector: &str, #[case] expected: [f64; 4]) {
+    assert_eq!(opacities(&fade(selector), 0.0), expected);
+}
+
+#[rstest]
+// Parts 1 to 3 of 4, as indices.
+#[case::middle(r#","units":"index","start":1,"end":3"#, [1.0, 0.0, 0.0, 1.0])]
+// The same range as fractions.
+#[case::as_fractions(r#","start":0.25,"end":0.75"#, [1.0, 0.0, 0.0, 1.0])]
+// An offset of two parts moves it past the last.
+#[case::offset(r#","units":"index","start":1,"end":3,"offset":2"#, [1.0, 1.0, 1.0, 0.0])]
+// Half a part covers half the part.
+#[case::half(r#","units":"index","end":1.5"#, [0.0, 0.5, 1.0, 1.0])]
+fn a_range_in_index_units_counts_parts(#[case] selector: &str, #[case] expected: [f64; 4]) {
+    assert_eq!(opacities(&fade(selector), 0.0), expected);
+}
+
+#[rstest]
+#[case::add(r#""add""#, [0.0, 0.0, 0.0, 0.0])]
+#[case::subtract(r#""subtract""#, [0.0, 0.0, 1.0, 1.0])]
+#[case::intersect(r#""intersect""#, [1.0, 1.0, 0.0, 0.0])]
+#[case::min(r#""min""#, [1.0, 1.0, 0.0, 0.0])]
+#[case::max(r#""max""#, [0.0, 0.0, 0.0, 0.0])]
+#[case::difference(r#""difference""#, [0.0, 0.0, 1.0, 1.0])]
+fn a_second_selector_combines_by_its_mode(#[case] mode: &str, #[case] expected: [f64; 4]) {
+    // The first chooses every character; the second the last two.
+    let keys = format!(
+        r#""text":"abcd","animate":[{{"animator":[{{"range":"char"}},{{"range":"char","start":0.5,"mode":{mode}}}],"opacity":0}}]"#
+    );
+    assert_eq!(opacities(&keys, 0.0), expected);
+}
+
+#[test]
+fn a_parts_selector_chooses_each_part_by_its_own_item() {
+    // The space is the third character; it and the fourth have no item, so
+    // they are not chosen.
+    let keys = r#""text":"ab c","animate":[{"animator":[{"parts":[{"part":1},{"part":0.25}]}],"opacity":0}]"#;
+    assert_eq!(opacities(keys, 0.0), [0.0, 0.75, 1.0, 1.0]);
+}
+
+#[test]
+fn a_parts_selector_counts_by_its_by_and_animates_each_part() {
+    // By words: the first word follows its keys, the second stays chosen,
+    // and the space between them is in no word.
+    let keys = r#""text":"ab cd","animate":[{"animator":[{"parts":[{"part":0,"anim":{"amount":"0 -> 1 @0-1s"}},{"part":1}],"by":"word"}],"opacity":0}]"#;
+    assert_eq!(opacities(keys, 0.0), [1.0, 1.0, 1.0, 0.0, 0.0]);
+    assert_eq!(opacities(keys, 10.0), [0.0, 0.0, 1.0, 0.0, 0.0]);
+}
+
+#[test]
+fn a_part_may_be_chosen_across_and_down_by_different_amounts() {
+    // Across fully, down not at all: the part moves right, not down, and
+    // fades by the first amount.
+    let keys = r#""text":"a","animate":[{"animator":[{"parts":[{"part":[1,0]}]}],"position":[10,20],"opacity":0.5}]"#;
+    let state = frame(keys, 0.0);
+    let (_, glyphs) = text_of(&state.nodes[0]);
+    assert_eq!(glyphs[0].transform.translation(), Vec2::new(10.0, 0.0));
+    assert_eq!(glyphs[0].opacity, 0.5);
+}
+
+#[test]
+fn a_subtracting_first_selector_takes_from_everything() {
+    let keys = r#""text":"abcd","animate":[{"animator":[{"range":"char","end":0.5,"mode":"subtract"}],"opacity":0}]"#;
+    assert_eq!(opacities(keys, 0.0), [1.0, 1.0, 0.0, 0.0]);
+}
+
+#[test]
+fn words_and_lines_are_chosen_whole_and_spaces_by_neither() {
+    let by_word =
+        r#""text":"ab cd","animate":[{"animator":[{"range":"word","end":0.5}],"opacity":0}]"#;
+    assert_eq!(opacities(by_word, 0.0), [0.0, 0.0, 1.0, 1.0, 1.0]);
+    let by_line =
+        r#""text":"a\nb","animate":[{"animator":[{"range":"line","start":0.5}],"opacity":0}]"#;
+    assert_eq!(opacities(by_line, 0.0), [1.0, 0.0]);
+}
+
+#[test]
+fn the_title_lines_rise_one_after_another() {
+    // The first sample's title: lines start 75 px low and clear, and an
+    // offset from 0 to 1 over 2 s lets them in, the first line first.
+    let keys = r#""text":"Keep\nyour life\nsimple","style":{"align":"center"},"animate":[{"animator":[{"range":"line","anim":{"offset":[{"t":0,"v":0},{"t":20,"v":1}]}}],"position":[0,75],"opacity":0}]"#;
+    let rise = |at: f64| {
+        let state = frame(keys, at);
+        let (text, glyphs) = text_of(&state.nodes[0]);
+        // The first glyph of each line.
+        let mut firsts = Vec::new();
+        let mut at_glyph = 0;
+        for run in &text.layout.runs {
+            if firsts.len() == run.line {
+                let g = &glyphs[at_glyph];
+                firsts.push((
+                    (g.transform.translation().y * 1e6).round() / 1e6,
+                    (g.opacity * 100.0).round() / 100.0,
+                ));
+            }
+            at_glyph += run.glyphs.len();
+        }
+        firsts
+    };
+    assert_eq!(rise(0.0), [(75.0, 0.0), (75.0, 0.0), (75.0, 0.0)]);
+    // A sixth of the way, half the first line is out of the range.
+    assert_eq!(rise(10.0 / 3.0), [(37.5, 0.5), (75.0, 0.0), (75.0, 0.0)]);
+    assert_eq!(rise(10.0), [(0.0, 1.0), (37.5, 0.5), (75.0, 0.0)]);
+    assert_eq!(rise(20.0), [(0.0, 1.0), (0.0, 1.0), (0.0, 1.0)]);
+}
+
+#[test]
+fn transforms_turn_and_scale_about_the_middle_of_the_baseline() {
+    let keys = r#""text":"a","animate":[{"animator":[{"range":"char"}],"rotate":90,"scale":2,"position":[3,4]}]"#;
+    let state = frame(keys, 0.0);
+    let (text, glyphs) = text_of(&state.nodes[0]);
+    let g = &text.layout.runs[0].glyphs[0];
+    let pivot = kurbo::Point::new(g.x + g.advance / 2.0, g.y);
+    let moved = glyphs[0].transform * pivot;
+    assert!((moved.x - pivot.x - 3.0).abs() < 1e-9 && (moved.y - pivot.y - 4.0).abs() < 1e-9);
+    // A point one px right of the pivot lands two px below it.
+    let right = glyphs[0].transform * (pivot + Vec2::new(1.0, 0.0));
+    assert!(
+        (right - moved - Vec2::new(0.0, 2.0)).hypot() < 1e-9,
+        "{right:?}"
+    );
+}
+
+/// Where each glyph of `text` lands when an animator turns every part a
+/// half turn, under `style`: a half turn about an anchor puts the glyph's
+/// origin as far past the anchor as it was before it.
+fn half_turned(text: &str, style: &str) -> (Vec<kurbo::Point>, Vec<kurbo::Point>) {
+    let keys = format!(
+        r#""text":"{text}","font":"Inter Variable 100","style":{{{style}}},"animate":[{{"animator":[{{"range":"char"}}],"rotate":180}}]"#
+    );
+    let state = frame(&keys, 0.0);
+    let (node, glyphs) = text_of(&state.nodes[0]);
+    let origins: Vec<kurbo::Point> = node
+        .layout
+        .runs
+        .iter()
+        .flat_map(|r| r.glyphs.iter().map(|g| kurbo::Point::new(g.x, g.y)))
+        .collect();
+    let anchors = origins
+        .iter()
+        .zip(glyphs)
+        .map(|(origin, g)| origin.midpoint(g.transform * *origin))
+        .collect();
+    (origins, anchors)
+}
+
+#[test]
+fn a_part_takes_the_anchor_of_its_word_line_or_whole_text() {
+    let close = |a: kurbo::Point, b: kurbo::Point| (a - b).hypot() < 1e-6;
+    let (origins, own) = half_turned("ab cd", "");
+    let node_of = |style: &str| half_turned("ab cd", style).1;
+    let words = node_of(r#""anchor-by":"word""#);
+    let all = node_of(r#""anchor-by":"all""#);
+    // Each word's glyphs share the middle of the word's baseline; the space
+    // keeps its own.
+    assert!(close(words[0], words[1]) && close(words[3], words[4]));
+    assert!(close(words[2], own[2]));
+    let state = frame(r#""text":"ab cd","font":"Inter Variable 100""#, 0.0);
+    let (node, _) = text_of(&state.nodes[0]);
+    let g = &node.layout.runs[0].glyphs;
+    let word = (g[0].x + g[1].x + g[1].advance) / 2.0;
+    assert!((words[0].x - word).abs() < 1e-6 && (words[0].y - origins[0].y).abs() < 1e-6);
+    // The whole text's anchor is the middle of its line.
+    let line = (g[0].x + g[4].x + g[4].advance) / 2.0;
+    assert!(all.iter().all(|a| (a.x - line).abs() < 1e-6));
+    let lines = node_of(r#""anchor-by":"line""#);
+    assert!(lines.iter().zip(&all).all(|(a, b)| close(*a, *b)));
+}
+
+#[test]
+fn anchors_move_by_fractions_of_their_part_width_and_size() {
+    let (_, own) = half_turned("ab", "");
+    let (_, moved) = half_turned("ab", r#""anchor-align":[-0.5,-0.3]"#);
+    let state = frame(r#""text":"ab","font":"Inter Variable 100""#, 0.0);
+    let (node, _) = text_of(&state.nodes[0]);
+    for (i, g) in node.layout.runs[0].glyphs.iter().enumerate() {
+        // Half its width back, to the start of its baseline; 30 % of the
+        // 100 px size up.
+        assert!((moved[i].x - g.x).abs() < 1e-6, "{moved:?}");
+        assert!((moved[i].y - (own[i].y - 30.0)).abs() < 1e-6, "{moved:?}");
+    }
+}
+
+#[test]
+fn colours_and_stroke_width_blend_toward_the_animator() {
+    let keys = r##""text":"a","fill":"#000000","style":{"stroke":"#000000","stroke-width":2},"animate":[{"animator":[{"range":"char","amount":0.5}],"fill":"#FFFFFF","stroke":"#FF0000","stroke-width":4}]"##;
+    let state = frame(keys, 0.0);
+    let (_, glyphs) = text_of(&state.nodes[0]);
+    assert_eq!(glyphs[0].fill, [0.5, 0.5, 0.5, 1.0]);
+    assert_eq!(glyphs[0].stroke, [0.5, 0.0, 0.0, 1.0]);
+    assert_eq!(glyphs[0].stroke_width, 3.0);
+}
+
+#[test]
+fn blur_adds_up_scaled_by_the_choice_each_way() {
+    let keys = r#""text":"ab","animate":[{"animator":[{"range":"char","amount":0.5}],"blur":[10,4]},{"animator":[{"range":"char","start":0.5}],"blur":2}]"#;
+    let state = frame(keys, 0.0);
+    let (_, glyphs) = text_of(&state.nodes[0]);
+    assert_eq!(glyphs[0].blur, [5.0, 2.0]);
+    assert_eq!(glyphs[1].blur, [7.0, 4.0]);
+}
+
+#[test]
+fn tracking_pushes_the_glyphs_after_it_and_keeps_the_alignment() {
+    let shift = |align: &str| {
+        let keys = format!(
+            r#""text":"abc","font":"Inter Variable 100","style":{{"align":"{align}"}},"animate":[{{"animator":[{{"range":"char"}}],"tracking":100}}]"#
+        );
+        let state = frame(&keys, 0.0);
+        let (_, glyphs) = text_of(&state.nodes[0]);
+        glyphs
+            .iter()
+            .map(|g| g.transform.translation().x)
+            .collect::<Vec<_>>()
+    };
+    // 100 thousandths of a 100 px em is 10 px after each of three glyphs.
+    assert_eq!(shift("left"), [0.0, 10.0, 20.0]);
+    assert_eq!(shift("center"), [-15.0, -5.0, 5.0]);
+    assert_eq!(shift("right"), [-30.0, -20.0, -10.0]);
+}
+
+#[test]
+fn hidden_animators_and_unwritten_properties_do_nothing() {
+    let keys = r##""text":"a","fill":"#000000","animate":[{"animator":[{"range":"char"}],"opacity":0,"hidden":true},{"animator":[{"range":"char"}],"rotate":10}]"##;
+    let state = frame(keys, 0.0);
+    let (_, glyphs) = text_of(&state.nodes[0]);
+    assert_eq!(
+        (glyphs[0].opacity, glyphs[0].fill),
+        (1.0, [0.0, 0.0, 0.0, 1.0])
+    );
+}
+
+#[test]
+fn bounds_cover_the_visible_glyphs_where_they_are() {
+    let keys = r#""text":"ab","animate":[{"animator":[{"range":"char","start":0.5}],"position":[0,100],"opacity":0}]"#;
+    let state = frame(keys, 0.0);
+    let (text, _) = text_of(&state.nodes[0]);
+    let laid_out = text.layout.bounds();
+    let shown = state.nodes[0].local_bounds;
+    // Only `a` shows, where it was laid out.
+    assert_eq!(
+        (shown.x0, shown.y0, shown.y1),
+        (laid_out.x0, laid_out.y0, laid_out.y1)
+    );
+    assert!(shown.x1 < laid_out.x1);
+}
+
+mod any_selector {
+    use super::*;
+    use nakkash_format::item::SELECTORS;
+    use proptest::prelude::*;
+
+    /// A range selector with `values` and the setting choices `settings`.
+    fn selector(values: [f64; 7], settings: [usize; 4]) -> ItemState {
+        ItemState {
+            kind: &SELECTORS[0],
+            id: None,
+            values: values
+                .iter()
+                .map(|&v| nakkash_format::Value::Number(v))
+                .collect(),
+            settings: settings.to_vec(),
+            items: Vec::new(),
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn chooses_between_minus_one_and_one(
+            start in -2.0..2.0f64,
+            end in -2.0..2.0f64,
+            offset in -1.0..1.0f64,
+            amount in -1.0..1.0f64,
+            smooth in 0.0..1.0f64,
+            high in -1.0..1.0f64,
+            low in -1.0..1.0f64,
+            shape in 0..6usize,
+            mode in 0..6usize,
+            by in 0..4usize,
+            units in 0..2usize,
+            n in 1..40usize,
+            i in 0..40usize,
+        ) {
+            let s = selector([start, end, offset, amount, smooth, high, low], [by, shape, mode, units]);
+            let glyph = GlyphParts { index: [Some(i % n); 4] };
+            let v = chosen(&[s.clone(), s], &glyph, &[n; 4]);
+            prop_assert!((-1.0..=1.0).contains(&v.x) && v.x == v.y, "{v:?}");
+        }
+    }
+}
+
+#[rstest]
+#[case::first("first", [0.0, 1.0, 2.0, 3.0, 4.0])]
+#[case::last("last", [4.0, 3.0, 2.0, 1.0, 0.0])]
+#[case::center("center", [2.0, 1.0, 0.0, 1.0, 2.0])]
+#[case::edges("edges", [0.0, 1.0, 2.0, 1.0, 0.0])]
+fn each_order_gives_its_waits(#[case] order: &str, #[case] expected: [f64; 5]) {
+    assert_eq!(waits(order, 0.0, 5), expected);
+}
+
+#[test]
+fn the_two_middle_parts_of_an_even_count_go_together_half_a_turn_in() {
+    assert_eq!(waits("center", 0.0, 4), [1.5, 0.5, 0.5, 1.5]);
+    assert_eq!(waits("edges", 0.0, 4), [0.0, 1.0, 1.0, 0.0]);
+}
+
+#[test]
+fn random_is_a_shuffle_the_seed_picks_and_repeats() {
+    let mut sorted = waits("random", 3.0, 12);
+    assert_eq!(sorted, waits("random", 3.0, 12));
+    assert_ne!(sorted, waits("random", 4.0, 12));
+    assert_ne!(sorted, waits("first", 0.0, 12));
+    sorted.sort_by(f64::total_cmp);
+    assert_eq!(sorted, waits("first", 0.0, 12));
+    assert!(waits("random", 0.0, 0).is_empty());
+}
+
+/// Four characters fading in over 4 frames from frame 2, with `extra` keys
+/// on the animator.
+fn staggered(extra: &str) -> String {
+    format!(
+        r#""text":"abcd","animate":[{{"animator":[{{"range":"char"}}],"opacity":0,{extra}"anim":{{"opacity":"0 -> 1 @2-6f ease-in-out"}}}}]"#
+    )
+}
+
+#[test]
+fn each_part_sees_the_animator_as_it_was_its_wait_earlier() {
+    let together = staggered("");
+    let apart = staggered(r#""stagger":2,"#);
+    for at in [0.0, 3.0, 5.0, 7.5, 10.0, 13.0] {
+        let now = opacities(&apart, at);
+        for (k, opacity) in now.iter().enumerate() {
+            let earlier = opacities(&together, at - 2.0 * k as f64)[k];
+            assert!((opacity - earlier).abs() < 1e-9, "char {k} at {at}");
+        }
+    }
+    // Half way through the first part's fade, the others have not begun.
+    assert_eq!(opacities(&apart, 4.0), [0.5, 0.0, 0.0, 0.0]);
+}
+
+#[test]
+fn a_staggered_selector_moves_in_each_parts_turn() {
+    // The range sweeps on with its own track; each part sees the sweep late.
+    let keys = r#""text":"ab","animate":[{"animator":[{"range":"char","anim":{"offset":"0 -> 1 @0-4f"}}],"opacity":0,"stagger":4}]"#;
+    // At frame 2 the sweep has passed half: the first char is in, and the
+    // second sees frame -2, where the range still covers everything.
+    assert_eq!(opacities(keys, 2.0), [1.0, 0.0]);
+    // The second char sees frame 2 at frame 6, where the range covers it,
+    // and is let go once it sees the sweep end.
+    assert_eq!(opacities(keys, 6.0), [1.0, 0.0]);
+    assert_eq!(opacities(keys, 8.0), [1.0, 1.0]);
+}
+
+#[test]
+fn a_space_under_word_is_not_delayed() {
+    let keys = r#""text":"ab cd","animate":[{"animator":[{"range":"char"}],"opacity":0,"stagger":3,"by":"word","anim":{"opacity":"0 -> 1 @0-1f"}}]"#;
+    // At frame 2 the first word is in, the second waits until frame 4, and
+    // the space between them sees the animator as it is.
+    assert_eq!(opacities(keys, 2.0), [1.0, 1.0, 1.0, 0.0, 0.0]);
+    assert_eq!(opacities(keys, 4.0), [1.0; 5]);
+}
+
+#[test]
+fn an_entrance_on_parts_moves_each_part_not_the_layer() {
+    let keys = r#""text":"ab cd","in":"fade-up word 30px 4f linear stagger 4f""#;
+    let state = frame(keys, 2.0);
+    let node = &state.nodes[0];
+    let (_, glyphs) = text_of(node);
+    // The layer itself does not move or fade.
+    assert_eq!(node.values[Prop::OPACITY.index()].as_number(), Some(1.0));
+    // Half way through its move, the first word is 15 px low and half faded;
+    // the second has not begun.
+    let ys: Vec<f64> = glyphs.iter().map(|g| g.transform.translation().y).collect();
+    assert!((ys[0] - 15.0).abs() < 1e-9, "{ys:?}");
+    assert!((ys[3] - 30.0).abs() < 1e-9, "{ys:?}");
+    assert_eq!(opacities(keys, 2.0), [0.5, 0.5, 1.0, 0.0, 0.0]);
+    assert_eq!(opacities(keys, 8.0), [1.0; 5]);
+}
+
+/// Where a point `by` from the middle of the baseline of `a` lands, less
+/// where the middle lands, under an animator that skews it `skew` degrees
+/// along `axis`, chosen by `amount`.
+fn skewed(skew: f64, axis: f64, amount: f64, by: Vec2) -> Vec2 {
+    let keys = format!(
+        r#""text":"a","animate":[{{"animator":[{{"range":"char","amount":{amount}}}],"skew":{skew},"skew-axis":{axis}}}]"#
+    );
+    let state = frame(&keys, 0.0);
+    let (text, glyphs) = text_of(&state.nodes[0]);
+    let g = &text.layout.runs[0].glyphs[0];
+    let pivot = kurbo::Point::new(g.x + g.advance / 2.0, g.y);
+    glyphs[0].transform * (pivot + by) - glyphs[0].transform * pivot
+}
+
+#[rstest]
+// A positive skew leans the top forward, as an italic does.
+#[case(45.0, 0.0, 1.0, Vec2::new(0.0, -10.0), Vec2::new(10.0, -10.0))]
+#[case(-45.0, 0.0, 1.0, Vec2::new(0.0, -10.0), Vec2::new(-10.0, -10.0))]
+// Points on the axis stay; the chosen share scales the skew, not the slant.
+#[case(45.0, 0.0, 1.0, Vec2::new(10.0, 0.0), Vec2::new(10.0, 0.0))]
+#[case(60.0, 0.0, 0.75, Vec2::new(0.0, -10.0), Vec2::new(10.0, -10.0))]
+// An axis turned a quarter clockwise turns the whole slant with it: the
+// right side, where the top was, moves down, where forward was.
+#[case(45.0, 90.0, 1.0, Vec2::new(10.0, 0.0), Vec2::new(10.0, 10.0))]
+#[case(45.0, 90.0, 1.0, Vec2::new(0.0, 10.0), Vec2::new(0.0, 10.0))]
+fn skew_leans_each_part_along_its_axis_about_its_anchor(
+    #[case] skew: f64,
+    #[case] axis: f64,
+    #[case] amount: f64,
+    #[case] by: Vec2,
+    #[case] lands: Vec2,
+) {
+    let moved = skewed(skew, axis, amount, by);
+    assert!((moved - lands).hypot() < 1e-9, "{moved:?}");
+}
+
+#[test]
+fn skews_add_up_and_are_held_short_of_a_right_angle() {
+    let keys = r#""text":"a","animate":[{"animator":[{"range":"char"}],"skew":60},{"animator":[{"range":"char"}],"skew":60}]"#;
+    let state = frame(keys, 0.0);
+    let (text, glyphs) = text_of(&state.nodes[0]);
+    let g = &text.layout.runs[0].glyphs[0];
+    let pivot = kurbo::Point::new(g.x + g.advance / 2.0, g.y);
+    let moved = glyphs[0].transform * (pivot + Vec2::new(0.0, -1.0)) - glyphs[0].transform * pivot;
+    assert!(
+        (moved.x - 85f64.to_radians().tan()).abs() < 1e-9,
+        "{moved:?}"
+    );
+}

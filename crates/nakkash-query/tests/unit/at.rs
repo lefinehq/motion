@@ -1,0 +1,134 @@
+//! Unit tests for `src/at.rs`.
+
+use crate::at;
+use nakkash_format::{Diagnostic, Kind};
+use rstest::rstest;
+
+/// A typesetter with the built-in fonts.
+fn typesetter() -> nakkash_text::Typesetter {
+    nakkash_text::Typesetter::new(nakkash_text::FontSet::builtin())
+}
+
+#[test]
+fn at_prints_resolved_values() {
+    let s = nakkash_format::parse_document(include_str!("../../../../examples/launch.json"))
+        .unwrap()
+        .scene()
+        .clone();
+    let g = nakkash_scene::compile(&s, &mut typesetter()).unwrap();
+    assert_eq!(
+        at(&g, 200.0, &["title".into()]).unwrap(),
+        "title x=960 y=260 w=633.42 h=116.16"
+    );
+    assert_eq!(at(&g, 0.0, &[]).unwrap().lines().count(), 2);
+    assert_eq!(
+        at(&g, 0.0, &["nope".into()]).unwrap_err(),
+        Diagnostic::unknown("layer", "nope", ["title", "card"])
+    );
+    let empty = nakkash_scene::compile(
+        nakkash_format::parse_document(r#"{"nakkash":1,"dur":"1s","layers":[]}"#)
+            .unwrap()
+            .scene(),
+        &mut typesetter(),
+    )
+    .unwrap();
+    assert_eq!(at(&empty, 0.0, &[]).unwrap(), "");
+}
+
+/// Compiles a one-layer scene.
+fn graph(layer: &str) -> nakkash_scene::SceneGraph {
+    let json = format!(r#"{{"nakkash":1,"dur":"2s","layers":[{layer}]}}"#);
+    let s = nakkash_format::parse_document(&json)
+        .unwrap()
+        .scene()
+        .clone();
+    nakkash_scene::compile(&s, &mut typesetter()).unwrap()
+}
+
+/// x, y, w and h are fixed columns; other properties follow only when they
+/// differ from their default.
+#[rstest]
+// Frame 5: half faded in and half way up the 60 px entrance.
+#[case::non_default_properties_follow_the_fixed_columns(
+    r#"{"id":"a","rect":"100x100","at":"500 400","in":"fade-up 60px 10f linear @0f"}"#,
+    5.0,
+    "a x=500 y=430 w=100 h=100 opacity=0.5"
+)]
+#[case::properties_at_their_default_are_left_out(
+    r#"{"id":"a","rect":"100x100","at":"500 400","in":"pop 10f linear @0f"}"#,
+    10.0,
+    "a x=500 y=400 w=100 h=100"
+)]
+fn prints_one_line_per_node(#[case] layer: &str, #[case] frame: f64, #[case] line: &str) {
+    assert_eq!(at(&graph(layer), frame, &[]).unwrap(), line);
+}
+
+#[test]
+fn pop_and_spin_in_mid_entrance() {
+    let g = graph(
+        r#"{"id":"a","rect":"100x100","at":"300 400","in":"pop 10f linear @0f"},{"id":"b","rect":"100x100","at":"700 400","in":"spin-in 10f linear @0f"}"#,
+    );
+    insta::assert_snapshot!(at(&g, 5.0, &[]).unwrap());
+}
+
+#[test]
+fn errors_say_what_kind_of_problem_they_are() {
+    let g = graph(r#"{"id":"a","rect":"10x10"}"#);
+    assert_eq!(at(&g, -1.0, &[]).unwrap_err().kind, Kind::OutOfRange);
+    assert_eq!(
+        at(&g, 0.0, &["ghost".to_string()]).unwrap_err(),
+        Diagnostic::unknown("layer", "ghost", ["a"])
+    );
+}
+
+#[test]
+fn a_child_prints_where_its_anchor_lands_on_the_canvas() {
+    let s = nakkash_format::parse_document(
+        r#"{"nakkash":1,"dur":"1s","layers":[
+        {"id":"card","rect":"200x100","at":"500 400","scale":2},
+        {"id":"kid","rect":"10x10","parent":"card","at":"center center"}]}"#,
+    )
+    .unwrap()
+    .scene()
+    .clone();
+    let g = nakkash_scene::compile(&s, &mut typesetter()).unwrap();
+    // `center center` is the middle of the card's box, which sits at (500, 400).
+    assert_eq!(
+        at(&g, 0.0, &["kid".into()]).unwrap(),
+        "kid x=500 y=400 w=10 h=10"
+    );
+}
+
+/// A scene whose `card` shows the 400x200 composition `card`, with its
+/// top-left corner at 300,400, and `title` at 395,100 inside it.
+fn nested() -> nakkash_scene::SceneGraph {
+    let json = r#"{"nakkash":1,"size":"1000x1000","dur":"1s",
+      "comps":{"card":{"size":"400x200","dur":"1s",
+        "layers":[{"id":"title","rect":"10x10","position":[395,100]}]}},
+      "layers":[{"id":"card","comp":"card","position":[500,500]}]}"#;
+    let s = nakkash_format::parse_document(json)
+        .unwrap()
+        .scene()
+        .clone();
+    nakkash_scene::compile(&s, &mut typesetter()).unwrap()
+}
+
+#[test]
+fn at_reaches_inside_comps_by_address_in_scene_space() {
+    let g = nested();
+    assert_eq!(
+        at(&g, 0.0, &["card/title".into()]).unwrap(),
+        "card/title x=695 y=500 w=10 h=10"
+    );
+    let every: Vec<String> = at(&g, 0.0, &[])
+        .unwrap()
+        .lines()
+        .map(|line| line.split(' ').next().unwrap().to_owned())
+        .collect();
+    assert_eq!(every, ["card", "card/title"]);
+    // A layer of a composition is known by its whole address.
+    assert_eq!(
+        at(&g, 0.0, &["title".into()]).unwrap_err(),
+        Diagnostic::unknown("layer", "title", ["card", "card/title"])
+    );
+}

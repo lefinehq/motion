@@ -1,6 +1,6 @@
 # Examples
 
-Scenes written from scratch, without footage, brand or real names. Each passes `motion check` with nothing found, and a test keeps it so. Agents read them as a guide to the format and to timing ([D72](../docs/design/decisions.md#d72-scenes-written-from-scratch-get-choreography-as-data-and-a-guide)).
+Scenes written from scratch, without footage, brand or real names. Each passes `nakkash check` with nothing found, and a test keeps it so. Agents read them as a guide to the format and to timing ([D72](../docs/design/decisions.md#d72-scenes-written-from-scratch-get-choreography-as-data-and-a-guide)).
 
 | Scene | Size | What it shows |
 |---|---|---|

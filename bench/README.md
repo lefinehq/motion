@@ -6,18 +6,18 @@ These are the briefs the [public scoreboard](../docs/design/quality.md#the-publi
 
 ## Running them
 
-`motion bench` runs an agent on every brief, one at a time, each in a folder of its own:
+`nakkash bench` runs an agent on every brief, one at a time, each in a folder of its own:
 
 ```sh
-motion bench bench/briefs --out runs/2026-11-15 --agent \
-  'claude -p --output-format json "Write the video this brief asks for as scene.json in this folder, with the motion CLI. $(cat "$MOTION_BRIEF")"'
+nakkash bench bench/briefs --out runs/2026-11-15 --agent \
+  'claude -p --output-format json "Write the video this brief asks for as scene.json in this folder, with the nakkash CLI. $(cat "$NAKKASH_BRIEF")"'
 ```
 
-- The agent is any shell command. It runs in the brief's folder, with the brief on stdin and its path in `MOTION_BRIEF`, and writes `scene.json` there.
+- The agent is any shell command. It runs in the brief's folder, with the brief on stdin and its path in `NAKKASH_BRIEF`, and writes `scene.json` there.
 - Its output goes to `agent.log` and `agent.err`. When its last line is a JSON object, the bench reads its cost from it: `tokens` and `steps`, or `usage` and `num_turns`, as agents that print a JSON result write them.
 - `--timeout` stops an agent after that many seconds; the default is 1800.
 
-For each brief, the bench then opens the scene, runs `motion check` on it, rules and pixel gates, and renders it to `video.mp4`. It writes one JSON object per brief to `results.jsonl`, and prints one line per brief as it ends:
+For each brief, the bench then opens the scene, runs `nakkash check` on it, rules and pixel gates, and renders it to `video.mp4`. It writes one JSON object per brief to `results.jsonl`, and prints one line per brief as it ends:
 
 | Field | What it holds |
 |---|---|

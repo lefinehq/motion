@@ -1,7 +1,0 @@
-{"motion":1,"size":"160x90","fps":12,"dur":"3s","bg":"#F4F1EA",
-"comps":{"bar":{"size":"80x20","dur":"2s","layers":[
- {"id":"fill","rect":"80x20","fill":"#1F6FEB","anim":{"scale-x":"0 -> 1 @0-2s"}}]}},
-"layers":[
-{"id":"back","comp":"bar","at":"center 30","anim":{"remap":[{"t":"0s","v":2,"curve":"linear"},{"t":"1s","v":0.5,"curve":"hold"},{"t":"2s","v":0.5},{"t":"3s","v":2}]}},
-{"id":"still","video":"videos/photo.mov","box":[32,16],"at":"center 65","remap":0.25}
-]}

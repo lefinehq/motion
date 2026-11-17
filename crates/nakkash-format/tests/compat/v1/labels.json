@@ -1,0 +1,11 @@
+{"nakkash":1,"size":"480x480","fps":24,"dur":"4s","bg":"#FFFFFF","labels":{"outro":"cta+1s","intro":"0.25s","cta":"2s"},
+"comps":{"badge":{"size":"120x120","dur":"1s","labels":{"pop":"6f"},"layers":[
+ {"id":"disc","rect":"120x120 r60","fill":"#E4572E","span":"0-pop+12f"},
+ {"id":"ring","rect":"60x60 r30","fill":"#FFE000","offset":"<<","span":"pop-<+6f"}]}},
+"layers":[
+{"id":"title","text":"Labels","font":"Inter Variable 48","fill":"#101010","at":"240 120","span":"intro-cta","in":"fade-up 12f"},
+{"id":"badge","comp":"badge","at":"240 260","offset":"<-6f","stretch":1.5},
+{"id":"after","rect":"200x20","fill":"#3B82F6","at":"240 360","span":"<<+0.5s-<+12f"},
+{"id":"cta","text":"Now","font":"Inter Variable 48","fill":"#101010","at":"240 420","span":"cta-outro+12f"},
+{"id":"tail","rect":"40x40","fill":"#101010","at":"420 420","offset":"<","span":"intro-2s"}
+]}

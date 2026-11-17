@@ -1,0 +1,9 @@
+{"nakkash":1,"size":"160x90","fps":12,"dur":"1s","bg":"#F4F1EA",
+"layers":[
+{"id":"badge","image":"images/badge.pdf","box":[40,24],"at":"40 45","scale":2,
+ "anim":{"rotate":"0 -> 12 @0-1s ease-in-out"}},
+{"id":"sharp","image":"images/badge.pdf","box":[40,24],"at":"110 30","scale":1.5,"continuous":true,
+ "anim":{"scale":"1.5 -> 2.5 @0-1s ease-out"}},
+{"id":"art","image":"images/badge.pdf","box":[20,18],"crop":[10,2,20,18],"at":"110 70","scale":1.5,"continuous":true},
+{"id":"corner","image":"images/tiles.png","box":[12,8],"crop":[0,0,12,8],"at":"150 80"}
+]}

@@ -1,4 +1,4 @@
-{"motion":1,"size":"1920x1080","fps":30,"dur":"5s","bg":"#24303A",
+{"nakkash":1,"size":"1920x1080","fps":30,"dur":"5s","bg":"#24303A",
 "layers":[
 {"id":"plate","rect":"760x150 r12","fill":"#101418","opacity":0.92,"anim":{"scale-x":[["0f",0,"out-expo"],["14f",1],["4s",1,"in-expo"],["4.4s",0]]},"anchor":[0,75],"position":[120,860],"mblur":true},
 {"id":"accent","rect":"10x150","fill":"#F2A541","at":"125 860","span":"0s-4.5s","in":"fade 6f","out":"fade 6f"},

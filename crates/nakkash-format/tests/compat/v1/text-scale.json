@@ -1,0 +1,6 @@
+{"nakkash":1,"size":"480x240","fps":24,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"narrow","at":"240 90","text":"NARROW SET","font":"Inter Variable 56 800","fill":"#1E3A5F","style":{"horizontal-scale":0.8,"tracking":50,"align":"center"}},
+{"id":"tall","at":"240 190","text":"Tall and wide","font":"Inter Variable 40 600","fill":"#101010","style":{"align":"center","faux-italic":true},
+ "runs":[{"range":[0,4],"vertical-scale":1.4},{"range":[9,13],"horizontal-scale":1.3}]}
+]}

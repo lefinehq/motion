@@ -1,0 +1,24 @@
+[package]
+name = "nakkash-vector"
+description = "Reads vector footage (PDF pages, and the `.ai` files that are PDF inside) into the rasteriser's own display list, drawn at any size."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+nakkash-format = { path = "../nakkash-format" }
+nakkash-raster = { path = "../nakkash-raster" }
+# EPS footage: our own PostScript interpreter (D71).
+nakkash-postscript = { path = "../nakkash-postscript" }
+# The PDF object reader and the interpreter of its drawing operators (D70).
+hayro-syntax.workspace = true
+hayro-interpret.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
+
+[lints]
+workspace = true

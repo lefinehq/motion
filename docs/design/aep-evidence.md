@@ -7,7 +7,7 @@ Most of what the decoder reads is either documented or follows from the file's o
 The checks run in the local sweep:
 
 ```text
-MOTION_AEP_SAMPLES=~/aep-samples cargo nextest run -p motion-import --run-ignored only
+NAKKASH_AEP_SAMPLES=~/aep-samples cargo nextest run -p nakkash-import --run-ignored only
 ```
 
 ## The composed-line cache
@@ -150,7 +150,7 @@ Before, the import reported `tracking before and after` 17 times in 6 scored sam
 
 ## Blurred characters
 
-An animator's blur (`ADBE Text Blur`) becomes the animator's `blur` ([scene format](scene-format.md#text-animators)), across and down apart. The corpus holds 16 in 9 scored samples, none animated and none under an expression: 114 or 113 both ways in m648, m760, m802, m815 and m816, 19 or 20 in m760 and m795, 5 in m826, 90 down only in m793, 0 in m565. In every one the selectors move the amount, so the blur runs out as each part settles. These beliefs were measured once with `motion fidelity` on those samples, over all frames. The sweep does not check them yet.
+An animator's blur (`ADBE Text Blur`) becomes the animator's `blur` ([scene format](scene-format.md#text-animators)), across and down apart. The corpus holds 16 in 9 scored samples, none animated and none under an expression: 114 or 113 both ways in m648, m760, m802, m815 and m816, 19 or 20 in m760 and m795, 5 in m826, 90 down only in m793, 0 in m565. In every one the selectors move the amount, so the blur runs out as each part settles. These beliefs were measured once with `nakkash fidelity` on those samples, over all frames. The sweep does not check them yet.
 
 | Belief | Evidence | Held, 2026-11-17 |
 |---|---|---|
@@ -174,7 +174,7 @@ Optical kerning therefore stays reported, now as `optical kerning (the font's ke
 
 ## Skewed characters
 
-An animator's skew and skew axis (`ADBE Text Skew`, `ADBE Text Skew Axis`) become the animator's `skew` and `skew-axis` ([scene format](scene-format.md#text-animators)). The corpus holds 17 of each in 5 scored samples (m752, m756, m791, m800, m805). All store 0, and only m756's two animators move theirs, by expressions whose bake gives a skew of 70 degrees and axes of -234 and 120 degrees. Measured once with `motion fidelity` on the five, over all frames. The sweep does not check it yet.
+An animator's skew and skew axis (`ADBE Text Skew`, `ADBE Text Skew Axis`) become the animator's `skew` and `skew-axis` ([scene format](scene-format.md#text-animators)). The corpus holds 17 of each in 5 scored samples (m752, m756, m791, m800, m805). All store 0, and only m756's two animators move theirs, by expressions whose bake gives a skew of 70 degrees and axes of -234 and 120 degrees. Measured once with `nakkash fidelity` on the five, over all frames. The sweep does not check it yet.
 
 | Belief | Evidence | Held, 2026-11-17 |
 |---|---|---|
@@ -265,7 +265,7 @@ What is left open:
 
 ## What `sourceRectAtTime` reads
 
-An expression reads the rectangle a layer's content covers, `{left, top, width, height}` in the layer's own space, by `sourceRectAtTime(t, includeExtents)`. The import measures it in the scene it writes, with the code that draws: the text set in its fonts, the shapes drawn (`motion_engine::measure_layouts`, `motion_scene::content_rects`). The sources disagree on what it is. The editor's expression reference takes a time (default the current one) and `includeExtents` (default false), which applies only to shape layers, whose bounds grow to take in their strokes, and to box text, which then gives its box. An open-source web player of exported animations measures the element it has drawn at the frame it is on (the browser's box of the text as rendered, animators and all), ignores both arguments, and does not measure shape layers at all (it answers a fixed 100 by 100); the community reference of that export format lists no arguments. These beliefs were measured once, by hand, against the corpus's reference frames, by setting the boxes our render draws beside the reference's; the sweep does not check them yet.
+An expression reads the rectangle a layer's content covers, `{left, top, width, height}` in the layer's own space, by `sourceRectAtTime(t, includeExtents)`. The import measures it in the scene it writes, with the code that draws: the text set in its fonts, the shapes drawn (`nakkash_engine::measure_layouts`, `nakkash_scene::content_rects`). The sources disagree on what it is. The editor's expression reference takes a time (default the current one) and `includeExtents` (default false), which applies only to shape layers, whose bounds grow to take in their strokes, and to box text, which then gives its box. An open-source web player of exported animations measures the element it has drawn at the frame it is on (the browser's box of the text as rendered, animators and all), ignores both arguments, and does not measure shape layers at all (it answers a fixed 100 by 100); the community reference of that export format lists no arguments. These beliefs were measured once, by hand, against the corpus's reference frames, by setting the boxes our render draws beside the reference's; the sweep does not check them yet.
 
 | Belief | Evidence | Held, 2026-11-16 |
 |---|---|---|
@@ -511,7 +511,7 @@ Drawn through the vector footage path, measured against a build of main with D70
 | m837 | 38.16 % → 37.75 % | 0.0392 → 0.0370 | 0 → 0 of 20 |
 | m838 | 30.04 % → 29.92 % | 0.0176 → 0.0166 | 0 → 0 of 20 |
 
-The three plain files reach what converting them to PDF outside motion and drawing that with the operating system's renderer reached (m788 22.3 %, 0.0122; m837 37.8 %, 0.0370; m838 29.9 %, 0.0165). m794's error is mostly its background clip; its ornaments are recoloured by a fill effect. The other samples hold their errors in footage and text the EPS files do not touch.
+The three plain files reach what converting them to PDF outside nakkash and drawing that with the operating system's renderer reached (m788 22.3 %, 0.0122; m837 37.8 %, 0.0370; m838 29.9 %, 0.0165). m794's error is mostly its background clip; its ornaments are recoloured by a fill effect. The other samples hold their errors in footage and text the EPS files do not touch.
 
 | Belief | Evidence | Held, 2026-11-17 |
 |---|---|---|

@@ -1,4 +1,4 @@
-{"motion":1,"size":"1920x1080","fps":30,"dur":"4s","bg":"#F4F1EA",
+{"nakkash":1,"size":"1920x1080","fps":30,"dur":"4s","bg":"#F4F1EA",
 "layers":[
 {"id":"card","rect":"1240x600 r40","fill":"#1D3557","at":"center center","3d":true,"in":"swing-in 18f out-back","out":"fade 10f ease-in","mblur":true},
 {"id":"title","text":"The Quiet Season","font":"Inter Variable 120 800","fill":"#FFFFFF","at":"center 500","span":"8f-4s","offset":"8f","in":"slam 12f out-expo","out":"fade 10f ease-in","mblur":true},

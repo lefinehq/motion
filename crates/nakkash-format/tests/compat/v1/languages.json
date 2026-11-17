@@ -1,0 +1,5 @@
+{"nakkash":1,"size":"480x240","fps":24,"dur":"1s","bg":"#101010",
+"layers":[
+{"id":"tr","text":"ücretsiz ılık","font":"Inter Variable 36","at":"240 90","style":{"caps":"all","lang":"tr"}},
+{"id":"default","text":"ücretsiz ılık","font":"Inter Variable 36","at":"240 160","style":{"caps":"all"}}
+]}

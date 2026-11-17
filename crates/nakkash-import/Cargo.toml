@@ -1,0 +1,46 @@
+[package]
+name = "nakkash-import"
+description = "Reads `.aep` projects into a typed, lossless model, and reports what it could not decode yet."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# Evaluating expressions at import, with the JavaScript engine. Only the CLI
+# turns it on, through nakkash-engine: nothing that renders links the script
+# engine (D38).
+bake = ["nakkash-expr/engine"]
+
+[dependencies]
+strum.workspace = true
+derive_more.workspace = true
+nakkash-format = { path = "../nakkash-format" }
+nakkash-scene = { path = "../nakkash-scene" }
+nakkash-expr = { path = "../nakkash-expr", default-features = false }
+kurbo.workspace = true
+binrw.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_path_to_error.workspace = true
+winnow.workspace = true
+zip.workspace = true
+# Only to choose the inflate zip uses.
+flate2.workspace = true
+
+[dev-dependencies]
+# The tests bake.
+nakkash-import = { path = ".", features = ["bake"] }
+rstest.workspace = true
+pretty_assertions.workspace = true
+insta.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true
+
+# flate2 is a dependency only to choose the inflate zip uses.
+[package.metadata.cargo-machete]
+ignored = ["flate2"]

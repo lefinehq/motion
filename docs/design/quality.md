@@ -2,7 +2,7 @@ Status: Draft · 2026-11-13
 
 # Quality
 
-How we decide whether motion's clips are good enough, and how we prove it in public. There are five layers:
+How we decide whether nakkash's clips are good enough, and how we prove it in public. There are five layers:
 
 1. **Gates**, which reject what can't ship.
 2. **Fidelity tests**, which catch rendering regressions.
@@ -80,7 +80,7 @@ The lead motion designer tunes these limits against the reference clips. Clips w
 
 ### Calibration
 
-Each rule `motion check` runs has a planted-defect scene in `crates/motion-engine/tests/planted.rs` that trips it and no other rule, and the same scenes without their defects trip nothing. On 2026-11-15 every rule ran over the local corpus's imported templates: 139 that compile, 31 of them drawn faithfully (under 5% of drawn px failing once settled). The faithful ones are the fair test, since the others lack mattes, expressions or footage the projects use, and draw text over the wrong backdrop.
+Each rule `nakkash check` runs has a planted-defect scene in `crates/nakkash-engine/tests/planted.rs` that trips it and no other rule, and the same scenes without their defects trip nothing. On 2026-11-15 every rule ran over the local corpus's imported templates: 139 that compile, 31 of them drawn faithfully (under 5% of drawn px failing once settled). The faithful ones are the fair test, since the others lack mattes, expressions or footage the projects use, and draw text over the wrong backdrop.
 
 | Rule | Templates it fires on | Faithful ones |
 |---|---|---|
@@ -101,12 +101,12 @@ The layout rules fire on many more: `offscreen` on 20 of the 31 faithful templat
 
 The lead motion designer's real projects are the reference set. The exporter also saves the tool's own render, so fidelity is measured pixel by pixel against the original: there is no guessing about what "on par" means.
 
-- **Masters:** motion's render of every imported master must match the tool's render within the [fidelity](#fidelity) limits. Frames that miss become issues: missing features or rendering bugs.
+- **Masters:** nakkash's render of every imported master must match the tool's render within the [fidelity](#fidelity) limits. Frames that miss become issues: missing features or rendering bugs.
 - **Variants:** raters see an AI-made variant and one the designer made by hand for the same brief, without labels, and pick the better one or the hand-made one. We claim "on par" only if raters can't pick the hand-made one more than 60% of the time. The upper end of the 95% confidence interval must stay below that limit, and the limit is fixed before the test. A full round is about 1,600 trials.
 
 ## The public scoreboard
 
-The board compares engines on the same briefs: motion against HyperFrames and Remotion.
+The board compares engines on the same briefs: nakkash against HyperFrames and Remotion.
 
 - **Briefs:** 30–50, published in advance and grouped by use case.
 - **Votes:**
@@ -120,13 +120,13 @@ The board compares engines on the same briefs: motion against HyperFrames and Re
   - 16:9 and 9:16 clips are separate pools, and so are clips with and without sound.
 - **Alongside quality,** we publish cost in tokens, agent steps, wall-clock time and render time.
 
-Fairness rules. Without them, a board run by motion is just a vendor grading itself:
+Fairness rules. Without them, a board run by nakkash is just a vendor grading itself:
 
 - The agent and model stay the same. Only the engine and its official guidance change.
 - An extra round gives every engine the same design guidance, because guidance alone can decide results.
 - Engine versions and briefs are registered before the run.
 - Every variant tested is published, with no hidden best-of-N.
-- Cross-engine checks run on rendered pixels, never on motion's JSON, which competitors don't have.
+- Cross-engine checks run on rendered pixels, never on nakkash's JSON, which competitors don't have.
 - Briefs, code, renders, agent transcripts and anonymised raw votes are released. Rendering is deterministic, so anyone can rerun the board and get the same frames.
 - Competitors are invited to submit their own best guidance.
 

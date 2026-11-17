@@ -1,6 +1,6 @@
 # Advanced examples
 
-Five scenes written from scratch that use what motion can do: text animators, shape operations, a 2.5D camera, nested compositions with effects, and one master that `motion batch` turns into several formats. Each scene uses the built-in `Inter Variable` and needs no media files.
+Five scenes written from scratch that use what nakkash can do: text animators, shape operations, a 2.5D camera, nested compositions with effects, and one master that `nakkash batch` turns into several formats. Each scene uses the built-in `Inter Variable` and needs no media files.
 
 Each scene has one small motion system, and every move in it uses the same few curves and durations:
 
@@ -12,12 +12,12 @@ Each scene has one small motion system, and every move in it uses the same few c
 | `in-out-sine`, whole clip | camera moves and drifts, so the speed never jumps |
 | `out-back(1)` / `cubic(.34,1.4,.64,1)` | emphasis, overshooting by about 4 % |
 
-Staggers are 2 frames (67 ms at 30 fps). Each text stays readable for longer than it takes to read, which `check` enforces. A test checks that each scene passes `motion check` with nothing found, and that the batch makes every variant (`crates/motion-cli/tests/examples_advanced.rs`).
+Staggers are 2 frames (67 ms at 30 fps). Each text stays readable for longer than it takes to read, which `check` enforces. A test checks that each scene passes `nakkash check` with nothing found, and that the batch makes every variant (`crates/nakkash-cli/tests/examples_advanced.rs`).
 
 To render any scene:
 
 ```sh
-motion render examples/advanced/<scene>.json --out <scene>.mp4
+nakkash render examples/advanced/<scene>.json --out <scene>.mp4
 ```
 
 ## Kinetic typography
@@ -88,10 +88,10 @@ motion render examples/advanced/<scene>.json --out <scene>.mp4
 - **One project, many formats:** the content sits under a centred `stage` pivot, so `scene size=1080x1920` puts it in the middle of the new canvas and `@stage scale=0.86` fits it.
 
 ```sh
-motion roles examples/advanced/variants/master.json
-motion slots examples/advanced/variants/master.json
-motion batch examples/advanced/variants/batch.json          # writes variants/out/<id>.mp4 and .json
-motion batch examples/advanced/variants/batch.json --check  # applies and checks, renders nothing
+nakkash roles examples/advanced/variants/master.json
+nakkash slots examples/advanced/variants/master.json
+nakkash batch examples/advanced/variants/batch.json          # writes variants/out/<id>.mp4 and .json
+nakkash batch examples/advanced/variants/batch.json --check  # applies and checks, renders nothing
 ```
 
 ```text
@@ -102,11 +102,11 @@ vertical-teal   6 edits  check OK  out/vertical-teal.mp4  0.4 s
 4 rendered, 0 refused, 0 failed their check
 ```
 
-Each variant is checked before it renders, so a headline too long for the square cut is reported (`check failed: E offscreen headline …`) and that variant is not rendered. The batch runs the scene's rules but not yet the pixel gates, `contrast` and `flash`, so run `motion check` on a variant's `out/<id>.json` for those. Edits that touch a lock are refused:
+Each variant is checked before it renders, so a headline too long for the square cut is reported (`check failed: E offscreen headline …`) and that variant is not rendered. The batch runs the scene's rules but not yet the pixel gates, `contrast` and `flash`, so run `nakkash check` on a variant's `out/<id>.json` for those. Edits that touch a lock are refused:
 
 ```text
-$ motion edit master.json '@mark scale=1.4'
+$ nakkash edit master.json '@mark scale=1.4'
 error: `mark` is locked by `@mark`; expected an edit of what the scene does not lock; the designer changes `locks`
-$ motion edit master.json '@headline font="Georgia 150 700"'
+$ nakkash edit master.json '@headline font="Georgia 150 700"'
 error: `Georgia` is not one of the scene's typefaces, which are locked by `typefaces`; expected an edit of what the scene does not lock; the designer changes `locks`
 ```

@@ -2,7 +2,7 @@ Status: Draft · 2026-11-13
 
 # Features
 
-motion aims to match professional motion-design software for the work most videos need: layered composition, precise animation, effects and depth. Features come in two tiers. The core tier ships in v1; the extended tier follows. Some areas of video work are deliberately left out.
+nakkash aims to match professional motion-design software for the work most videos need: layered composition, precise animation, effects and depth. Features come in two tiers. The core tier ships in v1; the extended tier follows. Some areas of video work are deliberately left out.
 
 Words in *italics* are defined in the [glossary](../glossary.md).
 

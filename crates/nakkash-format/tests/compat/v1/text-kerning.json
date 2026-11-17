@@ -1,0 +1,5 @@
+{"nakkash":1,"size":"480x200","fps":24,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"kerned","at":"240 80","text":"AVATAR To","font":"Inter Variable 56 700","fill":"#1E3A5F","style":{"align":"center","kerning":"font"}},
+{"id":"apart","at":"240 160","text":"AVATAR To","font":"Inter Variable 56 700","fill":"#101010","style":{"align":"center","kerning":"none"}}
+]}

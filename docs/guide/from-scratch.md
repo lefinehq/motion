@@ -1,17 +1,17 @@
 # Writing a video from scratch
 
-How an agent turns a brief into a motion scene: the loop, the numbers `check` holds a scene to, the moves the format has, and practice that is still provisional. The examples in [`examples/`](../../examples/README.md) follow it; read one before writing ([D72](../design/decisions.md#d72-scenes-written-from-scratch-get-choreography-as-data-and-a-guide)). The format itself is in [Scene format](../design/scene-format.md).
+How an agent turns a brief into a nakkash scene: the loop, the numbers `check` holds a scene to, the moves the format has, and practice that is still provisional. The examples in [`examples/`](../../examples/README.md) follow it; read one before writing ([D72](../design/decisions.md#d72-scenes-written-from-scratch-get-choreography-as-data-and-a-guide)). The format itself is in [Scene format](../design/scene-format.md).
 
 ## The loop
 
 1. **Read the brief** for its size, length and what the film must say and show. Copy comes from the brief; do not invent numbers, names or claims.
 2. **Write a beat sheet** before any layer: each beat's start, what it says, and what moves. Name the beats as `labels`, `"labels":{"punch":"1.2s","body":"2.8s","end":"7.6s"}`, so spans and offsets are written against them and moving a beat is one edit.
 3. **Write the scene** against the labels: one composition per beat, drawn by a `comp` layer whose `span` and `offset` follow the beat.
-4. **`motion check scene.json`** and fix every `E` line. A `W` line is a measured problem too; fix it unless the brief asks for it. A line with `fix:` gives the edit, which `motion edit scene.json '<line>'` applies.
-5. **Look at a few frames:** `motion render scene.json --frame 45 --out frames` writes one PNG. Look at the opening, each beat after its move lands, and the end card. One sheet of frames shows more than many single ones.
-6. **Render:** `motion render scene.json --out film.mp4`.
+4. **`nakkash check scene.json`** and fix every `E` line. A `W` line is a measured problem too; fix it unless the brief asks for it. A line with `fix:` gives the edit, which `nakkash edit scene.json '<line>'` applies.
+5. **Look at a few frames:** `nakkash render scene.json --frame 45 --out frames` writes one PNG. Look at the opening, each beat after its move lands, and the end card. One sheet of frames shows more than many single ones.
+6. **Render:** `nakkash render scene.json --out film.mp4`.
 
-When starting from a template instead, `motion check scene.json --baseline template.json` prints only what your edits added, and `motion edit` reports the same way.
+When starting from a template instead, `nakkash check scene.json --baseline template.json` prints only what your edits added, and `nakkash edit` reports the same way.
 
 ## What `check` measures
 

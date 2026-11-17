@@ -1,0 +1,352 @@
+//! The display list: one frame as plain data, a tree of [`Layer`]s whose
+//! leaves are paths, glyph runs and pictures. It knows nothing of scenes or animation;
+//! whatever evaluates a scene at a time writes one of these, and
+//! [`render`](crate::render) draws it.
+
+use vello_cpu::kurbo::{Affine, BezPath, Rect, Shape};
+use vello_cpu::peniko::FontData;
+
+use crate::blend::BlendMode;
+use crate::effect::Effect;
+use crate::homography::Homography;
+use crate::picture::Picture;
+use crate::style::{Color, DrawStyle, FillRule, Paint};
+
+/// One frame to draw.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Frame {
+    /// The colour behind everything; transparent when `None`.
+    pub background: Option<Color>,
+    /// The colour space layers blend in.
+    pub blending: Blending,
+    /// The top-level nodes, back to front.
+    pub nodes: Vec<Node>,
+}
+
+/// The colour space in which layers blend and colours mix ([D21], [D34]).
+///
+/// [D21]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d21-linear-light-float-compositing
+/// [D34]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d34-a-layer-tree-renderer-on-vello_cpu
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Blending {
+    /// On gamma-encoded sRGB values, as projects that do not linearise blend.
+    #[default]
+    Gamma,
+    /// On linear-light values. Not drawable yet: the rasteriser blends only
+    /// encoded values, so [`render`](crate::render) reports it.
+    Linear,
+}
+
+/// One node of the tree: a layer with children, or a leaf.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Node {
+    /// A group with its own transform, opacity, blend mode, clip and effects.
+    Layer(Layer),
+    /// An outline, filled or stroked.
+    Path(PathDraw),
+    /// A run of glyphs from one font, filled or stroked.
+    Glyphs(GlyphDraw),
+    /// A picture stretched over a rectangle.
+    Image(ImageDraw),
+}
+
+/// A group of nodes drawn together.
+///
+/// A layer whose opacity is 1, whose blend mode is normal, which has no clip,
+/// no effects, no matte and no projection, and which is not marked `isolate` only moves its
+/// children: it costs no extra buffer. Otherwise it is isolated: its
+/// children are drawn into a buffer of their own, so their blend modes see
+/// only each other, its effects run on that buffer in order, and the result
+/// is clipped and blended onto what is below with its opacity.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Layer {
+    /// From the layer's coordinates to its parent's.
+    pub transform: Affine,
+    /// How opaque the layer is, 0 to 1.
+    pub opacity: f32,
+    /// How it combines with what is below.
+    pub blend: BlendMode,
+    /// The region outside which nothing of it shows, in its own coordinates.
+    pub clip: Option<Clip>,
+    /// Masks that cut its drawn content before its effects run, combined in order.
+    pub masks: Vec<LayerMask>,
+    /// Effects run on its drawn content, in order.
+    pub effects: Vec<Effect>,
+    /// Its nodes, back to front.
+    pub children: Vec<Node>,
+    /// Draw it in a buffer of its own even when nothing else asks for one,
+    /// as a nested composition is: its children blend with each other, not
+    /// with what is below it.
+    pub isolate: bool,
+    /// What another layer draws, read as a stencil for this one.
+    pub matte: Option<Matte>,
+    /// An adjusting layer: its children are not drawn but say where it
+    /// applies, by their alpha (everywhere when it has none), and its
+    /// effects apply to everything drawn before it among its siblings, mixed
+    /// in by its opacity and matte. Its parent is isolated, so that is all
+    /// its composition drew below it.
+    pub adjust: bool,
+    /// Its box in its own coordinates, when its content has one: a rect's,
+    /// an image's or video's frame, a composition's canvas. Effects that
+    /// wrap, tile or pin at a layer's edges read it.
+    pub bounds: Option<Rect>,
+    /// Its own time, in seconds, which effects that run over time read.
+    pub time: f64,
+    /// Motion blur of a drawing made once: moves in its parent's
+    /// coordinates. The layer is drawn once, with its masks and effects,
+    /// laid at each move and averaged, before it blends. Empty for a
+    /// projected layer, whose moves are [`Projection::samples`].
+    pub motion: Vec<Affine>,
+    /// A plane seen through a camera ([D58]): when set, the layer is drawn
+    /// in its own coordinates and laid onto its parent's through this map,
+    /// and `transform` is not used.
+    ///
+    /// [D58]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+    pub projection: Option<Projection>,
+}
+
+/// How a projected layer lies on its parent ([D58]).
+///
+/// The layer's children, masks, clip and effects are drawn flat in its own
+/// coordinates, into a buffer of its own at the most the map magnifies the
+/// part the canvas sees. The buffer is laid onto the canvas through the
+/// map, sampled from a chain of halved copies by the footprint of each
+/// pixel. Pixels whose ray meets the plane behind the camera stay clear.
+/// Its opacity, blend mode and matte then apply as for a flat layer.
+///
+/// [D58]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+#[derive(Debug, Clone, PartialEq)]
+pub struct Projection {
+    /// From the layer's own coordinates to its parent's, with `w`, the
+    /// third coordinate of the image, positive in front of the camera and
+    /// negative behind it.
+    pub matrix: Homography,
+    /// Motion blur of a drawing made once ([D57]): the map at each moment
+    /// of the shutter, from the layer's own coordinates to its parent's as
+    /// `matrix` is. The drawing is laid through each and averaged at `1/n`
+    /// each, before it blends; empty for none, when it is laid through
+    /// `matrix` alone. They take the place [`Layer::motion`] has for a
+    /// flat layer, as whole maps rather than moves, since the map at the
+    /// frame may be singular (a plane seen edge-on) and have no inverse.
+    ///
+    /// [D57]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter
+    pub samples: Vec<Homography>,
+}
+
+impl Projection {
+    /// The layer laid through `matrix`, without motion blur.
+    pub fn new(matrix: Homography) -> Projection {
+        Projection {
+            matrix,
+            samples: Vec::new(),
+        }
+    }
+}
+
+/// A mask: an outline that cuts what a layer draws, before its effects.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerMask {
+    /// The outline, in the layer's coordinates; filled by the non-zero rule.
+    pub path: BezPath,
+    /// How it combines with the masks before it.
+    pub mode: MaskMode,
+    /// It covers what is outside its outline instead of what is inside.
+    pub inverted: bool,
+    /// How much it covers, 0 to 1.
+    pub opacity: f32,
+    /// How far its edge fades on each axis, in the layer's units.
+    pub feather: [f32; 2],
+    /// How far its edge moves out, in the layer's units; negative moves it in.
+    pub expand: f32,
+}
+
+/// How a mask combines with the coverage of the masks before it, `a`,
+/// covering `m` itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaskMode {
+    /// Left out: it cuts nothing.
+    None,
+    /// Joins: `a + m − a·m`.
+    Add,
+    /// Removes: `a·(1 − m)`.
+    Subtract,
+    /// Keeps the overlap: `a·m`.
+    Intersect,
+    /// The larger of the two.
+    Lighten,
+    /// The smaller of the two.
+    Darken,
+    /// Where one covers and the other does not: `|a − m|`.
+    Difference,
+}
+
+/// A layer's matte: a node drawn in the layer's parent's coordinates, whose
+/// pixels decide how much of the layer shows at each point.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Matte {
+    /// What the matte layer draws, in the same coordinates as the layer it
+    /// mattes: the transform the layer's parent gives applies to both.
+    pub source: Box<Node>,
+    /// How the drawing is read.
+    pub mode: MatteMode,
+}
+
+/// How a matte's drawing is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatteMode {
+    /// The layer shows as much as the matte is opaque.
+    Alpha,
+    /// The layer shows as much as the matte is transparent.
+    AlphaInverted,
+    /// The layer shows as much as the matte is bright, transparency
+    /// counting as black.
+    Luma,
+    /// The layer shows as much as the matte is dark, transparency counting
+    /// as black.
+    LumaInverted,
+}
+
+impl Layer {
+    /// A plain layer: no transform, fully opaque, normal blending, holding `children`.
+    pub fn new(children: Vec<Node>) -> Layer {
+        Layer {
+            transform: Affine::IDENTITY,
+            opacity: 1.0,
+            blend: BlendMode::Normal,
+            clip: None,
+            masks: Vec::new(),
+            effects: Vec::new(),
+            children,
+            isolate: false,
+            matte: None,
+            adjust: false,
+            bounds: None,
+            time: 0.0,
+            motion: Vec::new(),
+            projection: None,
+        }
+    }
+
+    /// Whether drawing it needs a buffer of its own.
+    pub fn is_isolated(&self) -> bool {
+        self.isolate
+            || self.opacity < 1.0
+            || self.blend != BlendMode::Normal
+            || self.clip.is_some()
+            || !self.effects.is_empty()
+            || !self.masks.is_empty()
+            || !self.motion.is_empty()
+            || self.projection.is_some()
+            || self.matte.is_some()
+            || self
+                .children
+                .iter()
+                .any(|child| matches!(child, Node::Layer(layer) if layer.adjust))
+    }
+}
+
+/// The region a layer is clipped to.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Clip {
+    /// A rectangle, such as a nested composition's bounds.
+    Rect(Rect),
+    /// Any outline, with its fill rule.
+    Path(BezPath, FillRule),
+}
+
+impl Layer {
+    /// The clip its drawing shows within: its clip, grown with its box by
+    /// the effects that draw beyond it ([`Reach::Grows`]). Its content is
+    /// cut to its own clip before those effects run. A grown outline
+    /// becomes the grown box around it.
+    ///
+    /// [`Reach::Grows`]: crate::Reach::Grows
+    pub fn shown_clip(&self) -> Option<Clip> {
+        let clip = self.clip.as_ref()?;
+        if !self.effects_grow() {
+            return Some(clip.clone());
+        }
+        let outline = match clip {
+            Clip::Rect(rect) => *rect,
+            Clip::Path(path, _) => path.bounding_box(),
+        };
+        Some(Clip::Rect(
+            self.effects
+                .iter()
+                .fold(outline, |b, effect| effect.grown(b)),
+        ))
+    }
+
+    /// Whether an effect of it draws beyond its box.
+    pub(crate) fn effects_grow(&self) -> bool {
+        self.effects
+            .iter()
+            .any(|effect| matches!(effect.reach(), crate::Reach::Grows(_)))
+    }
+}
+
+impl Clip {
+    /// The clip as an outline and the rule that says what is inside.
+    pub(crate) fn outline(&self) -> (BezPath, FillRule) {
+        match self {
+            Clip::Rect(rect) => (rect.to_path(0.1), FillRule::NonZero),
+            Clip::Path(path, rule) => (path.clone(), *rule),
+        }
+    }
+}
+
+/// An outline painted in its layer's coordinates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PathDraw {
+    /// The outline.
+    pub path: BezPath,
+    /// What it is painted with.
+    pub paint: Paint,
+    /// Filled or stroked.
+    pub style: DrawStyle,
+}
+
+/// One glyph of a run.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Glyph {
+    /// The glyph's id in its font (not a character code).
+    pub id: u32,
+    /// Its origin on the baseline, in the run's coordinates.
+    pub x: f32,
+    /// Its baseline, in the run's coordinates.
+    pub y: f32,
+}
+
+/// Glyphs of one font at one size, painted in their layer's coordinates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GlyphDraw {
+    /// The font file's data and the index of the face in it.
+    pub font: FontData,
+    /// The size in pixels per em.
+    pub size: f32,
+    /// The glyphs, positioned on their baselines.
+    pub glyphs: Vec<Glyph>,
+    /// Applied to each glyph about its own origin, such as a slant for faux italic.
+    pub glyph_transform: Option<Affine>,
+    /// A variable font's position on its axes, normalised as the font's
+    /// `fvar`/`avar` tables give it; empty for static fonts.
+    pub coords: Vec<i16>,
+    /// What the glyphs are painted with.
+    pub paint: Paint,
+    /// Filled or stroked.
+    pub style: DrawStyle,
+}
+
+/// A picture painted in its layer's coordinates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageDraw {
+    /// The pixels.
+    pub picture: Picture,
+    /// Where they go: the picture is stretched to fill this rectangle, its
+    /// top-left pixel at the rectangle's top-left corner.
+    pub rect: Rect,
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/list.rs"]
+mod tests;

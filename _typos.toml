@@ -1,6 +1,6 @@
 [files]
 # Fixture projects and their snapshots hold the authors' own spelling.
-extend-exclude = ["crates/motion-import/tests/fixtures/", "*.snap"]
+extend-exclude = ["crates/nakkash-import/tests/fixtures/", "*.snap"]
 
 [default.extend-words]
 # Four-character chunk and box tags and short codes, not words.

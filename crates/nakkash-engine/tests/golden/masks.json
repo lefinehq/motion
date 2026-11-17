@@ -1,0 +1,13 @@
+{"nakkash":1,"size":"360x240","fps":10,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"frame","rect":"70x70","fill":"#3B82F6","at":"53 50","mask":[{"mask":"M0,0 L70,0 L70,70 L0,70 Z"},{"mask":"M20,20 L50,20 L50,50 L20,50 Z","mode":"subtract"}]},
+{"id":"overlap","rect":"70x70","fill":"#2E7D32","at":"137 50","mask":[{"mask":"M0,0 L45,0 L45,45 L0,45 Z"},{"mask":"M25,25 L70,25 L70,70 L25,70 Z","mode":"intersect"}]},
+{"id":"bright","rect":"70x70","fill":"#E4572E","at":"223 50","mask":[{"mask":"M0,0 L45,0 L45,70 L0,70 Z","opacity":0.4},{"mask":"M25,0 L70,0 L70,70 L25,70 Z","mode":"lighten","opacity":0.8}]},
+{"id":"xor","rect":"70x70","fill":"#0891B2","at":"307 50","mask":[{"mask":"M0,0 L45,0 L45,45 L0,45 Z"},{"mask":"M25,25 L70,25 L70,70 L25,70 Z","mode":"difference"}]},
+{"id":"soft","rect":"70x70","fill":"#7C3AED","at":"53 125","mask":[{"mask":"M35,5 C55,5 65,15 65,35 C65,55 55,65 35,65 C15,65 5,55 5,35 C5,15 15,5 35,5 Z","feather":[16,4]}]},
+{"id":"outside","rect":"70x70","fill":"#DB2777","at":"137 125","mask":[{"mask":"M20,20 L50,20 L50,50 L20,50 Z","keep":"outside","expand":6}]},
+{"id":"blurred","rect":"70x70","fill":"#111827","at":"223 125","mask":[{"mask":"M20,20 L50,20 L50,50 L20,50 Z"}],"fx":[{"gaussian-blur":12}]},
+{"id":"turned","rect":"70x70","fill":"#F59E0B","at":"303 125","rotate":30,"scale":0.8,"mask":[{"mask":"M0,0 L70,0 L0,70 Z","expand":-6}]},
+{"id":"stripes","shapes":[{"rect":[340,40]},{"fill":"#0F172A"}],"at":"180 205"},
+{"id":"lens","fx":[{"invert":"rgb"}],"mask":[{"mask":"M-80,65 L80,65 L80,105 L-80,105 Z","feather":8}]}
+]}

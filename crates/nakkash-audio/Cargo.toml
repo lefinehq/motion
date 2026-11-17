@@ -1,0 +1,25 @@
+[package]
+name = "nakkash-audio"
+description = "Reads sound files without system libraries and lays them out for mixing: WAV, MP3, FLAC and Ogg Vorbis, folded down to stereo and resampled to one rate with a band-limited kernel of its own."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+nakkash-format = { path = "../nakkash-format" }
+# FLAC frames, pure Rust.
+claxon = "0.4"
+# Ogg Vorbis packets, pure Rust.
+lewton = "0.10"
+# MP3 frames, pure Rust.
+nanomp3 = "0.2"
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+rstest.workspace = true
+
+[lints]
+workspace = true

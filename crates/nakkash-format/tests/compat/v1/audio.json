@@ -1,0 +1,9 @@
+{"nakkash":1,"size":"480x270","fps":24,"dur":"2s","bg":"#FFFFFF",
+"comps":{"beat":{"size":"120x120","dur":"1s","layers":[
+ {"id":"tick","audio":"sounds/tick.wav"},
+ {"id":"dot","rect":"60x60 r30","fill":"#E4572E","anim":{"scale":"1.4 -> 1 @0-8f"}}]}},
+"layers":[
+{"id":"music","audio":"sounds/tick.wav","offset":"0.25s","anim":{"volume":"0 -> 1 @0-12f"}},
+{"id":"one","comp":"beat","at":"160 135"},
+{"id":"two","comp":"beat","at":"320 135","offset":"1s","volume":0.5}
+]}

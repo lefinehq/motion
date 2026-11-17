@@ -1,8 +1,0 @@
-{"motion":1,"size":"320x180","fps":10,"dur":"1s","bg":"#FFFFFF",
-"layers":[
-{"id":"rig","pivot":true,"3d":true,"at":"160 90","z":40,"anchor-z":10,"scale-z":2,"rotate-x":10,"rotate-y":-20,"orient":"0,15,0"},
-{"id":"card","rect":"120x80","fill":"#3B82F6","3d":true,"parent":"rig","at":"0 0","anim":{"z":"0 -> 120 @0-10f","anchor-z":"0 -> 5 @0-10f","scale-z":"1 -> 2 @0-10f","rotate-x":"0 -> 30 @0-10f","rotate-y":"-60 -> 0 @0-10f out-cubic","orient":"0,0,0 -> 0,0,90 @0-10f"}},
-{"id":"flat","rect":"40x40","fill":"#E4572E","at":"40 40"},
-{"id":"wide","camera":true,"zoom":300,"target":[160,90],"target-z":0,"z":-400},
-{"id":"cam","camera":true,"span":"0.5s-1s","anim":{"zoom":"400 -> 500 @5-10f","z":"-500 -> -450 @5-10f","target":"160,90 -> 170,95 @5-10f","target-z":"0 -> 20 @5-10f"}}
-]}

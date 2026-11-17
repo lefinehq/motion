@@ -49,7 +49,7 @@ A hand-written impl is for real logic only.
 
 ## How errors work
 
-Every failure in every crate is one type, `motion_format::Diagnostic`. It prints as `path: message; expected form`, where the path and the expected form are each optional:
+Every failure in every crate is one type, `nakkash_format::Diagnostic`. It prints as `path: message; expected form`, where the path and the expected form are each optional:
 
 ```
 card.rect: `300xx` is not a valid rectangle; expected `<width>x<height> [r<radius>]`, e.g. `300x400 r24`
@@ -58,7 +58,7 @@ card.rect: `300xx` is not a valid rectangle; expected `<width>x<height> [r<radiu
 Build one with the builder, never with `format!` or a helper of your own:
 
 ```rust
-use motion_format::{Diagnostic, Kind};
+use nakkash_format::{Diagnostic, Kind};
 
 Diagnostic::syntax("`300xx` is not a valid rectangle").expected("`<width>x<height>`, e.g. `300x400`");
 Diagnostic::unknown("curve", "fast", ["linear", "ease-out"]); // lists the allowed names
@@ -87,16 +87,16 @@ impl Form for RectShape {
 }
 ```
 
-- Build the grammar from the pieces in `motion_format::grammar` (`number`, `word`, `blank0`, `blank1`, `ends_with`). They read numbers and spaces the same way everywhere.
+- Build the grammar from the pieces in `nakkash_format::grammar` (`number`, `word`, `blank0`, `blank1`, `ends_with`). They read numbers and spaces the same way everywhere.
 - `parse_whole` fits a grammar with one kind of failure. When failures differ, give the grammar one private reason enum, raise a reason where it fails, and turn it into a `Diagnostic` once with `parse_all` (see `shorthand/font.rs`).
 - Use the type as `Shorthand<T>` in `doc.rs`. serde reads it from the document for free, and a value that is not a string is told `T::FORM`.
 - Add unit tests that check each error's `kind`, `path` and `expected`, a line for it in the crate's error-message snapshot, and a never-panic `proptest`.
 
 ## Adding a field
 
-1. **Document:** add the field to `SceneDoc` or `LayerDoc` in `crates/motion-format/src/doc.rs`, as `Option<Shorthand<T>>` (or a plain type), with a `///` doc. It stays `Option` so that `validate` can report a missing key, with an example.
+1. **Document:** add the field to `SceneDoc` or `LayerDoc` in `crates/nakkash-format/src/doc.rs`, as `Option<Shorthand<T>>` (or a plain type), with a `///` doc. It stays `Option` so that `validate` can report a missing key, with an example.
 2. **Key:** add the key's spelling to `parse::key` and to `SCENE_KEYS` or `LAYER_KEYS`, in the same order as the fields. A unit test keeps them in step.
-3. **Rule:** read it in `crates/motion-format/src/validate.rs`, the one place that checks values and rules that span several keys. Parse a shorthand with `parse_at(key)`, which puts the key in the error path, and return a `Diagnostic` for any rule that fails:
+3. **Rule:** read it in `crates/nakkash-format/src/validate.rs`, the one place that checks values and rules that span several keys. Parse a shorthand with `parse_at(key)`, which puts the key in the error path, and return a `Diagnostic` for any rule that fails:
 
    ```rust
    fn font_only_on_text(doc: &LayerDoc) -> Result<()> {
@@ -109,7 +109,7 @@ impl Form for RectShape {
    }
    ```
 
-4. **Test:** add a test in `crates/motion-format/tests/unit/validate.rs` for the good value and for each error (its `kind`, `path` and `expected`), and add the error to the error-message snapshot.
+4. **Test:** add a test in `crates/nakkash-format/tests/unit/validate.rs` for the good value and for each error (its `kind`, `path` and `expected`), and add the error to the error-message snapshot.
 
 Edits already reach the new key: `card fill=#FF0000` and nested keys such as `card anim.opacity="0 -> 1 @0-12f"` write into the document, and `validate` checks the result.
 
@@ -117,9 +117,9 @@ Edits already reach the new key: `card fill=#FF0000` and nested keys such as `ca
 
 Logs go to stderr, never stdout, so command output stays clean for agents. They are off by default.
 
-- **Enable them** with `--log <level>` (default `off`, so a plain failing run prints only its `error:` line), or with `MOTION_LOG`, which takes `EnvFilter` directives such as `MOTION_LOG=warn,motion_query=debug` and wins over `--log`. An invalid `MOTION_LOG` is ignored with one `WARN` log line. Add `--log-format json` for one JSON object per line.
-- **Time the steps** with `--timings`, which prints a line such as `timings read=0.05ms parse=0.40ms compile=0.02ms check=0.45ms` to stderr at the end. With `--log-format json` the timings are one `info` event instead (target `motion::timings`, a field per step in milliseconds).
-- **Emit them** with the `tracing` macros only. Library crates never print and never install a subscriber; `motion_engine::telemetry` does that for binaries and tests. Every engine step runs through the engine's private `stage` wrapper (`crates/motion-engine/src/stage.rs`), which opens the step's span and logs its failure, so a step never logs its own errors. The timings recognise a step by its span's target and name, not by a field.
+- **Enable them** with `--log <level>` (default `off`, so a plain failing run prints only its `error:` line), or with `NAKKASH_LOG`, which takes `EnvFilter` directives such as `NAKKASH_LOG=warn,nakkash_query=debug` and wins over `--log`. An invalid `NAKKASH_LOG` is ignored with one `WARN` log line. Add `--log-format json` for one JSON object per line.
+- **Time the steps** with `--timings`, which prints a line such as `timings read=0.05ms parse=0.40ms compile=0.02ms check=0.45ms` to stderr at the end. With `--log-format json` the timings are one `info` event instead (target `nakkash::timings`, a field per step in milliseconds).
+- **Emit them** with the `tracing` macros only. Library crates never print and never install a subscriber; `nakkash_engine::telemetry` does that for binaries and tests. Every engine step runs through the engine's private `stage` wrapper (`crates/nakkash-engine/src/stage.rs`), which opens the step's span and logs its failure, so a step never logs its own errors. The timings recognise a step by its span's target and name, not by a field.
 - **Name fields** in `snake_case`, with counts as plain names (`layers`, `violations`) and a layer id as `id`.
 - **Pick the level** by who needs it:
   - `error`: failures shown to the user
@@ -134,7 +134,7 @@ Logs go to stderr, never stdout, so command output stays clean for agents. They 
 - **Document the code.** Every crate and module starts with a `//!` doc saying what it is for and where it sits in the pipeline. Every public item has a `///` doc. Non-obvious logic gets a short comment saying why.
 - **Use our own vocabulary.** We do not use other products' names or trademarks in code, identifiers, docs or examples. Other tools may be named only in factual, reproducible benchmark comparisons. See [D18](docs/design/decisions.md#d18-naming-rule).
 - **Write docs the way we write docs.** See [How we write docs](docs/README.md#how-we-write-docs).
-- **Print numbers with `motion_format::fmt_num`** so output is stable.
+- **Print numbers with `nakkash_format::fmt_num`** so output is stable.
 
 ## Commits
 

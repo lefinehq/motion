@@ -7,7 +7,7 @@ version = "0.0.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.92"
-repository = "https://github.com/lefinehq/motion"
+repository = "https://github.com/lefinehq/nakkash"
 # No crate is published yet; every crate inherits this with `publish.workspace`.
 publish = false
 
@@ -121,6 +121,6 @@ opt-level = 3
 [profile.dev.package.rav1e]
 opt-level = 3
 # The AV1 encoder is generic over its pixel type, so most of it is compiled
-# where `motion-encode` names `u8`: that crate, a thin layer, is optimised too.
-[profile.dev.package.motion-encode]
+# where `nakkash-encode` names `u8`: that crate, a thin layer, is optimised too.
+[profile.dev.package.nakkash-encode]
 opt-level = 3

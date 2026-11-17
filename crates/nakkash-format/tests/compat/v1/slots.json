@@ -1,0 +1,14 @@
+{"nakkash":1,"size":"1080x1080","fps":25,"dur":"2s","bg":"#101820",
+"slots":{"accent":{"color":"#E63946","label":"Accent"},"headline":{"text":"Launch"},"lift":40,"corner":[120,120]},
+"roles":{"headline":"tag/word","plate":"plate","accent":"$accent"},
+"locks":["@plate","palette","typefaces"],
+"comps":{
+ "tag":{"size":"600x160","dur":"2s","bg":"#FFFFFF","slots":{"accent":"#2A9D8F"},"layers":[
+  {"id":"dot","rect":"120x120 r60","fill":"$accent","at":"80 80"},
+  {"id":"word","text":"$headline","font":"Inter Variable 64 700","fill":"#101820","at":"360 80"}]}},
+"layers":[
+{"id":"plate","rect":"600x300 r24","fill":"$accent","at":"540 300","in":"fade-up 12f"},
+{"id":"price","text":"$$99","font":"Inter Variable 96 700","fill":"#FFFFFF","at":"540 300"},
+{"id":"tag","comp":"tag","at":"540 700","anim":{"y":[[0,"700"],[25,"660"]]}},
+{"id":"tag-2","comp":"tag","at":"540 900","overrides":{"$accent":"#F4A261","word":{"fill":"$accent"}}}
+]}

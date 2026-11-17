@@ -1,0 +1,7 @@
+{"nakkash":1,"size":"480x480","fps":24,"dur":"1.5s","bg":"#FFFFFF",
+"layers":[
+{"id":"panel","rect":"360x200","at":"240 160","fill":"#E4572E","anim":{"y":"rest+80 -> rest-10 -> rest @0-18f out-cubic","scale":"rest*0.8 -> rest @0-12f"}},
+{"id":"dot","rect":"30x30","parent":"panel","at":"330 30","fill":"#101010","anim":{"x":"rest -> rest-300@60% -> rest @0-24f in-out-sine"}},
+{"id":"label","text":"From rest","font":"Inter Variable 36","fill":"#101010","at":"240 360","anim":{"position":[{"t":0,"v":"rest+0,40","curve":"out-back"},{"t":"0.5s","v":"rest"}],"opacity":"0 -> 1 -> 0.6 -> 1 @0-1s"}},
+{"id":"bars","at":"240 440","shapes":[{"rect":[200,12],"anim":{"width":"rest*0.1 -> rest @0-18f out-expo"}},{"fill":"#3B82F6"}]}
+]}
