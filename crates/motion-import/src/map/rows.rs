@@ -35,6 +35,11 @@ pub(super) enum To {
     /// Nowhere, which is right only at its default; any other value is
     /// reported as unsupported, for this reason.
     OnlyDefault(&'static str),
+    /// Nowhere, which is right at its default, and at any value while the
+    /// item's property named second holds 0 all the time or is left out:
+    /// it only says how that property applies. Otherwise it is reported as
+    /// unsupported, for the reason given first.
+    OnlyDefaultWith(&'static str, &'static str),
 }
 
 /// What a property is when the project leaves it out, in the project's units.
@@ -1505,7 +1510,7 @@ pub(super) static KINDS: [Kind; 46] = [
             ),
             row(
                 "ADBE Text Track Type",
-                To::OnlyDefault("tracking before and after"),
+                To::OnlyDefaultWith("tracking before and after", "ADBE Text Tracking Amount"),
                 Number,
                 Missing::Number(1.0),
             ),

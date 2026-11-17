@@ -1384,3 +1384,82 @@ fn the_whole_text_options_become_style_keys_and_blending_is_reported() {
             .any(|f| f.what == "blending between the characters of a text")
     );
 }
+
+#[test]
+fn how_tracking_applies_is_reported_only_where_there_is_tracking() {
+    use crate::model::{Child, Group, Interpolation, Keyframe, Stream, Value};
+    use crate::test_support::build::{group, number, property};
+    let key = |time: f64, n: f64| Keyframe {
+        time,
+        value: Value::Number(n),
+        in_interpolation: Interpolation::Linear,
+        out_interpolation: Interpolation::Linear,
+        in_ease: Vec::new(),
+        out_ease: Vec::new(),
+        spatial: None,
+        continuous: false,
+        auto_bezier: false,
+        roving: false,
+    };
+    let reported = |track_type: Stream, tracking: Option<f64>| {
+        let mut values = vec![Child::Property(property(
+            "ADBE Text Track Type",
+            track_type,
+        ))];
+        if let Some(t) = tracking {
+            values.push(Child::Property(property(
+                "ADBE Text Tracking Amount",
+                number(t),
+            )));
+        }
+        let animator = group(
+            "ADBE Text Animator",
+            vec![
+                Child::Group(group(
+                    "ADBE Text Selectors",
+                    vec![Child::Group(group("ADBE Text Selector", vec![]))],
+                )),
+                Child::Group(group("ADBE Text Animator Properties", values)),
+            ],
+        );
+        let animators = Child::Group(group("ADBE Text Animators", vec![Child::Group(animator)]));
+        let mut sample = sample_project();
+        for item in &mut sample.items {
+            if let crate::model::ItemKind::Composition(c) = &mut item.kind {
+                for layer in &mut c.layers {
+                    for child in &mut layer.properties.children {
+                        if let Child::Group(Group {
+                            match_name,
+                            children,
+                            ..
+                        }) = child
+                            && match_name == "ADBE Text Properties"
+                        {
+                            children.push(animators.clone());
+                        }
+                    }
+                }
+            }
+        }
+        import(&sample, &Options::default())
+            .expect("the sample imports")
+            .mapping
+            .unsupported
+            .iter()
+            .any(|f| f.what == "tracking before and after")
+    };
+    // Another type with tracking to apply is reported.
+    assert!(reported(number(2.0), Some(20.0)));
+    // With no tracking, or none to apply, the type changes nothing.
+    assert!(!reported(number(2.0), Some(0.0)));
+    assert!(!reported(number(3.0), None));
+    // Keys that all hold the default hold it all the time.
+    assert!(!reported(
+        Stream::Animated(vec![key(0.5, 1.0), key(1.0, 1.0)]),
+        Some(20.0)
+    ));
+    assert!(reported(
+        Stream::Animated(vec![key(0.5, 1.0), key(1.0, 2.0)]),
+        Some(20.0)
+    ));
+}
