@@ -342,9 +342,9 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","text":"x","animate":[{"animator":[{"range":"char","by":"word"}]}]}` → a.animate[0].animator[0].by: `by` is the value `range` holds; expected `by` written as the value of `range`
 `{"id":"a","text":"x","animate":[{"animator":[{"range":"char","amount":2}]}]}` → a.animate[0].animator[0].amount: value 2 is outside -1..=1; expected a number from -1 to 1
 `{"id":"a","text":"x","animate":[{"animator":[{"range":"char","shape":"wave"}]}]}` → a.animate[0].animator[0].shape: unknown range shape `wave`; expected one of square, ramp-up, ramp-down, triangle, round, smooth
-`{"id":"a","text":"x","animate":[{"animator":[],"y":3}]}` → a.animate[0].y: unknown animator key `y`; expected one of animator, id, hidden, anim, by, order, position, anchor, scale, rotate, opacity, fill, stroke, stroke-width, tracking, blur, stagger, seed
+`{"id":"a","text":"x","animate":[{"animator":[],"y":3}]}` → a.animate[0].y: unknown animator key `y`; expected one of animator, id, hidden, anim, by, order, position, anchor, scale, rotate, skew, skew-axis, opacity, fill, stroke, stroke-width, tracking, blur, stagger, seed
 `{"id":"a","text":"x","animate":[{"animator":[],"opacity":2}]}` → a.animate[0].opacity: value 2 is outside 0..=1; expected a number from 0 to 1
-`{"id":"a","text":"x","animate":[{"animator":[],"anim":{"glow":"0 -> 1 @0-5f"}}]}` → a.animate[0].anim.glow: unknown animator property `glow`; expected one of position, anchor, scale, rotate, opacity, fill, stroke, stroke-width, tracking, blur, stagger, seed, x, y, anchor-x, anchor-y, scale-x, scale-y, blur-x, blur-y
+`{"id":"a","text":"x","animate":[{"animator":[],"anim":{"glow":"0 -> 1 @0-5f"}}]}` → a.animate[0].anim.glow: unknown animator property `glow`; expected one of position, anchor, scale, rotate, skew, skew-axis, opacity, fill, stroke, stroke-width, tracking, blur, stagger, seed, x, y, anchor-x, anchor-y, scale-x, scale-y, blur-x, blur-y
 
 ## fonts
 `{"motion":1,"dur":"1s","fonts":"fonts","layers":[]}` → fonts: invalid type: string "fonts"; expected a list of font files and folders, e.g. ["fonts/lato"]

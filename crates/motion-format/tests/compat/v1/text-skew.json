@@ -1,0 +1,7 @@
+{"motion":1,"size":"480x200","fps":24,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"lean","at":"240 90","text":"LEANING","font":"Inter Variable 56 800","fill":"#1E3A5F","style":{"align":"center"},
+ "animate":[{"animator":[{"range":"char","anim":{"offset":"0 -> 1 @0-24f"}}],"skew":30}]},
+{"id":"shear","at":"240 170","text":"down the side","font":"Inter Variable 32 600","fill":"#101010","style":{"align":"center"},
+ "animate":[{"animator":[{"range":"word"}],"skew-axis":90,"anim":{"skew":"-20 -> 20 @0-24f"}}]}
+]}

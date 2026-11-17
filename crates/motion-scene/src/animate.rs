@@ -181,6 +181,9 @@ struct Effect {
     anchor: Vec2,
     scale: Vec2,
     rotate: f64,
+    /// How far it slants, in degrees, and along which direction.
+    skew: f64,
+    skew_axis: f64,
     tracking: f64,
     state: GlyphState,
 }
@@ -203,6 +206,8 @@ pub fn glyph_states(
                 anchor: Vec2::ZERO,
                 scale: Vec2::new(1.0, 1.0),
                 rotate: 0.0,
+                skew: 0.0,
+                skew_axis: 0.0,
                 tracking: 0.0,
                 state: GlyphState {
                     transform: Affine::IDENTITY,
@@ -357,6 +362,10 @@ fn apply(item: &ItemState, applies: &[Prop], amounts: Vec2, effect: &mut Effect)
                 );
             }
             p if p == props::ANIMATOR_ROTATE => effect.rotate += item.number(prop) * amount,
+            p if p == props::ANIMATOR_SKEW => effect.skew += item.number(prop) * amount,
+            p if p == props::ANIMATOR_SKEW_AXIS => {
+                effect.skew_axis += item.number(prop) * amount;
+            }
             p if p == props::ANIMATOR_OPACITY => {
                 effect.state.opacity =
                     (effect.state.opacity * toward(1.0, item.number(prop), amount)).clamp(0.0, 1.0);
@@ -390,7 +399,8 @@ fn across(v: Vec2, amounts: Vec2) -> Vec2 {
 
 /// Turns each glyph's accumulated effect into its transform: tracking
 /// shifts the glyphs after it on its line, keeping the line's alignment,
-/// and each glyph scales and turns about its anchor ([`anchors`]).
+/// and each glyph scales, slants and turns about its anchor ([`anchors`]),
+/// in that order.
 fn place(node: &TextNode, parts: &Parts, effects: &mut [Effect]) {
     // Each glyph's shift from the tracking before it on its line, and each line's total.
     let mut tracked = vec![0.0; node.layout.lines.len()];
@@ -422,6 +432,7 @@ fn place(node: &TextNode, parts: &Parts, effects: &mut [Effect]) {
                 Affine::translate(effect.offset + Vec2::new(shifts[at] + realign, 0.0))
                     * Affine::translate(pivot)
                     * Affine::rotate(effect.rotate.to_radians())
+                    * slant(effect.skew, effect.skew_axis)
                     * Affine::scale_non_uniform(effect.scale.x, effect.scale.y)
                     * Affine::translate(-pivot);
             at += 1;
@@ -473,6 +484,22 @@ pub fn anchors(node: &TextNode, parts: &Parts) -> Vec<Point> {
             Point::new((lo + hi) / 2.0 + ax * (hi - lo), baseline + ay * size)
         })
         .collect()
+}
+
+/// A slant of `skew` degrees along the direction `axis` degrees clockwise
+/// from across: points move along that direction in proportion to how far
+/// they stand from it, so with `axis` 0 a positive skew leans a part's top
+/// forward (to the right, as an italic does). The skew is held inside -85
+/// to 85 degrees, where it stays finite.
+fn slant(skew: f64, axis: f64) -> Affine {
+    if skew == 0.0 {
+        return Affine::IDENTITY;
+    }
+    let turn = Affine::rotate(axis.to_radians());
+    // y grows downwards: a top above the anchor has y below 0, so it moves
+    // forward by a negative factor.
+    let lean = -skew.clamp(-85.0, 85.0).to_radians().tan();
+    turn * Affine::skew(lean, 0.0) * turn.inverse()
 }
 
 /// The box the visible glyphs cover in the layer's coordinates: each glyph's
