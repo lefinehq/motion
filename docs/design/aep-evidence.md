@@ -172,6 +172,18 @@ A character style's kerning (`kerning` in the document's style: metrics, optical
 
 Optical kerning therefore stays reported, now as `optical kerning (the font's kerning pairs are kept)`, and is set with the font's kerning, as before. A kerning the reader does not know is reported as `a kerning the scene does not have (the font's is kept)`; the corpus holds none. Over all frames, m604 and the 9 scored samples with optical kerning (m565, m595, m596, m647, m713, m714, m715, m716, m769) draw the same to the fourth decimal: `mixkit.co` moves by under 1 px.
 
+## Skewed characters
+
+An animator's skew and skew axis (`ADBE Text Skew`, `ADBE Text Skew Axis`) become the animator's `skew` and `skew-axis` ([scene format](scene-format.md#text-animators)). The corpus holds 17 of each in 5 scored samples (m752, m756, m791, m800, m805). All store 0, and only m756's two animators move theirs, by expressions whose bake gives a skew of 70 degrees and axes of -234 and 120 degrees. Measured once with `motion fidelity` on the five, over all frames. The sweep does not check it yet.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| W1. A positive skew along an axis of 0 leans a part's top forward, and the axis turns the slant with it. | Drawn this way, m756's mean content error goes 0.0985 → 0.0982 and its failing share 73.68 % → 73.67 %. With the lean the other way, the error goes 0.0985 → 0.0989. The other four samples draw the same to the fourth decimal. | 1 sample, 2 animators |
+
+Other things we take without evidence:
+- **Order.** A part scales, then slants, then turns about its anchor. The corpus has no skew that turns or scales at the same time as it slants apart from m756, which does not tell the orders apart.
+- **The limit.** The skew is held within -85 and 85 degrees, where its slant stays finite. No project holds more.
+
 ## Expression selectors
 
 An expression selector (`ADBE Text Expressible Selector`) becomes a `parts` selector ([D64](decisions.md#d64-a-selector-may-choose-each-part-by-its-own-amount)): its amount's expression is evaluated once per part. These beliefs were measured once, by hand: two scenes are drawn at the reference's own times and compared with the reference only at the pixels where they differ. The sweep does not check them yet.

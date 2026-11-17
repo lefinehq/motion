@@ -468,3 +468,53 @@ fn an_entrance_on_parts_moves_each_part_not_the_layer() {
     assert_eq!(opacities(keys, 2.0), [0.5, 0.5, 1.0, 0.0, 0.0]);
     assert_eq!(opacities(keys, 8.0), [1.0; 5]);
 }
+
+/// Where a point `by` from the middle of the baseline of `a` lands, less
+/// where the middle lands, under an animator that skews it `skew` degrees
+/// along `axis`, chosen by `amount`.
+fn skewed(skew: f64, axis: f64, amount: f64, by: Vec2) -> Vec2 {
+    let keys = format!(
+        r#""text":"a","animate":[{{"animator":[{{"range":"char","amount":{amount}}}],"skew":{skew},"skew-axis":{axis}}}]"#
+    );
+    let state = frame(&keys, 0.0);
+    let (text, glyphs) = text_of(&state.nodes[0]);
+    let g = &text.layout.runs[0].glyphs[0];
+    let pivot = kurbo::Point::new(g.x + g.advance / 2.0, g.y);
+    glyphs[0].transform * (pivot + by) - glyphs[0].transform * pivot
+}
+
+#[rstest]
+// A positive skew leans the top forward, as an italic does.
+#[case(45.0, 0.0, 1.0, Vec2::new(0.0, -10.0), Vec2::new(10.0, -10.0))]
+#[case(-45.0, 0.0, 1.0, Vec2::new(0.0, -10.0), Vec2::new(-10.0, -10.0))]
+// Points on the axis stay; the chosen share scales the skew, not the slant.
+#[case(45.0, 0.0, 1.0, Vec2::new(10.0, 0.0), Vec2::new(10.0, 0.0))]
+#[case(60.0, 0.0, 0.75, Vec2::new(0.0, -10.0), Vec2::new(10.0, -10.0))]
+// An axis turned a quarter clockwise turns the whole slant with it: the
+// right side, where the top was, moves down, where forward was.
+#[case(45.0, 90.0, 1.0, Vec2::new(10.0, 0.0), Vec2::new(10.0, 10.0))]
+#[case(45.0, 90.0, 1.0, Vec2::new(0.0, 10.0), Vec2::new(0.0, 10.0))]
+fn skew_leans_each_part_along_its_axis_about_its_anchor(
+    #[case] skew: f64,
+    #[case] axis: f64,
+    #[case] amount: f64,
+    #[case] by: Vec2,
+    #[case] lands: Vec2,
+) {
+    let moved = skewed(skew, axis, amount, by);
+    assert!((moved - lands).hypot() < 1e-9, "{moved:?}");
+}
+
+#[test]
+fn skews_add_up_and_are_held_short_of_a_right_angle() {
+    let keys = r#""text":"a","animate":[{"animator":[{"range":"char"}],"skew":60},{"animator":[{"range":"char"}],"skew":60}]"#;
+    let state = frame(keys, 0.0);
+    let (text, glyphs) = text_of(&state.nodes[0]);
+    let g = &text.layout.runs[0].glyphs[0];
+    let pivot = kurbo::Point::new(g.x + g.advance / 2.0, g.y);
+    let moved = glyphs[0].transform * (pivot + Vec2::new(0.0, -1.0)) - glyphs[0].transform * pivot;
+    assert!(
+        (moved.x - 85f64.to_radians().tan()).abs() < 1e-9,
+        "{moved:?}"
+    );
+}
