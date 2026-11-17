@@ -536,10 +536,10 @@ A start is a number, `"+d"` (the resting value plus the behaviour's distance) or
 
 ### Exits
 
-`out` is an exit, the mirror of `in`: `"out":"fade-down 12f"` plays the preset so the layer reaches its pose as its span ends, or its composition when it has no span ([D72](decisions.md#d72-scenes-written-from-scratch-get-choreography-as-data-and-a-guide)).
+`out` is an exit, the mirror of `in`: `"out":"fade-down 12f"` plays the preset so the layer reaches its pose on the last frame it shows: the last of its span, or of its composition when it has no span ([D72](decisions.md#d72-scenes-written-from-scratch-get-choreography-as-data-and-a-guide)).
 
 - **The pose:** a start relative to the rest is mirrored and an absolute one kept, so a layer leaves the way its entrance arrives: `fade-up` rises into place and rises out, `pop` grows in and shrinks out.
-- **When:** the exit ends with the layer's span, in the layer's own time like its keys. `@6f` ends it 6 frames earlier. The curve runs from the rest to the pose, so `ease-in` leaves slowly and speeds away.
+- **When:** the exit ends on that frame, in the layer's own time like its keys, so a push is wholly off the canvas, and a fade wholly clear, on the frame before the layer goes. `@6f` ends it 6 frames earlier. The curve runs from the rest to the pose, so `ease-in` leaves slowly and speeds away.
 - **With an entrance:** `in` and `out` may move the same property when the exit starts once the entrance has ended; otherwise the file is rejected at `out`.
 - **Not yet:** an exit of the parts of a text (`fade word`), and an exit on a layer that runs backwards (a negative `stretch`), are rejected.
 

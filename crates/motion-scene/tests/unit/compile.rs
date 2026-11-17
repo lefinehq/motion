@@ -395,14 +395,14 @@ fn a_layer_carried_by_a_blurred_pivot_blurs(#[case] holder: &str, #[case] blurre
     assert_eq!(mblur, [blurred, blurred]);
 }
 
-/// The scene lasts 2 s, 60 frames: an exit ends there, the way its preset's
-/// entrance arrives.
+/// The scene lasts 2 s, frames 0 to 59: an exit reaches its pose on the
+/// last, the way its preset's entrance arrives.
 #[rstest]
-#[case::rises_out("fade-up", "y", [(48.0, 200.0), (60.0, 160.0)])]
-#[case::falls_out("fade-down", "y", [(48.0, 200.0), (60.0, 240.0)])]
-#[case::leaves_left("fade-left", "x", [(48.0, 100.0), (60.0, 60.0)])]
-#[case::fades_out("fade", "opacity", [(48.0, 1.0), (60.0, 0.0)])]
-#[case::shrinks_out("pop", "scale-x", [(48.0, 1.0), (60.0, 0.6)])]
+#[case::rises_out("fade-up", "y", [(47.0, 200.0), (59.0, 160.0)])]
+#[case::falls_out("fade-down", "y", [(47.0, 200.0), (59.0, 240.0)])]
+#[case::leaves_left("fade-left", "x", [(47.0, 100.0), (59.0, 60.0)])]
+#[case::fades_out("fade", "opacity", [(47.0, 1.0), (59.0, 0.0)])]
+#[case::shrinks_out("pop", "scale-x", [(47.0, 1.0), (59.0, 0.6)])]
 fn an_exit_leaves_the_way_its_entrance_arrives(
     #[case] preset: &str,
     #[case] target: &str,
@@ -413,11 +413,11 @@ fn an_exit_leaves_the_way_its_entrance_arrives(
 }
 
 #[rstest]
-#[case::with_the_span(r#","span":"0s-1s""#, (18.0, 30.0))]
-#[case::early(r#","out":"fade 12f @6f""#, (42.0, 54.0))]
-// Its own time starts 10 frames late, so its span's end at 60 is its 50.
-#[case::in_its_own_time(r#","offset":"10f""#, (38.0, 50.0))]
-#[case::at_half_speed(r#","stretch":2"#, (18.0, 30.0))]
+#[case::with_the_span(r#","span":"0s-1s""#, (17.0, 29.0))]
+#[case::early(r#","out":"fade 12f @6f""#, (41.0, 53.0))]
+// Its own time starts 10 frames late, so its last frame, 59, is its 49.
+#[case::in_its_own_time(r#","offset":"10f""#, (37.0, 49.0))]
+#[case::at_half_speed(r#","stretch":2"#, (17.5, 29.5))]
 fn an_exit_ends_when_the_layer_does(#[case] extra: &str, #[case] frames: (f64, f64)) {
     let extra = match extra.contains("\"out\"") {
         true => extra.to_owned(),
@@ -435,7 +435,7 @@ fn an_entrance_and_an_exit_share_a_property_one_after_the_other() {
         .nodes[0];
     assert_eq!(
         pairs(track(n, "opacity")),
-        [(0.0, 0.0), (10.0, 1.0), (50.0, 1.0), (60.0, 0.0)]
+        [(0.0, 0.0), (10.0, 1.0), (49.0, 1.0), (59.0, 0.0)]
     );
 }
 

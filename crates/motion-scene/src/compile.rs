@@ -406,8 +406,9 @@ fn node(
 ) -> Node {
     // An entrance on the parts of a text is one of its animators instead.
     let entrance = entrance(layer, scene).filter(|(behaviour, _)| behaviour.parts.is_none());
-    // An exit ends with the layer's span, or the list's, in its own time.
-    let ends = ear.timing.span.map_or(length, |(_, end)| end);
+    // An exit ends on the last frame of the layer's span, or the list's,
+    // in its own time.
+    let ends = Behaviour::last_shown(ear.timing.span.map_or(length, |(_, end)| end));
     let exit = layer.exit.as_ref().and_then(|behaviour| {
         let spec = scene.preset(&behaviour.preset)?;
         Some(Exit {

@@ -1473,10 +1473,12 @@ fn exit_conflict(layer: &Layer, context: &Context) -> Result<()> {
         return Ok(());
     };
     let fps = context.fps;
-    let end = layer
-        .span
-        .map_or(context.duration, |span| span.end)
-        .to_frames(fps);
+    let end = Behaviour::last_shown(
+        layer
+            .span
+            .map_or(context.duration, |span| span.end)
+            .to_frames(fps),
+    );
     let (leaves, _) =
         behaviour.exit_frames((end - layer.offset.to_frames(fps)) / layer.stretch, fps);
     let (_, arrives) = entrance.0.frames(fps);
