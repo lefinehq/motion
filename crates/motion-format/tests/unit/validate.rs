@@ -578,6 +578,36 @@ fn an_entrance_on_parts_leaves_the_layer_tracks_to_anim() {
     );
 }
 
+#[rstest::rstest]
+#[case::anim_on_its_property(
+    r#","out":"fade","anim":{"opacity":"1 -> 0 @0-4f"}"#,
+    Kind::Conflict,
+    "a.anim.opacity"
+)]
+#[case::over_the_entrance(r#","in":"fade 20f","out":"fade 20f""#, Kind::Conflict, "a.out")]
+#[case::parts(r#","out":"fade word""#, Kind::Invalid, "a.out")]
+#[case::backwards(r#","stretch":-1,"out":"fade""#, Kind::Conflict, "a.out")]
+#[case::no_such_preset(r#","out":"vanish""#, Kind::UnknownName, "a.out")]
+fn an_exit_that_cannot_play_is_an_error(
+    #[case] extra: &str,
+    #[case] kind: Kind,
+    #[case] path: &str,
+) {
+    // One second: an entrance of 20 frames and an exit of 20 would overlap.
+    let json = format!(r#"{{"motion":1,"dur":"1s","layers":[{{"id":"a","text":"ab"{extra}}}]}}"#);
+    assert_eq!(fails(&json), at(kind, path), "{}", err(&json).message);
+}
+
+#[test]
+fn an_exit_after_the_entrance_or_on_other_properties_is_fine() {
+    doc(
+        r#"{"motion":1,"dur":"1s","layers":[{"id":"a","rect":"10x10","in":"fade 12f","out":"fade 12f"}]}"#,
+    );
+    doc(
+        r#"{"motion":1,"dur":"1s","presets":{"grow":{"scale":2}},"layers":[{"id":"a","rect":"10x10","in":"fade 30f","out":"grow 30f","anim":{"rotate":"0 -> 90 @0-30f"}}]}"#,
+    );
+}
+
 /// The span and offset of every root layer of `json`.
 fn timings(json: &str) -> Vec<(Option<(Time, Time)>, Time)> {
     doc(json)

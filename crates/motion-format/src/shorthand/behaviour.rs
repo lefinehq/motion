@@ -63,6 +63,20 @@ impl Behaviour {
         (start, start + self.duration.to_frames(fps))
     }
 
+    /// The last frame a layer whose span ends at frame `end` shows, the one
+    /// an exit reaches its pose on: a span shows the frames before its end.
+    pub fn last_shown(end: f64) -> f64 {
+        end.ceil() - 1.0
+    }
+
+    /// The frames an exit starts and ends on at `fps` frames per second, for
+    /// a layer whose last shown frame is `end` of its own time: its start
+    /// (`@`) is how long before that it ends.
+    pub fn exit_frames(&self, end: f64, fps: f64) -> (f64, f64) {
+        let last = end - self.start.to_frames(fps);
+        (last - self.duration.to_frames(fps), last)
+    }
+
     /// The behaviour of `preset`, each token's field set over the defaults.
     fn tuned(preset: String, tokens: Vec<Token<'_>>) -> Behaviour {
         let defaults = Behaviour {

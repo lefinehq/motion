@@ -82,6 +82,8 @@ pub mod key {
     pub const AT: &str = "at";
     /// A layer's entrance.
     pub const IN: &str = "in";
+    /// A layer's exit.
+    pub const OUT: &str = "out";
     /// A layer's tracks.
     pub const ANIM: &str = "anim";
     /// The layer a layer moves with.
@@ -164,7 +166,7 @@ pub const COMP_KEYS: [&str; 8] = [
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 36] = [
+pub const LAYER_KEYS: [&str; 37] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -187,6 +189,7 @@ pub const LAYER_KEYS: [&str; 36] = [
     key::ANIMATE,
     key::AT,
     key::IN,
+    key::OUT,
     key::ANIM,
     key::PARENT,
     key::SPAN,

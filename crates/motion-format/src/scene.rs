@@ -157,6 +157,9 @@ pub struct Layer {
     pub values: Vec<(Prop, Value)>,
     /// Entrance behaviour; JSON key `in`.
     pub enter: Option<Behaviour>,
+    /// Exit behaviour; JSON key `out`. It ends as the layer's span ends, or
+    /// its composition when it has no span.
+    pub exit: Option<Behaviour>,
     /// Free-form animation tracks.
     pub anim: Vec<AnimTrack>,
     /// The layer it moves with: its position, rotation and scale apply on top

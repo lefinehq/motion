@@ -86,6 +86,8 @@ pub(crate) struct LayerDoc {
     pub(crate) at: Present<Shorthand<Position>>,
     #[serde(rename = "in")]
     pub(crate) enter: Present<Shorthand<Behaviour>>,
+    #[serde(rename = "out")]
+    pub(crate) exit: Present<Shorthand<Behaviour>>,
     pub(crate) anim: Object<AnimDoc>,
     pub(crate) parent: Present<String>,
     pub(crate) span: Present<Shorthand<Moments>>,
