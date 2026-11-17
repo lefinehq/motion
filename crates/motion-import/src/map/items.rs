@@ -11,7 +11,7 @@ use super::report::{ControlReport, Fate};
 use super::rows::{self, Kind, Missing, Part, Policy, Row, To};
 use super::slots::{Held, address};
 use super::sources::{Marks, Writable};
-use super::{Walk, curves};
+use super::{Walk, curves, levels};
 use crate::bake::Bake;
 use crate::model::{
     Child, ComposedLine, Control, EffectDefinition, Group, Property, Stream, Value,
@@ -75,6 +75,10 @@ pub(super) struct Out {
     pub lines: Option<Vec<ComposedLine>>,
     /// Where it holds values the project stores, for an export.
     pub marks: Marks,
+    /// The keys of items of the same kind that go before it, each a step of
+    /// one effect the scene writes as several, such as a levels effect's
+    /// channels before its RGB levels.
+    pub before: Vec<Map<String, Json>>,
 }
 
 impl Out {
@@ -288,6 +292,47 @@ impl Walk<'_> {
                             .insert((*curve).into(), json!(curves::path(points)));
                     }
                 }
+                self.mapping.count(name, Fate::Mapped);
+            }
+            To::Levels => {
+                let first = match &property.value {
+                    Stream::Static(value) => Some(value),
+                    Stream::Animated(keys) => {
+                        self.mapping.unsupported(
+                            &place.at,
+                            "animated levels (the first keyframe's are kept)",
+                        );
+                        keys.first().map(|key| &key.value)
+                    }
+                };
+                let sets = match first {
+                    Some(Value::Data(data)) => levels::read(data),
+                    _ => None,
+                };
+                let Some([rgb, channels @ ..]) = sets else {
+                    self.mapping.count(name, Fate::Unsupported);
+                    return self.mapping.unsupported(
+                        &place.at,
+                        "levels kept in a layout the import does not read",
+                    );
+                };
+                let set_keys = |set: &levels::Set| -> Map<String, Json> {
+                    levels::NAMES
+                        .iter()
+                        .zip(set.iter().zip(levels::IDENTITY))
+                        .filter(|(_, (value, rest))| **value != *rest)
+                        .map(|(name, (value, _))| ((*name).to_owned(), json!(value)))
+                        .collect()
+                };
+                // Each channel first, then RGB, as the effect applies them.
+                for (channel, set) in levels::CHANNELS[1..].iter().zip(&channels) {
+                    if *set != levels::IDENTITY {
+                        let mut keys = set_keys(set);
+                        keys.insert("channel".into(), json!(channel));
+                        out.before.push(keys);
+                    }
+                }
+                out.keys.extend(set_keys(&rgb));
                 self.mapping.count(name, Fate::Mapped);
             }
             To::Setting(setting, choices) => {
@@ -555,7 +600,7 @@ impl Walk<'_> {
             return Vec::new();
         }
         match rows::kind(&group.match_name) {
-            Some(kind) => vec![self.item(kind, group, &here)],
+            Some(kind) => self.item(kind, group, &here),
             None => match rows::policy(&group.match_name) {
                 Some(Policy::Through) => {
                     self.mapping.count(&group.match_name, Fate::Mapped);
@@ -569,8 +614,9 @@ impl Walk<'_> {
         }
     }
 
-    /// One item of `kind` from `group`.
-    fn item(&mut self, kind: &'static Kind, group: &Group, place: &Place<'_>) -> Json {
+    /// The item of `kind` from `group`, after the items of the steps its
+    /// effect takes first, if the scene writes it as several.
+    fn item(&mut self, kind: &'static Kind, group: &Group, place: &Place<'_>) -> Vec<Json> {
         self.mapping.count(kind.match_name, Fate::Mapped);
         let scene_kind = kind.scene_kind();
         let sink = Sink {
@@ -640,16 +686,35 @@ impl Walk<'_> {
                 .remove(name)
                 .unwrap_or_else(|| json!(scene_kind.setting(name).map(|s| s.default))),
         };
+        let before = std::mem::take(&mut out.before);
         let mut keys = Map::new();
         keys.insert(kind.item.into(), primary);
         keys.extend(out.finish());
         if let Some(settings) = group.mask {
             self.mask(settings, &mut keys, &place);
         }
+        // A step before shares the item's switch, which turns the whole
+        // effect off, and writes its primary key as the item does.
+        let steps = before.into_iter().map(|mut step| {
+            let primary = match scene_kind.primary {
+                Primary::Property(name) => step
+                    .remove(name)
+                    .or_else(|| sink.registry.target(name).and_then(rest_json))
+                    .unwrap_or(Json::Null),
+                _ => Json::Null,
+            };
+            let mut keys = Map::new();
+            keys.insert(kind.item.into(), primary);
+            keys.extend(step);
+            keys
+        });
+        let mut items: Vec<_> = steps.chain([keys]).collect();
         if !group.enabled {
-            keys.insert("hidden".into(), json!(true));
+            for keys in &mut items {
+                keys.insert("hidden".into(), json!(true));
+            }
         }
-        Json::Object(keys)
+        items.into_iter().map(Json::Object).collect()
     }
 
     /// A group that is not an item, by its policy; one without a policy is

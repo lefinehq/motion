@@ -479,8 +479,10 @@ mod effects {
         }
     }
 
+    /// The channel menu and the sliders of a levels effect only show the
+    /// levels its data keeps: without data, the effect changes nothing.
     #[test]
-    fn a_levels_channel_is_its_setting() {
+    fn a_levels_panel_draws_nothing_of_its_own() {
         let import = imported(vec![group(
             "ADBE Easy Levels2",
             vec![
@@ -489,9 +491,12 @@ mod effects {
             ],
         )])
         .expect("imports");
-        let fx = &import.json["layers"][0]["fx"][0];
-        assert_eq!(fx["levels"], 1.5, "{fx}");
-        assert_eq!(fx["channel"], "red", "{fx}");
+        assert_eq!(import.json["layers"][0]["fx"], json!([{"levels":1}]));
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
     }
 
     /// A laser is a beam: its length and time as they are, its thickness in
@@ -778,6 +783,64 @@ mod effects {
         let what: Vec<&str> = unread.mapping.by_what().into_keys().collect();
         assert!(
             what.contains(&"curves kept in a layout the import does not read"),
+            "{what:?}"
+        );
+    }
+
+    #[test]
+    fn levels_come_from_the_data_kept_for_them() {
+        use crate::map::levels::IDENTITY;
+        let rgb = [0.137_255, 1.0, 2.1, 0.0, 1.0];
+        let red = [0.066_667, 1.0, 1.14, 0.0, 1.0];
+        let blue = [0.0, 0.8, 1.0, 0.1, 1.0];
+        let data = crate::map::levels::tests::data(2, [rgb, red, IDENTITY, blue, IDENTITY]);
+        let levels = |stream, enabled| {
+            let mut effect = group(
+                "ADBE Easy Levels2",
+                vec![
+                    Child::Property(property(
+                        "ADBE Easy Levels2-0001",
+                        Stream::Static(Value::Number(2.0)),
+                    )),
+                    Child::Property(property("ADBE Easy Levels2-0002", stream)),
+                    // The sliders show the panel's channel as it last
+                    // showed it, which the data overrules.
+                    Child::Property(property(
+                        "ADBE Easy Levels2-0003",
+                        Stream::Static(Value::Number(0.5)),
+                    )),
+                ],
+            );
+            effect.enabled = enabled;
+            imported(vec![effect]).expect("imports")
+        };
+        let import = levels(Stream::Static(Value::Data(data.clone())), true);
+        assert_eq!(
+            import.json["layers"][0]["fx"],
+            json!([
+                {"levels":1.14,"input-black":0.066667,"channel":"red"},
+                {"levels":1,"input-white":0.8,"output-black":0.1,"channel":"blue"},
+                {"levels":2.1,"input-black":0.137255}
+            ])
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+        // An effect turned off is off in every step.
+        let off = levels(Stream::Static(Value::Data(data.clone())), false);
+        let hidden: Vec<_> = off.json["layers"][0]["fx"]
+            .as_array()
+            .expect("effects")
+            .iter()
+            .map(|item| item["hidden"].clone())
+            .collect();
+        assert_eq!(hidden, vec![json!(true); 3]);
+        let unread = levels(Stream::Static(Value::Data(data[..100].to_vec())), true);
+        let what: Vec<&str> = unread.mapping.by_what().into_keys().collect();
+        assert!(
+            what.contains(&"levels kept in a layout the import does not read"),
             "{what:?}"
         );
     }
