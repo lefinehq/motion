@@ -14,10 +14,17 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{Layer, fmt};
 
 use super::timing::{REPORT_TARGET, Timings};
+use nakkash_format::deprecated::TARGET as DEPRECATED;
 
 /// The environment variable that overrides [`Options::level`], in
 /// `EnvFilter` syntax such as `warn,nakkash_query=debug`.
 pub const ENV_VAR: &str = "NAKKASH_LOG";
+
+/// [`ENV_VAR`] under the project's old name: read when [`ENV_VAR`] is not
+/// set, with a deprecation note ([D73]).
+///
+/// [D73]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d73-the-project-is-named-nakkash
+pub const OLD_ENV_VAR: &str = "MOTION_LOG";
 
 /// How log lines are written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -69,7 +76,16 @@ impl Guard {
 /// call or a test harness) is kept, and the guard then has no timings.
 pub fn init(options: Options) -> Guard {
     let timings = options.timings.then(Timings::default);
-    let (mut filter, rejected) = filter(options.level, env::var(ENV_VAR));
+    let (var, old_var) = match env::var(ENV_VAR) {
+        Err(VarError::NotPresent) => match env::var(OLD_ENV_VAR) {
+            Err(VarError::NotPresent) => (Err(VarError::NotPresent), false),
+            old => (old, true),
+        },
+        var => (var, false),
+    };
+    let (filter, rejected) = filter(options.level, var);
+    // Deprecation notes show whatever the level (D73).
+    let mut filter = filter.add_directive(directive(DEPRECATED, LevelFilter::WARN));
     if options.timings {
         // Asking for timings is asking for their events, whatever the level.
         filter = filter.add_directive(directive(REPORT_TARGET, LevelFilter::INFO));
@@ -84,6 +100,12 @@ pub fn init(options: Options) -> Guard {
     .try_init();
     match installed {
         Ok(()) => {
+            if old_var {
+                warn!(
+                    target: DEPRECATED,
+                    "{OLD_ENV_VAR} is the old name of {ENV_VAR}; set {ENV_VAR} instead (D73)"
+                );
+            }
             if let Some(rejected) = rejected {
                 rejected.log(options.level);
             }

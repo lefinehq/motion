@@ -646,6 +646,9 @@ impl FromStr for Session {
     /// Parses scene JSON that has no file (step `parse`), so cannot be saved.
     fn from_str(text: &str) -> Result<Self> {
         let doc = stage("parse", || parse_document(text))?;
+        for note in doc.deprecations() {
+            tracing::warn!(target: nakkash_format::deprecated::TARGET, "{note}");
+        }
         Ok(Self {
             path: None,
             doc,

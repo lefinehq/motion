@@ -705,7 +705,7 @@ nakkash never goes to the network while rendering. A render depends only on the 
 
 ## Versions
 
-`"nakkash": 1` is the format's version. It stays 1 while changes only add: a new key, a new value form, a looser limit. A change that alters what a written scene means bumps it, and nakkash reads every older version through migrations ([D36](decisions.md#d36-the-format-only-changes-in-the-open)). The scenes in `crates/nakkash-format/tests/compat/` hold that promise in CI: together they use every name in this document, and what each one draws is a snapshot.
+`"nakkash": 1` is the format's version. Scenes written before the project was renamed say `"motion": 1`: that is read as the same key, with a deprecation note, and a scene may not have both ([D73](decisions.md#d73-the-project-is-named-nakkash)). It stays 1 while changes only add: a new key, a new value form, a looser limit. A change that alters what a written scene means bumps it, and nakkash reads every older version through migrations ([D36](decisions.md#d36-the-format-only-changes-in-the-open)). The scenes in `crates/nakkash-format/tests/compat/` hold that promise in CI: together they use every name in this document, and what each one draws is a snapshot.
 
 ## Why JSON
 

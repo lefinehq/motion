@@ -6,6 +6,7 @@ pub mod address;
 pub mod anim;
 mod curve;
 mod de;
+pub mod deprecated;
 mod diagnostic;
 mod doc;
 pub mod edit_word;
@@ -33,6 +34,7 @@ mod write;
 
 pub use address::{Address, Id, Step};
 pub use curve::{BACK_OVERSHOOT, Curve, ELASTIC, FAMILIES, Family, NAMED_CURVES, SHAPES, Shape};
+pub use deprecated::Deprecation;
 pub use diagnostic::{Diagnostic, Kind, Place, Result};
 pub use item::{Input, Item, ItemKind, Reads, Role};
 pub use locks::Lock;

@@ -978,3 +978,73 @@ fn bench_runs_the_agent_on_each_brief_and_records_what_check_finds() {
         stdout(&run)
     );
 }
+
+/// A scene in a scratch folder that still writes its version under the old
+/// key, `motion` (D73); returns its path.
+fn old_key_scene(name: &str) -> String {
+    let scene = scratch(name).join("scene.json");
+    fs::write(
+        &scene,
+        r#"{"motion":1,"size":"160x90","dur":"1s","layers":[{"id":"card","rect":"40x40"}]}"#,
+    )
+    .expect("write the scene");
+    scene.to_str().expect("utf-8 path").to_string()
+}
+
+#[test]
+fn a_scene_with_the_old_version_key_works_and_says_it_is_deprecated() {
+    let scene = old_key_scene("old-key");
+    for args in [vec!["check", &scene], vec!["at", &scene, "0s", "card"]] {
+        let out = nakkash(&args);
+        assert_eq!(out.status.code(), Some(0), "{args:?}: {}", stderr(&out));
+        let err = stderr(&out);
+        assert!(
+            err.contains("nakkash::deprecated")
+                && err.contains("`motion` is the old name of the scene key `nakkash`"),
+            "{args:?}: {err}"
+        );
+    }
+    let fresh = nakkash(&["check", LAUNCH]);
+    assert!(!stderr(&fresh).contains("deprecated"), "{}", stderr(&fresh));
+}
+
+#[test]
+fn the_old_command_name_runs_nakkash_and_says_it_is_deprecated() {
+    let out = run(
+        Command::new(env!("CARGO_BIN_EXE_motion")).env_remove("NAKKASH_LOG"),
+        &["at", LAUNCH, "1s", "title"],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_eq!(
+        stdout(&out),
+        stdout(&nakkash(&["at", LAUNCH, "1s", "title"]))
+    );
+    assert!(
+        stderr(&out).contains("`motion` is the old name of this command"),
+        "{}",
+        stderr(&out)
+    );
+    let failing = run(
+        Command::new(env!("CARGO_BIN_EXE_motion")).env_remove("NAKKASH_LOG"),
+        &["check", "absent.json"],
+    );
+    assert_eq!(
+        failing.status.code(),
+        nakkash(&["check", "absent.json"]).status.code()
+    );
+}
+
+#[test]
+fn the_old_log_variable_still_filters_and_says_it_is_deprecated() {
+    let out = run(
+        Command::new(env!("CARGO_BIN_EXE_nakkash"))
+            .env_remove("NAKKASH_LOG")
+            .env("MOTION_LOG", "info"),
+        &["check", LAUNCH],
+    );
+    let err = stderr(&out);
+    assert!(
+        err.contains("MOTION_LOG is the old name of NAKKASH_LOG") && err.contains("running"),
+        "{err}"
+    );
+}

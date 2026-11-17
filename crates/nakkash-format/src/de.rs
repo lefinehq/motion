@@ -75,7 +75,11 @@ impl de::Error for Error {
     }
 
     fn unknown_field(field: &str, expected: &'static [&'static str]) -> Self {
-        Error(Diagnostic::unknown("field", field, expected))
+        // serde lists aliases with the fields; an old name is read, never offered (D73).
+        let offered = expected
+            .iter()
+            .filter(|name| !crate::deprecated::is_old_name(name));
+        Error(Diagnostic::unknown("field", field, offered))
     }
 
     fn missing_field(field: &'static str) -> Self {

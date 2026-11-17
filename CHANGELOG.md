@@ -2,6 +2,8 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/).
 
+The project was named motion until 2026-11-17, when it became nakkash ([D73](docs/design/decisions.md#d73-the-project-is-named-nakkash)). Entries written before then keep the old name, crate names and commands as they were written.
+
 ## [Unreleased]
 
 ### Added
@@ -180,6 +182,10 @@ All notable changes to this project are documented here. The format is based on 
 - Stagger on text parts: a text animator's `stagger` lets the parts counted by `by` take turns, each seeing the animator, selectors included, as it was its wait earlier, in `order` (`first`, `last`, `center`, `edges`, or `random` by `seed`). A text layer's `in` takes a part word, `stagger <time>` and an order (`"fade-up word 10f out-back stagger 3f"`) and becomes such an animator, so each part makes the whole entrance with its own curve.
 - Trim: a `trim` shape item cuts the outlines listed before it, those in earlier groups included, down to a stretch from `start` to `end`, moved by `offset` in degrees, each on its own or `joined` as one line in order. Every paint that draws a cut outline draws the cut one, and inner groups' trims cut first. The import maps trim paths onto it (65 of the 241 local sample projects use them).
 
+### Deprecated
+
+- The project's old names still work, each with a note on stderr under the log target `nakkash::deprecated`, shown whatever the log level ([D73](docs/design/decisions.md#d73-the-project-is-named-nakkash)): the scene key `"motion": 1`, read as `"nakkash": 1` for all of format version 1 and by its migrations; and until 1.0, the `motion` command (a second binary that runs `nakkash`), `MOTION_LOG`, `MOTION_CACHE`, the font cache's old folder (its files are copied into the new one as they are read) and `MOTION_BRIEF`, which `bench` still sets for its agents.
+
 ### Fixed
 
 - How tracking applies is reported only where an animator tracks: a text animator's tracking type is right at any value while its tracking amount is 0 or left out ([evidence K1](docs/design/aep-evidence.md#tracking-type)). A property keyed with one value throughout counts as that value where the import reads a setting or checks a default. 17 reports in 6 scored samples (m574, m575, m639, m640, m641, m779) are gone, and the drawing does not change.
@@ -211,6 +217,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- The project is renamed from motion to **nakkash**, after the classical miniature painters who illuminated manuscripts ([D73](docs/design/decisions.md#d73-the-project-is-named-nakkash)): the crates are `nakkash-*` (Rust paths `nakkash_*`, so log filters and targets such as `nakkash::timings` change too), the command is `nakkash`, new scenes write `"nakkash": 1`, the variables are `NAKKASH_LOG` and `NAKKASH_CACHE`, the font cache's folder is `nakkash`, and the agent skill lives in `skills/nakkash`. Every example and fixture, and the compatibility corpus, write the new key; a test reads each corpus scene under the old key too and finds the same scene.
 - `motion edit` prints what the edit added to the scene's check, against the scene before it, and exits 1 only when the edit made a new error. It printed the whole check, so a correct edit of a template with errors of its own exited 1.
 - Encoding is about three times as fast for light scenes: the colour conversion reads each pixel once and converts bands of rows in parallel, 3.3 ms for a 1080p frame instead of 11.1 ms, with every sample the same. 60 frames of the launch example render to H.264 in 0.3 s.
 - `--video-quality web` asks the system's H.264 and HEVC encoders for quality 0.8, up from 0.65: dark gradients no longer turn into blocks with coloured blotches (the 99th-percentile error on the demo film's night sky falls from 3.0 levels to 1.26), for about half again the size. The speed and size table in `rendering.md` is measured again, all of it one way.

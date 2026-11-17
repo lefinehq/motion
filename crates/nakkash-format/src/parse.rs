@@ -6,12 +6,17 @@ use serde_json::Value;
 use tracing::{Span, debug, field, instrument};
 
 use crate::doc::{Form, Object, SceneDoc};
-use crate::{Document, Scene, de, slots, validate};
+use crate::{Document, Scene, de, deprecated, slots, validate};
 
 /// The spelling of every scene and layer key, so no code can name a key the
 /// format does not have.
 pub mod key {
     /// The format version.
+    pub const NAKKASH: &str = "nakkash";
+    /// The format version under the project's old name: still read, as
+    /// [`NAKKASH`], with a deprecation note; never written ([D73]).
+    ///
+    /// [D73]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d73-the-project-is-named-nakkash
     pub const MOTION: &str = "motion";
     /// The canvas size.
     pub const SIZE: &str = "size";
@@ -137,7 +142,7 @@ pub mod key {
 
 /// The keys allowed at the top level, in the order of `SceneDoc`'s fields.
 pub const SCENE_KEYS: [&str; 14] = [
-    key::MOTION,
+    key::NAKKASH,
     key::SIZE,
     key::FPS,
     key::DUR,
@@ -233,15 +238,17 @@ pub fn parse_document(json: &str) -> Result<Document> {
 /// Slot references are resolved first, on a copy, so the values read are
 /// the slots' (D44).
 pub(crate) fn scene_from_value(written: &Value) -> Result<Scene> {
-    let checked = slots::declared(written).and_then(|declared| {
-        let (value, resolved) = slots::resolve(written, &declared)?;
-        let read = de::from_value(&value).map_err(|mut d| {
-            d.path = d.path.map(|place| place.by_layer_ids(&value));
-            d
+    let checked = deprecated::no_name_twice(written)
+        .and_then(|()| slots::declared(written))
+        .and_then(|declared| {
+            let (value, resolved) = slots::resolve(written, &declared)?;
+            let read = de::from_value(&value).map_err(|mut d| {
+                d.path = d.path.map(|place| place.by_layer_ids(&value));
+                d
+            });
+            read.and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc, written, &declared))
+                .map_err(|d| resolved.explain(d))
         });
-        read.and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc, written, &declared))
-            .map_err(|d| resolved.explain(d))
-    });
     // Validation stops at the first rule that fails, so this is that rule.
     checked.inspect_err(|d| {
         debug!(kind = ?d.kind, path = d.path_text().as_deref(), "rejected: {}", d.message);

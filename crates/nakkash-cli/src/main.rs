@@ -15,7 +15,13 @@ use nakkash_engine::Quality;
 use nakkash_engine::telemetry::timing::{REPORT_TARGET, Timings, millis};
 use nakkash_engine::telemetry::{Format, LevelFilter, Options};
 use strum::VariantNames;
-use tracing::info;
+use tracing::{info, warn};
+
+/// Set by `src/bin/motion.rs`, the command under its old name, so this one
+/// can say so ([D73]).
+///
+/// [D73]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d73-the-project-is-named-nakkash
+const CALLED_AS: &str = "NAKKASH_CALLED_AS";
 
 /// Check, query, edit and render nakkash scenes, and inspect `.aep` projects.
 #[derive(Parser)]
@@ -356,6 +362,12 @@ fn main() -> ExitCode {
         format,
         timings: cli.timings,
     });
+    if std::env::var_os(CALLED_AS).is_some_and(|name| name == "motion") {
+        warn!(
+            target: nakkash_engine::telemetry::DEPRECATED_TARGET,
+            "`motion` is the old name of this command; run `nakkash` instead, as `motion` goes away at 1.0 (D73)"
+        );
+    }
     let command: &str = (&cli.command).into();
     info!(
         command,

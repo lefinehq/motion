@@ -161,7 +161,7 @@ struct Ran {
 }
 
 /// Runs `agent` through the shell in `dir`, the brief on its stdin and in
-/// `NAKKASH_BRIEF`, its output in `agent.log` and `agent.err`; stops it
+/// `NAKKASH_BRIEF` (and the old `MOTION_BRIEF`), its output in `agent.log` and `agent.err`; stops it
 /// after `timeout`.
 fn run_agent(agent: &str, dir: &Path, brief: &str, timeout: Duration) -> Result<Ran> {
     let create = |name: &str| {
@@ -174,6 +174,10 @@ fn run_agent(agent: &str, dir: &Path, brief: &str, timeout: Duration) -> Result<
         .arg(agent)
         .current_dir(dir)
         .env("NAKKASH_BRIEF", dir.join("brief.md"))
+        // Its old name, for agents written before the rename (D73).
+        .env("MOTION_BRIEF", dir.join("brief.md"))
+        // The agent's own `nakkash` was not run as `motion`.
+        .env_remove("NAKKASH_CALLED_AS")
         .stdin(Stdio::piped())
         .stdout(create("agent.log")?)
         .stderr(create("agent.err")?)

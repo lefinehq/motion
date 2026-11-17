@@ -366,6 +366,14 @@ impl Document {
         &self.raw
     }
 
+    /// The old names the JSON still uses, each read as its new name
+    /// ([D73]), for the caller to report.
+    ///
+    /// [D73]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d73-the-project-is-named-nakkash
+    pub fn deprecations(&self) -> Vec<crate::Deprecation> {
+        crate::deprecated::in_scene(&self.raw)
+    }
+
     /// The validated scene the JSON describes.
     pub fn scene(&self) -> &Scene {
         &self.scene

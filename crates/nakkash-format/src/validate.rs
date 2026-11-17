@@ -25,9 +25,9 @@ use crate::edit_word::NONE;
 use crate::item::{EFFECTS, MASKS, Reads, SHAPES};
 use crate::parse::key::{
     ADJUST, ANIM, ANIMATE, AT, AUDIO, BG, BLEND, BOX, CAMERA, COLLAPSE, COMP, COMPS, CONTINUOUS,
-    CROP, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET,
-    OUT, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SHUTTER,
-    SIZE, SPAN, STRETCH, STYLE, TEXT, THREE_D, VIDEO, comp_path, layer_path,
+    CROP, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, NAKKASH,
+    OFFSET, OUT, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY,
+    SHUTTER, SIZE, SPAN, STRETCH, STYLE, TEXT, THREE_D, VIDEO, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -124,7 +124,16 @@ pub(crate) fn scene(
     written: &serde_json::Value,
     declared: &Declared,
 ) -> Result<Scene> {
-    version(required(*doc.motion, MOTION, &VERSION.to_string())?)?;
+    // The key as written: the old name when the scene still uses it (D73).
+    let version_key = if written.get(MOTION).is_some() {
+        MOTION
+    } else {
+        NAKKASH
+    };
+    version(
+        required(*doc.nakkash, NAKKASH, &VERSION.to_string())?,
+        version_key,
+    )?;
     let fps = doc.fps.map_or(Ok(DEFAULT_FPS), fps)?;
     let size = optional(doc.size.as_ref(), SIZE)?.unwrap_or(DEFAULT_SIZE);
     let clock = clock(fps, &doc.dur, &doc.bg, &doc.shutter, DEFAULT_BACKGROUND)?;
@@ -439,13 +448,13 @@ fn required<T>(written: Option<T>, key: &str, value: &str) -> Result<T> {
     })
 }
 
-fn version(motion: Number) -> Result<()> {
-    if motion.0 == f64::from(VERSION) {
+fn version(version: Number, key: &str) -> Result<()> {
+    if version.0 == f64::from(VERSION) {
         return Ok(());
     }
     Err(
-        Diagnostic::new(Kind::Invalid, format!("unsupported version {}", motion.0))
-            .at(MOTION)
+        Diagnostic::new(Kind::Invalid, format!("unsupported version {}", version.0))
+            .at(key)
             .expected(format!("`{VERSION}`")),
     )
 }

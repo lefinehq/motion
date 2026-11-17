@@ -9,8 +9,8 @@ expression: "report.join(\"\\n\\n\")"
 `{"nakkash":1,"layers":[]}` → missing `dur`; expected e.g. "dur":"5s"
 `{"dur":"1s","layers":[]}` → missing `nakkash`; expected e.g. "nakkash":1
 `{"nakkash":1,"dur":"1s"}` → missing `layers`; expected e.g. "layers":[]
-`{"motion":2,"dur":"1s","layers":[]}` → motion: unsupported version 2; expected `1`
-`{"motion":"1","dur":"1s","layers":[]}` → motion: invalid type: string "1"; expected a number
+`{"nakkash":2,"dur":"1s","layers":[]}` → nakkash: unsupported version 2; expected `1`
+`{"nakkash":"1","dur":"1s","layers":[]}` → nakkash: invalid type: string "1"; expected a number
 `{"nakkash":1,"dur":null,"layers":[]}` → dur: invalid type: null; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`
 `{"nakkash":1,"dur":5,"layers":[]}` → dur: invalid type: integer `5`; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`
 `{"nakkash":1,"dur":"soon","layers":[]}` → dur: `soon` is not a valid time; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`

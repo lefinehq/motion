@@ -6,9 +6,11 @@ You describe a video as a small scene file; nakkash checks it, edits it and rend
 
 ![A scene file, the render command, and the video nakkash made from it](docs/media/demo.gif)
 
-*Made by nakkash itself. A 290-byte scene, one command: 5 seconds of 1080p H.264 in 0.46 s on an Apple M4 Max.*
+*Made by nakkash itself. A 291-byte scene, one command: 5 seconds of 1080p H.264 in 0.46 s on an Apple M4 Max.*
 
 **Status:** early development. There is no release to install yet; you build it from source.
+
+**The name:** a nakkash (*nakkaş*) was one of the classical miniature painters who illuminated manuscripts. The project was called motion until 2026-11-17; scenes with `"motion": 1` and the `motion` command still work, with a deprecation note ([D73](docs/design/decisions.md#d73-the-project-is-named-nakkash)).
 
 ## Why nakkash
 

@@ -6,12 +6,28 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use nakkash_format::deprecated::TARGET as DEPRECATED;
 use nakkash_format::{Diagnostic, Kind, Result};
+use tracing::warn;
 
 use crate::{LockedFont, Sha256};
 
 /// The variable that moves the cache.
 pub const CACHE_VARIABLE: &str = "NAKKASH_CACHE";
+
+/// [`CACHE_VARIABLE`] under the project's old name: read when the new one
+/// is not set, with a deprecation note ([D73]).
+///
+/// [D73]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d73-the-project-is-named-nakkash
+pub const OLD_CACHE_VARIABLE: &str = "MOTION_CACHE";
+
+/// The cache's folder name in the platform's cache folder, and its name
+/// before the project was renamed ([D73]).
+///
+/// [D73]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d73-the-project-is-named-nakkash
+const FOLDER: &str = "nakkash";
+/// The folder [`FOLDER`] replaced, still read.
+const OLD_FOLDER: &str = "motion";
 
 /// Font files kept by their hash, under `fonts/` of a cache folder: the
 /// only place a render takes a locked font from ([D39]). A file is written
@@ -22,20 +38,41 @@ pub const CACHE_VARIABLE: &str = "NAKKASH_CACHE";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cache {
     root: PathBuf,
+    /// The cache under the project's old name, read for files `root` lacks,
+    /// each of which then moves into `root` ([D73]).
+    ///
+    /// [D73]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d73-the-project-is-named-nakkash
+    old: Option<PathBuf>,
 }
 
 impl Cache {
     /// The cache in `root`.
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            old: None,
+        }
     }
 
-    /// This user's cache: `$NAKKASH_CACHE`, else the platform's cache folder
-    /// (`~/Library/Caches/motion`, `%LOCALAPPDATA%\motion`, or
-    /// `$XDG_CACHE_HOME/motion`, by default `~/.cache/motion`).
+    /// The cache in `root` that also reads the files `old` has and `root`
+    /// lacks, copying each one it reads into `root`.
+    pub fn with_old(root: impl Into<PathBuf>, old: impl Into<PathBuf>) -> Self {
+        Self {
+            root: root.into(),
+            old: Some(old.into()),
+        }
+    }
+
+    /// This user's cache: `$NAKKASH_CACHE` (or the old `$MOTION_CACHE`),
+    /// else the platform's cache folder (`~/Library/Caches/nakkash`,
+    /// `%LOCALAPPDATA%\nakkash`, or `$XDG_CACHE_HOME/nakkash`, by default
+    /// `~/.cache/nakkash`). When the platform's folder still has the cache
+    /// under its old name, `motion`, files are also read from there ([D73]).
     ///
     /// # Errors
     /// A [`Kind::Missing`] diagnostic when the environment names no home.
+    ///
+    /// [D73]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d73-the-project-is-named-nakkash
     pub fn user() -> Result<Self> {
         let var = |name| {
             std::env::var_os(name)
@@ -43,6 +80,13 @@ impl Cache {
                 .map(PathBuf::from)
         };
         if let Some(root) = var(CACHE_VARIABLE) {
+            return Ok(Self::new(root));
+        }
+        if let Some(root) = var(OLD_CACHE_VARIABLE) {
+            warn!(
+                target: DEPRECATED,
+                "{OLD_CACHE_VARIABLE} is the old name of {CACHE_VARIABLE}; set {CACHE_VARIABLE} instead (D73)"
+            );
             return Ok(Self::new(root));
         }
         let platform = if cfg!(target_os = "macos") {
@@ -53,7 +97,10 @@ impl Cache {
             var("XDG_CACHE_HOME").or_else(|| var("HOME").map(|home| home.join(".cache")))
         };
         platform
-            .map(|dir| Self::new(dir.join("motion")))
+            .map(|dir| match dir.join(OLD_FOLDER) {
+                old if old.is_dir() => Self::with_old(dir.join(FOLDER), old),
+                _ => Self::new(dir.join(FOLDER)),
+            })
             .ok_or_else(|| {
                 Diagnostic::new(
                     Kind::Missing,
@@ -79,22 +126,23 @@ impl Cache {
     /// A [`Kind::Io`] diagnostic when the file cannot be read, or a
     /// [`Kind::Invalid`] one when its bytes no longer have its hash.
     pub fn get(&self, hash: &Sha256) -> Result<Option<Vec<u8>>> {
-        let path = self.font_path(hash);
-        let bytes = match fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(Diagnostic::io("read", &path, &e)),
-        };
-        let found = Sha256::of(&bytes);
-        if found != *hash {
-            return Err(Diagnostic::new(
-                Kind::Invalid,
-                format!(
-                    "the font cache's {} has changed: its bytes hash to {found}; delete it and fetch again",
-                    path.display()
-                ),
-            ));
+        if let Some(bytes) = read_checked(&self.font_path(hash), hash)? {
+            return Ok(Some(bytes));
         }
+        let Some(old) = &self.old else {
+            return Ok(None);
+        };
+        let path = old.join("fonts").join(hash.to_string());
+        let Some(bytes) = read_checked(&path, hash)? else {
+            return Ok(None);
+        };
+        warn!(
+            target: DEPRECATED,
+            "font file {} is copied from the cache's old folder into {} (D73)",
+            path.display(),
+            self.root.display()
+        );
+        self.put(&bytes)?;
         Ok(Some(bytes))
     }
 
@@ -132,6 +180,27 @@ impl Cache {
         write_whole(&path, bytes)?;
         Ok(hash)
     }
+}
+
+/// The bytes of the file at `path`, which must hash to `hash`, or none when
+/// there is no such file.
+fn read_checked(path: &Path, hash: &Sha256) -> Result<Option<Vec<u8>>> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(Diagnostic::io("read", path, &e)),
+    };
+    let found = Sha256::of(&bytes);
+    if found != *hash {
+        return Err(Diagnostic::new(
+            Kind::Invalid,
+            format!(
+                "the font cache's {} has changed: its bytes hash to {found}; delete it and fetch again",
+                path.display()
+            ),
+        ));
+    }
+    Ok(Some(bytes))
 }
 
 /// Writes `bytes` to `path` through a file beside it, renamed into place,
@@ -209,5 +278,23 @@ mod tests {
         assert_eq!(error.kind, Kind::Invalid);
         assert!(error.message.contains("has changed"), "{}", error.message);
         fs::remove_dir_all(cache.root()).unwrap();
+    }
+
+    #[test]
+    fn reads_the_old_folder_and_copies_what_it_reads() {
+        let old = scratch("old-folder");
+        let hash = old.put(b"kept before the rename").unwrap();
+        let new = scratch("new-folder");
+        let cache = Cache::with_old(new.root(), old.root());
+        let font = locked(b"kept before the rename");
+        assert_eq!(cache.load(&font).unwrap(), b"kept before the rename");
+        assert!(
+            cache.font_path(&hash).is_file(),
+            "copied into the new folder"
+        );
+        fs::remove_dir_all(old.root()).unwrap();
+        assert_eq!(cache.load(&font).unwrap(), b"kept before the rename");
+        assert!(cache.get(&Sha256::of(b"in neither")).unwrap().is_none());
+        fs::remove_dir_all(new.root()).unwrap();
     }
 }

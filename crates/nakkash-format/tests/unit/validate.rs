@@ -103,12 +103,21 @@ fn size_fps_and_bg_overrides_reach_the_scene() {
 
 #[test]
 fn version_must_be_one() {
+    let e = err(r#"{"nakkash":2,"dur":"1s","layers":[]}"#);
+    assert_eq!(
+        (e.kind, e.path_text().as_deref()),
+        (Kind::Invalid, Some("nakkash"))
+    );
+    assert_eq!(e.expected.as_deref(), Some("`1`"));
+}
+
+#[test]
+fn version_under_its_old_name_is_reported_where_it_is_written() {
     let e = err(r#"{"motion":2,"dur":"1s","layers":[]}"#);
     assert_eq!(
         (e.kind, e.path_text().as_deref()),
         (Kind::Invalid, Some("motion"))
     );
-    assert_eq!(e.expected.as_deref(), Some("`1`"));
 }
 
 #[test]

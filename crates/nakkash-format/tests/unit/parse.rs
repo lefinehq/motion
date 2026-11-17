@@ -149,8 +149,8 @@ fn wrong_types_name_the_accepted_form() {
         (scene(r#""fps":"x""#), "fps", "a number"),
         (scene(r#""fps":true"#), "fps", "a number"),
         (
-            r#"{"motion":"1","dur":"1s","layers":[]}"#.to_owned(),
-            "motion",
+            r#"{"nakkash":"1","dur":"1s","layers":[]}"#.to_owned(),
+            "nakkash",
             "a number",
         ),
         (
@@ -297,4 +297,78 @@ fn documents_are_objects_not_arrays_of_field_values() {
         (e.kind, e.path_text().as_deref(), e.expected.as_deref()),
         (Kind::WrongType, Some("layers[0]"), Some(LayerDoc::FORM))
     );
+}
+
+/// Each scene of the compatibility corpus, as `(name, JSON text)`.
+fn corpus() -> Vec<(String, String)> {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/compat/v1");
+    let mut scenes: Vec<_> = std::fs::read_dir(root)
+        .expect("the corpus")
+        .map(|entry| entry.expect("a corpus entry").path())
+        .filter(|path| path.extension().is_some_and(|e| e == "json"))
+        .map(|path| {
+            let text = std::fs::read_to_string(&path).expect("a corpus scene");
+            (path.display().to_string(), text)
+        })
+        .collect();
+    scenes.sort();
+    assert!(!scenes.is_empty());
+    scenes
+}
+
+/// `scene` with its version key renamed to `to`, in the same place.
+fn with_version_key(scene: &Value, to: &str) -> Value {
+    let Value::Object(map) = scene else {
+        panic!("a scene object")
+    };
+    let renamed = map.iter().map(|(k, v)| {
+        let k = if k == key::NAKKASH { to } else { k };
+        (k.to_owned(), v.clone())
+    });
+    Value::Object(renamed.collect())
+}
+
+#[test]
+fn the_old_version_key_reads_every_corpus_scene_as_the_new_one_does() {
+    for (name, text) in corpus() {
+        let new = parse_document(&text).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(new.deprecations(), [], "{name}");
+        let old = Document::from_value(with_version_key(new.raw(), key::MOTION))
+            .unwrap_or_else(|e| panic!("{name} under `motion`: {e}"));
+        assert_eq!(old.scene(), new.scene(), "{name}");
+        assert_eq!(
+            old.deprecations(),
+            [crate::Deprecation {
+                old: key::MOTION,
+                new: key::NAKKASH
+            }],
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn the_deprecation_note_names_both_keys_and_the_decision() {
+    let doc = parse_document(r#"{"motion":1,"dur":"1s","layers":[]}"#).unwrap();
+    let note = doc.deprecations()[0].to_string();
+    assert_eq!(
+        note,
+        "`motion` is the old name of the scene key `nakkash`, from before the project was renamed; write `nakkash` instead (D73)"
+    );
+}
+
+#[test]
+fn a_scene_may_not_write_the_version_under_both_names() {
+    let e = err(r#"{"nakkash":1,"motion":1,"dur":"1s","layers":[]}"#);
+    assert_eq!(
+        (e.kind, e.path_text().as_deref(), e.expected.as_deref()),
+        (Kind::Conflict, Some("motion"), Some("only `nakkash`"))
+    );
+}
+
+#[test]
+fn a_missing_version_asks_for_the_new_name() {
+    let e = err(r#"{"dur":"1s","layers":[]}"#);
+    assert_eq!(e.message, "missing `nakkash`");
+    assert_eq!(e.expected.as_deref(), Some(r#"e.g. "nakkash":1"#));
 }

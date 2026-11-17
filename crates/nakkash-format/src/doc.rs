@@ -33,7 +33,11 @@ pub(crate) trait Form {
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct SceneDoc {
-    pub(crate) motion: Present<Number>,
+    /// Also read under its old name, `motion` ([D73]).
+    ///
+    /// [D73]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d73-the-project-is-named-nakkash
+    #[serde(alias = "motion")]
+    pub(crate) nakkash: Present<Number>,
     pub(crate) size: Present<Shorthand<Size>>,
     pub(crate) fps: Present<Number>,
     pub(crate) dur: Present<Shorthand<Time>>,
