@@ -1,0 +1,109 @@
+{
+  "motion": 1,
+  "size": "1920x1080",
+  "fps": 30,
+  "dur": "6s",
+  "bg": "#16111F",
+
+  "slots": {
+    "headline": {"text": "Night Market"},
+    "details": {"text": "Fridays from six, by the river"},
+    "cta": {"text": "Save the date"},
+    "accent": {"color": "#FF9E5E", "label": "Accent"},
+    "ink": {"color": "#16111F", "label": "Background"}
+  },
+  "roles": {
+    "headline": "headline",
+    "details": "details",
+    "cta": "button/label",
+    "mark": "mark",
+    "stage": "stage",
+    "accent": "$accent",
+    "background": "$ink"
+  },
+  "locks": ["@mark", "typefaces"],
+
+  "comps": {
+    "button": {
+      "size": "460x100",
+      "dur": "6s",
+      "layers": [
+        {"id": "pill", "rect": "460x100 r50", "fill": "$accent", "at": "center center"},
+        {"id": "label", "text": "$cta", "font": "Inter Variable 36 700", "fill": "#16111F", "at": "center 50", "style": {"align": "center"}}
+      ]
+    }
+  },
+
+  "layers": [
+    {"id": "backdrop", "rect": "1920x1920", "fill": "$ink", "at": "center center"},
+
+    {"id": "stage", "pivot": true, "at": "center center"},
+
+    {
+      "id": "orbit",
+      "parent": "stage",
+      "at": "0 0",
+      "opacity": 0.6,
+      "shapes": [
+        {"ellipse": [10, 10], "position": [0, -420]},
+        {"fill": "$accent"},
+        {"repeater": 0, "position": [0, 0], "anchor": [0, 0], "rotate": 10, "start-opacity": 1, "end-opacity": 0.1,
+         "anim": {"copies": "0 -> 36 @0f-30f out-cubic", "offset": "0 -> 2 @0s-6s in-out-sine"}}
+      ],
+      "out": "fade 16f cubic(.7,0,.84,0)"
+    },
+
+    {
+      "id": "mark",
+      "parent": "stage",
+      "at": "0 -250",
+      "shapes": [
+        {"group": [
+          {"rect": [96, 96]},
+          {"round-corners": 22},
+          {"stroke": "$accent", "width": 10, "join": "round"},
+          {"trim": 0, "start": 0, "anim": {"end": "0 -> 1 @0f-24f in-out-cubic"}}
+        ], "rotate": 45},
+        {"group": [
+          {"ellipse": [26, 26]},
+          {"fill": "$accent"}
+        ], "anim": {"scale": "0 -> 1 @16f-32f out-back(1)"}}
+      ],
+      "out": "fade-up 30px 16f cubic(.7,0,.84,0) @9f"
+    },
+
+    {
+      "id": "headline",
+      "parent": "stage",
+      "text": "$headline",
+      "font": "Inter Variable 150 800",
+      "fill": "#FFF6EC",
+      "at": "0 -50",
+      "style": {"align": "center"},
+      "offset": "8f",
+      "in": "fade-up word 60px 18f cubic(.16,1,.3,1) stagger 2f",
+      "out": "fade-up 30px 16f cubic(.7,0,.84,0) @6f"
+    },
+    {
+      "id": "details",
+      "parent": "stage",
+      "text": "$details",
+      "font": "Inter Variable 46 500",
+      "fill": "#E9DCCF",
+      "at": "0 90",
+      "style": {"align": "center"},
+      "offset": "18f",
+      "in": "fade-up 30px 16f cubic(.16,1,.3,1)",
+      "out": "fade-up 30px 16f cubic(.7,0,.84,0) @3f"
+    },
+    {
+      "id": "button",
+      "comp": "button",
+      "parent": "stage",
+      "at": "0 250",
+      "offset": "28f",
+      "in": "pop 16f out-back(1)",
+      "out": "fade-up 30px 16f cubic(.7,0,.84,0)"
+    }
+  ]
+}

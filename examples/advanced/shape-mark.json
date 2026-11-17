@@ -1,0 +1,115 @@
+{
+  "motion": 1,
+  "size": "1920x1080",
+  "fps": 30,
+  "dur": "7s",
+  "bg": "#F4F1EA",
+  "labels": {"core": "0.9s", "words": "2.4s"},
+  "layers": [
+    {
+      "id": "mark",
+      "pivot": true,
+      "at": "960 430",
+      "anim": {"rotate": "-6 -> 0 @0-7s out-sine"}
+    },
+
+    {
+      "id": "dial",
+      "parent": "mark",
+      "at": "0 0",
+      "shapes": [
+        {"group": [
+          {"ellipse": [440, 440]},
+          {"stroke": "#14161C", "width": 10, "cap": "round"},
+          {"trim": 0, "start": 0, "anim": {"end": "0 -> 1 @0f-36f in-out-cubic", "offset": "-140 -> 0 @0f-36f out-cubic"}}
+        ]},
+        {"group": [
+          {"rect": [8, 26], "position": [0, -262], "round": 4},
+          {"fill": "#14161C"},
+          {"repeater": 0, "position": [0, 0], "anchor": [0, 0], "rotate": 15, "start-opacity": 1, "end-opacity": 0.35,
+           "anim": {"copies": "0 -> 24 @14f-50f out-cubic", "offset": "0 -> 1 @50f-210f in-out-sine"}}
+        ]}
+      ]
+    },
+
+    {
+      "id": "ripple",
+      "parent": "mark",
+      "at": "0 0",
+      "span": "core+18f-core+60f",
+      "offset": "core+18f",
+      "shapes": [
+        {"ellipse": [300, 300]},
+        {"expand": 0, "join": "round", "copies": 3, "copy-offset": 0,
+         "anim": {"amount": "0 -> 20 @0f-40f out-cubic", "copy-offset": "0 -> 1 @0f-40f out-sine"}},
+        {"stroke": "#E4572E", "width": 3, "anim": {"opacity": "0.9 -> 0 @6f-40f in-out-sine"}}
+      ]
+    },
+
+    {
+      "id": "core",
+      "parent": "mark",
+      "at": "0 0",
+      "offset": "core",
+      "shapes": [
+        {"group": [
+          {"star": 3, "type": "polygon", "outer-radius": 46},
+          {"round-corners": 12},
+          {"fill": "#14161C"}
+        ], "position": [58, -40],
+           "anim": {"rotate": "-120 -> 30 @16f-46f cubic(.16,1,.3,1)", "scale": "0 -> 1 @16f-34f out-back(1)"}},
+        {"group": [
+          {"ellipse": [300, 300]},
+          {"ellipse": [300, 300], "id": "bite",
+           "anim": {"position": [
+             {"t": "0f", "v": [-340, 40], "curve": "in-out-cubic", "path": [[120, -120], [-90, 60]]},
+             {"t": "34f", "v": [92, -64]}
+           ]}},
+          {"merge": "subtract"},
+          {"fill": "#E4572E"}
+        ], "anim": {"scale": "0 -> 1 @0f-18f out-back(1)"}}
+      ]
+    },
+
+    {
+      "id": "wordmark",
+      "text": "FIELD STUDIES",
+      "font": "Inter Variable 76 800",
+      "fill": "#14161C",
+      "at": "center 806",
+      "offset": "words",
+      "style": {"align": "center", "tracking": 220},
+      "mask": [
+        {"mask": "M-760,-110 L-760,-110 L-760,40 L-760,40 Z", "feather": 60,
+         "anim": {"path": [
+           [0, "M-760,-110 L-760,-110 L-760,40 L-760,40 Z", "cubic(.65,0,.35,1)"],
+           [30, "M-760,-110 L760,-110 L760,40 L-760,40 Z"]
+         ]}}
+      ],
+      "animate": [
+        {
+          "animator": [{"range": "char", "anim": {"amount": "1 -> 0 @0f-40f cubic(.16,1,.3,1)"}}],
+          "tracking": 100
+        }
+      ]
+    },
+
+    {
+      "id": "wipe",
+      "rect": "760x70",
+      "at": "580 900",
+      "hidden": true,
+      "anchor": [0, 35],
+      "offset": "words+16f",
+      "anim": {"scale-x": "0 -> 1 @0f-24f cubic(.65,0,.35,1)"}
+    },
+    {
+      "id": "tagline",
+      "text": "A small system of circles, cuts and turns",
+      "font": "Inter Variable 34 500",
+      "fill": "#4A4F5C",
+      "at": "center 900",
+      "matte": "wipe"
+    }
+  ]
+}
