@@ -137,6 +137,7 @@ impl Build<'_> {
         fps: f64,
         comp: &str,
     ) -> Result<Vec<Node>> {
+        let size = (canvas.width(), canvas.height());
         let levels = self.levels;
         let ear = |layer: &Layer| Ear {
             levels,
@@ -147,7 +148,7 @@ impl Build<'_> {
         let contents = layers
             .iter()
             .map(|layer| {
-                self.node_content(layer, fps, ear(layer))
+                self.node_content(layer, (fps, size), ear(layer))
                     .map_err(|e| e.under(Place::of_layer(&layer.id)))
             })
             .collect::<Result<Vec<_>>>()?;
@@ -228,7 +229,7 @@ impl Build<'_> {
                     ..node(
                         layer,
                         self.scene,
-                        (fps, length),
+                        (fps, length, size),
                         content,
                         (boxes[i], parents[i], extent),
                         ear(layer),
@@ -267,12 +268,17 @@ impl Build<'_> {
     }
 
     /// What a layer draws, compiled; text is set here.
-    fn node_content(&mut self, layer: &Layer, fps: f64, ear: Ear<'_>) -> Result<NodeContent> {
+    fn node_content(
+        &mut self,
+        layer: &Layer,
+        (fps, canvas): (f64, (f64, f64)),
+        ear: Ear<'_>,
+    ) -> Result<NodeContent> {
         Ok(match &layer.content {
             Content::Text(content) => NodeContent::Text {
                 text: text::set(content, self.typesetter)?,
                 animators: entrance(layer, self.scene)
-                    .and_then(|(behaviour, spec)| parts_animator(spec, behaviour, fps))
+                    .and_then(|(behaviour, spec)| parts_animator(spec, behaviour, fps, canvas))
                     .iter()
                     .chain(&content.animators)
                     .filter(|item| !item.hidden)
@@ -399,7 +405,7 @@ fn timing(layer: &Layer, fps: f64) -> Timing {
 fn node(
     layer: &Layer,
     scene: &Scene,
-    (fps, length): (f64, f64),
+    (fps, length, canvas): (f64, f64, (f64, f64)),
     content: NodeContent,
     (bounds, parent, extent): (Rect, Option<usize>, Rect),
     ear: Ear<'_>,
@@ -417,7 +423,11 @@ fn node(
             end: ear.timing.local(ends),
         })
     });
-    let moves = Moves { entrance, exit };
+    let moves = Moves {
+        entrance,
+        exit,
+        canvas,
+    };
     Node {
         id: layer.id.clone(),
         content,
@@ -463,6 +473,9 @@ struct Exit<'s> {
 struct Moves<'s> {
     entrance: Option<(&'s Behaviour, &'s PresetSpec)>,
     exit: Option<Exit<'s>>,
+    /// The width and height of the canvas the layer sits on, which starts
+    /// such as `"+h"` move it by.
+    canvas: (f64, f64),
 }
 
 impl Moves<'_> {
@@ -502,7 +515,7 @@ fn tracks(
             let rest = target.rest_of(layer.rest(target.prop, extent, own));
             written.push(Written {
                 target,
-                keys: entrance_keys(behaviour, from, rest, fps),
+                keys: entrance_keys(behaviour, from, rest, (fps, moves.canvas)),
             });
         }
     }
@@ -511,7 +524,7 @@ fn tracks(
     if let Some(exit) = &moves.exit {
         for &(target, to) in &exit.spec.props {
             let rest = target.rest_of(layer.rest(target.prop, extent, own));
-            let keys = exit_keys(exit, to, rest, fps);
+            let keys = exit_keys(exit, to, rest, (fps, moves.canvas));
             match written.iter_mut().find(|w| w.target == target) {
                 Some(w) => w.keys.extend(keys),
                 None => written.push(Written { target, keys }),
@@ -572,13 +585,19 @@ fn component_key(key: &KeySpec, i: usize) -> KeySpec {
     }
 }
 
-/// One entrance target: from its start to `rest` over the behaviour's frames.
-fn entrance_keys(behaviour: &Behaviour, from: Start, rest: Value, fps: f64) -> Vec<KeySpec> {
+/// One entrance target: from its start to `rest` over the behaviour's frames,
+/// on a canvas of `canvas`.
+fn entrance_keys(
+    behaviour: &Behaviour,
+    from: Start,
+    rest: Value,
+    (fps, canvas): (f64, (f64, f64)),
+) -> Vec<KeySpec> {
     let (start, end) = behaviour.frames(fps);
     vec![
         KeySpec {
             frame: start,
-            value: from.resolve(&rest, behaviour.distance),
+            value: from.resolve(&rest, behaviour.distance, canvas),
             easing: Easing::All(behaviour.curve),
             path: None,
         },
@@ -587,10 +606,17 @@ fn entrance_keys(behaviour: &Behaviour, from: Start, rest: Value, fps: f64) -> V
 }
 
 /// One exit target: from `rest` to where the preset's start `to` mirrors,
-/// over the frames that end with the layer's time.
-fn exit_keys(exit: &Exit<'_>, to: Start, rest: Value, fps: f64) -> Vec<KeySpec> {
+/// over the frames that end with the layer's time, on a canvas of `canvas`.
+fn exit_keys(
+    exit: &Exit<'_>,
+    to: Start,
+    rest: Value,
+    (fps, canvas): (f64, (f64, f64)),
+) -> Vec<KeySpec> {
     let (start, end) = exit.behaviour.exit_frames(exit.end, fps);
-    let gone = to.mirrored().resolve(&rest, exit.behaviour.distance);
+    let gone = to
+        .mirrored()
+        .resolve(&rest, exit.behaviour.distance, canvas);
     vec![
         KeySpec {
             frame: start,

@@ -446,3 +446,45 @@ fn an_exit_to_an_absolute_value_does_not_follow_at() {
     );
     assert_eq!(g.root.nodes[0].follows_at, (false, true));
 }
+
+/// On the default 1920x1080 canvas, a push moves by the canvas's size.
+#[rstest]
+#[case::push_up_comes_from_below("in", "push-up", "y", 200.0 + 1080.0)]
+#[case::push_up_leaves_at_the_top("out", "push-up", "y", 200.0 - 1080.0)]
+#[case::push_down_comes_from_above("in", "push-down", "y", 200.0 - 1080.0)]
+#[case::push_left_comes_from_the_right("in", "push-left", "x", 100.0 + 1920.0)]
+#[case::push_right_leaves_at_the_right("out", "push-right", "x", 100.0 + 1920.0)]
+#[case::rise_moves_without_fading("in", "rise", "y", 240.0)]
+#[case::slam_lands_from_larger("in", "slam", "scale-x", 1.6)]
+fn new_presets_start_where_they_say(
+    #[case] key: &str,
+    #[case] preset: &str,
+    #[case] target: &str,
+    #[case] far: f64,
+) {
+    let n = &one(&format!(r#","{key}":"{preset} 10f linear""#), "")
+        .root
+        .nodes[0];
+    let keys = pairs(track(n, target));
+    let far_key = match key {
+        "in" => keys[0].1,
+        _ => keys[keys.len() - 1].1,
+    };
+    assert_eq!(far_key, far);
+    if preset != "slam" {
+        assert!(
+            track(n, "opacity").is_constant(),
+            "{preset} keeps its opacity"
+        );
+    }
+}
+
+#[test]
+fn a_push_inside_a_composition_moves_by_its_canvas() {
+    let g = compile_json(
+        r#"{"motion":1,"dur":"1s","comps":{"card":{"size":"400x300","dur":"1s",
+          "layers":[{"id":"t","rect":"10x10","at":"200 150","in":"push-up 10f"}]}},
+          "layers":[{"id":"c","comp":"card"}]}"#,
+    );
+    assert_eq!(pairs(track(&g.comps[0].nodes[0], "y"))[0].1, 450.0);
+}

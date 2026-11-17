@@ -20,7 +20,14 @@ use crate::value::Value;
 const BUILTIN_JSON: &str = include_str!("presets.json");
 
 /// The starts JSON writes as strings.
-const DISTANCES: [(&str, Start); 2] = [("+d", Start::Plus), ("-d", Start::Minus)];
+const DISTANCES: [(&str, Start); 6] = [
+    ("+d", Start::Plus),
+    ("-d", Start::Minus),
+    ("+h", Start::Height(1.0)),
+    ("-h", Start::Height(-1.0)),
+    ("+w", Start::Width(1.0)),
+    ("-w", Start::Width(-1.0)),
+];
 
 /// Where a property starts when an entrance begins.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -31,6 +38,11 @@ pub enum Start {
     Plus,
     /// The resting value minus the behaviour's distance; JSON `"-d"`.
     Minus,
+    /// The resting value plus this many times the height of the canvas the
+    /// layer sits on; JSON `"+h"` and `"-h"`.
+    Height(f64),
+    /// The same with its width; JSON `"+w"` and `"-w"`.
+    Width(f64),
 }
 
 impl Start {
@@ -39,14 +51,20 @@ impl Start {
         table::lookup(&DISTANCES, text).map(|(_, start)| *start)
     }
 
-    /// The accepted forms of a start: `a number, "+d" or "-d"`.
+    /// Whether it is the resting value moved, rather than a value of its own.
+    pub fn is_relative(self) -> bool {
+        !matches!(self, Start::Value(_))
+    }
+
+    /// The accepted forms of a start: `a number, "+d", "-d", …`.
     pub(crate) fn form() -> &'static str {
         static FORM: OnceLock<String> = OnceLock::new();
         FORM.get_or_init(|| {
             let written: Vec<String> = table::names(&DISTANCES)
                 .map(|name| format!("\"{name}\""))
                 .collect();
-            format!("a number, {}", written.join(" or "))
+            let (last, rest) = written.split_last().expect("there are named starts");
+            format!("a number, {} or {last}", rest.join(", "))
         })
     }
 
@@ -58,18 +76,23 @@ impl Start {
             Start::Value(_) => self,
             Start::Plus => Start::Minus,
             Start::Minus => Start::Plus,
+            Start::Height(times) => Start::Height(-times),
+            Start::Width(times) => Start::Width(-times),
         }
     }
 
     /// The start value of a target resting at `rest`, for a behaviour that
-    /// travels `distance` pixels. A number starts every component of a point;
-    /// validation allows that only where the property broadcasts.
-    pub fn resolve(self, rest: &Value, distance: f64) -> Value {
+    /// travels `distance` pixels, on a canvas of `canvas` (width, height). A
+    /// number starts every component of a point; validation allows that only
+    /// where the property broadcasts.
+    pub fn resolve(self, rest: &Value, distance: f64, canvas: (f64, f64)) -> Value {
         let offset = |d: f64| Value::Number(rest.components()[0] + d);
         match self {
             Start::Value(v) => Value::splat(rest.value_type(), v),
             Start::Plus => offset(distance),
             Start::Minus => offset(-distance),
+            Start::Height(times) => offset(times * canvas.1),
+            Start::Width(times) => offset(times * canvas.0),
         }
     }
 }
@@ -105,7 +128,7 @@ pub(crate) fn expand_as_anim(
     spec: &PresetSpec,
     behaviour: &Behaviour,
     rest: impl Fn(Target) -> Option<Value>,
-    fps: f64,
+    (fps, canvas): (f64, (f64, f64)),
     others: &AnimDoc,
 ) -> Option<String> {
     let (start, end) = behaviour.frames(fps);
@@ -114,7 +137,7 @@ pub(crate) fn expand_as_anim(
         .iter()
         .map(|&(target, from)| {
             let rest = rest(target)?;
-            let from = from.resolve(&rest, behaviour.distance);
+            let from = from.resolve(&rest, behaviour.distance, canvas);
             let track = format!(
                 "{from} -> {rest} @{}-{}f {}",
                 fmt_num(start),
@@ -137,12 +160,18 @@ pub(crate) fn expand_as_anim(
 /// layer's own: it moves each part from the preset's start to rest over the
 /// behaviour's frames with its curve, a `range` selector by the same parts
 /// chooses every part, and the parts take turns by the behaviour's stagger
-/// and order. `None` when the behaviour moves the whole layer.
+/// and order; starts measured in the canvas's size read `canvas`, its width
+/// and height. `None` when the behaviour moves the whole layer.
 ///
 /// # Panics
 /// If the preset moves a property a text animator does not have, which
 /// validation rules out.
-pub fn parts_animator(spec: &PresetSpec, behaviour: &Behaviour, fps: f64) -> Option<Item> {
+pub fn parts_animator(
+    spec: &PresetSpec,
+    behaviour: &Behaviour,
+    fps: f64,
+    canvas: (f64, f64),
+) -> Option<Item> {
     let parts = behaviour.parts?;
     let choice = |choices: &[&str], name: &str| {
         choices
@@ -172,7 +201,7 @@ pub fn parts_animator(spec: &PresetSpec, behaviour: &Behaviour, fps: f64) -> Opt
                 keys: vec![
                     AnimKey {
                         time: Time::Frames(start),
-                        value: KeyValue::Set(from.resolve(&rest, behaviour.distance)),
+                        value: KeyValue::Set(from.resolve(&rest, behaviour.distance, canvas)),
                         easing: Easing::All(behaviour.curve),
                         path: None,
                     },
