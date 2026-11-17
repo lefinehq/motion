@@ -51,7 +51,7 @@ The rasteriser sits behind a small interface, so it can be swapped later (see [D
 
 **GPU acceleration** is planned for phase 2. It covers the heavy cases: 4K, strong motion blur, large blurs and procedural noise. If the CPU version misses our speed target at milestone M2, it moves into v1 (see [D3](decisions.md#d3-cpu-first-compositor)).
 
-**Motion blur** blends several in-between moments of the same frame. Because nakkash can compute any moment exactly, this costs no extra work in the engine. It only multiplies the drawing work.
+**Motion blur** blends several in-between moments of the same frame. Because nakkash can compute any moment exactly, this costs no extra work in the engine. It only multiplies the drawing work. A layer whose content and effects stay the same over the shutter (a picture, a `comp` layer, most effect stacks) is drawn once and moved to each moment; any other, particles included, is drawn at each moment ([D57](decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter)).
 
 **Projected layers** are the rasteriser's half of 2.5D ([D58](decisions.md#d58-25d-layers-are-planes-projected-through-a-camera), [plan](../plans/2026-11-21-depth.md)). A layer with `Layer::projection` is a plane seen through a camera: a 3×3 projective matrix (`Homography`) takes its own coordinates to its parent's, in place of its transform (`crates/nakkash-raster/src/projected.rs`).
 

@@ -391,9 +391,10 @@ fn blurs(node: &GraphNode) -> bool {
     node.mblur && !node.adjust && node.inputs.iter().all(Option::is_none)
 }
 
-/// How many times its shutter's samples a layer drawn once and moved may
-/// take: each is a pass over the frame's pixels, so fewer than a drawing
-/// made at every moment.
+/// How many times its shutter's samples a `comp` layer, or one with
+/// effects, may take, drawn once and moved or drawn at each moment: each
+/// is a pass over the frame's pixels, so fewer than a drawing without
+/// effects made at every moment.
 const MOVED_GROWTH: u32 = 2;
 
 /// Node `i` of the canvas `at` blurred along its motion ([D57]), over the
@@ -414,6 +415,10 @@ const MOVED_GROWTH: u32 = 2;
 ///   moved the same way, up to [`MOVED_GROWTH`] times its samples. Its
 ///   content is its composition's, which blurs by its own shutter, as a
 ///   nested composition's does in the projects the import reads.
+/// - A layer with an effect whose drawing runs on with time
+///   (`ItemKind::timed`, such as particles) is drawn at each moment as a
+///   shape is, effects and all, up to [`MOVED_GROWTH`] times its samples:
+///   moved once, its particles would stand still over the shutter.
 ///
 /// [D57]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter
 fn blurred(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Result<Option<Node>> {
@@ -432,9 +437,15 @@ fn blurred(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Re
     // once and moving it is exact, and it holds one drawing rather than one
     // per moment: a 3D picture seen up close took a gigabyte a frame.
     let still = matches!(frame_node.content, ContentState::Image(_)) && frame_node.mask.is_empty();
-    let moved =
-        still || matches!(frame_node.content, ContentState::Comp(..)) || !frame_node.fx.is_empty();
-    let growth = match moved && !still {
+    let comp = matches!(frame_node.content, ContentState::Comp(..));
+    // An effect whose drawing runs on with time, such as particles, draws
+    // something else at every moment, which a drawing moved as a whole
+    // cannot show: its layer is drawn at each moment, at its time then.
+    let timed = frame_node.fx.iter().any(|item| item.kind.timed);
+    let moved = !timed && (still || comp || !frame_node.fx.is_empty());
+    // A moment drawn with effects, once and moved or afresh, is a pass over
+    // the frame's pixels.
+    let growth = match !still && (comp || !frame_node.fx.is_empty()) {
         true => MOVED_GROWTH,
         false => Shutter::MAX_GROWTH,
     };
