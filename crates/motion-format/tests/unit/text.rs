@@ -85,3 +85,20 @@ fn only_font_and_fill_are_set_on_the_layer() {
         .collect();
     assert_eq!(on_layer, ["font", "fill"]);
 }
+
+#[rstest]
+#[case::a_language("tr", true)]
+#[case::with_a_region("pt-BR", true)]
+#[case::with_a_script("zh-Hant-TW", true)]
+#[case::a_word("turkish", false)]
+#[case::empty("", false)]
+#[case::underscores("tr_TR", false)]
+fn a_language_is_a_tag(#[case] tag: &str, #[case] valid: bool) {
+    let mut style = CharacterStyle::new("Inter 40".parse().unwrap(), [1.0; 4]);
+    let set = match &style_key("lang").unwrap().set {
+        Setter::Character(set) => set(&mut style, &json!(tag)),
+        Setter::Paragraph(_) | Setter::Text(_) => unreachable!("a character key"),
+    };
+    assert_eq!(set.is_ok(), valid, "{set:?}");
+    assert_eq!(style.lang.as_deref(), valid.then_some(tag));
+}

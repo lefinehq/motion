@@ -50,6 +50,20 @@ const RULES: &[CapsRule] = &[
     },
 ];
 
+/// Capitals a language makes otherwise than Unicode's default does, from
+/// Unicode's SpecialCasing: by language, the letter and its capital.
+const LANGUAGE_CAPITALS: &[(&[&str], char, char)] = &[(&["tr", "az"], 'i', 'İ')];
+
+/// The capital of `c` in the language `lang`, when that language makes it
+/// otherwise than the default.
+fn language_capital(lang: Option<&str>, c: char) -> Option<char> {
+    let primary = lang?.split(['-', '_']).next()?.to_ascii_lowercase();
+    LANGUAGE_CAPITALS
+        .iter()
+        .find(|(languages, letter, _)| *letter == c && languages.contains(&primary.as_str()))
+        .map(|&(_, _, capital)| capital)
+}
+
 impl Letters {
     fn includes(self, c: char) -> bool {
         match self {
@@ -107,7 +121,10 @@ pub(crate) fn apply(styled: &StyledText) -> Cased {
                 });
             };
             if rule.upper.includes(c) {
-                c.to_uppercase().for_each(&mut push);
+                match language_capital(run.style.lang.as_deref(), c) {
+                    Some(capital) => push(capital),
+                    None => c.to_uppercase().for_each(&mut push),
+                }
             } else {
                 push(c);
             }

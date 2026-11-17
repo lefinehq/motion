@@ -80,6 +80,9 @@ pub struct CharacterStyle {
     pub faux_bold: bool,
     /// An italic drawn by slanting the glyphs, for a face without an italic.
     pub faux_italic: bool,
+    /// The language of the words, as a tag such as `tr` or `pt-BR`: how
+    /// capitals are made and which of the font's local forms are used.
+    pub lang: Option<String>,
 }
 
 impl CharacterStyle {
@@ -98,6 +101,7 @@ impl CharacterStyle {
             caps: Caps::Normal,
             faux_bold: false,
             faux_italic: false,
+            lang: None,
         }
     }
 }
@@ -418,7 +422,7 @@ fn flag(written: &Json) -> Result<bool> {
 }
 
 /// Every style key: characters, then paragraphs, then the whole text.
-pub static STYLE_KEYS: [StyleKey; 22] = [
+pub static STYLE_KEYS: [StyleKey; 23] = [
     StyleKey {
         name: "font",
         form: "`<family or PostScript name> <size> [<weight>]`, e.g. `Lato-Black 55`",
@@ -545,6 +549,16 @@ pub static STYLE_KEYS: [StyleKey; 22] = [
         }),
     },
     StyleKey {
+        name: "lang",
+        form: "a language tag such as `tr` or `pt-BR`",
+        doc: "the language of the words: capitals in Turkish and Azerbaijani keep the dot on i (İ), and the font's local forms for the language are used",
+        on_layer: false,
+        set: Setter::Character(|s, j| {
+            s.lang = Some(language(j)?);
+            Ok(())
+        }),
+    },
+    StyleKey {
         name: "align",
         form: "`left`, `right`, `center`, `justify-left`, `justify-right`, `justify-center` or `justify-all`",
         doc: "how the lines align; point text aligns about its origin",
@@ -659,3 +673,22 @@ pub fn style_key(name: &str) -> Option<&'static StyleKey> {
 #[cfg(test)]
 #[path = "../tests/unit/text.rs"]
 mod tests;
+
+/// A language tag: a language of two or three letters, then subtags of
+/// one to eight letters or digits, each after a `-`.
+fn language(j: &Json) -> Result<String> {
+    let tag = j.as_str().unwrap_or_default();
+    let mut parts = tag.split('-');
+    let first = parts.next().unwrap_or_default();
+    let fits = (2..=3).contains(&first.len())
+        && first.chars().all(|c| c.is_ascii_alphabetic())
+        && parts
+            .all(|p| (1..=8).contains(&p.len()) && p.chars().all(|c| c.is_ascii_alphanumeric()));
+    match fits {
+        true => Ok(tag.to_owned()),
+        false => Err(
+            Diagnostic::new(Kind::WrongType, format!("`{j}` is not a language tag"))
+                .expected("a language tag such as `tr` or `pt-BR`"),
+        ),
+    }
+}

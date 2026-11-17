@@ -169,6 +169,9 @@ pub struct CharacterStyle {
     pub faux_bold: bool,
     /// Whether an italic is synthesised; recorded for the renderer.
     pub faux_italic: bool,
+    /// The language of the words, a tag such as `tr`: how capitals are made
+    /// and which of the font's local forms are shaped.
+    pub lang: Option<String>,
 }
 
 impl CharacterStyle {
@@ -184,6 +187,7 @@ impl CharacterStyle {
             caps: Caps::Normal,
             faux_bold: false,
             faux_italic: false,
+            lang: None,
         }
     }
 

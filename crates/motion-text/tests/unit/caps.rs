@@ -81,3 +81,18 @@ fn spans_know_their_run() {
         [0, 1]
     );
 }
+
+/// Turkish and Azerbaijani keep the dot on i in capitals; every other
+/// language, and none, takes Unicode's default.
+#[rstest]
+#[case::no_language(None, "ÜCRETSIZ ILIK")]
+#[case::turkish(Some("tr"), "ÜCRETSİZ ILIK")]
+#[case::turkish_with_a_region(Some("tr-TR"), "ÜCRETSİZ ILIK")]
+#[case::azerbaijani(Some("az"), "ÜCRETSİZ ILIK")]
+#[case::english(Some("en"), "ÜCRETSIZ ILIK")]
+fn capitals_follow_the_language(#[case] lang: Option<&str>, #[case] set: &str) {
+    let mut style = CharacterStyle::new(FontQuery::PostScript("InterVariable".into()), 10.0);
+    style.caps = Caps::All;
+    style.lang = lang.map(str::to_owned);
+    assert_eq!(apply(&StyledText::plain("ücretsiz ılık", style)).text, set);
+}
