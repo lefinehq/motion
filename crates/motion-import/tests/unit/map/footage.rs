@@ -61,7 +61,7 @@ fn footage(width: u32, height: u32, duration: f64) -> Footage {
     30.0,
     Media::Unsupported("audio footage it cannot find")
 )]
-#[case::vector(
+#[case::vector_not_read(
     "/old/logo.ai",
     640,
     0.0,
@@ -111,9 +111,83 @@ fn footage_is_a_found_still_clip_or_sound_or_unsupported_with_why(
         found: &found,
         videos: &videos,
         sounds: &sounds,
+        vectors: &BTreeMap::new(),
     };
     assert_eq!(
         media(&footage(width, height, duration), stored, files),
+        expected
+    );
+}
+
+/// Vector footage read with a page of `page` and art bounds `art`.
+fn vector(reads: bool, page: [f64; 2], art: Option<[f64; 4]>) -> Vector {
+    Vector {
+        format: "PDF".into(),
+        reads,
+        page,
+        art,
+        unsupported: Vec::new(),
+    }
+}
+
+#[test]
+fn vector_footage_is_known_by_what_was_read_whatever_its_name() {
+    let found = BTreeMap::from([
+        ("/old/logo.ai".to_owned(), "logo.ai".to_owned()),
+        ("/old/plan".to_owned(), "plan".to_owned()),
+        ("/old/broken.pdf".to_owned(), "broken.pdf".to_owned()),
+    ]);
+    let read = vector(true, [100.0, 50.0], None);
+    let vectors = BTreeMap::from([
+        ("/old/logo.ai".to_owned(), read.clone()),
+        ("/old/plan".to_owned(), read.clone()),
+        (
+            "/old/broken.pdf".to_owned(),
+            vector(false, [0.0, 0.0], None),
+        ),
+    ]);
+    let empty = BTreeMap::new();
+    let files = Files {
+        found: &found,
+        videos: &empty,
+        sounds: &BTreeMap::new(),
+        vectors: &vectors,
+    };
+    let still = footage(100, 50, 0.0);
+    assert_eq!(
+        media(&still, "/old/logo.ai", files),
+        Media::Vector("logo.ai", &read)
+    );
+    assert_eq!(
+        media(&still, "/old/plan", files),
+        Media::Vector("plan", &read)
+    );
+    assert_eq!(
+        media(&still, "/old/broken.pdf", files),
+        Media::VectorFormat("PDF")
+    );
+}
+
+#[rstest]
+#[case::the_page([1440.0, 900.0], None, 1440, 900, Ok(None))]
+#[case::the_page_rounded_out([45.16, 29.08], None, 46, 30, Ok(Some([0.0, 0.0, 46.0, 30.0])))]
+#[case::the_art(
+    [1920.0, 1080.0],
+    Some([738.14, 209.41, 443.0, 661.0]),
+    444,
+    662,
+    Ok(Some([738.0, 209.0, 444.0, 662.0]))
+)]
+#[case::neither([1920.0, 1080.0], Some([0.0, 0.0, 10.0, 10.0]), 500, 500, Err(()))]
+fn a_vector_layer_shows_the_page_box_its_footage_size_matches(
+    #[case] page: [f64; 2],
+    #[case] art: Option<[f64; 4]>,
+    #[case] width: u32,
+    #[case] height: u32,
+    #[case] expected: Result<Option<[f64; 4]>, ()>,
+) {
+    assert_eq!(
+        vector_region(&footage(width, height, 0.0), &vector(true, page, art)),
         expected
     );
 }

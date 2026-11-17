@@ -78,7 +78,9 @@ fn a_fill_takes_its_rule_and_folds_its_and_its_groups_opacity() {
     };
     assert_eq!(*transform, Affine::IDENTITY);
     assert_eq!(fill.style, DrawStyle::Fill(FillRule::EvenOdd));
-    let Paint::Solid(color) = &fill.paint;
+    let Paint::Solid(color) = &fill.paint else {
+        panic!("a colour")
+    };
     assert_eq!(color.a, 128.0 / 255.0 * 0.25);
 }
 

@@ -4,24 +4,33 @@
 //! disk and reading which codec a clip is in are the caller's job, since
 //! the import reads no files; it hands over what it found in
 //! [`Options::footage`](super::Options::footage),
-//! [`Options::videos`](super::Options::videos) and
-//! [`Options::sounds`](super::Options::sounds).
+//! [`Options::videos`](super::Options::videos),
+//! [`Options::sounds`](super::Options::sounds) and
+//! [`Options::vectors`](super::Options::vectors).
 //!
 //! [D41]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d41-image-layers-name-their-file-and-carry-their-box
 
 use std::collections::BTreeMap;
 
-use super::{Sound, Video};
+use super::{Sound, Vector, Video};
 use crate::model::Footage;
 
 /// The file extensions of the still pictures an image layer draws.
 pub const STILL_EXTENSIONS: [&str; 3] = ["png", "jpg", "jpeg"];
 
 /// What one footage file becomes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(super) enum Media<'a> {
     /// A still picture, found at this path for the scene's `image`.
     Still(&'a str),
+    /// Vector footage that was read, found at this path for the scene's
+    /// `image` ([D70]).
+    ///
+    /// [D70]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d70-vector-footage-is-drawn-from-its-outlines
+    Vector(&'a str, &'a Vector),
+    /// Vector footage found in a format it could not read, by the format's
+    /// name.
+    VectorFormat(&'a str),
     /// A clip in a codec with a decoder, found at this path for the
     /// scene's `video`.
     Clip(&'a str),
@@ -46,6 +55,8 @@ pub(super) struct Files<'a> {
     pub videos: &'a BTreeMap<String, Video>,
     /// What each found sound is.
     pub sounds: &'a BTreeMap<String, Sound>,
+    /// What each found vector footage file is.
+    pub vectors: &'a BTreeMap<String, Vector>,
 }
 
 /// What the footage `footage`, stored at `stored`, becomes, given the
@@ -55,7 +66,19 @@ pub(super) fn media<'a>(footage: &Footage, stored: &str, files: Files<'a>) -> Me
         found,
         videos,
         sounds,
+        vectors,
     } = files;
+    // Vector footage is known by what the caller read, whatever its name.
+    if let (Some(path), Some(vector), false) = (
+        found.get(stored),
+        vectors.get(stored),
+        footage.duration > 0.0,
+    ) {
+        return match vector.reads {
+            true => Media::Vector(path, vector),
+            false => Media::VectorFormat(&vector.format),
+        };
+    }
     let still = extension(stored).is_some_and(|extension| {
         STILL_EXTENSIONS
             .iter()
@@ -87,6 +110,35 @@ pub(super) fn media<'a>(footage: &Footage, stored: &str, files: Files<'a>) -> Me
             None => Media::Unsupported("image footage it cannot find"),
         },
     }
+}
+
+/// The part of vector footage's page an image layer shows over a box the
+/// footage's size, `[x, y, width, height]`: the page, or its art bounds,
+/// whichever, rounded out to whole units, is that size ([D70]). `None` when
+/// it is the page exactly, which the scene shows by default; an error when
+/// neither is, and the page is stretched over the box.
+///
+/// [D70]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d70-vector-footage-is-drawn-from-its-outlines
+pub(super) fn vector_region(footage: &Footage, vector: &Vector) -> Result<Option<[f64; 4]>, ()> {
+    let size = [f64::from(footage.width), f64::from(footage.height)];
+    let [width, height] = vector.page;
+    let page = [0.0, 0.0, width, height];
+    let rounded_out = |[x, y, w, h]: [f64; 4]| {
+        let (x0, y0) = (x.floor(), y.floor());
+        let (x1, y1) = ((x + w).ceil(), (y + h).ceil());
+        [x0, y0, x1 - x0, y1 - y0]
+    };
+    let fits = |[_, _, w, h]: [f64; 4]| (w - size[0]).abs() < 0.5 && (h - size[1]).abs() < 0.5;
+    if fits(page) && page.iter().all(|v| v.fract() == 0.0) {
+        return Ok(None);
+    }
+    [Some(page), vector.art]
+        .into_iter()
+        .flatten()
+        .map(rounded_out)
+        .find(|&region| fits(region))
+        .map(Some)
+        .ok_or(())
 }
 
 /// The last part of a stored path, whichever separator the machine that

@@ -11,6 +11,8 @@ pard = "pard"
 pn = "pn"
 rin = "rin"
 trak = "trak"
+# The PDF standard's name for its deflate filter.
+flate = "flate"
 
 [default]
 # The curve fitting library `curve_fit_nd` (N-dimensional).

@@ -181,10 +181,42 @@ fn an_image_layer_names_its_file_and_fills_its_box() {
         ImageContent {
             path: "photos/beach.jpg".into(),
             frame: kurbo::Rect::new(0.0, 0.0, 192.0, 108.0),
+            crop: None,
+            continuous: false,
         }
     );
     assert_eq!(image(1).path, "/abs/b.png");
     assert_eq!(image(1).frame, kurbo::Rect::new(-8.0, -4.0, 8.0, 4.0));
+}
+
+#[test]
+fn an_image_may_show_a_part_of_its_picture_and_draw_vectors_continuously() {
+    let d = doc(&scene(
+        r#"{"id":"a","image":"logo.ai","box":[444,662],"crop":[738,209,444,662],"continuous":true}"#,
+    ));
+    let Content::Image(image) = &d.scene().root.layers[0].content else {
+        panic!("an image");
+    };
+    assert_eq!(
+        image.crop,
+        Some(kurbo::Rect::new(738.0, 209.0, 1182.0, 871.0))
+    );
+    assert!(image.continuous);
+}
+
+#[test]
+fn a_crop_needs_an_area_and_an_image() {
+    let flat = err(&scene(
+        r#"{"id":"a","image":"a.png","box":[4,4],"crop":[0,0,0,4]}"#,
+    ));
+    assert_eq!(
+        (flat.kind, flat.path_text().as_deref()),
+        (Kind::Invalid, Some("a.crop"))
+    );
+    for key in [r#""crop":[0,0,4,4]"#, r#""continuous":true"#] {
+        let elsewhere = err(&scene(&format!(r#"{{"id":"a","rect":"4x4",{key}}}"#)));
+        assert_eq!(elsewhere.kind, Kind::Conflict, "{key}: {elsewhere}");
+    }
 }
 
 #[test]

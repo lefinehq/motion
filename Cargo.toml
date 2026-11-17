@@ -6,7 +6,7 @@ resolver = "3"
 version = "0.0.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-rust-version = "1.91"
+rust-version = "1.92"
 repository = "https://github.com/lefinehq/motion"
 # No crate is published yet; every crate inherits this with `publish.workspace`.
 publish = false
@@ -78,6 +78,11 @@ boa_engine = { version = "0.22", default-features = false }
 boa_parser = "0.22"
 boa_ast = "0.22"
 boa_interner = "0.22"
+# Vector footage (D70): a PDF page's objects and its drawing operators,
+# interpreted into our own display list. Pure Rust, no embedded fonts or
+# character maps: text in a font the file does not embed is reported.
+hayro-syntax = "0.9"
+hayro-interpret = { version = "0.9", default-features = false }
 # Maths that gives the same bits on every platform, for baked keys.
 libm = "0.2"
 # The CPU rasteriser (D2, D34); here only to check that font data types agree.
@@ -108,6 +113,10 @@ opt-level = 3
 [profile.dev.package.boa_parser]
 opt-level = 3
 [profile.dev.package.zune-jpeg]
+opt-level = 3
+[profile.dev.package.hayro-syntax]
+opt-level = 3
+[profile.dev.package.hayro-interpret]
 opt-level = 3
 [profile.dev.package.rav1e]
 opt-level = 3

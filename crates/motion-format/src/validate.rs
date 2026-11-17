@@ -24,10 +24,10 @@ use crate::doc::{
 use crate::edit_word::NONE;
 use crate::item::{EFFECTS, MASKS, Reads, SHAPES};
 use crate::parse::key::{
-    ADJUST, ANIM, ANIMATE, AT, AUDIO, BG, BLEND, BOX, CAMERA, COLLAPSE, COMP, COMPS, DUR, FILL,
-    FONT, FPS, FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET, OVERRIDES,
-    PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SHUTTER, SIZE, SPAN,
-    STRETCH, STYLE, TEXT, THREE_D, VIDEO, comp_path, layer_path,
+    ADJUST, ANIM, ANIMATE, AT, AUDIO, BG, BLEND, BOX, CAMERA, COLLAPSE, COMP, COMPS, CONTINUOUS,
+    CROP, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET,
+    OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SHUTTER, SIZE,
+    SPAN, STRETCH, STYLE, TEXT, THREE_D, VIDEO, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -1094,6 +1094,8 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
             only_on(doc.fill.is_some(), FILL, FX, &[TEXT, RECT])?;
             only_on(doc.frame.is_some(), BOX, FX, &[TEXT, IMAGE, VIDEO])?;
             only_on(doc.collapse.is_some(), COLLAPSE, FX, &[COMP])?;
+            only_on(doc.crop.is_some(), CROP, FX, &[IMAGE])?;
+            only_on(doc.continuous.is_some(), CONTINUOUS, FX, &[IMAGE])?;
             return Ok(Content::Filter);
         }
         (None, _) => return Err(Diagnostic::new(Kind::Missing, one_of()).expected(EXAMPLE)),
@@ -1106,6 +1108,8 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
     only_on(doc.fill.is_some(), FILL, key, &[TEXT, RECT])?;
     only_on(!doc.overrides.0.is_empty(), OVERRIDES, key, &[COMP])?;
     only_on(doc.collapse.is_some(), COLLAPSE, key, &[COMP])?;
+    only_on(doc.crop.is_some(), CROP, key, &[IMAGE])?;
+    only_on(doc.continuous.is_some(), CONTINUOUS, key, &[IMAGE])?;
     only_on(doc.frame.is_some(), BOX, key, &[TEXT, IMAGE, VIDEO])?;
     let Object(style) = &doc.style;
     for (written, name) in [
@@ -1160,7 +1164,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
             };
             Ok(Content::Comp(CompContent { id, instance }))
         }
-        IMAGE => image(doc.image.as_deref().expect("written"), doc.frame.as_ref()),
+        IMAGE => image(doc, doc.image.as_deref().expect("written")),
         VIDEO => video(doc.video.as_deref().expect("written"), doc.frame.as_ref()),
         AUDIO => audio(doc.audio.as_deref().expect("written")),
         CAMERA => match *doc.camera {
@@ -1188,8 +1192,6 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
     }
 }
 
-/// An image layer: a picture file, relative to the scene file, filling the
-/// layer's `box`, which it must have since the scene is read without
 /// The layers of the composition `canvas` names with `overrides` set over
 /// them ([`crate::overrides`]), with paths relative to the `comp` layer:
 /// the list is validated as any composition's layers are, so an error
@@ -1300,20 +1302,32 @@ fn instance(canvas: &Canvas, overrides: &OverridesDoc, shared: &Shared) -> Resul
     layers(&docs, &context)
 }
 
-/// opening its files.
-fn image(path: &str, frame: Option<&ValueDoc>) -> Result<Content> {
+/// An image layer: a picture file, relative to the scene file, filling the
+/// layer's `box`, which it must have since the scene is read without
+/// opening its files. `crop`, the part of the picture shown, is written
+/// as a box is.
+fn image(doc: &LayerDoc, path: &str) -> Result<Content> {
     if path.trim().is_empty() {
         return Err(Diagnostic::new(Kind::Invalid, "an empty image path")
             .at(IMAGE)
-            .expected("a PNG or JPEG file, relative to the scene file, e.g. `photos/beach.jpg`"));
+            .expected(
+                "a PNG, JPEG or PDF file, relative to the scene file, e.g. `photos/beach.jpg`",
+            ));
     }
-    let frame = frame.ok_or_else(|| {
+    let frame = doc.frame.as_ref().ok_or_else(|| {
         Diagnostic::new(Kind::Missing, "missing `box`: an image layer fills its box")
             .expected(r#"the picture's size in px, e.g. "box":[1920,1080]"#)
     })?;
+    let crop = doc
+        .crop
+        .as_ref()
+        .map(|crop| text::frame(crop).map_err(|e| e.under(CROP)))
+        .transpose()?;
     Ok(Content::Image(ImageContent {
         path: path.to_owned(),
         frame: text::frame(frame).map_err(|e| e.under(BOX))?,
+        crop,
+        continuous: doc.continuous.unwrap_or(false),
     }))
 }
 

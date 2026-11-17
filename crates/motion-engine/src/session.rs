@@ -234,7 +234,7 @@ impl Session {
     ///
     /// # Errors
     /// As [`Session::graph`], an effect the rasteriser cannot draw, or a
-    /// picture file that cannot be read or is not a PNG or JPEG file, at
+    /// picture file that cannot be read or is not a PNG, JPEG or PDF file, at
     /// its layer's `image`.
     pub fn display_list(&self, frame: f64) -> Result<Frame> {
         self.list_of(&self.frame(frame)?)

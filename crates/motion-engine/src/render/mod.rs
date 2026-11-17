@@ -39,6 +39,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::pictures::Still;
+
 use motion_format::shorthand::Shutter;
 use motion_scene::space::{self, View};
 use motion_scene::{CompGraph, ContentState, FrameState, Node as GraphNode, NodeState, SceneGraph};
@@ -47,8 +49,8 @@ use motion_scene::{CompGraph, ContentState, FrameState, Node as GraphNode, NodeS
 /// from shapes, such as a rounded rectangle's corners, in pixels.
 const TOLERANCE: f64 = 0.01;
 
-/// Finds the picture an image layer's `image` names.
-pub(crate) type Pictures<'a> = dyn Fn(&str) -> Result<Picture> + 'a;
+/// Finds the picture or vector footage an image layer's `image` names.
+pub(crate) type Pictures<'a> = dyn Fn(&str) -> Result<Still> + 'a;
 
 /// Finds the sound an audio layer's `audio` plays, laid out for the mix.
 pub(crate) type Sounds<'a> = dyn Fn(&str) -> Result<std::sync::Arc<motion_audio::Sound>> + 'a;
@@ -668,14 +670,54 @@ fn rect(shape: &RectShape, rgba: [f64; 4]) -> Node {
     fill(outline, color(rgba))
 }
 
-/// An image node: its picture stretched over its box. The picture's errors
-/// are placed at `image`, and name the file.
+/// An image node: its picture, or the part `crop` names, stretched over its
+/// box. Vector footage ([D70]) is drawn into a picture the size of the box
+/// once, which is then transformed like any picture, or, `continuous`, laid
+/// over the box as vectors, drawn at the output's resolution every frame.
+/// The picture's errors are placed at `image`, and name the file.
+///
+/// [D70]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d70-vector-footage-is-drawn-from-its-outlines
 fn image(content: &ImageContent, pictures: &Pictures<'_>) -> Result<Node> {
-    let picture = pictures(&content.path).map_err(|e| e.at(IMAGE))?;
-    Ok(Node::Image(ImageDraw {
-        picture,
-        rect: content.frame,
-    }))
+    let frame = content.frame;
+    match pictures(&content.path).map_err(|e| e.at(IMAGE))? {
+        Still::Picture(picture) => Ok(match content.crop {
+            None => Node::Image(ImageDraw {
+                picture,
+                rect: frame,
+            }),
+            // The whole picture, placed so the part lands on the box, and
+            // cut to the box.
+            Some(crop) => {
+                let (sx, sy) = (frame.width() / crop.width(), frame.height() / crop.height());
+                let x0 = frame.x0 - crop.x0 * sx;
+                let y0 = frame.y0 - crop.y0 * sy;
+                let rect = Rect::new(
+                    x0,
+                    y0,
+                    x0 + f64::from(picture.width()) * sx,
+                    y0 + f64::from(picture.height()) * sy,
+                );
+                Node::Layer(Layer {
+                    clip: Some(Clip::Rect(frame)),
+                    ..Layer::new(vec![Node::Image(ImageDraw { picture, rect })])
+                })
+            }
+        }),
+        Still::Drawing(drawing) => {
+            let region = content.crop.unwrap_or_else(|| drawing.bounds());
+            if content.continuous {
+                return Ok(drawing.placed(region, frame));
+            }
+            let side = |length: f64| length.abs().ceil().max(1.0) as u32;
+            let picture = drawing
+                .picture(region, side(frame.width()), side(frame.height()))
+                .map_err(|e| e.at(IMAGE))?;
+            Ok(Node::Image(ImageDraw {
+                picture,
+                rect: frame,
+            }))
+        }
+    }
 }
 
 /// `path` filled with `color` by the non-zero rule.

@@ -151,3 +151,32 @@ fn a_found_sound_is_read_for_its_format_by_its_first_bytes() {
     );
     assert_eq!(sound("empty.wav"), None);
 }
+
+#[test]
+fn a_found_vector_file_is_read_for_its_page_art_and_what_it_cannot_draw() {
+    let root = scratch("vectors");
+    // Named for a picture: the first bytes decide.
+    let logo = crate::test_support::pdf(
+        40,
+        30,
+        "/ArtBox [5 10 25 20]",
+        "/ExtGState << /G0 << /OP true >> >>",
+        "/G0 gs 0 0 5 5 re f",
+    );
+    fs::write(root.join("logo.png"), logo).unwrap();
+    fs::write(root.join("broken.ai"), "%PDF-1.7\nno objects").unwrap();
+    touch(&root, "empty.ai");
+    let vector = |name: &str| super::vector(&root.join(name));
+    assert_eq!(
+        vector("logo.png"),
+        Some(Vector {
+            format: "PDF".into(),
+            reads: true,
+            page: [40.0, 30.0],
+            art: Some([5.0, 10.0, 20.0, 10.0]),
+            unsupported: vec!["overprinting (drawn as if off)".into()],
+        })
+    );
+    assert_eq!(vector("broken.ai").map(|v| v.reads), Some(false));
+    assert_eq!(vector("empty.ai"), None);
+}

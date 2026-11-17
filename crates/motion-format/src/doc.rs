@@ -80,6 +80,8 @@ pub(crate) struct LayerDoc {
     pub(crate) paragraphs: Present<List<StylesDoc>>,
     #[serde(rename = "box")]
     pub(crate) frame: Present<ValueDoc>,
+    pub(crate) crop: Present<ValueDoc>,
+    pub(crate) continuous: Present<bool>,
     pub(crate) animate: Present<List<ItemsDoc>>,
     pub(crate) at: Present<Shorthand<Position>>,
     #[serde(rename = "in")]

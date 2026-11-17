@@ -50,7 +50,8 @@ pub use pixels::{Pixel, Pixels};
 pub use render::{Quality, RenderOptions, Simd, render, render_with};
 pub use sound::{Heard, level};
 pub use style::{
-    CAPS, Cap, Color, Dashes, DrawStyle, FILL_RULES, FillRule, JOINS, Join, Paint, StrokeStyle,
+    CAPS, Cap, Color, Dashes, DrawStyle, FILL_RULES, FillRule, Gradient, GradientShape, JOINS,
+    Join, Paint, Stop, StrokeStyle,
 };
 /// The geometry and font types display lists are made of: vocabulary crates
 /// the rasteriser shares, named from themselves so it stays private ([D37]).

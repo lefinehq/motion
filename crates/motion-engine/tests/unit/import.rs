@@ -258,6 +258,48 @@ fn still_footage_that_cannot_be_found_is_reported_with_its_file() {
     );
 }
 
+#[test]
+fn vector_footage_becomes_an_image_layer_reporting_what_it_cannot_draw() {
+    // The fixture's 80x80 still, as vector footage under its picture's name.
+    let project = footage_project("vector", &[]);
+    let file = project.with_file_name("Images/Heart-80.png");
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    let heart = crate::test_support::pdf(
+        80,
+        80,
+        "",
+        "/ExtGState << /G0 << /OP true >> >>",
+        "/G0 gs 1 0 0 rg 10 10 60 60 re f",
+    );
+    fs::write(&file, heart).unwrap();
+    let import = import_scene(&project, &Options::default(), None).expect("imports");
+    let layer = layer(&import, "heart-80-png");
+    assert!(layer["image"].as_str().unwrap().ends_with("Heart-80.png"));
+    assert_eq!(layer["box"], serde_json::json!([80, 80]));
+    // The page is the footage's size: no crop, and drawn into a picture.
+    assert!(layer.get("crop").is_none() && layer.get("continuous").is_none());
+    let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+    assert!(
+        what.contains(&"vector footage: overprinting (drawn as if off)"),
+        "{what:?}"
+    );
+}
+
+#[test]
+fn vector_footage_that_cannot_be_read_is_reported_by_its_format() {
+    let project = footage_project("vector-broken", &[]);
+    let file = project.with_file_name("Images/Heart-80.png");
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(&file, "%PDF-1.7\nno objects").unwrap();
+    let import = import_scene(&project, &Options::default(), None).expect("imports");
+    assert_eq!(layer(&import, "heart-80-png")["pivot"], true);
+    let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+    assert!(
+        what.contains(&"vector footage in PDF it cannot read (drawn as nothing)"),
+        "{what:?}"
+    );
+}
+
 /// An import of the scene `json`, as the map writes one.
 fn import_of(json: &str) -> Import {
     let json: serde_json::Value = serde_json::from_str(json).expect("json");
