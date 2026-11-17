@@ -526,8 +526,15 @@ A preset is data: a list of properties and where each starts. The behaviour then
 | `fade-right` | opacity 0, moved left by the distance |
 | `pop` | opacity 0, scale 0.6 |
 | `spin-in` | opacity 0, rotated -90 degrees |
+| `rise` | moved down by the distance, already opaque |
+| `slam` | scale 1.6, already opaque |
+| `push-up` | moved down by the canvas's height; as `out`, it leaves at the top |
+| `push-down` | moved up by the canvas's height |
+| `push-left` | moved right by the canvas's width |
+| `push-right` | moved left by the canvas's width |
+| `swing-in` | turned 35° about x and -20° about y, scale 0.9; a 3D layer only |
 
-A start is a number, `"+d"` (the resting value plus the behaviour's distance) or `"-d"` (minus it). A scene adds presets, or overrides a built-in one by reusing its name, with a `presets` key:
+A start is a number, `"+d"` (the resting value plus the behaviour's distance) or `"-d"` (minus it), or the canvas's size: `"+h"` and `"-h"` move by the height of the canvas the layer sits on (its composition's), `"+w"` and `"-w"` by its width. A push between two beats is one `out` and one `in` at the same moment with the same curve, on the pivot that carries each beat: `{"id":"offer","pivot":true,"span":"0s-2s","out":"push-up 12f in-out-cubic"}` and `{"id":"end","pivot":true,"span":"1.6s-4s","in":"push-up 12f in-out-cubic"}`. A preset that moves a depth row, such as `swing-in`, needs `"3d":true` on the layer. A scene adds presets, or overrides a built-in one by reusing its name, with a `presets` key:
 
 ```json
 "presets":{"drop":{"opacity":0,"y":"-d","scale":0.8}},

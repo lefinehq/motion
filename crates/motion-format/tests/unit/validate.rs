@@ -608,6 +608,21 @@ fn an_exit_after_the_entrance_or_on_other_properties_is_fine() {
     );
 }
 
+#[test]
+fn a_preset_that_turns_in_depth_needs_a_3d_layer() {
+    let flat =
+        r#"{"motion":1,"dur":"1s","layers":[{"id":"phone","rect":"10x10","in":"swing-in"}]}"#;
+    assert_eq!(fails(flat), at(Kind::Invalid, "phone.in"));
+    assert!(
+        err(flat).message.contains("`rotate-x`"),
+        "{}",
+        err(flat).message
+    );
+    doc(
+        r#"{"motion":1,"dur":"1s","layers":[{"id":"phone","rect":"10x10","3d":true,"in":"swing-in"}]}"#,
+    );
+}
+
 /// The span and offset of every root layer of `json`.
 fn timings(json: &str) -> Vec<(Option<(Time, Time)>, Time)> {
     doc(json)

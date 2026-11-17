@@ -55,7 +55,10 @@ fn start_forms_parse() {
 fn bad_start_value_shows_expected_form() {
     let e = presets(r#"{"a":{"x":"left"}}"#).unwrap_err();
     assert_eq!(e.path_text().as_deref(), Some("presets.a.x"));
-    assert_eq!(e.expected.as_deref(), Some(r#"a number, "+d" or "-d""#));
+    assert_eq!(
+        e.expected.as_deref(),
+        Some(r#"a number, "+d", "-d", "+h", "-h", "+w" or "-w""#)
+    );
     assert_eq!(e.kind, Kind::Invalid);
     let e = presets(r#"{"a":{"x":true}}"#).unwrap_err();
     assert_eq!(e.kind, Kind::WrongType);
@@ -194,7 +197,7 @@ fn expand_as_anim_writes_the_entrance_as_tracks() {
             kurbo::Rect::new(0.0, 0.0, 10.0, 10.0),
         )))
     };
-    let json = expand_as_anim(&spec, &b, rest, 30.0, &others).unwrap();
+    let json = expand_as_anim(&spec, &b, rest, (30.0, (1920.0, 1080.0)), &others).unwrap();
     assert_eq!(
         json,
         r#"{"opacity":"0 -> 1 @10-40f cubic(0.2,0,0,1)","x":"470 -> 500 @10-40f cubic(0.2,0,0,1)","y":"330 -> 300 @10-40f cubic(0.2,0,0,1)","scale":"0.5,0.5 -> 1,1 @10-40f cubic(0.2,0,0,1)","rotate":"30 -> 0 @10-40f cubic(0.2,0,0,1)","glow":[[0,1],["12f",0.5,"ease-out"],[30.5,2]]}"#
@@ -224,7 +227,13 @@ fn an_unknown_rest_gives_no_expansion() {
     let unknown_anchor =
         |target: Target| (target.prop != Prop::ANCHOR).then_some(crate::Value::Number(1.0));
     assert_eq!(
-        expand_as_anim(&spec, &b, unknown_anchor, 30.0, &AnimDoc::new()),
+        expand_as_anim(
+            &spec,
+            &b,
+            unknown_anchor,
+            (30.0, (1920.0, 1080.0)),
+            &AnimDoc::new()
+        ),
         None
     );
 }

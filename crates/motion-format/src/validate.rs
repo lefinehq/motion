@@ -615,6 +615,11 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
     if let Some(behaviour) = &layer.exit {
         exit(&layer, behaviour).map_err(|e| e.at(OUT))?;
     }
+    for (behaviour, key) in [(&layer.enter, IN), (&layer.exit, OUT)] {
+        if let Some(behaviour) = behaviour {
+            flat_preset(&layer, behaviour, context.shared.presets).map_err(|e| e.at(key))?;
+        }
+    }
     Ok(layer)
 }
 
@@ -1413,6 +1418,36 @@ fn behaviour(
     }
 }
 
+/// A flat layer's entrance or exit may not turn it in depth, as its own
+/// depth rows may not.
+fn flat_preset(
+    layer: &Layer,
+    behaviour: &Behaviour,
+    presets: &[(String, PresetSpec)],
+) -> Result<()> {
+    if layer.three_d {
+        return Ok(());
+    }
+    let spec = lookup(presets, &behaviour.preset).expect("the preset was checked");
+    match spec
+        .props
+        .iter()
+        .find(|(t, _)| Prop::DEPTH.contains(&t.prop))
+    {
+        Some((target, _)) => Err(Diagnostic::new(
+            Kind::Invalid,
+            format!(
+                "preset `{}` moves `{}`, which places a layer in depth, and `{}` is flat",
+                behaviour.preset,
+                target.name(),
+                layer.id
+            ),
+        )
+        .expected(r#""3d":true on the layer"#)),
+        None => Ok(()),
+    }
+}
+
 /// Checks an exit: it moves the whole layer, which runs forwards, since it
 /// ends when the layer's span does on its composition's clock.
 fn exit(layer: &Layer, behaviour: &Behaviour) -> Result<()> {
@@ -1884,23 +1919,22 @@ fn preset(name: &str, body: &PresetDoc) -> Result<PresetSpec> {
 
 /// One start of a preset: a known target and a start of its type in its range.
 /// A number starts a point only where the property broadcasts (`scale`); a
-/// distance starts only an unbounded number, such as `y` (opacity has a range).
+/// distance, or the canvas's size, starts only an unbounded number, such as
+/// `y` (opacity has a range).
 fn preset_start(name: &str, start: Start) -> Result<(Target, Start)> {
     let target = known_target(name, &LAYER)?;
     match start {
         Start::Value(v) => {
             typed_value(&ValueDoc::Numbers(vec![v]), target)?;
         }
-        Start::Plus | Start::Minus
-            if target.prop.spec().range.is_some() || target.value_type() != ValueType::Number =>
-        {
+        _ if target.prop.spec().range.is_some() || target.value_type() != ValueType::Number => {
             return Err(Diagnostic::new(
                 Kind::OutOfRange,
                 format!("`{name}` is not a number of pixels, so it cannot start at a distance"),
             )
             .expected("a value of its own, e.g. 0"));
         }
-        Start::Plus | Start::Minus => {}
+        _ => {}
     }
     Ok((target, start))
 }
@@ -1964,7 +1998,7 @@ fn entrance_conflict(
         };
         Some(target.rest_of(whole))
     };
-    let edit = expand_as_anim(spec, behaviour, rest, context.fps, written)
+    let edit = expand_as_anim(spec, behaviour, rest, (context.fps, (canvas.width(), canvas.height())), written)
         .map(|expansion| {
             format!(
                 "`{} {IN}={NONE} {ANIM}={expansion}` (the entrance as anim tracks; then adjust `{name}`), or ",

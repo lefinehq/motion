@@ -4,4 +4,11 @@
  "fade-left":{"opacity":0,"x":"+d"},
  "fade-right":{"opacity":0,"x":"-d"},
  "pop":{"opacity":0,"scale":0.6},
- "spin-in":{"opacity":0,"rotate":-90}}
+ "spin-in":{"opacity":0,"rotate":-90},
+ "rise":{"y":"+d"},
+ "slam":{"scale":1.6},
+ "push-up":{"y":"+h"},
+ "push-down":{"y":"-h"},
+ "push-left":{"x":"+w"},
+ "push-right":{"x":"-w"},
+ "swing-in":{"rotate-x":35,"rotate-y":-20,"scale":0.9}}

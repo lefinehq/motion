@@ -67,7 +67,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","at":1}` → a.at: invalid type: integer `1`; expected `<x> <y>`, each a number of pixels or `center`, e.g. `center 260`
 `{"id":"a","rect":"1x1","in":null}` → a.in: invalid type: null; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>] [char|char-no-space|word|line] [stagger <time>] [first|last|center|edges|random]`, e.g. `fade-up 40px 12f ease-out @0f` or `fade-up word stagger 3f`; a curve is a name such as `ease-out`, `out-expo` or `hold`, `out-back(2)`, `steps(4)`, `spring(.3)`, or `cubic(x1,y1,x2,y2)`
 `{"id":"a","rect":"1x1","in":true}` → a.in: invalid type: boolean `true`; expected `<preset> [<n>px] [<n>f|<n>s] [<curve>] [@<time>] [char|char-no-space|word|line] [stagger <time>] [first|last|center|edges|random]`, e.g. `fade-up 40px 12f ease-out @0f` or `fade-up word stagger 3f`; a curve is a name such as `ease-out`, `out-expo` or `hold`, `out-back(2)`, `steps(4)`, `spring(.3)`, or `cubic(x1,y1,x2,y2)`
-`{"id":"a","rect":"1x1","in":"zoom"}` → a.in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in
+`{"id":"a","rect":"1x1","in":"zoom"}` → a.in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in, rise, slam, push-up, push-down, push-left, push-right, swing-in
 `{"id":"a","rect":"1x1","anim":null}` → a.anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
 `{"id":"a","rect":"1x1","anim":[]}` → a.anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
 `{"id":"a","rect":"1x1","x":1}` → a.x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, overrides, image, video, audio, pivot, camera, font, fill, style, runs, paragraphs, box, crop, continuous, animate, at, in, out, anim, parent, span, offset, stretch, mask, fx, adjust, collapse, hidden, matte, blend, mblur, 3d, position, anchor, scale, rotate, opacity, volume, z, anchor-z, scale-z, rotate-x, rotate-y, orient, zoom, target, target-z, remap
@@ -183,14 +183,14 @@ expression: "report.join(\"\\n\\n\")"
 `{"Bad":{"x":1}}` → presets.Bad: invalid preset name `Bad`; expected ids use lowercase letters, digits, `-` and `_`, starting with a letter
 `{"x":{}}` → presets.x: preset `x` sets no properties; expected e.g. {"opacity":0}
 `{"a":{"skew":1}}` → presets.a.skew: unknown layer property `skew`; expected one of position, anchor, scale, rotate, opacity, volume, z, anchor-z, scale-z, rotate-x, rotate-y, orient, zoom, target, target-z, remap, x, y, anchor-x, anchor-y, scale-x, scale-y, orient-x, orient-y, orient-z, target-x, target-y
-`{"a":{"x":true}}` → presets.a.x: invalid type: boolean `true`; expected a number, "+d" or "-d"
-`{"a":{"x":"left"}}` → presets.a.x: invalid value: string "left"; expected a number, "+d" or "-d"
-`{"a":{"x":"l, expected q"}}` → presets.a.x: invalid value: string "l, expected q"; expected a number, "+d" or "-d"
+`{"a":{"x":true}}` → presets.a.x: invalid type: boolean `true`; expected a number, "+d", "-d", "+h", "-h", "+w" or "-w"
+`{"a":{"x":"left"}}` → presets.a.x: invalid value: string "left"; expected a number, "+d", "-d", "+h", "-h", "+w" or "-w"
+`{"a":{"x":"l, expected q"}}` → presets.a.x: invalid value: string "l, expected q"; expected a number, "+d", "-d", "+h", "-h", "+w" or "-w"
 `{"a":{"opacity":2}}` → presets.a.opacity: value 2 is outside 0..=1; expected a number from 0 to 1
 `{"dim":{"opacity":"-d"}}` → presets.dim.opacity: `opacity` is not a number of pixels, so it cannot start at a distance; expected a value of its own, e.g. 0
 
 ## unknown preset with scene presets
-`{"slide":{"x":1},"fade":{"y":1}}` → a.in: unknown preset `zoom`; expected one of slide, fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in
+`{"slide":{"x":1},"fade":{"y":1}}` → a.in: unknown preset `zoom`; expected one of slide, fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in, rise, slam, push-up, push-down, push-left, push-right, swing-in
 
 ## time
 `12` → `12` is not a valid time; expected `<number>f` or `<number>s`, e.g. `12f` or `0.4s`
