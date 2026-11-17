@@ -3313,7 +3313,7 @@ pub(super) static KINDS: [Kind; 46] = [
 ];
 
 /// The policy for groups that are not items, by match name.
-pub(super) static POLICIES: [(&str, Policy); 33] = [
+pub(super) static POLICIES: [(&str, Policy); 32] = [
     ("ADBE Root Vectors Group", Policy::Through),
     ("ADBE Effect Parade", Policy::Through),
     ("ADBE Text Animators", Policy::Through),
@@ -3365,10 +3365,6 @@ pub(super) static POLICIES: [(&str, Policy); 33] = [
     (
         "ADBE Text Path Options",
         Policy::OnlyEmpty("text on a path"),
-    ),
-    (
-        "ADBE Text More Options",
-        Policy::OnlyEmpty("text anchor grouping and render order"),
     ),
     ("ADBE Slider Control", Policy::Control),
     ("ADBE Angle Control", Policy::Control),

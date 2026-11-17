@@ -29,6 +29,9 @@ pub struct TextContent {
     pub frame: Option<kurbo::Rect>,
     /// Its animators, applied in order.
     pub animators: Vec<Item>,
+    /// What the whole text sets once: the anchors its parts take and how
+    /// its paints stack.
+    pub whole: WholeStyle,
 }
 
 impl TextContent {
@@ -132,6 +135,58 @@ impl Default for ParagraphStyle {
     }
 }
 
+/// What a text sets once for all its characters: the anchor each part
+/// scales and turns about, and how fills and strokes stack across
+/// characters.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WholeStyle {
+    /// Whose anchor each character takes: its own, its word's, its line's
+    /// or the whole text's.
+    pub anchor_by: AnchorBy,
+    /// How far every anchor moves from the middle of its baseline, as
+    /// fractions of its part's width and of its font's size: `[-0.5, 0]`
+    /// is the start of the part's baseline, `[0, -0.5]` half a size above
+    /// it.
+    pub anchor_align: [f64; 2],
+    /// How fills and strokes stack across characters.
+    pub paint_across: PaintAcross,
+}
+
+impl Default for WholeStyle {
+    fn default() -> WholeStyle {
+        WholeStyle {
+            anchor_by: AnchorBy::Char,
+            anchor_align: [0.0, 0.0],
+            paint_across: PaintAcross::Each,
+        }
+    }
+}
+
+/// Whose anchor each character scales and turns about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnchorBy {
+    /// Its own: the middle of its own baseline.
+    Char,
+    /// Its word's: the middle of the word's baseline.
+    Word,
+    /// Its line's: the middle of the line's baseline.
+    Line,
+    /// The whole text's: the middle of its first baseline across all its lines.
+    All,
+}
+
+/// How fills and strokes stack across characters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaintAcross {
+    /// Character by character, each in its own `paint` order, so a later
+    /// character covers an earlier one.
+    Each,
+    /// Every stroke first, then every fill, so no stroke covers a fill.
+    FillsOver,
+    /// Every fill first, then every stroke, so no fill covers a stroke.
+    StrokesOver,
+}
+
 /// The distance from one baseline to the next.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Leading {
@@ -188,6 +243,21 @@ pub const PAINT_ORDERS: [(&str, PaintOrder); 2] = [
     ("stroke-over", PaintOrder::StrokeOver),
 ];
 
+/// The names of [`AnchorBy`].
+pub const ANCHORS_BY: [(&str, AnchorBy); 4] = [
+    ("char", AnchorBy::Char),
+    ("word", AnchorBy::Word),
+    ("line", AnchorBy::Line),
+    ("all", AnchorBy::All),
+];
+
+/// The names of [`PaintAcross`].
+pub const PAINTS_ACROSS: [(&str, PaintAcross); 3] = [
+    ("each", PaintAcross::Each),
+    ("fills-over", PaintAcross::FillsOver),
+    ("strokes-over", PaintAcross::StrokesOver),
+];
+
 /// The names of [`Caps`].
 pub const CAPS: [(&str, Caps); 4] = [
     ("normal", Caps::Normal),
@@ -207,13 +277,15 @@ pub const ALIGNS: [(&str, Align); 7] = [
     ("justify-all", Align::JustifyAll),
 ];
 
-/// Whether a key styles characters or paragraphs.
+/// Whether a key styles characters, paragraphs or the whole text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Level {
     /// It may be set on the whole text and on runs.
     Character,
     /// It may be set on the whole text and on paragraphs.
     Paragraph,
+    /// It may be set on the whole text only.
+    Text,
 }
 
 /// What a style key sets.
@@ -222,6 +294,8 @@ pub enum Setter {
     Character(fn(&mut CharacterStyle, &Json) -> Result<()>),
     /// A key of a paragraph style.
     Paragraph(fn(&mut ParagraphStyle, &Json) -> Result<()>),
+    /// A key of the whole text.
+    Text(fn(&mut WholeStyle, &Json) -> Result<()>),
 }
 
 /// One style key.
@@ -263,14 +337,19 @@ impl StyleKey {
                 let mut style = ParagraphStyle::default();
                 set(&mut style, value).is_ok() && style == ParagraphStyle::default()
             }
+            Setter::Text(set) => {
+                let mut style = WholeStyle::default();
+                set(&mut style, value).is_ok() && style == WholeStyle::default()
+            }
         }
     }
 
-    /// Whether it styles characters or paragraphs.
+    /// Whether it styles characters, paragraphs or the whole text.
     pub fn level(&self) -> Level {
         match self.set {
             Setter::Character(_) => Level::Character,
             Setter::Paragraph(_) => Level::Paragraph,
+            Setter::Text(_) => Level::Text,
         }
     }
 }
@@ -338,8 +417,8 @@ fn flag(written: &Json) -> Result<bool> {
     crate::de::from_value(written)
 }
 
-/// Every style key, characters first.
-pub static STYLE_KEYS: [StyleKey; 19] = [
+/// Every style key: characters, then paragraphs, then the whole text.
+pub static STYLE_KEYS: [StyleKey; 22] = [
     StyleKey {
         name: "font",
         form: "`<family or PostScript name> <size> [<weight>]`, e.g. `Lato-Black 55`",
@@ -532,6 +611,41 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         on_layer: false,
         set: Setter::Paragraph(|s, j| {
             s.auto_leading = at_least(j, 0.0)?;
+            Ok(())
+        }),
+    },
+    StyleKey {
+        name: "anchor-by",
+        form: "`char`, `word`, `line` or `all`",
+        doc: "whose anchor each character scales and turns about under animators: its own, its word's, its line's or the whole text's; its own by default",
+        on_layer: false,
+        set: Setter::Text(|s, j| {
+            s.anchor_by = choice(j, "anchor grouping", &ANCHORS_BY)?;
+            Ok(())
+        }),
+    },
+    StyleKey {
+        name: "anchor-align",
+        form: "`[x, y]`, fractions, e.g. `[0, -0.3]`",
+        doc: "how far every part's anchor moves from the middle of its baseline: across by fractions of the part's width, down by fractions of its font's size",
+        on_layer: false,
+        set: Setter::Text(|s, j| {
+            let [Number(x), Number(y)]: [Number; 2] = crate::de::from_value(j)?;
+            if !(x.is_finite() && y.is_finite()) {
+                return Err(Diagnostic::new(Kind::Invalid, "a fraction is not finite")
+                    .expected("two finite numbers"));
+            }
+            s.anchor_align = [x, y];
+            Ok(())
+        }),
+    },
+    StyleKey {
+        name: "paint-across",
+        form: "`each`, `fills-over` or `strokes-over`",
+        doc: "how fills and strokes stack across characters: each character in its own `paint` order, every fill over every stroke, or every stroke over every fill; each by default",
+        on_layer: false,
+        set: Setter::Text(|s, j| {
+            s.paint_across = choice(j, "paint across", &PAINTS_ACROSS)?;
             Ok(())
         }),
     },

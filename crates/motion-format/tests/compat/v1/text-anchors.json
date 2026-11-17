@@ -1,0 +1,9 @@
+{"motion":1,"size":"480x320","fps":24,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"words","at":"240 120","text":"turn about words","font":"Inter Variable 40 800","fill":"#1E3A5F",
+ "style":{"anchor-by":"word","anchor-align":[0,-0.35],"stroke":"#F6C445","stroke-width":8,"paint-across":"fills-over"},
+ "animate":[{"animator":[{"range":"word","anim":{"offset":"-1 -> 1 @0-24f"},"shape":"triangle"}],"rotate":30,"scale":1.3}]},
+{"id":"line","at":"240 230","text":"one anchor","font":"Inter Variable 40 800","fill":"#101010",
+ "style":{"anchor-by":"all","anchor-align":[-0.5,0],"stroke":"#F6C445","stroke-width":6,"paint-across":"strokes-over"},
+ "animate":[{"animator":[{"range":"char"}],"anim":{"rotate":"0 -> 20 @0-24f"}}]}
+]}

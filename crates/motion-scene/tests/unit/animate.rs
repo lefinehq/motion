@@ -200,6 +200,66 @@ fn transforms_turn_and_scale_about_the_middle_of_the_baseline() {
     );
 }
 
+/// Where each glyph of `text` lands when an animator turns every part a
+/// half turn, under `style`: a half turn about an anchor puts the glyph's
+/// origin as far past the anchor as it was before it.
+fn half_turned(text: &str, style: &str) -> (Vec<kurbo::Point>, Vec<kurbo::Point>) {
+    let keys = format!(
+        r#""text":"{text}","font":"Inter Variable 100","style":{{{style}}},"animate":[{{"animator":[{{"range":"char"}}],"rotate":180}}]"#
+    );
+    let state = frame(&keys, 0.0);
+    let (node, glyphs) = text_of(&state.nodes[0]);
+    let origins: Vec<kurbo::Point> = node
+        .layout
+        .runs
+        .iter()
+        .flat_map(|r| r.glyphs.iter().map(|g| kurbo::Point::new(g.x, g.y)))
+        .collect();
+    let anchors = origins
+        .iter()
+        .zip(glyphs)
+        .map(|(origin, g)| origin.midpoint(g.transform * *origin))
+        .collect();
+    (origins, anchors)
+}
+
+#[test]
+fn a_part_takes_the_anchor_of_its_word_line_or_whole_text() {
+    let close = |a: kurbo::Point, b: kurbo::Point| (a - b).hypot() < 1e-6;
+    let (origins, own) = half_turned("ab cd", "");
+    let node_of = |style: &str| half_turned("ab cd", style).1;
+    let words = node_of(r#""anchor-by":"word""#);
+    let all = node_of(r#""anchor-by":"all""#);
+    // Each word's glyphs share the middle of the word's baseline; the space
+    // keeps its own.
+    assert!(close(words[0], words[1]) && close(words[3], words[4]));
+    assert!(close(words[2], own[2]));
+    let state = frame(r#""text":"ab cd","font":"Inter Variable 100""#, 0.0);
+    let (node, _) = text_of(&state.nodes[0]);
+    let g = &node.layout.runs[0].glyphs;
+    let word = (g[0].x + g[1].x + g[1].advance) / 2.0;
+    assert!((words[0].x - word).abs() < 1e-6 && (words[0].y - origins[0].y).abs() < 1e-6);
+    // The whole text's anchor is the middle of its line.
+    let line = (g[0].x + g[4].x + g[4].advance) / 2.0;
+    assert!(all.iter().all(|a| (a.x - line).abs() < 1e-6));
+    let lines = node_of(r#""anchor-by":"line""#);
+    assert!(lines.iter().zip(&all).all(|(a, b)| close(*a, *b)));
+}
+
+#[test]
+fn anchors_move_by_fractions_of_their_part_width_and_size() {
+    let (_, own) = half_turned("ab", "");
+    let (_, moved) = half_turned("ab", r#""anchor-align":[-0.5,-0.3]"#);
+    let state = frame(r#""text":"ab","font":"Inter Variable 100""#, 0.0);
+    let (node, _) = text_of(&state.nodes[0]);
+    for (i, g) in node.layout.runs[0].glyphs.iter().enumerate() {
+        // Half its width back, to the start of its baseline; 30 % of the
+        // 100 px size up.
+        assert!((moved[i].x - g.x).abs() < 1e-6, "{moved:?}");
+        assert!((moved[i].y - (own[i].y - 30.0)).abs() < 1e-6, "{moved:?}");
+    }
+}
+
 #[test]
 fn colours_and_stroke_width_blend_toward_the_animator() {
     let keys = r##""text":"a","fill":"#000000","style":{"stroke":"#000000","stroke-width":2},"animate":[{"animator":[{"range":"char","amount":0.5}],"fill":"#FFFFFF","stroke":"#FF0000","stroke-width":4}]"##;

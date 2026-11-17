@@ -21,6 +21,7 @@ fn scene_format_doc_lists_every_style_key() {
             let level = match k.level() {
                 Level::Character => "character",
                 Level::Paragraph => "paragraph",
+                Level::Text => "text",
             };
             vec![
                 format!("`{}`", k.name),
@@ -60,6 +61,11 @@ fn key_names_are_unique_and_documented() {
 #[case::auto_leading("leading", json!("auto"), true)]
 #[case::left("align", json!("left"), true)]
 #[case::rejected("tracking", json!("wide"), false)]
+#[case::own_anchor("anchor-by", json!("char"), true)]
+#[case::word_anchor("anchor-by", json!("word"), false)]
+#[case::unmoved_anchor("anchor-align", json!([0, 0]), true)]
+#[case::each_paints("paint-across", json!("each"), true)]
+#[case::fills_over("paint-across", json!("fills-over"), false)]
 #[case::layer_font("font", json!("Inter 40"), false)]
 #[case::layer_fill("fill", json!([0, 0, 0, 0]), false)]
 fn a_key_is_at_its_default_only_when_setting_it_changes_nothing(
