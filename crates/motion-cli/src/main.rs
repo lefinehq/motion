@@ -88,6 +88,10 @@ enum Command {
     Check {
         /// Path to the scene file.
         scene: PathBuf,
+        /// An earlier version of the scene, such as the template before your
+        /// edits: print only what it does not already have.
+        #[arg(long, value_name = "SCENE")]
+        baseline: Option<PathBuf>,
     },
     /// Show where layers are at one moment.
     At {
@@ -146,7 +150,8 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Apply an edit line such as `card fill=#FF0000` and save the scene.
+    /// Apply an edit line such as `card fill=#FF0000`, save the scene and
+    /// print what the edit added to its check; exits 1 when it added an error.
     Edit {
         /// Path to the scene file.
         scene: PathBuf,
@@ -322,7 +327,7 @@ impl Command {
     /// The file the command works on.
     fn file(&self) -> &Path {
         match self {
-            Command::Check { scene }
+            Command::Check { scene, .. }
             | Command::At { scene, .. }
             | Command::Slots { scene, .. }
             | Command::Roles { scene, .. }
@@ -358,7 +363,7 @@ fn main() -> ExitCode {
         "running"
     );
     let result = match cli.command {
-        Command::Check { scene } => commands::check::run(&scene),
+        Command::Check { scene, baseline } => commands::check::run(&scene, baseline.as_deref()),
         Command::Slots { scene, json } => commands::slots::run(&scene, json),
         Command::Roles { scene, json } => commands::roles::run(&scene, json),
         Command::Batch {

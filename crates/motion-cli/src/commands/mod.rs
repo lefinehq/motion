@@ -20,8 +20,15 @@ use std::process::ExitCode;
 
 use motion_engine::Report;
 
-/// Prints a check report; exits 1 when it has an error line.
-pub fn print_report(report: &Report) -> ExitCode {
+/// Prints what `report` found that `base`, the report of an earlier version
+/// of the scene, does not already have, after a line `KNOWN 3` counting what
+/// it left out when that is any; exits 1 when what is printed has an error
+/// line. An empty `base` prints the whole report.
+pub fn print_new(mut report: Report, base: &Report) -> ExitCode {
+    let known = report.since(base);
+    if known > 0 {
+        println!("KNOWN {known}");
+    }
     println!("{report}");
     if report.has_errors() {
         ExitCode::from(1)

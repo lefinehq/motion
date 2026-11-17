@@ -130,7 +130,7 @@ impl fmt::Display for Violation {
 }
 
 /// Everything `check` found in a scene.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Report {
     /// The problems, in scene order.
     pub violations: Vec<Violation>,
@@ -138,7 +138,35 @@ pub struct Report {
     pub passed: usize,
 }
 
+impl Measure {
+    /// Whether this is no worse than `other`, a measure of the same rule:
+    /// no farther out, no higher above its limit or no lower below it.
+    fn no_worse_than(self, other: Measure) -> bool {
+        match (self, other) {
+            (Measure::Overshoot(now), Measure::Overshoot(then)) => now <= then,
+            (Measure::Above { value: now, .. }, Measure::Above { value: then, .. }) => now <= then,
+            (Measure::Below { value: now, .. }, Measure::Below { value: then, .. }) => now >= then,
+            _ => false,
+        }
+    }
+}
+
 impl Report {
+    /// Drops the violations `base`, the report of an earlier version of the
+    /// scene, already has, and returns how many it dropped. A violation is
+    /// known when `base` has one by the same rule on the same layer that is
+    /// measured as bad or worse, whatever its frames: an edit may move a
+    /// problem in time without making it worse.
+    pub fn since(&mut self, base: &Report) -> usize {
+        let before = self.violations.len();
+        self.violations.retain(|v| {
+            !base.violations.iter().any(|b| {
+                b.code == v.code && b.address == v.address && v.measure.no_worse_than(b.measure)
+            })
+        });
+        before - self.violations.len()
+    }
+
     /// Whether any violation is an error (warnings do not count).
     pub fn has_errors(&self) -> bool {
         self.violations
