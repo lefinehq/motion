@@ -1,0 +1,33 @@
+{"motion":1,"size":"1080x1920","fps":30,"dur":"9s","bg":"#0F1115",
+"labels":{"punch":"1.2s","body":"2.8s","brew":"body+1.6s","done":"brew+1.6s","end":"done+1.6s"},
+"comps":{
+"hook":{"size":"1080x1920","dur":"3.2s","labels":{"punch":"1.2s"},"layers":[
+{"id":"headline","text":"Mornings,\nsorted.","font":"Inter Variable 140 800","fill":"#FFFFFF","style":{"align":"center","leading":150},"at":"center 700","offset":"-6f","in":"slam 10f out-expo"},
+{"id":"punchline","text":"Coffee's already on.","font":"Inter Variable 72 700","fill":"#FFD166","style":{"align":"center"},"at":"center 1040","span":"punch-3.2s","offset":"punch-2f","in":"rise 60px 10f out-back"}]},
+"plan":{"size":"1080x1920","dur":"2s","layers":[
+{"id":"title","text":"Plan it the night before","font":"Inter Variable 72 700","fill":"#FFFFFF","style":{"align":"center"},"at":"center 420"},
+{"id":"screen","rect":"640x900 r48","fill":"#1C1F26","at":"center 1100"},
+{"id":"row-1","rect":"520x110 r24","fill":"#3A3AE0","at":"center 820","offset":"12f","in":"fade-left 60px 10f out-cubic"},
+{"id":"row-2","rect":"520x110 r24","fill":"#2A2E38","at":"center 960","offset":"15f","in":"fade-left 60px 10f out-cubic"},
+{"id":"row-3","rect":"520x110 r24","fill":"#2A2E38","at":"center 1100","offset":"18f","in":"fade-left 60px 10f out-cubic"}]},
+"brew":{"size":"1080x1920","dur":"2s","layers":[
+{"id":"title","text":"It starts at 6:45","font":"Inter Variable 72 700","fill":"#FFFFFF","style":{"align":"center"},"at":"center 420"},
+{"id":"dial","rect":"560x560 r280","fill":"#1C1F26","at":"center 1050"},
+{"id":"time","text":"6:45","font":"Inter Variable 160 800","fill":"#FFD166","style":{"align":"center"},"at":"center 1105","offset":"12f","in":"pop 10f out-back"}]},
+"done":{"size":"1080x1920","dur":"2s","layers":[
+{"id":"title","text":"Wake up to a full cup","font":"Inter Variable 72 700","fill":"#FFFFFF","style":{"align":"center"},"at":"center 420"},
+{"id":"cup","rect":"360x440 r40","fill":"#F4F1EA","at":"center 1100","offset":"12f","in":"rise 80px 12f out-cubic"},
+{"id":"coffee","rect":"300x260 r28","fill":"#6F4E37","at":"center 1180","offset":"18f","in":"fade-up 40px 12f out-cubic"}]},
+"end":{"size":"1080x1920","dur":"2s","layers":[
+{"id":"mark","rect":"220x220 r56","fill":"#3A3AE0","at":"center 760","offset":"12f","in":"pop 8f out-back"},
+{"id":"name","text":"Brewly","font":"Inter Variable 150 800","fill":"#FFFFFF","style":{"align":"center"},"at":"center 1060"},
+{"id":"tagline","text":"Mornings, sorted.","font":"Inter Variable 64 500","fill":"#C9CBD3","style":{"align":"center"},"at":"center 1200"}]}
+},
+"layers":[
+{"id":"glow","rect":"760x760 r380","fill":"#3A3AE0","opacity":0.35,"at":"center 820","anim":{"scale":"1 -> 1.15 @0-9s in-out-sine","x":"520 -> 560 @0-9s in-out-sine"}},
+{"id":"hook","comp":"hook","span":"0s-body+12f","out":"push-up 12f in-out-cubic","mblur":true},
+{"id":"plan","comp":"plan","span":"body-brew+12f","offset":"body","in":"push-up 12f in-out-cubic","out":"push-up 12f in-out-cubic","mblur":true},
+{"id":"brew","comp":"brew","span":"brew-done+12f","offset":"brew","in":"push-up 12f in-out-cubic","out":"push-up 12f in-out-cubic","mblur":true},
+{"id":"done","comp":"done","span":"done-end+12f","offset":"done","in":"push-up 12f in-out-cubic","out":"push-up 12f in-out-cubic","mblur":true},
+{"id":"end","comp":"end","span":"end-9s","offset":"end","in":"push-up 12f in-out-cubic","mblur":true}
+]}

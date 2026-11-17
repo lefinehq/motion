@@ -1,0 +1,7 @@
+{"motion":1,"size":"1920x1080","fps":30,"dur":"5s","bg":"#24303A",
+"layers":[
+{"id":"plate","rect":"760x150 r12","fill":"#101418","opacity":0.92,"anim":{"scale-x":[["0f",0,"out-expo"],["14f",1],["4s",1,"in-expo"],["4.4s",0]]},"anchor":[0,75],"position":[120,860],"mblur":true},
+{"id":"accent","rect":"10x150","fill":"#F2A541","at":"125 860","span":"0s-4.5s","in":"fade 6f","out":"fade 6f"},
+{"id":"name","text":"Dana Okafor","font":"Inter Variable 64 700","fill":"#FFFFFF","anchor":[0,0],"position":[170,858],"span":"8f-4.3s","offset":"8f","in":"fade-right 40px 12f out-cubic","out":"fade-left 30px 8f ease-in"},
+{"id":"role","text":"Head of Research, Northwind Labs","font":"Inter Variable 34 500","fill":"#C9D2DA","anchor":[0,0],"position":[172,908],"span":"12f-4.25s","offset":"12f","in":"fade-right 30px 12f out-cubic","out":"fade-left 30px 8f ease-in"}
+]}

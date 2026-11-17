@@ -108,6 +108,23 @@ fn check_clean_example_exits_zero() {
     assert_eq!(out.status.code(), Some(0));
 }
 
+/// The scenes written from scratch in `examples/`, which agents read as a
+/// guide: each passes every rule and gate with nothing found.
+#[rstest]
+#[case::social("social-916.json")]
+#[case::lower_third("lower-third.json")]
+#[case::title_card("title-card.json")]
+fn an_example_written_from_scratch_passes_check(#[case] name: &str) {
+    let path = format!("{}/../../examples/{name}", env!("CARGO_MANIFEST_DIR"));
+    let out = motion(&["check", &path]);
+    let text = stdout(&out);
+    assert!(
+        text.starts_with("OK ") && text.lines().count() == 1,
+        "{name}: {text}"
+    );
+    assert_eq!(out.status.code(), Some(0));
+}
+
 #[test]
 fn check_offscreen_exits_one() {
     let out = motion(&["check", OFFSCREEN]);
