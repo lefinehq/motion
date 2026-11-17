@@ -123,6 +123,18 @@ Before, the import reported `scaled characters` 47 times in 12 scored samples an
 
 m639's six stacked `CREATION` titles are skewed in the reference, which the scene does not draw yet. Set at their right width, their unskewed letters cover less of the reference's slanted ones than the wider letters did. Its stored layouts come closer (worst line 100.55 → 51.33 px).
 
+## Ranges in parts
+
+A range selector stores its range twice, in percent (`ADBE Text Percent Start`, `End`, `Offset`) and in parts (`ADBE Text Index Start`, `End`, `Offset`), and `ADBE Text Range Units` says which it uses. The `range` selector's `units` setting keeps the choice ([scene format](scene-format.md#text-animators)). The belief was measured once against the corpus's reference frames; the sweep does not check it yet.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| R1. Range units 2 take start, end and offset from the index properties, as numbers of parts; 1 takes them from the percent properties. Each selector reads only the triple its units name. | 10 selectors in 6 samples (m566, m795, m802, m815, m816, m839) use units 2. Each stores both triples, its percent triple at the full range (0, 100, 0), so read as percent they chose every part all the time. Read as parts: m566's `BOXED` and `titles` (start 50, end 0, offset 25, subtracting) now leave their letters in place, and its failing share over all frames goes from 81.66 % to 75.58 % (content error 0.2498 → 0.1643). m795, m802, m815 and m816, whose ranges sweep their letters from an offset of 29 down to -17 parts, each err less: 82.95 % → 82.80 %, 86.01 % → 85.93 %, 99.85 % → 99.84 % and 62.96 % → 62.76 %. Their letters also enter in a random order, which the scene does not draw yet. | 6 of 6 samples err less; m839's selector moves only after its reference ends |
+
+What is left open:
+- **Line breaks.** A part counts characters other than line breaks, as `char` counts for percent ranges. m802's `Wedding` and `Slideshow` (16 characters on two lines) end their range at 17, past the last character either way. No sample tells whether the original counts the break.
+- **A triple left out.** Every local selector in parts stores all three index properties, so what a missing one defaults to is not known. The import then leaves the scene's own default.
+
 ## Expression selectors
 
 An expression selector (`ADBE Text Expressible Selector`) becomes a `parts` selector ([D64](decisions.md#d64-a-selector-may-choose-each-part-by-its-own-amount)): its amount's expression is evaluated once per part. These beliefs were measured once, by hand: two scenes are drawn at the reference's own times and compared with the reference only at the pixels where they differ. The sweep does not check them yet.

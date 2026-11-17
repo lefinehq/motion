@@ -95,6 +95,19 @@ fn range_selectors_choose_by_their_shape(#[case] selector: &str, #[case] expecte
 }
 
 #[rstest]
+// Parts 1 to 3 of 4, as indices.
+#[case::middle(r#","units":"index","start":1,"end":3"#, [1.0, 0.0, 0.0, 1.0])]
+// The same range as fractions.
+#[case::as_fractions(r#","start":0.25,"end":0.75"#, [1.0, 0.0, 0.0, 1.0])]
+// An offset of two parts moves it past the last.
+#[case::offset(r#","units":"index","start":1,"end":3,"offset":2"#, [1.0, 1.0, 1.0, 0.0])]
+// Half a part covers half the part.
+#[case::half(r#","units":"index","end":1.5"#, [0.0, 0.5, 1.0, 1.0])]
+fn a_range_in_index_units_counts_parts(#[case] selector: &str, #[case] expected: [f64; 4]) {
+    assert_eq!(opacities(&fade(selector), 0.0), expected);
+}
+
+#[rstest]
 #[case::add(r#""add""#, [0.0, 0.0, 0.0, 0.0])]
 #[case::subtract(r#""subtract""#, [0.0, 0.0, 1.0, 1.0])]
 #[case::intersect(r#""intersect""#, [1.0, 1.0, 0.0, 0.0])]
@@ -321,7 +334,7 @@ mod any_selector {
     use proptest::prelude::*;
 
     /// A range selector with `values` and the setting choices `settings`.
-    fn selector(values: [f64; 7], settings: [usize; 3]) -> ItemState {
+    fn selector(values: [f64; 7], settings: [usize; 4]) -> ItemState {
         ItemState {
             kind: &SELECTORS[0],
             id: None,
@@ -347,10 +360,11 @@ mod any_selector {
             shape in 0..6usize,
             mode in 0..6usize,
             by in 0..4usize,
+            units in 0..2usize,
             n in 1..40usize,
             i in 0..40usize,
         ) {
-            let s = selector([start, end, offset, amount, smooth, high, low], [by, shape, mode]);
+            let s = selector([start, end, offset, amount, smooth, high, low], [by, shape, mode, units]);
             let glyph = GlyphParts { index: [Some(i % n); 4] };
             let v = chosen(&[s.clone(), s], &glyph, &[n; 4]);
             prop_assert!((-1.0..=1.0).contains(&v.x) && v.x == v.y, "{v:?}");

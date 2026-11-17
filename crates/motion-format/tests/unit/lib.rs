@@ -491,7 +491,7 @@ fn every_error_message() {
                 r#"{"id":"a","text":"x","animate":[{"animator":[{"rect":[1,1]}]}]}"#,
                 r#"{"id":"a","text":"x","animate":[{"animator":[{"range":"sentence"}]}]}"#,
                 r#"{"id":"a","text":"x","animate":[{"animator":[{"range":"char","by":"word"}]}]}"#,
-                r#"{"id":"a","text":"x","animate":[{"animator":[{"range":"char","offset":2}]}]}"#,
+                r#"{"id":"a","text":"x","animate":[{"animator":[{"range":"char","amount":2}]}]}"#,
                 r#"{"id":"a","text":"x","animate":[{"animator":[{"range":"char","shape":"wave"}]}]}"#,
                 r#"{"id":"a","text":"x","animate":[{"animator":[],"y":3}]}"#,
                 r#"{"id":"a","text":"x","animate":[{"animator":[],"opacity":2}]}"#,
