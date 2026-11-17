@@ -19,6 +19,7 @@ use crate::space;
 use crate::state::box_through;
 use crate::{CompGraph, ContentState, FrameState, NodeContent, NodeState, SceneGraph};
 use glam::DMat3;
+use motion_format::shorthand::MatteMode;
 
 /// One node met on a [`walk`].
 #[derive(Debug, Clone, PartialEq)]
@@ -48,8 +49,10 @@ pub struct Visit<'a> {
     pub visible: bool,
     /// Its opacity times that of every `comp` node around it.
     pub opacity: f64,
-    /// The part of the scene's canvas the `comp` nodes around it let it draw
-    /// in: each clips to its composition's canvas. `None` at the root.
+    /// The part of the scene's canvas it may draw in: each `comp` node around
+    /// it clips to its composition's canvas, and an alpha or luma matte, on
+    /// it or on a `comp` node around it, to the box its matte layer draws.
+    /// `None` when nothing limits it.
     pub clip: Option<Rect>,
 }
 
@@ -114,6 +117,7 @@ pub fn walk<'a>(graph: &'a SceneGraph, state: &'a FrameState) -> Walk<'a> {
         sizes: subtree_sizes(graph),
         next_index: 0,
         stack: vec![Level {
+            comp: &graph.root,
             nodes: &state.nodes,
             next: 0,
             ids: Vec::new(),
@@ -144,6 +148,8 @@ pub struct Walk<'a> {
 /// `comp` nodes around it add to each of them.
 #[derive(Debug, Clone)]
 struct Level<'a> {
+    /// The composition whose canvas this is, which says each node's matte.
+    comp: &'a CompGraph,
     nodes: &'a [NodeState],
     next: usize,
     ids: Vec<&'a str>,
@@ -165,6 +171,7 @@ impl<'a> Iterator for Walk<'a> {
                 self.stack.pop();
                 continue;
             };
+            let at = level.next;
             level.next += 1;
             let mut ids = level.ids.clone();
             ids.push(node.id.as_str());
@@ -182,7 +189,9 @@ impl<'a> Iterator for Walk<'a> {
                 projected: level.projected || node.plane.is_some(),
                 visible: level.visible && node.visible(),
                 opacity: level.opacity * node.number(Prop::OPACITY),
-                clip: level.clip,
+                clip: level.matted(at, MATTE_DEPTH).map_or(level.clip, |matte| {
+                    Some(level.clip.map_or(matte, |clip| clip.intersect(matte)))
+                }),
             };
             if let ContentState::Comp(comp, None) = &node.content {
                 // Not evaluated at this frame: nothing inside it is met.
@@ -196,6 +205,7 @@ impl<'a> Iterator for Walk<'a> {
                     true => space::bbox(&space::outline(visit.plane, whole)).unwrap_or(Rect::ZERO),
                 };
                 self.stack.push(Level {
+                    comp,
                     nodes: &inner.nodes,
                     next: 0,
                     ids: visit.ids.clone(),
@@ -209,6 +219,48 @@ impl<'a> Iterator for Walk<'a> {
             }
             return Some(visit);
         }
+    }
+}
+
+/// How many mattes in a row [`Level::matted`] follows: each may be matted in
+/// turn, and validation keeps a chain from looping, so this only bounds the
+/// work.
+const MATTE_DEPTH: usize = 16;
+
+impl Level<'_> {
+    /// The box, on the scene's canvas, that node `i`'s alpha or luma matte
+    /// lets it draw in, or `None` when it has none. An inverted matte shows
+    /// the node where the matte layer does not draw, so it does not limit
+    /// the box. A matte layer outside its span draws nothing, and so lets
+    /// nothing show.
+    fn matted(&self, i: usize, depth: usize) -> Option<Rect> {
+        let (source, mode) = self.comp.nodes.get(i)?.matte?;
+        if matches!(mode, MatteMode::AlphaInverted | MatteMode::LumaInverted) || depth == 0 {
+            return None;
+        }
+        let matte = self.nodes.get(source)?;
+        if !matte.shown {
+            return Some(Rect::ZERO);
+        }
+        let seen = Visit {
+            index: 0,
+            ids: Vec::new(),
+            node: matte,
+            transform: self.transform * matte.transform,
+            plane: self.plane
+                * matte
+                    .plane
+                    .unwrap_or_else(|| space::projective(matte.transform)),
+            projected: self.projected || matte.plane.is_some(),
+            visible: true,
+            opacity: 1.0,
+            clip: None,
+        };
+        let drawn = seen.bounds();
+        Some(
+            self.matted(source, depth - 1)
+                .map_or(drawn, |outer| drawn.intersect(outer)),
+        )
     }
 }
 

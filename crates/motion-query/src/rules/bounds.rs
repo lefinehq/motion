@@ -1,6 +1,6 @@
 //! Bounds rules: `offscreen` for the canvas, `unsafe` for the title-safe area inside it.
 
-use super::{Overshoot, Rule, overshoot, visible};
+use super::{Overshoot, Rule, draws, overshoot, visible};
 use crate::report::{Code, Severity};
 use kurbo::Rect;
 use motion_scene::{SceneGraph, Visit};
@@ -43,14 +43,14 @@ fn safe_area(graph: &SceneGraph) -> Rect {
 }
 
 fn offscreen(visit: &Visit<'_>, graph: &SceneGraph) -> Option<Overshoot> {
-    if !visible(visit) {
+    if !(visible(visit) && draws(visit)) {
         return None;
     }
     overshoot(visit, canvas(graph))
 }
 
 fn outside_safe_area(visit: &Visit<'_>, graph: &SceneGraph) -> Option<Overshoot> {
-    if !visible(visit) {
+    if !(visible(visit) && draws(visit)) {
         return None;
     }
     overshoot(visit, safe_area(graph))
