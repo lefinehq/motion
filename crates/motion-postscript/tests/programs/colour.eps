@@ -1,0 +1,18 @@
+%!PS-3.0 EPSF-3.0
+%%BoundingBox: 0 0 80 20
+%%EndComments
+/cell { 10 0 translate newpath 0 0 moveto 10 0 lineto 10 20 lineto 0 20 lineto closepath fill } def
+-10 0 translate
+0.5 setgray cell
+1 0.5 0 setrgbcolor cell
+0 0 1 0 setcmykcolor cell
+0.5 1 1 sethsbcolor cell
+% A separation through a tint transform into CMYK: full tint is magenta.
+[/Separation /Spot /DeviceCMYK { dup 0 exch 0 0 }] setcolorspace 1 setcolor cell
+% An indexed space whose table holds blue, then green.
+[/Indexed /DeviceRGB 1 <0000FF00FF00>] setcolorspace 1 setcolor cell
+% Two inks through a tint transform into RGB.
+[/DeviceN [/A /B] /DeviceRGB { 0 }] setcolorspace 1 0.25 setcolor cell
+% A separation of no colorant paints nothing.
+[/Separation /None /DeviceGray {}] setcolorspace 1 setcolor cell
+showpage

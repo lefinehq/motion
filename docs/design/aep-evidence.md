@@ -323,3 +323,12 @@ Other things we take without evidence:
 - **Pages after the first.** Every corpus file has one page; the first is drawn.
 - **Soft masks, shadings, patterns, images and text.** No corpus file has them; they follow the PDF standard, each tested on a hand-written file.
 - **CMYK.** No corpus file paints in device CMYK; it goes through the interpreter's press profile. On a hand-written file the operating system's renderer, with a press profile of its own, draws 100 % magenta and yellow as (216, 34, 42) where ours is (237, 29, 36); an axial shading with a stitched function on the same file agrees within 2 levels.
+
+## EPS footage
+
+EPS footage is drawn by our own PostScript interpreter ([D71](decisions.md#d71-eps-footage-is-drawn-by-our-own-postscript-interpreter)). Five local samples hold EPS footage, five files in all: three plain programs (m788, m837, m838) and two binary EPS files whose programs carry half a megabyte of procedure sets (m772, m794). The beliefs were measured once, against the samples' reference renders, with the files drawn through a measuring build.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| E1. Device CMYK is drawn by the language's own rule, each primary `1 − min(1, c + k)`, not through a press profile. | m772's button is `0 .993347 1 0` CMYK. The reference draws it (255, 3, 2), (254, 2, 1) and (255, 0, 0) at four points of frame 12. The rule gives (255, 2, 0); the system's generic CMYK profile gives (217, 37, 42). | 1 colour of 1 sample; m794's one CMYK colour is recoloured by a fill effect, so its reference cannot tell. |
+| E2. The footage's size is the whole-point `%%BoundingBox`, and the art sits in it one point a pixel from its top-left corner, not stretched to it from the precise `%%HiResBoundingBox`. | Every project gives its EPS footage the whole-point box's size: m772 258 × 64 (precise 257.9711 × 63.9789), m794 78 × 24 (precise 77.3357 × 23.0674), m788 384 × 384, m837 410 × 366, m838 511 × 491. Drawn over the whole-point box, m794's content error is 0.01919 against 0.01961 stretched from the precise box (41.18% against 41.21% failing); m772's differs by under 0.001 points. | 5 of 5 files |

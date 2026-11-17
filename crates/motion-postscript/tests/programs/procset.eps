@@ -1,0 +1,46 @@
+%!PS-3.0 EPSF-3.0
+%%BoundingBox: 0 0 100 100
+%%HiResBoundingBox: 0 0 100 100
+%%EndComments
+%%BeginProlog
+%%BeginResource: procset Example 1.0 0
+% A procedure set as EPS writers make them: short names bound to
+% operators in a dictionary of their own, registered as a resource.
+userdict /Example 30 dict dup begin
+/q { gsave } bind def
+/Q { grestore } bind def
+/cm { 6 array astore concat } bind def
+/m { moveto } bind def
+/l { lineto } bind def
+/c { curveto } bind def
+/h { closepath } bind def
+/re { exch dup neg 3 1 roll 5 3 roll moveto 0 rlineto 0 exch rlineto 0 rlineto closepath } bind def
+/f { fill } bind def
+/k { setcmykcolor } bind def
+/rg { setrgbcolor } bind def
+/W { clip } bind def
+/n { newpath } bind def
+/Level2? systemdict /languagelevel known { languagelevel 2 ge } { false } ifelse def
+end put
+/Example /Example load /ProcSet defineresource pop
+%%EndResource
+%%EndProlog
+%%BeginSetup
+/Example /ProcSet findresource begin
+%%EndSetup
+%%BeginData: 3 Hex Lines
+% 00FF00
+% 00FF00
+% 00FF00
+%%EndData
+q 0 0 100 100 re W n
+1 0 0 1 0 0 cm
+Level2? { 0 1 1 0 k } { 0 0 0 1 k } ifelse
+10 10 80 80 re f
+1 1 1 rg 30 30 m 70 30 l 50 70 l h f
+Q
+end
+showpage
+%%Trailer
+%%EOF
+anything after the end of file is never read

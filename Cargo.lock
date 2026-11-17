@@ -1758,6 +1758,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "motion-postscript"
+version = "0.0.0"
+dependencies = [
+ "flate2",
+ "indexmap",
+ "kurbo",
+ "pretty_assertions",
+ "proptest",
+ "rstest",
+ "vello_cpu",
+]
+
+[[package]]
 name = "motion-query"
 version = "0.0.0"
 dependencies = [

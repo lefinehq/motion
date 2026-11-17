@@ -11,7 +11,9 @@ pard = "pard"
 pn = "pn"
 rin = "rin"
 trak = "trak"
-# The PDF standard's name for its deflate filter.
+# PostScript language words: the deflate filter (as the PDF standard
+# also names it) and a deferred structure comment.
+atend = "atend"
 flate = "flate"
 
 [default]
