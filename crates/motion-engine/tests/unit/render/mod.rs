@@ -647,3 +647,52 @@ fn a_3d_layer_farther_away_draws_smaller() {
     ));
     assert_eq!((x1 - x0, y1 - y0), (40, 20));
 }
+
+/// The colour at the centre of frame `frame` of a 400x200 scene of `layer`
+/// over a grey ground, drawn as `render` draws it, with the layer's motion
+/// blur on or off. `layer` may name `picture.png`, a 40x40 image of the
+/// colour `#3A7BD5`, written beside the scene.
+fn centre(layer: &str, mblur: bool, frame: f64) -> [u8; 4] {
+    let dir = std::env::temp_dir().join(format!(
+        "motion-engine-blur-colour-{}-{}",
+        std::process::id(),
+        layer.len() + usize::from(mblur)
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let picture = motion_raster::Image::new(40, 40, [58, 123, 213, 255].repeat(1600)).unwrap();
+    std::fs::write(dir.join("picture.png"), picture.to_png().unwrap()).unwrap();
+    let path = dir.join("scene.json");
+    let scene = format!(
+        r##"{{"motion":1,"size":"400x200","fps":10,"dur":"1s","bg":"#808080",
+            "layers":[{{"id":"l",{layer},"mblur":{mblur}}}]}}"##
+    );
+    std::fs::write(&path, scene).unwrap();
+    let image = Session::open(&path).unwrap().render(frame).unwrap();
+    image.pixel(200, 100).unwrap()
+}
+
+/// Motion blur averages a layer's drawings, so where every one of them is
+/// the same colour, the blurred frame keeps that colour: no channel drifts.
+/// ENGINE-GAPS #49 saw blurred screenshots come out tinted yellow and green.
+#[rstest]
+#[case::a_shape(r##""rect":"300x160","fill":"#3A7BD5","anim":{"x":"180 -> 220 @0-1s"}"##)]
+#[case::a_scaled_picture(
+    r#""image":"picture.png","box":[40,40],"anim":{"y":"90 -> 110 @0-1s","scale":"6 -> 7 @0-1s"}"#
+)]
+#[case::a_picture_with_effects(
+    r#""image":"picture.png","box":[40,40],"scale":6,"fx":[{"transform":1}],"anim":{"x":"180 -> 220 @0-1s"}"#
+)]
+#[case::a_turning_3d_picture(
+    r#""image":"picture.png","box":[40,40],"scale":6,"3d":true,"anim":{"rotate-y":"-20 -> 20 @0-1s"}"#
+)]
+fn a_blurred_layer_keeps_its_colour(#[case] layer: &str) {
+    let sharp = centre(layer, false, 5.0);
+    let blurred = centre(layer, true, 5.0);
+    let drift = sharp
+        .iter()
+        .zip(blurred)
+        .map(|(a, b)| a.abs_diff(b))
+        .max()
+        .unwrap();
+    assert!(drift <= 1, "sharp {sharp:?}, blurred {blurred:?}");
+}
