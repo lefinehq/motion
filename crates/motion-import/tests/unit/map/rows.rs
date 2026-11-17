@@ -85,7 +85,7 @@ fn check(
                 row.match_name
             );
         }
-        To::Ignore(_) | To::OnlyDefault(_) => {}
+        To::Ignore(_) | To::OnlyDefault(_) | To::OnlyDefaultWith(..) => {}
     });
 }
 
