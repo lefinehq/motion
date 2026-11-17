@@ -297,7 +297,7 @@ Footage in a PDF file, which every `.ai` file of the corpus is inside, becomes a
 | m803 | 77.49 % → 77.48 % | 0.0947 → 0.0923 | 0 → 0 of 20 |
 | m830 | 36.22 % → 33.02 % | 0.0460 → 0.0307 | 0 → 0 of 20 |
 
-m712's and m716's vector layers are hidden (guides), so they cannot change; m595's numbers do not change either, which is not yet explained. m794 also holds an `.eps` file, still drawn as nothing.
+m712's and m716's vector layers are hidden (guides), so they cannot change; m595's numbers do not change either, which is not yet explained. m794 also holds an `.eps` file, drawn since [D71](decisions.md#d71-eps-footage-is-drawn-by-our-own-postscript-interpreter) ([EPS footage](#eps-footage)).
 
 | Belief | Evidence | Held, 2026-11-17 |
 |---|---|---|
@@ -327,6 +327,18 @@ Other things we take without evidence:
 ## EPS footage
 
 EPS footage is drawn by our own PostScript interpreter ([D71](decisions.md#d71-eps-footage-is-drawn-by-our-own-postscript-interpreter)). Five local samples hold EPS footage, five files in all: three plain programs (m788, m837, m838) and two binary EPS files whose programs carry half a megabyte of procedure sets (m772, m794). The beliefs were measured once, against the samples' reference renders, with the files drawn through a measuring build.
+
+Drawn through the vector footage path, measured against a build of main with D70 (content failing share, content error, frames passing over the floor, over all frames):
+
+| Sample | Failing, before → after | Mean error, before → after | Frames passing over the floor |
+|---|---|---|---|
+| m772 | 19.24 % → 18.48 % | 0.0149 → 0.0089 | 0 → 0 of 14 |
+| m788 | 22.38 % → 22.34 % | 0.0130 → 0.0122 | 0 → 0 of 20 |
+| m794 | 41.20 % → 41.17 % | 0.0197 → 0.0191 | 0 → 0 of 20 |
+| m837 | 38.16 % → 37.75 % | 0.0392 → 0.0370 | 0 → 0 of 20 |
+| m838 | 30.04 % → 29.92 % | 0.0176 → 0.0166 | 0 → 0 of 20 |
+
+The three plain files reach what converting them to PDF outside motion and drawing that with the operating system's renderer reached (m788 22.3 %, 0.0122; m837 37.8 %, 0.0370; m838 29.9 %, 0.0165). m794's error is mostly its background clip; its ornaments are recoloured by a fill effect. The other samples hold their errors in footage and text the EPS files do not touch.
 
 | Belief | Evidence | Held, 2026-11-17 |
 |---|---|---|

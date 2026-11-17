@@ -11,6 +11,8 @@ publish.workspace = true
 [dependencies]
 motion-format = { path = "../motion-format" }
 motion-raster = { path = "../motion-raster" }
+# EPS footage: our own PostScript interpreter (D71).
+motion-postscript = { path = "../motion-postscript" }
 # The PDF object reader and the interpreter of its drawing operators (D70).
 hayro-syntax.workspace = true
 hayro-interpret.workspace = true

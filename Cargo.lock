@@ -1841,6 +1841,7 @@ dependencies = [
  "hayro-interpret",
  "hayro-syntax",
  "motion-format",
+ "motion-postscript",
  "motion-raster",
  "rstest",
 ]
