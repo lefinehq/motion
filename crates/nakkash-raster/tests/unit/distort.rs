@@ -25,6 +25,7 @@ fn stripes() -> (Pixels, Space) {
         time: 0.0,
         sound: None,
         outline: None,
+        totals: Vec::new(),
     };
     (pixels, space)
 }
@@ -55,6 +56,7 @@ fn ramps() -> (Pixels, Space) {
         time: 0.0,
         sound: None,
         outline: None,
+        totals: Vec::new(),
     };
     (pixels, space)
 }
@@ -169,6 +171,7 @@ fn repeat_tile_repeats_flips_or_bricks_the_box_around_it() {
             time: 0.0,
             sound: None,
             outline: None,
+            totals: Vec::new(),
         };
         (pixels, space)
     };
@@ -245,6 +248,7 @@ fn turbulent_displacement_moves_pixels_but_keeps_pinned_edges() {
         time: 0.0,
         sound: None,
         outline: None,
+        totals: Vec::new(),
     };
     let before = pixels.clone();
     let values = [

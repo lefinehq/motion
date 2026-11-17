@@ -11,7 +11,7 @@ use nakkash_format::{AudioContent, ImageContent, VideoContent};
 use crate::text::TextNode;
 use nakkash_format::{Value, ValueType};
 
-use crate::track::Track;
+use crate::track::{Integral, Track};
 
 /// A compiled scene: its root composition, which is the canvas the scene
 /// draws, and the compositions its `comp` nodes draw.
@@ -94,6 +94,11 @@ pub struct ItemNode {
     pub items: Vec<ItemNode>,
     /// The properties it sets or animates, in registry order.
     pub written: Vec<Prop>,
+    /// The running total of each row of the kind's registry that effects
+    /// read the integral of ([`PropertySpec::integral`]), in row order.
+    ///
+    /// [`PropertySpec::integral`]: nakkash_format::property::PropertySpec::integral
+    pub integrals: Vec<Arc<Integral>>,
 }
 
 /// When a node shows and how its own time runs, in frames of its composition's
@@ -152,6 +157,18 @@ pub enum PropertyTrack {
 }
 
 impl PropertyTrack {
+    /// The running total of a number property's track at `fps` frames a
+    /// second, each value clamped to `range` ([`Track::integral`]).
+    ///
+    /// # Panics
+    /// If the property is not a number, whose track is always whole.
+    pub fn integral(&self, fps: f64, range: Option<(f64, f64)>) -> Integral {
+        match self {
+            PropertyTrack::Whole(track) => track.integral(fps, range),
+            PropertyTrack::Split(_) => panic!("a number property's track is whole"),
+        }
+    }
+
     /// The value at `frame`.
     pub fn sample(&self, frame: f64, ty: ValueType) -> Value {
         match self {

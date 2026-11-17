@@ -396,6 +396,7 @@ impl Painter {
             time: layer.time,
             sound: effect.sound().cloned(),
             outline: effect.outline().cloned(),
+            totals: effect.totals().to_vec(),
         })
     }
 

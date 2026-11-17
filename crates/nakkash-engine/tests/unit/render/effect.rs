@@ -6,7 +6,7 @@ use nakkash_raster::{EFFECTS as RASTER_EFFECTS, ParamType};
 use pretty_assertions::assert_eq;
 
 use super::*;
-use crate::render::tests::{list, only_layer, scene};
+use crate::render::tests::{list, only_layer, scene, session};
 
 /// The rasteriser's parameter type for a scene value type, if it has one.
 fn raster_type(ty: ValueType) -> Option<ParamType> {
@@ -135,4 +135,44 @@ fn a_path_that_is_no_curve_is_reported() {
     assert_eq!(outside.kind, Kind::OutOfRange);
     let points: Vec<[f64; 2]> = (0..17).map(|i| [f64::from(i) / 16.0, 0.0]).collect();
     assert_eq!(param(&path(&points)).unwrap_err().kind, Kind::OutOfRange);
+}
+
+/// How many pixels of `scene` at `frame` show any colour.
+fn lit(scene: &str, frame: f64) -> usize {
+    let image = session(scene).render(frame).expect("a frame");
+    image
+        .pixels()
+        .chunks_exact(4)
+        .filter(|p| p[..3].iter().any(|&c| c > 0))
+        .count()
+}
+
+/// A burst: `rate` keyed from 1000 a second down to 0 after 0.2 s. The
+/// rate acts on births only, so the burst stays lit after the drop and
+/// lives out its `longevity` of 1 s, and a rate that holds draws as before.
+#[rstest::rstest]
+#[case::while_born(1.0, true)]
+#[case::after_the_drop(5.0, true)]
+#[case::near_the_end_of_its_life(11.0, true)]
+#[case::after_its_longevity(13.0, false)]
+fn a_rate_keyed_to_zero_leaves_the_burst_to_live_out_its_longevity(
+    #[case] frame: f64,
+    #[case] shows: bool,
+) {
+    let burst = |anim: &str| {
+        format!(
+            r##"{{"nakkash":1,"size":"64x64","fps":10,"dur":"2s","bg":"#000000","layers":[
+              {{"id":"p","rect":"64x64","fill":"#000000","anchor":[0,0],"position":[0,0],
+                "fx":[{{"particles":1000,"longevity":1,"position":[32,32],"radius-x":0,
+                  "radius-y":0,"velocity":0,"gravity":0,"birth-size":8,"death-size":8,
+                  "size-variation":0,"max-opacity":1,"birth-color":"#FFFFFF",
+                  "death-color":"#FFFFFF","shape":"disc","opacity-map":"constant"{anim}}}]}}]}}"##
+        )
+    };
+    let cut = burst(r#","anim":{"rate":[[0,1000],[1,1000,"hold"],[2,0]]}"#);
+    assert_eq!(lit(&cut, frame) > 0, shows, "frame {frame}");
+    // Until the cut, the burst is the rate alone.
+    if frame <= 2.0 {
+        assert_eq!(lit(&cut, frame), lit(&burst(""), frame));
+    }
 }

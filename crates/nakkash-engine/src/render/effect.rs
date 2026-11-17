@@ -2,12 +2,13 @@
 //! format's effect kinds (`nakkash_format::item::EFFECTS`) and the
 //! rasteriser's rows (`nakkash_raster::EFFECTS`) share the kind's name and
 //! each parameter's name and type, then each setting as a choice parameter
-//! with the same choices, which a test checks row by row. Adding an
-//! effect is a row in each table and nothing here.
+//! with the same choices, which a test checks row by row. A row whose
+//! running total effects read (`PropertySpec::integral`) passes it on too.
+//! Adding an effect is a row in each table and nothing here.
 
 use nakkash_format::{Diagnostic, Kind, Result, Value};
-use nakkash_raster::{Curve, Effect, ParamValue};
-use nakkash_scene::{ItemState, NodeState};
+use nakkash_raster::{Curve, Effect, ParamValue, Total, TotalPiece};
+use nakkash_scene::{Integral, ItemState, NodeState};
 
 use super::color;
 
@@ -33,7 +34,8 @@ pub(super) fn effects(node: &NodeState, outlines: &[Option<usize>]) -> Result<Ve
 }
 
 /// One effect, every parameter set from the row of the same name, then
-/// each setting as the choice parameter of the same name.
+/// each setting as the choice parameter of the same name, and the running
+/// total of each row that has one.
 fn effect(item: &ItemState) -> Result<Effect> {
     let mut params = item
         .kind
@@ -51,7 +53,27 @@ fn effect(item: &ItemState) -> Result<Effect> {
         })?;
         params.push((setting.name, ParamValue::Choice(choice)));
     }
-    Effect::new(item.kind.name, &params)
+    let integral_rows = item.kind.registry.rows.iter().filter(|row| row.integral);
+    integral_rows.zip(&item.integrals).try_fold(
+        Effect::new(item.kind.name, &params)?,
+        |effect, (row, integral)| effect.with_total(row.name, total(integral)),
+    )
+}
+
+/// A running total as the rasteriser reads it, in single precision.
+fn total(integral: &Integral) -> Total {
+    Total::new(
+        integral
+            .pieces()
+            .iter()
+            .map(|p| TotalPiece {
+                start: p.start as f32,
+                total: p.total as f32,
+                rate: p.rate as f32,
+                slope: p.slope as f32,
+            })
+            .collect(),
+    )
 }
 
 /// A scene value as an effect parameter: a path as a curve of its

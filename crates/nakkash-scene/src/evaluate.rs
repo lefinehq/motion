@@ -182,6 +182,7 @@ fn items_at(items: &[ItemNode], local: f64) -> Vec<ItemState> {
             values: sample(item.kind.registry.rows, &item.tracks, local),
             settings: item.settings.clone(),
             items: items_at(&item.items, local),
+            integrals: item.integrals.clone(),
         })
         .collect()
 }

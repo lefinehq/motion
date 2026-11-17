@@ -12,6 +12,12 @@ use crate::curve::Ease;
 /// How close an arc length must come, in pixels.
 pub(crate) const ARC_ACCURACY: f64 = 1e-6;
 
+/// How many equal parts a span that eases other than in a straight line is
+/// cut into for its [`Integral`]: over each part the value is taken to
+/// move in a straight line between its ends, a trapezoid rule on fixed
+/// moments, so the total is the same whichever frame reads it.
+pub const INTEGRAL_PARTS: u32 = 32;
+
 /// One key as the compiler hands it over: a value at a frame, how the span
 /// after it eases, and on a spatial track how the path bends.
 #[derive(Debug, Clone, PartialEq)]
@@ -186,6 +192,59 @@ impl Track {
             && self.segments.iter().all(Segment::is_still)
     }
 
+    /// The running total of a number track over its own time in seconds at
+    /// `fps` frames a second, from time 0, with each value first clamped to
+    /// `range`: see [`Integral`]. Held, linear and still spans are exact;
+    /// other eases are cut into [`INTEGRAL_PARTS`] straight parts.
+    ///
+    /// # Panics
+    /// If the track does not hold numbers.
+    pub fn integral(&self, fps: f64, range: Option<(f64, f64)>) -> Integral {
+        assert_eq!(self.ty, ValueType::Number, "the integral of a number track");
+        let clamp = |v: f64| range.map_or(v, |(lo, hi)| v.clamp(lo, hi));
+        let number = |v: &Value| clamp(v.as_number().expect("a number track"));
+        let within = |v: &Value| v.as_number().is_some_and(|n| clamp(n) == n);
+        let first = number(&self.keys[0].value);
+        if self.is_constant() {
+            return Integral::constant(first);
+        }
+        let mut integral = Integral { pieces: Vec::new() };
+        let start = self.keys[0].frame / fps;
+        integral.add(f64::NEG_INFINITY, start, first, 0.0);
+        for (pair, segment) in self.keys.windows(2).zip(&self.segments) {
+            let [(a, from), (b, to)] = [&pair[0], &pair[1]].map(|k| (k.frame / fps, &k.value));
+            if b <= a {
+                continue;
+            }
+            let [v0, v1] = [number(from), number(to)];
+            match segment {
+                Segment::Components(eases) if eases[0] == Ease::Hold => {
+                    integral.add(a, b, v0, 0.0);
+                }
+                // A straight span stays within the range when both its ends do.
+                Segment::Components(eases)
+                    if eases[0] == Ease::Linear && within(from) && within(to) =>
+                {
+                    integral.add(a, b, v0, (v1 - v0) / (b - a));
+                }
+                _ => {
+                    let parts = f64::from(INTEGRAL_PARTS);
+                    let at = |j: u32| {
+                        let p = f64::from(j) / parts;
+                        (a + (b - a) * p, number(&segment.sample(from, to, p)))
+                    };
+                    for j in 0..INTEGRAL_PARTS {
+                        let ((t0, r0), (t1, r1)) = (at(j), at(j + 1));
+                        integral.add(t0, t1, r0, (r1 - r0) / (t1 - t0));
+                    }
+                }
+            }
+        }
+        let last = self.keys.last().expect("a track has keys");
+        integral.add(last.frame / fps, f64::INFINITY, number(&last.value), 0.0);
+        integral
+    }
+
     /// The value at `frame`, held past the ends. Of several keys on one
     /// frame, the last applies from that frame on.
     pub fn sample(&self, frame: f64) -> Value {
@@ -200,6 +259,84 @@ impl Track {
         // right.frame > frame >= left.frame, so the span is positive.
         let p = (frame - left.frame) / (right.frame - left.frame);
         self.segments[i].sample(&left.value, &right.value, p)
+    }
+}
+
+/// A number's running total over its own time in seconds: its integral
+/// from time 0, which is 0 there and never falls while the value is not
+/// negative. Effects that count read it, so a value keyed down acts only
+/// from then on ([`PropertySpec::integral`]).
+///
+/// [`PropertySpec::integral`]: nakkash_format::property::PropertySpec::integral
+#[derive(Debug, Clone, PartialEq)]
+pub struct Integral {
+    /// From time 0, in time order.
+    pieces: Vec<IntegralPiece>,
+}
+
+/// One stretch of an [`Integral`]: from `start` seconds until the next
+/// piece starts (the last for ever), the value starts at `rate` and changes
+/// by `slope` each second, so `u` seconds in the total is
+/// `total + rate·u + slope·u²/2`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IntegralPiece {
+    /// When it starts, in seconds.
+    pub start: f64,
+    /// The total at its start.
+    pub total: f64,
+    /// The value at its start.
+    pub rate: f64,
+    /// How much the value changes each second.
+    pub slope: f64,
+}
+
+impl Integral {
+    /// The integral of `value` held from time 0: one piece.
+    pub fn constant(value: f64) -> Integral {
+        Integral {
+            pieces: vec![IntegralPiece {
+                start: 0.0,
+                total: 0.0,
+                rate: value,
+                slope: 0.0,
+            }],
+        }
+    }
+
+    /// Its pieces, in time order; the first starts at 0.
+    pub fn pieces(&self) -> &[IntegralPiece] {
+        &self.pieces
+    }
+
+    /// The total at `seconds`, carried back from the first piece before 0.
+    pub fn at(&self, seconds: f64) -> f64 {
+        let k = self.pieces.partition_point(|p| p.start <= seconds);
+        let piece = self.pieces[k.saturating_sub(1)];
+        let u = seconds - piece.start;
+        piece.total + u * (piece.rate + 0.5 * piece.slope * u)
+    }
+
+    /// Adds the value that starts at `rate` at `from` seconds and changes by
+    /// `slope` each second until `to`, the part of it after time 0.
+    fn add(&mut self, from: f64, to: f64, rate: f64, slope: f64) {
+        if to <= 0.0 {
+            return;
+        }
+        let (start, rate) = match (from < 0.0, slope == 0.0) {
+            (true, false) => (0.0, rate - slope * from),
+            (true, true) => (0.0, rate),
+            (false, _) => (from, rate),
+        };
+        let total = self.pieces.last().map_or(0.0, |p| {
+            let u = start - p.start;
+            p.total + u * (p.rate + 0.5 * p.slope * u)
+        });
+        self.pieces.push(IntegralPiece {
+            start,
+            total,
+            rate,
+            slope,
+        });
     }
 }
 

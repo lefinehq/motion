@@ -353,6 +353,7 @@ mod any_selector {
                 .collect(),
             settings: settings.to_vec(),
             items: Vec::new(),
+            integrals: Vec::new(),
         }
     }
 

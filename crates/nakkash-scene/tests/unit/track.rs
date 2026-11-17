@@ -317,3 +317,88 @@ fn a_path_span_of_no_length_stays_put_and_covers_its_progress() {
     );
     assert_eq!(still.sample(0.4), (Point::new(5.0, 5.0), 0.4));
 }
+
+/// A rate held, then cut to 0: the running total stops where the cut is,
+/// and does not fall back.
+#[rstest]
+#[case::while_held(0.2, 20.0)]
+#[case::on_the_hold(0.45, 45.0)]
+#[case::at_the_cut(0.5, 50.0)]
+#[case::long_after(9.0, 50.0)]
+fn the_integral_of_a_rate_cut_to_zero_stops_rising(#[case] seconds: f64, #[case] total: f64) {
+    let t = numbers(vec![
+        key(0.0, n(100.0), Curve::Linear),
+        key(4.0, n(100.0), Curve::Hold),
+        key(5.0, n(0.0), Curve::Linear),
+    ]);
+    let integral = t.integral(10.0, Some((0.0, 100_000.0)));
+    assert!(
+        close(integral.at(seconds), total),
+        "{} at {seconds}",
+        integral.at(seconds)
+    );
+}
+
+/// A value that holds is one piece from 0, `value·t`, which the rasteriser
+/// reads as it reads a rate alone.
+#[test]
+fn the_integral_of_a_constant_is_one_piece() {
+    let t = numbers(vec![key(5.0, n(40.0), Curve::Linear)]);
+    assert_eq!(t.integral(10.0, None), Integral::constant(40.0));
+    assert_eq!(Integral::constant(40.0).at(2.5), 100.0);
+}
+
+/// A straight span is exact, and one that starts before 0 counts from 0.
+#[rstest]
+#[case::from_zero(0.0, 50.0)]
+#[case::from_before_zero(-10.0, 75.0)]
+fn the_integral_of_a_straight_span_is_exact(#[case] from: f64, #[case] total: f64) {
+    // 0 at frame `from` to 100 at frame 10, read at 1 s.
+    let t = numbers(vec![
+        key(from, n(0.0), Curve::Linear),
+        key(10.0, n(100.0), Curve::Linear),
+    ]);
+    let integral = t.integral(10.0, None);
+    assert!(close(integral.at(1.0), total), "{}", integral.at(1.0));
+}
+
+/// An eased span is cut into fixed parts: a symmetric ease from 0 to 100
+/// over 1 s adds what the straight span does, 50, and the pieces join.
+#[test]
+fn the_integral_of_an_eased_span_is_close_and_continuous() {
+    let t = numbers(vec![
+        key(0.0, n(0.0), Curve::named("ease-in-out").unwrap()),
+        key(10.0, n(100.0), Curve::Linear),
+    ]);
+    let integral = t.integral(10.0, None);
+    assert_eq!(integral.pieces().len(), INTEGRAL_PARTS as usize + 1);
+    assert!(
+        (integral.at(1.0) - 50.0).abs() < 1e-3,
+        "{}",
+        integral.at(1.0)
+    );
+    for pair in integral.pieces().windows(2) {
+        let u = pair[1].start - pair[0].start;
+        let end = pair[0].total + u * (pair[0].rate + 0.5 * pair[0].slope * u);
+        assert!(close(end, pair[1].total), "{end} then {}", pair[1].total);
+        assert!(pair[1].total >= pair[0].total);
+    }
+}
+
+/// An ease that overshoots below 0 is clamped to the range before it is
+/// added, so the total never falls.
+#[test]
+fn the_integral_adds_clamped_values() {
+    let t = numbers(vec![
+        key(0.0, n(100.0), Curve::Bezier(0.3, 0.0, 0.3, 1.6)),
+        key(10.0, n(0.0), Curve::Linear),
+    ]);
+    let integral = t.integral(10.0, Some((0.0, 100_000.0)));
+    assert!(integral.pieces().iter().all(|p| p.rate >= 0.0));
+    assert!(
+        integral
+            .pieces()
+            .windows(2)
+            .all(|w| w[1].total >= w[0].total - 1e-9)
+    );
+}
