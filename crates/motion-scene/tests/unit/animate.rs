@@ -211,6 +211,15 @@ fn colours_and_stroke_width_blend_toward_the_animator() {
 }
 
 #[test]
+fn blur_adds_up_scaled_by_the_choice_each_way() {
+    let keys = r#""text":"ab","animate":[{"animator":[{"range":"char","amount":0.5}],"blur":[10,4]},{"animator":[{"range":"char","start":0.5}],"blur":2}]"#;
+    let state = frame(keys, 0.0);
+    let (_, glyphs) = text_of(&state.nodes[0]);
+    assert_eq!(glyphs[0].blur, [5.0, 2.0]);
+    assert_eq!(glyphs[1].blur, [7.0, 4.0]);
+}
+
+#[test]
 fn tracking_pushes_the_glyphs_after_it_and_keeps_the_alignment() {
     let shift = |align: &str| {
         let keys = format!(

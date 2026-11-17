@@ -83,6 +83,19 @@ What is left open:
 
   Nothing tried gives these orders. Tested on all five texts, and counted only when two texts or more match: about fifty generators (the C libraries' `rand` and `random` on three platforms, the minimal standard with both multipliers and with a shuffle table, the Mersenne twister in 32 and 64 bits seeded as integers and as arrays, the 48-bit generator, xorshift in 32, 64 and 128 bits, xoroshiro, xoshiro, splitmix, a permuted congruential generator, a combined Tausworthe, KISS, the subtractive generator, Wichmann-Hill and twenty published LCGs, taken whole and by their high bits); the seed as stored, offset by -3 to 12345, multiplied, xored with common constants or combined with the number of parts; 0 to 11 numbers dropped first, and every number or every other one used; the parts ranked by the numbers either way, a forward or backward swap shuffle, and an insertion of each turn at a place the number picks, which keeps the agreement above. Numbers drawn apart for each turn, by hashing the seed and the turn (eight integer and sine hashes, and the first numbers of each generator above, over twenty ways of combining the two), do not give them either. The selector therefore keeps the order of the parts and reports `random order`. 118 of the corpus's 149 selectors in random order store a seed of 0, which is documented as taken from the animator group.
 
+## Blurred characters
+
+An animator's blur (`ADBE Text Blur`) becomes the animator's `blur` ([scene format](scene-format.md#text-animators)), across and down apart. The corpus holds 16 in 9 scored samples, none animated and none under an expression: 114 or 113 both ways in m648, m760, m802, m815 and m816, 19 or 20 in m760 and m795, 5 in m826, 90 down only in m793, 0 in m565. In every one the selectors move the amount, so the blur runs out as each part settles. These beliefs were measured once with `motion fidelity` on those samples, over all frames. The sweep does not check them yet.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| B1. The blur is drawn: each chosen part blurs by the blur times how strongly it is chosen. | Drawn with the `gaussian-blur` effect's blurriness against left out, the mean content error falls on 5 of the 8 samples with a blur above 0 and rises on none (m793, m795 and m826 hold to the fourth decimal): m802 0.1169 → 0.1163, m815 0.2623 → 0.2620, m816 0.0922 → 0.0916, m648 0.0482 → 0.0481, m760 0.0180 → 0.0179. | 8 samples |
+| B2. The two numbers blur across and down apart. | m793's blur of 0 across and 90 down is the corpus's only one that differs; the score does not tell it from a blur both ways, the parts being small and blurred only while they enter. | Not measured apart |
+
+Other things we take without evidence:
+- **How far a unit blurs.** We take the blur in the unit of the `gaussian-blur` effect's blurriness (a standard deviation of 0.3 of it). Measured at 1, 1.667 and 3.333 times that, the mean content error keeps falling on the samples blurred by 113 (m815 0.2620, 0.2619, 0.2613; m816 0.0916, 0.0914, 0.0912), while the failing share rises on m816 (63.29 %, 63.41 %, 63.54 %), m793 and m826. Neither is decisive, so the unit is the effect's until a reference frame is measured at the pixels a blur alone moves.
+- **What a blurred part is blurred with.** Each group of glyphs that shares a state is blurred in a buffer of its own, so neighbouring parts blurred alike do not bleed into one another's blur. The references do not show the difference at these sizes.
+
 ## Expression selectors
 
 An expression selector (`ADBE Text Expressible Selector`) becomes a `parts` selector ([D64](decisions.md#d64-a-selector-may-choose-each-part-by-its-own-amount)): its amount's expression is evaluated once per part. These beliefs were measured once, by hand: two scenes are drawn at the reference's own times and compared with the reference only at the pixels where they differ. The sweep does not check them yet.

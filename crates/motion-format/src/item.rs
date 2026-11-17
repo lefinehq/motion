@@ -2452,6 +2452,14 @@ pub static ANIMATOR: Registry = Registry {
             None,
             "extra space after each part, in thousandths of an em; the parts after it on its line move along",
         ),
+        point(
+            "blur",
+            [0.0, 0.0],
+            &["blur-x", "blur-y"],
+            true,
+            "how much each part blurs across and down, in px of the Gaussian blur's blurriness; \
+             one number blurs both ways",
+        ),
         number(
             "stagger",
             0.0,
@@ -2822,10 +2830,12 @@ pub mod props {
     pub const ANIMATOR_STROKE_WIDTH: Prop = Prop::of(&ANIMATOR, 7);
     /// The tracking an animator adds after each part.
     pub const ANIMATOR_TRACKING: Prop = Prop::of(&ANIMATOR, 8);
+    /// How much an animator blurs each part.
+    pub const ANIMATOR_BLUR: Prop = Prop::of(&ANIMATOR, 9);
     /// How many frames each part of a staggered animator waits.
-    pub const ANIMATOR_STAGGER: Prop = Prop::of(&ANIMATOR, 9);
+    pub const ANIMATOR_STAGGER: Prop = Prop::of(&ANIMATOR, 10);
     /// Which shuffle a staggered animator's `random` order takes.
-    pub const ANIMATOR_SEED: Prop = Prop::of(&ANIMATOR, 10);
+    pub const ANIMATOR_SEED: Prop = Prop::of(&ANIMATOR, 11);
     /// Where a range selector starts.
     pub const RANGE_START: Prop = Prop::of(&RANGE, 0);
     /// Where a range selector ends.

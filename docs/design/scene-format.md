@@ -609,13 +609,13 @@ Above, every line starts 75 px low and invisible. As `offset` moves the range of
   {"parts":[{"part":1},{"part":0,"anim":{"amount":"0 -> 1 @0-1s"}}],"by":"word"}
   ```
 
-- **What applies.** `position` and `rotate` add. `scale` and `opacity` move from 1 toward the animator's value. `fill`, `stroke` and `stroke-width` move from the part's own toward the animator's. `tracking` adds space after each chosen part, and the parts after it on its line move along, keeping the line's alignment.
+- **What applies.** `position` and `rotate` add. `scale` and `opacity` move from 1 toward the animator's value. `fill`, `stroke` and `stroke-width` move from the part's own toward the animator's. `tracking` adds space after each chosen part, and the parts after it on its line move along, keeping the line's alignment. `blur` adds up, across and down apart (`blur-x`, `blur-y`), and blurs each part in a buffer of its own, by the `blurriness` the `gaussian-blur` effect takes.
 - **Each part's anchor** is the middle of its baseline, moved by the animator's `anchor`; parts scale and turn about it.
 - **Stagger.** With `stagger` above 0, the parts counted by `by` take turns: each part sees the animator, its selectors included, as it was its wait earlier, so every part makes the whole motion with its own curve. A part waits `stagger` frames per turn. `order` sets the turns: `first` in reading order, `last` the reverse, `center` outward from the middle (the two middle parts of an even count go together, half a turn in), `edges` inward from both ends, and `random` a shuffle picked by `seed`. A glyph in no part, such as a space under `word`, sees the animator as it is.
 
 | Animator | Key holds | Properties | Settings |
 |---|---|---|---|
-| `animator` | its items | `position`, `anchor`, `scale`, `rotate`, `opacity`, `fill`, `stroke`, `stroke-width`, `tracking`, `stagger`, `seed` | `by`: `char`, `char-no-space`, `word`, `line`; `order`: `first`, `last`, `center`, `edges`, `random` |
+| `animator` | its items | `position`, `anchor`, `scale`, `rotate`, `opacity`, `fill`, `stroke`, `stroke-width`, `tracking`, `blur`, `stagger`, `seed` | `by`: `char`, `char-no-space`, `word`, `line`; `order`: `first`, `last`, `center`, `edges`, `random` |
 
 | Selector | Key holds | Properties | Settings |
 |---|---|---|---|
