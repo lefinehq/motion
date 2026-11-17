@@ -279,3 +279,47 @@ Other things we take without evidence:
 - **Fractional and negative offsets.** None in the corpus. The scene takes the offset as more or fewer steps, fractional steps included, with Scale's power and a turn in proportion; it does not change the fade.
 - **Items after the repeater.** None in the corpus: a paint or trim after a repeater in its group reaches every copy's outlines in the scene, as the items after a group reach the group's. One external reading copies only the paints before the repeater, leaving its outlines to later paints once.
 - **Copies.** Every repeater stores its count, so the default count, 3 for the scene as for a new repeater in the editor, is not measured.
+
+## Vector footage
+
+Footage in a PDF file, which every `.ai` file of the corpus is inside, becomes an image layer drawn from its outlines ([D70](decisions.md#d70-vector-footage-is-drawn-from-its-outlines)). 11 files in 10 local samples: one logo in m562, m593 and m595, another in m563 and m564, and m712, m716 (two), m794, m803 and m830 one each. All have one page, paths, fills and strokes, clips, ICC-based or device colour and normal-blend graphics states; none has text, images, shadings, patterns or soft masks, so the tests of those families are hand-written PDFs. Measured once, 2026-11-17, against a build of `main` (90def20), each sample's 20 frames or fewer under the floor rule ([D69](decisions.md#d69-a-reference-frame-passes-over-its-codec-floor)).
+
+| Sample | Failing, before → after | Mean error, before → after | Frames passing over the floor, before → after |
+|---|---|---|---|
+| m562 | 0.64 % → 0.56 % | 0.0022 → 0.0012 | 13 → 13 of 13 |
+| m563 | 23.77 % → 23.05 % | 0.0289 → 0.0208 | 2 → 8 of 13 |
+| m564 | 7.88 % → 7.20 % | 0.0154 → 0.0075 | 1 → 6 of 11 |
+| m593 | 43.53 % → 43.46 % | 0.0627 → 0.0621 | 1 → 3 of 20 |
+| m595 | 72.66 % → 72.66 % | 0.0964 → 0.0964 | 1 → 1 of 20 |
+| m712 | 4.72 % → 4.72 % | 0.0117 → 0.0117 | 10 → 10 of 20 |
+| m716 | 5.36 % → 5.36 % | 0.0145 → 0.0145 | 5 → 5 of 20 |
+| m794 | 41.21 % → 41.20 % | 0.0198 → 0.0197 | 0 → 0 of 20 |
+| m803 | 77.49 % → 77.48 % | 0.0947 → 0.0923 | 0 → 0 of 20 |
+| m830 | 36.22 % → 33.02 % | 0.0460 → 0.0307 | 0 → 0 of 20 |
+
+m712's and m716's vector layers are hidden (guides), so they cannot change; m595's numbers do not change either, which is not yet explained. m794 also holds an `.eps` file, still drawn as nothing.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| V1. A vector file's footage size is its crop box rounded out to whole units, or, when the project imported it to its art, its art box rounded out. The layer shows that box at one pixel a unit. | Nine of the eleven are their crop box exactly (1440 by 900, 1080 by 1080, 190 by 36); m794's hearts are 46 by 30 on a 45.16 by 29.08 page; m830's footage is 444 by 662 on a 1920 by 1080 page whose art box, [738.14, 209.59, 1181.14, 870.59], rounds out to x 738 to 1182 and y 209 to 871. Drawing m830's art box errs 0.0307 over its 20 frames; its page stretched over the box, 0.0440. m794 cannot tell its page drawn one to one from stretched (0.01966 against 0.01968). | 11 files |
+| V2. Without the layer's switch, vector footage is drawn at its footage size and the picture transformed; with it, it is drawn through the transform at the output's resolution. | m803 scales its ornament 5.34 and 3.45 times with the switch on: drawn continuously it errs 0.09235, at its box size 0.09288, lower on 18 frames and equal on 2. m563, m794 and m595 have the switch on at about their own size and cannot tell (equal to 0.00001). m562, m564 and m830, without it, shrink their footage (0.47, 0.7, 0.85 and 0.63 times), where the two readings agree to 0.00001. | 7 samples |
+
+How close our drawing of each file is to an independent rasteriser's (the operating system's PDF renderer, run locally, never in CI), each page drawn whole on a clear background and compared premultiplied, over the pixels either covers:
+
+| File | Mean error, 1 px a point | Failing (more than 8 levels), 1 px a point | Failing, 4 px a point |
+|---|---|---|---|
+| m562, m593, m595 logo | 0.00083 | 1.43 % | 0.39 % |
+| m563, m564 logo | 0.00058 | 1.23 % | 0.35 % |
+| m712 controller | 0.01038 | 32.74 % | 11.28 % |
+| m716 geometry | 0.00024 | 0.75 % | 0.19 % |
+| m716 plant | 0.00055 | 1.85 % | 0.48 % |
+| m794 hearts | 0.01818 | 34.18 % | 12.90 % |
+| m803 ornament | 0.02212 | 67.42 % | 35.70 % |
+| m830 base | 0.00002 | 0.00 % | 0.00 % |
+
+The files that differ most are thin line art (the controller's outline, the hearts, the ornament): the pixels that differ are their edges, by a few levels, where the two rasterisers spread coverage differently; their total coverage agrees within 1 % (the ornament 4480 against 4495 pixels at 4 px a point). Filled art agrees to under 2 % of its pixels at 1 px a point.
+
+Other things we take without evidence:
+- **Pages after the first.** Every corpus file has one page; the first is drawn.
+- **Soft masks, shadings, patterns, images and text.** No corpus file has them; they follow the PDF standard, each tested on a hand-written file.
+- **CMYK.** No corpus file paints in device CMYK; it goes through the interpreter's press profile. On a hand-written file the operating system's renderer, with a press profile of its own, draws 100 % magenta and yellow as (216, 34, 42) where ours is (237, 29, 36); an axial shading with a stitched function on the same file agrees within 2 levels.

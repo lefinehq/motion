@@ -70,10 +70,79 @@ fn colours_keep_straight_alpha_and_scale_it() {
     let half = Color::rgba(1.0, 0.5, 0.25, 1.0).with_opacity(0.5);
     assert_eq!(half, Color::rgba(1.0, 0.5, 0.25, 0.5));
     assert_eq!(half.to_vello().components, [1.0, 0.5, 0.25, 0.5]);
-    assert_eq!(
-        Paint::Solid(Color::BLACK).to_vello().components,
-        [0.0, 0.0, 0.0, 1.0]
-    );
+    let (solid, placed) = Paint::Solid(Color::BLACK).to_vello();
+    let vello_cpu::PaintType::Solid(solid) = solid else {
+        panic!("a colour");
+    };
+    assert_eq!(solid.components, [0.0, 0.0, 0.0, 1.0]);
+    assert_eq!(placed, kurbo::Affine::IDENTITY);
     assert_eq!(Color::TRANSPARENT.a, 0.0);
     assert_eq!(Color::WHITE.r, 1.0);
+}
+
+#[test]
+fn a_gradient_keeps_its_stops_and_is_placed_by_its_transform() {
+    let gradient = Gradient {
+        shape: GradientShape::Radial {
+            start: kurbo::Point::new(1.0, 2.0),
+            start_radius: 0.0,
+            end: kurbo::Point::new(1.0, 2.0),
+            end_radius: 5.0,
+        },
+        stops: vec![
+            Stop {
+                offset: 0.0,
+                color: Color::WHITE,
+            },
+            Stop {
+                offset: 1.0,
+                color: Color::BLACK,
+            },
+        ],
+        transform: kurbo::Affine::scale(3.0),
+    };
+    let (paint, placed) = Paint::Gradient(Box::new(gradient)).to_vello();
+    assert_eq!(placed, kurbo::Affine::scale(3.0));
+    let vello_cpu::PaintType::Gradient(gradient) = paint else {
+        panic!("a gradient");
+    };
+    assert_eq!(gradient.stops.len(), 2);
+    assert_eq!(gradient.extend, peniko::Extend::Pad);
+}
+
+#[test]
+fn a_linear_gradient_is_drawn_along_its_line() {
+    use crate::{Frame, Node, PathDraw, RenderOptions, render_with};
+    let square = kurbo::Rect::new(0.0, 0.0, 10.0, 2.0);
+    let paint = Paint::Gradient(Box::new(Gradient {
+        shape: GradientShape::Linear {
+            start: kurbo::Point::new(0.0, 0.0),
+            end: kurbo::Point::new(1.0, 0.0),
+        },
+        stops: vec![
+            Stop {
+                offset: 0.0,
+                color: Color::rgba(1.0, 0.0, 0.0, 1.0),
+            },
+            Stop {
+                offset: 1.0,
+                color: Color::rgba(0.0, 0.0, 1.0, 1.0),
+            },
+        ],
+        // The unit line stretched over the square's width.
+        transform: kurbo::Affine::scale(10.0),
+    }));
+    let frame = Frame {
+        nodes: vec![Node::Path(PathDraw {
+            path: kurbo::Shape::to_path(&square, 0.1),
+            paint,
+            style: DrawStyle::Fill(FillRule::NonZero),
+        })],
+        ..Frame::default()
+    };
+    let image = render_with(&frame, 10, 2, RenderOptions::GOLDEN).unwrap();
+    let [r, _, b, _] = image.pixel(0, 0).unwrap();
+    assert!(r > 220 && b < 35, "{r} {b}");
+    let [r, _, b, _] = image.pixel(9, 1).unwrap();
+    assert!(r < 35 && b > 220, "{r} {b}");
 }

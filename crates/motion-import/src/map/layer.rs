@@ -8,7 +8,7 @@ use motion_format::Address;
 use motion_format::property::LAYER;
 use serde_json::{Value as Json, json};
 
-use super::footage::{Media, media};
+use super::footage::{Media, media, vector_region};
 use super::items::{Out, Place, Sink};
 use super::keys::{Clock, num};
 use super::report::Fate;
@@ -16,7 +16,7 @@ use super::rows::{
     CAMERA_AIMED, CAMERA_FREE, CAMERA_OPTIONS, LAYER_ROOT, LIGHT_TRANSFORM, Row, TRANSFORM,
     TRANSFORM_3D,
 };
-use super::{StoredText, Walk};
+use super::{StoredText, Vector, Walk};
 use crate::model::{
     AutoOrient, BlendMode, Child, Composition, Footage, Group, Item, ItemKind, Layer, LayerKind,
     Property, Source, Stream, TrackMatte, Value,
@@ -334,7 +334,12 @@ impl<'p> Walk<'p> {
                         out.keys.insert("collapse".into(), json!(true));
                     }
                 }
-                Some((_, ItemKind::Footage(footage))) => self.footage(footage, out, place, pivot),
+                Some((_, ItemKind::Footage(footage))) => {
+                    // The same switch draws vector footage at the output's
+                    // resolution (D70).
+                    let continuous = layer.switches.collapse && !layer.switches.adjustment;
+                    self.footage(footage, continuous, out, place, pivot)
+                }
                 Some((_, ItemKind::Folder)) => pivot(self, out, None),
                 // The layer names a source the project does not hold.
                 None if layer.source.is_some() => {
@@ -352,12 +357,15 @@ impl<'p> Walk<'p> {
     }
 
     /// A footage layer: a solid is a rectangle of its colour, a still
-    /// picture that was found an image filling the footage's size, a found
+    /// picture that was found an image filling the footage's size, found
+    /// vector footage that was read an image too, `continuous` when the
+    /// layer's switch says so, a found
     /// clip with a decoder a video filling it, and a found sound with a
     /// decoder an audio layer. Other footage is a pivot, reported with why.
     fn footage(
         &mut self,
         footage: &Footage,
+        continuous: bool,
         out: &mut Out,
         place: &Place<'_>,
         pivot: impl Fn(&mut Walk<'_>, &mut Out, Option<&str>),
@@ -375,6 +383,17 @@ impl<'p> Walk<'p> {
             Source::File { path: Some(stored) } => {
                 let (key, path) = match media(footage, stored, self.files) {
                     Media::Still(path) => ("image", path),
+                    Media::Vector(path, vector) => {
+                        self.vector(footage, vector, continuous, out, place);
+                        ("image", path)
+                    }
+                    Media::VectorFormat(format) => {
+                        return pivot(
+                            self,
+                            out,
+                            Some(&format!("vector footage in {format} it cannot read")),
+                        );
+                    }
                     Media::Clip(path) => ("video", path),
                     // A sound draws nothing, so it has no box.
                     Media::Sound(path) => {
@@ -403,6 +422,39 @@ impl<'p> Walk<'p> {
                 pivot(self, out, Some("footage whose file path it cannot read"))
             }
             Source::Placeholder => pivot(self, out, Some("missing footage")),
+        }
+    }
+
+    /// What vector footage adds to its image layer ([D70]): the part of its
+    /// page the box shows, `continuous` when the layer draws it at the
+    /// output's resolution, and a report of what it holds that cannot be
+    /// drawn.
+    ///
+    /// [D70]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d70-vector-footage-is-drawn-from-its-outlines
+    fn vector(
+        &mut self,
+        footage: &Footage,
+        vector: &Vector,
+        continuous: bool,
+        out: &mut Out,
+        place: &Place<'_>,
+    ) {
+        match vector_region(footage, vector) {
+            Ok(None) => {}
+            Ok(Some(region)) => {
+                out.keys.insert("crop".into(), json!(region));
+            }
+            Err(()) => self.mapping.unsupported(
+                &place.at,
+                "vector footage whose size is neither its page's nor its art's (its page stretched over the box)",
+            ),
+        }
+        if continuous {
+            out.keys.insert("continuous".into(), json!(true));
+        }
+        for what in &vector.unsupported {
+            self.mapping
+                .unsupported(&place.at, format!("vector footage: {what}"));
         }
     }
 

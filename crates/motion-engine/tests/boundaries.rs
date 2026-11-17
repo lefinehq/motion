@@ -26,6 +26,8 @@ const ENGINES: &[&str] = &[
     "boa_ast",
     "boa_interner",
     "rav1e",
+    "hayro_syntax",
+    "hayro_interpret",
     "mp4_atom",
     "objc2_core_foundation",
     "objc2_core_media",

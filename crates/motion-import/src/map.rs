@@ -69,6 +69,13 @@ pub struct Options {
     /// layer, one in another is reported by its format, and one missing
     /// here is reported as a format the import cannot read.
     pub sounds: BTreeMap<String, Sound>,
+    /// What the caller read of each found vector footage file, by the path
+    /// the project stores ([D70]): one it could read becomes an image layer
+    /// drawn from its outlines, with what it holds that cannot be drawn
+    /// reported, and one it could not is reported by its format.
+    ///
+    /// [D70]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d70-vector-footage-is-drawn-from-its-outlines
+    pub vectors: BTreeMap<String, Vector>,
     /// The panel of the template the project came from, for a `.mogrt`
     /// ([`crate::template`]): its controls become slots, and the
     /// composition it was made from is the scene unless `comp` names
@@ -87,6 +94,24 @@ pub struct Video {
     pub codec: String,
     /// Whether a video layer can decode it.
     pub decodes: bool,
+}
+
+/// What a found vector footage file is, as the caller read it ([D70]).
+///
+/// [D70]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d70-vector-footage-is-drawn-from-its-outlines
+#[derive(Debug, Clone, PartialEq)]
+pub struct Vector {
+    /// The name of its format, as reports say it (`PDF`).
+    pub format: String,
+    /// Whether it could be read; the rest is empty when not.
+    pub reads: bool,
+    /// The width and height of its page, in the page's units.
+    pub page: [f64; 2],
+    /// The bounds of its artwork, `[x, y, width, height]` from the page's
+    /// top-left corner, y down, when the file records them.
+    pub art: Option<[f64; 4]>,
+    /// What it holds that the scene cannot draw, as reports say it.
+    pub unsupported: Vec<String>,
 }
 
 /// What a found sound file is, as the caller read it from its first bytes.
@@ -169,6 +194,7 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
         found: &options.footage,
         videos: &options.videos,
         sounds: &options.sounds,
+        vectors: &options.vectors,
     };
     let mut walk = Walk::new(project, files, &bakes);
     let mut json = walk.scene(root, options);

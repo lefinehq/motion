@@ -298,12 +298,22 @@ pub struct CompContent {
 /// An image layer's picture and where it goes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImageContent {
-    /// The PNG or JPEG file, as written: relative to the scene file's folder,
-    /// or absolute.
+    /// The picture file, as written: relative to the scene file's folder,
+    /// or absolute. A PNG or JPEG file, or vector footage (a PDF file, or an
+    /// `.ai` file that is PDF inside), recognised by how it starts.
     pub path: String,
-    /// The layer's box, which the picture's pixels are stretched to fill,
-    /// in the layer's own coordinates.
+    /// The layer's box, which the picture is stretched to fill, in the
+    /// layer's own coordinates.
     pub frame: kurbo::Rect,
+    /// The part of the picture stretched over the box, in the picture's
+    /// own units from its top-left corner: pixels for a raster picture,
+    /// the page's units for vector footage. `None` for the whole picture.
+    pub crop: Option<kurbo::Rect>,
+    /// Vector footage is drawn through the layer's transform at the
+    /// output's resolution every frame, rather than once into a picture of
+    /// the box's size that is then transformed. A raster picture is drawn
+    /// the same either way.
+    pub continuous: bool,
 }
 
 /// What a `video` layer plays: a clip file, and the layer's box its frames

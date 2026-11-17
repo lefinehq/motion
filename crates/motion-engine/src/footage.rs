@@ -2,7 +2,9 @@
 //! an import can draw its still pictures as image layers ([D41]), its
 //! clips as video layers and play its sounds as audio layers; each clip
 //! found is read far enough to know its codec, and each other file by its
-//! first bytes for the sound format it is in.
+//! first bytes for the sound format it is in. A file whose first bytes are
+//! a vector format's ([D70]) is read whole, for its page and its art
+//! bounds and for what it holds that cannot be drawn.
 //!
 //! A project stores each file's absolute path on the machine it was made
 //! on, which rarely exists here. Templates ship their footage beside the
@@ -13,13 +15,14 @@
 //! of the stored path's folders wins.
 //!
 //! [D41]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d41-image-layers-name-their-file-and-carry-their-box
+//! [D70]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d70-vector-footage-is-drawn-from-its-outlines
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use motion_import::map::{STILL_EXTENSIONS, Sound, Video, file_name};
+use motion_import::map::{STILL_EXTENSIONS, Sound, Vector, Video, file_name};
 use motion_import::{ItemKind, Project, Source};
 
 /// How many folders deep under the project's folder footage is looked for,
@@ -35,6 +38,8 @@ pub(crate) struct Found {
     pub(crate) videos: BTreeMap<String, Video>,
     /// Each found file that is a sound, and its format.
     pub(crate) sounds: BTreeMap<String, Sound>,
+    /// Each found file that is vector footage, and what it holds.
+    pub(crate) vectors: BTreeMap<String, Vector>,
 }
 
 /// The footage files of `project`, read from `project_path`, found on this
@@ -68,6 +73,11 @@ pub(crate) fn find(project: &Project, project_path: &Path, scene: Option<&Path>)
         let Some(written) = written(&file, base.as_deref()) else {
             continue;
         };
+        if let Some(vector) = vector(&file) {
+            found.vectors.insert(path.to_owned(), vector);
+            found.files.insert(path.to_owned(), written);
+            continue;
+        }
         match video(&file) {
             Some(video) => {
                 found.videos.insert(path.to_owned(), video);
@@ -104,12 +114,39 @@ fn video(file: &Path) -> Option<Video> {
     })
 }
 
-/// The sound format of `file`, by its first bytes, or `None` for a file in
-/// no sound format motion knows.
-fn sound(file: &Path) -> Option<Sound> {
+/// What the vector footage `file` holds, or `None` for a file whose first
+/// bytes are no vector format's.
+fn vector(file: &Path) -> Option<Vector> {
+    let bytes = head(file, motion_vector::HEAD)?;
+    let format = motion_vector::recognise(&bytes)?;
+    let read = fs::read(file)
+        .ok()
+        .and_then(|bytes| (format.read)(&bytes).ok());
+    let Some(drawing) = read else {
+        return Some(Vector {
+            format: format.name.to_owned(),
+            reads: false,
+            page: [0.0, 0.0],
+            art: None,
+            unsupported: Vec::new(),
+        });
+    };
+    let size = drawing.size();
+    Some(Vector {
+        format: format.name.to_owned(),
+        reads: true,
+        page: [size.width, size.height],
+        art: drawing
+            .art()
+            .map(|art| [art.x0, art.y0, art.width(), art.height()]),
+        unsupported: drawing.unsupported().to_vec(),
+    })
+}
+
+/// The first `length` bytes of `file`, or fewer when it is shorter.
+fn head(file: &Path, length: usize) -> Option<Vec<u8>> {
     use std::io::Read;
-    // Enough for an MP3 stream to show consecutive frames.
-    let mut head = vec![0_u8; 16 * 1024];
+    let mut head = vec![0_u8; length];
     let mut reader = fs::File::open(file).ok()?;
     let mut read = 0;
     // A short read is not the end of the file.
@@ -119,7 +156,16 @@ fn sound(file: &Path) -> Option<Sound> {
             Ok(n) => read += n,
         }
     }
-    motion_audio::recognise(&head[..read]).map(|(format, decodes)| Sound {
+    head.truncate(read);
+    Some(head)
+}
+
+/// The sound format of `file`, by its first bytes, or `None` for a file in
+/// no sound format motion knows.
+fn sound(file: &Path) -> Option<Sound> {
+    // Enough for an MP3 stream to show consecutive frames.
+    let head = head(file, 16 * 1024)?;
+    motion_audio::recognise(&head).map(|(format, decodes)| Sound {
         format: format.to_owned(),
         decodes,
     })

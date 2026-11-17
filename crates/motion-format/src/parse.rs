@@ -71,6 +71,11 @@ pub mod key {
     pub const PARAGRAPHS: &str = "paragraphs";
     /// A text layer's box, for box text.
     pub const BOX: &str = "box";
+    /// The part of an image layer's picture its box shows.
+    pub const CROP: &str = "crop";
+    /// An image layer whose vector footage is drawn at the output's
+    /// resolution every frame.
+    pub const CONTINUOUS: &str = "continuous";
     /// A text layer's animators.
     pub const ANIMATE: &str = "animate";
     /// A layer's position.
@@ -159,7 +164,7 @@ pub const COMP_KEYS: [&str; 8] = [
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 34] = [
+pub const LAYER_KEYS: [&str; 36] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -177,6 +182,8 @@ pub const LAYER_KEYS: [&str; 34] = [
     key::RUNS,
     key::PARAGRAPHS,
     key::BOX,
+    key::CROP,
+    key::CONTINUOUS,
     key::ANIMATE,
     key::AT,
     key::IN,

@@ -63,9 +63,10 @@ fn read(path: &Path) -> Result<(Project, Vec<template::Control>)> {
 /// Footage files are looked for where the project stores them, then by name
 /// under the project's folder, and named relative to the folder of `scene`,
 /// the file the scene will be saved to, or absolute without one. Still
-/// pictures found become image layers, and clips found in a codec with a
-/// decoder video layers. Entries of `options.footage` and `options.videos`
-/// win over what is found.
+/// pictures and vector footage found become image layers, and clips found
+/// in a codec with a decoder video layers. Entries of `options.footage`,
+/// `options.videos`, `options.sounds` and `options.vectors` win over what
+/// is found.
 ///
 /// # Errors
 /// The diagnostics of [`import`], or a diagnostic when the composition to
@@ -106,6 +107,11 @@ fn prepared(
             .sounds
             .into_iter()
             .chain(options.sounds.clone())
+            .collect(),
+        vectors: found
+            .vectors
+            .into_iter()
+            .chain(options.vectors.clone())
             .collect(),
         // A template's panel becomes the scene's slots (D53).
         panel: match options.panel.is_empty() {

@@ -182,7 +182,9 @@ fn a_fading_glyph_with_one_paint_folds_its_opacity() {
     let Node::Glyphs(b) = &nodes[1] else {
         panic!("b drawn straight: {nodes:?}")
     };
-    let Paint::Solid(color) = b.paint;
+    let Paint::Solid(color) = &b.paint else {
+        panic!("a colour")
+    };
     assert_eq!(color.a, 0.25);
 }
 

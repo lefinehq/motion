@@ -47,20 +47,101 @@ impl Color {
 
 /// What a leaf is painted with.
 ///
-/// Only flat colour exists today; gradients become variants here, and the
-/// renderer maps each variant to a vello paint in one place. A picture is a
-/// leaf of its own, [`ImageDraw`](crate::ImageDraw), placed by its rectangle.
+/// A picture is a leaf of its own, [`ImageDraw`](crate::ImageDraw), placed
+/// by its rectangle; the renderer maps each variant to a vello paint in one
+/// place.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Paint {
     /// One colour everywhere.
     Solid(Color),
+    /// Colours that change along a line or between two circles.
+    Gradient(Box<Gradient>),
+}
+
+/// A gradient: colour stops laid along a line or between two circles, in
+/// coordinates of its own that [`Gradient::transform`] places. Before its
+/// first stop and after its last the end colours carry on. Colours mix in
+/// gamma-encoded sRGB between stops, so a smooth ramp in another space is
+/// written as enough stops to follow it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Gradient {
+    /// Where the colours run.
+    pub shape: GradientShape,
+    /// The colours, by offset from 0 at the start to 1 at the end, in
+    /// increasing order.
+    pub stops: Vec<Stop>,
+    /// From the gradient's own coordinates, those of `shape`, to those of
+    /// the leaf it paints.
+    pub transform: kurbo::Affine,
+}
+
+/// Where a gradient's colours run.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GradientShape {
+    /// Along the line from `start` (offset 0) to `end` (offset 1), the same
+    /// across it.
+    Linear {
+        /// Where offset 0 lies.
+        start: kurbo::Point,
+        /// Where offset 1 lies.
+        end: kurbo::Point,
+    },
+    /// Between two circles: offset `t` is the circle whose centre and
+    /// radius are `t` of the way from the first circle's to the second's.
+    Radial {
+        /// The centre of the circle at offset 0.
+        start: kurbo::Point,
+        /// Its radius.
+        start_radius: f32,
+        /// The centre of the circle at offset 1.
+        end: kurbo::Point,
+        /// Its radius.
+        end_radius: f32,
+    },
+}
+
+/// One colour of a gradient.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Stop {
+    /// Where it lies, 0 to 1.
+    pub offset: f32,
+    /// Its colour.
+    pub color: Color,
 }
 
 impl Paint {
-    pub(crate) fn to_vello(&self) -> peniko::Color {
+    /// The vello paint, and the transform that places it in the leaf's
+    /// coordinates: the identity for a colour.
+    pub(crate) fn to_vello(&self) -> (vello_cpu::PaintType, kurbo::Affine) {
         match self {
-            Paint::Solid(color) => color.to_vello(),
+            Paint::Solid(color) => (color.to_vello().into(), kurbo::Affine::IDENTITY),
+            Paint::Gradient(gradient) => (gradient.to_vello().into(), gradient.transform),
         }
+    }
+}
+
+impl Gradient {
+    fn to_vello(&self) -> peniko::Gradient {
+        let gradient = match self.shape {
+            GradientShape::Linear { start, end } => peniko::Gradient::new_linear(start, end),
+            GradientShape::Radial {
+                start,
+                start_radius,
+                end,
+                end_radius,
+            } => peniko::Gradient::new_two_point_radial(start, start_radius, end, end_radius),
+        };
+        let stops: Vec<peniko::ColorStop> = self
+            .stops
+            .iter()
+            .map(|stop| peniko::ColorStop {
+                offset: stop.offset,
+                color: peniko::color::DynamicColor::from_alpha_color(stop.color.to_vello()),
+            })
+            .collect();
+        gradient
+            .with_extend(peniko::Extend::Pad)
+            .with_stops(stops.as_slice())
     }
 }
 

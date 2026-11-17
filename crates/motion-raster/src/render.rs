@@ -600,7 +600,7 @@ impl Painter {
 
     fn path(&mut self, draw: &PathDraw, transform: Affine) {
         self.ctx.set_transform(transform);
-        self.ctx.set_paint(draw.paint.to_vello());
+        self.set_paint(&draw.paint);
         match &draw.style {
             DrawStyle::Fill(rule) => {
                 self.ctx.set_fill_rule(rule.to_vello());
@@ -611,6 +611,15 @@ impl Painter {
                 self.ctx.stroke_path(&draw.path);
             }
         }
+        self.ctx.reset_paint_transform();
+    }
+
+    /// Paints what is drawn next with `paint`, placed in the coordinates
+    /// of the leaf drawn; the caller resets the paint transform after.
+    fn set_paint(&mut self, paint: &crate::style::Paint) {
+        let (paint, placed) = paint.to_vello();
+        self.ctx.set_paint_transform(placed);
+        self.ctx.set_paint(paint);
     }
 
     /// Fills the draw's rectangle with its picture, whose pixels the paint
@@ -640,7 +649,7 @@ impl Painter {
 
     fn glyphs(&mut self, draw: &GlyphDraw, transform: Affine) -> Result<()> {
         self.ctx.set_transform(transform);
-        self.ctx.set_paint(draw.paint.to_vello());
+        self.set_paint(&draw.paint);
         match &draw.style {
             DrawStyle::Fill(rule) => self.ctx.set_fill_rule(rule.to_vello()),
             DrawStyle::Stroke(stroke) => self.ctx.set_stroke(stroke.to_vello()),
@@ -663,6 +672,7 @@ impl Painter {
             DrawStyle::Fill(_) => run.fill_glyphs(glyphs),
             DrawStyle::Stroke(_) => run.stroke_glyphs(glyphs),
         };
+        self.ctx.reset_paint_transform();
         drawn.map_err(|error| {
             Diagnostic::new(Kind::Invalid, format!("glyphs could not be drawn: {error}"))
                 .expected("glyph ids the font holds")

@@ -55,7 +55,7 @@ Every layer has an `id`: lowercase letters, digits, `-` and `_`, starting with a
 | `rect` | A rectangle the size of its box, with an optional corner radius (`"300x100 r12"`) |
 | `shapes` | Shape items: groups, rectangles, ellipses, stars and polygons, and free paths, drawn by fills and strokes (see [Shapes](#shapes-masks-effects-and-compositions)) |
 | `svg` | An SVG file as shapes |
-| `image` | A PNG or JPEG file stretched over the layer's `box` (see [Images](#images)) |
+| `image` | A PNG or JPEG file, or vector footage (PDF, or an `.ai` file that is PDF inside), stretched over the layer's `box` (see [Images](#images)) |
 | `video` | A video clip played in the layer's own time and stretched over its `box` (see [Videos](#videos)) |
 | `solid` | A flat colour |
 | `comp` | A composition from `comps`, drawn in the layer's box at the layer's own time; `overrides` changes its layers for this layer alone, and `collapse` draws them straight into the canvas the layer sits in |
@@ -357,15 +357,19 @@ A lock that names no role, layer or slot is an error at it, `locks[1]`. An edit 
 
 ## Images
 
-An image layer draws a picture file: `image` names a PNG or JPEG file, relative to the scene file (an absolute path also works), and `box` says where its pixels go in the layer's own coordinates, `[width, height]` from the origin or `[x, y, width, height]`, as for box text. The picture is stretched to fill the box, so its size in the file does not have to match; an import writes the size the project gave it.
+An image layer draws a picture file: `image` names a PNG or JPEG file, or vector footage (a PDF file, or an `.ai` file that is PDF inside), relative to the scene file (an absolute path also works), and `box` says where it goes in the layer's own coordinates, `[width, height]` from the origin or `[x, y, width, height]`, as for box text. The picture is stretched to fill the box, so its size in the file does not have to match; an import writes the size the project gave it.
 
 ```json
 {"id":"photo","image":"photos/beach.jpg","box":[1920,1080],"at":"center center","opacity":0.8}
+{"id":"logo","image":"brand/logo.ai","box":[444,662],"crop":[738,209,444,662],"continuous":true}
 ```
 
 - **Box.** `box` is required: the scene is read, checked and laid out without opening its files, so the layer's size is in the scene. `anchor` rests at the box's centre, and `check` measures the box.
-- **Files.** A render reads and decodes each file once, the first time a frame shows it, and draws every later frame from that. A file that is missing, or is not a PNG or JPEG file, is an error that names the file; a file no frame shows is never read. The format is recognised by the file's first bytes, not its name.
-- **Colour.** PNG keeps its transparency; JPEG is opaque. Pixels are read as sRGB, and sampled bilinearly.
+- **`crop`:** the part of the picture stretched over the box, `[x, y, width, height]` from the picture's top-left corner (or `[width, height]` from it), in the picture's own units: pixels for a raster picture, the page's units (points) for vector footage. Nothing outside it shows. Without it the whole picture fills the box: every pixel, or the page's crop box.
+- **Vector footage** ([D70](decisions.md#d70-vector-footage-is-drawn-from-its-outlines)) is drawn by motion from its outlines, paints, gradients, images and text, never converted to pixels outside the engine. By default its part is drawn once into a picture the box's size (one pixel per unit of the box), which is then transformed like any picture: scaled up, it softens, as a raster picture would. What it holds that cannot be drawn is reported at import.
+- **`continuous`:** `true` draws vector footage through the layer's transform at the output's resolution every frame, so it stays sharp however far it is scaled. It changes nothing for a raster picture.
+- **Files.** A render reads and decodes each file once, the first time a frame shows it, and draws every later frame from that. A file that is missing, or is not a PNG, JPEG or PDF file, is an error that names the file; a file no frame shows is never read. The format is recognised by the file's first bytes, not its name.
+- **Colour.** PNG keeps its transparency; JPEG is opaque. Pixels are read as sRGB, and sampled bilinearly. Vector footage's colours are converted to sRGB as it is read: device grey and RGB as they are, CMYK through a built-in press profile, ICC-based colours through the file's own profile.
 - Like any layer, an image has a transform, parent, opacity, span and time, can be a matte, and can be matted. Video files are not image layers; they are [video layers](#videos).
 
 ## Videos
