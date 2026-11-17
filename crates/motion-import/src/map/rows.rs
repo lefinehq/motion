@@ -27,6 +27,9 @@ pub(super) enum To {
     /// The five curves of a curves effect, from the data the project keeps
     /// for them (`aRbp`).
     Curves,
+    /// The five sets of levels of a levels effect, from the data the
+    /// project keeps for them in its histogram parameter.
+    Levels,
     /// Nowhere: it changes nothing a frame shows, for this reason.
     Ignore(&'static str),
     /// Nowhere, which is right only at its default; any other value is
@@ -326,6 +329,11 @@ const EDGES: &[(i64, &str)] = &[(0, "transparent"), (1, "repeat")];
 const SHADOW_ONLY: &[(i64, &str)] = &[(0, "shown"), (1, "hidden")];
 const GLOW_COMPOSITE: &[(i64, &str)] =
     &[(1, "with-original"), (2, "with-original"), (3, "glow-only")];
+/// Why a levels effect's channel menu changes nothing a frame shows.
+const PANEL_CHANNEL: &str = "which channel's levels the effect's panel shows";
+/// Why a levels effect's sliders change nothing a frame shows.
+const PANEL_LEVELS: &str =
+    "the panel's view of one channel's levels, which the effect keeps in its histogram data";
 const CHANNELS: &[(i64, &str)] = &[
     (1, "rgb"),
     (2, "red"),
@@ -1872,38 +1880,38 @@ pub(super) static KINDS: [Kind; 46] = [
             ),
             row(
                 "ADBE Easy Levels2-0001",
-                To::Setting("channel", CHANNELS),
+                To::Ignore(PANEL_CHANNEL),
                 Number,
                 Absent,
             ),
-            row(
-                "ADBE Easy Levels2-0002",
-                To::Ignore("the histogram, which only shows"),
-                Number,
-                Absent,
-            ),
+            row("ADBE Easy Levels2-0002", To::Levels, Number, Absent),
             row(
                 "ADBE Easy Levels2-0003",
-                To::Prop("input-black"),
+                To::Ignore(PANEL_LEVELS),
                 Number,
                 Absent,
             ),
             row(
                 "ADBE Easy Levels2-0004",
-                To::Prop("input-white"),
+                To::Ignore(PANEL_LEVELS),
                 Number,
                 Absent,
             ),
-            row("ADBE Easy Levels2-0005", To::Prop("gamma"), Number, Absent),
+            row(
+                "ADBE Easy Levels2-0005",
+                To::Ignore(PANEL_LEVELS),
+                Number,
+                Absent,
+            ),
             row(
                 "ADBE Easy Levels2-0006",
-                To::Prop("output-black"),
+                To::Ignore(PANEL_LEVELS),
                 Number,
                 Absent,
             ),
             row(
                 "ADBE Easy Levels2-0007",
-                To::Prop("output-white"),
+                To::Ignore(PANEL_LEVELS),
                 Number,
                 Absent,
             ),

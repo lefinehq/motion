@@ -42,6 +42,24 @@ fn check(
                 registry.kind
             );
         }),
+        To::Levels => {
+            super::super::levels::NAMES.iter().for_each(|name| {
+                assert!(
+                    registry.target(name).is_some(),
+                    "{at}: `{}` writes the level `{name}`, which `{}` lacks",
+                    row.match_name,
+                    registry.kind
+                );
+            });
+            let channels = kind.and_then(|kind| kind.setting("channel"));
+            super::super::levels::CHANNELS.iter().for_each(|channel| {
+                assert!(
+                    channels.is_some_and(|setting| setting.choices.contains(channel)),
+                    "{at}: `{}` writes the channel `{channel}`, which is no `channel`",
+                    row.match_name
+                );
+            });
+        }
         To::Input => assert!(
             kind.is_some_and(|kind| kind.input.is_some()),
             "{at}: `{}` names a layer, which its kind does not read",

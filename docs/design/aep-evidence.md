@@ -1,4 +1,4 @@
-Status: Living · 2026-11-16
+Status: Living · 2026-11-17
 
 # What we know about `.aep` by inference
 
@@ -247,6 +247,33 @@ What is left open:
 - **Digital bands.** m812's bands without a stored display, `Digital` by the definition, are solid bars in its reference at a thickness of 6, where the scene draws columns of squares; m621's 40 px digital bands are squares. How the original spaces its squares is not measured yet.
 - **Waveform.** Audio Waveform has the same Path parameter; no local sample uses the effect, so the scene's waveform follows a mask the same way without a measurement.
 - **Animated paths.** No sample keys a path parameter; one that does is reported.
+
+## Levels
+
+`ADBE Easy Levels2` keeps its levels in its histogram parameter (`-0002`), as data: 108 bytes in every local sample. The effect definitions the projects carry mark that parameter animatable and the sliders (`-0003` to `-0007`) and the channel menu (`-0001`) not. These beliefs say how the data reads and how the effect applies it. They were checked by hand over every local sample; the sweep does not check them yet.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| L1. The data is a 4-byte head (`00 0F 10 A7`), a big-endian `u32` (1 in every sample, the panel's channel by our reading), then five sets of five big-endian `f32`: input black, input white, gamma, output black, output white, levels from 0 to 1, for RGB, red, green, blue and alpha in that order. | Every value read lands in its range and the gammas are positive; the sets read as typed levels (0.1373 is 35/255, 0.0941 is 24/255, 0.8431 is 215/255, 0.7882 is 201/255). | 10 effects in 6 samples |
+| L2. Each channel's set applies first, then the RGB set to red, green and blue, as curves apply theirs: a level becomes `((c − black) / (white − black))^(1/gamma)` clipped, then spread from output black to output white, on the values as stored. | m821's `Color Correction` holds RGB (0.1373, 1, 2.1089, 0, 1), red (0.0667, 1, 1.1399, 0, 1) and blue (0.0941, 1, 1.3282, 0, 1). On the flat regions of reference frame 7 (3.0 s), binned by our level before the effect, the reference's median sits within 4 levels of this model in every channel from 42 to 162 (green 54 → 84, model 80; 102 → 147, model 145; blue 102 → 158, model 156). Against the whole frame the mean error is 11.1 levels with each channel first and 12.4 with RGB first; with the stored sets left out it is 42.3. | m821; m820, m839 and m551 move as the model says (below) |
+| L3. The sliders and the channel menu change nothing drawn: they show one set of the data, as the panel last showed it. | m821's first `Color Correction` stores sliders named `Red Input Black` … `Red Output White` at 0, 1, 1, 0, 1, while its data's red set is (0.0667, 1, 1.1399, 0, 1) and its reference follows the data (L2). The other nine effects store no slider at all, and their data's sets are not all identity. | 10 effects in 6 samples |
+
+Before the data was read, the import took the sliders, so all ten effects drew as identity and nothing was reported. Reading it, over all frames:
+
+| Sample | Failing share | Content error | Frames passing over the floor |
+|---|---|---|---|
+| m821 | 87.99 % → 29.83 % | 0.1041 → 0.0173 | 1 → 1 of 20 |
+| m820 | 66.01 % → 40.47 % | 0.0771 → 0.0678 | 0 → 0 of 20 |
+| m839 | 50.50 % → 25.68 % | 0.0323 → 0.0182 | 0 → 0 of 20 |
+| m551 | 18.20 % → 16.23 % | 0.0185 → 0.0169 | 0 → 0 of 11 |
+| m558, m738 | unchanged | unchanged | unchanged |
+
+m558's levels sit on a hidden noise layer. m738's darken two plates of its `_Camera` composition (output white 0.7882 on one, identity on the other); its numbers do not move to the fourth decimal.
+
+What is left open:
+- **The head and the `u32`.** Every sample stores the same head and 1; data with another length still reads its first 108 bytes.
+- **Alpha.** Every sample's alpha set is identity; an alpha set applies to straight alpha as the scene's `levels` does, unmeasured.
+- **Keys.** No sample keys the histogram; a keyed one keeps its first key and is reported.
 
 ## Colours
 
