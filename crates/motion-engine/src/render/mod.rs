@@ -272,13 +272,21 @@ fn matted(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Res
         .map_err(|e| e.at(BLEND).under(Place::of_layer(&state.nodes[i].id)))?;
     // An effect that reads another layer reads its drawing in its own
     // coordinates, with its effects but not its transform, opacity or
-    // matte; nothing outside its span.
+    // matte; nothing outside its span. A collapsed composition is read as
+    // its composition, uncollapsed: collapsing changes where it draws, not
+    // what it is.
     for (effect, input) in drawn.effects.iter_mut().zip(&list[i].inputs) {
         let Some(source) = *input else {
             continue;
         };
         let read = match state.nodes[source].shown {
-            true => layer(sources, &list[source], &state.view, &state.nodes[source])?,
+            true => drawing(
+                sources,
+                &list[source],
+                &state.view,
+                &state.nodes[source],
+                false,
+            )?,
             false => None,
         };
         let read = match read {
@@ -515,6 +523,18 @@ fn layer(
     view: &View,
     node: &NodeState,
 ) -> Result<Option<Node>> {
+    drawing(sources, compiled, view, node, compiled.collapse)
+}
+
+/// The layer of one node as [`layer`] draws it, its composition collapsed
+/// into the canvas it sits in only when `collapse` says so.
+fn drawing(
+    sources: Sources<'_>,
+    compiled: &GraphNode,
+    view: &View,
+    node: &NodeState,
+    collapse: bool,
+) -> Result<Option<Node>> {
     let opacity = node.number(Prop::OPACITY) as f32;
     if opacity <= 0.0 {
         return Ok(None);
@@ -547,7 +567,7 @@ fn layer(
                 .into_iter()
                 .collect()
         }
-        ContentState::Comp(index, Some(inner)) if compiled.collapse => {
+        ContentState::Comp(index, Some(inner)) if collapse => {
             let comp = &sources.graph.comps[*index];
             let inner = joined(inner, view, node);
             let children = nodes(sources, Canvas::Comp(*index), &inner)?;

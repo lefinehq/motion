@@ -243,6 +243,34 @@ fn a_collapsed_comp_draws_into_its_canvas_with_its_effects_over_it() {
     assert_eq!(dot.opacity, 0.5);
 }
 
+/// What the displacement map of a grey layer reads from `map`, a moved,
+/// scaled and hidden layer of a 40x20 composition holding one square.
+fn read_map(map: &str) -> Node {
+    let scene = format!(
+        r##"{{"motion":1,"size":"200x100","fps":10,"dur":"1s",
+        "comps":{{"m":{{"size":"40x20","dur":"1s","layers":[{{"id":"dot","rect":"10x10","at":"20 10"}}]}}}},
+        "layers":[{{"id":"map","comp":"m","hidden":true,"position":[150,70],"scale":[2,3],{map}}},
+        {{"id":"grey","rect":"200x100","fill":"#808080","fx":[{{"displacement-map":10,"map":"map"}}]}}]}}"##
+    );
+    let frame = list(&scene, 0.0);
+    let grey = only_layer(&frame);
+    grey.effects[0].input().expect("the map's drawing").clone()
+}
+
+#[test]
+fn an_effect_reads_a_collapsed_comp_as_its_composition() {
+    // Collapsed, the composition draws into the scene under its layer's
+    // transform; read by an effect, it is the composition in its own
+    // coordinates all the same, as an uncollapsed one is read.
+    let collapsed = read_map(r#""collapse":true"#);
+    assert_eq!(collapsed, read_map(r#""collapse":false"#));
+    let Node::Layer(read) = &collapsed else {
+        panic!("a layer: {collapsed:?}")
+    };
+    assert_eq!(read.transform, Affine::IDENTITY);
+    assert_eq!(read.bounds, Some(Rect::new(0.0, 0.0, 40.0, 20.0)));
+}
+
 #[test]
 fn a_collapsed_comp_without_effects_lets_its_blends_reach_below() {
     let frame = list(&collapsed(false), 7.0);

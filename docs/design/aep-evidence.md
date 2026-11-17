@@ -248,6 +248,15 @@ What is left open:
 - **Waveform.** Audio Waveform has the same Path parameter; no local sample uses the effect, so the scene's waveform follows a mask the same way without a measurement.
 - **Animated paths.** No sample keys a path parameter; one that does is reported.
 
+## Effects that read a collapsed composition
+
+An effect parameter that names a layer (`pard` control 0) reads that layer's drawing in its own coordinates, without its transform ([scene format](scene-format.md#shapes-masks-effects-and-compositions)). This belief says what it reads of a precomposition layer whose transformations are collapsed. It was measured by hand on one sample; the sweep does not check it.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| K1. A collapsed precomposition read by an effect is its composition in its own coordinates, as if it were not collapsed: collapsing changes where it draws, not what the effect reads. | m785's `Adjustment Glitch` layers displace the frame by `Noise Precomp 1`, a hidden, collapsed 3840 by 2160 composition of block noise 7.65 % high, scaled to 0.047 by 0.084 under a parent. Its collapsed layers carried the comp layer's transform, and the read laid them on the reading layer's coordinates once more, so the map read as one level almost everywhere: the frame moved as one by the full displacement (164 px across at 0.4 s, every row alike but at the frame's edges). The reference cuts the frame into thin horizontal slices, each moved its own way; read as its composition, ours does too. | 4 local samples read a collapsed composition, all by `ADBE Displacement Map`: m577, m785, and m598 and m601, excluded |
+
+Over all frames, m785 fails on 49.67 % → 45.67 % of its content (content error 0.0608 → 0.0431) and m577's content error goes 0.4441 → 0.4320; m598 and m601 do not move, and no sample passes more frames. m785 still differs in its glitch frames: there the reference shows the clip further along (the runner smaller, nearer the sea) than the scene's clip at the same time, which this change does not explain.
 ## Levels
 
 `ADBE Easy Levels2` keeps its levels in its histogram parameter (`-0002`), as data: 108 bytes in every local sample. The effect definitions the projects carry mark that parameter animatable and the sliders (`-0003` to `-0007`) and the channel menu (`-0001`) not. These beliefs say how the data reads and how the effect applies it. They were checked by hand over every local sample; the sweep does not check them yet.
