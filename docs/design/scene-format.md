@@ -597,6 +597,7 @@ The layer's box is the box its lines cover, which for point text starts above an
 | `stroke-width` | character | a number of px, at least 0 |
 | `paint` | character | `fill-over` or `stroke-over` |
 | `tracking` | character | a number, in thousandths of an em |
+| `kerning` | character | `font` or `none` |
 | `horizontal-scale` | character | a number above 0, e.g. `0.93` |
 | `vertical-scale` | character | a number above 0, e.g. `1.04` |
 | `leading` | character | `auto` or a number of px |
@@ -619,6 +620,8 @@ The layer's box is the box its lines cover, which for point text starts above an
 `horizontal-scale` sets the characters wider (above 1) or narrower than the font draws them: each advance, the tracking after it and the glyph scale across by it, so a line of `horizontal-scale` 0.93 is 93 % as long. `vertical-scale` draws the glyphs taller or shorter, up from their baseline; a line's ascent grows with its tallest glyphs, while the spacing from one baseline to the next stays.
 
 `faux-bold` thickens the glyphs and adds 30 thousandths of an em after each character, the space the project files' own layouts give it.
+
+`kerning` `font` (the default) spaces each pair of characters by the font's kerning, `none` advances each character by its own width.
 
 `paint-across` stacks fills and strokes across characters. With `each`, the default, every character draws its two paints in its own `paint` order over the characters before it, so a wide stroke can cover a neighbour's fill. `fills-over` draws every stroke and then every fill, so no stroke covers a fill; `strokes-over` draws every fill and then every stroke.
 

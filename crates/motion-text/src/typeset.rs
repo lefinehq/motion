@@ -23,9 +23,9 @@ use parley::fontique::{
     SourceCache,
 };
 use parley::{
-    Alignment, AlignmentOptions, FontContext, FontFamily, FontVariation, FontVariations,
-    IndentOptions, Language, Layout, LayoutContext, LineHeight, PositionedLayoutItem,
-    StyleProperty,
+    Alignment, AlignmentOptions, FontContext, FontFamily, FontFeatures, FontVariation,
+    FontVariations, IndentOptions, Language, Layout, LayoutContext, LineHeight,
+    PositionedLayoutItem, StyleProperty,
 };
 
 use crate::caps::{self, Cased};
@@ -406,6 +406,10 @@ impl<'a> Styler<'a> {
             StyleProperty::LineHeight(leading),
             // Validated as a tag when the scene is read.
             StyleProperty::Locale(style.lang.as_deref().and_then(|l| Language::parse(l).ok())),
+            StyleProperty::FontFeatures(match style.kerning {
+                true => FontFeatures::empty(),
+                false => FontFeatures::Source(Cow::Borrowed(NO_KERNING)),
+            }),
         ]
     }
 }
@@ -447,6 +451,9 @@ fn stretched(
     };
     (ascent * grown(|r| r.0), descent * grown(|r| r.1))
 }
+/// The font feature setting that turns the font's kerning pairs off, in the
+/// form CSS writes it.
+const NO_KERNING: &str = "\"kern\" 0";
 
 /// The tag a font collection's file starts with.
 const COLLECTION_TAG: &[u8; 4] = b"ttcf";
