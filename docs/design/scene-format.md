@@ -590,6 +590,8 @@ The layer's box is the box its lines cover, which for point text starts above an
 | `stroke-width` | character | a number of px, at least 0 |
 | `paint` | character | `fill-over` or `stroke-over` |
 | `tracking` | character | a number, in thousandths of an em |
+| `horizontal-scale` | character | a number above 0, e.g. `0.93` |
+| `vertical-scale` | character | a number above 0, e.g. `1.04` |
 | `leading` | character | `auto` or a number of px |
 | `baseline` | character | a number of px |
 | `caps` | character | `normal`, `small`, `all` or `all-small` |
@@ -606,6 +608,8 @@ The layer's box is the box its lines cover, which for point text starts above an
 | `anchor-by` | text | `char`, `word`, `line` or `all` |
 | `anchor-align` | text | `[x, y]`, fractions, e.g. `[0, -0.3]` |
 | `paint-across` | text | `each`, `fills-over` or `strokes-over` |
+
+`horizontal-scale` sets the characters wider (above 1) or narrower than the font draws them: each advance, the tracking after it and the glyph scale across by it, so a line of `horizontal-scale` 0.93 is 93 % as long. `vertical-scale` draws the glyphs taller or shorter, up from their baseline; a line's ascent grows with its tallest glyphs, while the spacing from one baseline to the next stays.
 
 `faux-bold` thickens the glyphs and adds 30 thousandths of an em after each character, the space the project files' own layouts give it.
 

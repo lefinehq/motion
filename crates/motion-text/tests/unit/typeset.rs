@@ -245,6 +245,50 @@ fn indents_narrow_and_move_box_lines() {
     }
 }
 
+#[test]
+fn characters_scaled_across_widen_their_advances_and_tracking() {
+    let text = "Wide\nset";
+    let base = plain(text, REGULAR, 80.0);
+    let mut styled = StyledText::plain(text, style(REGULAR, 80.0));
+    styled.runs[0].style.tracking = 50.0;
+    let tracked = lay(&styled);
+    styled.runs[0].style.horizontal_scale = 0.5;
+    let narrow = lay(&styled);
+    // Every advance, its tracking included, halves; the lines keep their
+    // baselines, as automatic leading stays a multiple of the unscaled size.
+    for (a, b) in tracked.runs.iter().zip(&narrow.runs) {
+        assert!(close(b.size, a.size * 0.5) && b.stretch == 2.0);
+        for (a, b) in a.glyphs.iter().zip(&b.glyphs) {
+            assert!(
+                close(b.advance, a.advance * 0.5),
+                "{} {}",
+                a.advance,
+                b.advance
+            );
+        }
+    }
+    for ((a, b), plain) in tracked.lines.iter().zip(&narrow.lines).zip(&base.lines) {
+        assert!(close(b.width, a.width * 0.5) && close(b.baseline, plain.baseline));
+        // The glyphs drawn twice as tall as their laid-out size reach as high
+        // as the unscaled ones.
+        assert!(close(b.ascent, plain.ascent) && close(b.descent, plain.descent));
+    }
+}
+
+#[test]
+fn characters_scaled_up_keep_their_advances_and_grow_their_lines() {
+    let base = plain("Tall", REGULAR, 80.0);
+    let mut styled = StyledText::plain("Tall", style(REGULAR, 80.0));
+    styled.runs[0].style.vertical_scale = 1.5;
+    let tall = lay(&styled);
+    assert!(close(tall.lines[0].width, base.lines[0].width));
+    assert!(close(tall.lines[0].ascent, base.lines[0].ascent * 1.5));
+    assert!(close(tall.lines[0].baseline, base.lines[0].baseline));
+    let (inks, plain_inks) = (tall.runs[0].inks(), base.runs[0].inks());
+    let (t, p) = (inks[0].unwrap(), plain_inks[0].unwrap());
+    assert!(close(t.height(), p.height() * 1.5) && close(t.y1, p.y1));
+}
+
 #[rstest]
 #[case::auto(Leading::Auto, [0.0, 60.0, 120.0])]
 #[case::fixed(Leading::Px(80.0), [0.0, 80.0, 160.0])]

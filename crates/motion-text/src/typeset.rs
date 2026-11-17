@@ -291,6 +291,7 @@ impl Typesetter {
             let metrics = line.metrics();
             let ascent = f64::from(metrics.baseline - metrics.content_block_min_coord);
             let descent = f64::from(metrics.content_block_max_coord - metrics.baseline);
+            let (ascent, descent) = stretched(text, &line, ascent, descent);
             let baseline = cursor.next_baseline(metrics.line_height.into(), ascent);
             // Where Parley starts the line's content, alignment and indent included.
             let content = f64::from(metrics.inline_min_coord + metrics.offset);
@@ -375,13 +376,19 @@ impl<'a> Styler<'a> {
         let style = &self.text.runs[run].style;
         let face_index = self.faces[run];
         let face = &self.fonts.faces()[face_index];
+        // Characters scaled across are set at their scaled size, so their
+        // advances, tracking and glyphs all widen by it; automatic leading
+        // stays a multiple of the unscaled size.
+        let across = style.horizontal_scale;
         let size = if small {
             style.size * self.text.small_caps_scale
         } else {
             style.size
-        };
+        } * across;
         let leading = match style.leading {
-            Leading::Auto => LineHeight::FontSizeRelative(self.paragraph.auto_leading as f32),
+            Leading::Auto => {
+                LineHeight::FontSizeRelative((self.paragraph.auto_leading / across) as f32)
+            }
             Leading::Px(px) => LineHeight::Absolute(px as f32),
         };
         vec![
@@ -395,12 +402,50 @@ impl<'a> Styler<'a> {
             StyleProperty::FontSize(size as f32),
             // Tracking follows every character, in thousandths of the run's em;
             // faux bold adds its own.
-            StyleProperty::LetterSpacing((tracking(style) / 1000.0 * style.size) as f32),
+            StyleProperty::LetterSpacing((tracking(style) / 1000.0 * style.size * across) as f32),
             StyleProperty::LineHeight(leading),
             // Validated as a tag when the scene is read.
             StyleProperty::Locale(style.lang.as_deref().and_then(|l| Language::parse(l).ok())),
         ]
     }
+}
+
+/// How much taller than its laid-out size a run of `style` is drawn: its
+/// vertical scale over its horizontal one.
+fn stretch(style: &CharacterStyle) -> f64 {
+    style.vertical_scale / style.horizontal_scale
+}
+
+/// A line's `ascent` and `descent` as Parley measured them, with its
+/// tallest run's stretch: each run's font ascent and descent, at its laid-out
+/// size, grow by its [`stretch`], and the line's grow as its largest do. A
+/// line without stretched runs keeps Parley's.
+fn stretched(
+    text: &StyledText,
+    line: &parley::Line<'_, usize>,
+    ascent: f64,
+    descent: f64,
+) -> (f64, f64) {
+    let runs: Vec<(f64, f64, f64)> = line
+        .items()
+        .filter_map(|item| match item {
+            PositionedLayoutItem::GlyphRun(glyph_run) => {
+                let metrics = glyph_run.run().font_metrics();
+                let k = stretch(&text.runs[glyph_run.style().brush].style);
+                Some((f64::from(metrics.ascent), f64::from(metrics.descent), k))
+            }
+            PositionedLayoutItem::InlineBox(_) => None,
+        })
+        .collect();
+    if runs.iter().all(|&(.., k)| k == 1.0) {
+        return (ascent, descent);
+    }
+    let grown = |pick: fn(&(f64, f64, f64)) -> f64| {
+        let plain = runs.iter().map(pick).fold(0.0, f64::max);
+        let tall = runs.iter().map(|r| pick(r) * r.2).fold(0.0, f64::max);
+        if plain > 0.0 { tall / plain } else { 1.0 }
+    };
+    (ascent * grown(|r| r.0), descent * grown(|r| r.1))
 }
 
 /// The tag a font collection's file starts with.
@@ -739,6 +784,7 @@ impl Reader<'_> {
                 face: face_index,
                 font: font.clone(),
                 size: f64::from(run.font_size()),
+                stretch: stretch(&self.text.runs[style_run].style),
                 coords: run
                     .normalized_coords()
                     .iter()

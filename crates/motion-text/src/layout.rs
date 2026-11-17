@@ -59,8 +59,13 @@ pub struct GlyphRun {
     pub face: usize,
     /// The font bytes and face index, as the renderer takes them.
     pub font: FontData,
-    /// The size, in pixels.
+    /// The size its glyphs advance at, in pixels: its style's size times
+    /// its horizontal scale.
     pub size: f64,
+    /// How much taller than [`GlyphRun::size`] its glyphs are drawn: its
+    /// vertical scale over its horizontal one, 1 for type set as the font
+    /// draws it. Glyphs stretch up from their baseline.
+    pub stretch: f64,
     /// For a variable font, the instance's normalised axis coordinates as
     /// F2Dot14 bits; empty for a static font.
     pub coords: Vec<i16>,
@@ -109,9 +114,9 @@ impl GlyphRun {
                     // Outlines are y-up, about the glyph's origin.
                     Rect::new(
                         glyph.x + f64::from(b.x_min),
-                        glyph.y - f64::from(b.y_max),
+                        glyph.y - f64::from(b.y_max) * self.stretch,
                         glyph.x + f64::from(b.x_max),
-                        glyph.y - f64::from(b.y_min),
+                        glyph.y - f64::from(b.y_min) * self.stretch,
                     )
                 })
             })

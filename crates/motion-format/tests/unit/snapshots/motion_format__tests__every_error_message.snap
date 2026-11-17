@@ -312,7 +312,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","box":[1,1]}` → a.box: `box` only applies to `text` or `image` or `video` layers; expected `box` only next to `text` or `image` or `video`
 `{"id":"a","text":"x","style":[]}` → a.style: invalid type: sequence; expected an object of text style keys, e.g. {"tracking":20,"align":"center"}
 `{"id":"a","text":"x","style":{"font":"Inter 9"}}` → a.style.font: `font` is set on the layer, not in `style`; expected `font` as a layer key
-`{"id":"a","text":"x","style":{"kerning":1}}` → a.style.kerning: unknown style key `kerning`; expected one of font, italic, fill, stroke, stroke-width, paint, tracking, leading, baseline, caps, faux-bold, faux-italic, lang, align, indent-first, indent-start, indent-end, space-before, space-after, auto-leading, anchor-by, anchor-align, paint-across
+`{"id":"a","text":"x","style":{"kerning":1}}` → a.style.kerning: unknown style key `kerning`; expected one of font, italic, fill, stroke, stroke-width, paint, tracking, horizontal-scale, vertical-scale, leading, baseline, caps, faux-bold, faux-italic, lang, align, indent-first, indent-start, indent-end, space-before, space-after, auto-leading, anchor-by, anchor-align, paint-across
 `{"id":"a","text":"x","style":{"tracking":"wide"}}` → a.style.tracking: invalid type: string "wide"; expected a number
 `{"id":"a","text":"x","style":{"caps":"loud"}}` → a.style.caps: unknown caps `loud`; expected one of normal, small, all, all-small
 `{"id":"a","text":"x","style":{"leading":"tall"}}` → a.style.leading: invalid type: string "tall"; expected `auto` or a number of px
