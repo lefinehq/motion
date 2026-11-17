@@ -711,3 +711,42 @@ fn a_layer_moved_by_a_blurred_pivot_is_drawn_blurred() {
     let samples = only_layer(&frame).children.len();
     assert!(samples > 1, "{samples} drawings");
 }
+
+/// The display list at frame 5 of a 400x200 scene of `layer`, written
+/// beside a 40x40 `picture.png`.
+fn list_with_picture(layer: &str) -> Frame {
+    let dir = std::env::temp_dir().join(format!(
+        "motion-engine-still-{}-{}",
+        std::process::id(),
+        layer.len()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let picture = motion_raster::Image::new(40, 40, [58, 123, 213, 255].repeat(1600)).unwrap();
+    std::fs::write(dir.join("picture.png"), picture.to_png().unwrap()).unwrap();
+    let path = dir.join("scene.json");
+    let scene = format!(
+        r#"{{"motion":1,"size":"400x200","fps":10,"dur":"1s","layers":[{{"id":"l",{layer}}}]}}"#
+    );
+    std::fs::write(&path, scene).unwrap();
+    Session::open(&path).unwrap().display_list(5.0).unwrap()
+}
+
+/// A blurred picture is the same at every moment, so it is drawn once and
+/// moved, flat or through its camera, rather than drawn at each moment.
+#[rstest]
+#[case::flat(r#""image":"picture.png","box":[40,40],"mblur":true,"anim":{"x":"20 -> 380 @0-1s"}"#)]
+#[case::in_3d(r#""image":"picture.png","box":[40,40],"mblur":true,"3d":true,"anim":{"rotate-y":"-60 -> 60 @0-1s"}"#)]
+fn a_blurred_picture_is_drawn_once_and_moved(#[case] layer: &str) {
+    let frame = list_with_picture(layer);
+    let layer = only_layer(&frame);
+    let moves = match &layer.projection {
+        Some(projection) => projection.samples.len(),
+        None => layer.motion.len(),
+    };
+    assert!(
+        moves > 1,
+        "{moves} moves, {} drawings",
+        layer.children.len()
+    );
+    assert_eq!(layer.children.len(), 1, "drawn once");
+}
