@@ -711,3 +711,17 @@ Status: Draft · 2026-11-17
   - The output is our own vector vocabulary on `kurbo`, not the rasteriser's, so the interpreter knows nothing of drawing and the vector footage path ([D70](#d70-vector-footage-is-drawn-from-its-outlines)) lays it on its canvas like any other format's.
   - No new dependency: `kurbo`, `indexmap` and `flate2` are already the workspace's.
 - **Not now:** text (fonts are found and scaled so procedure sets run, but `show` and its kin draw nothing and are reported), smooth shading and patterns, user paths, masked images, the LZW, DCT and fax filters, binary tokens, and memory rolled back by `restore` (it brings back the graphics state only). The interpreter answers to language level 2, so procedure sets take their level 2 paths, which the corpus's draw with plain paths and fills.
+
+### D72. Scenes written from scratch get choreography as data and a guide
+
+- **Decision:** the engine gives an agent writing from a brief the moves a motion designer reaches for as short data, and the repository gives it a guide and examples ([plan](../plans/2026-11-23-choreography.md)):
+  - `out`, an exit that mirrors `in` and ends with the layer's span;
+  - preset starts measured in the canvas's size, and built-in presets for the common entrances: `rise`, `slam`, the four `push` directions, `swing-in`;
+  - examples written from scratch, without brand, footage or real names, each passing `check` in CI;
+  - a guide for agents, also shipped as an agent skill, that keeps the check's measured limits apart from practice that is still provisional.
+- **Why:**
+  - Real use writes the same moves by hand in every film. About forty 9:16 films a studio wrote with the CLI spell out every exit and every push as keys per layer, with pivots parked off the canvas before and after. One key on each side of a push says the same thing, and the check can then tell a push from a layer left off the canvas.
+  - An agent copies what it is shown. Examples that pass the check, and a guide with numbers, cost tokens once and save them in every scene; templates teach the template's own habits instead.
+  - The practice in the guide comes from an AI critic scoring frame sheets, whose scores moved more between batches than the effects it measured. It stays practice, labelled as such, and no check rule is built on it ([D22](#d22-no-ai-judge)).
+  - It is measured the way the brief set was built to measure it: `motion bench` before and after, with the same agent, model and prompt, and people watching both sets.
+- **Not now:** new check rules from that practice, copywriting, and beats as a layer kind: `labels` already name moments.

@@ -70,7 +70,7 @@ Several masters, each turned into a full set of variants. We measure:
 
 ## Next
 
-- A roadmap for creating videos from scratch.
+- A roadmap for creating videos from scratch. Its first plan gives agents choreography as data, examples and a guide ([plan](../plans/2026-11-23-choreography.md), [D72](decisions.md#d72-scenes-written-from-scratch-get-choreography-as-data-and-a-guide)).
 - The extended tier (see [Features](features.md#extended-tier-phase-2)).
 - A direct `.aep` reader.
 - `.mogrt` templates, read as the project inside them ([plan](../plans/2026-11-19-mogrt.md)).
