@@ -14,7 +14,7 @@ use super::sources::{Marks, Writable};
 use super::{Walk, curves, levels};
 use crate::bake::Bake;
 use crate::model::{
-    Child, ComposedLine, Control, EffectDefinition, Group, Property, Stream, Value,
+    Child, ComposedLine, Control, EffectDefinition, Group, Keyframe, Property, Stream, Value,
 };
 
 /// Why a hidden property or group is ignored.
@@ -136,6 +136,20 @@ impl Walk<'_> {
                 .iter()
                 .find(|row| row.match_name == property.match_name)
             {
+                // How a property applies, while that property is 0, changes nothing.
+                Some(Row {
+                    to: To::OnlyDefaultWith(_, other),
+                    ..
+                }) if properties
+                    .iter()
+                    .find(|p| p.match_name == *other)
+                    .is_none_or(|p| always_zero(&p.value)) =>
+                {
+                    self.mapping.ignore(
+                        &property.match_name,
+                        "it says how a value applies that is 0 or left out",
+                    );
+                }
                 Some(row) => self.put(row, Some(property), sink, out, &here),
                 None => self.unknown_property(property, &here),
             }
@@ -181,13 +195,15 @@ impl Walk<'_> {
         }
         match row.to {
             To::Ignore(why) => self.mapping.ignore(name, why),
-            To::OnlyDefault(why) => match self.is_default(&property.value, row, place) {
-                true => self.mapping.ignore(name, "at its default"),
-                false => {
-                    self.mapping.count(name, Fate::Unsupported);
-                    self.mapping.unsupported(&place.at, why);
+            To::OnlyDefault(why) | To::OnlyDefaultWith(why, _) => {
+                match self.is_default(&property.value, row, place) {
+                    true => self.mapping.ignore(name, "at its default"),
+                    false => {
+                        self.mapping.count(name, Fate::Unsupported);
+                        self.mapping.unsupported(&place.at, why);
+                    }
                 }
-            },
+            }
             To::Prop(target) => {
                 self.put_value(row, (property, baked), (target, None), sink, out, place);
             }
@@ -338,6 +354,8 @@ impl Walk<'_> {
             To::Setting(setting, choices) => {
                 let first = match &property.value {
                     Stream::Static(value) => Some(value),
+                    // Keys that all hold one value hold it all the time.
+                    Stream::Animated(keys) if one_value(keys).is_some() => one_value(keys),
                     Stream::Animated(keys) => {
                         self.mapping.unsupported(
                             &place.at,
@@ -559,7 +577,11 @@ impl Walk<'_> {
     /// Whether `stream` holds the row's default all the time. A row whose
     /// default is unknown holds it only where the project leaves it out.
     fn is_default(&self, stream: &Stream, row: &Row, place: &Place<'_>) -> bool {
-        let (Stream::Static(value), Some(default)) = (stream, default_value(row, place)) else {
+        let value = match stream {
+            Stream::Static(value) => Some(value),
+            Stream::Animated(keys) => one_value(keys),
+        };
+        let (Some(value), Some(default)) = (value, default_value(row, place)) else {
             return false;
         };
         let same = |a: f64, b: f64| (a - b).abs() < 1e-6;
@@ -961,4 +983,19 @@ pub(super) fn range_text((lo, hi): (f64, f64)) -> String {
             motion_format::fmt_num(hi)
         ),
     }
+}
+
+/// The one value every key of `keys` holds, if they all hold the same.
+fn one_value(keys: &[Keyframe]) -> Option<&Value> {
+    let first = &keys.first()?.value;
+    keys.iter().all(|key| key.value == *first).then_some(first)
+}
+
+/// Whether `stream` holds the number 0 all the time.
+fn always_zero(stream: &Stream) -> bool {
+    let value = match stream {
+        Stream::Static(value) => Some(value),
+        Stream::Animated(keys) => one_value(keys),
+    };
+    matches!(value, Some(Value::Number(n)) if *n == 0.0)
 }

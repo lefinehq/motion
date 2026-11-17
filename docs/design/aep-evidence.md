@@ -83,6 +83,19 @@ What is left open:
 
   Nothing tried gives these orders. Tested on all five texts, and counted only when two texts or more match: about fifty generators (the C libraries' `rand` and `random` on three platforms, the minimal standard with both multipliers and with a shuffle table, the Mersenne twister in 32 and 64 bits seeded as integers and as arrays, the 48-bit generator, xorshift in 32, 64 and 128 bits, xoroshiro, xoshiro, splitmix, a permuted congruential generator, a combined Tausworthe, KISS, the subtractive generator, Wichmann-Hill and twenty published LCGs, taken whole and by their high bits); the seed as stored, offset by -3 to 12345, multiplied, xored with common constants or combined with the number of parts; 0 to 11 numbers dropped first, and every number or every other one used; the parts ranked by the numbers either way, a forward or backward swap shuffle, and an insertion of each turn at a place the number picks, which keeps the agreement above. Numbers drawn apart for each turn, by hashing the seed and the turn (eight integer and sine hashes, and the first numbers of each generator above, over twenty ways of combining the two), do not give them either. The selector therefore keeps the order of the parts and reports `random order`. 118 of the corpus's 149 selectors in random order store a seed of 0, which is documented as taken from the animator group.
 
+## Tracking type
+
+A text animator's `ADBE Text Track Type` says on which side of each character its tracking adds space. The scene adds it after each part ([scene format](scene-format.md#text-animators)) and has no other side. These beliefs were checked once, by hand, over every local sample.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| K1. The tracking type changes nothing while the animator's tracking amount is 0 all the time or left out. | 359 animators store a tracking type. Every one whose type is not 1 has a tracking amount of 0: m639, m640 and m641 (type 2) among the scored samples. The 200 animators whose tracking is ever not 0 all hold type 1, some of them as a single key (m574, m575, m779). | 359 of 359 |
+
+What is left open:
+- **Type 1.** Whether type 1, the one the corpus tracks with, adds its space after each part (as the scene draws it), splits it before and after, or adds it on both sides, is not settled. The readings differ by under 0.2 points of failing share over all frames of m566, m567, m570, m574, m575 and m748, and no reading is ahead on all six. At the pixels where they differ in five reference frames of m566, adding the space on both sides errs least (0.4127 against 0.4210 after, at 0.5 s). The text there is off by about 0.4 for other reasons, so this does not settle it either.
+
+Before, the import reported `tracking before and after` 17 times in 6 scored samples: wherever the type was not 1 (all with no tracking), and wherever the type was keyed, even with one key at 1. Now it reports a type only where the animator tracks; no local sample does. A property keyed with one value throughout counts as that value for every row that reads a setting or a default.
+
 ## Expression selectors
 
 An expression selector (`ADBE Text Expressible Selector`) becomes a `parts` selector ([D64](decisions.md#d64-a-selector-may-choose-each-part-by-its-own-amount)): its amount's expression is evaluated once per part. These beliefs were measured once, by hand: two scenes are drawn at the reference's own times and compared with the reference only at the pixels where they differ. The sweep does not check them yet.
