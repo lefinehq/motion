@@ -35,7 +35,7 @@ pub(super) const TEXT_HOLD: Craft = Craft {
 
 /// Readable: a shown text, nearly opaque, not moving faster than the eye
 /// follows.
-fn holds(now: &Sample, before: Option<&Sample>, graph: &SceneGraph) -> bool {
+pub(crate) fn holds(now: &Sample, before: Option<&Sample>, graph: &SceneGraph) -> bool {
     let still = before
         .filter(|b| b.shown)
         .is_none_or(|b| now.moved_from(b) <= judder_limit(graph));

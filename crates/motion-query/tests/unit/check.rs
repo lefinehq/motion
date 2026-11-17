@@ -73,6 +73,7 @@ fn violation(
         last_frame: *frames.end(),
         measure: Measure::Overshoot(amount_px),
         fix: fix.map(String::from),
+        with: None,
     }
 }
 
@@ -673,4 +674,47 @@ fn text_read_long_enough_once_holds_whatever_its_brief_stretches() {
         r#"{"id":"title","text":"Launch week","at":"center 500","anim":{"y":[["0f",500],["1f",500],["6f",1500],["11f",500]]}}"#,
     );
     assert!(r.violations.iter().all(|v| v.code != Code::TextHold), "{r}");
+}
+
+/// Two lines of 100 px type, `title` over `sub`, with `sub` at `sub_y` and
+/// `kv` on it.
+fn two_lines(sub_y: u32, kv: &str) -> Report {
+    check_json(&format!(
+        r#"{{"motion":1,"size":"1000x1000","dur":"1s","layers":[
+          {{"id":"sub","text":"8 haftada.","font":"Inter Variable 100 900","at":"center {sub_y}"{kv}}},
+          {{"id":"title","text":"Sıfırdan 5K'ya,","font":"Inter Variable 100 900","at":"center 400"}}]}}"#
+    ))
+}
+
+/// The `overlap` findings of `report`, as printed.
+fn overlaps(report: &Report) -> Vec<String> {
+    report
+        .violations
+        .iter()
+        .filter(|v| v.code == Code::Overlap)
+        .map(|v| format!("{} over {}", v.address, v.with.as_ref().unwrap()))
+        .collect()
+}
+
+#[rstest]
+#[case::apart(600, "", &[])]
+#[case::run_into_each_other(430, "", &["title over sub"])]
+// Faint text is not read, so it runs into nothing.
+#[case::one_faint(430, r#","opacity":0.5"#, &[])]
+#[case::hidden(430, r#","hidden":true"#, &[])]
+fn text_running_into_text_is_found(#[case] sub_y: u32, #[case] kv: &str, #[case] found: &[&str]) {
+    assert_eq!(overlaps(&two_lines(sub_y, kv)), found);
+}
+
+#[test]
+fn an_overlap_prints_both_layers_and_how_deep() {
+    let r = two_lines(430, "");
+    let line = r
+        .violations
+        .iter()
+        .find(|v| v.code == Code::Overlap)
+        .unwrap()
+        .to_string();
+    assert!(line.starts_with("W overlap title 0-29f +"), "{line}");
+    assert!(line.ends_with("px over sub"), "{line}");
 }

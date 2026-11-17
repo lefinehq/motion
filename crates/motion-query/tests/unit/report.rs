@@ -12,6 +12,7 @@ fn violation(severity: Severity, fix: Option<&str>) -> Violation {
         last_frame: 9,
         measure: Measure::Overshoot(12.0),
         fix: fix.map(String::from),
+        with: None,
     }
 }
 
@@ -24,6 +25,7 @@ fn violation(severity: Severity, fix: Option<&str>) -> Violation {
 #[case(Code::Crowd, "crowd")]
 #[case(Code::Contrast, "contrast")]
 #[case(Code::Flash, "flash")]
+#[case(Code::Overlap, "overlap")]
 fn codes_display_as_their_names(#[case] code: Code, #[case] name: &str) {
     assert_eq!(code.to_string(), name);
 }

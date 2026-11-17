@@ -159,7 +159,7 @@ Analytic checks are computed directly from the scene, for every frame. Nothing i
 - **Colour:** text without enough contrast against what is behind it.
 - **Assets:** missing fonts or files.
 
-**Built so far:** `offscreen` (an error), `unsafe`, the craft rules of [D59](decisions.md#d59-craft-lint-measures-motion-from-the-scene-and-reports-numbers) that read the scene, `judder`, `text_hold`, `easing` and `crowd` (warnings), and its pixel gates, `contrast` and `flash` (errors), which `motion check` runs after them. Each finding is one line: severity, rule, layer, frames, then what was measured. A layout rule prints how far the layer leaves its area, `+12px`. A craft rule prints the worst value with its unit, then the limit it misses, `24px/f >11`, `0.4s <1.3`, `6 >4` or `2.1:1 <4.5`. A fix follows when one edit clears it, and the last line counts the rules that ran and found nothing:
+**Built so far:** `offscreen` (an error), `unsafe`, the craft rules of [D59](decisions.md#d59-craft-lint-measures-motion-from-the-scene-and-reports-numbers) that read the scene, `judder`, `text_hold`, `easing`, `crowd` and `overlap` (warnings), and its pixel gates, `contrast` and `flash` (errors), which `motion check` runs after them. Each finding is one line: severity, rule, layer, frames, then what was measured. A layout rule prints how far the layer leaves its area, `+12px`. A craft rule prints the worst value with its unit, then the limit it misses, `24px/f >11`, `0.4s <1.3`, `6 >4` or `2.1:1 <4.5`. A fix follows when one edit clears it, and the last line counts the rules that ran and found nothing:
 
 ```
 E offscreen card 0-12f +40px; fix: card at="center 980"
@@ -167,6 +167,7 @@ W judder badge 1-10f 150px/f >11; fix: badge mblur=true
 W text_hold title 0-9f 0.3s <0.6
 W easing card 0-20f 1 <1.4
 W crowd scene 4-18f 5 >4
+W overlap title 0-29f +6px over sub
 OK 12
 ```
 
@@ -174,6 +175,7 @@ OK 12
 - **`text_hold`:** a text layer stays readable (shown, at least 90% opaque, moving no faster than the judder limit) for less than its characters at 20 a second, and never less than 0.5 s. Its longest readable stretch is judged: a text read long enough once has been read, so the slow start of a push it rides does not count against it.
 - **`easing`:** a move at one speed. A move is a run of at least 6 frames in which a layer's own transform carries the centre of its box; its peak speed over its mean speed is at least 1.4 when it eases (constant speed is 1). A drift slower than 2 px a frame is left alone. No fix is printed yet, since an edit cannot set a key's curve.
 - **`crowd`:** more than 4 layers moving on their own at once, each faster than 2 px a frame. It is the scene's, printed on `scene`, and counted only once something moves. No fix: which layers to hold back is a choice.
+- **`overlap`:** two text layers read at once whose glyphs run into each other, such as one line's descenders on the next line's capitals. Each glyph is the box its outline covers on the canvas, after its animators; two glyphs overlapping by more than 1 px on a 1080-px-tall canvas on both axes run in, and the deepest pair is printed. Read means as `text_hold` reads it, and a glyph its animators leave under 90% opaque is not read. It is printed on the layer drawn on top, with the other after it: `W overlap title 0-29f +6px over sub`. No fix: which one moves is a choice.
 - **`contrast`:** a readable text layer's glyphs against what is drawn behind them, by WCAG 2's contrast ratio: at least 4.5:1, or 3:1 for text of 24 px and up on a 1080-px-tall canvas. Twice a second, the scene is drawn at a quarter of its size without the layer and with only the layer; the ratio 90% of the glyphs' coverage reaches is measured. No fix: which colour to change is a choice.
 - **`flash`:** a quarter or more of the frame flashing more than 3 times in a second. Every frame is drawn at a quarter of its size, in 4 × 4 cells; a cell changes when its mean relative luminance moves at least 0.1 from its last turn, with the darker side below 0.8, and a flash is a change and its return. It is the scene's, printed on `scene`.
 

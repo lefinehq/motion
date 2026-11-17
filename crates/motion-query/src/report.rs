@@ -35,6 +35,8 @@ pub enum Code {
     Contrast,
     /// A quarter or more of the frame flashes more often than is safe.
     Flash,
+    /// Two readable text layers' glyphs run into each other.
+    Overlap,
 }
 
 /// What a finding measured, as the report prints it after the frames.
@@ -113,6 +115,9 @@ pub struct Violation {
     pub measure: Measure,
     /// An edit that clears it, such as `card at="center 880"`.
     pub fix: Option<String>,
+    /// The other layer, for a rule that measures two: the one `address` is
+    /// drawn over.
+    pub with: Option<Address>,
 }
 
 impl fmt::Display for Violation {
@@ -122,6 +127,9 @@ impl fmt::Display for Violation {
             "{} {} {} {}-{}f {}",
             self.severity, self.code, self.address, self.first_frame, self.last_frame, self.measure
         )?;
+        if let Some(with) = &self.with {
+            write!(f, " over {with}")?;
+        }
         if let Some(fix) = &self.fix {
             write!(f, "; fix: {fix}")?;
         }
@@ -154,14 +162,18 @@ impl Measure {
 impl Report {
     /// Drops the violations `base`, the report of an earlier version of the
     /// scene, already has, and returns how many it dropped. A violation is
-    /// known when `base` has one by the same rule on the same layer that is
+    /// known when `base` has one by the same rule on the same layer (and the
+    /// same other layer, for a rule that measures two) that is
     /// measured as bad or worse, whatever its frames: an edit may move a
     /// problem in time without making it worse.
     pub fn since(&mut self, base: &Report) -> usize {
         let before = self.violations.len();
         self.violations.retain(|v| {
             !base.violations.iter().any(|b| {
-                b.code == v.code && b.address == v.address && v.measure.no_worse_than(b.measure)
+                b.code == v.code
+                    && b.address == v.address
+                    && b.with == v.with
+                    && v.measure.no_worse_than(b.measure)
             })
         });
         before - self.violations.len()

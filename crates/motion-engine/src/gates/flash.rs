@@ -65,6 +65,7 @@ pub(super) fn check(session: &Session) -> Result<Report> {
                 unit: Unit::PerSecond,
             },
             fix: None,
+            with: None,
         })
         .collect();
     Ok(report)

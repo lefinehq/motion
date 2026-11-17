@@ -19,7 +19,8 @@ mod bounds;
 pub(crate) mod crowd;
 mod easing;
 mod judder;
-mod text_hold;
+pub(crate) mod overlap;
+pub(crate) mod text_hold;
 
 use crate::report::{Code, Measure, Severity};
 use kurbo::{Affine, Point, Rect, Vec2};
