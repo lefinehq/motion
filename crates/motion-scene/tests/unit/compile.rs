@@ -378,3 +378,19 @@ fn an_effect_follows_the_shown_mask_its_outline_names() {
     // Indices among the masks shown, for the effects shown.
     assert_eq!(g.root.nodes[1].outlines, [Some(1), None, None]);
 }
+
+/// A pivot draws nothing, so its motion blur is that of what it carries: a
+/// layer it moves, at any depth, blurs; one a drawn parent moves does not.
+#[rstest]
+#[case::carried_by_a_blurred_pivot(r#""pivot":true,"mblur":true"#, true)]
+#[case::carried_by_a_pivot(r#""pivot":true"#, false)]
+#[case::moved_by_a_blurred_drawn_parent(r#""rect":"10x10","mblur":true"#, false)]
+fn a_layer_carried_by_a_blurred_pivot_blurs(#[case] holder: &str, #[case] blurred: bool) {
+    let graph = compile_json(&format!(
+        r#"{{"motion":1,"dur":"1s","layers":[{{"id":"p",{holder}}},
+            {{"id":"card","rect":"10x10","parent":"p"}},
+            {{"id":"label","rect":"5x5","parent":"card"}}]}}"#
+    ));
+    let mblur: Vec<bool> = graph.root.nodes.iter().skip(1).map(|n| n.mblur).collect();
+    assert_eq!(mblur, [blurred, blurred]);
+}

@@ -189,6 +189,18 @@ impl Build<'_> {
                     .collect()
             })
             .collect();
+        // A pivot draws nothing, so its motion blur blurs every layer it
+        // carries, at any depth ([D57]).
+        //
+        // [D57]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter
+        let blurs_what_it_carries =
+            |p: usize| layers[p].mblur && matches!(contents[p], NodeContent::Pivot);
+        let mblur: Vec<bool> = (0..layers.len())
+            .map(|i| {
+                layers[i].mblur
+                    || std::iter::successors(parents[i], |&p| parents[p]).any(blurs_what_it_carries)
+            })
+            .collect();
         Ok(layers
             .iter()
             .zip(contents)
@@ -197,6 +209,7 @@ impl Build<'_> {
                 // `at` resolves in the parent's box, or on the canvas without a parent.
                 let extent = parents[i].map_or(canvas, |p| boxes[p]);
                 Node {
+                    mblur: mblur[i],
                     matte: mattes[i],
                     inputs: inputs[i].clone(),
                     outlines: outlines[i].clone(),

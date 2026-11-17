@@ -696,3 +696,18 @@ fn a_blurred_layer_keeps_its_colour(#[case] layer: &str) {
         .unwrap();
     assert!(drift <= 1, "sharp {sharp:?}, blurred {blurred:?}");
 }
+
+/// A blurred pivot blurs the layer it moves: the layer is drawn at each
+/// moment of the shutter, though the pivot itself draws nothing.
+#[test]
+fn a_layer_moved_by_a_blurred_pivot_is_drawn_blurred() {
+    let frame = list(
+        &scene(
+            r##"{"id":"p","pivot":true,"mblur":true,"anim":{"x":"20 -> 180 @0-10f"}},
+                {"id":"card","rect":"40x20","fill":"#000000","parent":"p"}"##,
+        ),
+        5.0,
+    );
+    let samples = only_layer(&frame).children.len();
+    assert!(samples > 1, "{samples} drawings");
+}

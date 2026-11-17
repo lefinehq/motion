@@ -622,8 +622,10 @@ impl<'p> Walk<'p> {
             // The original ignores the setting where the layer cannot take it.
             _ => {}
         }
-        // A layer's switch blurs it only where its composition's is on.
-        if switches.motion_blur && composition.motion_blur.on {
+        // A layer's switch blurs it only where its composition's is on. It
+        // blurs the layer alone, so a pivot, whose blur blurs what it
+        // carries, does not take it.
+        if switches.motion_blur && composition.motion_blur.on && !out.keys.contains_key("pivot") {
             out.keys.insert("mblur".into(), json!(true));
         }
         if switches.solo {
