@@ -340,7 +340,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","text":"x","animate":[{"animator":[{"rect":[1,1]}]}]}` → a.animate[0].animator[0]: needs the key of its kind; expected one kind key: `range`, `parts`
 `{"id":"a","text":"x","animate":[{"animator":[{"range":"sentence"}]}]}` → a.animate[0].animator[0].range: unknown range by `sentence`; expected one of char, char-no-space, word, line
 `{"id":"a","text":"x","animate":[{"animator":[{"range":"char","by":"word"}]}]}` → a.animate[0].animator[0].by: `by` is the value `range` holds; expected `by` written as the value of `range`
-`{"id":"a","text":"x","animate":[{"animator":[{"range":"char","offset":2}]}]}` → a.animate[0].animator[0].offset: value 2 is outside -1..=1; expected a number from -1 to 1
+`{"id":"a","text":"x","animate":[{"animator":[{"range":"char","amount":2}]}]}` → a.animate[0].animator[0].amount: value 2 is outside -1..=1; expected a number from -1 to 1
 `{"id":"a","text":"x","animate":[{"animator":[{"range":"char","shape":"wave"}]}]}` → a.animate[0].animator[0].shape: unknown range shape `wave`; expected one of square, ramp-up, ramp-down, triangle, round, smooth
 `{"id":"a","text":"x","animate":[{"animator":[],"y":3}]}` → a.animate[0].y: unknown animator key `y`; expected one of animator, id, hidden, anim, by, order, position, anchor, scale, rotate, opacity, fill, stroke, stroke-width, tracking, stagger, seed
 `{"id":"a","text":"x","animate":[{"animator":[],"opacity":2}]}` → a.animate[0].opacity: value 2 is outside 0..=1; expected a number from 0 to 1

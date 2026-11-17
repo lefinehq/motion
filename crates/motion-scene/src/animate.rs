@@ -269,11 +269,17 @@ fn chosen(selectors: &[ItemState], glyph: &GlyphParts, counts: &[usize; 4]) -> V
 
 /// How much a range selector chooses part `i` of `n`, its amount included.
 fn range(selector: &ItemState, i: usize, n: usize) -> f64 {
-    let offset = selector.number(props::RANGE_OFFSET);
-    let a = selector.number(props::RANGE_START) + offset;
-    let b = selector.number(props::RANGE_END) + offset;
-    let (start, end) = (a.min(b), a.max(b));
     let n = n as f64;
+    // In `index` units the range counts parts; as fractions, it is the same
+    // range over `n` parts.
+    let per = match selector.setting("units") {
+        "index" => n,
+        _ => 1.0,
+    };
+    let offset = selector.number(props::RANGE_OFFSET) / per;
+    let a = selector.number(props::RANGE_START) / per + offset;
+    let b = selector.number(props::RANGE_END) / per + offset;
+    let (start, end) = (a.min(b), a.max(b));
     let (lo, hi) = (i as f64 / n, (i as f64 + 1.0) / n);
     let middle = (lo + hi) / 2.0;
     // Where the part's middle falls across the range, 0 at its start and 1 at its end.

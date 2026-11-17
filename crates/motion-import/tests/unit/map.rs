@@ -1207,3 +1207,88 @@ fn a_star_maps_its_rows_settings_and_defaults_and_reports_an_unknown_direction()
         )]
     );
 }
+
+#[test]
+fn a_range_in_index_units_takes_its_index_rows() {
+    use crate::model::{Child, Group};
+    use crate::test_support::build::{group, number, property};
+    let selector = |units: f64| {
+        let advanced = group(
+            "ADBE Text Range Advanced",
+            vec![Child::Property(property(
+                "ADBE Text Range Units",
+                number(units),
+            ))],
+        );
+        let rows = [
+            ("ADBE Text Percent Start", 20.0),
+            ("ADBE Text Percent End", 60.0),
+            ("ADBE Text Percent Offset", 10.0),
+            ("ADBE Text Index Start", 1.0),
+            ("ADBE Text Index End", 4.0),
+            ("ADBE Text Index Offset", 7.0),
+        ];
+        let mut children: Vec<Child> = rows
+            .into_iter()
+            .map(|(name, n)| Child::Property(property(name, number(n))))
+            .collect();
+        children.push(Child::Group(advanced));
+        group("ADBE Text Selector", children)
+    };
+    let imported = |units: f64| {
+        let animator = group(
+            "ADBE Text Animator",
+            vec![
+                Child::Group(group(
+                    "ADBE Text Selectors",
+                    vec![Child::Group(selector(units))],
+                )),
+                Child::Group(group(
+                    "ADBE Text Animator Properties",
+                    vec![Child::Property(property("ADBE Text Opacity", number(0.0)))],
+                )),
+            ],
+        );
+        let animators = Child::Group(group("ADBE Text Animators", vec![Child::Group(animator)]));
+        let mut sample = sample_project();
+        for item in &mut sample.items {
+            if let crate::model::ItemKind::Composition(c) = &mut item.kind {
+                for layer in &mut c.layers {
+                    for child in &mut layer.properties.children {
+                        if let Child::Group(Group {
+                            match_name,
+                            children,
+                            ..
+                        }) = child
+                            && match_name == "ADBE Text Properties"
+                        {
+                            children.push(animators.clone());
+                        }
+                    }
+                }
+            }
+        }
+        let import = import(&sample, &Options::default()).expect("the sample imports");
+        let range = scene_layer(&import, "title")["animate"][0]["animator"][0].clone();
+        (range, import)
+    };
+    let (index, import) = imported(2.0);
+    assert_eq!(
+        index,
+        serde_json::json!({"range": "char", "units": "index", "start": 1, "end": 4, "offset": 7})
+    );
+    assert!(
+        import
+            .mapping
+            .unsupported
+            .iter()
+            .all(|f| !f.at.contains("ADBE Text Animators")),
+        "{:?}",
+        import.mapping.unsupported
+    );
+    let (percent, _) = imported(1.0);
+    assert_eq!(
+        percent,
+        serde_json::json!({"range": "char", "units": "fraction", "start": 0.2, "end": 0.6, "offset": 0.1})
+    );
+}

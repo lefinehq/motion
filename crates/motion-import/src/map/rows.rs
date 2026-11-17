@@ -114,16 +114,23 @@ pub(super) struct Kind {
     pub switch: Option<Switch>,
 }
 
-/// A checkbox of a kind that changes where other properties go, such as a
-/// transform's uniform scale.
+/// A property of a kind that changes where other properties go, such as a
+/// transform's uniform scale or a range selector's units.
 #[derive(Debug)]
 pub(super) struct Switch {
-    /// The checkbox's match name.
+    /// The property's match name.
     pub match_name: &'static str,
-    /// Whether it is on where the project leaves it out.
-    pub on: bool,
+    /// The code it holds where the project leaves it out.
+    pub missing: f64,
+    /// Whether a code picks the kind's own rows; any other picks `off_rows`.
+    pub on: fn(f64) -> bool,
     /// The kind's rows when it is off.
     pub off_rows: &'static [Row],
+}
+
+/// A checkbox, on unless it is 0.
+fn checked(code: f64) -> bool {
+    code != 0.0
 }
 
 impl Kind {
@@ -145,10 +152,10 @@ impl Kind {
             .iter()
             .find(|p| p.match_name == switch.match_name)
             .and_then(|p| match &p.value {
-                crate::model::Stream::Static(crate::model::Value::Number(n)) => Some(*n != 0.0),
+                crate::model::Stream::Static(crate::model::Value::Number(n)) => Some(*n),
                 _ => None,
             })
-            .unwrap_or(switch.on);
+            .map_or((switch.on)(switch.missing), switch.on);
         if on { self.rows } else { switch.off_rows }
     }
 
@@ -1513,106 +1520,14 @@ pub(super) static KINDS: [Kind; 46] = [
         match_name: "ADBE Text Selector",
         item: "range",
         table: &SELECTORS,
-        rows: &[
-            row(
-                "ADBE Text Percent Start",
-                To::Prop("start"),
-                Percent,
-                Missing::Number(0.0),
-            ),
-            row(
-                "ADBE Text Percent End",
-                To::Prop("end"),
-                Percent,
-                Missing::Number(100.0),
-            ),
-            row(
-                "ADBE Text Percent Offset",
-                To::Prop("offset"),
-                Percent,
-                Missing::Number(0.0),
-            ),
-            row(
-                "ADBE Text Index Start",
-                To::OnlyDefault("ranges in index units"),
-                Number,
-                Absent,
-            ),
-            row(
-                "ADBE Text Index End",
-                To::OnlyDefault("ranges in index units"),
-                Number,
-                Absent,
-            ),
-            row(
-                "ADBE Text Index Offset",
-                To::OnlyDefault("ranges in index units"),
-                Number,
-                Absent,
-            ),
-            row(
-                "ADBE Text Range Units",
-                To::OnlyDefault("ranges in index units"),
-                Number,
-                Missing::Number(1.0),
-            ),
-            row(
-                "ADBE Text Range Type2",
-                To::Setting("by", BASED_ON),
-                Number,
-                Absent,
-            ),
-            row(
-                "ADBE Text Selector Mode",
-                To::Setting("mode", MODES),
-                Number,
-                Absent,
-            ),
-            row(
-                "ADBE Text Selector Max Amount",
-                To::Prop("amount"),
-                Percent,
-                Missing::Number(100.0),
-            ),
-            row(
-                "ADBE Text Range Shape",
-                To::Setting("shape", SHAPES_OF_RANGE),
-                Number,
-                Absent,
-            ),
-            row(
-                "ADBE Text Selector Smoothness",
-                To::Prop("smooth"),
-                Percent,
-                Missing::Number(100.0),
-            ),
-            row(
-                "ADBE Text Levels Max Ease",
-                To::Prop("ease-high"),
-                Percent,
-                Missing::Number(0.0),
-            ),
-            row(
-                "ADBE Text Levels Min Ease",
-                To::Prop("ease-low"),
-                Percent,
-                Missing::Number(0.0),
-            ),
-            row(
-                "ADBE Text Randomize Order",
-                To::OnlyDefault("random order"),
-                Number,
-                Missing::Number(0.0),
-            ),
-            row(
-                "ADBE Text Random Seed",
-                To::Ignore("the seed of an order that is not random"),
-                Number,
-                Absent,
-            ),
-        ],
+        rows: &RANGE_IN_PERCENT,
         parts: &[("ADBE Text Range Advanced", Part::Rows)],
-        switch: None,
+        switch: Some(Switch {
+            match_name: "ADBE Text Range Units",
+            missing: 1.0,
+            on: in_percent,
+            off_rows: &RANGE_IN_INDEX,
+        }),
     },
     Kind {
         match_name: "ADBE Text Expressible Selector",
@@ -1643,7 +1558,8 @@ pub(super) static KINDS: [Kind; 46] = [
         parts: &[],
         switch: Some(Switch {
             match_name: "ADBE Geometry2-0011",
-            on: true,
+            missing: 1.0,
+            on: checked,
             off_rows: &TRANSFORM_EFFECT_APART,
         }),
     },
@@ -2932,7 +2848,8 @@ pub(super) static KINDS: [Kind; 46] = [
         parts: &[],
         switch: Some(Switch {
             match_name: "ADBE Fractal Noise-0009",
-            on: true,
+            missing: 1.0,
+            on: checked,
             off_rows: &FRACTAL_NOISE_APART,
         }),
     },
@@ -3389,6 +3306,200 @@ pub(super) static POLICIES: [(&str, Policy); 33] = [
         Policy::Ignore("the options of a light layer, which is reported"),
     ),
 ];
+
+/// A range selector's rows when it counts in percent of the parts.
+static RANGE_IN_PERCENT: [Row; 16] = [
+    row(
+        "ADBE Text Percent Start",
+        To::Prop("start"),
+        Percent,
+        Missing::Number(0.0),
+    ),
+    row(
+        "ADBE Text Percent End",
+        To::Prop("end"),
+        Percent,
+        Missing::Number(100.0),
+    ),
+    row(
+        "ADBE Text Percent Offset",
+        To::Prop("offset"),
+        Percent,
+        Missing::Number(0.0),
+    ),
+    row(
+        "ADBE Text Index Start",
+        To::Ignore("the range in parts, which percent units leave unused"),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Text Index End",
+        To::Ignore("the range in parts, which percent units leave unused"),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Text Index Offset",
+        To::Ignore("the range in parts, which percent units leave unused"),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Text Range Units",
+        To::Setting("units", RANGE_UNITS),
+        Number,
+        Missing::Number(1.0),
+    ),
+    row(
+        "ADBE Text Range Type2",
+        To::Setting("by", BASED_ON),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Text Selector Mode",
+        To::Setting("mode", MODES),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Text Selector Max Amount",
+        To::Prop("amount"),
+        Percent,
+        Missing::Number(100.0),
+    ),
+    row(
+        "ADBE Text Range Shape",
+        To::Setting("shape", SHAPES_OF_RANGE),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Text Selector Smoothness",
+        To::Prop("smooth"),
+        Percent,
+        Missing::Number(100.0),
+    ),
+    row(
+        "ADBE Text Levels Max Ease",
+        To::Prop("ease-high"),
+        Percent,
+        Missing::Number(0.0),
+    ),
+    row(
+        "ADBE Text Levels Min Ease",
+        To::Prop("ease-low"),
+        Percent,
+        Missing::Number(0.0),
+    ),
+    row(
+        "ADBE Text Randomize Order",
+        To::OnlyDefault("random order"),
+        Number,
+        Missing::Number(0.0),
+    ),
+    row(
+        "ADBE Text Random Seed",
+        To::Ignore("the seed of an order that is not random"),
+        Number,
+        Absent,
+    ),
+];
+
+/// A range selector's rows when it counts in parts (`ADBE Text Range Units`
+/// 2): its start, end and offset are the index rows, in parts.
+static RANGE_IN_INDEX: [Row; 16] = [
+    row(
+        "ADBE Text Percent Start",
+        To::Ignore("the range in percent, which index units leave unused"),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Text Percent End",
+        To::Ignore("the range in percent, which index units leave unused"),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Text Percent Offset",
+        To::Ignore("the range in percent, which index units leave unused"),
+        Number,
+        Absent,
+    ),
+    row("ADBE Text Index Start", To::Prop("start"), Number, Absent),
+    row("ADBE Text Index End", To::Prop("end"), Number, Absent),
+    row("ADBE Text Index Offset", To::Prop("offset"), Number, Absent),
+    row(
+        "ADBE Text Range Units",
+        To::Setting("units", RANGE_UNITS),
+        Number,
+        Missing::Number(1.0),
+    ),
+    row(
+        "ADBE Text Range Type2",
+        To::Setting("by", BASED_ON),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Text Selector Mode",
+        To::Setting("mode", MODES),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Text Selector Max Amount",
+        To::Prop("amount"),
+        Percent,
+        Missing::Number(100.0),
+    ),
+    row(
+        "ADBE Text Range Shape",
+        To::Setting("shape", SHAPES_OF_RANGE),
+        Number,
+        Absent,
+    ),
+    row(
+        "ADBE Text Selector Smoothness",
+        To::Prop("smooth"),
+        Percent,
+        Missing::Number(100.0),
+    ),
+    row(
+        "ADBE Text Levels Max Ease",
+        To::Prop("ease-high"),
+        Percent,
+        Missing::Number(0.0),
+    ),
+    row(
+        "ADBE Text Levels Min Ease",
+        To::Prop("ease-low"),
+        Percent,
+        Missing::Number(0.0),
+    ),
+    row(
+        "ADBE Text Randomize Order",
+        To::OnlyDefault("random order"),
+        Number,
+        Missing::Number(0.0),
+    ),
+    row(
+        "ADBE Text Random Seed",
+        To::Ignore("the seed of an order that is not random"),
+        Number,
+        Absent,
+    ),
+];
+
+/// The scene's range units by the project's code.
+const RANGE_UNITS: &[(i64, &str)] = &[(1, "fraction"), (2, "index")];
+
+/// Whether range units of `code` count in percent: anything but index units.
+fn in_percent(code: f64) -> bool {
+    code != 2.0
+}
 
 /// The kind for the group `match_name`, if it becomes an item.
 pub(super) fn kind(match_name: &str) -> Option<&'static Kind> {
