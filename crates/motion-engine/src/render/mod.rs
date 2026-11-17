@@ -401,14 +401,17 @@ const MOVED_GROWTH: u32 = 2;
 /// the frame: a moment outside its span still moves it, with its drawing
 /// at the frame, so a layer does not fade in or out at its ends.
 ///
-/// - A shape, text, rect, image or video layer without effects is drawn
-///   at each moment, at `1/n` of its opacity and added, in a group of its
-///   own, so what moves inside it blurs too.
+/// - A shape, text, rect or video layer without effects, or an image
+///   layer with masks, is drawn at each moment, at `1/n` of its opacity
+///   and added, in a group of its own, so what moves inside it blurs too.
+/// - An image layer without masks or effects is drawn once at the frame
+///   and moved to where each moment puts it (`Layer::motion`, or
+///   `Projection::samples` for a 3D one): its picture is the same at every
+///   moment, so this is the same drawing, held once.
 /// - A `comp` layer, or one with effects, is drawn once at the frame and
-///   moved to where each moment puts it (`Layer::motion`), up to
-///   [`MOVED_GROWTH`] times its samples. Its content is its composition's,
-///   which blurs by its own shutter, as a nested composition's does in the
-///   projects the import reads.
+///   moved the same way, up to [`MOVED_GROWTH`] times its samples. Its
+///   content is its composition's, which blurs by its own shutter, as a
+///   nested composition's does in the projects the import reads.
 ///
 /// [D57]: https://github.com/lefinehq/motion/blob/main/docs/design/decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter
 fn blurred(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Result<Option<Node>> {
@@ -423,8 +426,13 @@ fn blurred(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Re
     let opens = moment(state.frame + shutter.phase / 360.0);
     let closes = moment(state.frame + (shutter.phase + shutter.angle) / 360.0);
     let frame_node = &state.nodes[i];
-    let moved = matches!(frame_node.content, ContentState::Comp(..)) || !frame_node.fx.is_empty();
-    let growth = match moved {
+    // A picture without masks draws the same at every moment, so drawing it
+    // once and moving it is exact, and it holds one drawing rather than one
+    // per moment: a 3D picture seen up close took a gigabyte a frame.
+    let still = matches!(frame_node.content, ContentState::Image(_)) && frame_node.mask.is_empty();
+    let moved =
+        still || matches!(frame_node.content, ContentState::Comp(..)) || !frame_node.fx.is_empty();
+    let growth = match moved && !still {
         true => MOVED_GROWTH,
         false => Shutter::MAX_GROWTH,
     };
