@@ -459,7 +459,7 @@ fn every_error_message() {
                 r#"{"id":"a","rect":"1x1","box":[1,1]}"#,
                 r#"{"id":"a","text":"x","style":[]}"#,
                 r#"{"id":"a","text":"x","style":{"font":"Inter 9"}}"#,
-                r#"{"id":"a","text":"x","style":{"kerning":1}}"#,
+                r#"{"id":"a","text":"x","style":{"tsume":1}}"#,
                 r#"{"id":"a","text":"x","style":{"tracking":"wide"}}"#,
                 r#"{"id":"a","text":"x","style":{"caps":"loud"}}"#,
                 r#"{"id":"a","text":"x","style":{"leading":"tall"}}"#,

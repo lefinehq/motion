@@ -164,6 +164,9 @@ pub struct CharacterStyle {
     /// How much taller than its size each glyph is drawn; the lines' spacing
     /// does not change.
     pub vertical_scale: f64,
+    /// Whether the font's kerning pairs move the characters together or
+    /// apart; without, each character advances by its own width only.
+    pub kerning: bool,
     /// The distance from the previous baseline.
     pub leading: Leading,
     /// How far the baseline is raised, in pixels.
@@ -190,6 +193,7 @@ impl CharacterStyle {
             tracking: 0.0,
             horizontal_scale: 1.0,
             vertical_scale: 1.0,
+            kerning: true,
             leading: Leading::Auto,
             baseline_shift: 0.0,
             caps: Caps::Normal,

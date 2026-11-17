@@ -311,8 +311,14 @@ impl Walk<'_> {
                 if style.tsume != 0.0 {
                     found.push("tsume");
                 }
-                if style.kerning != Kerning::Metrics {
-                    found.push("kerning other than the font's");
+                match style.kerning {
+                    Kerning::Optical => {
+                        found.push("optical kerning (the font's kerning pairs are kept)");
+                    }
+                    Kerning::Other(_) => {
+                        found.push("a kerning the scene does not have (the font's is kept)");
+                    }
+                    Kerning::Metrics | Kerning::None => {}
                 }
             });
         document.paragraphs.iter().for_each(|run| {
@@ -399,6 +405,11 @@ fn character(style: &CharacterStyle) -> Vec<(&'static str, Json)> {
     keys.push(("tracking", num(style.tracking)));
     keys.push(("horizontal-scale", num(style.horizontal_scale)));
     keys.push(("vertical-scale", num(style.vertical_scale)));
+    let kerning = match style.kerning {
+        Kerning::None => "none",
+        Kerning::Metrics | Kerning::Optical | Kerning::Other(_) => "font",
+    };
+    keys.push(("kerning", json!(kerning)));
     let leading = if style.auto_leading {
         json!("auto")
     } else {

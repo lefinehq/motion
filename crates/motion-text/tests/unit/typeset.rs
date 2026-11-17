@@ -779,3 +779,24 @@ fn a_face_of_a_collection_is_registered_alone() {
     let lone = &builtin.faces()[0].data;
     assert_eq!(alone(lone).data.id(), lone.data.id());
 }
+
+#[test]
+fn without_kerning_each_character_advances_by_its_own_width() {
+    // Inter kerns `T` and `o` together.
+    let kerned = plain("To", REGULAR, 100.0);
+    let mut styled = StyledText::plain("To", style(REGULAR, 100.0));
+    styled.runs[0].style.kerning = false;
+    let apart = lay(&styled);
+    let (face, coords) = instance(REGULAR);
+    let font = FontRef::from_index(face.data.data.as_ref(), face.data.index).unwrap();
+    let coords: Vec<_> = coords
+        .iter()
+        .map(|&c| skrifa::instance::NormalizedCoord::from_bits(c))
+        .collect();
+    let metrics = font.glyph_metrics(FontSize::new(100.0), LocationRef::new(&coords));
+    for glyph in &apart.runs[0].glyphs {
+        let own = f64::from(metrics.advance_width(GlyphId::new(glyph.id)).unwrap());
+        assert!(close(glyph.advance, own), "{} vs {own}", glyph.advance);
+    }
+    assert!(kerned.lines[0].width < apart.lines[0].width - 1.0);
+}
