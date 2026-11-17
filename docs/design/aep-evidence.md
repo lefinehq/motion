@@ -83,6 +83,18 @@ What is left open:
 
   Nothing tried gives these orders. Tested on all five texts, and counted only when two texts or more match: about fifty generators (the C libraries' `rand` and `random` on three platforms, the minimal standard with both multipliers and with a shuffle table, the Mersenne twister in 32 and 64 bits seeded as integers and as arrays, the 48-bit generator, xorshift in 32, 64 and 128 bits, xoroshiro, xoshiro, splitmix, a permuted congruential generator, a combined Tausworthe, KISS, the subtractive generator, Wichmann-Hill and twenty published LCGs, taken whole and by their high bits); the seed as stored, offset by -3 to 12345, multiplied, xored with common constants or combined with the number of parts; 0 to 11 numbers dropped first, and every number or every other one used; the parts ranked by the numbers either way, a forward or backward swap shuffle, and an insertion of each turn at a place the number picks, which keeps the agreement above. Numbers drawn apart for each turn, by hashing the seed and the turn (eight integer and sine hashes, and the first numbers of each generator above, over twenty ways of combining the two), do not give them either. The selector therefore keeps the order of the parts and reports `random order`. 118 of the corpus's 149 selectors in random order store a seed of 0, which is documented as taken from the animator group.
 
+## Skewed characters
+
+An animator's skew and skew axis (`ADBE Text Skew`, `ADBE Text Skew Axis`) become the animator's `skew` and `skew-axis` ([scene format](scene-format.md#text-animators)). The corpus holds 17 of each in 5 scored samples (m752, m756, m791, m800, m805). All store 0, and only m756's two animators move theirs, by expressions whose bake gives a skew of 70 degrees and axes of -234 and 120 degrees. Measured once with `motion fidelity` on the five, over all frames. The sweep does not check it yet.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| W1. A positive skew along an axis of 0 leans a part's top forward, and the axis turns the slant with it. | Drawn this way, m756's mean content error goes 0.0985 → 0.0982 and its failing share 73.68 % → 73.67 %. With the lean the other way, the error goes 0.0985 → 0.0989. The other four samples draw the same to the fourth decimal. | 1 sample, 2 animators |
+
+Other things we take without evidence:
+- **Order.** A part scales, then slants, then turns about its anchor. The corpus has no skew that turns or scales at the same time as it slants apart from m756, which does not tell the orders apart.
+- **The limit.** The skew is held within -85 and 85 degrees, where its slant stays finite. No project holds more.
+
 ## Expression selectors
 
 An expression selector (`ADBE Text Expressible Selector`) becomes a `parts` selector ([D64](decisions.md#d64-a-selector-may-choose-each-part-by-its-own-amount)): its amount's expression is evaluated once per part. These beliefs were measured once, by hand: two scenes are drawn at the reference's own times and compared with the reference only at the pixels where they differ. The sweep does not check them yet.

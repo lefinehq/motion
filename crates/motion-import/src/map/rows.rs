@@ -1481,6 +1481,8 @@ pub(super) static KINDS: [Kind; 46] = [
                 Absent,
             ),
             row("ADBE Text Rotation", To::Prop("rotate"), Number, Absent),
+            row("ADBE Text Skew", To::Prop("skew"), Number, Absent),
+            row("ADBE Text Skew Axis", To::Prop("skew-axis"), Number, Absent),
             row("ADBE Text Opacity", To::Prop("opacity"), Percent, Absent),
             row("ADBE Text Fill Color", To::Prop("fill"), Color, Absent),
             row("ADBE Text Stroke Color", To::Prop("stroke"), Color, Absent),

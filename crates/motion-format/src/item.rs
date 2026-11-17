@@ -2433,6 +2433,19 @@ pub static ANIMATOR: Registry = Registry {
             "how far each part turns about its anchor, in degrees clockwise",
         ),
         number(
+            "skew",
+            0.0,
+            Some((-85.0, 85.0)),
+            "how far each part slants about its anchor, in degrees: positive leans its top \
+             forward along `skew-axis`",
+        ),
+        number(
+            "skew-axis",
+            0.0,
+            None,
+            "the direction a part slants along, in degrees clockwise from across",
+        ),
+        number(
             "opacity",
             1.0,
             Some((0.0, 1.0)),
@@ -2812,20 +2825,24 @@ pub mod props {
     pub const ANIMATOR_SCALE: Prop = Prop::of(&ANIMATOR, 2);
     /// How far an animator turns each part.
     pub const ANIMATOR_ROTATE: Prop = Prop::of(&ANIMATOR, 3);
+    /// How far an animator slants each part.
+    pub const ANIMATOR_SKEW: Prop = Prop::of(&ANIMATOR, 4);
+    /// The direction an animator slants each part along.
+    pub const ANIMATOR_SKEW_AXIS: Prop = Prop::of(&ANIMATOR, 5);
     /// The opacity an animator fades each part to.
-    pub const ANIMATOR_OPACITY: Prop = Prop::of(&ANIMATOR, 4);
+    pub const ANIMATOR_OPACITY: Prop = Prop::of(&ANIMATOR, 6);
     /// The fill colour an animator turns each part to.
-    pub const ANIMATOR_FILL: Prop = Prop::of(&ANIMATOR, 5);
+    pub const ANIMATOR_FILL: Prop = Prop::of(&ANIMATOR, 7);
     /// The stroke colour an animator turns each part to.
-    pub const ANIMATOR_STROKE: Prop = Prop::of(&ANIMATOR, 6);
+    pub const ANIMATOR_STROKE: Prop = Prop::of(&ANIMATOR, 8);
     /// The stroke width an animator turns each part to.
-    pub const ANIMATOR_STROKE_WIDTH: Prop = Prop::of(&ANIMATOR, 7);
+    pub const ANIMATOR_STROKE_WIDTH: Prop = Prop::of(&ANIMATOR, 9);
     /// The tracking an animator adds after each part.
-    pub const ANIMATOR_TRACKING: Prop = Prop::of(&ANIMATOR, 8);
+    pub const ANIMATOR_TRACKING: Prop = Prop::of(&ANIMATOR, 10);
     /// How many frames each part of a staggered animator waits.
-    pub const ANIMATOR_STAGGER: Prop = Prop::of(&ANIMATOR, 9);
+    pub const ANIMATOR_STAGGER: Prop = Prop::of(&ANIMATOR, 11);
     /// Which shuffle a staggered animator's `random` order takes.
-    pub const ANIMATOR_SEED: Prop = Prop::of(&ANIMATOR, 10);
+    pub const ANIMATOR_SEED: Prop = Prop::of(&ANIMATOR, 12);
     /// Where a range selector starts.
     pub const RANGE_START: Prop = Prop::of(&RANGE, 0);
     /// Where a range selector ends.
