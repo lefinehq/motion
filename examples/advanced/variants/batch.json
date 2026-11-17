@@ -1,0 +1,26 @@
+{
+  "master": "master.json",
+  "out": "out",
+  "variants": [
+    {"id": "wide", "edits": []},
+    {"id": "wide-teal", "edits": [
+      "@accent=#4FD1C5",
+      "@background=#0E2326",
+      "@headline text=\"Harbour Lights\"",
+      "@details text=\"Every Saturday, all along the quay\""
+    ]},
+    {"id": "square", "edits": [
+      "scene size=1080x1080",
+      "@stage scale=0.86",
+      "@cta text=\"Get directions\""
+    ]},
+    {"id": "vertical-teal", "edits": [
+      "scene size=1080x1920",
+      "@stage scale=0.86",
+      "@accent=#4FD1C5",
+      "@background=#0E2326",
+      "@headline text=\"Harbour Lights\"",
+      "@details text=\"Every Saturday, all along the quay\""
+    ]}
+  ]
+}

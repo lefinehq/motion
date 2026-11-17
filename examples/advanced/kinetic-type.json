@@ -1,0 +1,181 @@
+{
+  "motion": 1,
+  "size": "1920x1080",
+  "fps": 30,
+  "dur": "10s",
+  "bg": "#0E0F13",
+  "labels": {"verbs": "3.4s", "close": "6.6s"},
+  "layers": [
+    {
+      "id": "backdrop",
+      "rect": "1920x1080",
+      "fill": "#0E0F13",
+      "at": "center center",
+      "fx": [
+        {"ramp": 0, "shape": "radial", "start": [960, 470], "start-color": "#1F2230", "end": [960, 1500], "end-color": "#0E0F13"}
+      ]
+    },
+
+    {
+      "id": "every-letter",
+      "text": "Every letter",
+      "font": "Inter Variable 168 800",
+      "fill": "#F2EFE8",
+      "at": "center 470",
+      "style": {"align": "center"},
+      "span": "0s-verbs",
+      "animate": [
+        {
+          "animator": [{"range": "char", "anim": {"amount": "1 -> 0 @4f-22f cubic(.16,1,.3,1)"}}],
+          "by": "char", "stagger": 2, "order": "first",
+          "position": [0, 110], "rotate": 14, "opacity": 0
+        },
+        {
+          "animator": [{"range": "char", "anim": {"amount": "1 -> 0 @4f-40f cubic(.16,1,.3,1)"}}],
+          "tracking": 260
+        },
+        {
+          "animator": [{"range": "char", "anim": {"amount": "0 -> 1 @84f-100f cubic(.7,0,.84,0)"}}],
+          "by": "char", "stagger": 2, "order": "first",
+          "position": [0, -90], "opacity": 0
+        }
+      ]
+    },
+
+    {
+      "id": "has-a-job",
+      "text": "has a job.",
+      "font": "Inter Variable 168 300",
+      "fill": "#FF8A65",
+      "at": "center 650",
+      "span": "0s-verbs",
+      "style": {"align": "center", "anchor-by": "word", "anchor-align": [0, -0.35]},
+      "animate": [
+        {
+          "animator": [{"range": "word", "anim": {"amount": "1 -> 0 @18f-36f cubic(.34,1.4,.64,1)"}}],
+          "by": "word", "stagger": 2, "order": "first",
+          "scale": 0.4, "opacity": 0
+        },
+        {
+          "animator": [{"range": "char", "shape": "smooth", "start": 0, "end": 0.35, "ease-high": 0.6, "ease-low": 0.6,
+                        "anim": {"offset": "-0.35 -> 1 @44f-76f in-out-sine"}}],
+          "position": [0, -26], "fill": "#FFD3C2"
+        },
+        {
+          "animator": [{"range": "word", "anim": {"amount": "0 -> 1 @86f-102f cubic(.7,0,.84,0)"}}],
+          "by": "word", "stagger": 2, "order": "first",
+          "position": [0, -90], "opacity": 0
+        }
+      ]
+    },
+
+    {
+      "id": "enter",
+      "text": "ENTER",
+      "font": "Inter Variable 196 900",
+      "fill": "#F2EFE8",
+      "at": "center 330",
+      "style": {"align": "center"},
+      "span": "verbs-close",
+      "offset": "verbs",
+      "animate": [
+        {
+          "animator": [{"range": "char", "anim": {"amount": "1 -> 0 @0f-16f cubic(.34,1.4,.64,1)"}}],
+          "by": "char", "stagger": 2, "order": "center",
+          "scale": 0, "opacity": 0
+        },
+        {
+          "animator": [{"range": "char", "anim": {"amount": "0 -> 1 @84f-98f cubic(.7,0,.84,0)"}}],
+          "by": "char", "stagger": 2, "order": "edges",
+          "scale": 0.2, "opacity": 0
+        }
+      ]
+    },
+
+    {
+      "id": "hold",
+      "text": "HOLD",
+      "font": "Inter Variable 196 900",
+      "fill": "#F2EFE8",
+      "at": "center 540",
+      "style": {"align": "center"},
+      "span": "verbs-close",
+      "offset": "verbs",
+      "animate": [
+        {
+          "animator": [{"range": "char", "anim": {"amount": "1 -> 0 @6f-24f cubic(.16,1,.3,1)"}}],
+          "by": "char", "stagger": 2, "order": "first",
+          "position": [0, 60], "opacity": 0
+        },
+        {
+          "animator": [{"range": "char", "shape": "triangle", "start": 0, "end": 0.5, "ease-high": 0.4, "ease-low": 0.4,
+                        "anim": {"offset": "-0.5 -> 1 @30f-72f in-out-sine"}}],
+          "fill": "#FF8A65", "scale": 1.08
+        },
+        {
+          "animator": [{"range": "char", "anim": {"amount": "0 -> 1 @86f-100f cubic(.7,0,.84,0)"}}],
+          "by": "char", "stagger": 2, "order": "first",
+          "position": [0, -60], "opacity": 0
+        }
+      ]
+    },
+
+    {
+      "id": "leave",
+      "text": "LEAVE",
+      "font": "Inter Variable 196 900",
+      "fill": "#F2EFE8",
+      "at": "center 750",
+      "style": {"align": "center"},
+      "span": "verbs-close",
+      "offset": "verbs",
+      "animate": [
+        {
+          "animator": [{"range": "char", "anim": {"amount": "1 -> 0 @12f-30f cubic(.16,1,.3,1)"}}],
+          "by": "char", "stagger": 2, "order": "first",
+          "position": [0, 60], "opacity": 0
+        },
+        {
+          "animator": [{"range": "char", "shape": "ramp-up", "ease-low": 0.5,
+                        "anim": {"offset": "1 -> -1 @56f-92f in-quad"}}],
+          "position": [260, 0], "tracking": 180, "opacity": 0
+        }
+      ]
+    },
+
+    {
+      "id": "closing",
+      "text": "Motion is meaning.",
+      "font": "Inter Variable 150 800",
+      "fill": "#F2EFE8",
+      "at": "center 560",
+      "span": "close-10s",
+      "offset": "close",
+      "style": {"align": "center", "anchor-by": "word", "anchor-align": [0, -0.35], "stroke": "#F2EFE8", "stroke-width": 3, "paint-across": "strokes-over"},
+      "animate": [
+        {
+          "animator": [{"range": "word", "anim": {"amount": "1 -> 0 @0f-20f cubic(.16,1,.3,1)"}}],
+          "by": "word", "stagger": 2, "order": "first",
+          "position": [0, 80], "rotate": -10, "scale": 0.85, "opacity": 0
+        },
+        {
+          "animator": [{"range": "char-no-space", "anim": {"amount": "1 -> 0 @16f-34f in-out-cubic"}}],
+          "by": "char-no-space", "stagger": 2, "order": "first",
+          "fill": "#F2EFE800"
+        }
+      ]
+    },
+
+    {
+      "id": "rule",
+      "at": "960 680",
+      "span": "close-10s",
+      "offset": "close",
+      "shapes": [
+        {"path": "M-420,0 L420,0"},
+        {"stroke": "#FF8A65", "width": 6, "cap": "round"},
+        {"trim": 0, "start": 0, "anim": {"end": "0 -> 1 @26f-56f cubic(.65,0,.35,1)"}}
+      ]
+    }
+  ]
+}

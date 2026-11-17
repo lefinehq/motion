@@ -1,0 +1,213 @@
+{
+  "motion": 1,
+  "size": "1920x1080",
+  "fps": 30,
+  "dur": "8s",
+  "bg": "#0A0E1A",
+  "labels": {"card": "0.4s", "chips": "2.6s", "update": "4.4s"},
+
+  "comps": {
+    "row": {
+      "size": "580x96",
+      "dur": "8s",
+      "slots": {
+        "tone": {"color": "#7C8CFF", "label": "Icon colour"},
+        "label": {"text": "Focus time"},
+        "value": {"text": "4h 20m"}
+      },
+      "layers": [
+        {"id": "icon", "at": "36 48", "shapes": [{"rect": [52, 52], "round": 16}, {"fill": "$tone"}]},
+        {"id": "label", "text": "$label", "font": "Inter Variable 30 600", "fill": "#E8ECF8", "at": "220 48"},
+        {"id": "value", "text": "$value", "font": "Inter Variable 30 700", "fill": "#A9B8FF", "at": "500 48"},
+        {"id": "divider", "rect": "580x2", "fill": "#232B45", "at": "290 95"}
+      ]
+    },
+
+    "chart": {
+      "size": "580x300",
+      "dur": "4s",
+      "layers": [
+        {"id": "bars", "at": "0 0", "mblur": true,
+         "fx": [{"glow": 30, "threshold": 0.45, "intensity": 0.6}],
+         "shapes": [
+          {"group": [{"rect": [52, 240], "position": [0, -120], "round": 12}, {"fill": "#3A4470"}], "position": [40, 260],
+           "anim": {"scale-y": [[0, 0, "cubic(.16,1,.3,1)"], [20, 0.45], [60, 0.45, "in-out-cubic"], [84, 0.6]]}},
+          {"group": [{"rect": [52, 240], "position": [0, -120], "round": 12}, {"fill": "#3A4470"}], "position": [123, 260],
+           "anim": {"scale-y": [[2, 0, "cubic(.16,1,.3,1)"], [22, 0.7], [62, 0.7, "in-out-cubic"], [86, 0.55]]}},
+          {"group": [{"rect": [52, 240], "position": [0, -120], "round": 12}, {"fill": "#3A4470"}], "position": [206, 260],
+           "anim": {"scale-y": [[4, 0, "cubic(.16,1,.3,1)"], [24, 0.55], [64, 0.55, "in-out-cubic"], [88, 0.8]]}},
+          {"group": [{"rect": [52, 240], "position": [0, -120], "round": 12}, {"fill": "#7C8CFF"}], "position": [290, 260],
+           "anim": {"scale-y": [[6, 0, "cubic(.16,1,.3,1)"], [26, 0.9], [66, 0.9, "in-out-cubic"], [90, 1]]}},
+          {"group": [{"rect": [52, 240], "position": [0, -120], "round": 12}, {"fill": "#3A4470"}], "position": [373, 260],
+           "anim": {"scale-y": [[8, 0, "cubic(.16,1,.3,1)"], [28, 0.62], [68, 0.62, "in-out-cubic"], [92, 0.7]]}},
+          {"group": [{"rect": [52, 240], "position": [0, -120], "round": 12}, {"fill": "#3A4470"}], "position": [456, 260],
+           "anim": {"scale-y": [[10, 0, "cubic(.16,1,.3,1)"], [30, 0.3], [70, 0.3, "in-out-cubic"], [94, 0.45]]}},
+          {"group": [{"rect": [52, 240], "position": [0, -120], "round": 12}, {"fill": "#3A4470"}], "position": [540, 260],
+           "anim": {"scale-y": [[12, 0, "cubic(.16,1,.3,1)"], [32, 0.2], [72, 0.2, "in-out-cubic"], [96, 0.35]]}}
+        ]},
+        {"id": "days", "text": "M        T        W        T        F        S        S", "font": "Inter Variable 24 600", "fill": "#8D97B5",
+         "at": "290 288", "style": {"align": "center"}}
+      ]
+    },
+
+    "screen": {
+      "size": "680x860",
+      "dur": "8s",
+      "labels": {"rows": "1.0s"},
+      "layers": [
+        {"id": "card", "rect": "680x860 r44", "fill": "#141A2C", "at": "center center",
+         "fx": [{"drop-shadow": 40, "direction": 180, "softness": 90, "opacity": 0.55, "color": "#000000"}]},
+        {"id": "title", "text": "This week", "font": "Inter Variable 46 800", "fill": "#FFFFFF", "at": "170 92"},
+        {"id": "caption", "text": "Focus hours per day", "font": "Inter Variable 26 500", "fill": "#8D97B5", "at": "176 146"},
+        {"id": "chart", "comp": "chart", "at": "340 352", "offset": "0.5s",
+         "anim": {"remap": [
+           {"t": "0s", "v": 0, "curve": "linear"},
+           {"t": "1.1s", "v": 1.1, "curve": "hold"},
+           {"t": "3.9s", "v": 1.1, "curve": "in-out-cubic"},
+           {"t": "4.9s", "v": 3.3}
+         ]}},
+        {"id": "row-1", "comp": "row", "at": "340 590", "offset": "rows", "in": "fade-up 40px 16f cubic(.16,1,.3,1)",
+         "overrides": {"$label": "Focus time", "$value": "4h 20m", "$tone": "#7C8CFF"}},
+        {"id": "row-2", "comp": "row", "at": "340 684", "offset": "rows+2f", "in": "fade-up 40px 16f cubic(.16,1,.3,1)",
+         "overrides": {"$label": "Meetings", "$value": "6", "$tone": "#FF9F6E"}},
+        {"id": "row-3", "comp": "row", "at": "340 778", "offset": "rows+4f", "in": "fade-up 40px 16f cubic(.16,1,.3,1)",
+         "overrides": {"$label": "Breaks taken", "$value": "11", "$tone": "#5FD3A6"}}
+      ]
+    },
+
+    "chip": {
+      "size": "340x84",
+      "dur": "8s",
+      "slots": {"text": {"text": "+18% focus"}, "dot": "#5FD3A6"},
+      "layers": [
+        {"id": "pill", "rect": "340x84 r42", "fill": "#1F2742", "at": "center center"},
+        {"id": "dot", "at": "42 42", "shapes": [{"ellipse": [22, 22]}, {"fill": "$dot"}],
+         "fx": [{"glow": 24, "threshold": 0.2, "intensity": 1}]},
+        {"id": "text", "text": "$text", "font": "Inter Variable 30 700", "fill": "#FFFFFF", "at": "190 42"}
+      ]
+    }
+  },
+
+  "layers": [
+    {
+      "id": "backdrop",
+      "rect": "1920x1080",
+      "fill": "#0A0E1A",
+      "at": "center center",
+      "fx": [
+        {"four-color": 1, "mode": "replace",
+         "point-1": [0, 0], "color-1": "#0A0E1A",
+         "point-2": [1920, 0], "color-2": "#121A3A",
+         "point-3": [0, 1080], "color-3": "#0D1226",
+         "point-4": [1920, 1080], "color-4": "#1A1440",
+         "blend": 60}
+      ]
+    },
+    {
+      "id": "orb",
+      "at": "1320 540",
+      "blend": "screen",
+      "opacity": 0.55,
+      "shapes": [{"ellipse": [520, 520]}, {"fill": "#4656D8"}],
+      "fx": [{"gaussian-blur": 180}],
+      "anim": {"position": "1320,540 -> 1380,520 @0-8s in-out-sine", "scale": "0.9 -> 1 @0-8s in-out-sine"}
+    },
+
+    {
+      "id": "headline",
+      "text": "Your week,\nat a glance.",
+      "font": "Inter Variable 104 800",
+      "fill": "#FFFFFF",
+      "at": "540 470",
+      "style": {"leading": 116},
+      "in": "fade-up word 50px 18f cubic(.16,1,.3,1) stagger 2f"
+    },
+    {
+      "id": "underline",
+      "rect": "520x10",
+      "at": "460 610",
+      "offset": "0.9s",
+      "fx": [
+        {"beam": 0, "start": [0, 5], "end": [520, 5], "length": 1, "start-thickness": 6, "end-thickness": 6, "softness": 0.6,
+         "inside-color": "#FFFFFF", "outside-color": "#7C8CFF",
+         "anim": {"time": "0 -> 0.5 @0f-24f cubic(.65,0,.35,1)"}}
+      ]
+    },
+    {
+      "id": "subline",
+      "text": "Plans, focus and progress in one calm view.",
+      "font": "Inter Variable 34 500",
+      "fill": "#B8C2DE",
+      "at": "560 680",
+      "offset": "1.1s",
+      "in": "fade-up 24px 16f cubic(.16,1,.3,1)"
+    },
+
+    {
+      "id": "rig",
+      "pivot": true,
+      "at": "1360 540",
+      "anim": {"y": [[0, 540, "in-out-sine"], ["4s", 528, "in-out-sine"], ["8s", 540]]}
+    },
+    {
+      "id": "screen",
+      "comp": "screen",
+      "parent": "rig",
+      "at": "0 0",
+      "collapse": true,
+      "mblur": true,
+      "offset": "card",
+      "fx": [{"gaussian-blur": 0, "anim": {"blurriness": "40 -> 0 @0f-24f cubic(.16,1,.3,1)"}}],
+      "anim": {
+        "y": "rest+40 -> rest @0f-28f cubic(.16,1,.3,1)",
+        "opacity": "0 -> 1 @0f-12f out-sine",
+        "scale": "0.94 -> 1 @0f-28f cubic(.16,1,.3,1)"
+      }
+    },
+    {
+      "id": "card-shape",
+      "rect": "680x860 r44",
+      "parent": "rig",
+      "at": "0 0",
+      "hidden": true
+    },
+    {
+      "id": "sheen",
+      "rect": "120x930",
+      "fill": "#FFFFFF",
+      "parent": "rig",
+      "at": "-280 0",
+      "rotate": 12,
+      "blend": "add",
+      "matte": "card-shape",
+      "mblur": true,
+      "span": "2.0s-3.2s",
+      "offset": "2.0s",
+      "anim": {
+        "x": "-280 -> 280 @0f-34f in-out-sine",
+        "opacity": "0 -> 0.12 -> 0.12 -> 0 @0f-34f"
+      }
+    },
+
+    {
+      "id": "chip-focus",
+      "comp": "chip",
+      "parent": "rig",
+      "at": "290 -400",
+      "offset": "chips",
+      "overrides": {"$text": "+18% focus", "$dot": "#5FD3A6"},
+      "in": "pop 16f out-back(1)",
+      "mblur": true
+    },
+    {
+      "id": "chip-calm",
+      "comp": "chip",
+      "parent": "rig",
+      "at": "-300 420",
+      "offset": "chips+4f",
+      "overrides": {"$text": "2 free evenings", "$dot": "#FF9F6E"},
+      "in": "pop 16f out-back(1)",
+      "mblur": true
+    }
+  ]
+}
