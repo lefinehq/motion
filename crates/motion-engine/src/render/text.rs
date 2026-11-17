@@ -63,6 +63,23 @@ pub(crate) fn bold_width(size: f64) -> f64 {
     size * (SMALL.1 + t * (LARGE.1 - SMALL.1))
 }
 
+/// How each glyph of `run` in `style` is drawn about its origin: stretched
+/// up by the run's stretch, its vertical scale over its horizontal one (the
+/// layout has already set it at its horizontally scaled size), then slanted
+/// for faux italic; `None` when neither changes it.
+fn glyph_shape(run: &GlyphRun, style: &CharacterStyle) -> Option<Affine> {
+    let stretch = (run.stretch != 1.0).then(|| Affine::scale_non_uniform(1.0, run.stretch));
+    // Kurbo's skew moves x by `skew_x * y`; y grows downwards, so a negative
+    // factor leans the glyphs' tops to the right.
+    let slant = style
+        .faux_italic
+        .then(|| Affine::skew(-ITALIC_SLANT_DEGREES.to_radians().tan(), 0.0));
+    match (slant, stretch) {
+        (Some(slant), Some(stretch)) => Some(slant * stretch),
+        (one, other) => one.or(other),
+    }
+}
+
 /// Every glyph run of `text`, back to front. `glyphs` holds one state per
 /// glyph in the layout's run order, or none when no animator moves them.
 pub(super) fn draws(text: &TextNode, glyphs: &[GlyphState]) -> Vec<Node> {
@@ -140,8 +157,9 @@ struct Face<'a> {
     order: PaintOrder,
     /// The faux bold stroke's width, zero without faux bold.
     bold: f64,
-    /// The faux italic slant.
-    slant: Option<Affine>,
+    /// How each glyph is drawn about its origin: stretched up by its run's
+    /// vertical scale, then slanted for faux italic; `None` when neither.
+    shape: Option<Affine>,
     /// The one paint it draws, or both.
     only: Option<Paints>,
 }
@@ -163,11 +181,7 @@ impl<'a> Face<'a> {
                 true => bold_width(run.size),
                 false => 0.0,
             },
-            slant: style.faux_italic.then(|| {
-                // Kurbo's skew moves x by `skew_x * y`; y grows downwards, so
-                // a negative factor leans the glyphs' tops to the right.
-                Affine::skew(-ITALIC_SLANT_DEGREES.to_radians().tan(), 0.0)
-            }),
+            shape: glyph_shape(run, style),
         }
     }
 
@@ -269,7 +283,7 @@ impl<'a> Face<'a> {
                     y: g.y as f32,
                 })
                 .collect(),
-            glyph_transform: self.slant,
+            glyph_transform: self.shape,
             coords: self.run.coords.clone(),
             paint,
             style,

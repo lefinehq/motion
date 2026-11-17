@@ -70,6 +70,12 @@ pub struct CharacterStyle {
     pub paint: PaintOrder,
     /// Extra space after each character, in thousandths of an em.
     pub tracking: f64,
+    /// How much wider than the font draws them the characters are set:
+    /// their advances, tracking and glyphs scale across by it.
+    pub scale_x: f64,
+    /// How much taller than the font draws them the glyphs are drawn, up from
+    /// their baseline; the lines' spacing does not change.
+    pub scale_y: f64,
     /// The distance from the previous baseline.
     pub leading: Leading,
     /// How far the baseline is raised, in px.
@@ -96,6 +102,8 @@ impl CharacterStyle {
             stroke_width: 1.0,
             paint: PaintOrder::FillOver,
             tracking: 0.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
             leading: Leading::Auto,
             baseline: 0.0,
             caps: Caps::Normal,
@@ -386,6 +394,15 @@ fn at_least(written: &Json, lo: f64) -> Result<f64> {
     .expected(format!("a number of at least {}", fmt_num(lo))))
 }
 
+/// Reads `written` as a finite number above zero.
+fn above_zero(written: &Json) -> Result<f64> {
+    let n = at_least(written, 0.0)?;
+    if n > 0.0 {
+        return Ok(n);
+    }
+    Err(Diagnostic::new(Kind::OutOfRange, "0 is not above 0").expected("a number above 0"))
+}
+
 /// Reads `written` as a finite number.
 fn finite(written: &Json) -> Result<f64> {
     at_least(written, f64::MIN)
@@ -422,7 +439,7 @@ fn flag(written: &Json) -> Result<bool> {
 }
 
 /// Every style key: characters, then paragraphs, then the whole text.
-pub static STYLE_KEYS: [StyleKey; 23] = [
+pub static STYLE_KEYS: [StyleKey; 25] = [
     StyleKey {
         name: "font",
         form: "`<family or PostScript name> <size> [<weight>]`, e.g. `Lato-Black 55`",
@@ -490,6 +507,26 @@ pub static STYLE_KEYS: [StyleKey; 23] = [
         on_layer: false,
         set: Setter::Character(|s, j| {
             s.tracking = finite(j)?;
+            Ok(())
+        }),
+    },
+    StyleKey {
+        name: "horizontal-scale",
+        form: "a number above 0, e.g. `0.93`",
+        doc: "how much wider than the font draws them the characters are set: advances, tracking and glyphs; 1 by default",
+        on_layer: false,
+        set: Setter::Character(|s, j| {
+            s.scale_x = above_zero(j)?;
+            Ok(())
+        }),
+    },
+    StyleKey {
+        name: "vertical-scale",
+        form: "a number above 0, e.g. `1.04`",
+        doc: "how much taller than the font draws them the glyphs are drawn, up from the baseline; the lines' spacing stays; 1 by default",
+        on_layer: false,
+        set: Setter::Character(|s, j| {
+            s.scale_y = above_zero(j)?;
             Ok(())
         }),
     },

@@ -96,6 +96,33 @@ A text layer's `ADBE Text More Options` holds what applies to the whole text: wh
 
 Before, the import reported the group as `text anchor grouping and render order` wherever it held a property: 85 times in 23 scored samples. Now none is reported, and no other value is. Over all frames of those 23 samples, the drawing changes only in m815 (99.85 % → 99.84 % failing, content error 0.2623 → 0.2630) and m816 (62.96 % → 62.95 %); every other sample, and every other text sample measured (60 in all), draws the same to the fourth decimal.
 
+## Scaled characters
+
+A character style's horizontal and vertical scale (`horizontal_scale` and `vertical_scale` in the document's style) become the `horizontal-scale` and `vertical-scale` style keys ([scene format](scene-format.md#text)). The first belief was measured once against the stored layouts (the [composed-line cache](#the-composed-line-cache)) of 13 samples: m562, m571, m619, m620, m634, m639, m640, m641, m647, m651, m738, m769 and m809, imported with their manifest's fonts. The sweep does not check it yet.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| S1. A horizontal scale multiplies every advance and the tracking after it: a line is set as if at its size times the scale. | Set unscaled, the stored width over ours is exactly the scale for lines of one style, with or without tracking: m641's `NEW` (666 px, tracking 50, scale 0.93) is 1748.49 px stored against 1880.12 ours (0.9300), m640's `THE` 360.69 against 387.84, m620's `PRICE: $ 700.000.000` 657.83 against 707.36. Tracking kept unscaled would leave m641's `NEW` 1752.4 px wide. Set at the scaled size, ours is 1748.51. Over the 13 samples' texts, lines within the check's 0.25 px of their stored start, width and baseline go from 26 to 56 of 129, and whole texts from 20 to 30 of 83. | Every line of one scaled style whose font we have, in 9 samples |
+| S2. A scale leaves the distance from one baseline to the next as it is: automatic leading stays a multiple of the unscaled size. | m640's two-line texts (182 px, scale 0.93) keep their stored baselines 0 and 143, and m641's four lines (52 px) keep 0, 46, 92 and 138. | 6 multi-line texts |
+
+Other things we take without evidence:
+- **Vertical scale.** Two scored samples hold one, m562 (1.04) and m651 (0.98), on texts of one line. The glyphs are drawn taller from their baseline, and the line's ascent grows with them. No reference shows it apart from other changes.
+- **What else the line's other lines leave.** Lines that end in a space store a width that includes it, as for unscaled text (m619's `YOUR IMAGE `), and box text's first baseline is off by about 141 px in m620, scaled or not. Both are open, and neither comes from the scale.
+
+Before, the import reported `scaled characters` 47 times in 12 scored samples and set them unscaled. Over all frames:
+
+| Sample | Failing | Content error | Frames passing over the floor |
+|---|---|---|---|
+| m640 | 17.20 % → 10.08 % | 0.0892 → 0.0140 | 9 → 9 of 20 |
+| m641 | 44.96 % → 29.36 % | 0.2737 → 0.1186 | 2 → 2 of 14 |
+| m634 | 44.65 % → 40.80 % | 0.3452 → 0.2955 | 6 → 7 of 20 |
+| m620 | 33.66 % → 32.97 % | 0.1892 → 0.1827 | 6 → 6 of 20 |
+| m639 | 56.31 % → 64.50 % | 0.4172 → 0.4509 | 2 → 2 of 16 |
+| m619, m647, m651, m769 | within 0.07 points | within 0.0005 | unchanged |
+| m562, m738, m809 | unchanged | unchanged | unchanged |
+
+m639's six stacked `CREATION` titles are skewed in the reference, which the scene does not draw yet. Set at their right width, their unskewed letters cover less of the reference's slanted ones than the wider letters did. Its stored layouts come closer (worst line 100.55 → 51.33 px).
+
 ## Expression selectors
 
 An expression selector (`ADBE Text Expressible Selector`) becomes a `parts` selector ([D64](decisions.md#d64-a-selector-may-choose-each-part-by-its-own-amount)): its amount's expression is evaluated once per part. These beliefs were measured once, by hand: two scenes are drawn at the reference's own times and compared with the reference only at the pixels where they differ. The sweep does not check them yet.

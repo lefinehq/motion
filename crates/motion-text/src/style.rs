@@ -158,6 +158,12 @@ pub struct CharacterStyle {
     pub size: f64,
     /// Extra space after each character, in thousandths of an em.
     pub tracking: f64,
+    /// How much wider than its size each character is set: its advance,
+    /// its tracking and its glyph scale by it. 1 sets it as the font draws it.
+    pub horizontal_scale: f64,
+    /// How much taller than its size each glyph is drawn; the lines' spacing
+    /// does not change.
+    pub vertical_scale: f64,
     /// The distance from the previous baseline.
     pub leading: Leading,
     /// How far the baseline is raised, in pixels.
@@ -182,6 +188,8 @@ impl CharacterStyle {
             font,
             size,
             tracking: 0.0,
+            horizontal_scale: 1.0,
+            vertical_scale: 1.0,
             leading: Leading::Auto,
             baseline_shift: 0.0,
             caps: Caps::Normal,
@@ -196,6 +204,12 @@ impl CharacterStyle {
             return Err(positive("style.size", "a size above zero"));
         }
         finite(self.tracking, "style.tracking")?;
+        if !(self.horizontal_scale > 0.0 && self.horizontal_scale.is_finite()) {
+            return Err(positive("style.horizontal_scale", "a scale above zero"));
+        }
+        if !(self.vertical_scale > 0.0 && self.vertical_scale.is_finite()) {
+            return Err(positive("style.vertical_scale", "a scale above zero"));
+        }
         finite(self.baseline_shift, "style.baseline_shift")?;
         if let Leading::Px(px) = self.leading {
             finite(px, "style.leading")?;
