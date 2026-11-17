@@ -17,7 +17,10 @@ use motion_engine::Session;
 
 /// The path of `examples/showcase/{name}`.
 fn showcase(name: &str) -> String {
-    format!("{}/../../examples/showcase/{name}", env!("CARGO_MANIFEST_DIR"))
+    format!(
+        "{}/../../examples/showcase/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    )
 }
 
 /// Runs `motion` with `args`, without a `MOTION_LOG` from the environment.
