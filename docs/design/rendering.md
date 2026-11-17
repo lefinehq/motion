@@ -79,7 +79,7 @@ The rasteriser sits behind a small interface, so it can be swapped later (see [D
 
 In a fast renderer, encoding is usually the slowest step.
 
-`motion render --out <file>` encodes when the name ends in `.mp4` or `.mov`; a folder gets PNG frames. Frames are drawn on every core and handed to the encoder in order (`Session::render_in_order`), at most two per thread waiting, so memory does not grow with the video's length. `--timings` shows `encode` apart from `render`.
+`motion render --out <file>` encodes when the name ends in `.mp4` or `.mov`; a folder gets PNG frames. Frames are drawn on every core and handed to the encoder in order (`Session::render_in_order`), at most two per thread waiting, so memory does not grow with the video's length. It grows with the threads instead: each holds the frame it draws, and a frame with 3D planes seen up close holds about a gigabyte. `--threads N` draws on at most N threads, for a machine shared with other work. `--timings` shows `encode` apart from `render`.
 
 | Codec | Where | From | Container | Default |
 |---|---|---|---|---|

@@ -36,6 +36,10 @@ struct Cli {
     /// Print each step's time to stderr at the end.
     #[arg(long, global = true)]
     timings: bool,
+    /// Draw frames on at most N threads; one per processor when not given.
+    /// Each thread holds the frame it draws, so fewer take less memory.
+    #[arg(long, value_name = "N", global = true)]
+    threads: Option<std::num::NonZero<usize>>,
     #[command(subcommand)]
     command: Command,
 }
@@ -338,6 +342,9 @@ impl Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    if let Some(threads) = cli.threads {
+        motion_engine::limit_threads(threads);
+    }
     let format = cli.log_format.into();
     let telemetry = motion_engine::telemetry::init(Options {
         level: cli.log,

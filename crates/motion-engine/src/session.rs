@@ -6,7 +6,7 @@ use std::num::NonZero;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex, OnceLock, PoisonError};
 use std::thread;
 
@@ -678,10 +678,32 @@ fn temp_path(path: &Path) -> PathBuf {
     path.with_file_name(name)
 }
 
-/// How many threads draw `frames` frames: one per processor, no more than
-/// there are frames.
+/// The most threads a render draws on, set by [`limit_threads`]; 0 for
+/// one per processor.
+static THREADS: AtomicUsize = AtomicUsize::new(0);
+
+/// Draws on at most `threads` threads from now on, in this process. Each
+/// thread holds the frame it draws, so fewer threads take less memory: on
+/// a machine shared with other work, or for scenes whose frames are large
+/// (3D planes seen up close).
+pub fn limit_threads(threads: NonZero<usize>) {
+    THREADS.store(threads.get(), Ordering::Relaxed);
+}
+
+/// How many threads draw `frames` frames: one per processor, or the limit
+/// set, no more than there are frames.
 fn workers(frames: usize) -> u32 {
-    let threads = thread::available_parallelism().map_or(1, NonZero::get);
+    let processors = thread::available_parallelism().map_or(1, NonZero::get);
+    threads_for(frames, processors, THREADS.load(Ordering::Relaxed))
+}
+
+/// How many threads draw `frames` frames on `processors`, at most `limit`
+/// unless it is 0.
+fn threads_for(frames: usize, processors: usize, limit: usize) -> u32 {
+    let threads = match limit {
+        0 => processors,
+        limit => limit,
+    };
     threads.min(frames.max(1)) as u32
 }
 

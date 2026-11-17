@@ -364,3 +364,18 @@ fn render_is_timed_as_display_and_render_steps() {
         assert!(steps.iter().any(|s| s == step), "{step} in {steps:?}");
     }
 }
+
+#[rstest::rstest]
+#[case::one_per_processor(100, 8, 0, 8)]
+#[case::the_limit(100, 8, 2, 2)]
+#[case::a_limit_past_the_processors(100, 8, 12, 12)]
+#[case::no_more_than_there_are_frames(3, 8, 0, 3)]
+#[case::one_for_no_frames(0, 8, 2, 1)]
+fn renders_draw_on_one_thread_per_processor_or_the_limit(
+    #[case] frames: usize,
+    #[case] processors: usize,
+    #[case] limit: usize,
+    #[case] threads: u32,
+) {
+    assert_eq!(threads_for(frames, processors, limit), threads);
+}
