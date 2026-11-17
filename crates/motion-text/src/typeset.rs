@@ -23,8 +23,9 @@ use parley::fontique::{
     SourceCache,
 };
 use parley::{
-    Alignment, AlignmentOptions, FontContext, FontFamily, FontVariation, FontVariations,
-    IndentOptions, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty,
+    Alignment, AlignmentOptions, FontContext, FontFamily, FontFeatures, FontVariation,
+    FontVariations, IndentOptions, Layout, LayoutContext, LineHeight, PositionedLayoutItem,
+    StyleProperty,
 };
 
 use crate::caps::{self, Cased};
@@ -396,9 +397,17 @@ impl<'a> Styler<'a> {
             // faux bold adds its own.
             StyleProperty::LetterSpacing((tracking(style) / 1000.0 * style.size) as f32),
             StyleProperty::LineHeight(leading),
+            StyleProperty::FontFeatures(match style.kerning {
+                true => FontFeatures::empty(),
+                false => FontFeatures::Source(Cow::Borrowed(NO_KERNING)),
+            }),
         ]
     }
 }
+
+/// The font feature setting that turns the font's kerning pairs off, in the
+/// form CSS writes it.
+const NO_KERNING: &str = "\"kern\" 0";
 
 /// The tag a font collection's file starts with.
 const COLLECTION_TAG: &[u8; 4] = b"ttcf";

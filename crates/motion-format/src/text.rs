@@ -67,6 +67,8 @@ pub struct CharacterStyle {
     pub paint: PaintOrder,
     /// Extra space after each character, in thousandths of an em.
     pub tracking: f64,
+    /// Whether the font's kerning pairs space the characters.
+    pub kerning: Kerning,
     /// The distance from the previous baseline.
     pub leading: Leading,
     /// How far the baseline is raised, in px.
@@ -90,6 +92,7 @@ impl CharacterStyle {
             stroke_width: 1.0,
             paint: PaintOrder::FillOver,
             tracking: 0.0,
+            kerning: Kerning::Font,
             leading: Leading::Auto,
             baseline: 0.0,
             caps: Caps::Normal,
@@ -141,6 +144,15 @@ pub enum Leading {
     Px(f64),
 }
 
+/// How pairs of characters are spaced beyond their own widths.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kerning {
+    /// By the font's kerning pairs.
+    Font,
+    /// Not at all: each character advances by its own width.
+    None,
+}
+
 /// Which paint is on top.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaintOrder {
@@ -187,6 +199,9 @@ pub const PAINT_ORDERS: [(&str, PaintOrder); 2] = [
     ("fill-over", PaintOrder::FillOver),
     ("stroke-over", PaintOrder::StrokeOver),
 ];
+
+/// The names of [`Kerning`].
+pub const KERNINGS: [(&str, Kerning); 2] = [("font", Kerning::Font), ("none", Kerning::None)];
 
 /// The names of [`Caps`].
 pub const CAPS: [(&str, Caps); 4] = [
@@ -339,7 +354,7 @@ fn flag(written: &Json) -> Result<bool> {
 }
 
 /// Every style key, characters first.
-pub static STYLE_KEYS: [StyleKey; 19] = [
+pub static STYLE_KEYS: [StyleKey; 20] = [
     StyleKey {
         name: "font",
         form: "`<family or PostScript name> <size> [<weight>]`, e.g. `Lato-Black 55`",
@@ -407,6 +422,16 @@ pub static STYLE_KEYS: [StyleKey; 19] = [
         on_layer: false,
         set: Setter::Character(|s, j| {
             s.tracking = finite(j)?;
+            Ok(())
+        }),
+    },
+    StyleKey {
+        name: "kerning",
+        form: "`font` or `none`",
+        doc: "whether the font's kerning pairs space the characters; the font's by default",
+        on_layer: false,
+        set: Setter::Character(|s, j| {
+            s.kerning = choice(j, "kerning", &KERNINGS)?;
             Ok(())
         }),
     },

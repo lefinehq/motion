@@ -46,7 +46,7 @@ fn key_names_are_unique_and_documented() {
     assert_eq!(names.len(), STYLE_KEYS.len());
     assert!(style_key("tracking").is_some_and(|k| k.level() == Level::Character));
     assert!(style_key("align").is_some_and(|k| k.level() == Level::Paragraph));
-    assert!(style_key("kerning").is_none());
+    assert!(style_key("tsume").is_none());
     assert_eq!(
         format!("{:?}", style_key("caps").unwrap()),
         "StyleKey { name: \"caps\", level: Character, .. }"
@@ -60,6 +60,8 @@ fn key_names_are_unique_and_documented() {
 #[case::auto_leading("leading", json!("auto"), true)]
 #[case::left("align", json!("left"), true)]
 #[case::rejected("tracking", json!("wide"), false)]
+#[case::font_kerning("kerning", json!("font"), true)]
+#[case::no_kerning("kerning", json!("none"), false)]
 #[case::layer_font("font", json!("Inter 40"), false)]
 #[case::layer_fill("fill", json!([0, 0, 0, 0]), false)]
 fn a_key_is_at_its_default_only_when_setting_it_changes_nothing(

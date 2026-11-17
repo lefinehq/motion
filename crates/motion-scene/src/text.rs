@@ -7,7 +7,7 @@ use motion_format::Result;
 
 use crate::animate::Parts;
 use motion_format::key::{FONT, RUNS};
-use motion_format::text::{Align, Caps, CharacterStyle, Leading, TextContent};
+use motion_format::text::{Align, Caps, CharacterStyle, Kerning, Leading, TextContent};
 use motion_text::{
     FontQuery, FontSet, Slant, StyledRun, StyledText, TextFrame, TextLayout, Typesetter,
 };
@@ -123,6 +123,7 @@ fn styled(content: &TextContent, fonts: &FontSet) -> StyledText {
 fn character(style: &CharacterStyle, fonts: &FontSet) -> motion_text::CharacterStyle {
     let mut out = motion_text::CharacterStyle::new(query(style, fonts), style.font.size);
     out.tracking = style.tracking;
+    out.kerning = style.kerning == Kerning::Font;
     out.leading = match style.leading {
         Leading::Auto => motion_text::Leading::Auto,
         Leading::Px(px) => motion_text::Leading::Px(px),

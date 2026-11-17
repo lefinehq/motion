@@ -158,6 +158,9 @@ pub struct CharacterStyle {
     pub size: f64,
     /// Extra space after each character, in thousandths of an em.
     pub tracking: f64,
+    /// Whether the font's kerning pairs move the characters together or
+    /// apart; without, each character advances by its own width only.
+    pub kerning: bool,
     /// The distance from the previous baseline.
     pub leading: Leading,
     /// How far the baseline is raised, in pixels.
@@ -179,6 +182,7 @@ impl CharacterStyle {
             font,
             size,
             tracking: 0.0,
+            kerning: true,
             leading: Leading::Auto,
             baseline_shift: 0.0,
             caps: Caps::Normal,

@@ -577,6 +577,7 @@ The layer's box is the box its lines cover, which for point text starts above an
 | `stroke-width` | character | a number of px, at least 0 |
 | `paint` | character | `fill-over` or `stroke-over` |
 | `tracking` | character | a number, in thousandths of an em |
+| `kerning` | character | `font` or `none` |
 | `leading` | character | `auto` or a number of px |
 | `baseline` | character | a number of px |
 | `caps` | character | `normal`, `small`, `all` or `all-small` |
@@ -591,6 +592,8 @@ The layer's box is the box its lines cover, which for point text starts above an
 | `auto-leading` | paragraph | a number, at least 0 |
 
 `faux-bold` thickens the glyphs and adds 30 thousandths of an em after each character, the space the project files' own layouts give it.
+
+`kerning` `font` (the default) spaces each pair of characters by the font's kerning, `none` advances each character by its own width.
 
 ### Text animators
 

@@ -83,6 +83,17 @@ What is left open:
 
   Nothing tried gives these orders. Tested on all five texts, and counted only when two texts or more match: about fifty generators (the C libraries' `rand` and `random` on three platforms, the minimal standard with both multipliers and with a shuffle table, the Mersenne twister in 32 and 64 bits seeded as integers and as arrays, the 48-bit generator, xorshift in 32, 64 and 128 bits, xoroshiro, xoshiro, splitmix, a permuted congruential generator, a combined Tausworthe, KISS, the subtractive generator, Wichmann-Hill and twenty published LCGs, taken whole and by their high bits); the seed as stored, offset by -3 to 12345, multiplied, xored with common constants or combined with the number of parts; 0 to 11 numbers dropped first, and every number or every other one used; the parts ranked by the numbers either way, a forward or backward swap shuffle, and an insertion of each turn at a place the number picks, which keeps the agreement above. Numbers drawn apart for each turn, by hashing the seed and the turn (eight integer and sine hashes, and the first numbers of each generator above, over twenty ways of combining the two), do not give them either. The selector therefore keeps the order of the parts and reports `random order`. 118 of the corpus's 149 selectors in random order store a seed of 0, which is documented as taken from the animator group.
 
+## Kerning
+
+A character style's kerning (`kerning` in the document's style: metrics, optical or none) becomes the `kerning` style key ([scene format](scene-format.md#text)): metrics as `font`, none as `none`. Measured once against the stored layouts (the [composed-line cache](#the-composed-line-cache)) of the 11 samples that hold a kerning other than metrics, imported with their manifest's fonts. The sweep does not check it yet.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| N1. Without kerning, each character advances by its own width: the font's kerning pairs are not applied. | The corpus's one text without kerning, m604's `mixkit.co` (6 character styles in one text), stores a line 231.45 px wide. Set with the font's kerning it is 230.80 px, without it 231.45 px, its start within 0.01 px. | 1 text |
+| N2. Optical kerning is not the font's kerning scaled: it respaces each pair by itself. | Set with the font's kerning, the lines of the texts that hold optical kerning store widths 0.95 to 1.01 times ours, a different factor on each line of one text: m713 0.956 to 1.004 (median 0.971), m714 0.951 to 1.000, m715 0.947 to 1.000, m716 0.964 to 1.009. No line of m713 to m716 falls within 0.25 px. | 84 character styles in 11 samples |
+
+Optical kerning therefore stays reported, now as `optical kerning (the font's kerning pairs are kept)`, and is set with the font's kerning, as before. A kerning the reader does not know is reported as `a kerning the scene does not have (the font's is kept)`; the corpus holds none. Over all frames, m604 and the 9 scored samples with optical kerning (m565, m595, m596, m647, m713, m714, m715, m716, m769) draw the same to the fourth decimal: `mixkit.co` moves by under 1 px.
+
 ## Expression selectors
 
 An expression selector (`ADBE Text Expressible Selector`) becomes a `parts` selector ([D64](decisions.md#d64-a-selector-may-choose-each-part-by-its-own-amount)): its amount's expression is evaluated once per part. These beliefs were measured once, by hand: two scenes are drawn at the reference's own times and compared with the reference only at the pixels where they differ. The sweep does not check them yet.
