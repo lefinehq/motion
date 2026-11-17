@@ -2464,7 +2464,8 @@ pub static ANIMATOR: Registry = Registry {
 };
 
 /// The properties of a range selector. Start, end and offset are fractions
-/// of the parts it counts: 0 is before the first, 1 after the last.
+/// of the parts it counts, 0 before the first and 1 after the last, or in
+/// `index` units the parts themselves, `n` after the last of `n`.
 pub static RANGE: Registry = Registry {
     kind: "range",
     rows: &[
@@ -2472,19 +2473,20 @@ pub static RANGE: Registry = Registry {
             "start",
             0.0,
             None,
-            "where the range starts, as a fraction of the parts",
+            "where the range starts, as a fraction of the parts or, in `index` units, a number of parts",
         ),
         number(
             "end",
             1.0,
             None,
-            "where the range ends, as a fraction of the parts",
+            "where the range ends, as a fraction of the parts or, in `index` units, a number of parts",
         ),
         number(
             "offset",
             0.0,
-            Some((-1.0, 1.0)),
-            "how far start and end both move, as a fraction of the parts",
+            None,
+            "how far start and end both move, as a fraction of the parts or, in `index` units, \
+             a number of parts",
         ),
         number(
             "amount",
@@ -2608,6 +2610,12 @@ pub static SELECTORS: [ItemKind; 2] = [
                 choices: &["add", "subtract", "intersect", "min", "max", "difference"],
                 default: "add",
                 doc: "how it combines with the selectors before it",
+            },
+            SettingSpec {
+                name: "units",
+                choices: &["fraction", "index"],
+                default: "fraction",
+                doc: "what `start`, `end` and `offset` count: fractions of the parts, or parts",
             },
         ],
         input: None,
