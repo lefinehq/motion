@@ -101,3 +101,74 @@ fn only_errors_count_for_has_errors() {
 fn measures_print_their_value_unit_and_limit(#[case] measure: Measure, #[case] printed: &str) {
     assert_eq!(measure.to_string(), printed);
 }
+
+/// One error by `code` on `address`, measured `measure`, over frames 3–9.
+fn found(code: Code, address: &str, measure: Measure) -> Violation {
+    Violation {
+        code,
+        address: address.parse().unwrap(),
+        measure,
+        ..violation(Severity::Error, None)
+    }
+}
+
+fn above(value: f64) -> Measure {
+    Measure::Above {
+        value,
+        limit: 11.0,
+        unit: Unit::PxPerFrame,
+    }
+}
+
+fn below(value: f64) -> Measure {
+    Measure::Below {
+        value,
+        limit: 4.5,
+        unit: Unit::Ratio,
+    }
+}
+
+#[rstest]
+#[case::the_same(found(Code::Offscreen, "card", Measure::Overshoot(12.0)), true)]
+#[case::less_far_out(found(Code::Offscreen, "card", Measure::Overshoot(5.0)), true)]
+#[case::farther_out(found(Code::Offscreen, "card", Measure::Overshoot(13.0)), false)]
+#[case::another_layer(found(Code::Offscreen, "title", Measure::Overshoot(12.0)), false)]
+#[case::another_rule(found(Code::Unsafe, "card", Measure::Overshoot(12.0)), false)]
+#[case::slower(found(Code::Judder, "card", above(20.0)), true)]
+#[case::faster(found(Code::Judder, "card", above(30.0)), false)]
+#[case::more_contrast(found(Code::Contrast, "card", below(3.0)), true)]
+#[case::less_contrast(found(Code::Contrast, "card", below(1.5)), false)]
+fn a_baseline_knows_what_it_has_as_bad_or_worse(#[case] now: Violation, #[case] known: bool) {
+    let base = Report {
+        violations: vec![
+            found(Code::Offscreen, "card", Measure::Overshoot(12.0)),
+            found(Code::Judder, "card", above(25.0)),
+            found(Code::Contrast, "card", below(2.1)),
+        ],
+        passed: 3,
+    };
+    let mut report = Report {
+        violations: vec![now.clone()],
+        passed: 1,
+    };
+    assert_eq!(report.since(&base), usize::from(known));
+    assert_eq!(report.violations.is_empty(), known);
+    assert_eq!(report.passed, 1);
+}
+
+#[test]
+fn a_baseline_knows_a_problem_that_moved_in_time() {
+    let base = Report {
+        violations: vec![violation(Severity::Error, None)],
+        passed: 0,
+    };
+    let mut later = Report {
+        violations: vec![Violation {
+            first_frame: 40,
+            last_frame: 80,
+            ..violation(Severity::Error, None)
+        }],
+        passed: 0,
+    };
+    assert_eq!(later.since(&base), 1);
+}

@@ -161,6 +161,31 @@ fn edit_writes_canonical_file_and_prints_report() {
 }
 
 #[test]
+fn a_baseline_leaves_out_what_it_already_has() {
+    let out = motion(&["check", OFFSCREEN, "--baseline", OFFSCREEN]);
+    // The pixel gates pass.
+    assert_eq!(stdout(&out), "KNOWN 1\nOK 1\n");
+    assert_eq!(out.status.code(), Some(0));
+}
+
+#[test]
+fn an_edit_prints_only_what_it_added() {
+    // The card was already off the canvas: an edit elsewhere passes.
+    let path = copy_to("edit_known", OFFSCREEN);
+    let out = motion(&["edit", &path, "card fill=#FF0000"]);
+    assert_eq!(stdout(&out), "KNOWN 1\nOK 0\n");
+    assert_eq!(out.status.code(), Some(0));
+    // Moving it farther out is new.
+    let out = motion(&["edit", &path, "card at=\"center 1100\""]);
+    assert!(
+        stdout(&out).starts_with("E offscreen card"),
+        "{}",
+        stdout(&out)
+    );
+    assert_eq!(out.status.code(), Some(1));
+}
+
+#[test]
 fn slots_lists_each_slot_and_an_edit_changes_one() {
     let path = copy_to("slots", SLOTS);
     let out = motion(&["slots", &path]);

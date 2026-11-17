@@ -1,17 +1,21 @@
-//! `motion edit`: apply one edit line to a scene file, then print its check.
+//! `motion edit`: apply one edit line to a scene file, then print what it
+//! added to the scene's check.
 
 use std::path::Path;
 use std::process::ExitCode;
 
 use motion_engine::{Result, Session};
 
-use super::print_report;
+use super::print_new;
 
-/// Edits the scene file in place and prints the check report. A valid scene
-/// with check errors is still saved (exit 1); other errors leave it untouched.
+/// Edits the scene file in place and prints what the edit added to the check
+/// report: what the scene already had before the edit is counted, not
+/// printed. A valid scene with new check errors is still saved (exit 1);
+/// other errors leave it untouched.
 pub fn run(path: &Path, line: &str) -> Result<ExitCode> {
     let mut session = Session::open(path)?;
+    let before = session.check()?;
     let report = session.edit(line)?;
     session.save()?;
-    Ok(print_report(&report))
+    Ok(print_new(report, &before))
 }

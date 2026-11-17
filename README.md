@@ -46,7 +46,7 @@ cargo run -q -p motion-cli -- render examples/launch.json --out /tmp/launch.mp4
 
 When `--out` is a video file (`.mp4` or `.mov`), the frames are encoded in order as they are drawn, with nothing else installed. `--codec` picks the codec: `h264` and `hevc` from the system's encoder on macOS, where H.264 is the default, `prores` (ProRes 4444 with alpha, in a `.mov` file, for scenes with a clear background) on macOS, and `av1` on every platform, and `--video-quality` what the file is for: `draft` to check timing, `web` to deliver (the default), `master` to edit or encode again. `--timings` shows the `encode` step apart from drawing.
 
-`check` exits 1 when it finds an error. `edit` saves a valid scene even when the scene still has check errors, and then exits 1 as well. Every command exits 2 when the file, the time or the edit line is unusable.
+`check` exits 1 when it finds an error. `check --baseline template.json` prints only what the earlier version, such as the template before your edits, does not already have, so the exit code gates your changes alone. `edit` saves a valid scene and prints what the edit added to the check the same way, so it exits 1 only when the edit made a new error. Every command exits 2 when the file, the time or the edit line is unusable.
 
 ## Licence
 
