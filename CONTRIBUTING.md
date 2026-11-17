@@ -2,6 +2,14 @@
 
 Thank you for helping. This project aims to be a codebase people enjoy reading, so small, clear changes with tests are the best kind.
 
+## Who can help
+
+nakkash needs more than Rust code, and you are welcome whichever of these you are:
+
+- **Rust developers:** the renderer, the import, the encoders and the checks. Start with [Architecture](ARCHITECTURE.md) and the rules below.
+- **Motion designers:** tell us where a render looks wrong, which presets and easings you reach for, and what a professional result needs. Taste is judged by people, never by a model ([D20](docs/design/decisions.md#d20-quality-is-measured-in-five-layers), [D22](docs/design/decisions.md#d22-no-ai-judge)).
+- **People who work in desktop compositing and editing tools:** import your own `.aep` projects and `.mogrt` templates, and open an issue when a frame does not match. A project that renders wrong is the most useful bug report we can get.
+
 ## Before you commit
 
 All three must pass:
