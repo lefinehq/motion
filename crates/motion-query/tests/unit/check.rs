@@ -568,3 +568,12 @@ fn the_peak_of_an_ease_is_too_brief_to_judder() {
         "{brief}"
     );
 }
+
+#[test]
+fn text_read_long_enough_once_holds_whatever_its_brief_stretches() {
+    // Read for 2 frames, then too fast to read for 10, then for 19.
+    let r = one(
+        r#"{"id":"title","text":"Launch week","at":"center 500","anim":{"y":[["0f",500],["1f",500],["6f",1500],["11f",500]]}}"#,
+    );
+    assert!(r.violations.iter().all(|v| v.code != Code::TextHold), "{r}");
+}

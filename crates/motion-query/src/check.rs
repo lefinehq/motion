@@ -125,6 +125,8 @@ struct CraftScan {
     /// The stretch now open, for a stretch rule: its first sample and its
     /// last frame.
     open: Option<(Sample, u32)>,
+    /// The longest stretch closed so far, the first of the longest on a tie.
+    longest: Option<(Sample, u32)>,
     /// The move now open, for a move rule.
     moving: Option<Move>,
     /// Whether it measured anything: a step between two shown frames, or a
@@ -149,12 +151,12 @@ impl CraftScan {
                     }
                 }
             }
-            Reads::Stretch { holds, judge } => {
+            Reads::Stretch { holds, .. } => {
                 if before.is_none() {
-                    self.close(judge, graph);
+                    self.close();
                 }
                 if !holds(now, before, graph) {
-                    self.close(judge, graph);
+                    self.close();
                     return;
                 }
                 match &mut self.open {
@@ -209,18 +211,36 @@ impl CraftScan {
     fn end(&mut self, rule: &Craft, graph: &SceneGraph) {
         match rule.reads {
             Reads::Step(_) => {}
-            Reads::Stretch { judge, .. } => self.close(judge, graph),
+            Reads::Stretch { judge, .. } => {
+                self.close();
+                self.judge_longest(judge, graph);
+            }
             Reads::Moves { judge, .. } => self.stop(judge, graph),
         }
     }
 
-    /// Judges the open stretch, if any, and closes it.
-    fn close(
+    /// Closes the open stretch, if any, keeping it when it is the longest.
+    fn close(&mut self) {
+        let Some((first, last)) = self.open.take() else {
+            return;
+        };
+        let frames = |first: &Sample, last: u32| last - first.frame + 1;
+        let longer = self
+            .longest
+            .as_ref()
+            .is_none_or(|(f, l)| frames(&first, last) > frames(f, *l));
+        if longer {
+            self.longest = Some((first, last));
+        }
+    }
+
+    /// Judges the longest stretch, once the frames have run out.
+    fn judge_longest(
         &mut self,
         judge: fn(u32, &Sample, &SceneGraph) -> Option<Finding>,
         graph: &SceneGraph,
     ) {
-        let Some((first, last)) = self.open.take() else {
+        let Some((first, last)) = self.longest.take() else {
             return;
         };
         self.ran = true;

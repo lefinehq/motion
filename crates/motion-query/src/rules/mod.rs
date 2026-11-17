@@ -129,8 +129,10 @@ pub(crate) enum Measured {
 pub(crate) enum Reads {
     /// Each frame against the one before it, both shown.
     Step(fn(&Sample, &Sample, &SceneGraph) -> Measured),
-    /// Stretches of consecutive frames in which `holds`, each judged by its
-    /// length in frames and its first sample once it ends.
+    /// Stretches of consecutive frames in which `holds`. The longest is
+    /// judged, by its length in frames and its first sample, once the frames
+    /// run out: a layer that holds long enough once has held, however brief
+    /// its other stretches, such as the slow start of a move.
     Stretch {
         /// Whether the frame belongs to a stretch, given the frame before it
         /// when that one is the previous frame.
