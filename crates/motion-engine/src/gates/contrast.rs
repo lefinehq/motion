@@ -90,6 +90,7 @@ pub(super) fn check(session: &Session) -> Result<Report> {
                     unit: Unit::Ratio,
                 },
                 fix: None,
+                with: None,
             });
         }
     }

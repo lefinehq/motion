@@ -4,7 +4,7 @@
 use crate::report::{Code, Measure, Report, Severity, Violation};
 use crate::rules::{
     CRAFT, Craft, EPSILON, Finding, Measured, Move, Overshoot, RULES, Reads, Rule, Sample, crowd,
-    draws, shift, visible,
+    draws, overlap, shift, text_hold, visible,
 };
 use kurbo::{Affine, Point, Rect, Vec2};
 use motion_format::address::SCENE;
@@ -14,6 +14,7 @@ use motion_format::{Address, Layer, Scene};
 use motion_scene::{
     CompGraph, ContentState, Node, SceneGraph, Visit, address_of, evaluate, local_transform, walk,
 };
+use std::collections::BTreeMap;
 use tracing::{Span, field, instrument};
 
 /// Runs the standard rules on `scene` over every frame of `graph`, its
@@ -48,15 +49,36 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
     // How many layers catch the eye at each frame, for `crowd`.
     let mut crowds: Vec<Run> = Vec::new();
     let mut anything_moved = false;
+    // Where each text layer's glyphs draw as laid out, read once, and the
+    // runs of frames each pair of them, under then over, run into each other.
+    let mut laid: BTreeMap<usize, Vec<Option<Rect>>> = BTreeMap::new();
+    let mut overlaps: BTreeMap<(usize, usize), Vec<Run>> = BTreeMap::new();
+    let mut read_together = false;
     for frame in 0..frame_count {
         let state = evaluate(graph, f64::from(frame));
         let mut movers = 0;
+        let mut read: Vec<(usize, Vec<Rect>)> = Vec::new();
         for visit in walk(graph, &state) {
-            movers += usize::from(scans[visit.index].observe(frame, &visit, graph));
+            let (catches, readable) = scans[visit.index].observe(frame, &visit, graph);
+            movers += usize::from(catches);
+            if readable {
+                let inks = laid
+                    .entry(visit.index)
+                    .or_insert_with(|| overlap::layout_inks(&visit));
+                read.push((visit.index, overlap::canvas_inks(&visit, inks)));
+            }
         }
         anything_moved |= movers > 0;
         if let Some(found) = crowd::judge(movers) {
             add(&mut crowds, frame, found);
+        }
+        read_together |= read.len() > 1;
+        for (k, (under, below)) in read.iter().enumerate() {
+            for (over, above) in &read[k + 1..] {
+                if let Some(found) = overlap::judge(below, above, graph) {
+                    add(overlaps.entry((*under, *over)).or_default(), frame, found);
+                }
+            }
         }
     }
 
@@ -71,6 +93,27 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
         let layer = scene.layer(&address.layers);
         let placed = layer.zip(graph.node_at(ids));
         rules_run += scan.finish(&address, placed, graph, &mut report);
+    }
+    // Text on text is the scene's to judge once two texts are read at once.
+    if read_together {
+        rules_run += 1;
+        if overlaps.is_empty() {
+            report.passed += 1;
+        }
+    }
+    for ((under, over), runs) in overlaps {
+        report
+            .violations
+            .extend(runs.into_iter().map(|run| Violation {
+                severity: Severity::Warning,
+                code: Code::Overlap,
+                address: address_of(&paths[over]),
+                first_frame: run.first,
+                last_frame: run.last,
+                measure: Measure::Overshoot((run.worst.value - EPSILON).ceil()),
+                fix: None,
+                with: Some(address_of(&paths[under])),
+            }));
     }
     // The crowd is the scene's: one rule over the whole clip, measured
     // once something moves.
@@ -90,6 +133,7 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
                 last_frame: run.last,
                 measure: crowd::measure(run.worst),
                 fix: None,
+                with: None,
             }));
     }
     Span::current()
@@ -306,8 +350,9 @@ impl LayerScan {
     }
 
     /// Feeds the layer's state at `frame` to every rule and to the sweep, and
-    /// says whether it catches the eye over the step to it.
-    fn observe(&mut self, frame: u32, visit: &Visit<'_>, graph: &SceneGraph) -> bool {
+    /// says whether it catches the eye over the step to it and whether it is
+    /// text being read.
+    fn observe(&mut self, frame: u32, visit: &Visit<'_>, graph: &SceneGraph) -> (bool, bool) {
         self.layout(frame, visit, graph);
         let now = self.sample(frame, visit);
         let before = self.previous.take().filter(|b| b.frame + 1 == frame);
@@ -317,8 +362,9 @@ impl LayerScan {
         let catches = before
             .as_ref()
             .is_some_and(|b| crowd::catches_the_eye(b, &now, graph));
+        let readable = text_hold::holds(&now, before.as_ref(), graph);
         self.previous = Some(now);
-        catches
+        (catches, readable)
     }
 
     /// Feeds the layer's state at `frame` to the layout rules and the sweep.
@@ -437,6 +483,7 @@ impl LayerScan {
                     last_frame: run.last,
                     measure: (rule.measure)(run.worst),
                     fix: fix.clone(),
+                    with: None,
                 }));
         }
         rules_run
@@ -585,6 +632,7 @@ impl Run {
             last_frame: self.last,
             measure: Measure::Overshoot(amount),
             fix,
+            with: None,
         }
     }
 }
