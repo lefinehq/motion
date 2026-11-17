@@ -148,6 +148,19 @@ What is left open:
 
 Before, the import reported `tracking before and after` 17 times in 6 scored samples: wherever the type was not 1 (all with no tracking), and wherever the type was keyed, even with one key at 1. Now it reports a type only where the animator tracks; no local sample does. A property keyed with one value throughout counts as that value for every row that reads a setting or a default.
 
+## Blurred characters
+
+An animator's blur (`ADBE Text Blur`) becomes the animator's `blur` ([scene format](scene-format.md#text-animators)), across and down apart. The corpus holds 16 in 9 scored samples, none animated and none under an expression: 114 or 113 both ways in m648, m760, m802, m815 and m816, 19 or 20 in m760 and m795, 5 in m826, 90 down only in m793, 0 in m565. In every one the selectors move the amount, so the blur runs out as each part settles. These beliefs were measured once with `motion fidelity` on those samples, over all frames. The sweep does not check them yet.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| B1. The blur is drawn: each chosen part blurs by the blur times how strongly it is chosen. | Drawn with the `gaussian-blur` effect's blurriness against left out, the mean content error falls on 5 of the 8 samples with a blur above 0 and rises on none (m793, m795 and m826 hold to the fourth decimal): m802 0.1169 → 0.1163, m815 0.2623 → 0.2620, m816 0.0922 → 0.0916, m648 0.0482 → 0.0481, m760 0.0180 → 0.0179. | 8 samples |
+| B2. The two numbers blur across and down apart. | m793's blur of 0 across and 90 down is the corpus's only one that differs; the score does not tell it from a blur both ways, the parts being small and blurred only while they enter. | Not measured apart |
+
+Other things we take without evidence:
+- **How far a unit blurs.** We take the blur in the unit of the `gaussian-blur` effect's blurriness (a standard deviation of 0.3 of it). Measured at 1, 1.667 and 3.333 times that, the mean content error keeps falling on the samples blurred by 113 (m815 0.2620, 0.2619, 0.2613; m816 0.0916, 0.0914, 0.0912), while the failing share rises on m816 (63.29 %, 63.41 %, 63.54 %), m793 and m826. Neither is decisive, so the unit is the effect's until a reference frame is measured at the pixels a blur alone moves.
+- **What a blurred part is blurred with.** Each group of glyphs that shares a state is blurred in a buffer of its own, so neighbouring parts blurred alike do not bleed into one another's blur. The references do not show the difference at these sizes.
+
 ## Expression selectors
 
 An expression selector (`ADBE Text Expressible Selector`) becomes a `parts` selector ([D64](decisions.md#d64-a-selector-may-choose-each-part-by-its-own-amount)): its amount's expression is evaluated once per part. These beliefs were measured once, by hand: two scenes are drawn at the reference's own times and compared with the reference only at the pixels where they differ. The sweep does not check them yet.

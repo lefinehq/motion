@@ -97,6 +97,8 @@ pub struct GlyphState {
     pub stroke: [f64; 4],
     /// Its stroke width in px.
     pub stroke_width: f64,
+    /// How much it blurs across and down, in px of blurriness.
+    pub blur: [f64; 2],
 }
 
 /// An animator at one frame: its values, which of them it applies, and its selectors.
@@ -208,6 +210,7 @@ pub fn glyph_states(
                     fill: style.fill,
                     stroke: style.stroke,
                     stroke_width: style.stroke_width,
+                    blur: [0.0, 0.0],
                 },
             })
         })
@@ -367,6 +370,10 @@ fn apply(item: &ItemState, applies: &[Prop], amounts: Vec2, effect: &mut Effect)
             p if p == props::ANIMATOR_STROKE_WIDTH => {
                 let w = effect.state.stroke_width;
                 effect.state.stroke_width = w + (item.number(prop) - w) * blend;
+            }
+            p if p == props::ANIMATOR_BLUR => {
+                let b = across(vec(), amounts);
+                effect.state.blur = [effect.state.blur[0] + b.x, effect.state.blur[1] + b.y];
             }
             p if p == props::ANIMATOR_TRACKING => effect.tracking += item.number(prop) * amount,
             // When each part moves, not what it does.
