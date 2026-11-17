@@ -162,14 +162,18 @@ impl Measure {
 impl Report {
     /// Drops the violations `base`, the report of an earlier version of the
     /// scene, already has, and returns how many it dropped. A violation is
-    /// known when `base` has one by the same rule on the same layer that is
+    /// known when `base` has one by the same rule on the same layer (and the
+    /// same other layer, for a rule that measures two) that is
     /// measured as bad or worse, whatever its frames: an edit may move a
     /// problem in time without making it worse.
     pub fn since(&mut self, base: &Report) -> usize {
         let before = self.violations.len();
         self.violations.retain(|v| {
             !base.violations.iter().any(|b| {
-                b.code == v.code && b.address == v.address && v.measure.no_worse_than(b.measure)
+                b.code == v.code
+                    && b.address == v.address
+                    && b.with == v.with
+                    && v.measure.no_worse_than(b.measure)
             })
         });
         before - self.violations.len()
