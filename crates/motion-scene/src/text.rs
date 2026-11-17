@@ -136,6 +136,7 @@ fn character(style: &CharacterStyle, fonts: &FontSet) -> motion_text::CharacterS
     };
     out.faux_bold = style.faux_bold;
     out.faux_italic = style.faux_italic;
+    out.lang.clone_from(&style.lang);
     out
 }
 

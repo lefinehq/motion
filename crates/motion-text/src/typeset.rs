@@ -24,7 +24,8 @@ use parley::fontique::{
 };
 use parley::{
     Alignment, AlignmentOptions, FontContext, FontFamily, FontVariation, FontVariations,
-    IndentOptions, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty,
+    IndentOptions, Language, Layout, LayoutContext, LineHeight, PositionedLayoutItem,
+    StyleProperty,
 };
 
 use crate::caps::{self, Cased};
@@ -396,6 +397,8 @@ impl<'a> Styler<'a> {
             // faux bold adds its own.
             StyleProperty::LetterSpacing((tracking(style) / 1000.0 * style.size) as f32),
             StyleProperty::LineHeight(leading),
+            // Validated as a tag when the scene is read.
+            StyleProperty::Locale(style.lang.as_deref().and_then(|l| Language::parse(l).ok())),
         ]
     }
 }

@@ -582,6 +582,7 @@ The layer's box is the box its lines cover, which for point text starts above an
 | `caps` | character | `normal`, `small`, `all` or `all-small` |
 | `faux-bold` | character | `true` or `false` |
 | `faux-italic` | character | `true` or `false` |
+| `lang` | character | a language tag such as `tr` or `pt-BR` |
 | `align` | paragraph | `left`, `right`, `center`, `justify-left`, `justify-right`, `justify-center` or `justify-all` |
 | `indent-first` | paragraph | a number of px |
 | `indent-start` | paragraph | a number of px |
@@ -596,6 +597,8 @@ The layer's box is the box its lines cover, which for point text starts above an
 `faux-bold` thickens the glyphs and adds 30 thousandths of an em after each character, the space the project files' own layouts give it.
 
 `paint-across` stacks fills and strokes across characters. With `each`, the default, every character draws its two paints in its own `paint` order over the characters before it, so a wide stroke can cover a neighbour's fill. `fills-over` draws every stroke and then every fill, so no stroke covers a fill; `strokes-over` draws every fill and then every stroke.
+
+`lang` says what language the words are in. Capitals follow it: with `caps` `all`, Turkish and Azerbaijani (`tr`, `az`) keep the dot on i, so `ücretsiz` is set `ÜCRETSİZ`, where the default makes `ÜCRETSIZ`. The shaper also uses the font's local forms for the language, such as the Turkish forms that keep `fi` apart. Without it, text is cased and shaped as no particular language.
 
 ### Text animators
 
