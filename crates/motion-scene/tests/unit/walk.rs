@@ -165,3 +165,42 @@ fn a_node_clipped_away_draws_nothing() {
     assert_eq!(title.ids, ["card", "panel", "title"]);
     assert_eq!(title.drawn(), None);
 }
+
+/// A 1000x1000 scene: a 400x100 `slot` centred at 500,900, then a 400x100
+/// `title` centred at 500,960 matted by it as `matte` says.
+fn matted(matte: &str) -> SceneGraph {
+    graph(&format!(
+        r#"{{"motion":1,"size":"1000x1000","dur":"1s","layers":[
+          {{"id":"slot","rect":"400x100","position":[500,900]}},
+          {{"id":"title","rect":"400x100","position":[500,960],"matte":"{matte}"}}]}}"#
+    ))
+}
+
+#[rstest::rstest]
+#[case::alpha("slot", Some(kurbo::Rect::new(300.0, 850.0, 700.0, 950.0)))]
+#[case::luma("slot luma", Some(kurbo::Rect::new(300.0, 850.0, 700.0, 950.0)))]
+// An inverted matte shows the layer where the slot does not draw.
+#[case::alpha_inverted("slot alpha-inverted", None)]
+#[case::luma_inverted("slot luma-inverted", None)]
+fn a_matte_clips_a_node_to_what_its_matte_layer_draws(
+    #[case] matte: &str,
+    #[case] clip: Option<kurbo::Rect>,
+) {
+    let g = matted(matte);
+    let state = evaluate(&g, 0.0);
+    let title = walk(&g, &state).last().unwrap();
+    assert_eq!(title.clip, clip);
+}
+
+#[test]
+fn a_matte_layer_outside_its_span_lets_nothing_draw() {
+    let g = graph(
+        r#"{"motion":1,"size":"1000x1000","dur":"1s","layers":[
+          {"id":"slot","rect":"400x100","span":"0.5s-1s"},
+          {"id":"title","rect":"400x100","matte":"slot"}]}"#,
+    );
+    let state = evaluate(&g, 0.0);
+    assert_eq!(walk(&g, &state).last().unwrap().drawn(), None);
+    let state = evaluate(&g, 20.0);
+    assert!(walk(&g, &state).last().unwrap().drawn().is_some());
+}

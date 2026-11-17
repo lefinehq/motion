@@ -183,6 +183,8 @@ OK 12
 
 Placement checks use the **transformed bounding box**: the layer's size times `scale`, turned by `rotate`, at every frame. A card that is on screen at rest but swings out while it rotates is reported.
 
+They measure only the part that draws, and a pivot or a sound, which draws nothing, may sit anywhere. A composition clips what it holds to its canvas, and an alpha or luma matte clips the layer to the box its matte layer draws, so a title rising inside a matte slot is measured inside the slot; an inverted matte limits nothing. A layer wholly off the canvas is not checked while it waits there, nor while it passes through the edge on a move in from there or out to there, as a push or slide does. A layer at rest across the edge is reported from the frame it stops, and one that never comes onto the canvas is reported at every frame it waits off it.
+
 ### What a report looks like
 
 ```

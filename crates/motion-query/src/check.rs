@@ -4,7 +4,7 @@
 use crate::report::{Code, Measure, Report, Severity, Violation};
 use crate::rules::{
     CRAFT, Craft, EPSILON, Finding, Measured, Move, Overshoot, RULES, Reads, Rule, Sample, crowd,
-    shift, visible,
+    draws, shift, visible,
 };
 use kurbo::{Affine, Point, Rect, Vec2};
 use motion_format::address::SCENE;
@@ -101,11 +101,18 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
 
 /// What the pass over the frames has seen of one layer.
 struct LayerScan {
-    /// The failing runs of each rule, parallel to [`RULES`].
-    runs: Vec<Runs>,
-    /// The box the layer covers over its visible frames. Fix hints clamp this whole
-    /// sweep, since moving `at` moves every frame, so they settle in one edit.
+    /// What each layout rule has seen, parallel to [`RULES`].
+    runs: Vec<LayoutScan>,
+    /// The box the layer covers over its visible frames on the canvas. Fix hints
+    /// clamp this whole sweep, since moving `at` moves every frame, so they settle
+    /// in one edit.
     sweep: Option<Rect>,
+    /// The box it covers over its frames wholly off the canvas, which fix
+    /// hints clamp instead when it never comes on.
+    off_sweep: Option<Rect>,
+    /// The frame it was last seen at and the box it drew there, to tell a
+    /// layer in motion from one at rest.
+    seen: Option<(u32, Rect)>,
     /// Where its `at` lives: the transform from its parent's coordinates to the
     /// canvas over its visible frames.
     frame: Frame,
@@ -287,8 +294,10 @@ fn same(a: Affine, b: Affine) -> bool {
 impl LayerScan {
     fn new(blurred: bool) -> LayerScan {
         LayerScan {
-            runs: RULES.iter().map(|_| Runs::default()).collect(),
+            runs: RULES.iter().map(|_| LayoutScan::default()).collect(),
             sweep: None,
+            off_sweep: None,
+            seen: None,
             frame: Frame::Unseen,
             previous: None,
             blurred,
@@ -314,16 +323,31 @@ impl LayerScan {
 
     /// Feeds the layer's state at `frame` to the layout rules and the sweep.
     fn layout(&mut self, frame: u32, visit: &Visit<'_>, graph: &SceneGraph) {
-        for (runs, rule) in self.runs.iter_mut().zip(RULES) {
-            if let Some(found) = (rule.evaluate)(visit, graph) {
-                runs.add(frame, found);
-            }
+        let drawn = visit.drawn().filter(|_| visible(visit) && draws(visit));
+        let (width, height) = (graph.root.width, graph.root.height);
+        // Off the canvas: on or past one of its edges, so a box of no size
+        // inside it is on it.
+        let off = |b: Rect| b.x1 <= 0.0 || b.y1 <= 0.0 || b.x0 >= width || b.y0 >= height;
+        let before = self.seen.filter(|&(at, _)| at + 1 == frame).map(|(_, b)| b);
+        let place = match drawn {
+            None => Place::Unseen,
+            Some(b) if off(b) => Place::Off,
+            Some(b) if before.is_some_and(|a| same_box(a, b)) => Place::Resting,
+            Some(_) => Place::Moving,
+        };
+        self.seen = drawn.map(|b| (frame, b));
+        for (scan, rule) in self.runs.iter_mut().zip(RULES) {
+            scan.observe(frame, place, (rule.evaluate)(visit, graph));
         }
-        if let Some(b) = visit.drawn().filter(|_| visible(visit)) {
+        if let Some(b) = drawn {
             // Its parents' transform is its own world transform without its local one.
             let parent = visit.transform * local_transform(&visit.node.values).inverse();
             self.frame = self.frame.and(parent);
-            self.sweep = Some(self.sweep.map_or(b, |a| a.union(b)));
+            let sweep = match place {
+                Place::Off => &mut self.off_sweep,
+                _ => &mut self.sweep,
+            };
+            *sweep = Some(sweep.map_or(b, |a| a.union(b)));
         }
     }
 
@@ -366,7 +390,8 @@ impl LayerScan {
     ) -> usize {
         let mut failed: Vec<Code> = Vec::new();
         let mut rules_run = 0;
-        for (rule, Runs(runs)) in RULES.iter().zip(self.runs) {
+        for (rule, scan) in RULES.iter().zip(self.runs) {
+            let runs = scan.finish();
             if rule.suppressed_by.is_some_and(|by| failed.contains(&by)) {
                 continue;
             }
@@ -376,9 +401,13 @@ impl LayerScan {
                 continue;
             }
             failed.push(rule.code);
-            let fix = self.sweep.zip(placed).and_then(|(sweep, placed)| {
-                fix_hint(rule, sweep, self.frame, address, placed, graph)
-            });
+            let fix = self
+                .sweep
+                .or(self.off_sweep)
+                .zip(placed)
+                .and_then(|(sweep, placed)| {
+                    fix_hint(rule, sweep, self.frame, address, placed, graph)
+                });
             let violations = runs
                 .into_iter()
                 .map(|run| run.into_violation(rule, address, fix.clone()));
@@ -414,18 +443,105 @@ impl LayerScan {
     }
 }
 
-/// One rule's failing runs on one layer, in frame order; the last may still grow.
-#[derive(Default)]
-struct Runs(Vec<Run>);
+/// Where a layer is at one frame, for the layout rules.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Place {
+    /// It draws nothing: hidden, see-through, out of its span or clipped away.
+    Unseen,
+    /// It draws wholly outside the canvas, where it waits to come in or
+    /// has gone.
+    Off,
+    /// It draws on the canvas the same box as at the frame before.
+    Resting,
+    /// It draws on the canvas, and moved or first showed at this frame.
+    Moving,
+}
 
-impl Runs {
-    /// Records a failure at `frame`, later than any recorded so far.
-    fn add(&mut self, frame: u32, found: Overshoot) {
-        let found = Finding {
+/// Whether two boxes agree up to float noise.
+fn same_box(a: Rect, b: Rect) -> bool {
+    [(a.x0, b.x0), (a.y0, b.y0), (a.x1, b.x1), (a.y1, b.y1)]
+        .iter()
+        .all(|(x, y)| (x - y).abs() < 1e-6)
+}
+
+/// What one layout rule has seen of one layer, in frame order.
+///
+/// A layer waiting wholly off the canvas is not checked: nothing of it shows.
+/// Nor is one passing through the edge on its way in from there or out to
+/// there, as a push or slide does. A layer at rest across the edge is, and so
+/// is one that never comes onto the canvas at all.
+#[derive(Default)]
+struct LayoutScan {
+    /// The failing runs found so far; the last may still grow.
+    runs: Vec<Run>,
+    /// The failing frames of the move now under way, kept until the move ends
+    /// and says whether it came from off the canvas or went there.
+    passing: Vec<(u32, Finding)>,
+    /// The move now under way came in from off the canvas.
+    from_off: bool,
+    /// The runs of frames it spent wholly off the canvas, with how far.
+    off: Vec<Run>,
+    /// It was on the canvas at some frame.
+    on: bool,
+    /// The last frame it was observed at.
+    last: Option<u32>,
+}
+
+impl LayoutScan {
+    /// Reads the layer at `frame`, later than any seen so far: where it is,
+    /// and what the rule found there.
+    fn observe(&mut self, frame: u32, place: Place, found: Option<Overshoot>) {
+        if self.last.is_some_and(|last| last + 1 != frame) {
+            self.settle();
+        }
+        self.last = Some(frame);
+        let found = found.map(|found| Finding {
             value: found.amount,
             limit: 0.0,
-        };
-        add(&mut self.0, frame, found);
+        });
+        match (place, found) {
+            (Place::Unseen, _) => self.settle(),
+            (Place::Off, found) => {
+                // The move reached the outside: it was a way in or out.
+                self.passing.clear();
+                self.from_off = true;
+                if let Some(found) = found {
+                    add(&mut self.off, frame, found);
+                }
+            }
+            (Place::Moving, Some(found)) => {
+                self.on = true;
+                self.passing.push((frame, found));
+            }
+            (Place::Resting | Place::Moving, found) => {
+                self.on = true;
+                self.settle();
+                if let Some(found) = found {
+                    add(&mut self.runs, frame, found);
+                }
+            }
+        }
+    }
+
+    /// Ends the move under way: its failing frames count unless it came in
+    /// from off the canvas.
+    fn settle(&mut self) {
+        for (frame, found) in self.passing.drain(..) {
+            if !self.from_off {
+                add(&mut self.runs, frame, found);
+            }
+        }
+        self.from_off = false;
+    }
+
+    /// The failing runs, once the frames run out: those it spent off the
+    /// canvas count too when it never came onto it.
+    fn finish(mut self) -> Vec<Run> {
+        self.settle();
+        match self.on {
+            true => self.runs,
+            false => self.off,
+        }
     }
 }
 

@@ -411,6 +411,103 @@ fn what_a_comp_clips_away_is_never_offscreen() {
     assert_eq!(nested(500, 420).passed, 4);
 }
 
+/// The layout findings of `report`: each layer's address, rule, frames and amount.
+fn layout(report: &Report) -> Vec<(String, Code, RangeInclusive<u32>, Measure)> {
+    report
+        .violations
+        .iter()
+        .filter(|v| matches!(v.code, Code::Offscreen | Code::Unsafe))
+        .map(|v| {
+            let frames = v.first_frame..=v.last_frame;
+            (v.address.to_string(), v.code, frames, v.measure)
+        })
+        .collect()
+}
+
+/// A one-second 1000x1000 scene with `layers`.
+fn square(layers: &str) -> Report {
+    check_json(&format!(
+        r#"{{"motion":1,"size":"1000x1000","dur":"1s","layers":[{layers}]}}"#
+    ))
+}
+
+#[rstest]
+// The title runs 910..1010 and the slot 850..950: it shows inside the slot.
+#[case::shown_inside_its_matte("slot", vec![])]
+#[case::inverted_shows_it_outside(
+    "slot alpha-inverted",
+    vec![("title".into(), Code::Offscreen, 0..=29, Measure::Overshoot(10.0))]
+)]
+fn what_a_matte_hides_is_never_offscreen(
+    #[case] matte: &str,
+    #[case] found: Vec<(String, Code, RangeInclusive<u32>, Measure)>,
+) {
+    let r = square(&format!(
+        r#"{{"id":"slot","rect":"400x100","position":[500,900],"hidden":true}},
+        {{"id":"title","rect":"400x100","position":[500,960],"matte":"{matte}"}}"#
+    ));
+    assert_eq!(layout(&r), found);
+}
+
+#[test]
+fn a_text_rising_inside_its_matte_is_never_offscreen() {
+    // It rises from wholly below the slot, so first nothing of it shows.
+    let r = square(
+        r#"{"id":"slot","rect":"400x100","position":[500,900],"hidden":true},
+        {"id":"title","rect":"400x100","position":[500,900],"matte":"slot",
+         "anim":{"y":"1010 -> 900 @0-10f"}}"#,
+    );
+    assert_eq!(layout(&r), []);
+}
+
+#[rstest]
+#[case::pushed_in_from_below(r#""anim":{"y":"1500 -> 500 @5-15f"}"#)]
+#[case::pushed_out_at_the_top(r#""anim":{"y":"500 -> -500 @15-25f"}"#)]
+#[case::pushed_through(r#""anim":{"y":"1500 -> -500 @0-29f"}"#)]
+fn a_layer_moving_in_from_off_the_canvas_or_out_to_it_is_not_offscreen(#[case] anim: &str) {
+    let r = square(&format!(r#"{{"id":"card","rect":"400x100",{anim}}}"#));
+    assert_eq!(layout(&r), []);
+}
+
+#[test]
+fn a_layer_that_comes_in_and_stops_across_the_edge_is_offscreen_once_it_rests() {
+    // It comes to rest at 930..1030 at frame 10, then stays there.
+    let r = square(r#"{"id":"card","rect":"400x100","anim":{"y":"1500 -> 980 @0-10f"}}"#);
+    assert_eq!(
+        layout(&r),
+        [(
+            "card".into(),
+            Code::Offscreen,
+            11..=29,
+            Measure::Overshoot(30.0)
+        )]
+    );
+}
+
+#[test]
+fn a_pivot_draws_nothing_so_it_may_wait_anywhere() {
+    // It waits far below, carrying the card up into view at the end.
+    let r = square(
+        r#"{"id":"push","pivot":true,"position":[500,500],"anim":{"y":"2500 -> 500 @20-29f"}},
+        {"id":"card","rect":"400x100","parent":"push"}"#,
+    );
+    assert_eq!(layout(&r), []);
+}
+
+#[test]
+fn a_layer_that_never_comes_onto_the_canvas_is_offscreen() {
+    let r = square(r#"{"id":"card","rect":"400x100","position":[500,1500]}"#);
+    assert_eq!(
+        layout(&r),
+        [(
+            "card".into(),
+            Code::Offscreen,
+            0..=29,
+            Measure::Overshoot(550.0)
+        )]
+    );
+}
+
 #[test]
 fn the_fix_for_an_inner_layer_is_an_edit_of_its_instance() {
     let r = nested(850, 395);

@@ -61,7 +61,15 @@ fn rotated(x: f64, y: f64, w: f64, h: f64, opacity: f64, scale: f64, rotate: f64
             ),
         })
         .collect();
-    NodeState::of_box("n", w, h, values)
+    NodeState {
+        // A rect draws its box; a bare box would be a pivot, which draws nothing.
+        content: motion_scene::ContentState::Rect(motion_format::shorthand::RectShape {
+            width: w,
+            height: h,
+            radius: 0.0,
+        }),
+        ..NodeState::of_box("n", w, h, values)
+    }
 }
 
 /// How far `node` leaves the canvas, or `None` when it is fine.

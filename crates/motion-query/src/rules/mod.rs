@@ -24,7 +24,7 @@ mod text_hold;
 use crate::report::{Code, Measure, Severity};
 use kurbo::{Affine, Point, Rect, Vec2};
 use motion_format::{Address, Layer};
-use motion_scene::{CompGraph, Node, SceneGraph, Visit};
+use motion_scene::{CompGraph, ContentState, Node, SceneGraph, Visit};
 
 /// A rule's finding on one frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -223,6 +223,15 @@ const INVISIBLE: f64 = 0.0;
 /// all of it away.
 pub(crate) fn visible(visit: &Visit<'_>) -> bool {
     visit.visible && visit.opacity > INVISIBLE && visit.drawn().is_some()
+}
+
+/// Whether a node draws anything of its own: a pivot or a sound draws
+/// nothing, so it may sit anywhere.
+pub(crate) fn draws(visit: &Visit<'_>) -> bool {
+    !matches!(
+        visit.node.content,
+        ContentState::Pivot | ContentState::Audio
+    )
 }
 
 /// How far the part of a node that draws leaves `area`. An axis on which
