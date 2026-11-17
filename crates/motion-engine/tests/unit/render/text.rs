@@ -228,3 +228,44 @@ fn a_glyph_takes_its_animated_colours_and_stroke_width() {
         Paint::Solid(motion_raster::Color::rgba(0.0, 1.0, 0.0, 1.0))
     );
 }
+
+/// The blurs of the layer `node` draws in: each effect's blurriness and way.
+fn blurs_of(node: &Node) -> Vec<(f32, u8)> {
+    let Node::Layer(layer) = node else {
+        panic!("a blurred glyph is a layer: {node:?}")
+    };
+    assert_eq!(layer.transform, Affine::IDENTITY);
+    layer
+        .effects
+        .iter()
+        .map(|effect| {
+            assert_eq!(effect.spec().name, "gaussian-blur");
+            match effect.values() {
+                [ParamValue::Number(amount), ParamValue::Choice(way), ..] => (*amount, *way),
+                other => panic!("a blurriness and a way: {other:?}"),
+            }
+        })
+        .collect()
+}
+
+#[rstest]
+#[case::both(r#""blur":4"#, vec![(4.0, 0)])]
+#[case::apart(r#""blur":[4,2]"#, vec![(4.0, 1), (2.0, 2)])]
+#[case::down_only(r#""blur":[0,6]"#, vec![(6.0, 2)])]
+fn a_blurred_glyph_is_drawn_in_a_layer_that_blurs_it(
+    #[case] blur: &str,
+    #[case] expected: Vec<(f32, u8)>,
+) {
+    let nodes = chosen_second("", blur);
+    // a drawn straight, then b in a layer of its own that blurs it.
+    let [Node::Glyphs(_), b] = nodes.as_slice() else {
+        panic!("two draws: {nodes:?}")
+    };
+    assert_eq!(blurs_of(b), expected);
+}
+
+#[test]
+fn a_negative_blur_blurs_nothing() {
+    let nodes = chosen_second("", r#""blur":-3"#);
+    assert!(nodes.iter().all(|node| matches!(node, Node::Glyphs(_))));
+}

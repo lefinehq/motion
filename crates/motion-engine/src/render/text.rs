@@ -43,7 +43,8 @@
 use motion_format::text::{CharacterStyle, PaintAcross, PaintOrder};
 use motion_raster::kurbo::Affine;
 use motion_raster::{
-    Color, DrawStyle, FillRule, Glyph, GlyphDraw, Layer, Node, Paint, StrokeStyle,
+    Color, DrawStyle, Effect, FillRule, Glyph, GlyphDraw, Layer, Node, Paint, ParamValue,
+    StrokeStyle,
 };
 use motion_scene::{GlyphState, TextNode};
 use motion_text::GlyphRun;
@@ -140,6 +141,32 @@ fn pass(text: &TextNode, glyphs: &[GlyphState], only: Option<Paints>) -> Vec<Nod
     out
 }
 
+/// The Gaussian blurs of a glyph blurred `[x, y]` across and down, in the
+/// text layer's coordinates, each the `blurriness` of the `gaussian-blur`
+/// effect: none, one both ways when the two agree, else one each way. A
+/// negative amount blurs nothing.
+fn blurs([x, y]: [f64; 2]) -> Vec<Effect> {
+    let (x, y) = (x.max(0.0), y.max(0.0));
+    let blur = |amount: f64, way: u8| {
+        Effect::new(
+            "gaussian-blur",
+            &[
+                ("blurriness", ParamValue::Number(amount as f32)),
+                ("dimensions", ParamValue::Choice(way)),
+            ],
+        )
+        .expect("the gaussian blur takes a blurriness and a way")
+    };
+    match (x > 0.0, y > 0.0) {
+        (true, true) if x == y => vec![blur(x, 0)],
+        (across, down) => [(across, x, 1), (down, y, 2)]
+            .into_iter()
+            .filter(|(on, ..)| *on)
+            .map(|(_, amount, way)| blur(amount, way))
+            .collect(),
+    }
+}
+
 /// A glyph's state where no animator moves it: as its run's style sets it.
 fn rest(style: &CharacterStyle) -> GlyphState {
     GlyphState {
@@ -148,6 +175,7 @@ fn rest(style: &CharacterStyle) -> GlyphState {
         fill: style.fill,
         stroke: style.stroke,
         stroke_width: style.stroke_width,
+        blur: [0.0, 0.0],
     }
 }
 
@@ -185,11 +213,27 @@ impl<'a> Face<'a> {
         }
     }
 
-    /// Draws `glyphs`, which share `state`, into `out`.
+    /// Draws `glyphs`, which share `state`, into `out`: blurred in a
+    /// buffer of their own when the state blurs them.
     fn draw(&self, glyphs: &[motion_text::Glyph], state: &GlyphState, out: &mut Vec<Node>) {
         if state.opacity <= 0.0 || glyphs.is_empty() {
             return;
         }
+        let effects = blurs(state.blur);
+        if !effects.is_empty() {
+            let mut drawn = Vec::new();
+            self.draw_sharp(glyphs, state, &mut drawn);
+            out.push(Node::Layer(Layer {
+                effects,
+                ..Layer::new(drawn)
+            }));
+            return;
+        }
+        self.draw_sharp(glyphs, state, out);
+    }
+
+    /// Draws `glyphs`, which share `state`, into `out`, unblurred.
+    fn draw_sharp(&self, glyphs: &[motion_text::Glyph], state: &GlyphState, out: &mut Vec<Node>) {
         let inks = self.inks(state);
         match inks.len() {
             0 => {}
