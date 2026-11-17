@@ -1,0 +1,7 @@
+{"motion":1,"size":"1920x1080","fps":30,"dur":"4s","bg":"#F4F1EA",
+"layers":[
+{"id":"card","rect":"1240x600 r40","fill":"#1D3557","at":"center center","3d":true,"in":"swing-in 18f out-back","out":"fade 10f ease-in","mblur":true},
+{"id":"title","text":"The Quiet Season","font":"Inter Variable 120 800","fill":"#FFFFFF","at":"center 500","span":"8f-4s","offset":"8f","in":"slam 12f out-expo","out":"fade 10f ease-in","mblur":true},
+{"id":"rule","rect":"240x8 r4","fill":"#E9C46A","at":"center 600","span":"14f-4s","offset":"14f","in":"pop 10f out-back","out":"fade 10f ease-in"},
+{"id":"subtitle","text":"A film in four chapters","font":"Inter Variable 48 500","fill":"#D8E2EC","at":"center 680","span":"18f-4s","offset":"18f","in":"fade-up word 24px 10f out-cubic stagger 3f","out":"fade 10f ease-in"}
+]}
