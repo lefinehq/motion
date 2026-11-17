@@ -1,6 +1,7 @@
 //! `motion fidelity`: measure every sample of a local manifest, print one
 //! line of numbers per sample, and compare them with a ledger. The score is
-//! given over each frame's codec floor, then strictly (D69).
+//! given over each frame's codec floor, then strictly (D69). A sample
+//! measured over another background than its project's says so.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -59,6 +60,7 @@ pub fn run(args: &Args<'_>) -> Result<ExitCode> {
     let worse = changes.iter().any(|c| c.better == Some(false));
     if args.ledger.is_some() {
         print_changes(&changes);
+        print_backgrounds(&before, &after);
     }
     let chosen: Vec<&Sample> = manifest
         .samples
@@ -80,6 +82,23 @@ pub fn run(args: &Args<'_>) -> Result<ExitCode> {
         &Scoreboard::new(chosen.iter().copied(), &after, Rule::Strict),
         floored,
     );
+    let over: Vec<String> = chosen
+        .iter()
+        .filter_map(|s| {
+            Some(format!(
+                "{} {}",
+                s.id,
+                after.samples.get(&s.id)?.bg.as_ref()?
+            ))
+        })
+        .collect();
+    if !over.is_empty() {
+        println!(
+            "  measured over another background than the project's ({}): {}",
+            over.len(),
+            over.join(", ")
+        );
+    }
     if let (Some(path), true) = (args.ledger, args.write) {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir).map_err(|e| Diagnostic::io("create", dir, &e))?;
@@ -110,6 +129,9 @@ fn print_measure(id: &str, measure: &Measure) {
         "  text {} of {} within the stored layout, worst {worst}",
         measure.texts_within, measure.texts
     );
+    if let Some(bg) = &measure.bg {
+        println!("  measured over the background {bg}, not the project's");
+    }
     println!("  {}", window("all frames", &measure.all));
     if let Some(settled) = &measure.settled {
         println!("  {}", window(&format!("from {}s", settled.from), settled));
@@ -174,6 +196,24 @@ fn print_changes(changes: &[Change]) {
                 c.metric,
                 num(c.before),
                 num(c.after)
+            );
+        }
+    }
+}
+
+/// The samples measured over another background than the ledger's: their
+/// numbers moved with it, not with how motion draws.
+fn print_backgrounds(before: &Ledger, after: &Ledger) {
+    let name = |bg: Option<&String>| bg.map_or("the project's".to_owned(), String::clone);
+    for (id, measure) in &after.samples {
+        let Some(was) = before.samples.get(id) else {
+            continue;
+        };
+        if was.bg != measure.bg {
+            println!(
+                "background: {id} measured over {}, before over {}",
+                name(measure.bg.as_ref()),
+                name(was.bg.as_ref())
             );
         }
     }
