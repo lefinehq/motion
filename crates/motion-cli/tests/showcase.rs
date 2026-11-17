@@ -1,18 +1,27 @@
-//! The showcase scenes in `examples/showcase/`: each passes `motion check`
-//! with nothing found. Each scene has its own test and helpers, named after it.
+//! The showcase sequences in `examples/showcase/`: long, dense films written
+//! from scratch, each of which passes `motion check` with nothing found.
+//!
+//! `motion check` runs the scene's rules over every frame, which takes
+//! seconds, and then its pixel gates (`contrast`, `flash`), which draw every
+//! frame: about half a minute per film in a release build, and from ten
+//! minutes to over an hour in a debug one, where our own crates are not
+//! optimised. So a debug build runs each film's rules on every frame, and a
+//! release build (`cargo nextest run --release`) runs the whole command and
+//! holds it to a single `OK` line and exit code 0.
 
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Output};
 
-/// `examples/showcase/brand-system.json`, the brand-identity film.
-const BRAND_SYSTEM: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../examples/showcase/brand-system.json"
-);
+use motion_engine::Session;
+
+/// The path of `examples/showcase/{name}`.
+fn showcase(name: &str) -> String {
+    format!("{}/../../examples/showcase/{name}", env!("CARGO_MANIFEST_DIR"))
+}
 
 /// Runs `motion` with `args`, without a `MOTION_LOG` from the environment.
-fn brand_system_motion(args: &[&str]) -> Output {
+fn motion(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_motion"))
         .env_remove("MOTION_LOG")
         .args(args)
@@ -20,12 +29,44 @@ fn brand_system_motion(args: &[&str]) -> Output {
         .expect("motion runs")
 }
 
+/// The scene's rules find nothing over every frame.
+fn rules_pass(name: &str) {
+    let report = Session::open(showcase(name))
+        .unwrap_or_else(|e| panic!("open {name}: {e}"))
+        .check()
+        .unwrap_or_else(|e| panic!("check {name}: {e}"));
+    assert!(report.violations.is_empty(), "{name}:\n{report}");
+    assert!(report.passed > 0, "{name}: the rules ran on nothing");
+}
+
+/// `motion check`, gates included, prints a single `OK` line and exits 0.
+fn check_passes(name: &str) {
+    let out = motion(&["check", &showcase(name)]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.starts_with("OK ") && text.lines().count() == 1,
+        "{name}:\n{text}"
+    );
+    assert_eq!(out.status.code(), Some(0), "{name}");
+}
+
+/// The product launch film (1172 frames) passes `motion check`; its gates
+/// take about 16 minutes in a debug build.
+#[test]
+fn product_launch_passes_check() {
+    if cfg!(debug_assertions) {
+        rules_pass("product-launch.json");
+    } else {
+        check_passes("product-launch.json");
+    }
+}
+
 /// A batch of one variant without edits of the brand-system film, written
 /// to a folder of its own; `--check` applies and checks it, rendering nothing.
 fn brand_system_batch() -> PathBuf {
     let dir = std::env::temp_dir().join(format!("motion-showcase-brand-{}", std::process::id()));
     fs::create_dir_all(&dir).expect("temp dir");
-    let master = fs::canonicalize(BRAND_SYSTEM).expect("the scene exists");
+    let master = fs::canonicalize(showcase("brand-system.json")).expect("the scene exists");
     let batch = brand_system_json_string(&master.to_string_lossy());
     let path = dir.join("batch.json");
     fs::write(
@@ -43,19 +84,14 @@ fn brand_system_json_string(text: &str) -> String {
     format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// The brand-system film passes every rule and gate with nothing found.
-///
-/// `motion check` also runs the pixel gates, `contrast` and `flash`, which
-/// draw the frames they sample. For this 32 s 1080p film with 3D planes and
-/// motion blur that takes about 30 s in a release build and over ten minutes
-/// in a debug one. So a debug build checks the scene's rules alone, through
-/// `motion batch --check` (about a minute of one core), and a release build
-/// (`cargo nextest run --release`) runs the whole `motion check`.
+/// The brand-system film (32 s, 3D planes and motion blur) passes `motion
+/// check`. A debug build checks its rules through `motion batch --check`,
+/// which also proves the film works as a master.
 #[test]
 fn brand_system_passes_check() {
     if cfg!(debug_assertions) {
         let batch = brand_system_batch();
-        let out = brand_system_motion(&["batch", &batch.to_string_lossy(), "--check"]);
+        let out = motion(&["batch", &batch.to_string_lossy(), "--check"]);
         let text = String::from_utf8_lossy(&out.stdout);
         let _ = fs::remove_dir_all(batch.parent().expect("batch dir"));
         assert!(
@@ -66,12 +102,16 @@ fn brand_system_passes_check() {
         );
         assert_eq!(out.status.code(), Some(0));
     } else {
-        let out = brand_system_motion(&["check", BRAND_SYSTEM]);
-        let text = String::from_utf8_lossy(&out.stdout);
-        assert!(
-            text.starts_with("OK ") && text.lines().count() == 1,
-            "{text}"
-        );
-        assert_eq!(out.status.code(), Some(0));
+        check_passes("brand-system.json");
+    }
+}
+
+/// The data story (1146 frames) passes `motion check`.
+#[test]
+fn data_story_passes_check() {
+    if cfg!(debug_assertions) {
+        rules_pass("data-story.json");
+    } else {
+        check_passes("data-story.json");
     }
 }
