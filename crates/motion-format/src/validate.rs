@@ -26,8 +26,8 @@ use crate::item::{EFFECTS, MASKS, Reads, SHAPES};
 use crate::parse::key::{
     ADJUST, ANIM, ANIMATE, AT, AUDIO, BG, BLEND, BOX, CAMERA, COLLAPSE, COMP, COMPS, CONTINUOUS,
     CROP, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, OFFSET,
-    OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SHUTTER, SIZE,
-    SPAN, STRETCH, STYLE, TEXT, THREE_D, VIDEO, comp_path, layer_path,
+    OUT, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY, SHUTTER,
+    SIZE, SPAN, STRETCH, STYLE, TEXT, THREE_D, VIDEO, comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -211,6 +211,7 @@ fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
     for (layer, Object(doc)) in layers.iter().zip(docs) {
         let Object(written) = &doc.anim;
         entrance_conflict(layer, &layers, context, written)
+            .and_then(|()| exit_conflict(layer, context))
             .map_err(|e| e.under(Place::of_layer(&layer.id)))?;
     }
     Ok(layers)
@@ -550,7 +551,12 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
         enter: doc
             .enter
             .as_ref()
-            .map(|written| entrance(written, context.shared.presets))
+            .map(|written| behaviour(written, context.shared.presets, IN))
+            .transpose()?,
+        exit: doc
+            .exit
+            .as_ref()
+            .map(|written| behaviour(written, context.shared.presets, OUT))
             .transpose()?,
         anim: anim(tracks, &LAYER, context.fps).map_err(|e| e.under(ANIM))?,
         parent: doc.parent.clone(),
@@ -605,6 +611,9 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
     }
     if let Some(behaviour) = &layer.enter {
         parts_entrance(&layer, behaviour, context.shared.presets).map_err(|e| e.at(IN))?;
+    }
+    if let Some(behaviour) = &layer.exit {
+        exit(&layer, behaviour).map_err(|e| e.at(OUT))?;
     }
     Ok(layer)
 }
@@ -1391,13 +1400,103 @@ fn only_on(written: bool, key: &str, content: &str, contents: &[&str]) -> Result
     .expected(format!("`{key}` only next to {layers}")))
 }
 
-/// Parses `in` and checks that its preset exists.
-fn entrance(written: &Shorthand<Behaviour>, presets: &[(String, PresetSpec)]) -> Result<Behaviour> {
-    let behaviour = written.parse_at(IN)?;
+/// Parses `in` or `out`, written under `key`, and checks that its preset exists.
+fn behaviour(
+    written: &Shorthand<Behaviour>,
+    presets: &[(String, PresetSpec)],
+    key: &str,
+) -> Result<Behaviour> {
+    let behaviour = written.parse_at(key)?;
     match lookup(presets, &behaviour.preset) {
         Some(_) => Ok(behaviour),
-        None => Err(Diagnostic::unknown("preset", &behaviour.preset, names(presets)).at(IN)),
+        None => Err(Diagnostic::unknown("preset", &behaviour.preset, names(presets)).at(key)),
     }
+}
+
+/// Checks an exit: it moves the whole layer, which runs forwards, since it
+/// ends when the layer's span does on its composition's clock.
+fn exit(layer: &Layer, behaviour: &Behaviour) -> Result<()> {
+    if let Some(parts) = behaviour.parts {
+        return Err(Diagnostic::new(
+            Kind::Invalid,
+            format!("an exit cannot move the parts of a text yet (`{parts}`)"),
+        )
+        .expected("an exit of the whole layer; parts can leave through a text animator"));
+    }
+    if layer.stretch < 0.0 {
+        return Err(Diagnostic::new(
+            Kind::Conflict,
+            "the layer runs backwards, so its exit would play as an entrance",
+        )
+        .expected(format!(
+            "`{STRETCH}` above 0 with `{OUT}`, or the move as `{ANIM}` tracks"
+        )));
+    }
+    Ok(())
+}
+
+/// Rejects an `anim` track for a property the `out` preset animates, and an
+/// entrance and an exit that move the same property at once or move
+/// overlapping parts of it.
+fn exit_conflict(layer: &Layer, context: &Context) -> Result<()> {
+    let Some(behaviour) = &layer.exit else {
+        return Ok(());
+    };
+    let Some(spec) = lookup(context.shared.presets, &behaviour.preset) else {
+        return Ok(());
+    };
+    if let Some(track) = layer
+        .anim
+        .iter()
+        .find(|track| spec.props.iter().any(|(t, _)| t.overlaps(track.target)))
+    {
+        let name = track.target.name();
+        return Err(Diagnostic::new(
+            Kind::Conflict,
+            format!(
+                "`{name}` is already animated by `{OUT}` (preset `{}`)",
+                behaviour.preset
+            ),
+        )
+        .at(name)
+        .under(ANIM)
+        .expected(format!(
+            "the exit as `{ANIM}` keys after `{OUT}={NONE}`, or a scene preset without `{name}` under \"{PRESETS}\""
+        )));
+    }
+    let Some(entrance) = layer
+        .enter
+        .as_ref()
+        .filter(|b| b.parts.is_none())
+        .and_then(|b| Some((b, lookup(context.shared.presets, &b.preset)?)))
+    else {
+        return Ok(());
+    };
+    let fps = context.fps;
+    let end = layer
+        .span
+        .map_or(context.duration, |span| span.end)
+        .to_frames(fps);
+    let (leaves, _) =
+        behaviour.exit_frames((end - layer.offset.to_frames(fps)) / layer.stretch, fps);
+    let (_, arrives) = entrance.0.frames(fps);
+    for (into, _) in &entrance.1.props {
+        let Some((out, _)) = spec.props.iter().find(|(t, _)| t.overlaps(*into)) else {
+            continue;
+        };
+        if out != into || arrives > leaves + 1e-9 {
+            return Err(Diagnostic::new(
+                Kind::Conflict,
+                format!(
+                    "`{IN}` and `{OUT}` both move `{}`, and the exit starts before the entrance ends",
+                    out.name()
+                ),
+            )
+            .at(OUT)
+            .expected("an exit that starts once the entrance has ended, a shorter one, or presets that move other properties"));
+        }
+    }
+    Ok(())
 }
 
 fn unique_ids(layers: &[Layer]) -> Result<()> {

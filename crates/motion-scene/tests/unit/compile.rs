@@ -394,3 +394,55 @@ fn a_layer_carried_by_a_blurred_pivot_blurs(#[case] holder: &str, #[case] blurre
     let mblur: Vec<bool> = graph.root.nodes.iter().skip(1).map(|n| n.mblur).collect();
     assert_eq!(mblur, [blurred, blurred]);
 }
+
+/// The scene lasts 2 s, 60 frames: an exit ends there, the way its preset's
+/// entrance arrives.
+#[rstest]
+#[case::rises_out("fade-up", "y", [(48.0, 200.0), (60.0, 160.0)])]
+#[case::falls_out("fade-down", "y", [(48.0, 200.0), (60.0, 240.0)])]
+#[case::leaves_left("fade-left", "x", [(48.0, 100.0), (60.0, 60.0)])]
+#[case::fades_out("fade", "opacity", [(48.0, 1.0), (60.0, 0.0)])]
+#[case::shrinks_out("pop", "scale-x", [(48.0, 1.0), (60.0, 0.6)])]
+fn an_exit_leaves_the_way_its_entrance_arrives(
+    #[case] preset: &str,
+    #[case] target: &str,
+    #[case] keys: [(f64, f64); 2],
+) {
+    let n = &one(&format!(r#","out":"{preset}""#), "").root.nodes[0];
+    assert_eq!(pairs(track(n, target)), keys);
+}
+
+#[rstest]
+#[case::with_the_span(r#","span":"0s-1s""#, (18.0, 30.0))]
+#[case::early(r#","out":"fade 12f @6f""#, (42.0, 54.0))]
+// Its own time starts 10 frames late, so its span's end at 60 is its 50.
+#[case::in_its_own_time(r#","offset":"10f""#, (38.0, 50.0))]
+#[case::at_half_speed(r#","stretch":2"#, (18.0, 30.0))]
+fn an_exit_ends_when_the_layer_does(#[case] extra: &str, #[case] frames: (f64, f64)) {
+    let extra = match extra.contains("\"out\"") {
+        true => extra.to_owned(),
+        false => format!(r#","out":"fade 12f"{extra}"#),
+    };
+    let n = &one(&extra, "").root.nodes[0];
+    let keys = pairs(track(n, "opacity"));
+    assert_eq!((keys[0].0, keys[1].0), frames);
+}
+
+#[test]
+fn an_entrance_and_an_exit_share_a_property_one_after_the_other() {
+    let n = &one(r#","in":"fade 10f linear","out":"fade 10f linear""#, "")
+        .root
+        .nodes[0];
+    assert_eq!(
+        pairs(track(n, "opacity")),
+        [(0.0, 0.0), (10.0, 1.0), (50.0, 1.0), (60.0, 0.0)]
+    );
+}
+
+#[test]
+fn an_exit_to_an_absolute_value_does_not_follow_at() {
+    let g = compile_json(
+        r#"{"motion":1,"dur":"1s","presets":{"away":{"x":5000}},"layers":[{"id":"a","rect":"10x10","out":"away"}]}"#,
+    );
+    assert_eq!(g.root.nodes[0].follows_at, (false, true));
+}

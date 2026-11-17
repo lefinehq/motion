@@ -63,6 +63,14 @@ impl Behaviour {
         (start, start + self.duration.to_frames(fps))
     }
 
+    /// The frames an exit starts and ends on at `fps` frames per second, for
+    /// a layer whose time runs out at frame `end` of its own time: its start
+    /// (`@`) is how long before that it ends.
+    pub fn exit_frames(&self, end: f64, fps: f64) -> (f64, f64) {
+        let last = end - self.start.to_frames(fps);
+        (last - self.duration.to_frames(fps), last)
+    }
+
     /// The behaviour of `preset`, each token's field set over the defaults.
     fn tuned(preset: String, tokens: Vec<Token<'_>>) -> Behaviour {
         let defaults = Behaviour {

@@ -118,13 +118,25 @@ impl Build<'_> {
             duration_frames: comp.duration.to_frames(comp.fps),
             background: rgba(comp.background),
             shutter: comp.shutter,
-            nodes: self.nodes(layers, canvas, comp.fps, &comp.id)?,
+            nodes: self.nodes(
+                layers,
+                (canvas, comp.duration.to_frames(comp.fps)),
+                comp.fps,
+                &comp.id,
+            )?,
         })
     }
 
-    /// The nodes of one `canvas` whose clock runs at `fps`, the list of the
-    /// composition `comp`, with paths relative to the list's owner.
-    fn nodes(&mut self, layers: &[Layer], canvas: Rect, fps: f64, comp: &str) -> Result<Vec<Node>> {
+    /// The nodes of one `canvas` whose clock runs at `fps` and ends at frame
+    /// `length`, the list of the composition `comp`, with paths relative to
+    /// the list's owner.
+    fn nodes(
+        &mut self,
+        layers: &[Layer],
+        (canvas, length): (Rect, f64),
+        fps: f64,
+        comp: &str,
+    ) -> Result<Vec<Node>> {
         let levels = self.levels;
         let ear = |layer: &Layer| Ear {
             levels,
@@ -216,7 +228,7 @@ impl Build<'_> {
                     ..node(
                         layer,
                         self.scene,
-                        fps,
+                        (fps, length),
                         content,
                         (boxes[i], parents[i], extent),
                         ear(layer),
@@ -381,19 +393,30 @@ fn timing(layer: &Layer, fps: f64) -> Timing {
     }
 }
 
-/// Compiles one layer into a node, with its content box, its parent's index,
-/// and the extent `at` resolves in, and where its listening tracks' levels
-/// are.
+/// Compiles one layer into a node, on a clock at `fps` that ends at frame
+/// `length`, with its content box, its parent's index, and the extent `at`
+/// resolves in, and where its listening tracks' levels are.
 fn node(
     layer: &Layer,
     scene: &Scene,
-    fps: f64,
+    (fps, length): (f64, f64),
     content: NodeContent,
     (bounds, parent, extent): (Rect, Option<usize>, Rect),
     ear: Ear<'_>,
 ) -> Node {
     // An entrance on the parts of a text is one of its animators instead.
     let entrance = entrance(layer, scene).filter(|(behaviour, _)| behaviour.parts.is_none());
+    // An exit ends with the layer's span, or the list's, in its own time.
+    let ends = ear.timing.span.map_or(length, |(_, end)| end);
+    let exit = layer.exit.as_ref().and_then(|behaviour| {
+        let spec = scene.preset(&behaviour.preset)?;
+        Some(Exit {
+            behaviour,
+            spec,
+            end: ear.timing.local(ends),
+        })
+    });
+    let moves = Moves { entrance, exit };
     Node {
         id: layer.id.clone(),
         content,
@@ -401,10 +424,10 @@ fn node(
         bounds,
         parent,
         timing: ear.timing,
-        tracks: tracks(layer, entrance, extent, bounds, fps, ear),
+        tracks: tracks(layer, &moves, extent, bounds, fps, ear),
         follows_at: (
-            follows_at(layer, entrance, Axis::X),
-            follows_at(layer, entrance, Axis::Y),
+            follows_at(layer, &moves, Axis::X),
+            follows_at(layer, &moves, Axis::Y),
         ),
         mask: item_nodes(&layer.mask, fps, ear),
         fx: item_nodes(&layer.fx, fps, ear),
@@ -428,29 +451,70 @@ fn entrance<'s>(layer: &'s Layer, scene: &'s Scene) -> Option<(&'s Behaviour, &'
         .map(|spec| (behaviour, spec))
 }
 
+/// A layer's exit, its preset, and the frame of its own time it ends on.
+struct Exit<'s> {
+    behaviour: &'s Behaviour,
+    spec: &'s PresetSpec,
+    end: f64,
+}
+
+/// What moves the whole layer besides `anim`: its entrance and its exit.
+struct Moves<'s> {
+    entrance: Option<(&'s Behaviour, &'s PresetSpec)>,
+    exit: Option<Exit<'s>>,
+}
+
+impl Moves<'_> {
+    /// Each target an entrance or exit moves and where it starts or ends.
+    fn starts(&self) -> impl Iterator<Item = (Target, Start)> + '_ {
+        let entrance = self
+            .entrance
+            .iter()
+            .flat_map(|(_, spec)| spec.props.iter().copied());
+        let exit = self
+            .exit
+            .iter()
+            .flat_map(|e| e.spec.props.iter().map(|&(t, s)| (t, s.mirrored())));
+        entrance.chain(exit)
+    }
+}
+
 /// The keys one writer gives one target.
 struct Written {
     target: Target,
     keys: Vec<KeySpec>,
 }
 
-/// The tracks of `layer`, one per property in registry order: rest, then entrance, then `anim`.
+/// The tracks of `layer`, one per property in registry order: rest, then
+/// entrance and exit, then `anim`.
 fn tracks(
     layer: &Layer,
-    entrance: Option<(&Behaviour, &PresetSpec)>,
+    moves: &Moves<'_>,
     extent: Rect,
     own: Rect,
     fps: f64,
     ear: Ear<'_>,
 ) -> Vec<PropertyTrack> {
     let mut written: Vec<Written> = Vec::new();
-    if let Some((behaviour, spec)) = entrance {
+    if let Some((behaviour, spec)) = moves.entrance {
         for &(target, from) in &spec.props {
             let rest = target.rest_of(layer.rest(target.prop, extent, own));
             written.push(Written {
                 target,
                 keys: entrance_keys(behaviour, from, rest, fps),
             });
+        }
+    }
+    // Parsing lets an exit share a target only once the entrance is over,
+    // so its keys follow the entrance's.
+    if let Some(exit) = &moves.exit {
+        for &(target, to) in &exit.spec.props {
+            let rest = target.rest_of(layer.rest(target.prop, extent, own));
+            let keys = exit_keys(exit, to, rest, fps);
+            match written.iter_mut().find(|w| w.target == target) {
+                Some(w) => w.keys.extend(keys),
+                None => written.push(Written { target, keys }),
+            }
         }
     }
     // Parsing forbids `anim` on an entrance target; this wins only in code-built scenes.
@@ -521,6 +585,22 @@ fn entrance_keys(behaviour: &Behaviour, from: Start, rest: Value, fps: f64) -> V
     ]
 }
 
+/// One exit target: from `rest` to where the preset's start `to` mirrors,
+/// over the frames that end with the layer's time.
+fn exit_keys(exit: &Exit<'_>, to: Start, rest: Value, fps: f64) -> Vec<KeySpec> {
+    let (start, end) = exit.behaviour.exit_frames(exit.end, fps);
+    let gone = to.mirrored().resolve(&rest, exit.behaviour.distance);
+    vec![
+        KeySpec {
+            frame: start,
+            value: rest,
+            easing: Easing::All(exit.behaviour.curve),
+            path: None,
+        },
+        KeySpec::linear(end, gone),
+    ]
+}
+
 /// An `anim` track's keys with their times in frames, and values written
 /// against the rest resolved against `rest`, the target's resting value. A
 /// track that listens has a key every frame of its list's clock when `ear`
@@ -546,17 +626,15 @@ fn anim_keys(track: &AnimTrack, rest: &Value, fps: f64, ear: Ear<'_>) -> Vec<Key
 }
 
 /// Whether moving `at` moves the whole motion on `axis`: not when `anim` drives
-/// it, nor when the entrance starts it at an absolute value.
-fn follows_at(layer: &Layer, entrance: Option<(&Behaviour, &PresetSpec)>, axis: Axis) -> bool {
+/// it, nor when the entrance starts it or the exit ends it at an absolute value.
+fn follows_at(layer: &Layer, moves: &Moves<'_>, axis: Axis) -> bool {
     let on_axis = |target: Target| {
         target.prop.spec().rest == Rest::At && target.component.is_none_or(|i| i == axis.index())
     };
     let by_anim = layer.anim.iter().any(|track| on_axis(track.target));
-    let by_start = entrance.is_some_and(|(_, spec)| {
-        spec.props
-            .iter()
-            .any(|&(target, start)| on_axis(target) && matches!(start, Start::Value(_)))
-    });
+    let by_start = moves
+        .starts()
+        .any(|(target, start)| on_axis(target) && matches!(start, Start::Value(_)));
     !by_anim && !by_start
 }
 

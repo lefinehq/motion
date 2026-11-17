@@ -50,6 +50,17 @@ impl Start {
         })
     }
 
+    /// Where an exit with this start ends: a start relative to the rest moves
+    /// the other way, so a layer leaves the way its entrance arrives, and an
+    /// absolute one is kept.
+    pub fn mirrored(self) -> Start {
+        match self {
+            Start::Value(_) => self,
+            Start::Plus => Start::Minus,
+            Start::Minus => Start::Plus,
+        }
+    }
+
     /// The start value of a target resting at `rest`, for a behaviour that
     /// travels `distance` pixels. A number starts every component of a point;
     /// validation allows that only where the property broadcasts.

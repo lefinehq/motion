@@ -24,7 +24,7 @@ Here is what each layer does:
 - **`cards`** is five cards in a row, one per label. They fade up one after another, starting at frame 15 and six frames apart.
 - **`bloom`** has no content, only an effect. It adds a soft glow to everything below it.
 
-The syntax shown here is illustrative, and `repeat`, `layout`, `data`, `item` and `fx` are designed but not built yet. What is built today is the canvas, `text`, `rect`, `image` and `video` layers, `fill`, `at`, `in`, `anim` and `presets`; the sections below say what is still planned.
+The syntax shown here is illustrative, and `repeat`, `layout`, `data`, `item` and `fx` are designed but not built yet. What is built today is the canvas, `text`, `rect`, `image` and `video` layers, `fill`, `at`, `in`, `out`, `anim` and `presets`; the sections below say what is still planned.
 
 ## The canvas
 
@@ -534,9 +534,22 @@ A start is a number, `"+d"` (the resting value plus the behaviour's distance) or
 "layers":[{"id":"title","text":"Hi","in":"drop 80px 12f ease-out"}]
 ```
 
+### Exits
+
+`out` is an exit, the mirror of `in`: `"out":"fade-down 12f"` plays the preset so the layer reaches its pose as its span ends, or its composition when it has no span ([D72](decisions.md#d72-scenes-written-from-scratch-get-choreography-as-data-and-a-guide)).
+
+- **The pose:** a start relative to the rest is mirrored and an absolute one kept, so a layer leaves the way its entrance arrives: `fade-up` rises into place and rises out, `pop` grows in and shrinks out.
+- **When:** the exit ends with the layer's span, in the layer's own time like its keys. `@6f` ends it 6 frames earlier. The curve runs from the rest to the pose, so `ease-in` leaves slowly and speeds away.
+- **With an entrance:** `in` and `out` may move the same property when the exit starts once the entrance has ended; otherwise the file is rejected at `out`.
+- **Not yet:** an exit of the parts of a text (`fade word`), and an exit on a layer that runs backwards (a negative `stretch`), are rejected.
+
+```json
+{"id":"offer","text":"Free for a week","span":"2s-4s","in":"fade-up 10f out-expo","out":"fade-up 8f ease-in"}
+```
+
 ### One writer per property
 
-If `in` already animates a property, `anim` may not also animate it: the file is rejected, naming the property and the preset. There are two ways out. Move the entrance into `anim`: set `in=none` and write the preset as `anim` tracks, one per property it sets; the error message gives that edit for the layer, computed from the preset, the layer's `at` and the scene size (custom curves are shown to two decimals). Or define a scene preset under `presets` that leaves the property out. For example `"in":"fade 10f"` with `"anim":{"opacity":"0 -> 1 @0-12f"}` is an error; `anim` on `rotate` is fine.
+If `in` or `out` already animates a property, `anim` may not also animate it: the file is rejected, naming the property and the preset. There are two ways out. For `in`, move the entrance into `anim`: set `in=none` and write the preset as `anim` tracks, one per property it sets; the error message gives that edit for the layer, computed from the preset, the layer's `at` and the scene size (custom curves are shown to two decimals). Or define a scene preset under `presets` that leaves the property out. For example `"in":"fade 10f"` with `"anim":{"opacity":"0 -> 1 @0-12f"}` is an error; `anim` on `rotate` is fine.
 
 ## Repeats and data
 
