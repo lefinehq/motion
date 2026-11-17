@@ -19,6 +19,7 @@ Read these in order. Each one takes about five minutes.
 
 Reference:
 
+- [Writing a video from scratch](guide/from-scratch.md): the guide for agents, also shipped as the agent skill in `skills/motion/SKILL.md`.
 - [Glossary](glossary.md): the words we use and what they mean.
 - [`.aep` import](design/aep-import.md): what the project reader decodes, what it keeps opaque, and how to add a decoder.
 - [Research: baselines, 2026-11-13](research/2026-11-13-baselines.md): the measurements behind our goals.

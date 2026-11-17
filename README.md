@@ -9,6 +9,7 @@ motion is an open-source engine for making motion graphics and video, designed t
 - [Documentation index](docs/README.md): start here.
 - [Overview](docs/design/overview.md): what motion is and who it is for.
 - [Rendering](docs/design/rendering.md): how a scene becomes a video file.
+- [Writing a video from scratch](docs/guide/from-scratch.md): the guide for agents, also an agent skill in [`skills/motion`](skills/motion/SKILL.md), with [examples](examples/README.md).
 - [Architecture](ARCHITECTURE.md): the crates and how they fit together.
 - [Contributing](CONTRIBUTING.md): how to send a change.
 
