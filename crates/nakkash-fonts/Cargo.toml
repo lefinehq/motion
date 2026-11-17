@@ -1,0 +1,31 @@
+[package]
+name = "nakkash-fonts"
+description = "Resolves the fonts of nakkash scenes to exact, open-licensed files, pins them in a lock file and keeps them in a content-addressed cache, so renders never reach the network."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# Finding and downloading fonts. Only the CLI turns it on: nothing that
+# renders links a network client (D39).
+fetch = ["dep:base64", "dep:nakkash-text", "dep:ureq"]
+
+[dependencies]
+nakkash-format = { path = "../nakkash-format" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tracing.workspace = true
+base64 = { workspace = true, optional = true }
+nakkash-text = { path = "../nakkash-text", optional = true }
+ureq = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+rstest.workspace = true
+
+[lints]
+workspace = true

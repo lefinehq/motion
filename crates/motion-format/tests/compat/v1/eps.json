@@ -1,7 +1,0 @@
-{"motion":1,"size":"160x90","fps":12,"dur":"1s","bg":"#F4F1EA",
-"layers":[
-{"id":"badge","image":"images/badge.eps","box":[40,24],"at":"40 45","scale":2,
- "anim":{"rotate":"0 -> -10 @0-1s ease-in-out"}},
-{"id":"sharp","image":"images/badge.eps","box":[40,24],"at":"115 45","scale":1.5,"continuous":true,
- "anim":{"scale":"1.5 -> 2.5 @0-1s ease-out"}}
-]}

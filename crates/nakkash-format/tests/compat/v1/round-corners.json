@@ -1,0 +1,15 @@
+{"nakkash":1,"size":"480x480","fps":24,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"card","at":"130 130","shapes":[
+ {"rect":[180,120]},
+ {"round-corners":0,"anim":{"radius":"0 -> 60 @0-1s out-cubic"}},
+ {"fill":"#3B82F6"}]},
+{"id":"tri","at":"350 130","shapes":[
+ {"star":3,"type":"polygon","outer-radius":90},
+ {"round-corners":24},
+ {"stroke":"#101010","width":8}]},
+{"id":"heart","at":"240 340","shapes":[
+ {"group":[{"path":"M0,80 L-80,0 C-110,-30 -80,-90 -40,-90 C-15,-90 0,-70 0,-60 C0,-70 15,-90 40,-90 C80,-90 110,-30 80,0 Z"}]},
+ {"round-corners":30},
+ {"fill":"#E4572E"}]}
+]}

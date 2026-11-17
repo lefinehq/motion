@@ -2,12 +2,12 @@ Status: Draft · 2026-11-13
 
 # Scene format
 
-A motion scene is a small JSON file that describes a video: its size, length and layers, and what each layer does over time. It is built to be cheap for an agent to write. Defaults cover most values, and short strings say a lot in a few tokens.
+A nakkash scene is a small JSON file that describes a video: its size, length and layers, and what each layer does over time. It is built to be cheap for an agent to write. Defaults cover most values, and short strings say a lot in a few tokens.
 
 ## An example
 
 ```json
-{"motion":1,"size":"1080p","fps":30,"dur":"5s","bg":"#0B0D12",
+{"nakkash":1,"size":"1080p","fps":30,"dur":"5s","bg":"#0B0D12",
 "assets":{"inter":"font:Inter","logo":"./logo.svg"},
 "layers":[
 {"id":"title","text":"Launch Week","font":"Inter Variable 96 700","at":"center 260","in":"fade-up 12f"},
@@ -104,7 +104,7 @@ A layer with `"3d":true` is a flat plane that moves and turns in its composition
 
 ## Properties
 
-Every animatable value of a layer is a **property**. They are listed once, in `crates/motion-format/src/property.rs`; this table mirrors that list, and a test checks that the names match. Each property holds a typed value: a number, a point (`[x, y]`) or a colour ([D31](decisions.md#d31-typed-values-and-value-space-keys)).
+Every animatable value of a layer is a **property**. They are listed once, in `crates/nakkash-format/src/property.rs`; this table mirrors that list, and a test checks that the names match. Each property holds a typed value: a number, a point (`[x, y]`) or a colour ([D31](decisions.md#d31-typed-values-and-value-space-keys)).
 
 | Property | Type | Rests at | Components | Meaning |
 |---|---|---|---|---|
@@ -133,7 +133,7 @@ Every animatable value of a layer is a **property**. They are listed once, in `c
 
 **Components.** A track animates a whole property or one component of it: `"x"` moves only across, and `"scale"` animates both axes of scale. A property is animated whole or by its components, not both.
 
-**Parenting and time.** A layer can move with another (`"parent":"card"`): its position, rotation and scale apply on top of the parent's, while opacity stays its own. Its `at` is then read in the parent's box, so `"at":"center center"` is the middle of the parent, and `motion at` prints where its anchor lands on the canvas. `"span":"1s-16s"` sets when a layer shows, on the scene's timeline (parenting moves a layer, not its time). `"offset":"1s"` says where the layer's own time starts: its keys and its entrance are in its own time, so moving a layer later is one edit. An offset may be negative, so a layer can start partway through its own time. `"stretch":2` plays its own time at half speed, and a negative stretch runs it backwards from `offset`. Speeds in `speed(...)` are per second of the layer's own time, so a stretch slows them too.
+**Parenting and time.** A layer can move with another (`"parent":"card"`): its position, rotation and scale apply on top of the parent's, while opacity stays its own. Its `at` is then read in the parent's box, so `"at":"center center"` is the middle of the parent, and `nakkash at` prints where its anchor lands on the canvas. `"span":"1s-16s"` sets when a layer shows, on the scene's timeline (parenting moves a layer, not its time). `"offset":"1s"` says where the layer's own time starts: its keys and its entrance are in its own time, so moving a layer later is one edit. An offset may be negative, so a layer can start partway through its own time. `"stretch":2` plays its own time at half speed, and a negative stretch runs it backwards from `offset`. Speeds in `speed(...)` are per second of the layer's own time, so a stretch slows them too.
 
 **Time remapping.** A `comp` or video layer may say which moment of its content it shows at each moment of its own time: `"remap"` is that moment in seconds of the composition or clip ([D62](decisions.md#d62-a-layer-may-remap-the-time-of-its-content)). Its keys are in the layer's own time, like any other track, so `"anim":{"remap":"0 -> 2 @0-4s"}` plays two seconds of the content over four, `"remap":1.5` holds one moment, and keys that fall back run it backwards. Only what the layer shows follows `remap`: its own transform and effects keep its own time. A moment before the content's start or from its end on shows nothing, as when it plays on its own. A `comp` layer's sound plays the remapped moment at the rate the remap moves, as a `stretch` would. A layer that neither sets nor animates `remap` shows its content at its own time. Only `comp` and video layers take a `remap`.
 
@@ -185,7 +185,7 @@ How items combine:
 - **Box.** A shape layer's own coordinates start at its anchor, `[0, 0]`; `check` measures the outlines it draws, widened by half of each stroke.
 - **Ids and `hidden`.** An item may have an `id`, unique within its layer; `"hidden":true` leaves it out of the frame.
 
-Each kind lists its properties in `crates/motion-format/src/item.rs`; this table mirrors that list, and a test checks it.
+Each kind lists its properties in `crates/nakkash-format/src/item.rs`; this table mirrors that list, and a test checks it.
 
 | Item | Key holds | Properties | Settings |
 |---|---|---|---|
@@ -319,7 +319,7 @@ The colour effects change each pixel on its own, on its straight colour, levels 
 A scene, and any composition in `comps`, may declare `slots`: named values that layers follow ([D44](decisions.md#d44-slots-are-named-values-that-layers-follow)). A value written `"$id"` takes the value of slot `id`, so one change to a slot changes every value that follows it.
 
 ```json
-{"motion":1,"size":"1080p","dur":"5s",
+{"nakkash":1,"size":"1080p","dur":"5s",
  "slots":{"accent":{"color":"#E63946","label":"Accent"},"title":{"text":"Launch"},"lift":40},
  "layers":[{"id":"plate","rect":"600x300 r24","fill":"$accent"},
            {"id":"headline","text":"$title","font":"Inter Variable 96 700"}]}
@@ -340,7 +340,7 @@ A scene's `roles` say what its layers and slots do ([D50](decisions.md#d50-roles
 "roles":{"headline":"title","cta":"end/cta","accent":"$accent"}
 ```
 
-A role that names no layer or slot is an error at it, `roles.headline`. An edit may target a role: `@headline text="Sale"` edits `title`, and `@accent=#2A9D8F` sets the slot. `motion roles` lists them with what each holds.
+A role that names no layer or slot is an error at it, `roles.headline`. An edit may target a role: `@headline text="Sale"` edits `title`, and `@accent=#2A9D8F` sets the slot. `nakkash roles` lists them with what each holds.
 
 ## Locks
 
@@ -353,11 +353,11 @@ A scene's `locks` list what a variant may not change ([D51](decisions.md#d51-loc
 - `@logo`: what the role names. `end`: that layer and everything inside it. `$accent`: that slot of the scene.
 - `palette`: an edit may only set colours the scene already has. `typefaces`: an edit may only set font families it already uses.
 
-A lock that names no role, layer or slot is an error at it, `locks[1]`. An edit that touches a lock is refused before it is made, naming the lock: `` `end/cta` is inside `end`, which is locked by `end` ``. `motion roles` marks the roles a lock holds.
+A lock that names no role, layer or slot is an error at it, `locks[1]`. An edit that touches a lock is refused before it is made, naming the lock: `` `end/cta` is inside `end`, which is locked by `end` ``. `nakkash roles` marks the roles a lock holds.
 
 ## Images
 
-An image layer draws a picture file: `image` names a PNG or JPEG file, or vector footage (a PDF file, an `.ai` file that is PDF inside, or an EPS file, whose PostScript program motion runs itself, [D71](decisions.md#d71-eps-footage-is-drawn-by-our-own-postscript-interpreter)), relative to the scene file (an absolute path also works), and `box` says where it goes in the layer's own coordinates, `[width, height]` from the origin or `[x, y, width, height]`, as for box text. The picture is stretched to fill the box, so its size in the file does not have to match; an import writes the size the project gave it.
+An image layer draws a picture file: `image` names a PNG or JPEG file, or vector footage (a PDF file, an `.ai` file that is PDF inside, or an EPS file, whose PostScript program nakkash runs itself, [D71](decisions.md#d71-eps-footage-is-drawn-by-our-own-postscript-interpreter)), relative to the scene file (an absolute path also works), and `box` says where it goes in the layer's own coordinates, `[width, height]` from the origin or `[x, y, width, height]`, as for box text. The picture is stretched to fill the box, so its size in the file does not have to match; an import writes the size the project gave it.
 
 ```json
 {"id":"photo","image":"photos/beach.jpg","box":[1920,1080],"at":"center center","opacity":0.8}
@@ -366,7 +366,7 @@ An image layer draws a picture file: `image` names a PNG or JPEG file, or vector
 
 - **Box.** `box` is required: the scene is read, checked and laid out without opening its files, so the layer's size is in the scene. `anchor` rests at the box's centre, and `check` measures the box.
 - **`crop`:** the part of the picture stretched over the box, `[x, y, width, height]` from the picture's top-left corner (or `[width, height]` from it), in the picture's own units: pixels for a raster picture, the page's units (points) for vector footage. Nothing outside it shows. Without it the whole picture fills the box: every pixel, or the page's crop box.
-- **Vector footage** ([D70](decisions.md#d70-vector-footage-is-drawn-from-its-outlines)) is drawn by motion from its outlines, paints, gradients, images and text, never converted to pixels outside the engine. By default its part is drawn once into a picture the box's size (one pixel per unit of the box), which is then transformed like any picture: scaled up, it softens, as a raster picture would. What it holds that cannot be drawn is reported at import.
+- **Vector footage** ([D70](decisions.md#d70-vector-footage-is-drawn-from-its-outlines)) is drawn by nakkash from its outlines, paints, gradients, images and text, never converted to pixels outside the engine. By default its part is drawn once into a picture the box's size (one pixel per unit of the box), which is then transformed like any picture: scaled up, it softens, as a raster picture would. What it holds that cannot be drawn is reported at import.
 - **`continuous`:** `true` draws vector footage through the layer's transform at the output's resolution every frame, so it stays sharp however far it is scaled. It changes nothing for a raster picture.
 - **Files.** A render reads and decodes each file once, the first time a frame shows it, and draws every later frame from that. A file that is missing, or is not a PNG, JPEG, PDF or EPS file, is an error that names the file; a file no frame shows is never read. The format is recognised by the file's first bytes, not its name.
 - **Colour.** PNG keeps its transparency; JPEG is opaque. Pixels are read as sRGB, and sampled bilinearly. Vector footage's colours are converted to sRGB as it is read: device grey and RGB as they are, CMYK through a built-in press profile, ICC-based colours through the file's own profile.
@@ -381,7 +381,7 @@ A video layer plays a clip: `video` names an `.mov` or `.mp4` file, relative to 
 ```
 
 - **Time.** The clip plays in the layer's own time: at its own time `t`, the layer draws the frame showing `t` seconds into the clip. So `offset` starts it later and `stretch` slows it (`2`) or speeds it (`0.5`). Before the clip starts and from its end on, the layer draws nothing.
-- **Codecs.** QuickTime Animation (`rle `, RGB, or ARGB with its alpha) and Photo JPEG decode everywhere. H.264 decodes on macOS through the system's decoder ([D60](decisions.md#d60-h264-footage-decodes-through-the-systems-decoder)), in the matrix and range its tags give, or BT.709 limited range for an untagged HD clip; on other platforms it is an error that says so. A clip in any other codec is an error that names the file and the codec. The container is read by motion itself, with no system library.
+- **Codecs.** QuickTime Animation (`rle `, RGB, or ARGB with its alpha) and Photo JPEG decode everywhere. H.264 decodes on macOS through the system's decoder ([D60](decisions.md#d60-h264-footage-decodes-through-the-systems-decoder)), in the matrix and range its tags give, or BT.709 limited range for an untagged HD clip; on other platforms it is an error that says so. A clip in any other codec is an error that names the file and the codec. The container is read by nakkash itself, with no system library.
 - **Files.** A render opens each clip once and decodes frames as they are shown, keeping the last ones, so a render going forward decodes each frame once. A file no frame shows is never read.
 - Like any layer, a video has a transform, parent, opacity, span and time, can be a matte, and can be matted. Its sound is not played yet: an `audio` layer of the same file plays it once AAC can be read.
 
@@ -399,7 +399,7 @@ An audio layer plays a sound file: `audio` names a WAV, MP3, FLAC or Ogg Vorbis 
 - **What it is not.** An audio layer has no effects and no matte, and is no layer's matte: it draws nothing.
 - **Drawn.** `audio-spectrum` and `audio-waveform` effects on other layers draw its sound, or a composition's through its `comp` layer (see effects).
 - **Followed.** A track written `@level <id>` follows its level (see property tracks).
-- **The mix.** Every audible layer is mixed into one stereo track at 48 kHz. Files are read by their first bytes, not their names, folded down to stereo, and resampled. Volume moves smoothly between keys, and layers are summed without a limiter. `motion render scene.json --out mix.wav` writes the mix, and says when it goes above full scale; a video of the scene holds the mix as its sound (AAC in MP4, PCM in MOV).
+- **The mix.** Every audible layer is mixed into one stereo track at 48 kHz. Files are read by their first bytes, not their names, folded down to stereo, and resampled. Volume moves smoothly between keys, and layers are summed without a limiter. `nakkash render scene.json --out mix.wav` writes the mix, and says when it goes above full scale; a video of the scene holds the mix as its sound (AAC in MP4, PCM in MOV).
 
 ## Animation, at three levels of detail
 
@@ -515,7 +515,7 @@ A curve is a cubic bézier, as in CSS, a family's curve, steps, or `hold`. The n
 
 ### Presets
 
-A preset is data: a list of properties and where each starts. The behaviour then animates each one from its start to its resting value. These are built in (`crates/motion-format/src/presets.json`):
+A preset is data: a list of properties and where each starts. The behaviour then animates each one from its start to its resting value. These are built in (`crates/nakkash-format/src/presets.json`):
 
 | Preset | Starts from |
 |---|---|
@@ -586,7 +586,7 @@ A text layer sets its words (`text`, where `\n` ends a paragraph) from font asse
 - **`paragraphs`** holds one object of paragraph keys per paragraph, in order.
 - **`box`** makes box text, which wraps inside the box: `[w, h]` from the layer's origin, or `[x, y, w, h]` from the box's top-left corner in the layer's own coordinates, as imported box text keeps it. Without it the text is point text: each paragraph is one line, aligned about the origin, and the origin is where the first line's baseline starts.
 
-The layer's box is the box its lines cover, which for point text starts above and maybe left of the origin; `anchor` rests at its centre, so `at` centres the text. The keys are listed once, in `crates/motion-format/src/text.rs`; this table mirrors that list, and a test checks it.
+The layer's box is the box its lines cover, which for point text starts above and maybe left of the origin; `anchor` rests at its centre, so `at` centres the text. The keys are listed once, in `crates/nakkash-format/src/text.rs`; this table mirrors that list, and a test checks it.
 
 | Style key | Level | Accepts |
 |---|---|---|
@@ -685,16 +685,16 @@ Modifiers add motion that would otherwise need keyframes or code:
 - **`follow`:** trails another layer.
 - **`@level`:** follows a sound's level (see property tracks).
 
-Modifiers are declarative and repeatable, so checks and repeatability keep working. motion does not run arbitrary scripts inside scenes (see [D10](decisions.md#d10-modifiers-instead-of-scripts)).
+Modifiers are declarative and repeatable, so checks and repeatability keep working. nakkash does not run arbitrary scripts inside scenes (see [D10](decisions.md#d10-modifiers-instead-of-scripts)).
 
 ## Fonts and assets
 
-motion never goes to the network while rendering. A render depends only on the scene, the files it points to, and the motion version.
+nakkash never goes to the network while rendering. A render depends only on the scene, the files it points to, and the nakkash version.
 
 - **Inter** is built in.
 - **Other fonts, images and audio** are referenced by file path.
-- **`motion fonts fetch <scene>`** finds every face the scene's text uses and its `fonts` lack, in open-licensed sources, and pins each to an exact file in a lock beside the scene (`story.fonts.lock` for `story.json`). It adds the lock to `fonts` and downloads the files into the font cache (`$MOTION_CACHE`, or the platform's cache folder). It is a separate, explicit step; `motion import --fetch-fonts` runs it for an imported project ([D39](decisions.md#d39-fonts-are-resolved-before-a-render)).
-- **A lock in `fonts`** loads each face it pins from the cache and checks the file's hash. A face the cache lacks is an error that names `motion fonts fetch`.
+- **`nakkash fonts fetch <scene>`** finds every face the scene's text uses and its `fonts` lack, in open-licensed sources, and pins each to an exact file in a lock beside the scene (`story.fonts.lock` for `story.json`). It adds the lock to `fonts` and downloads the files into the font cache (`$NAKKASH_CACHE`, or the platform's cache folder). It is a separate, explicit step; `nakkash import --fetch-fonts` runs it for an imported project ([D39](decisions.md#d39-fonts-are-resolved-before-a-render)).
+- **A lock in `fonts`** loads each face it pins from the cache and checks the file's hash. A face the cache lacks is an error that names `nakkash fonts fetch`.
 - **System fonts** work, but the checker warns about them, because the result then depends on the machine.
 - **A missing font or glyph** is an error, never a silent fallback. Only an import substitutes a font it does not have, by writing another face's name into the scene and reporting it ([D40](decisions.md#d40-missing-fonts-are-substituted-at-import)).
 
@@ -705,7 +705,7 @@ motion never goes to the network while rendering. A render depends only on the s
 
 ## Versions
 
-`"motion": 1` is the format's version. It stays 1 while changes only add: a new key, a new value form, a looser limit. A change that alters what a written scene means bumps it, and motion reads every older version through migrations ([D36](decisions.md#d36-the-format-only-changes-in-the-open)). The scenes in `crates/motion-format/tests/compat/` hold that promise in CI: together they use every name in this document, and what each one draws is a snapshot.
+`"nakkash": 1` is the format's version. Scenes written before the project was renamed say `"motion": 1`: that is read as the same key, with a deprecation note, and a scene may not have both ([D73](decisions.md#d73-the-project-is-named-nakkash)). It stays 1 while changes only add: a new key, a new value form, a looser limit. A change that alters what a written scene means bumps it, and nakkash reads every older version through migrations ([D36](decisions.md#d36-the-format-only-changes-in-the-open)). The scenes in `crates/nakkash-format/tests/compat/` hold that promise in CI: together they use every name in this document, and what each one draws is a snapshot.
 
 ## Why JSON
 

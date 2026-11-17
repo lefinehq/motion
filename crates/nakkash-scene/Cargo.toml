@@ -1,0 +1,26 @@
+[package]
+name = "nakkash-scene"
+description = "Compiles a nakkash scene into a scene graph and evaluates it at any frame, without rendering."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+glam.workspace = true
+kurbo.workspace = true
+libm.workspace = true
+linesweeper.workspace = true
+nakkash-format = { path = "../nakkash-format" }
+nakkash-text = { path = "../nakkash-text" }
+tracing.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
+pretty_assertions.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true

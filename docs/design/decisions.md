@@ -4,6 +4,8 @@ Status: Draft · 2026-11-13
 
 This is the record of every design decision: what we chose, and why. Other documents link here instead of repeating the reasoning. To change a decision, add a new entry that supersedes the old one. Do not edit the old entry.
 
+The project was named motion until 2026-11-17 and is now nakkash ([D73](#d73-the-project-is-named-nakkash)). The entries before D73 keep the old name, crate names (`motion-format`) and commands (`motion render`) as they were written; read them as nakkash's.
+
 ## Set by the maintainers
 
 These came from the project's direction, not from analysis.
@@ -725,3 +727,17 @@ Status: Draft · 2026-11-17
   - The practice in the guide comes from an AI critic scoring frame sheets, whose scores moved more between batches than the effects it measured. It stays practice, labelled as such, and no check rule is built on it ([D22](#d22-no-ai-judge)).
   - It is measured the way the brief set was built to measure it: `motion bench` before and after, with the same agent, model and prompt, and people watching both sets.
 - **Not now:** new check rules from that practice, copywriting, and beats as a layer kind: `labels` already name moments.
+
+### D73. The project is named nakkash
+
+- **Decision:** from 2026-11-17 the project, its crates, its command and its scene format are named **nakkash**, the maintainers' choice. A nakkash (Turkish *nakkaş*) was one of the classical miniature painters, the artists who illuminated manuscripts.
+  - **Renamed:** the crates `motion-*` → `nakkash-*` and their Rust paths `motion_*` → `nakkash_*` (so log filters and targets name `nakkash_*`, and the timings target is `nakkash::timings`); the command `motion` → `nakkash`; the scene key `"motion": 1` → `"nakkash": 1`; `MOTION_LOG` → `NAKKASH_LOG`; `MOTION_CACHE` → `NAKKASH_CACHE`; the font cache's folder (`~/Library/Caches/nakkash`, `%LOCALAPPDATA%\nakkash`, `$XDG_CACHE_HOME/nakkash`); `MOTION_BRIEF` → `NAKKASH_BRIEF`; the test-only variables (`NAKKASH_BLESS`, `NAKKASH_AEP_SAMPLES`, `NAKKASH_OUT`, `NAKKASH_FONTS`, `NAKKASH_VIDEO_CLIP`, `NAKKASH_EXPR_SOURCES`, `NAKKASH_EXPR_TRACE`); the font fetcher's user agent; the handler name in MP4 files; the agent skill's folder, `skills/nakkash`; and the repository, `lefinehq/nakkash`.
+  - **The scene key.** New scenes, imports and examples write `"nakkash": 1`; nothing writes `"motion"`. The reader takes `"motion": 1` as the same key in the same place, so the scene is the same scene, and reports a deprecation note. A scene with both keys is an error at `motion`. An unknown-key error never offers `motion`. An edit keeps the key the file has: writing back keeps what the author wrote. The old key is read for all of format version 1, and the migration from version 1 to any later version reads it too, so a scene written before the rename stays readable ([D36](#d36-the-format-only-changes-in-the-open)).
+  - **Other aliases, until 1.0:** the `motion` command, a second binary of `nakkash-cli` that runs the `nakkash` beside it; `MOTION_LOG`, read when `NAKKASH_LOG` is not set; `MOTION_CACHE`, read when `NAKKASH_CACHE` is not set; the font cache's old folder, read for the files the new one lacks, each copied into the new folder as it is read; and `MOTION_BRIEF`, which `bench` still sets for its agents. The test-only variables have no alias.
+  - **Every alias says so.** Each use logs a `warn` under the target `nakkash::deprecated`, which the command shows whatever its log level, in the chosen log format. The note names the new name and this decision.
+  - **History stays as written.** The changelog's earlier entries, D1 to D72, plans and research notes keep the old name, with a note at the top of the changelog, of this record and of the documentation index. Living documents (the README, the guide, the scene format and the other design documents) use the new name.
+- **Why:**
+  - "motion" is also the word for what the engine draws. In our own documents and code the product could not be told apart from motion graphics, motion blur or a layer's motion, nor searched for.
+  - Scenes outlive the code that wrote them ([D36](#d36-the-format-only-changes-in-the-open)): the fidelity corpus, other projects' films and agents' prompts hold `"motion": 1`. Reading the old key costs one alias, and a test that reads every corpus scene under both keys and finds the same scene; rejecting it would break all of them at once.
+  - Commands, variables and cache folders live in scripts and on machines we cannot see. An alias with a note keeps them working and tells their owners what to change; 1.0 is when the aliases go, since a release is when users expect names to settle.
+- **Not now:** rewriting `"motion"` to `"nakkash"` when a scene is edited, and a command that migrates scene files: either would change files that tools still running the old command must read.

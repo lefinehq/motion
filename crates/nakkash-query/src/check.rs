@@ -1,0 +1,713 @@
+//! The `check` query: every rule over every frame, with consecutive failing frames
+//! merged into one [`Violation`] so the report stays short.
+
+use crate::report::{Code, Measure, Report, Severity, Violation};
+use crate::rules::{
+    CRAFT, Craft, EPSILON, Finding, Measured, Move, Overshoot, RULES, Reads, Rule, Sample, crowd,
+    draws, overlap, shift, text_hold, visible,
+};
+use kurbo::{Affine, Point, Rect, Vec2};
+use nakkash_format::address::SCENE;
+use nakkash_format::key::AT;
+use nakkash_format::shorthand::{Coord, Position};
+use nakkash_format::{Address, Layer, Scene};
+use nakkash_scene::{
+    CompGraph, ContentState, Node, SceneGraph, Visit, address_of, evaluate, local_transform, walk,
+};
+use std::collections::BTreeMap;
+use tracing::{Span, field, instrument};
+
+/// Runs the standard rules on `scene` over every frame of `graph`, its
+/// compiled form, on every node at any depth, in scene space.
+#[instrument(
+    level = "debug",
+    skip_all,
+    fields(
+        frames = field::Empty,
+        rules_run = field::Empty,
+        violations = field::Empty,
+        passed = field::Empty
+    )
+)]
+pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
+    debug_assert_eq!(scene.root.layers.len(), graph.root.nodes.len());
+    let frame_count = graph.root.duration_frames.ceil().max(0.0) as u32;
+    Span::current().record("frames", frame_count);
+
+    // One frame at a time: memory grows with layers and rules, not frames.
+    let paths = graph.paths();
+    let mut scans: Vec<LayerScan> = paths
+        .iter()
+        .map(|ids| {
+            // Motion blur smooths its steps where its composition's shutter is open.
+            let blurred = graph
+                .node_at(ids)
+                .is_some_and(|(node, comp)| node.mblur && comp.shutter.open());
+            LayerScan::new(blurred)
+        })
+        .collect();
+    // How many layers catch the eye at each frame, for `crowd`.
+    let mut crowds: Vec<Run> = Vec::new();
+    let mut anything_moved = false;
+    // Where each text layer's glyphs draw as laid out, read once, and the
+    // runs of frames each pair of them, under then over, run into each other.
+    let mut laid: BTreeMap<usize, Vec<Option<Rect>>> = BTreeMap::new();
+    let mut overlaps: BTreeMap<(usize, usize), Vec<Run>> = BTreeMap::new();
+    let mut read_together = false;
+    for frame in 0..frame_count {
+        let state = evaluate(graph, f64::from(frame));
+        let mut movers = 0;
+        let mut read: Vec<(usize, Vec<Rect>)> = Vec::new();
+        for visit in walk(graph, &state) {
+            let (catches, readable) = scans[visit.index].observe(frame, &visit, graph);
+            movers += usize::from(catches);
+            if readable {
+                let inks = laid
+                    .entry(visit.index)
+                    .or_insert_with(|| overlap::layout_inks(&visit));
+                read.push((visit.index, overlap::canvas_inks(&visit, inks)));
+            }
+        }
+        anything_moved |= movers > 0;
+        if let Some(found) = crowd::judge(movers) {
+            add(&mut crowds, frame, found);
+        }
+        read_together |= read.len() > 1;
+        for (k, (under, below)) in read.iter().enumerate() {
+            for (over, above) in &read[k + 1..] {
+                if let Some(found) = overlap::judge(below, above, graph) {
+                    add(overlaps.entry((*under, *over)).or_default(), frame, found);
+                }
+            }
+        }
+    }
+
+    let mut report = Report {
+        violations: Vec::new(),
+        passed: 0,
+    };
+    let mut rules_run = 0;
+    for (ids, scan) in paths.iter().zip(scans) {
+        let address = address_of(ids);
+        // A fix hint edits the layer's `at` where the instance draws it.
+        let layer = scene.layer(&address.layers);
+        let placed = layer.zip(graph.node_at(ids));
+        rules_run += scan.finish(&address, placed, graph, &mut report);
+    }
+    // Text on text is the scene's to judge once two texts are read at once.
+    if read_together {
+        rules_run += 1;
+        if overlaps.is_empty() {
+            report.passed += 1;
+        }
+    }
+    for ((under, over), runs) in overlaps {
+        report
+            .violations
+            .extend(runs.into_iter().map(|run| Violation {
+                severity: Severity::Warning,
+                code: Code::Overlap,
+                address: address_of(&paths[over]),
+                first_frame: run.first,
+                last_frame: run.last,
+                measure: Measure::Overshoot((run.worst.value - EPSILON).ceil()),
+                fix: None,
+                with: Some(address_of(&paths[under])),
+            }));
+    }
+    // The crowd is the scene's: one rule over the whole clip, measured
+    // once something moves.
+    if anything_moved {
+        rules_run += 1;
+        if crowds.is_empty() {
+            report.passed += 1;
+        }
+        let scene: Address = SCENE.parse().expect("the scene's address");
+        report
+            .violations
+            .extend(crowds.into_iter().map(|run| Violation {
+                severity: Severity::Warning,
+                code: Code::Crowd,
+                address: scene.clone(),
+                first_frame: run.first,
+                last_frame: run.last,
+                measure: crowd::measure(run.worst),
+                fix: None,
+                with: None,
+            }));
+    }
+    Span::current()
+        .record("rules_run", rules_run)
+        .record("violations", report.violations.len())
+        .record("passed", report.passed);
+    report
+}
+
+/// What the pass over the frames has seen of one layer.
+struct LayerScan {
+    /// What each layout rule has seen, parallel to [`RULES`].
+    runs: Vec<LayoutScan>,
+    /// The box the layer covers over its visible frames on the canvas. Fix hints
+    /// clamp this whole sweep, since moving `at` moves every frame, so they settle
+    /// in one edit.
+    sweep: Option<Rect>,
+    /// The box it covers over its frames wholly off the canvas, which fix
+    /// hints clamp instead when it never comes on.
+    off_sweep: Option<Rect>,
+    /// The frame it was last seen at and the box it drew there, to tell a
+    /// layer in motion from one at rest.
+    seen: Option<(u32, Rect)>,
+    /// Where its `at` lives: the transform from its parent's coordinates to the
+    /// canvas over its visible frames.
+    frame: Frame,
+    /// What craft rules saw of it at the frame before, if it was walked.
+    previous: Option<Sample>,
+    /// Whether it is drawn with motion blur.
+    blurred: bool,
+    /// Each craft rule's reading of it, parallel to [`CRAFT`].
+    craft: Vec<CraftScan>,
+}
+
+/// What one craft rule has seen of one layer.
+#[derive(Default)]
+struct CraftScan {
+    /// Its failing runs.
+    runs: Vec<Run>,
+    /// The stretch now open, for a stretch rule: its first sample and its
+    /// last frame.
+    open: Option<(Sample, u32)>,
+    /// The longest stretch closed so far, the first of the longest on a tie.
+    longest: Option<(Sample, u32)>,
+    /// The move now open, for a move rule.
+    moving: Option<Move>,
+    /// Whether it measured anything: a step between two shown frames, or a
+    /// whole stretch.
+    ran: bool,
+}
+
+impl CraftScan {
+    /// Reads `now`, given the sample of the frame before when there is one.
+    fn observe(&mut self, rule: &Craft, now: &Sample, before: Option<&Sample>, graph: &SceneGraph) {
+        match rule.reads {
+            Reads::Step(step) => {
+                let Some(before) = before.filter(|b| b.shown && now.shown) else {
+                    return;
+                };
+                match step(before, now, graph) {
+                    Measured::Skipped => {}
+                    Measured::Passed => self.ran = true,
+                    Measured::Found(found) => {
+                        self.ran = true;
+                        add(&mut self.runs, now.frame, found);
+                    }
+                }
+            }
+            Reads::Stretch { holds, .. } => {
+                if before.is_none() {
+                    self.close();
+                }
+                if !holds(now, before, graph) {
+                    self.close();
+                    return;
+                }
+                match &mut self.open {
+                    Some((_, last)) => *last = now.frame,
+                    None => self.open = Some((now.clone(), now.frame)),
+                }
+            }
+            Reads::Moves { speed, judge } => {
+                let Some(fast) = before.and_then(|b| speed(b, now)) else {
+                    self.stop(judge, graph);
+                    return;
+                };
+                match &mut self.moving {
+                    Some(going) => {
+                        going.last = now.frame;
+                        going.total += fast;
+                        going.peak = going.peak.max(fast);
+                    }
+                    None => {
+                        self.moving = Some(Move {
+                            first: now.frame - 1,
+                            last: now.frame,
+                            total: fast,
+                            peak: fast,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Judges the open move, if any, and ends it.
+    fn stop(&mut self, judge: fn(&Move, &SceneGraph) -> Measured, graph: &SceneGraph) {
+        let Some(going) = self.moving.take() else {
+            return;
+        };
+        match judge(&going, graph) {
+            Measured::Skipped => {}
+            Measured::Passed => self.ran = true,
+            Measured::Found(found) => {
+                self.ran = true;
+                self.runs.push(Run {
+                    first: going.first,
+                    last: going.last,
+                    worst: found,
+                });
+            }
+        }
+    }
+
+    /// Ends whatever is still open once the frames run out.
+    fn end(&mut self, rule: &Craft, graph: &SceneGraph) {
+        match rule.reads {
+            Reads::Step(_) => {}
+            Reads::Stretch { judge, .. } => {
+                self.close();
+                self.judge_longest(judge, graph);
+            }
+            Reads::Moves { judge, .. } => self.stop(judge, graph),
+        }
+    }
+
+    /// Closes the open stretch, if any, keeping it when it is the longest.
+    fn close(&mut self) {
+        let Some((first, last)) = self.open.take() else {
+            return;
+        };
+        let frames = |first: &Sample, last: u32| last - first.frame + 1;
+        let longer = self
+            .longest
+            .as_ref()
+            .is_none_or(|(f, l)| frames(&first, last) > frames(f, *l));
+        if longer {
+            self.longest = Some((first, last));
+        }
+    }
+
+    /// Judges the longest stretch, once the frames have run out.
+    fn judge_longest(
+        &mut self,
+        judge: fn(u32, &Sample, &SceneGraph) -> Option<Finding>,
+        graph: &SceneGraph,
+    ) {
+        let Some((first, last)) = self.longest.take() else {
+            return;
+        };
+        self.ran = true;
+        if let Some(found) = judge(last - first.frame + 1, &first, graph) {
+            self.runs.push(Run {
+                first: first.frame,
+                last,
+                worst: found,
+            });
+        }
+    }
+}
+
+/// The transform a layer's `at` is read through, over the frames seen so far.
+#[derive(Clone, Copy)]
+enum Frame {
+    /// No visible frame yet.
+    Unseen,
+    /// The same at every visible frame.
+    Steady(Affine),
+    /// It changes, so no single `at` edit moves every frame by the same amount.
+    Moving,
+}
+
+impl Frame {
+    /// The frame after also seeing `parent`.
+    fn and(self, parent: Affine) -> Frame {
+        match self {
+            Frame::Unseen => Frame::Steady(parent),
+            Frame::Steady(seen) if same(seen, parent) => self,
+            Frame::Steady(_) | Frame::Moving => Frame::Moving,
+        }
+    }
+}
+
+/// Whether two transforms agree up to float noise.
+fn same(a: Affine, b: Affine) -> bool {
+    a.as_coeffs()
+        .iter()
+        .zip(b.as_coeffs())
+        .all(|(x, y)| (x - y).abs() < EPSILON)
+}
+
+impl LayerScan {
+    fn new(blurred: bool) -> LayerScan {
+        LayerScan {
+            runs: RULES.iter().map(|_| LayoutScan::default()).collect(),
+            sweep: None,
+            off_sweep: None,
+            seen: None,
+            frame: Frame::Unseen,
+            previous: None,
+            blurred,
+            craft: CRAFT.iter().map(|_| CraftScan::default()).collect(),
+        }
+    }
+
+    /// Feeds the layer's state at `frame` to every rule and to the sweep, and
+    /// says whether it catches the eye over the step to it and whether it is
+    /// text being read.
+    fn observe(&mut self, frame: u32, visit: &Visit<'_>, graph: &SceneGraph) -> (bool, bool) {
+        self.layout(frame, visit, graph);
+        let now = self.sample(frame, visit);
+        let before = self.previous.take().filter(|b| b.frame + 1 == frame);
+        for (scan, rule) in self.craft.iter_mut().zip(CRAFT) {
+            scan.observe(rule, &now, before.as_ref(), graph);
+        }
+        let catches = before
+            .as_ref()
+            .is_some_and(|b| crowd::catches_the_eye(b, &now, graph));
+        let readable = text_hold::holds(&now, before.as_ref(), graph);
+        self.previous = Some(now);
+        (catches, readable)
+    }
+
+    /// Feeds the layer's state at `frame` to the layout rules and the sweep.
+    fn layout(&mut self, frame: u32, visit: &Visit<'_>, graph: &SceneGraph) {
+        let drawn = visit.drawn().filter(|_| visible(visit) && draws(visit));
+        let (width, height) = (graph.root.width, graph.root.height);
+        // Off the canvas: on or past one of its edges, so a box of no size
+        // inside it is on it.
+        let off = |b: Rect| b.x1 <= 0.0 || b.y1 <= 0.0 || b.x0 >= width || b.y0 >= height;
+        let before = self.seen.filter(|&(at, _)| at + 1 == frame).map(|(_, b)| b);
+        let place = match drawn {
+            None => Place::Unseen,
+            Some(b) if off(b) => Place::Off,
+            Some(b) if before.is_some_and(|a| same_box(a, b)) => Place::Resting,
+            Some(_) => Place::Moving,
+        };
+        self.seen = drawn.map(|b| (frame, b));
+        for (scan, rule) in self.runs.iter_mut().zip(RULES) {
+            scan.observe(frame, place, (rule.evaluate)(visit, graph));
+        }
+        if let Some(b) = drawn {
+            // Its parents' transform is its own world transform without its local one.
+            let parent = visit.transform * local_transform(&visit.node.values).inverse();
+            self.frame = self.frame.and(parent);
+            let sweep = match place {
+                Place::Off => &mut self.off_sweep,
+                _ => &mut self.sweep,
+            };
+            *sweep = Some(sweep.map_or(b, |a| a.union(b)));
+        }
+    }
+
+    /// What craft rules see of the layer at `frame`.
+    fn sample(&self, frame: u32, visit: &Visit<'_>) -> Sample {
+        let b = visit.node.own_box;
+        let corners = [(b.x0, b.y0), (b.x1, b.y0), (b.x1, b.y1), (b.x0, b.y1)]
+            .map(|(x, y)| visit.transform * Point::new(x, y));
+        let chars = match &visit.node.content {
+            ContentState::Text { text, .. } => Some(
+                text.content
+                    .text
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .count(),
+            ),
+            _ => None,
+        };
+        Sample {
+            frame,
+            shown: visible(visit),
+            opacity: visit.opacity,
+            corners,
+            local: local_transform(&visit.node.values),
+            chars,
+            blurred: self.blurred,
+        }
+    }
+
+    /// Adds the findings on the layer at `address` to `report` and returns
+    /// how many rules ran; `placed` is the layer, its node and the
+    /// composition graph it sits in, which a fix hint reads. A rule whose
+    /// `suppressed_by` failed here is skipped: it neither runs nor passes.
+    fn finish(
+        self,
+        address: &Address,
+        placed: Option<(&Layer, (&Node, &CompGraph))>,
+        graph: &SceneGraph,
+        report: &mut Report,
+    ) -> usize {
+        let mut failed: Vec<Code> = Vec::new();
+        let mut rules_run = 0;
+        for (rule, scan) in RULES.iter().zip(self.runs) {
+            let runs = scan.finish();
+            if rule.suppressed_by.is_some_and(|by| failed.contains(&by)) {
+                continue;
+            }
+            rules_run += 1;
+            if runs.is_empty() {
+                report.passed += 1;
+                continue;
+            }
+            failed.push(rule.code);
+            let fix = self
+                .sweep
+                .or(self.off_sweep)
+                .zip(placed)
+                .and_then(|(sweep, placed)| {
+                    fix_hint(rule, sweep, self.frame, address, placed, graph)
+                });
+            let violations = runs
+                .into_iter()
+                .map(|run| run.into_violation(rule, address, fix.clone()));
+            report.violations.extend(violations);
+        }
+        for (rule, mut scan) in CRAFT.iter().zip(self.craft) {
+            scan.end(rule, graph);
+            if !scan.ran {
+                continue;
+            }
+            let lasting = (rule.lasting * graph.root.fps - EPSILON).ceil() as u32;
+            scan.runs.retain(|run| run.last - run.first + 1 >= lasting);
+            rules_run += 1;
+            if scan.runs.is_empty() {
+                report.passed += 1;
+                continue;
+            }
+            let fix = placed
+                .and_then(|(layer, (node, comp))| (rule.fix)(address, Some(layer), node, comp));
+            report
+                .violations
+                .extend(scan.runs.into_iter().map(|run| Violation {
+                    severity: rule.severity,
+                    code: rule.code,
+                    address: address.clone(),
+                    first_frame: run.first,
+                    last_frame: run.last,
+                    measure: (rule.measure)(run.worst),
+                    fix: fix.clone(),
+                    with: None,
+                }));
+        }
+        rules_run
+    }
+}
+
+/// Where a layer is at one frame, for the layout rules.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Place {
+    /// It draws nothing: hidden, see-through, out of its span or clipped away.
+    Unseen,
+    /// It draws wholly outside the canvas, where it waits to come in or
+    /// has gone.
+    Off,
+    /// It draws on the canvas the same box as at the frame before.
+    Resting,
+    /// It draws on the canvas, and moved or first showed at this frame.
+    Moving,
+}
+
+/// Whether two boxes agree up to float noise.
+fn same_box(a: Rect, b: Rect) -> bool {
+    [(a.x0, b.x0), (a.y0, b.y0), (a.x1, b.x1), (a.y1, b.y1)]
+        .iter()
+        .all(|(x, y)| (x - y).abs() < 1e-6)
+}
+
+/// What one layout rule has seen of one layer, in frame order.
+///
+/// A layer waiting wholly off the canvas is not checked: nothing of it shows.
+/// Nor is one passing through the edge on its way in from there or out to
+/// there, as a push or slide does. A layer at rest across the edge is, and so
+/// is one that never comes onto the canvas at all.
+#[derive(Default)]
+struct LayoutScan {
+    /// The failing runs found so far; the last may still grow.
+    runs: Vec<Run>,
+    /// The failing frames of the move now under way, kept until the move ends
+    /// and says whether it came from off the canvas or went there.
+    passing: Vec<(u32, Finding)>,
+    /// The move now under way came in from off the canvas.
+    from_off: bool,
+    /// The runs of frames it spent wholly off the canvas, with how far.
+    off: Vec<Run>,
+    /// It was on the canvas at some frame.
+    on: bool,
+    /// The last frame it was observed at.
+    last: Option<u32>,
+}
+
+impl LayoutScan {
+    /// Reads the layer at `frame`, later than any seen so far: where it is,
+    /// and what the rule found there.
+    fn observe(&mut self, frame: u32, place: Place, found: Option<Overshoot>) {
+        if self.last.is_some_and(|last| last + 1 != frame) {
+            self.settle();
+        }
+        self.last = Some(frame);
+        let found = found.map(|found| Finding {
+            value: found.amount,
+            limit: 0.0,
+        });
+        match (place, found) {
+            (Place::Unseen, _) => self.settle(),
+            (Place::Off, found) => {
+                // The move reached the outside: it was a way in or out.
+                self.passing.clear();
+                self.from_off = true;
+                if let Some(found) = found {
+                    add(&mut self.off, frame, found);
+                }
+            }
+            (Place::Moving, Some(found)) => {
+                self.on = true;
+                self.passing.push((frame, found));
+            }
+            (Place::Resting | Place::Moving, found) => {
+                self.on = true;
+                self.settle();
+                if let Some(found) = found {
+                    add(&mut self.runs, frame, found);
+                }
+            }
+        }
+    }
+
+    /// Ends the move under way: its failing frames count unless it came in
+    /// from off the canvas.
+    fn settle(&mut self) {
+        for (frame, found) in self.passing.drain(..) {
+            if !self.from_off {
+                add(&mut self.runs, frame, found);
+            }
+        }
+        self.from_off = false;
+    }
+
+    /// The failing runs, once the frames run out: those it spent off the
+    /// canvas count too when it never came onto it.
+    fn finish(mut self) -> Vec<Run> {
+        self.settle();
+        match self.on {
+            true => self.runs,
+            false => self.off,
+        }
+    }
+}
+
+/// Records `found` at `frame`, later than any frame in `runs`: it extends the
+/// last run when that ends at the frame before.
+fn add(runs: &mut Vec<Run>, frame: u32, found: Finding) {
+    match runs.last_mut() {
+        Some(run) if run.last + 1 == frame => run.extend(frame, found),
+        _ => runs.push(Run {
+            first: frame,
+            last: frame,
+            worst: found,
+        }),
+    }
+}
+
+/// A stretch of consecutive failing frames for one (rule, layer).
+struct Run {
+    first: u32,
+    last: u32,
+    /// The worst finding in the stretch.
+    worst: Finding,
+}
+
+impl Run {
+    fn extend(&mut self, frame: u32, found: Finding) {
+        self.last = frame;
+        if found.excess() > self.worst.excess() {
+            self.worst = found;
+        }
+    }
+
+    fn into_violation(self, rule: &Rule, address: &Address, fix: Option<String>) -> Violation {
+        // Whole pixels, ignoring float noise: 55.000000000000007 reads +55, not +56.
+        let amount = (self.worst.value - EPSILON).ceil();
+        Violation {
+            severity: rule.severity,
+            code: rule.code,
+            address: address.clone(),
+            first_frame: self.first,
+            last_frame: self.last,
+            measure: Measure::Overshoot(amount),
+            fix,
+            with: None,
+        }
+    }
+}
+
+/// The `at` edit that moves `sweep` into `rule`'s aim, on the axes that follow
+/// `at`. The shift is on the canvas; `at` lives in the parent's coordinates, so
+/// it goes back through the parents' transform, which must hold still.
+fn fix_hint(
+    rule: &Rule,
+    sweep: Rect,
+    frame: Frame,
+    address: &Address,
+    (layer, (node, comp)): (&Layer, (&Node, &CompGraph)),
+    graph: &SceneGraph,
+) -> Option<String> {
+    let Frame::Steady(parent) = frame else {
+        return None;
+    };
+    let (area, aim) = (rule.areas)(graph);
+    let Vec2 { x: dx, y: dy } = shift(sweep, area, aim);
+    let inverse = parent.inverse();
+    let local = inverse * Point::new(dx, dy) - inverse * Point::ORIGIN;
+    if !(local.x.is_finite() && local.y.is_finite()) {
+        return None;
+    }
+    // Moving `at` cannot shift an axis that does not follow it; a turned
+    // parent mixes the axes, so then both must follow.
+    let (follows_x, follows_y) = node.follows_at;
+    let mixes = parent.as_coeffs()[1].abs() > EPSILON || parent.as_coeffs()[2].abs() > EPSILON;
+    if mixes && !(follows_x && follows_y) {
+        return None;
+    }
+    let only_followed = |delta: f64, follows: bool| if follows { delta } else { 0.0 };
+    // `at` keywords resolve in the parent's box, or on the canvas of the
+    // composition the layer sits in.
+    let extent = node.parent.map_or((comp.width, comp.height), |p| {
+        let parent = comp.nodes[p].bounds;
+        (parent.width(), parent.height())
+    });
+    fix(
+        address,
+        layer.at,
+        Vec2::new(
+            only_followed(snap(local.x), follows_x),
+            only_followed(snap(local.y), follows_y),
+        ),
+        extent,
+    )
+}
+
+/// A shift with float noise removed, so a whole-pixel shift prints whole.
+fn snap(v: f64) -> f64 {
+    let near = v.round();
+    if (v - near).abs() < 1e-9 { near } else { v }
+}
+
+/// `id at="x y"` for a shift, or `None` if nothing moves. An axis that does not
+/// move keeps its coordinate, so `center` stays `center`.
+fn fix(
+    address: &Address,
+    at: Position,
+    Vec2 { x: dx, y: dy }: Vec2,
+    (width, height): (f64, f64),
+) -> Option<String> {
+    if dx == 0.0 && dy == 0.0 {
+        return None;
+    }
+    let moved = |c: Coord, delta: f64, extent: f64| match delta {
+        0.0 => c,
+        d => Coord::Px(c.resolve(extent) + d),
+    };
+    let (x, y) = (moved(at.x, dx, width), moved(at.y, dy, height));
+    Some(format!("{address} {AT}=\"{x} {y}\""))
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/check.rs"]
+mod tests;

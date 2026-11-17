@@ -3,7 +3,7 @@
 
 [graph]
 all-features = true
-# The platforms motion is built for. Dependencies that only other
+# The platforms nakkash is built for. Dependencies that only other
 # configurations pull in (such as a codec's fuzzing harness under
 # `cfg(fuzzing)`) are not part of any binary, so they are not checked.
 targets = [

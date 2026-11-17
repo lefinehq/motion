@@ -2,21 +2,21 @@ Status: Draft · 2026-11-15
 
 # Glossary
 
-The words we use in motion, and what they mean.
+The words we use in nakkash, and what they mean.
 
 **Address.** The one way to name a layer anywhere in a scene: the ids down to it joined by `/`, then any keys inside it, such as `card/title.fill`. `scene` names the scene itself. See [D43](design/decisions.md#d43-one-layer-address-and-edits-per-instance).
 
 **Agent.** An AI system that writes and edits scenes, for example a coding assistant or a content pipeline.
 
-**Batch.** A file that lists the variants of one master, each an id and its edits; `motion batch` makes, checks and renders them in turn. See [Edits and checks](design/edits-and-checks.md#batches-of-variants).
+**Batch.** A file that lists the variants of one master, each an id and its edits; `nakkash batch` makes, checks and renders them in turn. See [Edits and checks](design/edits-and-checks.md#batches-of-variants).
 
 **Behaviour.** A short description of a whole animation, such as `fade-up 12f stagger 6f`. It is the simplest way to animate.
 
-**Check.** A question motion answers about a scene with numbers, without rendering the video. See [Edits and checks](design/edits-and-checks.md).
+**Check.** A question nakkash answers about a scene with numbers, without rendering the video. See [Edits and checks](design/edits-and-checks.md).
 
 **Compositing.** Combining layers into one frame, with their effects, masks, mattes and blend modes.
 
-**Core prompt.** The short text (≤ 1,000 tokens) that teaches an agent how to use motion. *Topic pages* add detail on demand.
+**Core prompt.** The short text (≤ 1,000 tokens) that teaches an agent how to use nakkash. *Topic pages* add detail on demand.
 
 **Craft lint.** Automatic checks on timing, easing, judder, text hold and layout, computed from the scene. See [Quality](design/quality.md).
 
@@ -62,7 +62,7 @@ The words we use in motion, and what they mean.
 
 **Rasterise.** Turn shapes and text into pixels.
 
-**Reference clip.** A clip made by the lead motion designer in a professional tool, rebuilt in motion to measure how close we get.
+**Reference clip.** A clip made by the lead motion designer in a professional tool, rebuilt in nakkash to measure how close we get.
 
 **Reference.** A value written `"$id"`, which takes the value of slot `id`: of its own composition, else of the scene. `$$` writes a literal dollar. See [Scene format](design/scene-format.md#slots).
 

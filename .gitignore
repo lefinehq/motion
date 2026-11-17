@@ -2,5 +2,5 @@
 # Snapshots insta wrote for review; accept or reject them, never commit them.
 *.snap.new
 *.pending-snap
-# What `motion batch` writes for the variants example.
+# What `nakkash batch` writes for the variants example.
 /examples/advanced/variants/out/

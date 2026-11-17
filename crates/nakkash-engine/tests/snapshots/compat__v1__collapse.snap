@@ -1,0 +1,15 @@
+---
+source: crates/nakkash-engine/tests/compat.rs
+expression: meaning
+---
+frame 0: 994ae7222a68d5e5
+  clipped [1 0 0 1 60 40] 120,80 | 60,40 | 1,1 | 0 | 1 | 1
+  collapsed [1 0 0 1 60 150] 120,190 | 60,40 | 1,1 | 0 | 1 | 1
+
+frame 11: 994ae7222a68d5e5
+  clipped [1 0 0 1 60 40] 120,80 | 60,40 | 1,1 | 0 | 1 | 1
+  collapsed [1 0 0 1 60 150] 120,190 | 60,40 | 1,1 | 0 | 1 | 1
+
+frame 23: 994ae7222a68d5e5
+  clipped [1 0 0 1 60 40] 120,80 | 60,40 | 1,1 | 0 | 1 | 1
+  collapsed [1 0 0 1 60 150] 120,190 | 60,40 | 1,1 | 0 | 1 | 1

@@ -2,7 +2,7 @@ Status: Draft · 2026-11-13
 
 # Rendering
 
-motion turns a scene into video in five steps, and none of them involves a browser. Each frame is worked out independently, so frames can be rendered in parallel on every CPU core. Our target for the 5-second reference clip is under half a second.
+nakkash turns a scene into video in five steps, and none of them involves a browser. Each frame is worked out independently, so frames can be rendered in parallel on every CPU core. Our target for the 5-second reference clip is under half a second.
 
 ## The pipeline
 
@@ -37,22 +37,22 @@ Steps 1–3 never touch pixels. Checks and edits only need these three steps, wh
 - **No start-up cost:** there is no GPU to start up, so short clips start immediately.
 - **Runs anywhere:** it works on any machine, including servers without a GPU.
 
-The rasteriser sits behind a small interface, so it can be swapped later (see [D2](decisions.md#d2-vello-as-the-rasteriser)). That interface is a **display list**: one frame as plain data, a tree of layers whose leaves are filled or stroked paths and glyph runs. `motion-raster` draws it ([D34](decisions.md#d34-a-layer-tree-renderer-on-vello_cpu)):
+The rasteriser sits behind a small interface, so it can be swapped later (see [D2](decisions.md#d2-vello-as-the-rasteriser)). That interface is a **display list**: one frame as plain data, a tree of layers whose leaves are filled or stroked paths and glyph runs. `nakkash-raster` draws it ([D34](decisions.md#d34-a-layer-tree-renderer-on-vello_cpu)):
 
 - A layer has a transform, an opacity, a blend mode, a clip and a list of effects. A layer that needs none of them only moves its children and costs nothing; any of them draws its children into a buffer of their own first, as a nested composition always is.
 - Effects are a registry: a name, typed parameters and a function that draws onto the layer's isolated content. The first is `fill`, which recolours the content and keeps its alpha by painting the colour "source-atop".
 - **Blending space.** `vello_cpu` blends gamma-encoded sRGB values only. That is what projects that do not linearise expect, so imported masters match; a frame that asks for linear-light blending ([D21](decisions.md#d21-linear-light-float-compositing)) is refused with an error until the rasteriser can blend in linear light (it would need to convert paints and layer buffers to linear before compositing and back when packing pixels).
-- **From scene to display list.** The engine maps each evaluated frame (`crates/motion-engine/src/render/`): a visible node becomes a layer with its canvas transform, opacity and effects; shape paints become filled or stroked outlines under their group transforms, their opacity folded into the colour; text runs become glyph runs in their paint order, and under animators each glyph takes its own transform, opacity, colours and stroke width, with a glyph that fades while it draws both a fill and a stroke drawn into a buffer of its own so the stroke does not show through. Faux bold is a stroke in the fill colour, its width 1/24 of the size at 9 px falling to 1/32 from 36 px (the curve Skia's synthetic bold uses); a stroke on the text widens by the same amount. Faux italic slants each glyph 12° about its origin. Neither changes advances, so layout stays as the font sets it. A nested composition is a layer clipped to its canvas over its background, holding its own nodes at the time the scene evaluated.
-- **Speed through the whole pipeline** (*measured*, M4 Max, release build): the ten-layer story scene in `crates/motion-engine/tests/fixtures/story.json` evaluates in 0.010 ms and maps to a display list in 0.007 ms more, then draws in 17.3 ms with float compositing on one thread, 4.8 ms with the integer pipeline and 27.6 ms with portable scalar code (medians over 40 frames); `render_frames` on all 14 threads averages 1.7 ms per frame over 100 frames (`cargo test --release -p motion-engine --test timing -- --ignored --nocapture`).
-- **Speed** (*measured*, M4 Max, one thread, release build): a 1080x1920 frame with ten story-template layers (a plate, two rotated squares, a clipped group, three text lines, a stroked arrow, two recoloured groups) takes 16.7 ms with float compositing, 4.5 ms with the faster integer pipeline, and 26.7 ms with portable scalar code (`cargo test --release -p motion-raster --test timing -- --ignored --nocapture`).
+- **From scene to display list.** The engine maps each evaluated frame (`crates/nakkash-engine/src/render/`): a visible node becomes a layer with its canvas transform, opacity and effects; shape paints become filled or stroked outlines under their group transforms, their opacity folded into the colour; text runs become glyph runs in their paint order, and under animators each glyph takes its own transform, opacity, colours and stroke width, with a glyph that fades while it draws both a fill and a stroke drawn into a buffer of its own so the stroke does not show through. Faux bold is a stroke in the fill colour, its width 1/24 of the size at 9 px falling to 1/32 from 36 px (the curve Skia's synthetic bold uses); a stroke on the text widens by the same amount. Faux italic slants each glyph 12° about its origin. Neither changes advances, so layout stays as the font sets it. A nested composition is a layer clipped to its canvas over its background, holding its own nodes at the time the scene evaluated.
+- **Speed through the whole pipeline** (*measured*, M4 Max, release build): the ten-layer story scene in `crates/nakkash-engine/tests/fixtures/story.json` evaluates in 0.010 ms and maps to a display list in 0.007 ms more, then draws in 17.3 ms with float compositing on one thread, 4.8 ms with the integer pipeline and 27.6 ms with portable scalar code (medians over 40 frames); `render_frames` on all 14 threads averages 1.7 ms per frame over 100 frames (`cargo test --release -p nakkash-engine --test timing -- --ignored --nocapture`).
+- **Speed** (*measured*, M4 Max, one thread, release build): a 1080x1920 frame with ten story-template layers (a plate, two rotated squares, a clipped group, three text lines, a stroked arrow, two recoloured groups) takes 16.7 ms with float compositing, 4.5 ms with the faster integer pipeline, and 26.7 ms with portable scalar code (`cargo test --release -p nakkash-raster --test timing -- --ignored --nocapture`).
 
 **Compositing** combines the layers: effects, masks, mattes, blend modes and 2.5D depth. In v1 it runs on the CPU, written once in Rust. That gives us one implementation, bit-identical results and the same behaviour on every server. Layers with no effects skip this step entirely.
 
 **GPU acceleration** is planned for phase 2. It covers the heavy cases: 4K, strong motion blur, large blurs and procedural noise. If the CPU version misses our speed target at milestone M2, it moves into v1 (see [D3](decisions.md#d3-cpu-first-compositor)).
 
-**Motion blur** blends several in-between moments of the same frame. Because motion can compute any moment exactly, this costs no extra work in the engine. It only multiplies the drawing work.
+**Motion blur** blends several in-between moments of the same frame. Because nakkash can compute any moment exactly, this costs no extra work in the engine. It only multiplies the drawing work.
 
-**Projected layers** are the rasteriser's half of 2.5D ([D58](decisions.md#d58-25d-layers-are-planes-projected-through-a-camera), [plan](../plans/2026-11-21-depth.md)). A layer with `Layer::projection` is a plane seen through a camera: a 3×3 projective matrix (`Homography`) takes its own coordinates to its parent's, in place of its transform (`crates/motion-raster/src/projected.rs`).
+**Projected layers** are the rasteriser's half of 2.5D ([D58](decisions.md#d58-25d-layers-are-planes-projected-through-a-camera), [plan](../plans/2026-11-21-depth.md)). A layer with `Layer::projection` is a plane seen through a camera: a 3×3 projective matrix (`Homography`) takes its own coordinates to its parent's, in place of its transform (`crates/nakkash-raster/src/projected.rs`).
 
 - **Drawing.** Its children, masks, clip and effects are drawn flat in its own coordinates, into a buffer of its own, as an isolated layer's are. Effects get the buffer's space, so blur sizes and points stay in layer units.
 - **The buffer's region** is the part of the plane the canvas sees: the frame's inverse image in front of the camera, worked out as five half-planes clipping the box the layer draws in. That box is its bounds or its children's (glyphs measured from their outlines), grown by each effect's reach (`Reach`, a row of the effect registry) and cut to its clip. The region is then widened by how far its masks and effects read. A plane that draws everywhere, such as one with particles, is cut towards its horizon where 64 × 64 of its units fall within one px.
@@ -61,7 +61,7 @@ The rasteriser sits behind a small interface, so it can be swapped later (see [D
 - **Afterwards** opacity, blend mode and matte (in the parent's coordinates) apply as for a flat layer. A projected filter layer's region is drawn on its plane; its effects run on the canvas, measured by the projection's affine match at the middle of what is seen.
 - **Motion blur** ([D57](decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter)) is `Projection::samples`: the drawing is made once and laid through the map at each moment, averaged at 1/n each. These are whole maps, not moves as `Layer::motion` holds, since the map at the frame may be singular (a plane seen edge-on). A layer with both is refused.
 
-*Measured* (unit tests in `crates/motion-raster/tests/unit/projected.rs`):
+*Measured* (unit tests in `crates/nakkash-raster/tests/unit/projected.rs`):
 
 | Check | Result |
 |---|---|
@@ -73,13 +73,13 @@ The rasteriser sits behind a small interface, so it can be swapped later (see [D
 | Masked, blurred card turned 50°, against the flat drawing at 4× laid by hand with 4 × 4 samples | mean alpha error 0.0005 |
 | Motion-blur samples against `Layer::motion` with the same moves | the same bytes |
 
-*Measured* (M4 Max, one thread, release build, median of 21): a 1920 × 1080 card turned 35° about Y through the default camera, its buffer 2,563 × 1,462 px, draws in 53.3 ms with float compositing and 48.7 ms with the integer pipeline; drawn flat, 3.6 ms and 1.4 ms (`cargo test --release -p motion-raster --test timing -- --ignored --nocapture`). Most of it is sampling, two bilinear reads per px where the plane shrinks: with one read the frame takes 23 ms, with none 11 ms.
+*Measured* (M4 Max, one thread, release build, median of 21): a 1920 × 1080 card turned 35° about Y through the default camera, its buffer 2,563 × 1,462 px, draws in 53.3 ms with float compositing and 48.7 ms with the integer pipeline; drawn flat, 3.6 ms and 1.4 ms (`cargo test --release -p nakkash-raster --test timing -- --ignored --nocapture`). Most of it is sampling, two bilinear reads per px where the plane shrinks: with one read the frame takes 23 ms, with none 11 ms.
 
 ## Encoding
 
 In a fast renderer, encoding is usually the slowest step.
 
-`motion render --out <file>` encodes when the name ends in `.mp4` or `.mov`; a folder gets PNG frames. Frames are drawn on every core and handed to the encoder in order (`Session::render_in_order`), at most two per thread waiting, so memory does not grow with the video's length. It grows with the threads instead: each holds the frame it draws, and a frame with 3D planes seen up close holds about a gigabyte. `--threads N` draws on at most N threads, for a machine shared with other work. `--timings` shows `encode` apart from `render`.
+`nakkash render --out <file>` encodes when the name ends in `.mp4` or `.mov`; a folder gets PNG frames. Frames are drawn on every core and handed to the encoder in order (`Session::render_in_order`), at most two per thread waiting, so memory does not grow with the video's length. It grows with the threads instead: each holds the frame it draws, and a frame with 3D planes seen up close holds about a gigabyte. `--threads N` draws on at most N threads, for a machine shared with other work. `--timings` shows `encode` apart from `render`.
 
 | Codec | Where | From | Container | Default |
 |---|---|---|---|---|
@@ -92,9 +92,9 @@ In a fast renderer, encoding is usually the slowest step.
 
 **How it is built** ([D46](decisions.md#d46-video-is-encoded-in-a-crate-of-its-own-behind-one-codec-trait), [plan](../plans/2026-11-16-encode.md)):
 
-- `motion-encode` knows nothing about scenes. One colour module turns straight-alpha RGBA8 into what codecs take: BT.709 limited-range 4:2:0 with alpha drawn over black, or, for codecs that keep alpha, 16-bit 4:4:4 with straight alpha.
+- `nakkash-encode` knows nothing about scenes. One colour module turns straight-alpha RGBA8 into what codecs take: BT.709 limited-range 4:2:0 with alpha drawn over black, or, for codecs that keep alpha, 16-bit 4:4:4 with straight alpha.
 - Each codec is one `VideoEncoder`; each container one `Muxer`. MP4 and QuickTime are our own writer on `mp4-atom`'s boxes: packets stream to a scratch file and the file is laid out with its index first.
-- The system's encoders are reached through `motion-videotoolbox`, the one crate allowed unsafe code ([D48](decisions.md#d48-unsafe-code-lives-only-in-platform-bindings)).
+- The system's encoders are reached through `nakkash-videotoolbox`, the one crate allowed unsafe code ([D48](decisions.md#d48-unsafe-code-lives-only-in-platform-bindings)).
 - `--video-quality draft|web|master` is a row in one table per codec; ProRes has `master` only.
 
 **Speed and size** (*measured*, M4 Max, release build, 60 frames of `examples/launch.json` at 1080p; PSNR of the decoded RGB against the drawn frames, which 4:2:0 chroma caps near 53 dB):
@@ -114,16 +114,16 @@ The times are the whole render, drawing included, best of three. The colour conv
 
 ProRes 4444 writes the same 60 frames in 1.4 s, about 4 MB, and decodes to the drawn frames with alpha within one level.
 
-**Licence policy.** The motion binary contains no GPL code and no patent-encumbered software encoder. H.264 and HEVC come from the operating system or the GPU vendor, whose licences cover them, or from Cisco's OpenH264 binary under Cisco's own terms. This is how web browsers handle it too. See [D13](decisions.md#d13-codec-licence-policy).
+**Licence policy.** The nakkash binary contains no GPL code and no patent-encumbered software encoder. H.264 and HEVC come from the operating system or the GPU vendor, whose licences cover them, or from Cisco's OpenH264 binary under Cisco's own terms. This is how web browsers handle it too. See [D13](decisions.md#d13-codec-licence-policy).
 
 ## Sound
 
-A scene's sound is mixed apart from its frames ([D56](decisions.md#d56-audio-layers-mixed-at-48-khz-and-read-by-effects), [plan](../plans/2026-11-20-audio.md)). `motion render scene.json --out mix.wav` writes it alone, and a video of a scene that plays sound holds the mix of the frames drawn as its second track.
+A scene's sound is mixed apart from its frames ([D56](decisions.md#d56-audio-layers-mixed-at-48-khz-and-read-by-effects), [plan](../plans/2026-11-20-audio.md)). `nakkash render scene.json --out mix.wav` writes it alone, and a video of a scene that plays sound holds the mix of the frames drawn as its second track.
 
-- **Reading.** `motion-audio` reads WAV itself and MP3, FLAC and Ogg Vorbis through pure Rust decoders, chosen by the file's first bytes. Each file is decoded once per session, whole, folded down to stereo by where its speakers stand (ITU-R BS.775), and resampled to 48 kHz by our own band-limited kernel, which gives the same samples on every machine.
+- **Reading.** `nakkash-audio` reads WAV itself and MP3, FLAC and Ogg Vorbis through pure Rust decoders, chosen by the file's first bytes. Each file is decoded once per session, whole, folded down to stereo by where its speakers stand (ITU-R BS.775), and resampled to 48 kHz by our own band-limited kernel, which gives the same samples on every machine.
 - **Mixing.** Each audio layer is a route from the canvas down through `comp` layers. The mix asks each route what plays once a millisecond (the file position, the gain from every `volume` on the way, the speed from every `stretch`) and moves linearly between, so fades have no steps; around a layer's start or end it asks every sample. A layer that plays at its own rate copies samples straight from the file; one stretched reads through the kernel, narrowed so nothing folds back. Layers are summed without a limiter, and a render reports a peak above full scale.
 - **In the video.** The mix follows the frames in the file, in one chunk, so the index ahead of both still lets a player start at once.
-  - **MP4** takes AAC-LC at 192 kbit/s from the system's encoder ([D13](decisions.md#d13-codec-licence-policy)): AudioToolbox on macOS. The encoder's priming (2,112 frames) is cut by an edit list, so the sound starts with the first frame. Where the system has no AAC encoder motion can use (Linux and Windows today), a scene with sound is refused in MP4, with `.mov` or `.wav` offered instead.
+  - **MP4** takes AAC-LC at 192 kbit/s from the system's encoder ([D13](decisions.md#d13-codec-licence-policy)): AudioToolbox on macOS. The encoder's priming (2,112 frames) is cut by an edit list, so the sound starts with the first frame. Where the system has no AAC encoder nakkash can use (Linux and Windows today), a scene with sound is refused in MP4, with `.mov` or `.wav` offered instead.
   - **MOV** takes 16-bit PCM on every platform, from the mix's floats with triangular dither of one step, from a fixed seed, so the same mix gives the same bytes.
   - On the 40 s demo film both decode to the mix's 1,920,000 frames with no offset: AAC within 54 dB SNR, PCM within 73 dB.
 - **Reading sound while drawing.** `audio-spectrum` and `audio-waveform` ask the mix for the window they need at each frame, so frames still draw alone, in any order, on every core. A track written `@level` follows a sound: a scene with one compiles twice, first to find the sound's routes, then with the levels measured once per frame of its list as keys (step `listen`).
@@ -142,20 +142,20 @@ A scene's sound is mixed apart from its frames ([D56](decisions.md#d56-audio-lay
 |---|---|
 | Remotion, warm | 3.3 s (*measured*) |
 | HyperFrames, warm | 5.3 s (*measured*) |
-| **motion** | **≤ 0.5 s end to end, cold start ≤ 150 ms (*target*)** |
+| **nakkash** | **≤ 0.5 s end to end, cold start ≤ 150 ms (*target*)** |
 
 Where the time goes in browser-based tools:
 
 - **Fixed start-up cost:** launching the browser and bundling the code.
 - **Capturing each frame** from the browser.
 
-motion has neither.
+nakkash has neither.
 
 **Long videos** can be split into chunks, rendered by several processes or machines, and joined. This works because no frame depends on the one before it.
 
 ## Repeatability
 
-- **Frames:** on the CPU path, the same scene, motion version, operating system and CPU type always produce identical pixels. Golden images are drawn with portable scalar code instead of the processor's SIMD instructions, so the same PNGs compare exactly on every machine CI runs on; delivered frames use the fastest instructions, which may differ from the goldens by a rounding step.
+- **Frames:** on the CPU path, the same scene, nakkash version, operating system and CPU type always produce identical pixels. Golden images are drawn with portable scalar code instead of the processor's SIMD instructions, so the same PNGs compare exactly on every machine CI runs on; delivered frames use the fastest instructions, which may differ from the goldens by a rounding step.
 - **Encoded files:** these are not guaranteed identical, because hardware encoders are not.
 - **The future GPU path:** it will promise frames that look the same, not frames that are bit-identical.
 

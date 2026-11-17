@@ -1,4 +1,4 @@
-{"motion":1,"size":"1080x1920","fps":30,"dur":"9s","bg":"#0F1115",
+{"nakkash":1,"size":"1080x1920","fps":30,"dur":"9s","bg":"#0F1115",
 "labels":{"punch":"1.2s","body":"2.8s","brew":"body+1.6s","done":"brew+1.6s","end":"done+1.6s"},
 "comps":{
 "hook":{"size":"1080x1920","dur":"3.2s","labels":{"punch":"1.2s"},"layers":[

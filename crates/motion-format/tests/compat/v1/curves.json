@@ -1,9 +1,0 @@
-{"motion":1,"size":"640x360","fps":24,"dur":"5s","bg":"#101418",
-"layers":[
-{"id":"families","rect":"30x30","fill":"#3B82F6","position":[40,60],
- "anim":{"x":[[0,40,"in-quad"],[10,600,"out-cubic"],[20,40,"in-out-quart"],[30,600,"out-in-quint"],[40,40,"out-sine"],[50,600,"in-circ"],[60,40,"out-expo"],[70,600,"out-back(2)"],[80,40,"out-elastic(1.2,.4)"],[90,600,"out-bounce"],[100,40,"in(2.5)"],[110,600]]}},
-{"id":"ticker","rect":"30x30","fill":"#FFE000","position":[320,180],"anim":{"rotate":"0 -> 90 @0-2s steps(3)","opacity":"0 -> 1 @0-1s steps(4,start)"}},
-{"id":"swing","rect":"40x40","fill":"#E4572E","position":[100,300],
- "anim":{"position":[{"t":0,"v":[100,300],"curve":"out-elastic"},{"t":"2s","v":[540,300]}]}},
-{"id":"pop","text":"Pop","font":"Inter Variable 40","fill":"#FFFFFF","at":"520 80","in":"pop 18f in-out-back @6f"}
-]}

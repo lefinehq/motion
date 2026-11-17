@@ -1601,276 +1601,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "motion-audio"
-version = "0.0.0"
-dependencies = [
- "claxon",
- "lewton",
- "motion-format",
- "nanomp3",
- "pretty_assertions",
- "rstest",
-]
-
-[[package]]
-name = "motion-cli"
-version = "0.0.0"
-dependencies = [
- "clap",
- "motion-audio",
- "motion-encode",
- "motion-engine",
- "motion-fonts",
- "motion-format",
- "pretty_assertions",
- "rstest",
- "serde",
- "serde_json",
- "strum",
- "tracing",
-]
-
-[[package]]
-name = "motion-edit"
-version = "0.0.0"
-dependencies = [
- "derive_more",
- "insta",
- "motion-format",
- "pretty_assertions",
- "proptest",
- "rstest",
- "serde_json",
- "tracing",
- "winnow",
-]
-
-[[package]]
-name = "motion-encode"
-version = "0.0.0"
-dependencies = [
- "motion-format",
- "motion-videotoolbox",
- "mp4-atom",
- "pretty_assertions",
- "proptest",
- "rav1e",
- "rstest",
- "strum",
-]
-
-[[package]]
-name = "motion-engine"
-version = "0.0.0"
-dependencies = [
- "glam",
- "insta",
- "motion-audio",
- "motion-edit",
- "motion-fonts",
- "motion-format",
- "motion-import",
- "motion-query",
- "motion-raster",
- "motion-scene",
- "motion-text",
- "motion-vector",
- "motion-video",
- "pathdiff",
- "pretty_assertions",
- "rstest",
- "serde",
- "serde_json",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "motion-expr"
-version = "0.0.0"
-dependencies = [
- "boa_ast",
- "boa_engine",
- "boa_interner",
- "boa_parser",
- "libm",
- "motion-format",
- "pretty_assertions",
- "rstest",
-]
-
-[[package]]
-name = "motion-fonts"
-version = "0.0.0"
-dependencies = [
- "base64",
- "motion-format",
- "motion-text",
- "pretty_assertions",
- "rstest",
- "serde",
- "serde_json",
- "sha2",
- "ureq",
-]
-
-[[package]]
-name = "motion-format"
-version = "0.0.0"
-dependencies = [
- "derive_more",
- "indexmap",
- "insta",
- "kurbo",
- "libm",
- "pretty_assertions",
- "proptest",
- "rstest",
- "serde",
- "serde_json",
- "serde_path_to_error",
- "tracing",
- "winnow",
-]
-
-[[package]]
-name = "motion-import"
-version = "0.0.0"
-dependencies = [
- "binrw",
- "derive_more",
- "flate2",
- "insta",
- "kurbo",
- "motion-expr",
- "motion-format",
- "motion-import",
- "motion-scene",
- "pretty_assertions",
- "proptest",
- "rstest",
- "serde",
- "serde_json",
- "serde_path_to_error",
- "strum",
- "winnow",
- "zip",
-]
-
-[[package]]
-name = "motion-postscript"
-version = "0.0.0"
-dependencies = [
- "flate2",
- "indexmap",
- "kurbo",
- "pretty_assertions",
- "proptest",
- "rstest",
- "vello_cpu",
-]
-
-[[package]]
-name = "motion-query"
-version = "0.0.0"
-dependencies = [
- "insta",
- "kurbo",
- "motion-format",
- "motion-scene",
- "motion-text",
- "pretty_assertions",
- "rstest",
- "strum",
- "tracing",
-]
-
-[[package]]
-name = "motion-raster"
-version = "0.0.0"
-dependencies = [
- "fearless_simd",
- "kurbo",
- "motion-format",
- "peniko",
- "png",
- "proptest",
- "rstest",
- "skrifa",
- "vello_cpu",
- "zune-jpeg",
-]
-
-[[package]]
-name = "motion-scene"
-version = "0.0.0"
-dependencies = [
- "glam",
- "kurbo",
- "libm",
- "linesweeper",
- "motion-format",
- "motion-text",
- "pretty_assertions",
- "proptest",
- "rstest",
- "tracing",
-]
-
-[[package]]
-name = "motion-text"
-version = "0.0.0"
-dependencies = [
- "insta",
- "kurbo",
- "linebender_resource_handle",
- "motion-format",
- "motion-import",
- "parlance",
- "parley",
- "proptest",
- "rstest",
- "skrifa",
- "vello_cpu",
-]
-
-[[package]]
-name = "motion-vector"
-version = "0.0.0"
-dependencies = [
- "hayro-interpret",
- "hayro-syntax",
- "motion-format",
- "motion-postscript",
- "motion-raster",
- "rstest",
-]
-
-[[package]]
-name = "motion-video"
-version = "0.0.0"
-dependencies = [
- "motion-encode",
- "motion-format",
- "motion-videotoolbox",
- "rstest",
- "zune-jpeg",
-]
-
-[[package]]
-name = "motion-videotoolbox"
-version = "0.0.0"
-dependencies = [
- "objc2-audio-toolbox",
- "objc2-core-audio-types",
- "objc2-core-foundation",
- "objc2-core-media",
- "objc2-core-video",
- "objc2-video-toolbox",
- "rstest",
-]
-
-[[package]]
 name = "moxcms"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1891,6 +1621,277 @@ dependencies = [
  "pastey 0.2.3",
  "thiserror 1.0.69",
  "tracing",
+]
+
+[[package]]
+name = "nakkash-audio"
+version = "0.0.0"
+dependencies = [
+ "claxon",
+ "lewton",
+ "nakkash-format",
+ "nanomp3",
+ "pretty_assertions",
+ "rstest",
+]
+
+[[package]]
+name = "nakkash-cli"
+version = "0.0.0"
+dependencies = [
+ "clap",
+ "nakkash-audio",
+ "nakkash-encode",
+ "nakkash-engine",
+ "nakkash-fonts",
+ "nakkash-format",
+ "pretty_assertions",
+ "rstest",
+ "serde",
+ "serde_json",
+ "strum",
+ "tracing",
+]
+
+[[package]]
+name = "nakkash-edit"
+version = "0.0.0"
+dependencies = [
+ "derive_more",
+ "insta",
+ "nakkash-format",
+ "pretty_assertions",
+ "proptest",
+ "rstest",
+ "serde_json",
+ "tracing",
+ "winnow",
+]
+
+[[package]]
+name = "nakkash-encode"
+version = "0.0.0"
+dependencies = [
+ "mp4-atom",
+ "nakkash-format",
+ "nakkash-videotoolbox",
+ "pretty_assertions",
+ "proptest",
+ "rav1e",
+ "rstest",
+ "strum",
+]
+
+[[package]]
+name = "nakkash-engine"
+version = "0.0.0"
+dependencies = [
+ "glam",
+ "insta",
+ "nakkash-audio",
+ "nakkash-edit",
+ "nakkash-fonts",
+ "nakkash-format",
+ "nakkash-import",
+ "nakkash-query",
+ "nakkash-raster",
+ "nakkash-scene",
+ "nakkash-text",
+ "nakkash-vector",
+ "nakkash-video",
+ "pathdiff",
+ "pretty_assertions",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "nakkash-expr"
+version = "0.0.0"
+dependencies = [
+ "boa_ast",
+ "boa_engine",
+ "boa_interner",
+ "boa_parser",
+ "libm",
+ "nakkash-format",
+ "pretty_assertions",
+ "rstest",
+]
+
+[[package]]
+name = "nakkash-fonts"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "nakkash-format",
+ "nakkash-text",
+ "pretty_assertions",
+ "rstest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tracing",
+ "ureq",
+]
+
+[[package]]
+name = "nakkash-format"
+version = "0.0.0"
+dependencies = [
+ "derive_more",
+ "indexmap",
+ "insta",
+ "kurbo",
+ "libm",
+ "pretty_assertions",
+ "proptest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "tracing",
+ "winnow",
+]
+
+[[package]]
+name = "nakkash-import"
+version = "0.0.0"
+dependencies = [
+ "binrw",
+ "derive_more",
+ "flate2",
+ "insta",
+ "kurbo",
+ "nakkash-expr",
+ "nakkash-format",
+ "nakkash-import",
+ "nakkash-scene",
+ "pretty_assertions",
+ "proptest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "strum",
+ "winnow",
+ "zip",
+]
+
+[[package]]
+name = "nakkash-postscript"
+version = "0.0.0"
+dependencies = [
+ "flate2",
+ "indexmap",
+ "kurbo",
+ "pretty_assertions",
+ "proptest",
+ "rstest",
+ "vello_cpu",
+]
+
+[[package]]
+name = "nakkash-query"
+version = "0.0.0"
+dependencies = [
+ "insta",
+ "kurbo",
+ "nakkash-format",
+ "nakkash-scene",
+ "nakkash-text",
+ "pretty_assertions",
+ "rstest",
+ "strum",
+ "tracing",
+]
+
+[[package]]
+name = "nakkash-raster"
+version = "0.0.0"
+dependencies = [
+ "fearless_simd",
+ "kurbo",
+ "nakkash-format",
+ "peniko",
+ "png",
+ "proptest",
+ "rstest",
+ "skrifa",
+ "vello_cpu",
+ "zune-jpeg",
+]
+
+[[package]]
+name = "nakkash-scene"
+version = "0.0.0"
+dependencies = [
+ "glam",
+ "kurbo",
+ "libm",
+ "linesweeper",
+ "nakkash-format",
+ "nakkash-text",
+ "pretty_assertions",
+ "proptest",
+ "rstest",
+ "tracing",
+]
+
+[[package]]
+name = "nakkash-text"
+version = "0.0.0"
+dependencies = [
+ "insta",
+ "kurbo",
+ "linebender_resource_handle",
+ "nakkash-format",
+ "nakkash-import",
+ "parlance",
+ "parley",
+ "proptest",
+ "rstest",
+ "skrifa",
+ "vello_cpu",
+]
+
+[[package]]
+name = "nakkash-vector"
+version = "0.0.0"
+dependencies = [
+ "hayro-interpret",
+ "hayro-syntax",
+ "nakkash-format",
+ "nakkash-postscript",
+ "nakkash-raster",
+ "rstest",
+]
+
+[[package]]
+name = "nakkash-video"
+version = "0.0.0"
+dependencies = [
+ "nakkash-encode",
+ "nakkash-format",
+ "nakkash-videotoolbox",
+ "rstest",
+ "zune-jpeg",
+]
+
+[[package]]
+name = "nakkash-videotoolbox"
+version = "0.0.0"
+dependencies = [
+ "objc2-audio-toolbox",
+ "objc2-core-audio-types",
+ "objc2-core-foundation",
+ "objc2-core-media",
+ "objc2-core-video",
+ "objc2-video-toolbox",
+ "rstest",
 ]
 
 [[package]]

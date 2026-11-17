@@ -1,6 +1,6 @@
 # Showcase sequences
 
-Long, dense films written from scratch, each in several acts, with something meaningful moving at every moment. They use only the built-in `Inter Variable` and no media files, invent their products, brands and data, and pass `motion check` with nothing found; a test in `crates/motion-cli/tests/showcase.rs` keeps each one so. The [examples](../README.md) show one idea each; these show how the ideas combine at the scale of a finished piece.
+Long, dense films written from scratch, each in several acts, with something meaningful moving at every moment. They use only the built-in `Inter Variable` and no media files, invent their products, brands and data, and pass `nakkash check` with nothing found; a test in `crates/nakkash-cli/tests/showcase.rs` keeps each one so. The [examples](../README.md) show one idea each; these show how the ideas combine at the scale of a finished piece.
 
 ## Product launch
 
@@ -46,22 +46,22 @@ Opacity follows the move it belongs to (`out-quad` in, `in-quad` out, starting a
 
 | Measure | Value |
 |---|---|
-| `motion check` | `OK 742`, nothing found |
+| `nakkash check` | `OK 742`, nothing found |
 | Compositions, layers | 16 compositions, 170 layers written, 256 drawn once compositions are expanded |
 | Animation | 284 tracks, 739 keyframes, 126 text animators, 418 shape items and effects |
 | Elements in motion | 9.5 per frame on average (7.5 without the two background glows), up to 29; no frame where nothing moves; the longest stretch with only the glows moving is the 16-frame hold at the end |
-| Smoothness | 25 main movers sampled every frame with `motion at`: no change of velocity between two frames above 25 % of the mover's peak speed |
+| Smoothness | 25 main movers sampled every frame with `nakkash at`: no change of velocity between two frames above 25 % of the mover's peak speed |
 | Paths | no turn above 10° between two frames while a mover goes faster than 10 % of its peak speed |
 | Render | 289 s for 1172 frames on a 12-core laptop (about 4 frames a second), H.264 |
 
 An element is a layer, shape item, effect, mask or text animator with a track, counted while that track moves and its layer shows.
 
-The test runs `check`'s rules over every frame, in 6 s in a debug build. The pixel gates (`contrast`, `flash`) draw the film, which takes about 16 minutes in a debug build, so after an edit run `motion check` from a release build, where the whole check takes about 10 s.
+The test runs `check`'s rules over every frame, in 6 s in a debug build. The pixel gates (`contrast`, `flash`) draw the film, which takes about 16 minutes in a debug build, so after an edit run `nakkash check` from a release build, where the whole check takes about 10 s.
 
 To render it:
 
 ```sh
-motion render examples/showcase/product-launch.json --out product-launch.mp4
+nakkash render examples/showcase/product-launch.json --out product-launch.mp4
 ```
 
 ## Brand identity system
@@ -71,7 +71,7 @@ motion render examples/showcase/product-launch.json --out product-launch.mp4
 [`brand-system.json`](brand-system.json), 1920x1080, 30 fps, 32 s. The identity of a fictional studio, Halvane, built in front of you: a construction sheet draws itself, the mark is made from its geometry, the wordmark sets, the palette, pattern and applications follow, and it ends on the lockup it started from. The GIF shows 13.0–19.2 s, drawn without the film's grain to stay small.
 
 ```sh
-motion render examples/showcase/brand-system.json --out brand-system.mp4
+nakkash render examples/showcase/brand-system.json --out brand-system.mp4
 ```
 
 | Act | Label | What happens |
@@ -99,7 +99,7 @@ Staggers are 2 frames (67 ms). A move leads and its fade follows: opacity has it
 
 **What it uses.** Text animators by character and word with `range` selectors in fraction and `index` units, `ease-high`/`ease-low` on a `triangle` wave, `tracking`, `blur`, `skew`, random `order` with `seed`; trims with offsets, `merge` `subtract`, `round-corners`, `expand` with `copies` and `copy-offset`, four nested repeaters; masks with keyed paths and track mattes; ten compositions with slots and `overrides` (the digit wheel is one composition used ten times), pivots and parenting; a 2.5D camera with `target`, `target-z` and `orient`, 3D planes and shadow planes; `remap` (the display keeps playing the pattern, slowing to a stop); `fractal-noise` grain under `overlay`, `glow`, `gaussian-blur`, `screen` sweeps; motion blur on pivots, pushes and compositions; `in`/`out` presets and labels.
 
-**Numbers.** 152 layers in 10 compositions, 649 keyframes. On average 8.1 animated values are changing in any frame, and no second has fewer than 2.8. `motion check` prints `OK 488`. Sampled every frame with `motion at`, the mark's move, the palette's push, the pattern's push and scale, and the camera have no frame-to-frame speed change above 25 % of their peak. The zoom into the palette, evaluated from its curve, accelerates smoothly into its cut. Of the 58 joins in the scene's curved paths, none turns by more than 10°. Rendering takes 95–210 s on an M-series Mac, depending on load.
+**Numbers.** 152 layers in 10 compositions, 649 keyframes. On average 8.1 animated values are changing in any frame, and no second has fewer than 2.8. `nakkash check` prints `OK 488`. Sampled every frame with `nakkash at`, the mark's move, the palette's push, the pattern's push and scale, and the camera have no frame-to-frame speed change above 25 % of their peak. The zoom into the palette, evaluated from its curve, accelerates smoothly into its cut. Of the 58 joins in the scene's curved paths, none turns by more than 10°. Rendering takes 95–210 s on an M-series Mac, depending on load.
 
 ## Data story
 

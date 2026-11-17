@@ -2,18 +2,18 @@ Status: Draft · 2026-11-15
 
 # Variants
 
-In v1, motion turns a finished, professionally designed project into variants. A designer makes the master. The AI makes the versions: new copy, new sizes, shorter cuts, other languages, and its own takes, all within the designer's style. Every variant is checked before it is rendered.
+In v1, nakkash turns a finished, professionally designed project into variants. A designer makes the master. The AI makes the versions: new copy, new sizes, shorter cuts, other languages, and its own takes, all within the designer's style. Every variant is checked before it is rendered.
 
 ## The workflow
 
 1. **The designer finishes the master** in their desktop motion-design tool and saves the project.
-2. **motion imports it.** `motion import` reads the `.aep` project itself, or the one inside a `.mogrt` template, whose panel of controls becomes the scene's slots ([D53](decisions.md#d53-a-mogrt-imports-as-its-project-with-its-controls-as-slots)), with no desktop tool installed ([D30](decisions.md#d30-read-aep-projects-directly)), and writes a motion scene with a report of what it mapped, defaulted and could not hold yet. The tool's own render of the master, or the template's preview, is kept as the reference to compare against.
-3. **motion builds the variant surface.** This is a compact summary of the master: its roles, beats, editable values, style and locks. The designer confirms the roles once per master.
+2. **nakkash imports it.** `nakkash import` reads the `.aep` project itself, or the one inside a `.mogrt` template, whose panel of controls becomes the scene's slots ([D53](decisions.md#d53-a-mogrt-imports-as-its-project-with-its-controls-as-slots)), with no desktop tool installed ([D30](decisions.md#d30-read-aep-projects-directly)), and writes a nakkash scene with a report of what it mapped, defaulted and could not hold yet. The tool's own render of the master, or the template's preview, is kept as the reference to compare against.
+3. **nakkash builds the variant surface.** This is a compact summary of the master: its roles, beats, editable values, style and locks. The designer confirms the roles once per master.
 4. **An agent makes variants.** It turns a brief into one-line edits, runs `check`, and renders.
 5. **The designer reviews the variants.** They approve each one, or tweak it with the same one-line edits.
-6. **A variant can go back to the project.** `motion export` patches each edited value into the bytes the import read it from, and leaves every other byte as it was ([D45](decisions.md#d45-export-patches-the-project-it-came-from)), so the designer can finish it in their tool. A slot that came from an expression control goes back into that control, so the template opens with the variant's values.
+6. **A variant can go back to the project.** `nakkash export` patches each edited value into the bytes the import read it from, and leaves every other byte as it was ([D45](decisions.md#d45-export-patches-the-project-it-came-from)), so the designer can finish it in their tool. A slot that came from an expression control goes back into that control, so the template opens with the variant's values.
 
-Steps 1, 2, 4 and 6 work today, and step 4 works for many variants at once: `motion batch` makes each from the master, refuses the edits a lock holds, checks it and renders it ([D52](decisions.md#d52-a-batch-makes-every-variant-from-one-master)). Of step 3, roles, locks and slots work today; beats and the style profile come next in [M3](roadmap.md#m3-variants).
+Steps 1, 2, 4 and 6 work today, and step 4 works for many variants at once: `nakkash batch` makes each from the master, refuses the edits a lock holds, checks it and renders it ([D52](decisions.md#d52-a-batch-makes-every-variant-from-one-master)). Of step 3, roles, locks and slots work today; beats and the style profile come next in [M3](roadmap.md#m3-variants).
 
 ## Import
 
@@ -59,7 +59,7 @@ locks   logo, palette, typefaces, end card
 slots   $accent color #E63946 (14) · $headline text "Launch Week" (1) · card-2 $title "Sale"
 ```
 
-**Roles** say which layer is the headline, the logo, the call to action, the product and the background ([D50](decisions.md#d50-roles-name-what-a-masters-layers-do)). A role names a layer by its address, so it can sit inside a composition, or a slot by `$id`. An edit may target a role, `@headline text="Sale"`, so one brief works on every master, and `motion roles` lists them.
+**Roles** say which layer is the headline, the logo, the call to action, the product and the background ([D50](decisions.md#d50-roles-name-what-a-masters-layers-do)). A role names a layer by its address, so it can sit inside a composition, or a slot by `$id`. An edit may target a role, `@headline text="Sale"`, so one brief works on every master, and `nakkash roles` lists them.
 - The import proposes roles from layer names, and the designer confirms them with an edit, `scene roles.headline=card/title`. Positions and content may sharpen the guess later.
 - A naming convention in the project, such as prefixing a layer name with `@headline`, skips the guessing.
 
@@ -74,13 +74,13 @@ slots   $accent color #E63946 (14) · $headline text "Launch Week" (1) · card-2
 - type scale
 - margins and grid
 
-**Slots** are the values the template names for change ([D44](decisions.md#d44-slots-are-named-values-that-layers-follow)): each has a type and a label, and every value written `"$id"` follows it, so one edit, `$accent=#2A9D8F`, changes them all. The import makes them from the expression controls a template reads, and an instance of a composition gives its slots values of its own. `motion slots --json` lists them with the place of each value that follows, which is the first thing an agent reads.
+**Slots** are the values the template names for change ([D44](decisions.md#d44-slots-are-named-values-that-layers-follow)): each has a type and a label, and every value written `"$id"` follows it, so one edit, `$accent=#2A9D8F`, changes them all. The import makes them from the expression controls a template reads, and an instance of a composition gives its slots values of its own. `nakkash slots --json` lists them with the place of each value that follows, which is the first thing an agent reads.
 
 **Locks** are what a variant may never change ([D51](decisions.md#d51-locks-are-refused-in-the-edit)): a role, a layer and everything inside it, a slot, or the scene's `palette` and `typefaces`. An edit that touches one is refused with the lock named, so a variant never holds a locked change. The import locks the logo, the palette and the typefaces when it finds a logo, and the end card once the designer names it. The designer can add or remove locks; a batch cannot.
 
 ## Kinds of variant
 
-| Kind | What changes | How motion does it | What `check` guards |
+| Kind | What changes | How nakkash does it | What `check` guards |
 |---|---|---|---|
 | **Swap** | Text, images, colours within the palette, product shots | Edits on roles | Overflow, reading time, contrast |
 | **Reframe** | 16:9 to 9:16, 1:1 or 4:5 | Re-lays out each role inside the new safe zones; reframes wide shots with the camera | Safe areas, overlap, cropped content |
@@ -92,7 +92,7 @@ Variants combine. For example: German, 9:16, 15 seconds, with a new hook.
 
 ## Quality
 
-- **The master is the reference.** motion's render of the imported master is compared pixel by pixel against the tool's own render (see [Quality](quality.md)). `motion diff` measures one scene against reference frames, and `motion fidelity` measures every local sample and keeps a ledger, so a change that makes any master worse shows up.
+- **The master is the reference.** nakkash's render of the imported master is compared pixel by pixel against the tool's own render (see [Quality](quality.md)). `nakkash diff` measures one scene against reference frames, and `nakkash fidelity` measures every local sample and keeps a ledger, so a change that makes any master worse shows up.
 - **Every variant must pass** the gates, craft lint and checks before it renders.
 - **The designer's approval rate** is the main measure: the share of variants approved without changes.
 - **At milestones,** blind raters compare AI variants with variants a designer made by hand.
@@ -100,5 +100,5 @@ Variants combine. For example: German, 9:16, 15 seconds, with a new hook.
 ## Later
 
 - Creating videos from scratch (its own roadmap)
-- Templates from other motion-design tools. Some wrap a project motion already reads, with their editable values listed; others are node graphs or XML scenes, which need their own readers.
+- Templates from other motion-design tools. Some wrap a project nakkash already reads, with their editable values listed; others are node graphs or XML scenes, which need their own readers.
 - Exporting a scene that did not come from a project

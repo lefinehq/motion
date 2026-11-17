@@ -2,14 +2,14 @@ Status: Draft · 2026-11-13
 
 # Scope
 
-This document says what motion does in v1, what comes later, and what it will not do. It is the single source for scope. If another document disagrees, this one wins.
+This document says what nakkash does in v1, what comes later, and what it will not do. It is the single source for scope. If another document disagrees, this one wins.
 
 ## The scope test
 
 A request is in scope only if it passes all three tests:
 
-1. **It helps turn a scene into a video file.** motion produces video. It is not a player, an app runtime or a service.
-2. **It can be written in the scene format, and checks still work on it.** If the agent can't describe it compactly, or motion can't answer questions about it, it doesn't fit.
+1. **It helps turn a scene into a video file.** nakkash produces video. It is not a player, an app runtime or a service.
+2. **It can be written in the scene format, and checks still work on it.** If the agent can't describe it compactly, or nakkash can't answer questions about it, it doesn't fit.
 3. **Rendering stays offline.** The render needs no browser, no network and no AI model.
 
 ## In scope for v1
@@ -22,7 +22,7 @@ A request is in scope only if it passes all three tests:
   - MOV ProRes 4444 with transparency
 - **Images:**
   - PNG sequences
-  - single stills (`motion still`)
+  - single stills (`nakkash still`)
 - **Canvas:**
   - any size up to 4K, any aspect ratio
   - up to 60 fps
@@ -34,10 +34,10 @@ A request is in scope only if it passes all three tests:
 - **Fonts:**
   - Inter, built in
   - font files
-  - fonts downloaded with `motion fonts add`
+  - fonts downloaded with `nakkash fonts add`
 - **Images:** PNG, JPEG, WebP, SVG.
 - **Audio:** WAV, MP3, FLAC and Ogg Vorbis, told by their first bytes, not their names. AAC (`.m4a`, and the sound of video files) will come through the operating system (audio plan step 4).
-- **Data and variables:** render one scene many times with different data, for example `motion render scene.json --data rows.json`. This is a common need in programmable video, and the `data` field already supports it.
+- **Data and variables:** render one scene many times with different data, for example `nakkash render scene.json --data rows.json`. This is a common need in programmable video, and the `data` field already supports it.
 
 ### Import and variants (the v1 focus)
 
@@ -58,12 +58,12 @@ Everything in the [core tier](features.md#core-tier-v1):
 - basic audio, and effects and animation that read it ([D56](decisions.md#d56-audio-layers-mixed-at-48-khz-and-read-by-effects))
 - checks
 
-### Ways to drive motion
+### Ways to drive nakkash
 
 - **The command-line tool:** `render`, `still`, `check`, `at`, `assert`, `edit`, `explain`, `prompt`, `fonts`, `bench`.
 - **An MCP server** with the same operations.
 - **A Node library** with TypeScript types.
-- **`motion prompt`:** the core prompt and topic pages that teach an agent.
+- **`nakkash prompt`:** the core prompt and topic pages that teach an agent.
 
 ### Platforms and languages
 
@@ -87,22 +87,22 @@ Everything in the [core tier](features.md#core-tier-v1):
 | Live preview (a player that reloads as the scene changes) | Agents don't need it, but people will |
 | Browser preview or player (WebAssembly) | The core is kept ready for it (see [D15](decisions.md#d15-webassembly-ready-core)) |
 | A timeline editor | Will sit on top of the edit language |
-| Publishing Rust crates | Only if people ask to embed motion in Rust |
+| Publishing Rust crates | Only if people ask to embed nakkash in Rust |
 
 ## Out of scope
 
 These are deliberate choices, not gaps.
 
-| motion will not… | Because |
+| nakkash will not… | Because |
 |---|---|
-| **Generate media with AI**: video from text, images, voices, music | motion arranges and animates assets. Agents bring the assets from other tools. |
-| **Call AI models** or run an agent itself | motion is the engine an agent drives. It stays neutral and has no API costs (see [D7](decisions.md#d7-motion-does-not-call-models)). |
-| **Be interactive**: UI animation in apps, state machines, input handling | motion makes video files |
+| **Generate media with AI**: video from text, images, voices, music | nakkash arranges and animates assets. Agents bring the assets from other tools. |
+| **Call AI models** or run an agent itself | nakkash is the engine an agent drives. It stays neutral and has no API costs (see [D7](decisions.md#d7-motion-does-not-call-models)). |
+| **Be interactive**: UI animation in apps, state machines, input handling | nakkash makes video files |
 | **Edit footage**: long-form cutting, rotoscoping, tracking, keying, stabilisation | That is a video editor's job, not a motion-design engine's |
 | **Run web content**: HTML, web pages, JavaScript libraries inside scenes | It would need a browser and would break the checks |
 | **Run arbitrary scripts** inside scenes | Modifiers cover the need, and stay checkable (see [D10](decisions.md#d10-modifiers-instead-of-scripts)) |
-| **Support third-party effect plugins** | Effects are written for motion and checked by motion |
-| **Stream live** or render in real time for broadcast | motion renders files offline |
+| **Support third-party effect plugins** | Effects are written for nakkash and checked by nakkash |
+| **Stream live** or render in real time for broadcast | nakkash renders files offline |
 | **Do advanced audio production**: effects, EQ, mastering | v1 places, trims, fades and mixes. That is enough for video. |
 | **Be a hosted service**: accounts, cloud rendering, billing | The open-source project is the engine. Chunked rendering makes it easy for others to run it at scale. |
 | **Ship an asset or template marketplace** | Out of the engine's job |

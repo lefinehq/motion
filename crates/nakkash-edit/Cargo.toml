@@ -1,0 +1,25 @@
+[package]
+name = "nakkash-edit"
+description = "A one-line edit language for nakkash scenes: parse a line like `card fill=#FF0000`, apply it, validate the result."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+derive_more.workspace = true
+nakkash-format = { path = "../nakkash-format" }
+serde_json = { workspace = true }
+winnow.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
+pretty_assertions.workspace = true
+insta.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true

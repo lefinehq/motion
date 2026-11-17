@@ -1,0 +1,28 @@
+[package]
+name = "nakkash-video"
+description = "Reads video clips: the MP4 and QuickTime containers, decoders for the codecs footage uses (H.264 through the system's decoder), frame by frame with seeking."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+nakkash-format = { path = "../nakkash-format" }
+# Photo JPEG frames; the same decoder pictures use.
+zune-jpeg = "0.5"
+
+# H.264 through the system's decoder (D13, D60).
+[target.'cfg(target_os = "macos")'.dependencies]
+nakkash-videotoolbox = { path = "../nakkash-videotoolbox" }
+
+[dev-dependencies]
+rstest.workspace = true
+
+# What nakkash's own encoder writes, read back.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+nakkash-encode = { path = "../nakkash-encode" }
+
+[lints]
+workspace = true

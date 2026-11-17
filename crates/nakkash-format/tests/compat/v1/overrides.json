@@ -1,0 +1,12 @@
+{"nakkash":1,"size":"1080x1080","fps":25,"dur":"2s","bg":"#101820",
+"comps":{
+ "label":{"size":"600x160","dur":"2s","bg":"#FFFFFF","layers":[
+  {"id":"badge","rect":"120x120 r60","fill":"#2A9D8F","at":"80 80"},
+  {"id":"title","text":"Shared","font":"Inter Variable 64 700","fill":"#101820","at":"360 80","in":"fade-left 12f"}]},
+ "card":{"size":"800x240","dur":"2s","layers":[
+  {"id":"label","comp":"label","at":"400 120"}]}},
+"layers":[
+{"id":"first","comp":"label","at":"540 200"},
+{"id":"second","comp":"label","at":"540 420","overrides":{"title":{"text":"Sale"},"badge":{"fill":"#E63946","in":"pop 10f"}}},
+{"id":"deep","comp":"card","at":"540 760","overrides":{"label/title":{"text":"Deep"},"label/badge":{"fill":"#F4A261"}}}
+]}

@@ -1,0 +1,7 @@
+{"nakkash":1,"size":"480x200","fps":24,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"focus","at":"240 90","text":"IN FOCUS","font":"Inter Variable 56 800","fill":"#1E3A5F","style":{"align":"center"},
+ "animate":[{"animator":[{"range":"char","anim":{"offset":"0 -> 1 @0-24f"}}],"blur":[12,12]}]},
+{"id":"streak","at":"240 170","text":"across, then down","font":"Inter Variable 32 600","fill":"#101010","style":{"align":"center"},
+ "animate":[{"animator":[{"range":"word"}],"anim":{"blur-x":"16 -> 0 @0-12f","blur-y":"0 -> 6 @12-24f"}}]}
+]}

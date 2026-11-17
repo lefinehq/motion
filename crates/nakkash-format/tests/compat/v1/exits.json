@@ -1,0 +1,5 @@
+{"nakkash":1,"size":"480x480","fps":24,"dur":"2s","bg":"#101010",
+"layers":[
+{"id":"card","rect":"200x120","fill":"#E63946","at":"240 160","span":"0s-1.5s","in":"pop 8f out-back","out":"fade-up 30px 8f ease-in"},
+{"id":"tag","text":"Leaving early","font":"Inter Variable 32","at":"240 320","in":"fade 6f","out":"pop 10f @4f"}
+]}

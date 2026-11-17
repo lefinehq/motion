@@ -1,0 +1,7 @@
+{"nakkash":1,"size":"480x200","fps":24,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"count","at":"240 110","text":"ONE BY ONE","font":"Inter Variable 56 800","fill":"#1E3A5F","style":{"align":"center"},
+ "animate":[{"animator":[{"range":"char","units":"index","start":0,"end":3,"anim":{"offset":"-3 -> 10 @0-24f"}}],"position":[0,-30],"opacity":0.2}]},
+{"id":"share","at":"240 170","text":"a fraction","font":"Inter Variable 32 600","fill":"#101010","style":{"align":"center"},
+ "animate":[{"animator":[{"range":"word","units":"fraction","end":0.5}],"opacity":0.4}]}
+]}

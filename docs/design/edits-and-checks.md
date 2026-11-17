@@ -2,7 +2,7 @@ Status: Draft · 2026-11-13
 
 # Edits and checks
 
-An agent changes a scene with one-line commands, and checks it by asking motion questions that come back as numbers. Neither step needs the agent to rewrite the scene or look at a single frame. This is where most of motion's token savings come from.
+An agent changes a scene with one-line commands, and checks it by asking nakkash questions that come back as numbers. Neither step needs the agent to rewrite the scene or look at a single frame. This is where most of nakkash's token savings come from.
 
 ## Edits
 
@@ -56,11 +56,11 @@ A key can be a dotted path, such as `anim.opacity`, and a list element is chosen
 
 A key written `$id` edits a slot ([D44](decisions.md#d44-slots-are-named-values-that-layers-follow)). On the scene it sets the value the scene's slot declares, and a line that starts with one needs no target: `$accent=#2A9D8F` is `scene $accent=#2A9D8F`. The slot keeps the form it is written in, its label too; a value of another type is written out, `{"number":"Sale"}`, so the check names the slot's type. On a `comp` layer, `card-2 $title=Sale` gives that instance its own value, written as `overrides["$title"]`, and `card-2 $title=none` takes it back. `$accent=none` removes a slot only when no value follows it; otherwise the error lists the values that do. A composition's own slots are keys like any other: `scene comps.card.slots.title.text=Hi`.
 
-`motion slots scene.json` lists every slot of the scene and of each composition, with its type, value and label, and how many values follow it. `--json` prints the same as data, with the place of each value that follows, such as `plate.fill`.
+`nakkash slots scene.json` lists every slot of the scene and of each composition, with its type, value and label, and how many values follow it. `--json` prints the same as data, with the place of each value that follows, such as `plate.fill`.
 
 ### Editing a role
 
-A target written `@role` is what the scene's role names ([D50](decisions.md#d50-roles-name-what-a-masters-layers-do)): `@headline text="Sale"` is `title text="Sale"` when `headline` is `title`, and `@accent=#2A9D8F` is `$accent=#2A9D8F` when `accent` is the slot `$accent`. A brief written against roles runs on any master that has them. A layer's role takes keys and a slot's role takes a value; the error says which. `motion roles scene.json` lists each role with what it holds, and `--json` gives the same as data.
+A target written `@role` is what the scene's role names ([D50](decisions.md#d50-roles-name-what-a-masters-layers-do)): `@headline text="Sale"` is `title text="Sale"` when `headline` is `title`, and `@accent=#2A9D8F` is `$accent=#2A9D8F` when `accent` is the slot `$accent`. A brief written against roles runs on any master that has them. A layer's role takes keys and a slot's role takes a value; the error says which. `nakkash roles scene.json` lists each role with what it holds, and `--json` gives the same as data.
 
 ### Locks
 
@@ -68,7 +68,7 @@ An edit that touches what the scene's `locks` hold is refused, and the scene is 
 
 ### Batches of variants
 
-`motion batch variants.json` makes every variant of one master ([D52](decisions.md#d52-a-batch-makes-every-variant-from-one-master)). The file names the master and an output folder, relative to itself, and lists the variants, each an `id`, its `edits` and optional `render` settings (`codec`, `quality`, `frames`, as `motion render` takes them):
+`nakkash batch variants.json` makes every variant of one master ([D52](decisions.md#d52-a-batch-makes-every-variant-from-one-master)). The file names the master and an output folder, relative to itself, and lists the variants, each an `id`, its `edits` and optional `render` settings (`codec`, `quality`, `frames`, as `nakkash render` takes them):
 
 ```json
 {"master":"launch.json","out":"out","variants":[
@@ -105,7 +105,7 @@ We measured the edit "make card 3 red and bring it in 10 frames later" in three 
 |---|---|
 | Rewriting the whole scene | 203–2,053 |
 | JSON Patch | 29 |
-| A motion edit | 9 |
+| A nakkash edit | 9 |
 
 All three figures are measured.
 
@@ -125,7 +125,7 @@ Analytic checks are computed directly from the scene, for every frame. Nothing i
 | `at 2s title cards` | Where these elements are at 2 s, and how visible they are |
 | `assert before(title.in, cards.in)` | Whether a statement holds, and if not, on which frames it fails |
 | `timeline` | One line per element: when it enters, settles and leaves |
-| `motion card3` | How fast it moves at its peak, whether its motion is smooth, when it comes to rest |
+| `nakkash card3` | How fast it moves at its peak, whether its motion is smooth, when it comes to rest |
 | `diff` | What changed in the checks since the last edit |
 | `explain cards.3` | The final, fully worked-out values, so the agent never does stagger maths itself |
 
@@ -159,7 +159,7 @@ Analytic checks are computed directly from the scene, for every frame. Nothing i
 - **Colour:** text without enough contrast against what is behind it.
 - **Assets:** missing fonts or files.
 
-**Built so far:** `offscreen` (an error), `unsafe`, the craft rules of [D59](decisions.md#d59-craft-lint-measures-motion-from-the-scene-and-reports-numbers) that read the scene, `judder`, `text_hold`, `easing`, `crowd` and `overlap` (warnings), and its pixel gates, `contrast` and `flash` (errors), which `motion check` runs after them. Each finding is one line: severity, rule, layer, frames, then what was measured. A layout rule prints how far the layer leaves its area, `+12px`. A craft rule prints the worst value with its unit, then the limit it misses, `24px/f >11`, `0.4s <1.3`, `6 >4` or `2.1:1 <4.5`. A fix follows when one edit clears it, and the last line counts the rules that ran and found nothing:
+**Built so far:** `offscreen` (an error), `unsafe`, the craft rules of [D59](decisions.md#d59-craft-lint-measures-motion-from-the-scene-and-reports-numbers) that read the scene, `judder`, `text_hold`, `easing`, `crowd` and `overlap` (warnings), and its pixel gates, `contrast` and `flash` (errors), which `nakkash check` runs after them. Each finding is one line: severity, rule, layer, frames, then what was measured. A layout rule prints how far the layer leaves its area, `+12px`. A craft rule prints the worst value with its unit, then the limit it misses, `24px/f >11`, `0.4s <1.3`, `6 >4` or `2.1:1 <4.5`. A fix follows when one edit clears it, and the last line counts the rules that ran and found nothing:
 
 ```
 E offscreen card 0-12f +40px; fix: card at="center 980"
@@ -179,7 +179,7 @@ OK 12
 - **`contrast`:** a readable text layer's glyphs against what is drawn behind them, by WCAG 2's contrast ratio: at least 4.5:1, or 3:1 for text of 24 px and up on a 1080-px-tall canvas. Twice a second, the scene is drawn at a quarter of its size without the layer and with only the layer; the ratio 90% of the glyphs' coverage reaches is measured. No fix: which colour to change is a choice.
 - **`flash`:** a quarter or more of the frame flashing more than 3 times in a second. Every frame is drawn at a quarter of its size, in 4 × 4 cells; a cell changes when its mean relative luminance moves at least 0.1 from its last turn, with the darker side below 0.8, and a flash is a change and its return. It is the scene's, printed on `scene`.
 
-**A baseline.** A template may fail its own check before anyone edits it, so its errors would fail every edit. `motion check scene.json --baseline template.json` checks both and prints only what the baseline does not already have, after a line `KNOWN 3` counting what it left out; the exit code counts what is printed. A finding is known when the baseline has one by the same rule on the same layer measured as bad or worse, whatever its frames: an edit that moves a problem in time does not make it new, one that pushes a layer farther out does. `motion edit` reports the same way against the scene before the edit, so it exits 1 only when the edit made a new error.
+**A baseline.** A template may fail its own check before anyone edits it, so its errors would fail every edit. `nakkash check scene.json --baseline template.json` checks both and prints only what the baseline does not already have, after a line `KNOWN 3` counting what it left out; the exit code counts what is printed. A finding is known when the baseline has one by the same rule on the same layer measured as bad or worse, whatever its frames: an edit that moves a problem in time does not make it new, one that pushes a layer farther out does. `nakkash edit` reports the same way against the scene before the edit, so it exits 1 only when the edit made a new error.
 
 `Session::check` reads the scene and takes milliseconds, so edits print it; `Session::gates` draws every frame, a fraction of a render's time (a 40 s 1080p scene gates in about a second on 10 threads).
 
@@ -212,7 +212,7 @@ The fix suggestion matters. In published research on checking AI-made animations
 
 ### Pixel checks
 
-Some things cannot be judged from geometry alone: how strong a glow is, how an effect turns out, or text contrast over a photo or gradient. For these, motion does the following:
+Some things cannot be judged from geometry alone: how strong a glow is, how an effect turns out, or text contrast over a photo or gradient. For these, nakkash does the following:
 
 1. It renders a few frames at thumbnail size, for example 160×90.
 2. It measures them.

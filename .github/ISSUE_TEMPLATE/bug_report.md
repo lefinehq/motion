@@ -14,4 +14,4 @@ labels: bug
 
 ## Version
 
-<!-- Output of `motion --version`, or the commit. -->
+<!-- Output of `nakkash --version`, or the commit. -->

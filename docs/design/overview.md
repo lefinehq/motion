@@ -2,7 +2,7 @@ Status: Draft · 2026-11-13
 
 # Overview
 
-motion turns a short description of a video into a finished video file. An AI agent writes the description, motion checks it and tells the agent what is wrong in plain numbers, and then renders the video without a web browser. The aim is professional motion-design quality at a fraction of the tokens and render time that today's tools need.
+nakkash turns a short description of a video into a finished video file. An AI agent writes the description, nakkash checks it and tells the agent what is wrong in plain numbers, and then renders the video without a web browser. The aim is professional motion-design quality at a fraction of the tokens and render time that today's tools need.
 
 ## v1: variants first
 
@@ -32,7 +32,7 @@ Two other well-known formats show that animation can be stored as data. But neit
 - **Lottie** is an export format, and verbose: the same scene costs about 4,100 tokens.
 - **Rive** is a closed binary format that needs its own editor.
 
-## What motion does differently
+## What nakkash does differently
 
 ### 1. Describe meaning, not frames
 
@@ -54,7 +54,7 @@ That is the whole edit: **9 tokens** (*measured*). The agent never rewrites the 
 
 ### 3. Ask instead of look
 
-The agent asks motion questions and gets numbers back, not pictures:
+The agent asks nakkash questions and gets numbers back, not pictures:
 
 ```
 E overflow cards.3.text 37-150f +18px; fix: cards.3 font.size<=34
@@ -65,13 +65,13 @@ This says that card 3's text spills out of its box by 18 pixels from frame 37 to
 
 ### 4. Render without a browser
 
-motion computes each frame directly and draws it with a native vector renderer. There is no browser to start, no page to lay out and no screenshot to take. Our target for the reference clip is **under 0.5 seconds** (*target*), against Remotion's 3.3 seconds.
+nakkash computes each frame directly and draws it with a native vector renderer. There is no browser to start, no page to lay out and no screenshot to take. Our target for the reference clip is **under 0.5 seconds** (*target*), against Remotion's 3.3 seconds.
 
 ## Who it is for
 
 - **AI agents and the tools built on them** that need to produce video, for example coding agents, content pipelines and chat assistants.
 - **Developers** who want programmable video without running a browser.
-- **Future editors.** Every change in motion is a one-line command, so a timeline editor can be built later as a simple layer on top. Anything an agent can do, an editor can do too (see [D6](decisions.md#d6-one-edit-language)).
+- **Future editors.** Every change in nakkash is a one-line command, so a timeline editor can be built later as a simple layer on top. Anything an agent can do, an editor can do too (see [D6](decisions.md#d6-one-edit-language)).
 
 ## Goals
 
@@ -96,9 +96,9 @@ Two notes on the targets:
 - **Render speed:** the target applies to the reference machine. A Linux server with no GPU is our second target. Its numbers will be measured and published, and it must still beat Remotion on the same server.
 - **Visual quality:** frames must look at least as good as both competitors'. The maintainers judge this on a side-by-side sheet at each milestone, and golden images then lock the result in.
 
-## What motion is not
+## What nakkash is not
 
-motion is not interactive, not a browser, not a footage editor and not an AI model. It makes video files from scenes. The full in-scope, later and out-of-scope lists are in [Scope](scope.md).
+nakkash is not interactive, not a browser, not a footage editor and not an AI model. It makes video files from scenes. The full in-scope, later and out-of-scope lists are in [Scope](scope.md).
 
 ## Principles
 
@@ -106,5 +106,5 @@ motion is not interactive, not a browser, not a footage editor and not an AI mod
 2. **Compact by default.** Sensible defaults, presets and short value strings, so a typical scene stays small.
 3. **Stable, human ids.** Every element has a name people would use. Repeated items are numbered from 1, because people say "card 3".
 4. **One edit language for everyone.** Agents and future editors change scenes through the same one-line commands.
-5. **Ask, don't look.** Anything you would check by watching the video, you can ask motion for as numbers.
-6. **Native and repeatable.** No browser. A frame depends only on the scene, the time and the motion version.
+5. **Ask, don't look.** Anything you would check by watching the video, you can ask nakkash for as numbers.
+6. **Native and repeatable.** No browser. A frame depends only on the scene, the time and the nakkash version.

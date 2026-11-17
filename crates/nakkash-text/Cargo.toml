@@ -1,0 +1,27 @@
+[package]
+name = "nakkash-text"
+description = "Finds fonts among given font files and lays out styled text with real shaping, for nakkash scenes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+kurbo.workspace = true
+nakkash-format = { path = "../nakkash-format" }
+linebender_resource_handle.workspace = true
+parlance.workspace = true
+parley.workspace = true
+skrifa.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+nakkash-import = { path = "../nakkash-import" }
+proptest.workspace = true
+rstest.workspace = true
+vello_cpu.workspace = true
+
+[lints]
+workspace = true

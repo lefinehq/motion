@@ -1,0 +1,7 @@
+{"nakkash":1,"size":"320x160","fps":10,"dur":"1s","bg":"#FFFFFF","shutter":"270 -135 8",
+"comps":{"spinner":{"size":"80x80","fps":10,"dur":"1s","shutter":"0",
+  "layers":[{"id":"bar","shapes":[{"rect":[60,10]},{"fill":"#3B82F6"}],"at":"40 40","mblur":true,"anim":{"rotate":"0 -> 360 @0-10f"}}]}},
+"layers":[
+{"id":"slide","rect":"50x50","fill":"#E4572E","at":"60 50","mblur":true,"anim":{"x":"60 -> 260 @0-10f"}},
+{"id":"spinner","comp":"spinner","at":"160 110","mblur":true,"anim":{"y":"110 -> 100 @0-10f"}}
+]}

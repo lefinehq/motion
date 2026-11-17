@@ -1,9 +1,9 @@
 # Architecture
 
-motion turns a scene into video in five steps. Steps 1 to 3 never touch pixels. Checks, edits and the command-line tool are a side branch that works on the output of steps 2 and 3. Every tool (the command line today, an agent server and a Node binding later) reaches the pipeline through one entry point, the engine's `Session`. The full reasoning is in [docs/design/rendering.md](docs/design/rendering.md).
+nakkash turns a scene into video in five steps. Steps 1 to 3 never touch pixels. Checks, edits and the command-line tool are a side branch that works on the output of steps 2 and 3. Every tool (the command line today, an agent server and a Node binding later) reaches the pipeline through one entry point, the engine's `Session`. The full reasoning is in [docs/design/rendering.md](docs/design/rendering.md).
 
 ```
-tools (CLI, later MCP and Node) ──▶ Session (motion-engine) ──▶ the steps below
+tools (CLI, later MCP and Node) ──▶ Session (nakkash-engine) ──▶ the steps below
 scene.json
    │
    ▼
@@ -28,18 +28,18 @@ Each crate has one job and a list of things it must never do. Keeping those rule
 
 | Crate | What it does | What it must never do |
 |---|---|---|
-| `motion-format` | Reads the scene format: a serde document for the JSON shape, `winnow` grammars for the shorthands, then validation and writing (step 1). Also holds the one error type, `Diagnostic`, and the shared grammar pieces. | Touch pixels, read files, or format an error outside `Diagnostic`. |
-| `motion-scene` | Compiles a scene into a scene graph with resolved sizes and tracks, setting text with `motion-text` (step 2), and works out every node's position, size, opacity and content at a frame (step 3). | Touch pixels or read files. |
-| `motion-query` | Side branch: `check` and `at` answer questions about a scene with numbers. | Write files or touch pixels. |
-| `motion-edit` | Side branch: parses one-line edits and applies them to a parsed scene's raw JSON. | Write files or touch pixels. |
-| `motion-engine` | `Session`: the only entry point for tools. It reads, parses, compiles, evaluates and renders a scene (reading and decoding, once, the picture files its image layers draw) and runs `check`, `at` and edits, and `import` reads an `.aep` project, each step inside a `tracing` span. Its `render` module maps an evaluated frame to the rasteriser's display list, the one place that knows both scenes and pixels. Its `telemetry` module installs the stderr subscriber for logs and step timings. | Print, read arguments, let a tool bypass it to call a step directly, or install a subscriber itself (only binaries and tests call `telemetry::init`). |
-| `motion-import` | Reads `.aep` projects: the RIFX chunk tree, then items, compositions, layers, the property tree, keyframes and paths, (text documents through a `winnow` grammar for their object syntax) into a typed model that keeps whatever it cannot decode yet as an opaque value with its reason, and counts it in the import report ([D30](docs/design/decisions.md#d30-read-aep-projects-directly), [design](docs/design/aep-import.md)). It maps a project to a scene, with its expressions evaluated through `motion-expr` and fitted into keys ([D38](docs/design/decisions.md#d38-expressions-are-baked-at-import)); evaluating sits behind its `bake` feature, which only the CLI turns on (through `motion-engine`'s own). | Read files, panic or index out of bounds on any input, or drop a chunk silently: every chunk it passes over is counted. |
-| `motion-raster` | Draws one frame's display list (a tree of layers with paths, glyph runs and pictures as leaves) into an RGBA image with `vello_cpu`, decodes PNG and JPEG pictures from bytes, and encodes PNG files (step 4). Layers carry a transform, opacity, blend mode, clip and effects; effects, blend modes, caps, joins and fill rules are tables ([D34](docs/design/decisions.md#d34-a-layer-tree-renderer-on-vello_cpu)). | Know about scenes, time or animation, read files, or keep state between frames. |
-| `motion-vector` | Reads vector footage (PDF, and the `.ai` files that are PDF inside) into the rasteriser's own display list: a PDF reader and interpreter behind a device that paints on one drawing model, the `Canvas`, which other vector readers share; a `Drawing` is laid over a box as vectors or drawn into a picture once per size ([D70](docs/design/decisions.md#d70-vector-footage-is-drawn-from-its-outlines)). Formats are rows of one table, recognised by their first bytes. | Read files, convert footage outside the engine, or let the PDF engine's types into its API. |
-| `motion-text` | Finds fonts in the files and folders it is given (never the system's, never the network; Inter is built in) and lays out styled text with Parley and HarfRust: paragraphs, character runs, point or box text, justification, tracking and capitals, into lines and positioned glyph runs whose font data the renderer draws with ([D33](docs/design/decisions.md#d33-text-is-shaped-from-font-assets)). Chooses the face an import writes in place of a font it lacks ([D40](docs/design/decisions.md#d40-missing-fonts-are-substituted-at-import)). | Read the system's fonts, fall back to another font or glyph silently, or depend on the scene crates. |
-| `motion-expr` | Evaluates the expressions of imported projects with an embedded JavaScript engine behind its own types: a source rewrite (arithmetic as array-aware helpers, the legacy engine's forms), the language's objects over a host the importer gives, deterministic runs (no clock, our own randomness, `libm` maths), and a fitter from samples to keys ([D38](docs/design/decisions.md#d38-expressions-are-baked-at-import)). The engine and the rewrite sit behind its `engine` feature; the host vocabulary and the fitter need none. | Be linked by anything that draws, read the clock or the network, or let one run's state reach the next. |
-| `motion-fonts` | Resolves fonts before a render: the lock that pins each face to an exact file, the cache that keeps files by their SHA-256, and, behind its `fetch` feature, the sources (as data), the download of candidates and the choice of a release per family against a judge ([D39](docs/design/decisions.md#d39-fonts-are-resolved-before-a-render)). | Reach the network outside `fetch`, fetch a font that is not under an open licence, or change a cached file. |
-| `motion-cli` | The `motion` command: reads the arguments, runs each command through a `Session`, prints its output, and writes the PNG files `render` draws. | Hold engine logic. It is the only place that prints, and it reaches scenes only through `Session` and `.aep` projects only through `motion_engine::import`. |
+| `nakkash-format` | Reads the scene format: a serde document for the JSON shape, `winnow` grammars for the shorthands, then validation and writing (step 1). Also holds the one error type, `Diagnostic`, and the shared grammar pieces. | Touch pixels, read files, or format an error outside `Diagnostic`. |
+| `nakkash-scene` | Compiles a scene into a scene graph with resolved sizes and tracks, setting text with `nakkash-text` (step 2), and works out every node's position, size, opacity and content at a frame (step 3). | Touch pixels or read files. |
+| `nakkash-query` | Side branch: `check` and `at` answer questions about a scene with numbers. | Write files or touch pixels. |
+| `nakkash-edit` | Side branch: parses one-line edits and applies them to a parsed scene's raw JSON. | Write files or touch pixels. |
+| `nakkash-engine` | `Session`: the only entry point for tools. It reads, parses, compiles, evaluates and renders a scene (reading and decoding, once, the picture files its image layers draw) and runs `check`, `at` and edits, and `import` reads an `.aep` project, each step inside a `tracing` span. Its `render` module maps an evaluated frame to the rasteriser's display list, the one place that knows both scenes and pixels. Its `telemetry` module installs the stderr subscriber for logs and step timings. | Print, read arguments, let a tool bypass it to call a step directly, or install a subscriber itself (only binaries and tests call `telemetry::init`). |
+| `nakkash-import` | Reads `.aep` projects: the RIFX chunk tree, then items, compositions, layers, the property tree, keyframes and paths, (text documents through a `winnow` grammar for their object syntax) into a typed model that keeps whatever it cannot decode yet as an opaque value with its reason, and counts it in the import report ([D30](docs/design/decisions.md#d30-read-aep-projects-directly), [design](docs/design/aep-import.md)). It maps a project to a scene, with its expressions evaluated through `nakkash-expr` and fitted into keys ([D38](docs/design/decisions.md#d38-expressions-are-baked-at-import)); evaluating sits behind its `bake` feature, which only the CLI turns on (through `nakkash-engine`'s own). | Read files, panic or index out of bounds on any input, or drop a chunk silently: every chunk it passes over is counted. |
+| `nakkash-raster` | Draws one frame's display list (a tree of layers with paths, glyph runs and pictures as leaves) into an RGBA image with `vello_cpu`, decodes PNG and JPEG pictures from bytes, and encodes PNG files (step 4). Layers carry a transform, opacity, blend mode, clip and effects; effects, blend modes, caps, joins and fill rules are tables ([D34](docs/design/decisions.md#d34-a-layer-tree-renderer-on-vello_cpu)). | Know about scenes, time or animation, read files, or keep state between frames. |
+| `nakkash-vector` | Reads vector footage (PDF, and the `.ai` files that are PDF inside) into the rasteriser's own display list: a PDF reader and interpreter behind a device that paints on one drawing model, the `Canvas`, which other vector readers share; a `Drawing` is laid over a box as vectors or drawn into a picture once per size ([D70](docs/design/decisions.md#d70-vector-footage-is-drawn-from-its-outlines)). Formats are rows of one table, recognised by their first bytes. | Read files, convert footage outside the engine, or let the PDF engine's types into its API. |
+| `nakkash-text` | Finds fonts in the files and folders it is given (never the system's, never the network; Inter is built in) and lays out styled text with Parley and HarfRust: paragraphs, character runs, point or box text, justification, tracking and capitals, into lines and positioned glyph runs whose font data the renderer draws with ([D33](docs/design/decisions.md#d33-text-is-shaped-from-font-assets)). Chooses the face an import writes in place of a font it lacks ([D40](docs/design/decisions.md#d40-missing-fonts-are-substituted-at-import)). | Read the system's fonts, fall back to another font or glyph silently, or depend on the scene crates. |
+| `nakkash-expr` | Evaluates the expressions of imported projects with an embedded JavaScript engine behind its own types: a source rewrite (arithmetic as array-aware helpers, the legacy engine's forms), the language's objects over a host the importer gives, deterministic runs (no clock, our own randomness, `libm` maths), and a fitter from samples to keys ([D38](docs/design/decisions.md#d38-expressions-are-baked-at-import)). The engine and the rewrite sit behind its `engine` feature; the host vocabulary and the fitter need none. | Be linked by anything that draws, read the clock or the network, or let one run's state reach the next. |
+| `nakkash-fonts` | Resolves fonts before a render: the lock that pins each face to an exact file, the cache that keeps files by their SHA-256, and, behind its `fetch` feature, the sources (as data), the download of candidates and the choice of a release per family against a judge ([D39](docs/design/decisions.md#d39-fonts-are-resolved-before-a-render)). | Reach the network outside `fetch`, fetch a font that is not under an open licence, or change a cached file. |
+| `nakkash-cli` | The `nakkash` command: reads the arguments, runs each command through a `Session`, prints its output, and writes the PNG files `render` draws. | Hold engine logic. It is the only place that prints, and it reaches scenes only through `Session` and `.aep` projects only through `nakkash_engine::import`. |
 
 Crates are added task by task, and only when a piece has its own dependencies or its own users. This table lists only crates that exist.
 
@@ -47,31 +47,31 @@ Crates are added task by task, and only when a piece has its own dependencies or
 
 | Crate | What it will do |
 |---|---|
-| `motion-composite` | Effects that need more than `vello_cpu` layers give, such as large blurs and procedural noise, on a `wgpu` compositor (step 4). |
-| `motion-encode` | Write video and audio files (step 5). |
-| `motion-variants` | Turn one designed project into many variants. |
+| `nakkash-composite` | Effects that need more than `vello_cpu` layers give, such as large blurs and procedural noise, on a `wgpu` compositor (step 4). |
+| `nakkash-encode` | Write video and audio files (step 5). |
+| `nakkash-variants` | Turn one designed project into many variants. |
 
 ## Parsing, validation and errors
 
-Libraries never print: they return a `Diagnostic` or log with `tracing`, and only `motion-cli` writes to stdout and stderr.
+Libraries never print: they return a `Diagnostic` or log with `tracing`, and only `nakkash-cli` writes to stdout and stderr.
 
 | What | Where |
 |---|---|
-| The error type, its kinds and exit codes | `crates/motion-format/src/diagnostic.rs` |
-| Shared grammar pieces and the failure-to-`Diagnostic` mapping | `crates/motion-format/src/grammar.rs` |
-| The scene's JSON shape, as serde types (`SceneDoc`, `LayerDoc`) | `crates/motion-format/src/doc.rs` |
-| Shorthand grammars: units, rect, font, position, behaviour, tracks | `crates/motion-format/src/units.rs`, `shorthand/`, `anim.rs`, `curve.rs` |
-| Validation: every rule beyond the shape | `crates/motion-format/src/validate.rs` |
-| The edit line grammar and path edits | `crates/motion-edit/src/parse.rs`, `apply.rs` |
-| `.aep` chunks, binary records and the one binrw-to-`Diagnostic` mapping | `crates/motion-import/src/rifx.rs`, `record.rs` |
-| The object syntax of `.aep` text documents, and serde records over it | `crates/motion-import/src/cos.rs`, `cos/de.rs`, `decode/text.rs` |
-| The `.aep` model, and the table of property bodies | `crates/motion-import/src/model.rs`, `decode/property.rs` |
-| A property's value from its keys, as an expression reads it, eased by the scene's own curves and paths | `crates/motion-import/src/eval.rs` |
-| Expressions baked at import: the project as the expression host, the evaluation order, then samples fitted into scene keys | `crates/motion-import/src/bake/`, `map/expressions.rs` |
-| Export by patching the project: where values came from and where the map wrote them, the chunk writer, the plan, patch and check | `crates/motion-import/src/map/sources.rs`, `rifx.rs`, `export.rs`, `crates/motion-engine/src/export.rs` |
-| Fonts: faces and their names, the font set, the fallback for a missing font, and text layout | `crates/motion-text/src/font.rs`, `set.rs`, `fallback.rs`, `typeset.rs` |
-| The entry point and its step spans | `crates/motion-engine/src/session.rs`, `stage.rs` |
-| From an evaluated frame to a display list: layers, shapes, text with faux bold and italic, compositions, effects joined by name | `crates/motion-engine/src/render/` |
+| The error type, its kinds and exit codes | `crates/nakkash-format/src/diagnostic.rs` |
+| Shared grammar pieces and the failure-to-`Diagnostic` mapping | `crates/nakkash-format/src/grammar.rs` |
+| The scene's JSON shape, as serde types (`SceneDoc`, `LayerDoc`) | `crates/nakkash-format/src/doc.rs` |
+| Shorthand grammars: units, rect, font, position, behaviour, tracks | `crates/nakkash-format/src/units.rs`, `shorthand/`, `anim.rs`, `curve.rs` |
+| Validation: every rule beyond the shape | `crates/nakkash-format/src/validate.rs` |
+| The edit line grammar and path edits | `crates/nakkash-edit/src/parse.rs`, `apply.rs` |
+| `.aep` chunks, binary records and the one binrw-to-`Diagnostic` mapping | `crates/nakkash-import/src/rifx.rs`, `record.rs` |
+| The object syntax of `.aep` text documents, and serde records over it | `crates/nakkash-import/src/cos.rs`, `cos/de.rs`, `decode/text.rs` |
+| The `.aep` model, and the table of property bodies | `crates/nakkash-import/src/model.rs`, `decode/property.rs` |
+| A property's value from its keys, as an expression reads it, eased by the scene's own curves and paths | `crates/nakkash-import/src/eval.rs` |
+| Expressions baked at import: the project as the expression host, the evaluation order, then samples fitted into scene keys | `crates/nakkash-import/src/bake/`, `map/expressions.rs` |
+| Export by patching the project: where values came from and where the map wrote them, the chunk writer, the plan, patch and check | `crates/nakkash-import/src/map/sources.rs`, `rifx.rs`, `export.rs`, `crates/nakkash-engine/src/export.rs` |
+| Fonts: faces and their names, the font set, the fallback for a missing font, and text layout | `crates/nakkash-text/src/font.rs`, `set.rs`, `fallback.rs`, `typeset.rs` |
+| The entry point and its step spans | `crates/nakkash-engine/src/session.rs`, `stage.rs` |
+| From an evaluated frame to a display list: layers, shapes, text with faux bold and italic, compositions, effects joined by name | `crates/nakkash-engine/src/render/` |
 
 See [Contributing](CONTRIBUTING.md#how-errors-work) for how to add a shorthand or a field.
 
@@ -81,19 +81,19 @@ Every animatable value is a registered property with a keyframe track (see [D27]
 
 | What | Where |
 |---|---|
-| The property registry: name, type, resting value, components, range, meaning; and targets (a property or one component) | `crates/motion-format/src/property.rs` |
-| Typed values and their string forms | `crates/motion-format/src/value.rs` |
-| Curves: the named table, `cubic(...)`, `speed(...)` and `hold` | `crates/motion-format/src/curve.rs` |
-| Presets, as data (a scene can add its own) | `crates/motion-format/src/presets.json`, read by `preset.rs` |
-| `anim` tracks and keyframes, as written | `crates/motion-format/src/anim.rs` |
-| Tracks: one property's keys, compiled and sampled; spatial spans (`PathSpan`, which the import's bake reads too) move along a bézier path by arc length | `crates/motion-scene/src/track.rs` |
-| Easing in value space: the handles every curve compiles to | `crates/motion-scene/src/curve.rs` |
-| Transforms: anchor, scale, rotation, position, and the parent chain | `crates/motion-scene/src/evaluate.rs` |
+| The property registry: name, type, resting value, components, range, meaning; and targets (a property or one component) | `crates/nakkash-format/src/property.rs` |
+| Typed values and their string forms | `crates/nakkash-format/src/value.rs` |
+| Curves: the named table, `cubic(...)`, `speed(...)` and `hold` | `crates/nakkash-format/src/curve.rs` |
+| Presets, as data (a scene can add its own) | `crates/nakkash-format/src/presets.json`, read by `preset.rs` |
+| `anim` tracks and keyframes, as written | `crates/nakkash-format/src/anim.rs` |
+| Tracks: one property's keys, compiled and sampled; spatial spans (`PathSpan`, which the import's bake reads too) move along a bézier path by arc length | `crates/nakkash-scene/src/track.rs` |
+| Easing in value space: the handles every curve compiles to | `crates/nakkash-scene/src/curve.rs` |
+| Transforms: anchor, scale, rotation, position, and the parent chain | `crates/nakkash-scene/src/evaluate.rs` |
 
 The rule: **names are data; add a row, not a branch.** A new property is a row in the registry, which covers parsing, `anim`, presets, edits, `at` output and clamping (a property with a geometric or visual effect also needs code in `NodeState::bounds()` and the renderer), a new preset is an entry in `presets.json`, a new curve name is a row in the curve table. Code reads these tables and never lists the names itself, and errors about an unknown name list the allowed ones from the same table.
 
 ## Where to start reading
 
-1. `crates/motion-format/src/lib.rs`: the scene format and its units.
-2. `crates/motion-scene/src/evaluate.rs`: how a frame's values are worked out.
-3. `crates/motion-import/src/decode.rs`: how an `.aep` project is read, then `record.rs` for the records it reads.
+1. `crates/nakkash-format/src/lib.rs`: the scene format and its units.
+2. `crates/nakkash-scene/src/evaluate.rs`: how a frame's values are worked out.
+3. `crates/nakkash-import/src/decode.rs`: how an `.aep` project is read, then `record.rs` for the records it reads.

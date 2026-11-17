@@ -1,0 +1,6 @@
+---
+source: crates/nakkash-query/src/../tests/unit/at.rs
+expression: "at(&g, 5.0, &[]).unwrap()"
+---
+a x=300 y=400 w=100 h=100 scale=0.8,0.8 opacity=0.5
+b x=700 y=400 w=100 h=100 rotate=-45 opacity=0.5
