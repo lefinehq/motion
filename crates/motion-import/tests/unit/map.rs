@@ -1118,6 +1118,7 @@ fn motion_blur_follows_the_switches_and_the_composition_keeps_its_shutter() {
     use crate::test_support::build::{comp, layer, project};
     let imported = |on: bool| {
         let mut blurred = layer(1, "Ball", vec![]);
+        blurred.kind = crate::model::LayerKind::Shape;
         blurred.switches.motion_blur = true;
         let main = crate::model::Composition {
             motion_blur: MotionBlur {
@@ -1141,6 +1142,30 @@ fn motion_blur_follows_the_switches_and_the_composition_keeps_its_shutter() {
         "{:?}",
         off.mapping.unsupported
     );
+}
+
+/// A null's switch blurs nothing in the original, so its pivot does not
+/// take `mblur`, which would blur what it carries.
+#[test]
+fn a_null_does_not_carry_its_motion_blur_switch() {
+    use crate::model::MotionBlur;
+    use crate::test_support::build::{comp, layer, project};
+    let mut null = layer(1, "Rig", vec![]);
+    null.switches.motion_blur = true;
+    null.switches.null = true;
+    let main = crate::model::Composition {
+        motion_blur: MotionBlur {
+            on: true,
+            angle: 180.0,
+            phase: -90.0,
+            samples: 16,
+        },
+        ..comp(vec![null], 2.0)
+    };
+    let imported =
+        import(&project(vec![(5, "Main", main)]), &Options::default()).expect("it imports");
+    assert_eq!(imported.json["layers"][0]["pivot"], true);
+    assert!(imported.json["layers"][0].get("mblur").is_none());
 }
 
 #[test]
