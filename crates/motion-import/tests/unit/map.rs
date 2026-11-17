@@ -131,6 +131,48 @@ fn a_parent_outside_the_composition_is_reported() {
     );
 }
 
+/// A layer that runs backwards keeps its in point after its out point,
+/// and shows between the two; one whose points meet never shows.
+#[test]
+fn a_layer_running_backwards_shows_between_its_points() {
+    use crate::test_support::build::{comp, layer, project, solid};
+    let timed = |id: u32, (in_point, out_point): (f64, f64), stretch: f64| {
+        let mut timed = layer(id, &format!("Layer {id}"), vec![]);
+        timed.source = Some(9);
+        (timed.in_point, timed.out_point) = (in_point, out_point);
+        (timed.start_time, timed.stretch) = (in_point, stretch);
+        timed
+    };
+    let mut project = project(vec![(
+        1,
+        "Main",
+        comp(
+            vec![
+                timed(2, (3.0, 1.0), -1.0),
+                timed(3, (1.0, 3.0), 1.0),
+                timed(4, (2.0, 2.0), -1.0),
+            ],
+            4.0,
+        ),
+    )]);
+    project.items.push(solid(9, 20, 10));
+    let import = import(&project, &Options::default()).expect("it imports");
+    let timing = |i: usize| {
+        let layer = &import.json["layers"][i];
+        ["span", "offset", "stretch", "hidden"].map(|key| layer[key].clone())
+    };
+    // Layers are written top first: the last one listed is drawn first.
+    assert_eq!(
+        timing(2),
+        [json!("1s-3s"), json!("3s"), json!(-1), Json::Null]
+    );
+    assert_eq!(
+        timing(1),
+        [json!("1s-3s"), json!("1s"), Json::Null, Json::Null]
+    );
+    assert_eq!(timing(0)[3], json!(true));
+}
+
 /// The sample project with a second composition called `name`, item id 4,
 /// 300 wide where the first is not.
 fn with_second(name: &str) -> Project {

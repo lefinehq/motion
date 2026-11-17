@@ -248,6 +248,29 @@ What is left open:
 - **Waveform.** Audio Waveform has the same Path parameter; no local sample uses the effect, so the scene's waveform follows a mask the same way without a measurement.
 - **Animated paths.** No sample keys a path parameter; one that does is reported.
 
+## Layers that run backwards
+
+A layer's in and out points (`ldta`) say when it shows. These beliefs say how a layer whose stretch is negative, one that plays its source backwards, stores them. They were checked by hand over every local sample; the sweep does not check them yet.
+
+| Belief | Evidence | Held, 2026-11-17 |
+|---|---|---|
+| W1. A layer with a negative stretch stores its in point after its out point, and shows between the two: from the out point to the in point. Its start time is where its own time is 0, as for any layer. | m821's `Text Animation` holds `Title Texts` twice: once from 0 to 2.46 s at stretch 1, and once with in point 4.92 s, out point 2.46 s, start 4.92 s and stretch −1, the title playing out backwards. The reference shows the title from 2.5 s to 4.0 s, a white `MIXKIT SPORTS TITLE` our frames lacked (mean −10.8, −7.6, −6.5 levels a channel over the whole of those frames). | 28 layers in 12 samples: every layer with a negative stretch, and no layer with a positive one, stores its in point after its out point |
+
+Before, the import took such a layer for one that never shows and wrote it hidden, with nothing reported. Over all frames:
+
+| Sample | Failing | Content error | Frames passing over the floor |
+|---|---|---|---|
+| m635 | 68.64 % → 66.21 % | 0.2671 → 0.1657 | 3 → 3 of 11 |
+| m830 | 33.02 % → 29.43 % | 0.0307 → 0.0155 | 0 → 0 of 20 |
+| m837 | 37.75 % → 35.00 % | 0.0370 → 0.0235 | 0 → 0 of 20 |
+| m847 | 21.55 % → 20.49 % | 0.0139 → 0.0087 | 0 → 0 of 19 |
+| m821 | 88.00 % → 86.75 % | 0.1041 → 0.0955 | 1 → 1 of 20 |
+| m794 | 41.17 % → 40.91 % | 0.0191 → 0.0171 | 0 → 0 of 20 |
+| m594 | 79.35 % → 79.28 % | 0.0464 → 0.0454 | 1 → 1 of 20 |
+| m796 | 31.11 % → 30.78 % | 0.0378 → 0.0375 | 0 → 0 of 14 |
+| m593, m631, m782, m784 | unchanged | unchanged | unchanged |
+
+m821's levels, which hide its colour, are read in another change; with both, its error falls further.
 ## Effects that read a collapsed composition
 
 An effect parameter that names a layer (`pard` control 0) reads that layer's drawing in its own coordinates, without its transform ([scene format](scene-format.md#shapes-masks-effects-and-compositions)). This belief says what it reads of a precomposition layer whose transformations are collapsed. It was measured by hand on one sample; the sweep does not check it.

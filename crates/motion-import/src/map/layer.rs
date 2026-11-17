@@ -658,8 +658,14 @@ impl<'p> Walk<'p> {
 
     /// When the layer shows, where its own time starts and how fast it runs.
     fn timing(&mut self, layer: &Layer, composition: &Composition, out: &mut Out) {
-        let start = layer.in_point.max(0.0);
-        let end = layer.out_point;
+        // A layer that runs backwards keeps its in point after its out
+        // point: it shows between the two all the same.
+        let (first, last) = match layer.in_point <= layer.out_point {
+            true => (layer.in_point, layer.out_point),
+            false => (layer.out_point, layer.in_point),
+        };
+        let start = first.max(0.0);
+        let end = last;
         if end <= start {
             out.keys.insert("hidden".into(), json!(true));
         } else if start > 0.0 || end < composition.duration {
