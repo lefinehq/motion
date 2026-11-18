@@ -313,7 +313,69 @@ const AUDIO_SIDES: &[(i64, &str)] = &[(1, "a"), (2, "b"), (3, "both")];
 /// others are reported.
 const TILINGS: &[(i64, &str)] = &[(1, "repeat"), (4, "unfold"), (17, "brick"), (11, "none")];
 const POLAR_CONVERSIONS: &[(i64, &str)] = &[(1, "rect-to-polar"), (2, "polar-to-rect")];
-const GENERATOR_MODES: &[(i64, &str)] = &[(1, "replace"), (2, "over")];
+/// The blending modes of the generators by the project's codes: each
+/// generator's menu read in order, each separator taking a code. The
+/// noise's menu has no colour mode; the grid's has a stencil third.
+const FOUR_COLOR_MODES: &[(i64, &str)] = &[
+    (1, "replace"),
+    (2, "over"),
+    (4, "add"),
+    (5, "multiply"),
+    (6, "screen"),
+    (7, "overlay"),
+    (8, "soft-light"),
+    (9, "hard-light"),
+    (11, "color-dodge"),
+    (12, "color-burn"),
+    (14, "darken"),
+    (15, "lighten"),
+    (16, "difference"),
+    (17, "exclusion"),
+    (19, "hue"),
+    (20, "saturation"),
+    (21, "color"),
+    (22, "luminosity"),
+];
+const NOISE_MODES: &[(i64, &str)] = &[
+    (1, "replace"),
+    (2, "over"),
+    (4, "add"),
+    (5, "multiply"),
+    (6, "screen"),
+    (7, "overlay"),
+    (8, "soft-light"),
+    (9, "hard-light"),
+    (11, "color-dodge"),
+    (12, "color-burn"),
+    (14, "darken"),
+    (15, "lighten"),
+    (16, "difference"),
+    (17, "exclusion"),
+    (19, "hue"),
+    (20, "saturation"),
+    (21, "luminosity"),
+];
+const GRID_MODES: &[(i64, &str)] = &[
+    (1, "replace"),
+    (2, "over"),
+    (3, "stencil-alpha"),
+    (5, "add"),
+    (6, "multiply"),
+    (7, "screen"),
+    (8, "overlay"),
+    (9, "soft-light"),
+    (10, "hard-light"),
+    (12, "color-dodge"),
+    (13, "color-burn"),
+    (15, "darken"),
+    (16, "lighten"),
+    (17, "difference"),
+    (18, "exclusion"),
+    (20, "hue"),
+    (21, "saturation"),
+    (22, "color"),
+    (23, "luminosity"),
+];
 const GRID_SIZES: &[(i64, &str)] = &[(1, "corner"), (2, "width"), (3, "width-height")];
 const GRID_DRAWS: &[(i64, &str)] = &[(0, "lines"), (1, "cells")];
 const FRACTALS: &[(i64, &str)] = &[
@@ -655,7 +717,7 @@ macro_rules! fractal_noise_rows {
             ),
             row(
                 "ADBE Fractal Noise-0030",
-                To::Setting("mode", GENERATOR_MODES),
+                To::Setting("mode", NOISE_MODES),
                 Number,
                 Absent,
             ),
@@ -2757,7 +2819,7 @@ pub(super) static KINDS: [Kind; 47] = [
             ),
             row(
                 "ADBE 4ColorGradient-0014",
-                To::Setting("mode", GENERATOR_MODES),
+                To::Setting("mode", FOUR_COLOR_MODES),
                 Number,
                 Absent,
             ),
@@ -2883,7 +2945,7 @@ pub(super) static KINDS: [Kind; 47] = [
             row("ADBE Grid-0013", To::Prop("opacity"), Percent, Parameter),
             row(
                 "ADBE Grid-0014",
-                To::Setting("mode", GENERATOR_MODES),
+                To::Setting("mode", GRID_MODES),
                 Number,
                 Absent,
             ),

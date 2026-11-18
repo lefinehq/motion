@@ -9,6 +9,7 @@
 use vello_cpu::kurbo::{Affine, Point};
 
 use crate::colour::{choice, number, rgb};
+use crate::composite::Operation;
 use crate::effect::{ParamValue, Space};
 use crate::pen::Pen;
 use crate::pixels::Pixels;
@@ -30,13 +31,13 @@ fn alpha(values: &[ParamValue], i: usize) -> f32 {
 }
 
 /// Runs `paint` on every pixel the layer covers, with the pixel's centre
-/// in the layer's coordinates and its straight colour; `paint` gives the
-/// straight colour and alpha the pixel takes, the alpha as a share of the
-/// layer's there.
+/// in the layer's coordinates, its straight colour and its place in the
+/// grid (column, row); `paint` gives the straight colour and alpha the
+/// pixel takes, the alpha as a share of the layer's there.
 fn each_in_layer(
     pixels: &mut Pixels,
     space: &Space,
-    paint: impl Fn([f32; 2], [f32; 4]) -> [f32; 4],
+    paint: impl Fn([f32; 2], [f32; 4], [u32; 2]) -> [f32; 4],
 ) {
     let back: Affine = space.transform.inverse();
     let width = usize::from(pixels.width());
@@ -52,22 +53,88 @@ fn each_in_layer(
             pixel[2] / coverage,
             1.0,
         ];
-        let [r, g, b, a] = paint([at.x as f32, at.y as f32], straight).map(|c| c.clamp(0.0, 1.0));
+        let place = [(i % width) as u32, (i / width) as u32];
+        let [r, g, b, a] =
+            paint([at.x as f32, at.y as f32], straight, place).map(|c| c.clamp(0.0, 1.0));
         let a = a * coverage;
         *pixel = [r * a, g * a, b * a, a];
     }
 }
 
-/// What a generator does with what the layer drew: replacing it, the
-/// generator is drawn alone at `amount`; otherwise it is laid over the
-/// layer by `amount`.
-fn composite(replace: bool, under: [f32; 4], over: [f32; 3], amount: f32) -> [f32; 4] {
-    match replace {
-        true => [over[0], over[1], over[2], amount],
-        false => {
-            let mix = |c: usize| under[c] + (over[c] - under[c]) * amount;
-            [mix(0), mix(1), mix(2), 1.0]
-        }
+/// How `four-color` and `grid` draw over the layer, by name in
+/// [`crate::composite::OPERATIONS`]; the first is the default.
+pub(crate) const GENERATOR_MODES: &[&str] = &[
+    "replace",
+    "over",
+    "add",
+    "multiply",
+    "screen",
+    "overlay",
+    "soft-light",
+    "hard-light",
+    "color-dodge",
+    "color-burn",
+    "darken",
+    "lighten",
+    "difference",
+    "exclusion",
+    "hue",
+    "saturation",
+    "color",
+    "luminosity",
+    "stencil-alpha",
+];
+
+/// How `fractal-noise` draws over the layer, by name in
+/// [`crate::composite::OPERATIONS`]; the first is the default.
+pub(crate) const NOISE_MODES: &[&str] = &[
+    "over",
+    "replace",
+    "add",
+    "multiply",
+    "screen",
+    "overlay",
+    "soft-light",
+    "hard-light",
+    "color-dodge",
+    "color-burn",
+    "darken",
+    "lighten",
+    "difference",
+    "exclusion",
+    "hue",
+    "saturation",
+    "color",
+    "luminosity",
+    "stencil-alpha",
+];
+
+/// The operation `values[i]` picks from `modes`.
+fn mode(modes: &[&str], values: &[ParamValue], i: usize) -> Operation {
+    Operation::named(modes[choice(values, i)]).expect("every generator mode is an operation")
+}
+
+/// What a generator does with what the layer drew, at the pixel `at`: its
+/// colour `over`, at `amount`, combined with the layer's straight colour
+/// `under` by `operation`, as straight colour and a share of the layer's
+/// alpha. `replace` draws it alone at `amount`; `over` lays it over the
+/// layer by `amount`; the blend modes blend it with the layer, then lay
+/// that over by `amount`.
+fn composite(
+    operation: Operation,
+    under: [f32; 4],
+    over: [f32; 3],
+    amount: f32,
+    at: [u32; 2],
+) -> [f32; 4] {
+    let [r, g, b, a] = operation.pixel(
+        [under[0], under[1], under[2], 1.0],
+        [over[0] * amount, over[1] * amount, over[2] * amount, amount],
+        at,
+    );
+    match a > 0.0 {
+        true => [r / a, g / a, b / a, a],
+        false => [0.0; 4],
     }
 }
 
@@ -86,7 +153,7 @@ pub(crate) fn ramp(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
     let radial = choice(values, 5) == 1;
     let d = [end[0] - start[0], end[1] - start[1]];
     let length2 = d[0] * d[0] + d[1] * d[1];
-    each_in_layer(pixels, space, |[x, y], under| {
+    each_in_layer(pixels, space, |[x, y], under, _| {
         let v = [x - start[0], y - start[1]];
         let t = match (radial, length2 > 0.0) {
             (_, false) => 1.0,
@@ -108,8 +175,8 @@ pub(crate) fn four_color(pixels: &mut Pixels, values: &[ParamValue], space: &Spa
     let points: [[f32; 2]; 4] = std::array::from_fn(|i| point(values, 2 * i));
     let colors: [[f32; 3]; 4] = std::array::from_fn(|i| rgb(values, 2 * i + 1));
     let power = 2.0 * 100.0 / number(values, 8).max(1.0);
-    let (opacity, replace) = (number(values, 9), choice(values, 10) == 0);
-    each_in_layer(pixels, space, |[x, y], under| {
+    let (opacity, operation) = (number(values, 9), mode(GENERATOR_MODES, values, 10));
+    each_in_layer(pixels, space, |[x, y], under, at| {
         let mut weights = [0.0f32; 4];
         for (w, p) in weights.iter_mut().zip(&points) {
             let d2 = (x - p[0]).powi(2) + (y - p[1]).powi(2);
@@ -132,7 +199,7 @@ pub(crate) fn four_color(pixels: &mut Pixels, values: &[ParamValue], space: &Spa
                 })
             }
         };
-        composite(replace, under, c, opacity)
+        composite(operation, under, c, opacity, at)
     });
 }
 
@@ -144,7 +211,7 @@ pub(crate) fn grid(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
     let (width, height, border) = (number(values, 2), number(values, 3), number(values, 4));
     let (color, opacity) = (rgb(values, 5), number(values, 6));
     let (size, cells) = (choice(values, 7), choice(values, 8) == 1);
-    let replace = choice(values, 9) == 0;
+    let operation = mode(GENERATOR_MODES, values, 9);
     let cell = match size {
         0 => [(corner[0] - anchor[0]).abs(), (corner[1] - anchor[1]).abs()],
         1 => [width, width],
@@ -157,10 +224,10 @@ pub(crate) fn grid(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
         let distance = off.min(step - off);
         (border / 2.0 - distance + 0.5).clamp(0.0, 1.0)
     };
-    each_in_layer(pixels, space, |[x, y], under| {
+    each_in_layer(pixels, space, |[x, y], under, at| {
         let on = line(x - anchor[0], cell[0]).max(line(y - anchor[1], cell[1]));
         let on = if cells { 1.0 - on } else { on };
-        composite(replace, under, color, on * opacity)
+        composite(operation, under, color, on * opacity, at)
     });
 }
 
@@ -171,7 +238,7 @@ pub(crate) fn venetian_blinds(pixels: &mut Pixels, values: &[ParamValue], space:
     let (completion, direction) = (number(values, 0), number(values, 1).to_radians());
     let (width, feather) = (number(values, 2).max(1e-3), number(values, 3));
     let (sin, cos) = direction.sin_cos();
-    each_in_layer(pixels, space, |[x, y], under| {
+    each_in_layer(pixels, space, |[x, y], under, _| {
         let along = (x * sin + y * cos).rem_euclid(width);
         let edge = completion * width;
         let shown = match feather > 0.0 {
@@ -193,10 +260,10 @@ pub const NOISE_CELL: f32 = 100.0;
 /// `overflow` brings the level into 0 to 1.
 pub(crate) fn fractal_noise(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
     let noise = Noise::from_values(values);
-    let (opacity, replace) = (number(values, 14), choice(values, 19) == 1);
-    each_in_layer(pixels, space, |at, under| {
-        let v = noise.at(at);
-        composite(replace, under, [v; 3], opacity)
+    let (opacity, operation) = (number(values, 14), mode(NOISE_MODES, values, 19));
+    each_in_layer(pixels, space, |point, under, at| {
+        let v = noise.at(point);
+        composite(operation, under, [v; 3], opacity, at)
     });
 }
 

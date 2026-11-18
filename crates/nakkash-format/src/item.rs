@@ -1218,6 +1218,54 @@ const GLOW_OPERATIONS: &[&str] = &[
     "alpha-add",
 ];
 
+/// How a generator draws over its layer, by the names of the rasteriser's
+/// operations; the first is the default.
+const GENERATOR_MODES: &[&str] = &[
+    "replace",
+    "over",
+    "add",
+    "multiply",
+    "screen",
+    "overlay",
+    "soft-light",
+    "hard-light",
+    "color-dodge",
+    "color-burn",
+    "darken",
+    "lighten",
+    "difference",
+    "exclusion",
+    "hue",
+    "saturation",
+    "color",
+    "luminosity",
+    "stencil-alpha",
+];
+
+/// How fractal noise draws over its layer, as [`GENERATOR_MODES`] with
+/// `over` first, its default.
+const NOISE_MODES: &[&str] = &[
+    "over",
+    "replace",
+    "add",
+    "multiply",
+    "screen",
+    "overlay",
+    "soft-light",
+    "hard-light",
+    "color-dodge",
+    "color-burn",
+    "darken",
+    "lighten",
+    "difference",
+    "exclusion",
+    "hue",
+    "saturation",
+    "color",
+    "luminosity",
+    "stencil-alpha",
+];
+
 /// The properties of the glow.
 pub static GLOW: Registry = Registry {
     kind: "glow",
@@ -2279,9 +2327,11 @@ pub static EFFECTS: [ItemKind; 31] = [
         primary: Primary::Property("opacity"),
         settings: &[SettingSpec {
             name: "mode",
-            choices: &["replace", "over"],
+            choices: GENERATOR_MODES,
             default: "replace",
-            doc: "`replace` draws it alone where the layer is; `over` lays it over the layer",
+            doc: "`replace` draws it alone where the layer is; `over` lays it over the layer; \
+                  the others blend it with the layer by the operation of that name, then lay \
+                  that over by its opacity",
         }],
         input: None,
         outline: None,
@@ -2326,9 +2376,11 @@ pub static EFFECTS: [ItemKind; 31] = [
             },
             SettingSpec {
                 name: "mode",
-                choices: &["replace", "over"],
+                choices: GENERATOR_MODES,
                 default: "replace",
-                doc: "`replace` draws it alone where the layer is; `over` lays it over the layer",
+                doc: "`replace` draws it alone where the layer is; `over` lays it over the layer; \
+                      the others blend it with the layer by the operation of that name, then lay \
+                      that over by its opacity",
             },
         ],
         input: None,
@@ -2384,9 +2436,11 @@ pub static EFFECTS: [ItemKind; 31] = [
             },
             SettingSpec {
                 name: "mode",
-                choices: &["over", "replace"],
+                choices: NOISE_MODES,
                 default: "over",
-                doc: "`over` lays it over the layer; `replace` draws it alone where the layer is",
+                doc: "`over` lays it over the layer; `replace` draws it alone where the layer is; \
+                      the others blend it with the layer by the operation of that name, then lay \
+                      that over by its opacity",
             },
         ],
         input: None,

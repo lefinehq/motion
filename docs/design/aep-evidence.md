@@ -348,6 +348,17 @@ Other things we take without evidence:
 - **The colour's alpha** changes nothing ([C1](#colours)); the opacity is the solid's.
 - **m591** puts a black solid composite on the adjustment layers of six transitions whose photo placeholders the reference fills with photos the project does not have. With nothing in the placeholders, the black now covers what showed through them: 0.1071 → 0.1662 over all frames, on a sample excluded from the score for those photos.
 
+## Generator blending modes
+
+4-Color Gradient (`-0014`), Grid (`-0014`) and Fractal Noise (`-0030`) each have a Blending Mode menu that lays what they draw over their layer. The import reads it by the generator's own menu.
+
+| Belief | Evidence | Held, 2026-11-18 |
+|---|---|---|
+| N1. Each generator's codes count from 1 in the order its definition stores its menu, each separator (`(-`) taking a code, and the menus differ. 4-Color Gradient: 1 none, 2 normal, 4 add, 5 multiply, 6 screen, 7 overlay, 8 soft light, 9 hard light, 11 colour dodge, 12 colour burn, 14 darken, 15 lighten, 16 difference, 17 exclusion, 19 hue, 20 saturation, 21 colour, 22 luminosity. Fractal Noise: the same up to 20, then 21 luminosity, its menu having no colour mode. Grid: 1 none, 2 normal, 3 stencil alpha, then the 4-Color Gradient's from 5, one code later. | The definitions in the local projects: 11 projects define 4-Color Gradient, 21 Fractal Noise and 17 Grid with these menus, each the same within its effect. None (1) and normal (2) are the replace and over the scene drew before. m771's fractal noise holds 6, screen; it draws into a hidden composition that no effect the scene draws reads yet, so its error holds at 0.0721. | 49 definitions, 1 mode beyond normal |
+
+Other things we take without evidence:
+- **The modes no sample uses** blend as compositing inside an effect describes them, the generator's colour at its opacity over the layer's: no local sample sets another mode than none, normal and m771's screen.
+
 ## Effects that draw in place of their layer
 
 Some generators draw something sparse of their own, particles, stars, a beam, from their layer and keep none of its pixels. While the scene cannot draw one, the import draws its layer as nothing, rather than the solid the effect covers: the `Policy::InPlace` effects of the import's policy table, reported as unsupported with the layer. Generators that fill their layer (gradients, noise, cells) keep their solid as the nearer stand-in, and effects that draw over their layer's pixels (a lens flare) keep them. The beliefs were measured once, by hand, against the reference frames; the sweep does not check them.
