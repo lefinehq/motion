@@ -288,15 +288,14 @@ impl Noise {
         // inverted level: a dark, contrasted field keeps its bright lines.
         let v = if self.invert { 1.0 - v } else { v };
         let v = (v - 0.5) * self.contrast + 0.5 + self.brightness;
-        let v = match self.overflow {
+        match self.overflow {
             1 => 1.0 / (1.0 + (-4.0 * (v - 0.5)).exp()),
             2 => {
                 let t = v.rem_euclid(2.0);
                 if t > 1.0 { 2.0 - t } else { t }
             }
             _ => v.clamp(0.0, 1.0),
-        };
-        v
+        }
     }
 }
 
