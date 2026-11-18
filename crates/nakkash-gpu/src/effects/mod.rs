@@ -9,6 +9,7 @@ mod blur;
 mod colour;
 mod composite;
 mod distort;
+mod generate;
 
 pub(crate) use composite::operation_row;
 
@@ -22,6 +23,9 @@ use crate::record::Batch;
 /// Whether the kernels run `plan` as the CPU does, for every value it
 /// may hold.
 pub(crate) fn runs(plan: &Plan) -> bool {
+    if let Some(runs) = generate::runs(plan) {
+        return runs;
+    }
     if let Plan::Distort(distortion) = plan {
         return distort::runs(distortion);
     }
@@ -67,6 +71,9 @@ pub(crate) fn run(
     space: &Space,
 ) -> Result<()> {
     let _ = space;
+    if generate::run(gpu, batch, grid, plan) {
+        return Ok(());
+    }
     match plan {
         Plan::Blur(blur) => gpu.blur(batch, grid, blur),
         Plan::Glow(glow) => gpu.glow(batch, grid, glow),

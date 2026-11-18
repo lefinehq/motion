@@ -19,6 +19,8 @@ fn sources() -> Vec<(&'static str, String, &'static FamilySpec)> {
         ("neighbours", NEIGHBOURS.source.to_owned(), &NEIGHBOURS),
         ("distort", DISTORT.source.to_owned(), &DISTORT),
         ("cover", COVER.source.to_owned(), &COVER),
+        ("noise", with_layer(NOISE.source), &NOISE),
+        ("generate", with_layer(GENERATE.source), &GENERATE),
     ]
 }
 

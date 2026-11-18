@@ -24,6 +24,10 @@ pub(crate) const BLEND: &str = include_str!("shaders/blend.wgsl");
 /// combines an effect's result with a layer by one, after [`BLEND`].
 pub(crate) const OPERATION: &str = include_str!("shaders/operation.wgsl");
 
+/// Drawing in a layer's own coordinates, written in front of every family
+/// of generators, after [`OPERATION`].
+pub(crate) const LAYER: &str = include_str!("shaders/layer.wgsl");
+
 /// The families, and the entry points of each.
 pub(crate) const PIXEL: FamilySpec = FamilySpec {
     source: include_str!("shaders/pixel.wgsl"),
@@ -98,6 +102,24 @@ pub(crate) const COVER: FamilySpec = FamilySpec {
     reads: 0,
     entries: &["warp_cover"],
 };
+pub(crate) const NOISE: FamilySpec = FamilySpec {
+    source: include_str!("shaders/noise.wgsl"),
+    reads: 1,
+    entries: &["fractal_noise"],
+};
+pub(crate) const GENERATE: FamilySpec = FamilySpec {
+    source: include_str!("shaders/generate.wgsl"),
+    reads: 1,
+    entries: &[
+        "ramp",
+        "four_color",
+        "grid",
+        "venetian_blinds",
+        "linear_wipe",
+        "iris_wipe",
+        "beam",
+    ],
+};
 pub(crate) const BOX_PASS: FamilySpec = FamilySpec {
     source: include_str!("shaders/boxpass.wgsl"),
     reads: 1,
@@ -159,6 +181,8 @@ pub(crate) struct Kernels {
     pub(crate) neighbours: Family,
     pub(crate) distort: Family,
     pub(crate) cover: Family,
+    pub(crate) noise: Family,
+    pub(crate) generate: Family,
 }
 
 /// The constants the per-pixel kernels name blend modes by, one per row of
@@ -181,6 +205,12 @@ pub(crate) fn with_blend_modes(source: &str) -> String {
 /// `source` with the blend modes and the operations in front.
 pub(crate) fn with_operations(source: &str) -> String {
     with_blend_modes(&format!("{OPERATION}\n{source}"))
+}
+
+/// `source` with the blend modes, the operations and the layer's points
+/// in front.
+pub(crate) fn with_layer(source: &str) -> String {
+    with_operations(&format!("{LAYER}\n{source}"))
 }
 
 /// The row of `mode` in the rasteriser's table of blend modes.
@@ -212,6 +242,8 @@ impl Kernels {
             neighbours: Family::new(device, NEIGHBOURS.source, &NEIGHBOURS),
             distort: Family::new(device, DISTORT.source, &DISTORT),
             cover: Family::new(device, COVER.source, &COVER),
+            noise: Family::new(device, &with_layer(NOISE.source), &NOISE),
+            generate: Family::new(device, &with_layer(GENERATE.source), &GENERATE),
         }
     }
 }
