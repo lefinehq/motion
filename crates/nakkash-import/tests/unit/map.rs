@@ -338,7 +338,12 @@ mod effects {
         for (name, definition) in definitions {
             project.effects.insert(name.into(), definition);
         }
-        import(&project, &Options::default())
+        // The effects as written, not bound to slots.
+        let options = Options {
+            plain: true,
+            ..Options::default()
+        };
+        import(&project, &options)
     }
 
     /// Like [`imported`], with the shape layer's adjustment switch on.
@@ -2244,4 +2249,49 @@ fn how_tracking_applies_is_reported_only_where_there_is_tracking() {
         Stream::Animated(vec![key(0.5, 1.0), key(1.0, 2.0)]),
         Some(20.0)
     ));
+}
+
+#[test]
+fn markers_become_labels_of_their_composition() {
+    use crate::model::{CompMarker, Marker};
+    use crate::test_support::build::{comp, project};
+    let marker = |time: f64, comment: &str, duration: f64| CompMarker {
+        time,
+        marker: Marker {
+            comment: comment.into(),
+            duration,
+            ..Marker::default()
+        },
+    };
+    let main = crate::model::Composition {
+        markers: vec![
+            marker(0.5, "Logo In!", 0.0),
+            marker(1.0, "", 0.5),
+            marker(1.25, "logo in", 0.0),
+            marker(1.5, "2 Go", 0.0),
+            // Past the composition's end: no moment of it.
+            marker(3.0, "late", 0.0),
+        ],
+        ..comp(vec![], 2.0)
+    };
+    let imported =
+        import(&project(vec![(1, "Main", main)]), &Options::default()).expect("it imports");
+    assert_eq!(
+        imported.json["labels"],
+        serde_json::json!({
+            "logo_in": "0.5s",
+            "m2": "1s",
+            "m2_end": "m2+0.5s",
+            "logo_in_2": "1.25s",
+            "m_2_go": "1.5s"
+        })
+    );
+}
+
+#[test]
+fn label_names_keep_letters_and_digits() {
+    assert_eq!(label_name("Section 1: Intro"), "section_1_intro");
+    assert_eq!(label_name("  --  "), "");
+    assert_eq!(label_name("3"), "m_3");
+    assert_eq!(label_name(&"x".repeat(40)).len(), 32);
 }

@@ -36,6 +36,11 @@ fn matte_mode(matte: TrackMatte) -> Result<Option<MatteMode>, u8> {
     }
 }
 
+/// The key of an image layer's file.
+const IMAGE: &str = "image";
+/// The key of a video layer's file.
+const VIDEO: &str = "video";
+
 /// Why a layer of controls is left out of the scene.
 pub(super) const DROPPED: &str =
     "a layer of expression controls only, which draws nothing (left out)";
@@ -334,11 +339,11 @@ impl<'p> Walk<'p> {
                         out.keys.insert("collapse".into(), json!(true));
                     }
                 }
-                Some((_, ItemKind::Footage(footage))) => {
+                Some((item, ItemKind::Footage(footage))) => {
                     // The same switch draws vector footage at the output's
                     // resolution (D70).
                     let continuous = layer.switches.collapse && !layer.switches.adjustment;
-                    self.footage(footage, continuous, out, place, pivot)
+                    self.footage((item, footage), continuous, out, place, pivot)
                 }
                 Some((_, ItemKind::Folder)) => pivot(self, out, None),
                 // The layer names a source the project does not hold.
@@ -364,7 +369,7 @@ impl<'p> Walk<'p> {
     /// decoder an audio layer. Other footage is a pivot, reported with why.
     fn footage(
         &mut self,
-        footage: &Footage,
+        (item, footage): (&Item, &Footage),
         continuous: bool,
         out: &mut Out,
         place: &Place<'_>,
@@ -388,10 +393,14 @@ impl<'p> Walk<'p> {
                         ("image", path)
                     }
                     Media::VectorFormat(format) => {
-                        return pivot(
-                            self,
+                        let why = format!("vector footage in {format} it cannot read");
+                        return self.no_file(
+                            (item, footage),
+                            Some(stored),
+                            IMAGE,
+                            &why,
                             out,
-                            Some(&format!("vector footage in {format} it cannot read")),
+                            place,
                         );
                     }
                     Media::Clip(path) => ("video", path),
@@ -402,16 +411,36 @@ impl<'p> Walk<'p> {
                         return;
                     }
                     Media::Codec(codec) => {
-                        return pivot(self, out, Some(&format!("video footage in {codec}")));
+                        let why = format!("video footage in {codec}");
+                        return self.no_file(
+                            (item, footage),
+                            Some(stored),
+                            VIDEO,
+                            &why,
+                            out,
+                            place,
+                        );
                     }
                     Media::SoundFormat(format) => {
                         return pivot(self, out, Some(&format!("audio footage in {format}")));
                     }
-                    Media::Unsupported(why) => return pivot(self, out, Some(why)),
+                    // Footage without a picture is a sound, which no layer
+                    // draws.
+                    Media::Unsupported(why) if footage.width == 0 || footage.height == 0 => {
+                        return pivot(self, out, Some(why));
+                    }
+                    Media::Unsupported(why) => {
+                        let key = match footage.duration > 0.0 {
+                            true => VIDEO,
+                            false => IMAGE,
+                        };
+                        return self.no_file((item, footage), Some(stored), key, why, out, place);
+                    }
                 };
                 out.keys.insert(key.into(), json!(path));
                 out.keys
                     .insert("box".into(), json!([footage.width, footage.height]));
+                self.mark_media(item, Some(stored), key, true, None, out);
                 self.mapping.count(&format!("footage: {key}"), Fate::Mapped);
                 if footage.pixel_aspect != 1.0 {
                     self.mapping
@@ -421,8 +450,63 @@ impl<'p> Walk<'p> {
             Source::File { path: None } => {
                 pivot(self, out, Some("footage whose file path it cannot read"))
             }
+            Source::Placeholder if footage.width > 0 && footage.height > 0 => {
+                let key = match footage.duration > 0.0 {
+                    true => VIDEO,
+                    false => IMAGE,
+                };
+                self.no_file((item, footage), None, key, "missing footage", out, place);
+            }
             Source::Placeholder => pivot(self, out, Some("missing footage")),
         }
+    }
+
+    /// A layer of footage the scene cannot draw, `why`: an image or video
+    /// layer (`key`) of no file yet, the footage's size, which draws nothing
+    /// until a variant gives its slot a file ([D77]); reported as drawn as
+    /// nothing.
+    ///
+    /// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+    fn no_file(
+        &mut self,
+        (item, footage): (&Item, &Footage),
+        stored: Option<&str>,
+        key: &'static str,
+        why: &str,
+        out: &mut Out,
+        place: &Place<'_>,
+    ) {
+        self.mapping
+            .count(&format!("layer: {why}"), Fate::Unsupported);
+        self.mapping
+            .unsupported(&place.at, format!("{why} (drawn as nothing)"));
+        out.keys.insert(key.into(), Json::Null);
+        out.keys
+            .insert("box".into(), json!([footage.width, footage.height]));
+        self.mark_media(item, stored, key, false, Some(why), out);
+    }
+
+    /// Marks `out` as drawing the footage `item`, stored at `stored`, as
+    /// `key`, so its file becomes a slot once the scene is written.
+    fn mark_media(
+        &mut self,
+        item: &Item,
+        stored: Option<&str>,
+        key: &'static str,
+        found: bool,
+        why: Option<&str>,
+        out: &mut Out,
+    ) {
+        self.media.push(super::variable::MediaFact {
+            item: item.id,
+            name: item.name.clone(),
+            stored: stored.map(str::to_owned),
+            key,
+            found,
+            why: why.map(str::to_owned),
+        });
+        out.keys
+            .insert(super::variable::MEDIA.into(), json!(self.media.len() - 1));
     }
 
     /// What vector footage adds to its image layer ([D70]): the part of its

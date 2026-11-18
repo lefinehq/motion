@@ -130,6 +130,7 @@ fn rotation(import: &Import, id: &str) -> Json {
 fn each_control_becomes_a_slot_in_the_panels_order() {
     let import = imported(Options {
         panel: panel(),
+        plain: true,
         ..Options::default()
     });
     assert_eq!(import.mapping.scene, "Main");
@@ -158,6 +159,7 @@ fn each_control_becomes_a_slot_in_the_panels_order() {
 fn without_a_panel_the_project_imports_as_before() {
     let import = imported(Options {
         comp: Some("Main".into()),
+        plain: true,
         ..Options::default()
     });
     assert_eq!(rotation(&import, "l1"), json!(30));
@@ -173,6 +175,7 @@ fn a_control_nothing_follows_is_left_out_with_why() {
     let import = imported_reading(
         Options {
             panel: panel(),
+            plain: true,
             ..Options::default()
         },
         "time * 10",
@@ -218,6 +221,7 @@ fn a_transform_value_left_out_at_its_default_follows_its_slot() {
                 "Place",
                 json!({"x": 100, "y": 50}),
             )],
+            plain: true,
             ..Options::default()
         },
     )
@@ -263,6 +267,7 @@ fn a_position_kept_as_separate_dimensions_does_not_follow_a_slot() {
                 "Place",
                 json!({"x": 40, "y": 30}),
             )],
+            plain: true,
             ..Options::default()
         },
     )
@@ -312,6 +317,7 @@ fn a_text_control_named_for_a_role_proposes_it() {
         &project(vec![(5, "Main", main)]),
         &Options {
             panel: vec![offered("t", ControlKind::Text, "Title", json!({}))],
+            plain: true,
             ..Options::default()
         },
     )
@@ -359,6 +365,7 @@ fn every_sample_template_imports_with_its_panel() {
                 &project,
                 &Options {
                     panel: template.panel,
+                    plain: true,
                     ..Options::default()
                 },
             )
@@ -410,6 +417,7 @@ fn write_sample_template_scenes() {
             &Options {
                 panel: template.panel,
                 fonts: fonts.clone(),
+                plain: true,
                 ..Options::default()
             },
         )

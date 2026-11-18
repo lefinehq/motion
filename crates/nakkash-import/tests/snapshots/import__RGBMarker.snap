@@ -2,9 +2,9 @@
 source: crates/nakkash-import/tests/import.rs
 expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ---
-{"nakkash":1,"size":"400x400","fps":29.970001,"dur":"6.039373s","bg":"#000000",
+{"nakkash":1,"size":"400x400","fps":29.970001,"dur":"$duration","labels":{"red_section":"0s","green_section":"2.002002s","blue_section":"4.004004s"},"bg":"$background","slots":{"accent":{"color":[1,0,0,1],"label":"red #FF0000","role":"accent"},"background":{"color":[0,0,0,1],"label":"black #000000","role":"background"},"accent-2":{"color":[0,1,0,1],"label":"green #00FF00","role":"accent"},"accent-3":{"color":[0,0,1,1],"label":"blue #0000FF","role":"accent"},"duration":{"number":6.039373,"label":"Duration in seconds","role":"duration"}},
 "layers":[
-{"id":"shape-layer-1","shapes":[{"group":[{"rect":[350,350]},{"fill":[1,0,0,1],"anim":{"color":[{"t":"0s","v":[1,0,0,1],"curve":"hold"},{"t":"2.002002s","v":[0,1,0,1],"curve":"hold"},{"t":"4.004004s","v":[0,0,1,1]}]}}]}],"anchor":[0,0],"position":[200,200]}
+{"id":"shape-layer-1","shapes":[{"group":[{"rect":[350,350]},{"fill":"$accent","anim":{"color":[{"t":"0s","v":"$accent","curve":"hold"},{"t":"2.002002s","v":"$accent-2","curve":"hold"},{"t":"4.004004s","v":"$accent-3"}]}}]}],"anchor":[0,0],"position":[200,200]}
 ]}
 
 imported `Marker`
@@ -12,4 +12,5 @@ imported `Marker`
   ignored, drawing nothing:
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (12)
     markers (1)
+  slots to vary: 0 text, 4 colour, 0 media, 1 timing
   unsupported: none

@@ -36,12 +36,14 @@ mod rows;
 mod slots;
 pub(crate) mod sources;
 mod text;
+mod variable;
 
 pub use footage::{STILL_EXTENSIONS, file_name};
 pub use report::{
     ControlReport, Counts, ExpressionReport, Finding, Mapping, Named, Outcome, PanelReport,
 };
 pub use sources::Sources;
+pub use variable::{TOLERANCE, Variables};
 
 use ids::Ids;
 use keys::num;
@@ -78,6 +80,12 @@ pub struct Options {
     ///
     /// [D70]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d70-vector-footage-is-drawn-from-its-outlines
     pub vectors: BTreeMap<String, Vector>,
+    /// Leave the scene's values as the project gives them: no slots for
+    /// its words, palette, media and length ([D77]), only those its
+    /// controls make. Off by default.
+    ///
+    /// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+    pub plain: bool,
     /// The panel of the template the project came from, for a `.mogrt`
     /// ([`crate::template`]): its controls become slots, and the
     /// composition it was made from is the scene unless `comp` names
@@ -209,6 +217,22 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
             })
             .collect(),
     );
+    let made = match options.plain {
+        true => {
+            variable::unmark(&mut json);
+            variable::Variables::default()
+        }
+        false => variable::make(
+            &mut json,
+            &variable::Known {
+                media: &walk.media,
+                layer_names: &walk.layer_names,
+                comp_names: &walk.comp_names,
+                texts: &walk.texts,
+            },
+        ),
+    };
+    walk.mapping.variables = made;
     let mut document = read_back(&json)?;
     let offered = walk
         .mapping
@@ -229,13 +253,12 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
         })
         .collect();
     walk.mapping.roles = roles::propose(&document, &walk.named_roles, &offered);
+    // A template's logo, palette and type are what its user replaces, so
+    // the import locks nothing; a designer locks a master ([D77]).
+    //
+    // [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
     if !walk.mapping.roles.is_empty() {
         json["roles"] = roles::written(&walk.mapping.roles);
-        // A master with a logo locks it, its palette and its typefaces.
-        if walk.mapping.roles.iter().any(|r| r.role == "logo") {
-            json["locks"] = serde_json::json!(roles::DEFAULT_LOCKS);
-            walk.mapping.locks = roles::DEFAULT_LOCKS.map(str::to_owned).to_vec();
-        }
         document = read_back(&json)?;
     }
     Ok(Import {
@@ -264,7 +287,7 @@ fn panel_composition(project: &Project) -> Option<(&Item, &Composition)> {
 ///
 /// # Errors
 /// An invalid diagnostic, as a bug in the import, when the format rejects it.
-fn read_back(json: &Json) -> Result<Document> {
+pub(crate) fn read_back(json: &Json) -> Result<Document> {
     parse_document(&json.to_string()).map_err(|error| {
         Diagnostic::new(
             Kind::Invalid,
@@ -422,6 +445,14 @@ struct Walk<'p> {
     /// The scene ids of the masks of the layer being written that its
     /// effects follow, by the id the project gives each mask.
     mask_ids: HashMap<u32, String>,
+    /// The project's name of each layer written, by the scene composition
+    /// it is in (none for the scene's own) and its id.
+    layer_names: HashMap<(Option<String>, String), String>,
+    /// The project's name of each scene composition, none for the scene.
+    comp_names: HashMap<Option<String>, String>,
+    /// The footage each media layer draws, or would draw, by the number its
+    /// mark holds ([`variable::MEDIA`]).
+    media: Vec<variable::MediaFact>,
 }
 
 impl<'p> Walk<'p> {
@@ -454,6 +485,9 @@ impl<'p> Walk<'p> {
             named_roles: Vec::new(),
             offered: HashMap::new(),
             mask_ids: HashMap::new(),
+            layer_names: HashMap::new(),
+            comp_names: HashMap::new(),
+            media: Vec::new(),
         }
     }
 
@@ -482,6 +516,9 @@ impl<'p> Walk<'p> {
         );
         scene.insert("fps".into(), num(root.frame_rate));
         scene.insert("dur".into(), json!(seconds(root.duration)));
+        if let Some(written) = labels(root) {
+            scene.insert("labels".into(), written);
+        }
         let [r, g, b] = [root.background.r, root.background.g, root.background.b]
             .map(|channel| (channel * 255.0).round().clamp(0.0, 255.0) as u8);
         scene.insert("bg".into(), json!(format!("#{r:02X}{g:02X}{b:02X}")));
@@ -511,6 +548,9 @@ impl<'p> Walk<'p> {
                 json!(format!("{}x{}", composition.width, composition.height)),
             );
             comp.insert("dur".into(), json!(seconds(composition.duration)));
+            if let Some(written) = labels(composition) {
+                comp.insert("labels".into(), written);
+            }
             if composition.frame_rate != root.frame_rate {
                 comp.insert("fps".into(), num(composition.frame_rate));
             }
@@ -569,12 +609,15 @@ impl<'p> Walk<'p> {
     /// first as a scene stacks them.
     fn layers(&mut self, item: u32, composition: &'p Composition, name: &str) -> Vec<Json> {
         let mut ids = Ids::default();
+        self.comp_names.insert(self.scope.clone(), name.to_owned());
         let given: HashMap<u32, String> = composition
             .layers
             .iter()
             .map(|layer| {
                 let (role, named) = roles::named(&layer.name);
                 let id = ids.give(named, "layer");
+                self.layer_names
+                    .insert((self.scope.clone(), id.clone()), layer.name.clone());
                 if let Some(role) = role {
                     self.named_roles
                         .push((role, self.scope.clone(), id.clone()));
@@ -652,6 +695,62 @@ impl<'p> Walk<'p> {
 /// A time in seconds as the scene writes it.
 fn seconds(value: f64) -> String {
     format!("{}s", num(value))
+}
+
+/// A composition's `labels`, one per marker within its length ([D77]):
+/// named from the marker's comment, chapter or cue point, else `m1`, `m2`
+/// by order, and a marker that lasts gives its end too, as `<name>_end`
+/// after it. `None` when it has no marker.
+///
+/// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+fn labels(composition: &Composition) -> Option<Json> {
+    let mut labels = Map::new();
+    let markers = composition
+        .markers
+        .iter()
+        .filter(|m| (0.0..=composition.duration).contains(&m.time));
+    for (index, marked) in markers.enumerate() {
+        let marker = &marked.marker;
+        let written = [&marker.comment, &marker.chapter, &marker.cue_point_name]
+            .into_iter()
+            .map(|text| label_name(text))
+            .find(|name| !name.is_empty())
+            .unwrap_or_else(|| format!("m{}", index + 1));
+        let mut name = written.clone();
+        let mut n = 2;
+        while labels.contains_key(&name) || labels.contains_key(&format!("{name}_end")) {
+            name = format!("{written}_{n}");
+            n += 1;
+        }
+        labels.insert(name.clone(), json!(seconds(marked.time)));
+        if marker.duration > 0.0 {
+            labels.insert(
+                format!("{name}_end"),
+                json!(format!("{name}+{}", seconds(marker.duration))),
+            );
+        }
+    }
+    (!labels.is_empty()).then_some(Json::Object(labels))
+}
+
+/// `text` as a label name: lowercase letters and digits, the rest joined
+/// by `_`, starting with a letter, at most 32 characters; empty when it
+/// has no letter or digit.
+fn label_name(text: &str) -> String {
+    let mut name = String::new();
+    for c in text.chars().flat_map(char::to_lowercase) {
+        match c.is_ascii_alphanumeric() {
+            true => name.push(c),
+            false if !name.is_empty() && !name.ends_with('_') => name.push('_'),
+            false => {}
+        }
+    }
+    let mut name = name.trim_end_matches('_').to_owned();
+    if name.starts_with(|c: char| c.is_ascii_digit()) {
+        name.insert_str(0, "m_");
+    }
+    name.truncate(32);
+    name.trim_end_matches('_').to_owned()
 }
 
 /// A composition's `shutter`, where its motion blur is on and its shutter

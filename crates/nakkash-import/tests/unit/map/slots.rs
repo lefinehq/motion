@@ -125,7 +125,10 @@ mod imported {
         all.push(controls);
         import(
             &project(vec![(5, "Main", comp(all, 2.0))]),
-            &Options::default(),
+            &Options {
+                plain: true,
+                ..Options::default()
+            },
         )
         .expect("it imports")
     }

@@ -3,13 +3,14 @@ source: crates/nakkash-import/tests/import.rs
 assertion_line: 88
 expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ---
-{"nakkash":1,"size":"50x50","fps":29.970001,"dur":"2.035369s","bg":"#000000",
+{"nakkash":1,"size":"50x50","fps":29.970001,"dur":"$duration","bg":"$background","slots":{"background":{"color":[0,0,0,1],"label":"black #000000","role":"background"},"accent":{"color":[1,0,0,1],"label":"red #FF0000","role":"accent"},"duration":{"number":2.035369,"label":"Duration in seconds","role":"duration"}},
 "layers":[
-{"id":"a","shapes":[{"group":[{"rect":[50,50],"position":[-83,-72]},{"fill":[1,0,0,1]}],"position":[15.658203,5.658203]}],"position":[91,90.5],"anchor":[0,0],"mask":[{"mask":"M-78.75,-78 C-78.75,-78 -78.75,-38 -78.75,-38 C-78.75,-38 -38.75,-38 -38.75,-38 C-38.75,-38 -38.75,-78 -38.75,-78 C-38.75,-78 -78.75,-78 -78.75,-78 Z"}]}
+{"id":"a","shapes":[{"group":[{"rect":[50,50],"position":[-83,-72]},{"fill":"$accent"}],"position":[15.658203,5.658203]}],"position":[91,90.5],"anchor":[0,0],"mask":[{"mask":"M-78.75,-78 C-78.75,-78 -78.75,-38 -78.75,-38 C-78.75,-38 -38.75,-38 -38.75,-38 C-38.75,-38 -38.75,-78 -38.75,-78 C-38.75,-78 -78.75,-78 -78.75,-78 Z"}]}
 ]}
 
 imported `Add`
   12 mapped, 12 defaulted, 11 ignored, 0 unsupported, over 35 match names
   ignored, drawing nothing:
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (11)
+  slots to vary: 0 text, 2 colour, 0 media, 1 timing
   unsupported: none
