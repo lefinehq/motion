@@ -16,7 +16,7 @@ use nakkash_fonts::{Cache, Lock};
 use nakkash_format::units::Time;
 use nakkash_format::{Address, Diagnostic, Kind, Result};
 use nakkash_format::{Document, Scene, parse_document, write_document};
-use nakkash_query::{Report, at, check};
+use nakkash_query::{Checked, Report, at};
 use nakkash_raster::{Accelerator, Frame, Image, RenderOptions, Tally};
 use nakkash_scene::{FrameState, evaluate};
 use nakkash_scene::{SceneGraph, compile};
@@ -39,8 +39,17 @@ pub struct Session {
     /// The fonts the scene's text is set in: the built-in ones and those its
     /// `fonts` names, read on first use and dropped by an edit.
     fonts: OnceLock<Result<FontSet>>,
-    /// The compiled scene, built on first use and dropped by an edit.
-    graph: OnceLock<Result<SceneGraph>>,
+    /// The compiled scene, built on first use and dropped by an edit;
+    /// shared with the variants made of it.
+    graph: OnceLock<Result<Arc<SceneGraph>>>,
+    /// The scene's check, made on first use and dropped by an edit; shared
+    /// with the variants made of it.
+    checked: OnceLock<Arc<Checked>>,
+    /// The last version of the scene that was checked before an edit, which
+    /// the check after the edit starts from ([D79]).
+    ///
+    /// [D79]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d79-an-edit-checks-only-what-it-can-change
+    before: Option<Arc<Before>>,
     /// Where locked fonts are loaded from; this user's cache when unset.
     font_cache: Option<Cache>,
     /// The pictures image layers draw, each decoded once, on first use, and
@@ -186,6 +195,8 @@ impl Session {
         self.font_cache = Some(cache);
         self.fonts = OnceLock::new();
         self.graph = OnceLock::new();
+        self.checked = OnceLock::new();
+        self.before = None;
     }
 
     /// The compiled scene (step `compile`), built once per edit. A scene
@@ -197,29 +208,33 @@ impl Session {
     /// lack, or a sound a listening track hears that cannot be read.
     pub fn graph(&self) -> Result<&SceneGraph> {
         self.graph
-            .get_or_init(|| {
-                let mut typesetter = Typesetter::new(self.fonts()?.clone());
-                let scene = self.doc.scene();
-                let first = stage("compile", || compile(scene, &mut typesetter))?;
-                // Tracks that follow a sound need the first compile's routes.
-                let hearings = nakkash_scene::hearings(scene);
-                if hearings.is_empty() {
-                    return Ok(first);
-                }
-                let base = self.base();
-                let sound = |route: &nakkash_scene::Route| {
-                    self.sounds.get(&base.join(route.path())).map_err(|e| {
-                        e.at(nakkash_format::key::AUDIO)
-                            .under(nakkash_format::Place::of_layer(route.id(&first)))
-                    })
-                };
-                let levels = stage("listen", || crate::level::levels(&first, &hearings, sound))?;
-                stage("compile", || {
-                    nakkash_scene::compile_with(scene, &mut typesetter, &levels)
-                })
-            })
+            .get_or_init(|| self.compile().map(Arc::new))
             .as_ref()
+            .map(|graph| &**graph)
             .map_err(Clone::clone)
+    }
+
+    /// Compiles the scene, as [`Session::graph`] keeps it.
+    fn compile(&self) -> Result<SceneGraph> {
+        let mut typesetter = Typesetter::new(self.fonts()?.clone());
+        let scene = self.doc.scene();
+        let first = stage("compile", || compile(scene, &mut typesetter))?;
+        // Tracks that follow a sound need the first compile's routes.
+        let hearings = nakkash_scene::hearings(scene);
+        if hearings.is_empty() {
+            return Ok(first);
+        }
+        let base = self.base();
+        let sound = |route: &nakkash_scene::Route| {
+            self.sounds.get(&base.join(route.path())).map_err(|e| {
+                e.at(nakkash_format::key::AUDIO)
+                    .under(nakkash_format::Place::of_layer(route.id(&first)))
+            })
+        };
+        let levels = stage("listen", || crate::level::levels(&first, &hearings, sound))?;
+        stage("compile", || {
+            nakkash_scene::compile_with(scene, &mut typesetter, &levels)
+        })
     }
 
     /// Every node's values at `frame`, possibly fractional (step `evaluate`).
@@ -526,13 +541,40 @@ impl Session {
         }
     }
 
-    /// The check report over every frame (step `check`).
+    /// The check report over every frame (step `check`), with frames read
+    /// on one thread per processor, or as many as [`limit_threads`] allows.
+    /// It is made once per edit; after an edit, from the check before it,
+    /// reading again only what the edit can change ([D79]).
+    ///
+    /// [D79]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d79-an-edit-checks-only-what-it-can-change
     ///
     /// # Errors
     /// As [`Session::graph`].
     pub fn check(&self) -> Result<Report> {
+        Ok(self.checked()?.report().clone())
+    }
+
+    /// The scene's check, kept: what [`Session::check`] reports, and what
+    /// the check after an edit starts from.
+    ///
+    /// # Errors
+    /// As [`Session::graph`].
+    pub fn checked(&self) -> Result<&Arc<Checked>> {
         let graph = self.graph()?;
-        Ok(stage_ok("check", || check(self.doc.scene(), graph)))
+        let scene = self.doc.scene();
+        let threads = NonZero::new(workers(usize::MAX) as usize).unwrap_or(NonZero::<usize>::MIN);
+        Ok(self.checked.get_or_init(|| {
+            stage_ok("check", || {
+                Arc::new(match &self.before {
+                    Some(before) => before.checked.after(
+                        (before.doc.scene(), &before.graph),
+                        (scene, graph),
+                        threads,
+                    ),
+                    None => Checked::new(scene, graph, threads),
+                })
+            })
+        }))
     }
 
     /// The report of the pixel gates ([D59]): `contrast` and `flash`, on
@@ -567,13 +609,33 @@ impl Session {
     /// A diagnostic for a bad line or an invalid result; the session is then
     /// left as it was.
     pub fn edit(&mut self, line: &str) -> Result<Report> {
-        self.doc = stage("edit", || nakkash_edit::edit_line(&self.doc, line))?;
+        self.apply(line)?;
+        self.check()
+    }
+
+    /// Applies the edit `line` (step `edit`) without checking the result.
+    /// The version before it is kept when it was checked, so the next
+    /// check starts from it.
+    ///
+    /// # Errors
+    /// As [`Session::edit`]; the session is then left as it was.
+    pub(crate) fn apply(&mut self, line: &str) -> Result<()> {
+        let doc = stage("edit", || nakkash_edit::edit_line(&self.doc, line))?;
+        let doc = std::mem::replace(&mut self.doc, doc);
+        let graph = std::mem::take(&mut self.graph).into_inner();
+        let checked = std::mem::take(&mut self.checked).into_inner();
+        if let (Some(Ok(graph)), Some(checked)) = (graph, checked) {
+            self.before = Some(Arc::new(Before {
+                doc,
+                graph,
+                checked,
+            }));
+        }
         self.fonts = OnceLock::new();
-        self.graph = OnceLock::new();
         self.pictures = Pictures::default();
         self.clips = Clips::default();
         self.sounds = Sounds::default();
-        self.check()
+        Ok(())
     }
 
     /// Applies one edit line of a variant ([D52]), as [`Session::edit`]
@@ -614,14 +676,17 @@ impl Session {
     pub(crate) fn hiding(&self, addresses: &[Address]) -> Result<Session> {
         let mut hidden = self.variant();
         for address in addresses {
-            hidden.edit(&format!("{address} hidden=true"))?;
+            hidden.apply(&format!("{address} hidden=true"))?;
         }
         Ok(hidden)
     }
 
     /// A copy of this session to make a variant of ([D52]): the same scene
-    /// and file, sharing the fonts already read, with nothing drawn yet.
-    /// Edits of the copy leave this one as it is.
+    /// and file, sharing the compiled scene and its check, with nothing
+    /// drawn yet. Edits of the copy leave this one as it is, and the copy's
+    /// checks start from this one's ([D79]).
+    ///
+    /// [D79]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d79-an-edit-checks-only-what-it-can-change
     ///
     /// [D52]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d52-a-batch-makes-every-variant-from-one-master
     pub fn variant(&self) -> Session {
@@ -629,7 +694,9 @@ impl Session {
             path: self.path.clone(),
             doc: self.doc.clone(),
             fonts: OnceLock::new(),
-            graph: OnceLock::new(),
+            graph: shared(&self.graph),
+            checked: shared(&self.checked),
+            before: self.before.clone(),
             font_cache: self.font_cache.clone(),
             pictures: Pictures::default(),
             clips: Clips::default(),
@@ -705,6 +772,8 @@ impl FromStr for Session {
             doc,
             fonts: OnceLock::new(),
             graph: OnceLock::new(),
+            checked: OnceLock::new(),
+            before: None,
             font_cache: None,
             pictures: Pictures::default(),
             clips: Clips::default(),
@@ -712,6 +781,26 @@ impl FromStr for Session {
             accelerator: None,
         })
     }
+}
+
+/// A version of the scene that was checked, kept after an edit.
+#[derive(Debug)]
+struct Before {
+    /// The scene as it was.
+    doc: Document,
+    /// Its compiled form.
+    graph: Arc<SceneGraph>,
+    /// Its check.
+    checked: Arc<Checked>,
+}
+
+/// A copy of `cell` that shares what it holds, if anything.
+fn shared<T: Clone>(cell: &OnceLock<T>) -> OnceLock<T> {
+    let copy = OnceLock::new();
+    if let Some(held) = cell.get() {
+        let _ = copy.set(held.clone());
+    }
+    copy
 }
 
 /// Whether a `fonts` entry is a lock.

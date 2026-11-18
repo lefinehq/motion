@@ -54,22 +54,60 @@ pub(crate) fn layout_inks(visit: &Visit<'_>) -> Vec<Option<Rect>> {
 /// of glyphs: the smaller side of their overlap, when it is more than
 /// touching.
 pub(crate) fn judge(a: &[Rect], b: &[Rect], graph: &SceneGraph) -> Option<Finding> {
-    let reach = |r: &[Rect]| r.iter().copied().reduce(|x, y| x.union(y));
     let (Some(ra), Some(rb)) = (reach(a), reach(b)) else {
         return None;
     };
     if !ra.overlaps(rb) {
         return None;
     }
-    let depth = a
-        .iter()
-        .flat_map(|x| b.iter().map(move |y| x.intersect(*y)))
-        .map(|both| both.width().min(both.height()))
-        .fold(0.0, f64::max);
+    let depth = deepest(a, b);
     (depth > TOUCHING * px(graph)).then_some(Finding {
         value: depth,
         limit: 0.0,
     })
+}
+
+/// How deep any glyph of `a` runs into any of `b`: the largest smaller side
+/// of their overlaps, 0 when none overlap.
+///
+/// When every box is finite and `b` is sorted by its left edges
+/// ([`sort_inks`]), the glyphs of `b` that start at or past a glyph of `a`'s
+/// right edge are passed over: their overlap with it is exactly 0 across,
+/// which cannot raise the largest, so the depth is the same.
+fn deepest(a: &[Rect], b: &[Rect]) -> f64 {
+    let overlap = |x: &Rect, y: &Rect| {
+        let both = x.intersect(*y);
+        both.width().min(both.height())
+    };
+    let finite = |r: &[Rect]| {
+        r.iter()
+            .all(|r| [r.x0, r.y0, r.x1, r.y1].iter().all(|v| v.is_finite()))
+    };
+    let sorted = b.is_sorted_by(|p, q| p.x0 <= q.x0);
+    if !(sorted && finite(a) && finite(b)) {
+        return a
+            .iter()
+            .flat_map(|x| b.iter().map(move |y| overlap(x, y)))
+            .fold(0.0, f64::max);
+    }
+    a.iter()
+        .flat_map(|x| {
+            b.iter()
+                .take_while(move |y| y.x0 < x.x1)
+                .map(move |y| overlap(x, y))
+        })
+        .fold(0.0, f64::max)
+}
+
+/// `inks` sorted by their left edges, as [`judge`] reads them fastest; the
+/// order does not change what it finds.
+pub(crate) fn sort_inks(inks: &mut [Rect]) {
+    inks.sort_by(|p, q| p.x0.total_cmp(&q.x0));
+}
+
+/// The box all of `inks` cover, or `None` for no ink.
+pub(crate) fn reach(inks: &[Rect]) -> Option<Rect> {
+    inks.iter().copied().reduce(|x, y| x.union(y))
 }
 
 #[cfg(test)]

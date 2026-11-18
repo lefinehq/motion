@@ -7,5 +7,5 @@ mod report;
 mod rules;
 
 pub use at::at;
-pub use check::check;
+pub use check::{Checked, changed_layers, check, check_on};
 pub use report::{Code, Measure, Report, Severity, Unit, Violation};

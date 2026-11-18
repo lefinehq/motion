@@ -1,5 +1,12 @@
 //! The `check` query: every rule over every frame, with consecutive failing frames
 //! merged into one [`Violation`] so the report stays short.
+//!
+//! A check is kept as a [`Checked`]: each layer's findings, and what the
+//! scene's rules (`overlap`, `crowd`) need of it at each frame. The check
+//! of an edited scene reads again only the layers the edit can change and
+//! keeps the rest ([D79]); a test holds it to the check from scratch.
+//!
+//! [D79]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d79-an-edit-checks-only-what-it-can-change
 
 use crate::report::{Code, Measure, Report, Severity, Violation};
 use crate::rules::{
@@ -12,113 +19,279 @@ use nakkash_format::key::AT;
 use nakkash_format::shorthand::{Coord, Position};
 use nakkash_format::{Address, Layer, Scene};
 use nakkash_scene::{
-    CompGraph, ContentState, Node, SceneGraph, Visit, address_of, evaluate, local_transform, walk,
+    CompGraph, ContentState, Node, SceneGraph, Visit, address_of, changed_paths, evaluate,
+    local_transform, walk,
 };
 use std::collections::BTreeMap;
+use std::num::NonZero;
+use std::ops::Range;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, OnceLock, PoisonError};
 use tracing::{Span, field, instrument};
 
 /// Runs the standard rules on `scene` over every frame of `graph`, its
-/// compiled form, on every node at any depth, in scene space.
-#[instrument(
-    level = "debug",
-    skip_all,
-    fields(
-        frames = field::Empty,
-        rules_run = field::Empty,
-        violations = field::Empty,
-        passed = field::Empty
-    )
-)]
+/// compiled form, on every node at any depth, in scene space, on one thread
+/// per processor ([`check_on`]).
 pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
-    debug_assert_eq!(scene.root.layers.len(), graph.root.nodes.len());
-    let frame_count = graph.root.duration_frames.ceil().max(0.0) as u32;
-    Span::current().record("frames", frame_count);
+    let processors = std::thread::available_parallelism().map_or(1, NonZero::get);
+    check_on(
+        scene,
+        graph,
+        NonZero::new(processors).unwrap_or(NonZero::<usize>::MIN),
+    )
+}
 
-    // One frame at a time: memory grows with layers and rules, not frames.
-    let paths = graph.paths();
-    let mut scans: Vec<LayerScan> = paths
-        .iter()
-        .map(|ids| {
-            // Motion blur smooths its steps where its composition's shutter is open.
-            let blurred = graph
-                .node_at(ids)
-                .is_some_and(|(node, comp)| node.mblur && comp.shutter.open());
-            LayerScan::new(blurred)
-        })
-        .collect();
-    // How many layers catch the eye at each frame, for `crowd`.
-    let mut crowds: Vec<Run> = Vec::new();
-    let mut anything_moved = false;
-    // Where each text layer's glyphs draw as laid out, read once, and the
-    // runs of frames each pair of them, under then over, run into each other.
-    let mut laid: BTreeMap<usize, Vec<Option<Rect>>> = BTreeMap::new();
-    let mut overlaps: BTreeMap<(usize, usize), Vec<Run>> = BTreeMap::new();
-    let mut read_together = false;
-    for frame in 0..frame_count {
-        let state = evaluate(graph, f64::from(frame));
-        let mut movers = 0;
-        let mut read: Vec<(usize, Vec<Rect>)> = Vec::new();
-        for visit in walk(graph, &state) {
-            let (catches, readable) = scans[visit.index].observe(frame, &visit, graph);
-            movers += usize::from(catches);
-            if readable {
-                let inks = laid
-                    .entry(visit.index)
-                    .or_insert_with(|| overlap::layout_inks(&visit));
-                read.push((visit.index, overlap::canvas_inks(&visit, inks)));
+/// [`check`] on at most `threads` threads. The report is the same on any
+/// number of threads, to the bit and in the same order: frames are
+/// evaluated side by side, but every layer reads its frames in order.
+pub fn check_on(scene: &Scene, graph: &SceneGraph, threads: NonZero<usize>) -> Report {
+    Checked::new(scene, graph, threads).report().clone()
+}
+
+/// The check of one version of a scene, kept so that the check of the next
+/// version, after an edit, reads again only what the edit can change
+/// ([D79]).
+///
+/// [D79]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d79-an-edit-checks-only-what-it-can-change
+#[derive(Debug, Clone)]
+pub struct Checked {
+    /// What each node's rules found, parallel to [`SceneGraph::paths`].
+    layers: Vec<LayerFound>,
+    /// The runs of frames each pair of texts, under then over by their
+    /// place in the paths, run into each other at.
+    overlaps: BTreeMap<(usize, usize), Vec<Run>>,
+    /// The whole frames checked.
+    frames: u32,
+    /// The report the parts above make.
+    report: Report,
+}
+
+/// What one node's own rules found over the frames, and what the scene's
+/// rules need of it.
+#[derive(Debug, Clone, Default)]
+struct LayerFound {
+    /// Its violations, in report order.
+    violations: Vec<Violation>,
+    /// How many of its rules ran and found nothing.
+    passed: usize,
+    /// How many of its rules ran.
+    rules_run: usize,
+    /// The frames at which it catches the eye, in order, for `crowd`.
+    catches: Vec<u32>,
+    /// The frames at which it is text being read, in order, with the boxes
+    /// its glyphs draw there, for `overlap`.
+    reads: Vec<(u32, Vec<Rect>)>,
+}
+
+impl Checked {
+    /// Checks `scene`, compiled as `graph`, from scratch on at most
+    /// `threads` threads.
+    #[instrument(
+        name = "check",
+        level = "debug",
+        skip_all,
+        fields(
+            frames = field::Empty,
+            rules_run = field::Empty,
+            violations = field::Empty,
+            passed = field::Empty
+        )
+    )]
+    pub fn new(scene: &Scene, graph: &SceneGraph, threads: NonZero<usize>) -> Checked {
+        debug_assert_eq!(scene.root.layers.len(), graph.root.nodes.len());
+        let paths = graph.paths();
+        let every = vec![true; paths.len()];
+        let checked = Checked::read(scene, graph, &paths, &every, None, threads.get());
+        checked.record();
+        checked
+    }
+
+    /// The check of `after`, compiled as `graph`: the scene this check was
+    /// made of, `before` compiled as `was`, with an edit made. Only the
+    /// layers the edit can change are read again ([`changed_layers`]); the
+    /// report is the one [`Checked::new`] makes of `after`, to the bit.
+    #[instrument(
+        name = "check",
+        level = "debug",
+        skip_all,
+        fields(
+            frames = field::Empty,
+            changed = field::Empty,
+            rules_run = field::Empty,
+            violations = field::Empty,
+            passed = field::Empty
+        )
+    )]
+    pub fn after(
+        &self,
+        (before, was): (&Scene, &SceneGraph),
+        (after, graph): (&Scene, &SceneGraph),
+        threads: NonZero<usize>,
+    ) -> Checked {
+        let paths = graph.paths();
+        let changed = changed_layers((before, was), (after, graph), &paths)
+            .filter(|_| frames_of(graph) == self.frames && self.layers.len() == paths.len());
+        let checked = match changed {
+            Some(changed) => {
+                Span::current().record("changed", changed.iter().filter(|&&c| c).count());
+                Checked::read(after, graph, &paths, &changed, Some(self), threads.get())
             }
-        }
-        anything_moved |= movers > 0;
-        if let Some(found) = crowd::judge(movers) {
-            add(&mut crowds, frame, found);
-        }
-        read_together |= read.len() > 1;
-        for (k, (under, below)) in read.iter().enumerate() {
-            for (over, above) in &read[k + 1..] {
-                if let Some(found) = overlap::judge(below, above, graph) {
-                    add(overlaps.entry((*under, *over)).or_default(), frame, found);
+            None => {
+                let every = vec![true; paths.len()];
+                Checked::read(after, graph, &paths, &every, None, threads.get())
+            }
+        };
+        checked.record();
+        checked
+    }
+
+    /// The report.
+    pub fn report(&self) -> &Report {
+        &self.report
+    }
+
+    /// The report, kept no longer.
+    pub fn into_report(self) -> Report {
+        self.report
+    }
+
+    fn record(&self) {
+        Span::current()
+            .record("frames", self.frames)
+            .record("violations", self.report.violations.len())
+            .record("passed", self.report.passed);
+    }
+
+    /// Reads the layers flagged in `fresh` over every frame, takes the
+    /// others from `kept`, and judges the scene's rules over both.
+    fn read(
+        scene: &Scene,
+        graph: &SceneGraph,
+        paths: &[Vec<&str>],
+        fresh: &[bool],
+        kept: Option<&Checked>,
+        threads: usize,
+    ) -> Checked {
+        let frames = frames_of(graph);
+        let addresses: Vec<Address> = paths.iter().map(|ids| address_of(ids)).collect();
+        // What the kept layers read at each frame, for text on text.
+        let mut kept_reads: Vec<Vec<(usize, &[Rect])>> = vec![Vec::new(); frames as usize];
+        if let Some(kept) = kept {
+            for (index, layer) in kept.layers.iter().enumerate() {
+                if fresh[index] {
+                    continue;
+                }
+                for (frame, inks) in &layer.reads {
+                    kept_reads[*frame as usize].push((index, inks));
                 }
             }
         }
+        let mut pass = Pass::new(graph, paths, fresh, threads);
+        let mut overlaps: BTreeMap<(usize, usize), Vec<Run>> = match kept {
+            Some(kept) => kept
+                .overlaps
+                .iter()
+                .filter(|((under, over), _)| !fresh[*under] && !fresh[*over])
+                .map(|(pair, runs)| (*pair, runs.clone()))
+                .collect(),
+            None => BTreeMap::new(),
+        };
+        pass.run(graph, 0..frames, &kept_reads, &mut overlaps);
+        let mut layers = pass.finish(scene, graph, paths, &addresses);
+        if let Some(kept) = kept {
+            for (index, layer) in layers.iter_mut().enumerate() {
+                if !fresh[index] {
+                    *layer = kept.layers[index].clone();
+                }
+            }
+        }
+        let report = assemble(&layers, &overlaps, &addresses, frames);
+        Checked {
+            layers,
+            overlaps,
+            frames,
+            report,
+        }
     }
+}
 
+/// Which layers, parallel to `paths`, the edit from `before` to `after` can
+/// change the check of: those a walk may meet differently
+/// ([`changed_paths`]), and those whose layer in the scene changed, which
+/// fix hints read. `None` when every layer may change.
+pub fn changed_layers(
+    (before, was): (&Scene, &SceneGraph),
+    (after, graph): (&Scene, &SceneGraph),
+    paths: &[Vec<&str>],
+) -> Option<Vec<bool>> {
+    let mut changed = changed_paths(was, graph)?;
+    for (flag, ids) in changed.iter_mut().zip(paths) {
+        if !*flag {
+            let address = address_of(ids);
+            *flag = before.layer(&address.layers) != after.layer(&address.layers);
+        }
+    }
+    Some(changed)
+}
+
+/// The report the parts of a check make: each layer's findings in the
+/// paths' order, then text on text, then the crowd.
+fn assemble(
+    layers: &[LayerFound],
+    overlaps: &BTreeMap<(usize, usize), Vec<Run>>,
+    addresses: &[Address],
+    frames: u32,
+) -> Report {
     let mut report = Report {
-        violations: Vec::new(),
+        violations: Vec::with_capacity(
+            layers.iter().map(|l| l.violations.len()).sum::<usize>()
+                + overlaps.values().map(Vec::len).sum::<usize>(),
+        ),
         passed: 0,
     };
     let mut rules_run = 0;
-    for (ids, scan) in paths.iter().zip(scans) {
-        let address = address_of(ids);
-        // A fix hint edits the layer's `at` where the instance draws it.
-        let layer = scene.layer(&address.layers);
-        let placed = layer.zip(graph.node_at(ids));
-        rules_run += scan.finish(&address, placed, graph, &mut report);
+    let mut movers = vec![0_usize; frames as usize];
+    let mut read = vec![0_usize; frames as usize];
+    for layer in layers {
+        report.violations.extend(layer.violations.iter().cloned());
+        report.passed += layer.passed;
+        rules_run += layer.rules_run;
+        for &frame in &layer.catches {
+            movers[frame as usize] += 1;
+        }
+        for (frame, _) in &layer.reads {
+            read[*frame as usize] += 1;
+        }
     }
     // Text on text is the scene's to judge once two texts are read at once.
-    if read_together {
+    if read.iter().any(|&n| n > 1) {
         rules_run += 1;
         if overlaps.is_empty() {
             report.passed += 1;
         }
     }
     for ((under, over), runs) in overlaps {
-        report
-            .violations
-            .extend(runs.into_iter().map(|run| Violation {
-                severity: Severity::Warning,
-                code: Code::Overlap,
-                address: address_of(&paths[over]),
-                first_frame: run.first,
-                last_frame: run.last,
-                measure: Measure::Overshoot((run.worst.value - EPSILON).ceil()),
-                fix: None,
-                with: Some(address_of(&paths[under])),
-            }));
+        report.violations.extend(runs.iter().map(|run| Violation {
+            severity: Severity::Warning,
+            code: Code::Overlap,
+            address: addresses[*over].clone(),
+            first_frame: run.first,
+            last_frame: run.last,
+            measure: Measure::Overshoot((run.worst.value - EPSILON).ceil()),
+            fix: None,
+            with: Some(addresses[*under].clone()),
+        }));
     }
     // The crowd is the scene's: one rule over the whole clip, measured
     // once something moves.
-    if anything_moved {
+    if movers.iter().any(|&n| n > 0) {
         rules_run += 1;
+        let mut crowds: Vec<Run> = Vec::new();
+        for (frame, &n) in (0_u32..).zip(&movers) {
+            if let Some(found) = crowd::judge(n) {
+                add(&mut crowds, frame, found);
+            }
+        }
         if crowds.is_empty() {
             report.passed += 1;
         }
@@ -136,11 +309,309 @@ pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
                 with: None,
             }));
     }
-    Span::current()
-        .record("rules_run", rules_run)
-        .record("violations", report.violations.len())
-        .record("passed", report.passed);
+    Span::current().record("rules_run", rules_run);
     report
+}
+
+/// The whole frames `graph` lasts.
+fn frames_of(graph: &SceneGraph) -> u32 {
+    graph.root.duration_frames.ceil().max(0.0) as u32
+}
+
+/// What one frame shows the check of one node, read from its visit: all a
+/// layer's rules need of the frame, so the frames can be read side by
+/// side and then handed to each layer in order.
+struct Look {
+    /// The node's place in [`SceneGraph::paths`].
+    index: usize,
+    /// The box it draws on the canvas, when it is visible and draws.
+    drawn: Option<Rect>,
+    /// What each layout rule finds at the frame, parallel to [`RULES`].
+    found: Vec<Option<Overshoot>>,
+    /// Its parents' transform to the canvas, when it draws.
+    parent: Option<Affine>,
+    /// What craft rules see of it.
+    sample: Sample,
+    /// Where its glyphs draw on the canvas, for a text that may be read at
+    /// the frame ([`text_hold::may_hold`]); whether it is read depends on
+    /// the frame before.
+    inks: Option<Vec<Rect>>,
+}
+
+/// What every node flagged in `fresh` shows at one frame; `laid` keeps the
+/// glyph boxes texts are laid out in, read once per node.
+fn look_at(
+    graph: &SceneGraph,
+    frame: u32,
+    fresh: &[bool],
+    blurred: &[bool],
+    laid: &[OnceLock<Vec<Option<Rect>>>],
+) -> Vec<Look> {
+    let state = evaluate(graph, f64::from(frame));
+    walk(graph, &state)
+        .filter(|visit| fresh[visit.index])
+        .map(|visit| {
+            let drawn = visit.drawn().filter(|_| visible(&visit) && draws(&visit));
+            let found = RULES
+                .iter()
+                .map(|rule| (rule.evaluate)(&visit, graph))
+                .collect();
+            // Its parents' transform is its own world transform without its local one.
+            let parent =
+                drawn.map(|_| visit.transform * local_transform(&visit.node.values).inverse());
+            let sample = sample(frame, &visit, blurred[visit.index]);
+            let inks = text_hold::may_hold(&sample).then(|| {
+                let inks = laid[visit.index].get_or_init(|| overlap::layout_inks(&visit));
+                let mut inks = overlap::canvas_inks(&visit, inks);
+                overlap::sort_inks(&mut inks);
+                inks
+            });
+            Look {
+                index: visit.index,
+                drawn,
+                found,
+                parent,
+                sample,
+                inks,
+            }
+        })
+        .collect()
+}
+
+/// What craft rules see of the layer at `frame`.
+fn sample(frame: u32, visit: &Visit<'_>, blurred: bool) -> Sample {
+    let b = visit.node.own_box;
+    let corners = [(b.x0, b.y0), (b.x1, b.y0), (b.x1, b.y1), (b.x0, b.y1)]
+        .map(|(x, y)| visit.transform * Point::new(x, y));
+    let chars = match &visit.node.content {
+        ContentState::Text { text, .. } => Some(
+            text.content
+                .text
+                .chars()
+                .filter(|c| !c.is_control())
+                .count(),
+        ),
+        _ => None,
+    };
+    Sample {
+        frame,
+        shown: visible(visit),
+        opacity: visit.opacity,
+        corners,
+        local: local_transform(&visit.node.values),
+        chars,
+        blurred,
+    }
+}
+
+/// One pass of the rules over a scene's frames, for the layers flagged in
+/// `fresh`: what each has seen so far.
+struct Pass<'a> {
+    /// The layers read, parallel to the paths.
+    fresh: &'a [bool],
+    /// What each node has seen, parallel to the paths.
+    scans: Vec<LayerScan>,
+    /// What the scene's rules need of each node, parallel to the paths.
+    found: Vec<LayerFound>,
+    /// Whether each node is drawn with motion blur where its composition's
+    /// shutter is open, parallel to the paths.
+    blurred: Vec<bool>,
+    /// Where each text node's glyphs draw as laid out, read once.
+    laid: Vec<OnceLock<Vec<Option<Rect>>>>,
+    /// The most threads frames are read on.
+    threads: usize,
+}
+
+/// How many frames each thread reads before the layers take them in
+/// order: enough to keep threads busy, few enough that memory grows with
+/// the layers, not the frames.
+const FRAMES_A_THREAD: usize = 2;
+
+impl<'a> Pass<'a> {
+    fn new(graph: &SceneGraph, paths: &[Vec<&str>], fresh: &'a [bool], threads: usize) -> Pass<'a> {
+        let blurred: Vec<bool> = paths
+            .iter()
+            .map(|ids| {
+                // Motion blur smooths its steps where its composition's shutter is open.
+                graph
+                    .node_at(ids)
+                    .is_some_and(|(node, comp)| node.mblur && comp.shutter.open())
+            })
+            .collect();
+        Pass {
+            fresh,
+            scans: blurred.iter().map(|_| LayerScan::new()).collect(),
+            found: blurred.iter().map(|_| LayerFound::default()).collect(),
+            laid: blurred.iter().map(|_| OnceLock::new()).collect(),
+            blurred,
+            threads,
+        }
+    }
+
+    /// Reads `frames`, in blocks read side by side and taken in order, and
+    /// adds to `overlaps` the texts that run into a fresh one, with
+    /// `kept_reads` the texts kept layers read at each frame.
+    fn run(
+        &mut self,
+        graph: &SceneGraph,
+        frames: Range<u32>,
+        kept_reads: &[Vec<(usize, &[Rect])>],
+        overlaps: &mut BTreeMap<(usize, usize), Vec<Run>>,
+    ) {
+        let block = (self.threads * FRAMES_A_THREAD).max(1) as u32;
+        let mut start = frames.start;
+        while start < frames.end {
+            let end = frames.end.min(start.saturating_add(block));
+            let (fresh, blurred, laid) = (self.fresh, &self.blurred, &self.laid);
+            let looks = in_parallel(start..end, self.threads, |frame| {
+                look_at(graph, frame, fresh, blurred, laid)
+            });
+            let reads: Vec<Vec<(usize, usize)>> = (start..end)
+                .zip(looks)
+                .map(|(frame, looks)| self.take(frame, looks, graph))
+                .collect();
+            let found = in_parallel(start..end, self.threads, |frame| {
+                let at = (frame - start) as usize;
+                let mut read: Vec<(usize, &[Rect])> = reads[at]
+                    .iter()
+                    .map(|&(index, at)| (index, self.found[index].reads[at].1.as_slice()))
+                    .chain(kept_reads[frame as usize].iter().copied())
+                    .collect();
+                read.sort_unstable_by_key(|(index, _)| *index);
+                overlapping(&read, fresh, graph)
+            });
+            for (frame, pairs) in (start..end).zip(found) {
+                for (pair, finding) in pairs {
+                    add(overlaps.entry(pair).or_default(), frame, finding);
+                }
+            }
+            start = end;
+        }
+    }
+
+    /// Hands every look at `frame` to its node's scan, in order; returns
+    /// the nodes read as text at the frame, each with the place of the
+    /// read in its [`LayerFound::reads`].
+    fn take(&mut self, frame: u32, looks: Vec<Look>, graph: &SceneGraph) -> Vec<(usize, usize)> {
+        let mut read = Vec::new();
+        for look in looks {
+            let index = look.index;
+            let (catches, inks) = self.scans[index].observe(frame, look, graph);
+            let found = &mut self.found[index];
+            if catches {
+                found.catches.push(frame);
+            }
+            if let Some(inks) = inks {
+                read.push((index, found.reads.len()));
+                found.reads.push((frame, inks));
+            }
+        }
+        read
+    }
+
+    /// What each fresh layer found, once the frames have run out.
+    fn finish(
+        self,
+        scene: &Scene,
+        graph: &SceneGraph,
+        paths: &[Vec<&str>],
+        addresses: &[Address],
+    ) -> Vec<LayerFound> {
+        let fresh = self.fresh;
+        paths
+            .iter()
+            .zip(addresses)
+            .zip(self.scans.into_iter().zip(self.found))
+            .enumerate()
+            .map(|(index, ((ids, address), (scan, mut found)))| {
+                if fresh[index] {
+                    // A fix hint edits the layer's `at` where the instance draws it.
+                    let layer = scene.layer(&address.layers);
+                    let placed = layer.zip(graph.node_at(ids));
+                    let mut report = Report {
+                        violations: Vec::new(),
+                        passed: 0,
+                    };
+                    found.rules_run = scan.finish(address, placed, graph, &mut report);
+                    found.violations = report.violations;
+                    found.passed = report.passed;
+                }
+                found
+            })
+            .collect()
+    }
+}
+
+/// Every pair of the texts `read` at one frame, in the paths' order, whose
+/// glyphs run into each other and of which one at least is `fresh`: under
+/// then over, by their place in the paths, with how deep.
+///
+/// Pairs whose glyphs' reaches cannot meet are passed over: the texts are
+/// swept from left to right by where their reach starts, and a text meets
+/// only those that start before its reach ends.
+fn overlapping(
+    read: &[(usize, &[Rect])],
+    fresh: &[bool],
+    graph: &SceneGraph,
+) -> Vec<((usize, usize), Finding)> {
+    let mut reaching: Vec<(usize, Rect)> = read
+        .iter()
+        .enumerate()
+        .filter_map(|(k, (_, inks))| overlap::reach(inks).map(|r| (k, r)))
+        .collect();
+    reaching.sort_by(|a, b| a.1.x0.total_cmp(&b.1.x0).then(a.0.cmp(&b.0)));
+    let mut found = Vec::new();
+    for (i, &(a, ra)) in reaching.iter().enumerate() {
+        for &(b, rb) in &reaching[i + 1..] {
+            // Sorted by where they start, none further on meets this one.
+            if rb.x0 > ra.x1 {
+                break;
+            }
+            let (under, over) = (read[a.min(b)], read[a.max(b)]);
+            if !(fresh[under.0] || fresh[over.0]) || !ra.overlaps(rb) {
+                continue;
+            }
+            if let Some(finding) = overlap::judge(under.1, over.1, graph) {
+                found.push(((under.0, over.0), finding));
+            }
+        }
+    }
+    found
+}
+
+/// `work` on every item of `items`, on up to `threads` threads, each
+/// taking the next item left; the results in the items' order.
+fn in_parallel<T: Send>(
+    items: Range<u32>,
+    threads: usize,
+    work: impl Fn(u32) -> T + Sync,
+) -> Vec<T> {
+    let count = items.len();
+    let threads = threads.min(count).max(1);
+    if threads == 1 {
+        return items.map(work).collect();
+    }
+    let next = AtomicUsize::new(0);
+    let done: Mutex<Vec<(usize, T)>> = Mutex::new(Vec::with_capacity(count));
+    std::thread::scope(|scope| {
+        for _ in 0..threads {
+            scope.spawn(|| {
+                loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    if i >= count {
+                        break;
+                    }
+                    let result = work(items.start + i as u32);
+                    done.lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .push((i, result));
+                }
+            });
+        }
+    });
+    let mut done = done.into_inner().unwrap_or_else(PoisonError::into_inner);
+    done.sort_unstable_by_key(|(i, _)| *i);
+    done.into_iter().map(|(_, result)| result).collect()
 }
 
 /// What the pass over the frames has seen of one layer.
@@ -162,8 +633,6 @@ struct LayerScan {
     frame: Frame,
     /// What craft rules saw of it at the frame before, if it was walked.
     previous: Option<Sample>,
-    /// Whether it is drawn with motion blur.
-    blurred: bool,
     /// Each craft rule's reading of it, parallel to [`CRAFT`].
     craft: Vec<CraftScan>,
 }
@@ -336,7 +805,7 @@ fn same(a: Affine, b: Affine) -> bool {
 }
 
 impl LayerScan {
-    fn new(blurred: bool) -> LayerScan {
+    fn new() -> LayerScan {
         LayerScan {
             runs: RULES.iter().map(|_| LayoutScan::default()).collect(),
             sweep: None,
@@ -344,17 +813,16 @@ impl LayerScan {
             seen: None,
             frame: Frame::Unseen,
             previous: None,
-            blurred,
             craft: CRAFT.iter().map(|_| CraftScan::default()).collect(),
         }
     }
 
-    /// Feeds the layer's state at `frame` to every rule and to the sweep, and
-    /// says whether it catches the eye over the step to it and whether it is
-    /// text being read.
-    fn observe(&mut self, frame: u32, visit: &Visit<'_>, graph: &SceneGraph) -> (bool, bool) {
-        self.layout(frame, visit, graph);
-        let now = self.sample(frame, visit);
+    /// Feeds the layer's look at `frame` to every rule and to the sweep, and
+    /// says whether it catches the eye over the step to it and, when it is
+    /// text being read, where its glyphs draw.
+    fn observe(&mut self, frame: u32, look: Look, graph: &SceneGraph) -> (bool, Option<Vec<Rect>>) {
+        self.layout(frame, &look, graph);
+        let now = look.sample;
         let before = self.previous.take().filter(|b| b.frame + 1 == frame);
         for (scan, rule) in self.craft.iter_mut().zip(CRAFT) {
             scan.observe(rule, &now, before.as_ref(), graph);
@@ -364,12 +832,12 @@ impl LayerScan {
             .is_some_and(|b| crowd::catches_the_eye(b, &now, graph));
         let readable = text_hold::holds(&now, before.as_ref(), graph);
         self.previous = Some(now);
-        (catches, readable)
+        (catches, look.inks.filter(|_| readable))
     }
 
-    /// Feeds the layer's state at `frame` to the layout rules and the sweep.
-    fn layout(&mut self, frame: u32, visit: &Visit<'_>, graph: &SceneGraph) {
-        let drawn = visit.drawn().filter(|_| visible(visit) && draws(visit));
+    /// Feeds the layer's look at `frame` to the layout rules and the sweep.
+    fn layout(&mut self, frame: u32, look: &Look, graph: &SceneGraph) {
+        let drawn = look.drawn;
         let (width, height) = (graph.root.width, graph.root.height);
         // Off the canvas: on or past one of its edges, so a box of no size
         // inside it is on it.
@@ -382,44 +850,16 @@ impl LayerScan {
             Some(_) => Place::Moving,
         };
         self.seen = drawn.map(|b| (frame, b));
-        for (scan, rule) in self.runs.iter_mut().zip(RULES) {
-            scan.observe(frame, place, (rule.evaluate)(visit, graph));
+        for (scan, found) in self.runs.iter_mut().zip(&look.found) {
+            scan.observe(frame, place, *found);
         }
-        if let Some(b) = drawn {
-            // Its parents' transform is its own world transform without its local one.
-            let parent = visit.transform * local_transform(&visit.node.values).inverse();
+        if let (Some(b), Some(parent)) = (drawn, look.parent) {
             self.frame = self.frame.and(parent);
             let sweep = match place {
                 Place::Off => &mut self.off_sweep,
                 _ => &mut self.sweep,
             };
             *sweep = Some(sweep.map_or(b, |a| a.union(b)));
-        }
-    }
-
-    /// What craft rules see of the layer at `frame`.
-    fn sample(&self, frame: u32, visit: &Visit<'_>) -> Sample {
-        let b = visit.node.own_box;
-        let corners = [(b.x0, b.y0), (b.x1, b.y0), (b.x1, b.y1), (b.x0, b.y1)]
-            .map(|(x, y)| visit.transform * Point::new(x, y));
-        let chars = match &visit.node.content {
-            ContentState::Text { text, .. } => Some(
-                text.content
-                    .text
-                    .chars()
-                    .filter(|c| !c.is_control())
-                    .count(),
-            ),
-            _ => None,
-        };
-        Sample {
-            frame,
-            shown: visible(visit),
-            opacity: visit.opacity,
-            corners,
-            local: local_transform(&visit.node.values),
-            chars,
-            blurred: self.blurred,
         }
     }
 
@@ -606,6 +1046,7 @@ fn add(runs: &mut Vec<Run>, frame: u32, found: Finding) {
 }
 
 /// A stretch of consecutive failing frames for one (rule, layer).
+#[derive(Debug, Clone)]
 struct Run {
     first: u32,
     last: u32,

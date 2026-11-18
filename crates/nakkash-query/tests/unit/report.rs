@@ -174,3 +174,56 @@ fn a_baseline_knows_a_problem_that_moved_in_time() {
     };
     assert_eq!(later.since(&base), 1);
 }
+
+/// What `since` must drop, read one by one as its documentation states it:
+/// the reference the indexed pass is held to.
+fn known_one_by_one(v: &Violation, base: &Report) -> bool {
+    base.violations.iter().any(|b| {
+        b.code == v.code
+            && b.address == v.address
+            && b.with == v.with
+            && v.measure.no_worse_than(b.measure)
+    })
+}
+
+/// A violation drawn from a few rules, layers and values, so reports share
+/// keys often; values include the edge cases of the comparisons.
+fn any_violation() -> impl proptest::strategy::Strategy<Value = Violation> {
+    use proptest::prelude::*;
+    let code = prop::sample::select(vec![Code::Offscreen, Code::Judder, Code::Overlap]);
+    let layer = prop::sample::select(vec!["a", "b", "a/c"]);
+    let with = prop::option::of(prop::sample::select(vec!["a", "b"]));
+    let value = prop::sample::select(vec![0.0, -0.0, 1.0, 2.5, 7.0, f64::NAN, f64::INFINITY]);
+    let form = 0..3_u8;
+    (code, layer, with, value, form).prop_map(|(code, layer, with, value, form)| {
+        let measure = match form {
+            0 => Measure::Overshoot(value),
+            1 => above(value),
+            _ => below(value),
+        };
+        Violation {
+            with: with.map(|w| w.parse().unwrap()),
+            ..found(code, layer, measure)
+        }
+    })
+}
+
+proptest::proptest! {
+    #[test]
+    fn since_drops_what_the_baseline_has_one_by_one(
+        now in proptest::collection::vec(any_violation(), 0..24),
+        then in proptest::collection::vec(any_violation(), 0..24),
+    ) {
+        let base = Report { violations: then, passed: 0 };
+        let expected: Vec<Violation> = now
+            .iter()
+            .filter(|v| !known_one_by_one(v, &base))
+            .cloned()
+            .collect();
+        let mut report = Report { violations: now.clone(), passed: 0 };
+        let dropped = report.since(&base);
+        proptest::prop_assert_eq!(dropped, now.len() - expected.len());
+        // Compared as text: NaN is not equal to itself.
+        proptest::prop_assert_eq!(format!("{:?}", report.violations), format!("{expected:?}"));
+    }
+}

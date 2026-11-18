@@ -51,6 +51,9 @@ derive_more = { version = "2", features = [
   "into",
 ] }
 kurbo = { version = "0.13", features = ["serde"] }
+# A fast hash for maps keyed by addresses, where SipHash's resistance to
+# chosen keys buys nothing: a check report indexed against its baseline.
+rustc-hash = "2"
 # Boolean operations on bézier outlines, on kurbo's own paths (D65).
 linesweeper = { version = "0.5", default-features = false }
 # Paint and font vocabulary shared with the rasteriser (D37).

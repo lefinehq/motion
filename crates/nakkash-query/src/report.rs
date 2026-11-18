@@ -1,6 +1,7 @@
 //! The result of `check`, printed compactly because an agent reads it instead of frames.
 
 use nakkash_format::{Address, fmt_num};
+use rustc_hash::FxHashMap;
 use std::fmt;
 
 /// How serious a violation is, printed as its first letter.
@@ -159,6 +160,56 @@ impl Measure {
     }
 }
 
+/// The worst measures of one kind of violation in a base report, one per
+/// form of [`Measure`]: what [`Report::since`] compares a violation with.
+#[derive(Default)]
+struct Worst {
+    /// The farthest overshoot.
+    overshoot: Option<f64>,
+    /// The highest value above a limit.
+    above: Option<f64>,
+    /// The lowest value below a limit.
+    below: Option<f64>,
+}
+
+impl Worst {
+    /// Counts `measure` in. A value that is not a number is kept only while
+    /// nothing else is: no measure is ever no worse than it, as no
+    /// comparison with it holds, while any other value it sits beside
+    /// decides alone.
+    fn add(&mut self, measure: Measure) {
+        let keep = |slot: &mut Option<f64>, value: f64, worse: fn(f64, f64) -> bool| {
+            *slot = Some(match *slot {
+                None => value,
+                Some(then) if then.is_nan() || worse(value, then) => value,
+                Some(then) => then,
+            });
+        };
+        match measure {
+            Measure::Overshoot(v) => keep(&mut self.overshoot, v, |a, b| a > b),
+            Measure::Above { value, .. } => keep(&mut self.above, value, |a, b| a > b),
+            Measure::Below { value, .. } => keep(&mut self.below, value, |a, b| a < b),
+        }
+    }
+
+    /// Whether some measure counted in is as bad as `measure` or worse,
+    /// as [`Measure::no_worse_than`] compares one with one.
+    fn covers(&self, measure: Measure) -> bool {
+        let base = match measure {
+            Measure::Overshoot(_) => self.overshoot.map(Measure::Overshoot),
+            Measure::Above { limit, unit, .. } => {
+                self.above
+                    .map(|value| Measure::Above { value, limit, unit })
+            }
+            Measure::Below { limit, unit, .. } => {
+                self.below
+                    .map(|value| Measure::Below { value, limit, unit })
+            }
+        };
+        base.is_some_and(|base| measure.no_worse_than(base))
+    }
+}
+
 impl Report {
     /// Drops the violations `base`, the report of an earlier version of the
     /// scene, already has, and returns how many it dropped. A violation is
@@ -166,15 +217,25 @@ impl Report {
     /// same other layer, for a rule that measures two) that is
     /// measured as bad or worse, whatever its frames: an edit may move a
     /// problem in time without making it worse.
+    ///
+    /// It takes time in proportion to the two reports' lengths: `base` is
+    /// read once into the worst measure of each rule, layer and other layer,
+    /// which is all a violation is compared with.
     pub fn since(&mut self, base: &Report) -> usize {
+        // Sized for every violation of `base`, so it is never hashed twice.
+        let mut worst: FxHashMap<(Code, &Address, Option<&Address>), Worst> =
+            FxHashMap::with_capacity_and_hasher(base.violations.len(), Default::default());
+        for b in &base.violations {
+            worst
+                .entry((b.code, &b.address, b.with.as_ref()))
+                .or_default()
+                .add(b.measure);
+        }
         let before = self.violations.len();
         self.violations.retain(|v| {
-            !base.violations.iter().any(|b| {
-                b.code == v.code
-                    && b.address == v.address
-                    && b.with == v.with
-                    && v.measure.no_worse_than(b.measure)
-            })
+            !worst
+                .get(&(v.code, &v.address, v.with.as_ref()))
+                .is_some_and(|w| w.covers(v.measure))
         });
         before - self.violations.len()
     }

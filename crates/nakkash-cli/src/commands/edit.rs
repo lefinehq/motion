@@ -3,6 +3,7 @@
 
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use nakkash_engine::{Result, Session};
 
@@ -14,8 +15,9 @@ use super::print_new;
 /// other errors leave it untouched.
 pub fn run(path: &Path, line: &str) -> Result<ExitCode> {
     let mut session = Session::open(path)?;
-    let before = session.check()?;
+    // Kept, not copied: the check after the edit starts from it (D79).
+    let before = Arc::clone(session.checked()?);
     let report = session.edit(line)?;
     session.save()?;
-    Ok(print_new(report, &before))
+    Ok(print_new(report, before.report()))
 }

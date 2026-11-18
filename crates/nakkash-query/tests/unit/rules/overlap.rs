@@ -43,3 +43,26 @@ fn ink_runs_in_only_past_touching(#[case] other: Vec<Rect>, #[case] depth: Optio
 fn nothing_drawn_never_overlaps() {
     assert_eq!(judge(&line(0.0), &[], &graph()), None);
 }
+
+proptest::proptest! {
+    /// Sorting the glyphs, and passing over those that start past a glyph's
+    /// right edge, finds the same depth as every pair.
+    #[test]
+    fn the_sweep_finds_what_every_pair_finds(
+        a in proptest::collection::vec((0.0..100.0_f64, 0.0..20.0_f64, 0.0..30.0_f64, 0.0..20.0_f64), 0..8),
+        b in proptest::collection::vec((0.0..100.0_f64, 0.0..20.0_f64, 0.0..30.0_f64, 0.0..20.0_f64), 0..8),
+    ) {
+        let rects = |r: &[(f64, f64, f64, f64)]| -> Vec<Rect> {
+            r.iter().map(|&(x, y, w, h)| Rect::new(x, y, x + w, y + h)).collect()
+        };
+        let (a, b) = (rects(&a), rects(&b));
+        let every = a
+            .iter()
+            .flat_map(|x| b.iter().map(move |y| x.intersect(*y)))
+            .map(|both| both.width().min(both.height()))
+            .fold(0.0, f64::max);
+        let mut sorted = b.clone();
+        sort_inks(&mut sorted);
+        proptest::prop_assert_eq!(deepest(&a, &sorted).to_bits(), every.to_bits());
+    }
+}

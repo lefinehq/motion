@@ -39,7 +39,13 @@ pub(crate) fn holds(now: &Sample, before: Option<&Sample>, graph: &SceneGraph) -
     let still = before
         .filter(|b| b.shown)
         .is_none_or(|b| now.moved_from(b) <= judder_limit(graph));
-    now.chars.is_some() && now.shown && now.opacity >= READABLE_OPACITY && still
+    may_hold(now) && still
+}
+
+/// The part of [`holds`] its own frame decides: a shown text, nearly
+/// opaque. Whether it holds then depends on the frame before.
+pub(crate) fn may_hold(now: &Sample) -> bool {
+    now.chars.is_some() && now.shown && now.opacity >= READABLE_OPACITY
 }
 
 /// Too short for its characters.
