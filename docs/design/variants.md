@@ -15,6 +15,8 @@ In v1, nakkash turns a finished, professionally designed project into variants. 
 
 Steps 1, 2, 4 and 6 work today, and step 4 works for many variants at once: `nakkash batch` makes each from the master, refuses the edits a lock holds, checks it and renders it ([D52](decisions.md#d52-a-batch-makes-every-variant-from-one-master)). Of step 3, roles, locks and slots work today; beats and the style profile come next in [M3](roadmap.md#m3-variants).
 
+A variant can also be generated: `nakkash vary` walks a master along palette, type, content, timing and format, and can improve it by the check's own repairs. Each variant passes when it adds no error to its master's report ([D78](decisions.md#d78-generated-variants-move-along-measured-axes-and-pass-when-they-add-no-error), [plan](../plans/2026-11-25-vary.md)).
+
 ## Import
 
 The import is an ordinary scene ([D32](decisions.md#d32-one-format-for-authored-and-imported-scenes)): every check, query and edit works on it as on a scene an agent wrote.
