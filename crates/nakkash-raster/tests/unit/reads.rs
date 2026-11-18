@@ -88,11 +88,11 @@ fn children_shared_by_three_layers_are_drawn_once_at_each_transform() {
     let drawn = Cell::new(0);
     let draw = || {
         drawn.set(drawn.get() + 1);
-        Ok(Pixels::transparent(2, 2))
+        Ok(Surface::Cpu(Pixels::transparent(2, 2)))
     };
     for _ in 0..3 {
         reads
-            .shared(&shared, Affine::IDENTITY, (2, 2), draw)
+            .shared(&shared, Affine::IDENTITY, (2, 2), None, draw)
             .expect("drawn");
     }
     assert_eq!(drawn.get(), 1);

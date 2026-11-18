@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use nakkash_format::Result;
 use vello_cpu::kurbo::Affine;
 
+use crate::accel::{Accelerator, Surface};
 use crate::list::{Node, Shared};
 use crate::pixels::Pixels;
 
@@ -36,8 +37,9 @@ pub(crate) struct Reads {
     /// How many reads of each node are still to come, by its address.
     left: Mutex<HashMap<usize, usize>>,
     /// The drawings kept, each with its node or mark held so that nothing
-    /// else takes its address while the drawing is kept.
-    drawn: Mutex<HashMap<Key, (Owner, Arc<Pixels>)>>,
+    /// else takes its address while the drawing is kept: on the CPU, or in
+    /// the accelerator the frame's float canvas is in.
+    drawn: Mutex<HashMap<Key, (Owner, Arc<Surface>)>>,
 }
 
 /// What a kept drawing is of, held while it is kept.
@@ -84,28 +86,33 @@ impl Reads {
             || Owner::Read(Arc::clone(node)),
             transform,
             size,
-            draw,
-        )
+            None,
+            || draw().map(Surface::Cpu),
+        )?
+        .into_pixels(None)
     }
 
     /// The drawing of the children marked `shared` at `transform` on a
     /// canvas of `size`: the one kept, or `draw`'s, kept while more layers
-    /// with the mark are to be drawn.
+    /// with the mark are to be drawn. A drawing `draw` leaves in `accel` is
+    /// kept there and copied there.
     ///
     /// # Errors
-    /// The one `draw` returns.
+    /// The one `draw` returns, or a failed copy.
     pub(crate) fn shared(
         &self,
         shared: &Shared,
         transform: Affine,
         size: (u16, u16),
-        draw: impl FnOnce() -> Result<Pixels>,
-    ) -> Result<Pixels> {
+        accel: Option<&dyn Accelerator>,
+        draw: impl FnOnce() -> Result<Surface>,
+    ) -> Result<Surface> {
         self.kept(
             shared.address(),
             || Owner::Shared(shared.clone()),
             transform,
             size,
+            accel,
             draw,
         )
     }
@@ -118,8 +125,9 @@ impl Reads {
         owner: impl FnOnce() -> Owner,
         transform: Affine,
         size: (u16, u16),
-        draw: impl FnOnce() -> Result<Pixels>,
-    ) -> Result<Pixels> {
+        accel: Option<&dyn Accelerator>,
+        draw: impl FnOnce() -> Result<Surface>,
+    ) -> Result<Surface> {
         let more = {
             let mut left = locked(&self.left);
             match left.get_mut(&address) {
@@ -157,7 +165,10 @@ impl Reads {
             drawn.retain(|&(at, _, _), _| at != address);
         }
         drop(drawn);
-        Ok(Arc::try_unwrap(pixels).unwrap_or_else(|shared| (*shared).clone()))
+        match Arc::try_unwrap(pixels) {
+            Ok(pixels) => Ok(pixels),
+            Err(shared) => shared.duplicate(accel),
+        }
     }
 }
 

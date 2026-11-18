@@ -964,14 +964,13 @@ impl<'a> Painter<'a> {
         let at = transform * moved;
         let mut pixels = match &layer.shared {
             // Layers with the same children draw them once at each
-            // transform, on the CPU; an effect that runs in the accelerator
-            // takes them there from the shared drawing.
-            Some(shared) => Surface::Cpu(self.reads.shared(
-                shared,
-                at,
-                (self.width, self.height),
-                || self.drawn_alone(&layer.children, at),
-            )?),
+            // transform, where the float canvas's work is done.
+            Some(shared) => {
+                self.reads
+                    .shared(shared, at, (self.width, self.height), self.accel, || {
+                        self.drawn_alone_surface(&layer.children, at)
+                    })?
+            }
             None => {
                 // What the content drew goes to the accelerator as it was
                 // drawn when the first effect runs there, or when no effect
