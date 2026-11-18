@@ -3152,7 +3152,7 @@ pub const EFFECTS: &[EffectSpec] = &[
 pub struct Effect {
     spec: &'static EffectSpec,
     values: Vec<ParamValue>,
-    input: Option<Box<Node>>,
+    input: Option<std::sync::Arc<Node>>,
     sound: Option<std::sync::Arc<crate::sound::Heard>>,
     outline: Option<std::sync::Arc<BezPath>>,
     totals: Vec<(usize, std::sync::Arc<Total>)>,
@@ -3216,8 +3216,8 @@ impl Effect {
     /// The effect reading `node`'s drawing: a layer drawn in its own
     /// coordinates, which the renderer lays on those of the layer the
     /// effect is on.
-    pub fn with_input(mut self, node: Node) -> Effect {
-        self.input = Some(Box::new(node));
+    pub fn with_input(mut self, node: impl Into<std::sync::Arc<Node>>) -> Effect {
+        self.input = Some(node.into());
         self
     }
 
@@ -3244,9 +3244,10 @@ impl Effect {
         self.sound.as_ref()
     }
 
-    /// The node whose drawing it reads, if any.
-    pub fn input(&self) -> Option<&Node> {
-        self.input.as_deref()
+    /// The node whose drawing it reads, if any: shared, so the effects of
+    /// one frame that read the same layer hold the same node.
+    pub fn input(&self) -> Option<&std::sync::Arc<Node>> {
+        self.input.as_ref()
     }
 
     /// The effect's row.
@@ -3306,7 +3307,26 @@ impl Effect {
 
     /// Applies the effect to `pixels`, a layer's drawn in `space`: a move
     /// resamples them, any other changes them in place.
+    ///
+    /// Each application is logged at debug level under the target
+    /// `nakkash::effect`, with the effect's name, its time in milliseconds
+    /// and the size of the pixels, so a slow frame can be read effect by
+    /// effect (`--log debug`, or `NAKKASH_LOG=nakkash::effect=debug`).
     pub fn apply(&self, pixels: &mut Pixels, space: &Space) {
+        let started = std::time::Instant::now();
+        let (width, height) = (pixels.width(), pixels.height());
+        self.applied(pixels, space);
+        tracing::debug!(
+            target: "nakkash::effect",
+            effect = self.spec.name,
+            ms = started.elapsed().as_secs_f64() * 1000.0,
+            width,
+            height,
+        );
+    }
+
+    /// [`Effect::apply`] without its log line.
+    fn applied(&self, pixels: &mut Pixels, space: &Space) {
         match self.spec.apply {
             Apply::Move(movement) => {
                 let Move { transform, opacity } = movement(&self.values);

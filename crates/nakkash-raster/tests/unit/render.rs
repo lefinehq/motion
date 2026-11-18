@@ -693,3 +693,45 @@ fn the_float_canvas_blends_as_the_context_does(
         .max();
     assert!(worst <= Some(1), "{mode}: {worst:?}");
 }
+
+/// A layer read by several effects is drawn once a frame and shared: the
+/// frame is the same, pixel for pixel, as when each effect reads a copy of
+/// its own.
+#[test]
+fn a_layer_read_by_several_effects_draws_the_same_shared_or_not() {
+    let map = Node::Layer(Layer::new(vec![Node::Path(PathDraw {
+        path: Rect::new(0.0, 0.0, 16.0, 8.0).to_path(0.1),
+        paint: Paint::Solid(Color::rgba(0.9, 0.2, 0.6, 1.0)),
+        style: DrawStyle::Fill(FillRule::NonZero),
+    })]));
+    let displaced = |map: Arc<Node>, color: Color| {
+        Node::Layer(Layer {
+            effects: vec![
+                Effect::new(
+                    "displacement-map",
+                    &[("horizontal", ParamValue::Number(6.0))],
+                )
+                .unwrap()
+                .with_input(map),
+            ],
+            ..Layer::new(vec![cover(16.0, color)])
+        })
+    };
+    let frame = |share: bool| {
+        let shared = Arc::new(map.clone());
+        let read = || match share {
+            true => Arc::clone(&shared),
+            false => Arc::new(map.clone()),
+        };
+        Frame {
+            nodes: vec![
+                displaced(read(), Color::rgba(1.0, 0.0, 0.0, 1.0)),
+                displaced(read(), Color::rgba(0.0, 0.0, 1.0, 0.5)),
+                displaced(read(), Color::rgba(0.0, 1.0, 0.0, 0.5)),
+            ],
+            ..Frame::default()
+        }
+    };
+    let drawn = |share| render_with(&frame(share), 16, 16, RenderOptions::default()).unwrap();
+    assert_eq!(drawn(true), drawn(false));
+}

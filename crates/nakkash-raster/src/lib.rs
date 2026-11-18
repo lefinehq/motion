@@ -36,6 +36,7 @@ mod picture;
 mod pixels;
 mod projected;
 mod radial;
+mod reads;
 mod render;
 mod sound;
 mod style;
