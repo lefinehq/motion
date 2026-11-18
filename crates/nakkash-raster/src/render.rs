@@ -12,6 +12,7 @@ use vello_cpu::{
     RenderSettings, Resources, TargetInit,
 };
 
+use crate::accel::{Accelerator, Amount, Share, Surface};
 use crate::blend::BlendMode;
 use crate::effect::{Effect, EffectContext, Input, Move, Space};
 use crate::homography::Homography;
@@ -111,6 +112,25 @@ pub fn render_with(
     height: u32,
     options: RenderOptions,
 ) -> Result<Image> {
+    render_on(frame, width, height, options, None)
+}
+
+/// Draws `frame` into a `width` by `height` image, handing the float
+/// canvas's work to `accel` where it has kernels for it ([D74]). Without one
+/// this is [`render_with`], the reference; with one the frame approximates
+/// it, within the tolerances D74 sets.
+///
+/// # Errors
+/// As [`render_with`], or a failure of the accelerator.
+///
+/// [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
+pub fn render_on(
+    frame: &Frame,
+    width: u32,
+    height: u32,
+    options: RenderOptions,
+    accel: Option<&dyn Accelerator>,
+) -> Result<Image> {
     let (w, h) = (side(width, "width")?, side(height, "height")?);
     if frame.blending == Blending::Linear {
         return Err(Diagnostic::new(
@@ -119,7 +139,7 @@ pub fn render_with(
         )
         .expected("gamma blending"));
     }
-    let mut painter = Painter::new(w, h, options, Arc::new(Reads::of(&frame.nodes)));
+    let mut painter = Painter::new(w, h, options, Arc::new(Reads::of(&frame.nodes)), accel);
     // The background is drawn as the bottom-most shape, not used to clear the
     // target: the rasteriser keeps a cleared target out of blending, and a
     // layer that multiplies must multiply with the background too.
@@ -131,9 +151,9 @@ pub fn render_with(
     }
     painter.pending = true;
     painter.nodes(&frame.nodes, Affine::IDENTITY)?;
-    let rgba = match painter.finish() {
+    let rgba = match painter.finish()? {
         Drawn::Bytes(pixmap) => pixmap.take_rgba8(ImageAlphaType::Alpha),
-        Drawn::Floats(pixels) => pixels.to_rgba8(),
+        Drawn::Floats(pixels) => pixels.into_pixels(accel)?.to_rgba8(),
     };
     Image::new(width, height, rgba)
 }
@@ -143,18 +163,43 @@ pub fn render_with(
 enum Drawn {
     /// As the rasteriser drew it.
     Bytes(Pixmap),
-    /// The float canvas.
-    Floats(Pixels),
+    /// The float canvas, on the CPU or in the accelerator.
+    Floats(Surface),
 }
 
 impl Drawn {
-    /// Its pixels, as floats.
-    fn into_pixels(self) -> Pixels {
+    /// Its pixels, as floats, where they are; what the rasteriser drew is
+    /// on the CPU.
+    fn into_surface(self) -> Surface {
         match self {
-            Drawn::Bytes(pixmap) => Pixels::from_pixmap(&pixmap),
-            Drawn::Floats(pixels) => pixels,
+            Drawn::Bytes(pixmap) => Surface::Cpu(Pixels::from_pixmap(&pixmap)),
+            Drawn::Floats(surface) => surface,
         }
     }
+
+    /// Its pixels, as floats, in `accel`: what the rasteriser drew is
+    /// copied there as its bytes.
+    fn into_held(self, accel: &dyn Accelerator) -> Result<Surface> {
+        match self {
+            Drawn::Bytes(pixmap) => accel
+                .upload_bytes(bytes_of(&pixmap), pixmap.width(), pixmap.height())
+                .map(Surface::Held),
+            Drawn::Floats(mut surface) => {
+                surface.held_mut(accel)?;
+                Ok(surface)
+            }
+        }
+    }
+
+    /// Its pixels, as floats, on the CPU.
+    fn into_pixels(self, accel: Option<&dyn Accelerator>) -> Result<Pixels> {
+        self.into_surface().into_pixels(accel)
+    }
+}
+
+/// A pixmap's premultiplied RGBA bytes, row by row.
+fn bytes_of(pixmap: &Pixmap) -> &[u8] {
+    pixmap.data_as_u8_slice()
 }
 
 /// Whether drawing `layer` lays pixels made by the rasteriser's own code
@@ -202,14 +247,18 @@ fn side(pixels: u32, name: &str) -> Result<u16> {
 /// and then laid gives what drawing them on the canvas would; a layer that
 /// blends otherwise with what the canvas holds is drawn alone and laid in
 /// floats.
-struct Painter {
+struct Painter<'a> {
     ctx: RenderContext,
     resources: Resources,
     width: u16,
     height: u16,
     options: RenderOptions,
     /// The float canvas, once something was laid on it.
-    canvas: Option<Pixels>,
+    canvas: Option<Surface>,
+    /// What the float canvas's work is handed to, if anything ([D74]).
+    ///
+    /// [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
+    accel: Option<&'a dyn Accelerator>,
     /// Whether the context drew anything since it was last laid on the
     /// canvas.
     pending: bool,
@@ -219,10 +268,16 @@ struct Painter {
     reads: Arc<Reads>,
 }
 
-impl Painter {
-    /// A painter for a `width` by `height` target, drawing with `options`
-    /// and sharing the frame's `reads`.
-    fn new(width: u16, height: u16, options: RenderOptions, reads: Arc<Reads>) -> Painter {
+impl<'a> Painter<'a> {
+    /// A painter for a `width` by `height` target, drawing with `options`,
+    /// sharing the frame's `reads` and handing work to `accel`.
+    fn new(
+        width: u16,
+        height: u16,
+        options: RenderOptions,
+        reads: Arc<Reads>,
+        accel: Option<&'a dyn Accelerator>,
+    ) -> Painter<'a> {
         Painter {
             ctx: RenderContext::new_with(
                 width,
@@ -237,6 +292,7 @@ impl Painter {
             height,
             options,
             canvas: None,
+            accel: accel.filter(|accel| accel.holds(width, height)),
             pending: false,
             open: 0,
             reads,
@@ -244,12 +300,13 @@ impl Painter {
     }
 
     /// A painter of this one's size and options, to draw something alone.
-    fn alone(&self) -> Painter {
+    fn alone(&self) -> Painter<'a> {
         Painter::new(
             self.width,
             self.height,
             self.options,
             Arc::clone(&self.reads),
+            self.accel,
         )
     }
 
@@ -277,31 +334,58 @@ impl Painter {
 
     /// What was drawn: the float canvas with what the context drew since
     /// laid on it, or what the context drew when nothing was laid.
-    fn finish(mut self) -> Drawn {
+    fn finish(mut self) -> Result<Drawn> {
         match self.canvas.is_some() {
             true => {
-                self.canvas_mut();
-                Drawn::Floats(self.canvas.take().expect("the canvas was laid on"))
+                self.canvas_mut()?;
+                Ok(Drawn::Floats(
+                    self.canvas.take().expect("the canvas was laid on"),
+                ))
             }
-            false => Drawn::Bytes(self.rendered()),
+            false => Ok(Drawn::Bytes(self.rendered())),
         }
     }
 
     /// The float canvas, with what the context drew since laid on it; a
-    /// clear one if nothing was.
-    fn canvas_mut(&mut self) -> &mut Pixels {
+    /// clear one if nothing was. On a canvas held in the accelerator, what
+    /// the context drew is copied there as its bytes.
+    fn canvas_mut(&mut self) -> Result<&mut Surface> {
         debug_assert_eq!(self.open, 0, "the canvas is laid on outside layers");
         if self.pending {
-            let drawn = Pixels::from_pixmap(&self.rendered());
+            let rendered = Drawn::Bytes(self.rendered());
             self.ctx.reset();
             self.pending = false;
-            match &mut self.canvas {
-                Some(canvas) => canvas.lay(&drawn, BlendMode::Normal, |_| 1.0),
-                None => self.canvas = Some(drawn),
+            match (&mut self.canvas, self.accel) {
+                (Some(canvas), Some(accel)) if canvas.is_held() => {
+                    let drawn = rendered.into_held(accel)?;
+                    canvas.lay(
+                        &drawn,
+                        BlendMode::Normal,
+                        &Amount::constant(1.0),
+                        Some(accel),
+                    )?;
+                }
+                (Some(canvas), accel) => {
+                    let drawn = rendered.into_surface();
+                    canvas.lay(&drawn, BlendMode::Normal, &Amount::constant(1.0), accel)?;
+                }
+                (None, _) => self.canvas = Some(rendered.into_surface()),
             }
         }
-        self.canvas
-            .get_or_insert_with(|| Pixels::transparent(self.width, self.height))
+        Ok(self
+            .canvas
+            .get_or_insert_with(|| Surface::Cpu(Pixels::transparent(self.width, self.height))))
+    }
+
+    /// Lays `source` on the float canvas by `mode`, scaled by `amount`.
+    fn lay_on_canvas(
+        &mut self,
+        source: &Surface,
+        mode: BlendMode,
+        amount: &Amount<'_>,
+    ) -> Result<()> {
+        let accel = self.accel;
+        self.canvas_mut()?.lay(source, mode, amount, accel)
     }
 
     /// The mask `matte` makes: its source drawn on its own, in coordinates
@@ -319,20 +403,20 @@ impl Painter {
     fn matte_values(&self, matte: &Matte, parent: Affine) -> Result<Vec<f32>> {
         let mut painter = self.alone();
         painter.nodes(std::slice::from_ref(&*matte.source), parent)?;
-        let pixels = painter.finish().into_pixels();
-        let data = par::map(pixels.data(), |_, &[r, g, b, a]| {
-            // Premultiplied, so transparent pixels read as black; Rec.
-            // 709 weights, as the CSS masking module uses.
-            let luma = || (r * 0.2126 + g * 0.7152 + b * 0.0722).clamp(0.0, 1.0);
-            let a = a.clamp(0.0, 1.0);
-            match matte.mode {
-                MatteMode::Alpha => a,
-                MatteMode::AlphaInverted => 1.0 - a,
-                MatteMode::Luma => luma(),
-                MatteMode::LumaInverted => 1.0 - luma(),
-            }
-        });
-        Ok(data)
+        let pixels = painter.finish()?.into_pixels(self.accel)?;
+        Ok(matte_read(&pixels, matte.mode))
+    }
+
+    /// How much of a layer `matte` lets show at each pixel: read on the
+    /// CPU, or, when its source's pixels are in the accelerator, read
+    /// there as the layer is laid.
+    fn matte_share(&self, matte: &Matte, parent: Affine) -> Result<Matted> {
+        let mut painter = self.alone();
+        painter.nodes(std::slice::from_ref(&*matte.source), parent)?;
+        Ok(match painter.finish()?.into_surface() {
+            Surface::Held(held) => Matted::Held(held, matte.mode),
+            Surface::Cpu(pixels) => Matted::Values(matte_read(&pixels, matte.mode)),
+        })
     }
 
     /// How much of a layer its `masks` keep at each pixel, in coordinates
@@ -363,11 +447,19 @@ impl Painter {
         par::map(painter.rendered().data(), |_, p| f32::from(p.a) / 255.0)
     }
 
-    /// Draws `nodes` on a canvas of their own and returns its pixels.
+    /// Draws `nodes` on a canvas of their own and returns its pixels, on
+    /// the CPU.
     fn drawn_alone(&self, nodes: &[Node], transform: Affine) -> Result<Pixels> {
+        self.drawn_alone_surface(nodes, transform)?
+            .into_pixels(self.accel)
+    }
+
+    /// Draws `nodes` on a canvas of their own and returns its pixels,
+    /// wherever they ended.
+    fn drawn_alone_surface(&self, nodes: &[Node], transform: Affine) -> Result<Surface> {
         let mut painter = self.alone();
         painter.nodes(nodes, transform)?;
-        Ok(painter.finish().into_pixels())
+        Ok(painter.finish()?.into_surface())
     }
 
     /// Where `effect` runs on a layer whose own coordinates `transform`
@@ -408,11 +500,11 @@ impl Painter {
 
     /// Lays `pixels`, the size of the frame, over what is drawn so far: on
     /// the float canvas, or as a picture the context draws.
-    fn draw_pixels(&mut self, pixels: &Pixels) {
+    fn draw_pixels(&mut self, pixels: Surface) -> Result<()> {
         if self.floats() {
-            self.canvas_mut().lay(pixels, BlendMode::Normal, |_| 1.0);
-            return;
+            return self.lay_on_canvas(&pixels, BlendMode::Normal, &Amount::constant(1.0));
         }
+        let pixels = pixels.into_pixels(self.accel)?;
         self.pending = true;
         let paint = vello_cpu::Image {
             image: ImageSource::Pixmap(Arc::new(pixels.to_pixmap())),
@@ -428,6 +520,7 @@ impl Painter {
             f64::from(self.width),
             f64::from(self.height),
         ));
+        Ok(())
     }
 
     /// Draws `nodes` back to front, in coordinates `transform` maps to the
@@ -472,10 +565,9 @@ impl Painter {
     /// the affine map that matches its projection where the canvas sees
     /// the middle of it.
     fn filter(&mut self, below: &[Node], filter: &Layer, parent: Affine) -> Result<()> {
-        let drawn = self.drawn_alone(below, parent)?;
+        let drawn = self.drawn_alone_surface(below, parent)?;
         if filter.opacity <= 0.0 || filter.effects.is_empty() {
-            self.draw_pixels(&drawn);
-            return Ok(());
+            return self.draw_pixels(drawn);
         }
         let (transform, region, cut) = match &filter.projection {
             None => {
@@ -484,7 +576,7 @@ impl Painter {
                 // nothing applies everywhere.
                 let region = match filter.children.is_empty() {
                     true => None,
-                    false => Some(self.drawn_alone(&filter.children, transform)?),
+                    false => Some(self.drawn_alone_surface(&filter.children, transform)?),
                 };
                 (transform, region, self.cut(&filter.masks, transform))
             }
@@ -499,8 +591,7 @@ impl Painter {
                 let Some(plan) = Plan::new(extent, Some(reach), &maps, self.width, self.height)
                 else {
                     // None of it is seen, so it applies nowhere.
-                    self.draw_pixels(&drawn);
-                    return Ok(());
+                    return self.draw_pixels(drawn);
                 };
                 let region = self.laid(&plan, &maps, |sub| {
                     let mut pixels = match filter.children.is_empty() {
@@ -518,36 +609,50 @@ impl Painter {
                             *pixel = pixel.map(|c| c * kept);
                         });
                     }
-                    sub.draw_pixels(&pixels);
-                    Ok(())
+                    sub.draw_pixels(Surface::Cpu(pixels))
                 })?;
                 let transform = maps[0]
                     .tangent(plan.seen)
                     .unwrap_or(parent * filter.transform);
-                (transform, Some(region), None)
+                (transform, Some(Surface::Cpu(region)), None)
             }
         };
-        let mut changed = drawn.clone();
+        let mut changed = drawn.duplicate(self.accel)?;
         let mut bounds = filter.bounds;
         for effect in &filter.effects {
             let space = self.space(effect, transform, filter, bounds)?;
-            effect.apply(&mut changed, &space);
+            changed.effect(effect, &space, self.accel)?;
             bounds = bounds.map(|b| effect.grown(b));
         }
         let matte = filter
             .matte
             .as_ref()
-            .map(|matte| self.matte_values(matte, parent))
+            .map(|matte| self.matte_share(matte, parent))
             .transpose()?;
+        // The region's alpha, read on the CPU when its pixels are there.
+        let region_alpha = match &region {
+            Some(Surface::Cpu(pixels)) => {
+                Some(pixels.data().iter().map(|p| p[3]).collect::<Vec<f32>>())
+            }
+            _ => None,
+        };
+        let region_share = match (&region, &region_alpha) {
+            (Some(Surface::Held(held)), _) => Some(Share::Alpha(held)),
+            (_, Some(alpha)) => Some(Share::Values(alpha.as_slice())),
+            _ => None,
+        };
+        let amount = [
+            cut.as_deref().map(Share::Values),
+            matte.as_ref().map(Matted::share),
+            region_share,
+        ]
+        .into_iter()
+        .flatten()
+        .fold(Amount::constant(filter.opacity), Amount::and);
         let mut mixed = drawn;
-        mixed.mix(&changed, |i| {
-            cut.as_ref().map_or(1.0, |c| c[i])
-                * filter.opacity
-                * matte.as_ref().map_or(1.0, |m| m[i])
-                * region.as_ref().map_or(1.0, |r| r.data()[i][3])
-        });
-        self.draw_pixels(&mixed);
-        Ok(())
+        mixed.mix(&changed, &amount, self.accel)?;
+        drop(amount);
+        self.draw_pixels(mixed)
     }
 
     /// Draws a layer: its children, in a buffer of their own when it is
@@ -649,19 +754,23 @@ impl Painter {
         let transform = parent * layer.transform;
         let mut alone = self.alone();
         alone.content(layer, steps, transform, parent)?;
-        let drawn = alone.finish().into_pixels();
+        let drawn = alone.finish()?.into_surface();
         let clip = layer
             .shown_clip()
             .map(|clip| self.coverage(&clip, transform));
         let matte = layer
             .matte
             .as_ref()
-            .map(|matte| self.matte_values(matte, parent))
+            .map(|matte| self.matte_share(matte, parent))
             .transpose()?;
-        self.canvas_mut().lay(&drawn, layer.blend, |i| {
-            opacity * clip.as_ref().map_or(1.0, |c| c[i]) * matte.as_ref().map_or(1.0, |m| m[i])
-        });
-        Ok(())
+        let amount = [
+            clip.as_deref().map(Share::Values),
+            matte.as_ref().map(Matted::share),
+        ]
+        .into_iter()
+        .flatten()
+        .fold(Amount::constant(opacity), Amount::and);
+        self.lay_on_canvas(&drawn, layer.blend, &amount)
     }
 
     /// Draws a projected layer ([D58]): its clipped content, masks and
@@ -709,10 +818,10 @@ impl Painter {
                 // to the clip there.
                 let mut alone = sub.alone();
                 alone.content(layer, steps, plan.local, Affine::IDENTITY)?;
-                let drawn = alone.finish().into_pixels();
+                let drawn = alone.finish()?.into_surface();
                 let clip = sub.coverage(&Clip::Path(path, rule), plan.local);
-                sub.canvas_mut().lay(&drawn, BlendMode::Normal, |i| clip[i]);
-                return Ok(());
+                let amount = Amount::constant(1.0).and(Share::Values(&clip));
+                return sub.lay_on_canvas(&drawn, BlendMode::Normal, &amount);
             }
             sub.pending = true;
             sub.ctx.set_transform(plan.local);
@@ -728,12 +837,14 @@ impl Painter {
             let matte = layer
                 .matte
                 .as_ref()
-                .map(|matte| self.matte_values(matte, parent))
+                .map(|matte| self.matte_share(matte, parent))
                 .transpose()?;
-            self.canvas_mut().lay(&laid, layer.blend, |i| {
-                opacity * matte.as_ref().map_or(1.0, |m| m[i])
-            });
-            return Ok(());
+            let amount = matte
+                .as_ref()
+                .map(Matted::share)
+                .into_iter()
+                .fold(Amount::constant(opacity), Amount::and);
+            return self.lay_on_canvas(&Surface::Cpu(laid), layer.blend, &amount);
         }
         let mask = layer
             .matte
@@ -748,9 +859,9 @@ impl Painter {
             mask,
             None,
         );
-        self.draw_pixels(&laid);
+        let drawn = self.draw_pixels(Surface::Cpu(laid));
         self.ctx.pop_layer();
-        Ok(())
+        drawn
     }
 
     /// What `draw` paints on a painter of `plan`'s buffer, laid onto this
@@ -759,21 +870,23 @@ impl Painter {
         &self,
         plan: &Plan,
         maps: &[Homography],
-        draw: impl FnOnce(&mut Painter) -> Result<()>,
+        draw: impl FnOnce(&mut Painter<'a>) -> Result<()>,
     ) -> Result<Pixels> {
         let mut sub = Painter::new(
             plan.width,
             plan.height,
             self.options,
             Arc::clone(&self.reads),
+            self.accel,
         );
         draw(&mut sub)?;
         let (width, height) = (self.width, self.height);
-        Ok(match sub.finish() {
+        Ok(match sub.finish()? {
             Drawn::Bytes(pixmap) => {
                 projected::lay(Buffer::Bytes(&pixmap), plan, maps, width, height)
             }
             Drawn::Floats(pixels) => {
+                let pixels = pixels.into_pixels(self.accel)?;
                 projected::lay(Buffer::Floats(&pixels), plan, maps, width, height)
             }
         })
@@ -811,13 +924,27 @@ impl Painter {
         let at = transform * moved;
         let mut pixels = match &layer.shared {
             // Layers with the same children draw them once at each
-            // transform.
-            Some(shared) => self
-                .reads
-                .shared(shared, at, (self.width, self.height), || {
-                    self.drawn_alone(&layer.children, at)
-                })?,
-            None => self.drawn_alone(&layer.children, at)?,
+            // transform, on the CPU; an effect that runs in the accelerator
+            // takes them there from the shared drawing.
+            Some(shared) => Surface::Cpu(self.reads.shared(
+                shared,
+                at,
+                (self.width, self.height),
+                || self.drawn_alone(&layer.children, at),
+            )?),
+            None => {
+                // When the first effect runs in the accelerator, what the
+                // content drew goes there as it was drawn.
+                let held = self
+                    .accel
+                    .filter(|accel| steps.on_pixels.first().is_some_and(|e| accel.runs(e)));
+                let mut painter = self.alone();
+                painter.nodes(&layer.children, at)?;
+                match held {
+                    Some(accel) => painter.finish()?.into_held(accel)?,
+                    None => painter.finish()?.into_surface(),
+                }
+            }
         };
         // An effect that draws beyond the box grows the clip the layer
         // shows within, so the content is cut to its own clip first.
@@ -826,22 +953,20 @@ impl Painter {
             _ => None,
         };
         for cut in [&cut, &clipped].into_iter().flatten() {
-            par::each_with(pixels.data_mut(), cut, |_, pixel, &kept| {
-                *pixel = pixel.map(|c| c * kept);
-            });
+            pixels.cut(cut, self.accel)?;
         }
         // Each effect sees the box the ones before it grew.
         let mut bounds = layer.bounds;
         for effect in steps.on_pixels {
             let space = self.space(effect, transform, layer, bounds)?;
-            effect.apply(&mut pixels, &space);
+            pixels.effect(effect, &space, self.accel)?;
             bounds = bounds.map(|b| effect.grown(b));
         }
         if !layer.motion.is_empty() {
-            pixels = moved_average(&pixels, &layer.motion, parent);
+            let drawn = pixels.into_pixels(self.accel)?;
+            pixels = Surface::Cpu(moved_average(&drawn, &layer.motion, parent));
         }
-        self.draw_pixels(&pixels);
-        Ok(())
+        self.draw_pixels(pixels)
     }
 
     fn path(&mut self, draw: &PathDraw, transform: Affine) {
@@ -923,6 +1048,42 @@ impl Painter {
             Diagnostic::new(Kind::Invalid, format!("glyphs could not be drawn: {error}"))
                 .expected("glyph ids the font holds")
         })
+    }
+}
+
+/// How much of a layer `pixels`, a matte's source, lets show at each
+/// pixel, 0 to 1, read as `mode` says.
+fn matte_read(pixels: &Pixels, mode: MatteMode) -> Vec<f32> {
+    par::map(pixels.data(), |_, &[r, g, b, a]| {
+        // Premultiplied, so transparent pixels read as black; Rec.
+        // 709 weights, as the CSS masking module uses.
+        let luma = || (r * 0.2126 + g * 0.7152 + b * 0.0722).clamp(0.0, 1.0);
+        let a = a.clamp(0.0, 1.0);
+        match mode {
+            MatteMode::Alpha => a,
+            MatteMode::AlphaInverted => 1.0 - a,
+            MatteMode::Luma => luma(),
+            MatteMode::LumaInverted => 1.0 - luma(),
+        }
+    })
+}
+
+/// A matte, read: its values on the CPU, or its source's pixels in the
+/// accelerator with the mode to read them by.
+enum Matted {
+    /// Read on the CPU.
+    Values(Vec<f32>),
+    /// To be read in the accelerator.
+    Held(crate::accel::Resident, MatteMode),
+}
+
+impl Matted {
+    /// The matte as a share of an amount.
+    fn share(&self) -> Share<'_> {
+        match self {
+            Matted::Values(values) => Share::Values(values),
+            Matted::Held(held, mode) => Share::Matte(held, *mode),
+        }
     }
 }
 

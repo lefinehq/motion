@@ -16,6 +16,7 @@ use crate::composite::Operation;
 use crate::effect::{ParamValue, Space};
 use crate::par;
 use crate::pixels::{Pixel, Pixels};
+use crate::plan::{Blur, Glow, GlowComposite, Passes, Shadow};
 
 /// A Gaussian's standard deviation per unit of a project's blurriness.
 /// Measured on the corpus against reference renders (see the effects plan).
@@ -23,7 +24,7 @@ pub const SIGMA_PER_BLURRINESS: f32 = 0.3;
 
 /// What lies beyond the edges of the pixels while blurring.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Edges {
+pub enum Edges {
     /// Nothing: colour fades out at the edges.
     Transparent,
     /// The edge pixels, repeated: colour stays solid up to the edges.
@@ -117,7 +118,7 @@ fn along(pixels: &mut Pixels, way: usize, radius: f32, passes: usize, edges: Edg
 
 /// The radius of each of three box passes whose sum has variance
 /// `sigma`², by the extended box's own variance.
-fn gaussian_radius(sigma: f32) -> f32 {
+pub(crate) fn gaussian_radius(sigma: f32) -> f32 {
     const PASSES: f32 = 3.0;
     let variance = sigma * sigma / PASSES;
     // A box of whole radius l and edge share a has variance
@@ -130,16 +131,19 @@ fn gaussian_radius(sigma: f32) -> f32 {
 
 /// Blurs `pixels` with a Gaussian of standard deviation `sigma` px each way.
 pub(crate) fn gaussian(pixels: &mut Pixels, sigma: [f32; 2], edges: Edges) {
-    for (way, sigma) in sigma.into_iter().enumerate() {
-        if sigma > 0.0 {
-            along(pixels, way, gaussian_radius(sigma), 3, edges);
-        }
+    blur(pixels, &Blur::gaussian(sigma, edges));
+}
+
+/// Runs `blur`'s passes on `pixels`: along rows, then along columns.
+pub(crate) fn blur(pixels: &mut Pixels, blur: &Blur) {
+    for (way, Passes { radius, count }) in [blur.rows, blur.columns].into_iter().enumerate() {
+        along(pixels, way, radius, count, blur.edges);
     }
 }
 
-/// `gaussian-blur`: a Gaussian whose standard deviation is
+/// `gaussian-blur`'s passes: a Gaussian whose standard deviation is
 /// [`SIGMA_PER_BLURRINESS`] of `blurriness`, in the layer's px.
-pub(crate) fn gaussian_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+pub(crate) fn gaussian_blur_plan(values: &[ParamValue], space: &Space) -> Blur {
     let blurriness = number(values, 0) * SIGMA_PER_BLURRINESS;
     let [x, y] = ways(choice(values, 1));
     let [sx, sy] = scales(space);
@@ -147,11 +151,17 @@ pub(crate) fn gaussian_blur(pixels: &mut Pixels, values: &[ParamValue], space: &
         if x { blurriness * sx } else { 0.0 },
         if y { blurriness * sy } else { 0.0 },
     ];
-    gaussian(pixels, sigma, Edges::from_choice(choice(values, 2)));
+    Blur::gaussian(sigma, Edges::from_choice(choice(values, 2)))
 }
 
-/// `box-blur`: `iterations` box passes of `radius`, in the layer's px.
-pub(crate) fn box_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+/// `gaussian-blur`, see [`gaussian_blur_plan`].
+pub(crate) fn gaussian_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    blur(pixels, &gaussian_blur_plan(values, space));
+}
+
+/// `box-blur`'s passes: `iterations` box passes of `radius`, in the
+/// layer's px.
+pub(crate) fn box_blur_plan(values: &[ParamValue], space: &Space) -> Blur {
     let (radius, iterations) = (
         number(values, 0),
         number(values, 1).round().max(1.0) as usize,
@@ -159,18 +169,29 @@ pub(crate) fn box_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space
     let [x, y] = ways(choice(values, 2));
     let edges = Edges::from_choice(choice(values, 3));
     let [sx, sy] = scales(space);
-    if x {
-        along(pixels, 0, radius * sx, iterations, edges);
-    }
-    if y {
-        along(pixels, 1, radius * sy, iterations, edges);
+    let passes = |on: bool, scale: f32| match on {
+        true => Passes {
+            radius: radius * scale,
+            count: iterations,
+        },
+        false => Passes::NONE,
+    };
+    Blur {
+        rows: passes(x, sx),
+        columns: passes(y, sy),
+        edges,
     }
 }
 
-/// `drop-shadow`: the layer's alpha in `color` at `opacity`, moved
+/// `box-blur`, see [`box_blur_plan`].
+pub(crate) fn box_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    blur(pixels, &box_blur_plan(values, space));
+}
+
+/// `drop-shadow`'s steps: the layer's alpha in `color` at `opacity`, moved
 /// `distance` px towards `direction` (degrees clockwise from up), blurred
 /// by `softness` as a blurriness, and drawn behind the layer, or alone.
-pub(crate) fn drop_shadow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+pub(crate) fn drop_shadow_plan(values: &[ParamValue], space: &Space) -> Shadow {
     let (color, opacity) = (rgb(values, 0), number(values, 1));
     let (direction, distance) = (number(values, 2).to_radians(), number(values, 3));
     let softness = number(values, 4) * SIGMA_PER_BLURRINESS;
@@ -184,17 +205,31 @@ pub(crate) fn drop_shadow(pixels: &mut Pixels, values: &[ParamValue], space: &Sp
         [a, b, c, d, 0.0, 0.0]
     });
     let offset = linear * towards.to_point();
-    let mut shadow = pixels.transformed(Affine::translate(offset.to_vec2()));
+    let [sx, sy] = scales(space);
+    Shadow {
+        color,
+        opacity,
+        offset: offset.to_vec2(),
+        blur: Blur::gaussian([softness * sx, softness * sy], Edges::Transparent),
+        alone,
+    }
+}
+
+/// `drop-shadow`, see [`drop_shadow_plan`].
+pub(crate) fn drop_shadow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let Shadow {
+        color,
+        opacity,
+        offset,
+        blur: softened,
+        alone,
+    } = drop_shadow_plan(values, space);
+    let mut shadow = pixels.transformed(Affine::translate(offset));
     par::each(shadow.data_mut(), |_, p| {
         let a = p[3] * opacity;
         *p = [color[0] * a, color[1] * a, color[2] * a, a];
     });
-    let [sx, sy] = scales(space);
-    gaussian(
-        &mut shadow,
-        [softness * sx, softness * sy],
-        Edges::Transparent,
-    );
+    blur(&mut shadow, &softened);
     if alone {
         *pixels = shadow;
         return;
@@ -237,48 +272,71 @@ pub(crate) const GLOW_OPERATIONS: &[&str] = &[
     "alpha-add",
 ];
 
-/// `glow`: the colours brighter than `threshold`, blurred by `radius` as a
-/// blurriness, times `intensity`, held to 0 to 1. With `composite`
-/// `with-original` the light is laid over the layer by `operation`; with
-/// `behind-original` the layer is laid over the light by it; with
-/// `glow-only` the light is drawn alone.
-pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+/// `glow`'s steps: the colours brighter than `threshold`, blurred by
+/// `radius` as a blurriness, times `intensity`, held to 0 to 1. With
+/// `composite` `with-original` the light is laid over the layer by
+/// `operation`; with `behind-original` the layer is laid over the light by
+/// it; with `glow-only` the light is drawn alone.
+pub(crate) fn glow_plan(values: &[ParamValue], space: &Space) -> Glow {
     let (threshold, radius, intensity) = (number(values, 0), number(values, 1), number(values, 2));
     let [x, y] = ways(choice(values, 3));
-    let composite = choice(values, 4);
+    let composite = match choice(values, 4) {
+        1 => GlowComposite::GlowOnly,
+        2 => GlowComposite::BehindOriginal,
+        _ => GlowComposite::WithOriginal,
+    };
     let operation = Operation::named(GLOW_OPERATIONS[choice(values, 5)])
         .expect("every glow operation is a row of the operations");
+    let sigma = radius * SIGMA_PER_BLURRINESS;
+    let [sx, sy] = scales(space);
+    Glow {
+        threshold,
+        luma: LUMA,
+        blur: Blur::gaussian(
+            [
+                if x { sigma * sx } else { 0.0 },
+                if y { sigma * sy } else { 0.0 },
+            ],
+            Edges::Transparent,
+        ),
+        intensity,
+        composite,
+        operation,
+    }
+}
+
+/// `glow`, see [`glow_plan`].
+pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let Glow {
+        threshold,
+        luma: weights,
+        blur: spread,
+        intensity,
+        composite,
+        operation,
+    } = glow_plan(values, space);
     let mut light = pixels.clone();
     par::each(light.data_mut(), |_, p| {
         let a = p[3];
         let luma = match a > 0.0 {
-            true => (p[0] * LUMA[0] + p[1] * LUMA[1] + p[2] * LUMA[2]) / a,
+            true => (p[0] * weights[0] + p[1] * weights[1] + p[2] * weights[2]) / a,
             false => 0.0,
         };
         if luma < threshold {
             *p = [0.0; 4];
         }
     });
-    let sigma = radius * SIGMA_PER_BLURRINESS;
-    let [sx, sy] = scales(space);
-    gaussian(
-        &mut light,
-        [
-            if x { sigma * sx } else { 0.0 },
-            if y { sigma * sy } else { 0.0 },
-        ],
-        Edges::Transparent,
-    );
+    blur(&mut light, &spread);
     par::each(light.data_mut(), |_, p| {
         *p = p.map(|c| (c * intensity).min(1.0));
     });
     match composite {
-        1 => *pixels = light,
-        2 => {
+        GlowComposite::GlowOnly => *pixels = light,
+        GlowComposite::BehindOriginal => {
             operation.pixels(&mut light, pixels);
             *pixels = light;
         }
-        _ => operation.pixels(pixels, &light),
+        GlowComposite::WithOriginal => operation.pixels(pixels, &light),
     }
 }
 

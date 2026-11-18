@@ -14,6 +14,7 @@
 //! [D2]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d2-vello-as-the-rasteriser
 //! [D34]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d34-a-layer-tree-renderer-on-vello_cpu
 
+mod accel;
 mod blend;
 mod blur;
 mod channel;
@@ -35,6 +36,7 @@ mod particles;
 mod pen;
 mod picture;
 mod pixels;
+mod plan;
 mod projected;
 mod radial;
 mod reads;
@@ -44,7 +46,9 @@ mod style;
 mod total;
 mod vector;
 
+pub use accel::{Accelerator, Amount, Resident, Share, Tally};
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
+pub use blur::Edges;
 pub use composite::{OPERATIONS, Operation, OperationSpec};
 pub use effect::{
     Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Growth, Input, Move, ParamSpec,
@@ -59,7 +63,8 @@ pub use list::{
 pub use mask::SIGMA_PER_FEATHER;
 pub use picture::Picture;
 pub use pixels::{Pixel, Pixels};
-pub use render::{Quality, RenderOptions, Simd, render, render_with};
+pub use plan::{Blur, Glow, GlowComposite, PLANS, Passes, Plan, PlanSpec, Shadow};
+pub use render::{Quality, RenderOptions, Simd, render, render_on, render_with};
 pub use sound::{Heard, level};
 pub use style::{
     CAPS, Cap, Color, Dashes, DrawStyle, FILL_RULES, FillRule, Gradient, GradientShape, JOINS,
