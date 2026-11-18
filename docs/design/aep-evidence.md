@@ -239,6 +239,15 @@ What is left open:
 - **Depth.** A 3D layer with a source stores its anchor's depth too. Only one template family stores one that is not 0 (`Null 33`, `[-3.33, 8.25, -1.32]`, in m571 to m575, m779 and m783), so its unit is unmeasured; the import keeps the depth in px.
 
 
+## Fractal types
+
+A fractal noise effect's fractal type (`ADBE Fractal Noise-0001`) is a menu. The effect definition a project carries stores the menu's names in order, and separators take a code: `Basic`, a separator, three turbulent types, a separator, three dynamic types, a separator, then ten named types.
+
+| Belief | Evidence | Held, 2026-11-18 |
+|---|---|---|
+| F1. Codes 12 and 13 are the types the menu calls smeary and swirly. | The stored menu of a local template, counted with its separators; its codes 1, 3, 4 and 5 are the types the import already reads as basic and turbulent, which every corpus sample that uses them agrees with. | 1 template, 4 effects |
+| F2. Both build octaves as basic noise does, and move each octave after the first by the noise before it: smeary drags detail across, swirly curls it. | Unmeasured. No corpus sample uses either type (m569 uses 16 and m591 uses 8, both still reported), so the displacement (a cell across for smeary, half a cell turning for swirly) is our model of what the names describe, not a measured one. | none |
+
 ## Distortions
 
 Distortion effects keep no formula in the project, only their parameters. These beliefs say how each moves the layer's pixels. They were measured once, by hand, against the corpus's reference frames; the sweep does not check them yet.
