@@ -9,6 +9,7 @@ use serde_json::Value as Json;
 use crate::doc::{Number, Shorthand, ValueDoc};
 use crate::item::Item;
 use crate::shorthand::Font;
+pub use crate::shorthand::TextFit;
 use crate::table::{self, Named};
 use crate::value::{Value, ValueType};
 use crate::{Diagnostic, Kind, Result, fmt_num};
@@ -27,6 +28,10 @@ pub struct TextContent {
     /// Box text's box in the layer's own coordinates, or `None` for point
     /// text.
     pub frame: Option<kurbo::Rect>,
+    /// How the words are made to fit the size laid out for them, or `None`
+    /// to set them as written; it suits the frame (`ShrinkToBox` for box
+    /// text, the others for point text).
+    pub fit: Option<TextFit>,
     /// Its animators, applied in order.
     pub animators: Vec<Item>,
     /// What the whole text sets once: the anchors its parts take and how
@@ -38,6 +43,31 @@ impl TextContent {
     /// The style of the first character, or the base style of empty text.
     pub fn first_style(&self) -> &CharacterStyle {
         &self.runs[0].style
+    }
+
+    /// The content with every length that goes with the size scaled by
+    /// `scale`, as a fit sets it: each style's size, leading in px,
+    /// baseline shift and stroke width, and each paragraph's indents and
+    /// spacing. Tracking is in thousandths of an em, so it follows.
+    pub fn scaled(&self, scale: f64) -> TextContent {
+        let mut out = self.clone();
+        for style in std::iter::once(&mut out.base).chain(out.runs.iter_mut().map(|r| &mut r.style))
+        {
+            style.font.size *= scale;
+            style.stroke_width *= scale;
+            style.baseline *= scale;
+            if let Leading::Px(px) = &mut style.leading {
+                *px *= scale;
+            }
+        }
+        for paragraph in &mut out.paragraphs {
+            paragraph.indent_first *= scale;
+            paragraph.indent_start *= scale;
+            paragraph.indent_end *= scale;
+            paragraph.space_before *= scale;
+            paragraph.space_after *= scale;
+        }
+        out
     }
 }
 

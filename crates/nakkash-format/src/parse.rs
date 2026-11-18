@@ -81,8 +81,10 @@ pub mod key {
     /// An image layer whose vector footage is drawn at the output's
     /// resolution every frame.
     pub const CONTINUOUS: &str = "continuous";
-    /// How a layer's content fits its box: for an image or video layer,
-    /// how its picture fills the box (`fill`, `contain` or `cover`).
+    /// How a layer's content fits: for an image or video layer, how its
+    /// picture fills its box (`fill`, `contain` or `cover`); for a text
+    /// layer, how its words are made to fit the size laid out for them
+    /// (D77).
     pub const FIT: &str = "fit";
     /// A text layer's animators.
     pub const ANIMATE: &str = "animate";

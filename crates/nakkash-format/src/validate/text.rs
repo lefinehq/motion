@@ -6,11 +6,11 @@ use serde_json::Value as Json;
 use super::item;
 use crate::doc::{LayerDoc, List, Number, Object, StyleDoc, ValueDoc};
 use crate::item::ANIMATORS;
-use crate::parse::key::{ANIMATE, BOX, FILL, FONT, PARAGRAPHS, RUNS, STYLE};
+use crate::parse::key::{ANIMATE, BOX, FILL, FIT, FONT, PARAGRAPHS, RUNS, STYLE};
 use crate::shorthand::Font;
 use crate::text::{
-    CharacterStyle, Level, ParagraphStyle, STYLE_KEYS, Setter, StyleKey, TextContent, TextRun,
-    WholeStyle, color, style_key,
+    CharacterStyle, Level, ParagraphStyle, STYLE_KEYS, Setter, StyleKey, TextContent, TextFit,
+    TextRun, WholeStyle, color, style_key,
 };
 use crate::{Diagnostic, Kind, Result};
 
@@ -83,6 +83,21 @@ pub(super) fn text(
             }
         }
     }
+    let frame = doc
+        .frame
+        .as_ref()
+        .map(frame)
+        .transpose()
+        .map_err(|e| e.under(BOX))?;
+    let fit = match &*doc.fit {
+        Some(written) => Some(
+            written
+                .parse::<TextFit>()
+                .and_then(|written| fit(written, frame.is_some()))
+                .map_err(|e| e.at(FIT))?,
+        ),
+        None => None,
+    };
     Ok(TextContent {
         text: text.to_owned(),
         runs: runs_of(styles, &base),
@@ -95,13 +110,32 @@ pub(super) fn text(
                 .map_err(|e| e.under(ANIMATE))?,
             None => Vec::new(),
         },
-        frame: doc
-            .frame
-            .as_ref()
-            .map(frame)
-            .transpose()
-            .map_err(|e| e.under(BOX))?,
+        frame,
+        fit,
     })
+}
+
+/// `written`, checked against the text it fits: a size for point text,
+/// which has none of its own, and none for box text, which fits its box.
+fn fit(written: TextFit, boxed: bool) -> Result<TextFit> {
+    match (written, boxed) {
+        (TextFit::Shrink { .. } | TextFit::Wrap { .. }, false) | (TextFit::ShrinkToBox, true) => {
+            Ok(written)
+        }
+        (TextFit::ShrinkToBox, false) => Err(Diagnostic::new(
+            Kind::Missing,
+            "point text has no box, so `shrink` needs the size to fit",
+        )
+        .expected("`shrink <width>x<height>` or `wrap <width>x<height>`, e.g. `shrink 600x300`")),
+        (TextFit::Shrink { .. } | TextFit::Wrap { .. }, true) => Err(Diagnostic::new(
+            Kind::Conflict,
+            format!(
+                "box text wraps and fits inside its `{BOX}`; `{}` is for point text",
+                written.written()
+            ),
+        )
+        .expected("`shrink`, which shrinks box text until its lines fit its box")),
+    }
 }
 
 /// The style key called `name`, which must be of `level` when one is given.

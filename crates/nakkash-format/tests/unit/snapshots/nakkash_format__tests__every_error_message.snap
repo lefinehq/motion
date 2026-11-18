@@ -337,6 +337,12 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","text":"x","paragraphs":[{"align":"middle"}]}` → a.paragraphs[0].align: unknown alignment `middle`; expected one of left, right, center, justify-left, justify-right, justify-center, justify-all
 `{"id":"a","text":"x","box":[0,10]}` → a.box: a box's width and height are above zero; expected `[width, height]` from the layer's origin, or `[x, y, width, height]` from the box's top-left corner, in px, the sizes above zero, e.g. `[600, 300]` or `[-300, -150, 600, 300]`
 `{"id":"a","text":"x","box":"wide"}` → a.box: a box is two or four numbers; expected `[width, height]` from the layer's origin, or `[x, y, width, height]` from the box's top-left corner, in px, the sizes above zero, e.g. `[600, 300]` or `[-300, -150, 600, 300]`
+`{"id":"a","rect":"1x1","fit":"shrink 1x1"}` → a.fit: `fit` only applies to `text` or `image` or `video` layers; expected `fit` only next to `text` or `image` or `video`
+`{"id":"a","text":"x","fit":3}` → a.fit: invalid type: integer `3`; expected a string
+`{"id":"a","text":"x","fit":"grow 10x10"}` → a.fit: `grow 10x10` is not a valid fit; expected `shrink <width>x<height>` or `wrap <width>x<height>` for point text, `shrink` for box text, e.g. `shrink 600x300`
+`{"id":"a","text":"x","fit":"shrink 0x10"}` → a.fit: `shrink 0x10` is not a valid fit; expected `shrink <width>x<height>` or `wrap <width>x<height>` for point text, `shrink` for box text, e.g. `shrink 600x300`
+`{"id":"a","text":"x","fit":"shrink"}` → a.fit: point text has no box, so `shrink` needs the size to fit; expected `shrink <width>x<height>` or `wrap <width>x<height>`, e.g. `shrink 600x300`
+`{"id":"a","text":"x","box":[10,10],"fit":"wrap 10x10"}` → a.fit: box text wraps and fits inside its `box`; `wrap 10x10` is for point text; expected `shrink`, which shrinks box text until its lines fit its box
 
 ## animators
 `{"id":"a","rect":"1x1","animate":[]}` → a.animate: `animate` only applies to `text` layers; expected `animate` only next to `text`

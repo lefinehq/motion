@@ -21,8 +21,39 @@ pub struct StyledText {
     pub paragraphs: Vec<ParagraphStyle>,
     /// What the text flows into.
     pub frame: TextFrame,
+    /// How it is made to fit the size laid out for it, or `None` to set it
+    /// as written.
+    pub fit: Option<Fit>,
     /// The size of synthesised small capitals, as a fraction of the run's size.
     pub small_caps_scale: f64,
+}
+
+/// How a text is made to fit the size laid out for it, so longer words stay
+/// inside it ([D77]). A text never grows: one that fits is set as written.
+///
+/// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Fit {
+    /// Point text whose lines are wider than `width` or taller than
+    /// `height` scales every size down until they fit, about the vertical
+    /// middle of its lines as written.
+    Shrink {
+        /// The widest its lines may be, in pixels.
+        width: f64,
+        /// The tallest its lines may be, in pixels.
+        height: f64,
+    },
+    /// Point text breaks its lines at `width`, as box text does, each line
+    /// still aligned about the origin; the first baseline stays at the
+    /// origin, and text taller than `height` scales down, keeping its top.
+    Wrap {
+        /// Where its lines break, in pixels.
+        width: f64,
+        /// The tallest its lines may be, in pixels.
+        height: f64,
+    },
+    /// Box text scales every size down until its wrapped lines fit its box.
+    Box,
 }
 
 /// The size of synthesised small capitals when nothing says otherwise.
@@ -51,8 +82,33 @@ impl StyledText {
             text,
             paragraphs,
             frame: TextFrame::Point,
+            fit: None,
             small_caps_scale: SMALL_CAPS_SCALE,
         }
+    }
+
+    /// The text with every size scaled by `scale`: each run's size, leading
+    /// in pixels and baseline shift, and each paragraph's indents and
+    /// spacing. Tracking, automatic leading and the small capitals' scale
+    /// are fractions of the size, so they follow; the frame stays.
+    pub fn scaled(&self, scale: f64) -> StyledText {
+        let mut out = self.clone();
+        for run in &mut out.runs {
+            let style = &mut run.style;
+            style.size *= scale;
+            style.baseline_shift *= scale;
+            if let Leading::Px(px) = &mut style.leading {
+                *px *= scale;
+            }
+        }
+        for paragraph in &mut out.paragraphs {
+            paragraph.first_line_indent *= scale;
+            paragraph.start_indent *= scale;
+            paragraph.end_indent *= scale;
+            paragraph.space_before *= scale;
+            paragraph.space_after *= scale;
+        }
+        out
     }
 
     /// The paragraphs as byte ranges of [`StyledText::text`], without their `\n`.
@@ -137,8 +193,39 @@ impl StyledText {
         {
             return Err(positive("frame", "a box `width` and `height` above zero"));
         }
+        if let Some(fit) = self.fit {
+            check_fit(fit, self.frame)?;
+        }
         finite(self.small_caps_scale, "small_caps_scale")?;
         Ok(())
+    }
+}
+
+/// Checks that `fit` suits `frame`, and that its size is above zero:
+/// `Shrink` and `Wrap` are for point text, `Box` for box text.
+fn check_fit(fit: Fit, frame: TextFrame) -> Result<()> {
+    let wrong = |what: &str, expected: &'static str| {
+        Err(
+            Diagnostic::new(Kind::Conflict, format!("{what} cannot fit this way"))
+                .at("fit")
+                .expected(expected),
+        )
+    };
+    match (fit, frame) {
+        (Fit::Shrink { width, height } | Fit::Wrap { width, height }, TextFrame::Point) => {
+            if width > 0.0 && height > 0.0 && width.is_finite() && height.is_finite() {
+                return Ok(());
+            }
+            Err(positive("fit", "a `width` and `height` above zero"))
+        }
+        (Fit::Box, TextFrame::Box { .. }) => Ok(()),
+        (Fit::Box, TextFrame::Point) => wrong(
+            "point text",
+            "`Shrink` or `Wrap` with a size, for point text",
+        ),
+        (Fit::Shrink { .. } | Fit::Wrap { .. }, TextFrame::Box { .. }) => {
+            wrong("box text", "`Box`, which fits box text to its box")
+        }
     }
 }
 

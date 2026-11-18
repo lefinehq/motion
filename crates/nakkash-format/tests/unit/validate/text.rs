@@ -1,7 +1,7 @@
 //! Unit tests for `src/validate/text.rs`: reading a text layer's style.
 
 use crate::text::{Align, Caps, Leading, PaintOrder, TextContent};
-use crate::{Content, parse_document};
+use crate::{Content, Kind, parse_document};
 
 fn text(keys: &str) -> TextContent {
     let json = format!(r#"{{"nakkash":1,"dur":"1s","layers":[{{"id":"t",{keys}}}]}}"#);
@@ -85,4 +85,103 @@ fn empty_text_has_one_base_run_and_a_box_makes_box_text() {
 fn a_box_may_start_away_from_the_layers_origin() {
     let t = text(r#""text":"","box":[-150,-60.5,300,120]"#);
     assert_eq!(t.frame, Some(kurbo::Rect::new(-150.0, -60.5, 150.0, 59.5)));
+}
+
+#[test]
+fn fit_reads_a_size_for_point_text_and_none_for_box_text() {
+    use crate::text::TextFit;
+    let fit = |keys: &str| text(&format!(r#""text":"Hi",{keys}"#)).fit;
+    assert_eq!(fit(r#""font":"Inter 40""#), None);
+    assert_eq!(
+        fit(r#""fit":"shrink 1240x310""#),
+        Some(TextFit::Shrink {
+            width: 1240.0,
+            height: 310.0
+        })
+    );
+    assert_eq!(
+        fit(r#""fit":"wrap 600.5x300""#),
+        Some(TextFit::Wrap {
+            width: 600.5,
+            height: 300.0
+        })
+    );
+    assert_eq!(
+        fit(r#""box":[300,120],"fit":"shrink""#),
+        Some(TextFit::ShrinkToBox)
+    );
+}
+
+#[test]
+fn a_fit_that_does_not_suit_its_text_is_an_error_at_fit() {
+    let error = |keys: &str| {
+        let json =
+            format!(r#"{{"nakkash":1,"dur":"1s","layers":[{{"id":"t","text":"Hi",{keys}}}]}}"#);
+        let e = parse_document(&json).unwrap_err();
+        (e.kind, e.path_text(), e.expected.map(|e| e.to_string()))
+    };
+    let point = Some(
+        "`shrink <width>x<height>` or `wrap <width>x<height>`, e.g. `shrink 600x300`".to_owned(),
+    );
+    let boxed = Some("`shrink`, which shrinks box text until its lines fit its box".to_owned());
+    let at = Some("t.fit".to_owned());
+    assert_eq!(
+        error(r#""fit":"shrink""#),
+        (Kind::Missing, at.clone(), point)
+    );
+    for fit in ["shrink 300x100", "wrap 300x100"] {
+        assert_eq!(
+            error(&format!(r#""box":[300,120],"fit":"{fit}""#)),
+            (Kind::Conflict, at.clone(), boxed.clone()),
+            "{fit}"
+        );
+    }
+    let (kind, path, expected) = error(r#""fit":"grow 300x100""#);
+    assert_eq!((kind, path), (Kind::Syntax, at.clone()));
+    assert!(expected.is_some_and(|e| e.contains("`wrap <width>x<height>`")));
+    assert_eq!(error(r#""fit":3"#).1, at);
+}
+
+#[test]
+fn fit_only_applies_to_text_layers() {
+    let json =
+        r#"{"nakkash":1,"dur":"1s","layers":[{"id":"r","rect":"10x10","fit":"shrink 5x5"}]}"#;
+    let e = parse_document(json).unwrap_err();
+    assert_eq!(
+        (e.kind, e.path_text().as_deref()),
+        (Kind::Conflict, Some("r.fit"))
+    );
+}
+
+#[test]
+fn a_fit_scales_every_length_that_goes_with_the_size() {
+    let t = text(
+        r##""text":"Hi\nthere","font":"Inter 40","style":{"stroke":"#000000","stroke-width":2,"tracking":25,"leading":50,"baseline":-3,"indent-first":4,"indent-start":5,"indent-end":6,"space-before":7,"space-after":8,"auto-leading":1.5},"runs":[{"range":[0,1],"font":"Inter 80"}]"##,
+    );
+    let half = t.scaled(0.5);
+    let s = &half.runs[0].style;
+    assert_eq!(
+        (
+            s.font.size,
+            s.stroke_width,
+            s.leading,
+            s.baseline,
+            s.tracking
+        ),
+        (40.0, 1.0, Leading::Px(25.0), -1.5, 25.0)
+    );
+    assert_eq!(half.base.font.size, 20.0);
+    let p = half.paragraphs[1];
+    assert_eq!(
+        [
+            p.indent_first,
+            p.indent_start,
+            p.indent_end,
+            p.space_before,
+            p.space_after,
+            p.auto_leading
+        ],
+        [2.0, 2.5, 3.0, 3.5, 4.0, 1.5]
+    );
+    assert_eq!((half.text.as_str(), half.frame), ("Hi\nthere", t.frame));
 }

@@ -47,7 +47,9 @@ pub use fonts::{
     LOCK_EXTENSION, LayoutJudge, add_fonts_entry, font_names, lock_path, missing_fonts,
     unnamed_fonts,
 };
-pub use geometry::{LineCheck, LineGeometry, TEXT_TOLERANCE, TextCheck, TextGeometry, check_text};
+pub use geometry::{
+    LineCheck, LineGeometry, TEXT_TOLERANCE, TextCheck, TextGeometry, check_text, written_text_size,
+};
 pub use import::{import, import_scene, is_template, measure_layouts, substitute_fonts};
 pub use nakkash_import::export::{Change as ExportChange, Plan as ExportPlan};
 pub use session::{Session, limit_threads};
