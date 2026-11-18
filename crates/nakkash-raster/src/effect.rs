@@ -24,7 +24,7 @@ use crate::list::Node;
 use crate::pixels::Pixels;
 use crate::style::Color;
 use crate::total::Total;
-use crate::{blur, channel, colour, composite, distort, generate, particles};
+use crate::{blur, channel, colour, composite, cycle, distort, generate, particles};
 
 /// The type of one effect parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -503,6 +503,145 @@ pub const EFFECTS: &[EffectSpec] = &[
         apply: Apply::Pixels {
             over: None,
             pixels: colour::hue_saturation,
+        },
+    },
+    EffectSpec {
+        name: "color-cycle",
+        params: &[
+            ParamSpec {
+                name: "red",
+                default: ParamValue::Curve(Curve::IDENTITY),
+                range: None,
+                choices: &[],
+                doc: "the cycle's red at each phase",
+            },
+            ParamSpec {
+                name: "green",
+                default: ParamValue::Curve(Curve::IDENTITY),
+                range: None,
+                choices: &[],
+                doc: "the cycle's green at each phase",
+            },
+            ParamSpec {
+                name: "blue",
+                default: ParamValue::Curve(Curve::IDENTITY),
+                range: None,
+                choices: &[],
+                doc: "the cycle's blue at each phase",
+            },
+            ParamSpec {
+                name: "alpha",
+                default: ParamValue::Curve(Curve::IDENTITY),
+                range: None,
+                choices: &[],
+                doc: "the cycle's alpha at each phase",
+            },
+            ParamSpec {
+                name: "shift",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "how far round the cycle the phase is moved, in degrees",
+            },
+            ParamSpec {
+                name: "repetitions",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 64.0)),
+                choices: &[],
+                doc: "how many times the cycle runs over the phase",
+            },
+            ParamSpec {
+                name: "blend",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how much of the original stays, 0 to 1",
+            },
+            ParamSpec {
+                name: "phase-from",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "intensity",
+                    "red",
+                    "green",
+                    "blue",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "value",
+                    "alpha",
+                    "zero",
+                ],
+                doc: "which level of a pixel is its phase",
+            },
+            ParamSpec {
+                name: "add-from",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "intensity",
+                    "red",
+                    "green",
+                    "blue",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "value",
+                    "alpha",
+                    "zero",
+                ],
+                doc: "which level of the added layer is added to the phase",
+            },
+            ParamSpec {
+                name: "add-mode",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["wrap", "clamp", "average", "screen"],
+                doc: "how the added level joins the phase",
+            },
+            ParamSpec {
+                name: "modify",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "all",
+                    "red",
+                    "green",
+                    "blue",
+                    "red-green",
+                    "green-blue",
+                    "red-blue",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "hue-lightness",
+                    "lightness-saturation",
+                    "hue-saturation",
+                    "none",
+                ],
+                doc: "which channels the cycle's colour replaces",
+            },
+            ParamSpec {
+                name: "interpolate",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["on", "off"],
+                doc: "whether the cycle runs smoothly between its points",
+            },
+            ParamSpec {
+                name: "modify-alpha",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["on", "off"],
+                doc: "whether the cycle's alpha multiplies the pixel's",
+            },
+        ],
+        doc: "sends a phase read off each pixel round a cycle of colours",
+        reach: stays,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: cycle::color_cycle,
         },
     },
     EffectSpec {

@@ -1523,6 +1523,76 @@ pub static INVERT: Registry = Registry {
     )],
 };
 
+/// A path property resting at the empty path.
+const fn path(name: &'static str, doc: &'static str) -> PropertySpec {
+    PropertySpec {
+        name,
+        ty: ValueType::Path,
+        rest: Rest::Value(Value::Path(Path::EMPTY)),
+        components: &[],
+        range: None,
+        broadcast: false,
+        spatial: false,
+        integral: false,
+        doc,
+    }
+}
+
+/// The properties of `color-cycle`: the cycle as one curve of the phase
+/// per channel, `M x,y L x,y …` from phase to level, both 0 to 1, a point
+/// per stop in rising phase, at most 16; then how the phase is moved and
+/// how much of the original stays.
+pub static COLOR_CYCLE: Registry = Registry {
+    kind: "color-cycle",
+    rows: &[
+        path(
+            "red",
+            "the cycle's red at each phase; empty, the phase itself",
+        ),
+        path(
+            "green",
+            "the cycle's green at each phase; empty, the phase itself",
+        ),
+        path(
+            "blue",
+            "the cycle's blue at each phase; empty, the phase itself",
+        ),
+        path("alpha", "the cycle's alpha at each phase; empty, 1"),
+        number(
+            "shift",
+            0.0,
+            None,
+            "how far round the cycle the phase is moved, in degrees",
+        ),
+        number(
+            "repetitions",
+            1.0,
+            Some((0.0, 64.0)),
+            "how many times the cycle runs over the phase",
+        ),
+        number(
+            "blend",
+            0.0,
+            Some((0.0, 1.0)),
+            "how much of the original stays, 0 to 1",
+        ),
+    ],
+};
+
+/// The levels a colour cycle's phase is read from.
+const PHASES: &[&str] = &[
+    "intensity",
+    "red",
+    "green",
+    "blue",
+    "hue",
+    "lightness",
+    "saturation",
+    "value",
+    "alpha",
+    "zero",
+];
+
 /// The properties of the curves effect: one curve per channel, each the
 /// points `M x,y L x,y …` from input to output level, 0 to 1, in rising `x`,
 /// at most 16, joined by a natural cubic spline. An empty path is the
@@ -1937,7 +2007,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 34] = [
+pub static EFFECTS: [ItemKind; 35] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -2015,6 +2085,77 @@ pub static EFFECTS: [ItemKind; 34] = [
         outline: None,
         timed: false,
         doc: "turns hues and changes saturation and lightness",
+    },
+    ItemKind {
+        name: "color-cycle",
+        role: Role::Effect,
+        registry: &COLOR_CYCLE,
+        primary: Primary::Setting("phase-from"),
+        settings: &[
+            SettingSpec {
+                name: "phase-from",
+                choices: PHASES,
+                default: "intensity",
+                doc: "which level of a pixel's straight colour is its phase: `intensity` the mean \
+                      of its colours, `value` the largest, `zero` none",
+            },
+            SettingSpec {
+                name: "add-from",
+                choices: PHASES,
+                default: "intensity",
+                doc: "which level of the `add` layer is added to the phase",
+            },
+            SettingSpec {
+                name: "add-mode",
+                choices: &["wrap", "clamp", "average", "screen"],
+                default: "wrap",
+                doc: "how the added level joins the phase: summed and wrapped, summed and held at \
+                      1, averaged, or screened",
+            },
+            SettingSpec {
+                name: "modify",
+                choices: &[
+                    "all",
+                    "red",
+                    "green",
+                    "blue",
+                    "red-green",
+                    "green-blue",
+                    "red-blue",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "hue-lightness",
+                    "lightness-saturation",
+                    "hue-saturation",
+                    "none",
+                ],
+                default: "all",
+                doc: "which channels the cycle's colour replaces: some of red, green and blue, or \
+                      of hue, lightness and saturation, or none",
+            },
+            SettingSpec {
+                name: "interpolate",
+                choices: &["on", "off"],
+                default: "on",
+                doc: "whether the cycle runs straight from point to point (`on`) or holds each \
+                      point's colour until the next (`off`)",
+            },
+            SettingSpec {
+                name: "modify-alpha",
+                choices: &["on", "off"],
+                default: "on",
+                doc: "whether the cycle's alpha multiplies the pixel's",
+            },
+        ],
+        input: Some(Input {
+            key: "add",
+            reads: Reads::Drawing,
+        }),
+        outline: None,
+        timed: false,
+        doc: "sends a phase read off each pixel, plus one read off the `add` layer, round a cycle \
+              of colours that replace the pixel's",
     },
     ItemKind {
         name: "exposure",

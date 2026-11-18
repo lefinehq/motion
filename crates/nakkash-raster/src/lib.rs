@@ -19,6 +19,7 @@ mod blur;
 mod channel;
 mod colour;
 mod composite;
+mod cycle;
 mod distort;
 mod effect;
 mod generate;

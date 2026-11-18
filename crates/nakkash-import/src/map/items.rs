@@ -11,7 +11,7 @@ use super::report::{ControlReport, Fate};
 use super::rows::{self, Kind, Missing, Part, Policy, Row, To};
 use super::slots::{Held, address};
 use super::sources::{Marks, Writable};
-use super::{Walk, curves, levels};
+use super::{Walk, curves, cycle, levels};
 use crate::bake::Bake;
 use crate::model::{
     Child, ComposedLine, Control, EffectDefinition, Group, Keyframe, Property, Stream, Value,
@@ -290,6 +290,36 @@ impl Walk<'_> {
                 Stream::Static(value) => self.put_curves(value, name, out, place),
                 Stream::Animated(keys) => self.put_animated_curves(keys, name, sink, out, place),
             },
+            To::Cycle => {
+                let first = match &property.value {
+                    Stream::Static(value) => Some(value),
+                    Stream::Animated(keys) => {
+                        self.mapping.unsupported(
+                            &place.at,
+                            "an animated output cycle (the first keyframe's is kept)",
+                        );
+                        keys.first().map(|key| &key.value)
+                    }
+                };
+                let stops = match first {
+                    Some(Value::Data(data)) => cycle::read(data),
+                    _ => None,
+                };
+                let Some(stops) = stops.filter(|stops| (1..=cycle::MOST).contains(&stops.len()))
+                else {
+                    self.mapping.count(name, Fate::Unsupported);
+                    return self.mapping.unsupported(
+                        &place.at,
+                        "an output cycle kept in a layout the import does not read, or of more \
+                         than 16 stops",
+                    );
+                };
+                for (channel, points) in cycle::NAMES.iter().zip(cycle::curves(&stops)) {
+                    out.keys
+                        .insert((*channel).into(), json!(curves::path(&points)));
+                }
+                self.mapping.count(name, Fate::Mapped);
+            }
             To::Levels => {
                 let first = match &property.value {
                     Stream::Static(value) => Some(value),

@@ -25,6 +25,10 @@ pub(crate) enum Level {
     Blue,
     /// Its alpha.
     Alpha,
+    /// The mean of its red, green and blue.
+    Intensity,
+    /// Its largest colour.
+    Value,
     /// Its luma, by Rec. 601 weights.
     Luminance,
     /// Its hue, a turn from red through yellow, green and blue back to red;
@@ -65,6 +69,8 @@ impl Level {
             Level::Green => g,
             Level::Blue => b,
             Level::Alpha => a,
+            Level::Intensity => (r + g + b) / 3.0,
+            Level::Value => max,
             Level::Luminance => r * LUMA[0] + g * LUMA[1] + b * LUMA[2],
             Level::Hue => {
                 let d = max - min;
