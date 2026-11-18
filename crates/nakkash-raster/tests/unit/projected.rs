@@ -3,7 +3,7 @@
 //! worked out by hand, and against supersampled references.
 
 use super::*;
-use crate::effect::ParamValue;
+use crate::effect::{EFFECTS, ParamValue};
 use crate::image::Image;
 use crate::list::{Frame, LayerMask, MaskMode, PathDraw, Projection};
 use crate::render::{RenderOptions, render_with};
@@ -680,4 +680,58 @@ fn the_buffer_is_capped_in_scale_and_side() {
     let wide = Extent::Box(Rect::new(0.0, 0.0, 40_000.0, 10.0));
     let plan = Plan::new(wide, None, &[Homography::IDENTITY], 100, 100).unwrap();
     assert!(f64::from(plan.width) <= MAX_SIDE, "{}", plan.width);
+}
+
+/// `card` with one `effect` of `params`, its transform scaled by `own`.
+fn card_with(name: &str, params: &[(&str, ParamValue)], own: f64) -> Layer {
+    Layer {
+        transform: Affine::scale(own),
+        effects: vec![Effect::new(name, params).unwrap()],
+        ..card(400.0, 200.0)
+    }
+}
+
+#[rstest]
+// A kernel of a px or two, shrunk: drawn at the layer's own size.
+#[case::sharpen_shrunk("sharpen", 50.0, 1.0, 0.5, Some(1.0))]
+// The layer's own scale is the size it is drawn at.
+#[case::sharpen_scaled_up_in_a_shrunk_parent("sharpen", 50.0, 2.0, 0.25, Some(2.0))]
+// Not shrunk: drawn where it lands, as before.
+#[case::sharpen_not_shrunk("sharpen", 50.0, 1.0, 1.0, None)]
+// A blur that still reads many px where it lands.
+#[case::wide_blur_shrunk("gaussian-blur", 60.0, 1.0, 0.5, None)]
+// A blur of a few px where it lands.
+#[case::narrow_blur_shrunk("gaussian-blur", 4.0, 1.0, 0.5, Some(1.0))]
+// An effect that changes each pixel alone is exact at any size.
+#[case::colour_shrunk("invert", 0.0, 1.0, 0.25, None)]
+fn a_shrunk_layer_is_drawn_whole_when_its_effects_read_a_few_px(
+    #[case] name: &str,
+    #[case] amount: f32,
+    #[case] own: f64,
+    #[case] shrink: f64,
+    #[case] whole: Option<f64>,
+) {
+    let first = EFFECTS
+        .iter()
+        .find(|s| s.name == name)
+        .unwrap()
+        .params
+        .first()
+        .map(|p| p.name);
+    let params: Vec<(&str, ParamValue)> = first
+        .filter(|_| amount > 0.0)
+        .map(|p| (p, ParamValue::Number(amount)))
+        .into_iter()
+        .collect();
+    let layer = card_with(name, &params, own);
+    assert_eq!(whole_scale(&layer, Affine::scale(shrink)), whole);
+}
+
+#[test]
+fn a_layer_with_moves_for_motion_blur_is_never_drawn_whole() {
+    let layer = Layer {
+        motion: vec![Affine::IDENTITY, Affine::translate((4.0, 0.0))],
+        ..card_with("sharpen", &[], 1.0)
+    };
+    assert_eq!(whole_scale(&layer, Affine::scale(0.5)), None);
 }
