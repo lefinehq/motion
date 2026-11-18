@@ -40,6 +40,11 @@ pub(crate) enum Convert {
         /// layer with a source, the middle for a shape or text layer.
         origin: [f64; 2],
     },
+    /// A point in fractions of a layer's effect space, as an effect stores
+    /// its points, to the px it lies from where its parameter rests: the
+    /// walk makes it [`Convert::Sized`] with the parameter's default, times
+    /// the space's size, as the origin. Until then it converts as a point.
+    FromRest,
     /// A colour, to `[r, g, b, 1]`: the project draws every colour it
     /// stores opaque, whatever alpha the colour carries, and keeps opacity
     /// in properties of its own.
@@ -76,7 +81,7 @@ impl Convert {
     /// How one component of a value of this kind becomes a scene number.
     pub(super) fn component(self, dim: usize) -> Convert {
         match self {
-            Convert::Point => Convert::Number,
+            Convert::Point | Convert::FromRest => Convert::Number,
             Convert::PointPercent => Convert::Percent,
             Convert::Sized { size, origin } => Convert::Sized {
                 size: [size[dim.min(1)]; 2],
@@ -98,7 +103,7 @@ impl Convert {
     /// How many components the scene value has, for eases per component.
     fn dims(self) -> usize {
         match self {
-            Convert::Point | Convert::PointPercent | Convert::Sized { .. } => 2,
+            Convert::Point | Convert::FromRest | Convert::PointPercent | Convert::Sized { .. } => 2,
             _ => 1,
         }
     }
@@ -116,7 +121,7 @@ impl Convert {
                 Value::Number(n),
             ) => Some(num(scene(*n, 0))),
             (
-                Convert::Point | Convert::PointPercent | Convert::Sized { .. },
+                Convert::Point | Convert::FromRest | Convert::PointPercent | Convert::Sized { .. },
                 Value::Vector2([x, y]) | Value::Vector3([x, y, _]),
             ) => Some(json!([num(scene(*x, 0)), num(scene(*y, 1))])),
             (Convert::Depth, Value::Vector3([_, _, z]) | Value::Number(z)) => Some(num(*z)),

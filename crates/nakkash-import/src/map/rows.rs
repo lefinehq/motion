@@ -624,7 +624,7 @@ const SHAPES_OF_RANGE: &[(i64, &str)] = &[
     (6, "smooth"),
 ];
 
-use Convert::{Angles, Color, Level, Number, Path, Percent, Point, PointPercent, Times};
+use Convert::{Angles, Color, FromRest, Level, Number, Path, Percent, Point, PointPercent, Times};
 use Missing::{Absent, CameraPosition, CameraZoom, CompCentre, Parameter, SourceCentre};
 
 /// A point the project keeps in fractions of the layer's source, as it
@@ -1247,7 +1247,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 53] = [
+pub(super) static KINDS: [Kind; 54] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -3098,6 +3098,101 @@ pub(super) static KINDS: [Kind; 53] = [
             row(
                 "ADBE Optics Compensation-0006",
                 To::Setting("grow", LENS_GROWTHS),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE BEZMESH",
+        item: "bezier-warp",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE BEZMESH-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE BEZMESH-0001",
+                To::Prop("top-left"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE BEZMESH-0002",
+                To::Prop("top-handle-left"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE BEZMESH-0003",
+                To::Prop("top-handle-right"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE BEZMESH-0004",
+                To::Prop("top-right"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE BEZMESH-0005",
+                To::Prop("right-handle-top"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE BEZMESH-0006",
+                To::Prop("right-handle-bottom"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE BEZMESH-0007",
+                To::Prop("bottom-right"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE BEZMESH-0008",
+                To::Prop("bottom-handle-right"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE BEZMESH-0009",
+                To::Prop("bottom-handle-left"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE BEZMESH-0010",
+                To::Prop("bottom-left"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE BEZMESH-0011",
+                To::Prop("left-handle-bottom"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE BEZMESH-0012",
+                To::Prop("left-handle-top"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE BEZMESH-0014",
+                To::Ignore(
+                    "how finely the warp is cut into flat pieces; the scene draws it smooth",
+                ),
                 Number,
                 Absent,
             ),

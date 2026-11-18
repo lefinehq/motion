@@ -1014,25 +1014,34 @@ fn rest_json(target: Target) -> Option<Json> {
 
 /// How `row`'s values become the scene's at `place`: an effect's point
 /// parameter is stored in fractions of the layer's effect space, so it
-/// becomes pixels of that space, measured from the layer's origin; a value
+/// becomes pixels of that space, measured from the layer's origin, or from
+/// where the parameter rests for a row that converts [`Convert::FromRest`]; a value
 /// the row keeps in fractions of the layer's source (a mask's path, a
 /// layer's anchor point) becomes pixels of the source.
 fn convert(row: &Row, place: &Place<'_>) -> Convert {
-    let point = place
+    let rest = place
         .effect
         .and_then(|effect| effect.parameter(row.match_name))
-        .is_some_and(|parameter| matches!(parameter.control, Control::Point { .. }));
-    match (point, row.convert) {
-        (true, _) => Convert::Sized {
+        .and_then(|parameter| match &parameter.control {
+            Control::Point { default } => Some(default),
+            _ => None,
+        });
+    match (rest, row.convert) {
+        // Measured from where the parameter rests: its default, in px.
+        (Some(default), Convert::FromRest) => Convert::Sized {
+            size: place.size,
+            origin: [0, 1].map(|i| default.get(i).copied().unwrap_or(0.5) * place.size[i]),
+        },
+        (Some(_), _) => Convert::Sized {
             size: place.size,
             origin: place.origin,
         },
-        (false, Convert::PathIn(_)) => Convert::PathIn(place.source_unit),
-        (false, Convert::Sized { origin, .. }) => Convert::Sized {
+        (None, Convert::PathIn(_)) => Convert::PathIn(place.source_unit),
+        (None, Convert::Sized { origin, .. }) => Convert::Sized {
             size: place.source_unit,
             origin,
         },
-        (false, convert) => convert,
+        (None, convert) => convert,
     }
 }
 

@@ -415,3 +415,75 @@ fn a_grown_lens_draws_in_the_grown_box() {
     lens_distortion(&mut kept, &lens(120.0, [32.0, 32.0], true, 0, 0), &space);
     assert_eq!(kept.get(8, 32), [0.0; 4]);
 }
+
+/// A 96 by 96 grid with a 64 px box from (16, 16), whose red is the
+/// layer point's x over 96 and green its y over 96, clear around it.
+fn framed() -> (Pixels, Space) {
+    let mut pixels = Pixels::transparent(96, 96);
+    for (i, p) in pixels.data_mut().iter_mut().enumerate() {
+        let (x, y) = ((i % 96) as f32 + 0.5, (i / 96) as f32 + 0.5);
+        if (16.0..80.0).contains(&x) && (16.0..80.0).contains(&y) {
+            *p = [x / 96.0, y / 96.0, 0.0, 1.0];
+        }
+    }
+    let space = Space {
+        transform: Affine::IDENTITY,
+        bounds: Some(Rect::new(16.0, 16.0, 80.0, 80.0)),
+        input: None,
+        time: 0.0,
+        sound: None,
+        outline: None,
+        totals: Vec::new(),
+    };
+    (pixels, space)
+}
+
+/// The layer point `framed` shows at pixel `x`, `y`.
+fn framed_at(pixels: &Pixels, x: i64, y: i64) -> [f32; 2] {
+    let [r, g, ..] = pixels.get(x, y);
+    [r * 96.0, g * 96.0]
+}
+
+/// The values of a warp moving each of its twelve points by `moves`.
+fn warp(moves: [[f32; 2]; 12]) -> [ParamValue; 12] {
+    moves.map(At)
+}
+
+#[test]
+fn a_warp_at_rest_keeps_the_layer() {
+    let (mut pixels, space) = framed();
+    let before = pixels.clone();
+    bezier_warp(&mut pixels, &warp([[0.0; 2]; 12]), &space);
+    for (after, before) in pixels.data().iter().zip(before.data()) {
+        assert!(
+            after.iter().zip(before).all(|(a, b)| (a - b).abs() < 1e-4),
+            "{after:?} {before:?}"
+        );
+    }
+}
+
+#[test]
+fn a_warp_moving_every_point_alike_moves_the_layer() {
+    let (mut pixels, space) = framed();
+    bezier_warp(&mut pixels, &warp([[8.0, 4.0]; 12]), &space);
+    assert!(near(framed_at(&pixels, 40, 40), [32.5, 36.5]));
+    assert_eq!(pixels.get(18, 40), [0.0; 4]);
+}
+
+#[test]
+fn a_warp_bends_a_side_through_its_handles() {
+    // Both handles of the top side 12 px up: its middle rises 9 px, to
+    // y 7, and the box's top row shows there.
+    let (mut pixels, space) = framed();
+    let mut moves = [[0.0; 2]; 12];
+    moves[1] = [0.0, -12.0];
+    moves[2] = [0.0, -12.0];
+    bezier_warp(&mut pixels, &warp(moves), &space);
+    let [r, g, _, a] = pixels.get(47, 7);
+    assert!(a > 0.99, "{a}");
+    assert!((r / a * 96.0 - 47.5).abs() < 0.05 && (g / a * 96.0 - 16.5).abs() < 0.05);
+    assert_eq!(pixels.get(47, 5), [0.0; 4]);
+    // Handles moved up and down move no point across.
+    let [r, _, _, a] = pixels.get(16, 50);
+    assert!((r / a * 96.0 - 16.5).abs() < 1e-3, "{}", r / a * 96.0);
+}
