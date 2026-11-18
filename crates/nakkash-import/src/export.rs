@@ -71,6 +71,14 @@ impl Plan {
 /// Plans the export of `edited`, a scene first imported from a project
 /// whose import gives `original`, with `sources`.
 pub fn plan(original: &Json, sources: &Sources, edited: &Json) -> Plan {
+    // A slot's value reaches every value that follows it, which goes back
+    // where the project stores it ([D77]): the scenes are compared with
+    // their references resolved.
+    //
+    // [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+    let resolve =
+        |json: &Json| nakkash_format::slots::resolved(json).unwrap_or_else(|_| json.clone());
+    let (original, edited) = (&resolve(original), &resolve(edited));
     let mut differences = Vec::new();
     diff(original, edited, &mut Vec::new(), &mut differences);
     let mut plan = Plan::default();
@@ -81,6 +89,11 @@ pub fn plan(original: &Json, sources: &Sources, edited: &Json) -> Plan {
             .iter()
             .filter(|s| difference.path.starts_with(&s.path))
             .max_by_key(|s| s.path.len());
+        // A slot's declaration is not the project's, unless it stands for a
+        // control (D44): what follows it is.
+        if source.is_none() && is_declaration(&difference.path) {
+            continue;
+        }
         let why = match (&difference.kind, source.map(|s| &s.writable)) {
             (Difference::Structure, _) => {
                 Some("the original has no such layer, item or key".to_owned())
@@ -151,6 +164,16 @@ pub fn plan(original: &Json, sources: &Sources, edited: &Json) -> Plan {
     plan
 }
 
+/// Whether `path` is inside a slot's declaration, the scene's or a
+/// composition's.
+fn is_declaration(path: &[Step]) -> bool {
+    match path {
+        [Step::Key(comps), _, Step::Key(slots), ..] if comps == "comps" => slots == "slots",
+        [Step::Key(slots), ..] => slots == "slots",
+        _ => false,
+    }
+}
+
 /// `file`, the project the original scene was imported from, with the
 /// plan's patches.
 ///
@@ -164,6 +187,8 @@ pub fn apply(file: &[u8], plan: &Plan) -> Result<Vec<u8>> {
 /// The values the plan wrote that `reimported`, the scene imported from the
 /// patched file, does not give as the import writes the edited values.
 pub fn verify(plan: &Plan, reimported: &Json) -> Vec<Change> {
+    let reimported =
+        &nakkash_format::slots::resolved(reimported).unwrap_or_else(|_| reimported.clone());
     plan.expected
         .iter()
         .filter_map(|(path, expected)| {

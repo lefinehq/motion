@@ -4,6 +4,7 @@
 
 pub mod address;
 pub mod anim;
+pub mod colors;
 mod curve;
 mod de;
 pub mod deprecated;
@@ -14,6 +15,7 @@ pub mod grammar;
 pub mod item;
 pub mod locks;
 mod number;
+pub mod oklch;
 pub mod overrides;
 mod parse;
 pub mod path;

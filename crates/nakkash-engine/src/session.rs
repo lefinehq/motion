@@ -309,6 +309,17 @@ impl Session {
         self.draw(&self.display_list(frame)?, options)
     }
 
+    /// Draws `frame` at `scale` of the canvas's size, scaled as one picture,
+    /// with `options`: what changed between two scenes shows at a fraction
+    /// of a render's cost, though effects measured in pixels are not
+    /// scaled with it.
+    ///
+    /// # Errors
+    /// As [`Session::render_with`].
+    pub fn render_small(&self, frame: f64, scale: f64, options: RenderOptions) -> Result<Image> {
+        crate::gates::shrunk_by(self, self.display_list(frame)?, scale, options)
+    }
+
     /// The canvas the scene is drawn on, in whole pixels.
     ///
     /// # Errors

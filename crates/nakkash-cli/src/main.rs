@@ -157,6 +157,23 @@ enum Command {
         /// Print them as JSON, with the place of each value that follows.
         #[arg(long)]
         json: bool,
+        /// Count the text layers, colours and footage no slot holds, and
+        /// say where each is.
+        #[arg(long, conflicts_with = "verify")]
+        coverage: bool,
+        /// Change each slot alone and draw a frame where what follows it
+        /// shows; report every slot that changes nothing, then change them
+        /// all and check the scene. Exits 1 when a slot changes nothing.
+        #[arg(long)]
+        verify: bool,
+        /// The picture `--verify` gives image slots; a test card when not
+        /// given.
+        #[arg(long, value_name = "FILE", requires = "verify")]
+        picture: Option<PathBuf>,
+        /// The clip `--verify` gives video slots; they are not tried
+        /// without one.
+        #[arg(long, value_name = "FILE", requires = "verify")]
+        clip: Option<PathBuf>,
     },
     /// Apply an edit line such as `card fill=#FF0000`, save the scene and
     /// print what the edit added to its check; exits 1 when it added an error.
@@ -383,7 +400,23 @@ fn main() -> ExitCode {
     );
     let result = match cli.command {
         Command::Check { scene, baseline } => commands::check::run(&scene, baseline.as_deref()),
-        Command::Slots { scene, json } => commands::slots::run(&scene, json),
+        Command::Slots {
+            scene,
+            json,
+            coverage,
+            verify,
+            picture,
+            clip,
+        } => commands::slots::run(
+            &scene,
+            &commands::slots::Args {
+                json,
+                coverage,
+                verify,
+                picture,
+                clip,
+            },
+        ),
         Command::Roles { scene, json } => commands::roles::run(&scene, json),
         Command::Batch {
             manifest,

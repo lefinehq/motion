@@ -30,13 +30,25 @@ pub(crate) fn gates(session: &Session) -> Result<Report> {
 
 /// `list`, a frame of `session`'s scene, drawn at [`SHRINK`] of its size.
 fn shrunk(session: &Session, list: Frame) -> Result<Image> {
+    shrunk_by(session, list, SHRINK, RenderOptions::default())
+}
+
+/// `list`, a frame of `session`'s scene, drawn at `scale` of its size with
+/// `options`: a picture of the whole frame that costs a fraction of a
+/// render, for measures that need no full resolution.
+pub(crate) fn shrunk_by(
+    session: &Session,
+    list: Frame,
+    scale: f64,
+    options: RenderOptions,
+) -> Result<Image> {
     let (width, height) = session.canvas()?;
-    let side = |px: u32| ((f64::from(px) * SHRINK).ceil() as u32).max(1);
+    let side = |px: u32| ((f64::from(px) * scale).ceil() as u32).max(1);
     let small = Frame {
         background: list.background,
         blending: list.blending,
         nodes: vec![Node::Layer(Layer {
-            transform: Affine::scale(SHRINK),
+            transform: Affine::scale(scale),
             opacity: 1.0,
             blend: BlendMode::Normal,
             clip: None,
@@ -53,7 +65,7 @@ fn shrunk(session: &Session, list: Frame) -> Result<Image> {
             shared: None,
         })],
     };
-    nakkash_raster::render_with(&small, side(width), side(height), RenderOptions::default())
+    nakkash_raster::render_with(&small, side(width), side(height), options)
 }
 
 /// Linear light of each 8-bit sRGB level.

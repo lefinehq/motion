@@ -93,7 +93,9 @@ fn every_static_value_of_every_fixture_writes_back() {
             .collect();
         for source in statics {
             let mut edited = imported.json.clone();
-            let before = json_at(&edited, &source.path).expect("marked").clone();
+            // A value that follows a slot is edited as the value it reads.
+            let resolved = nakkash_format::slots::resolved(&edited).expect("resolves");
+            let before = json_at(&resolved, &source.path).expect("marked").clone();
             set(&mut edited, &source.path, nudged(&before));
             let plan = plan(&imported.json, &imported.sources, &edited);
             assert_eq!(
@@ -303,7 +305,9 @@ fn every_sample_project_writes_back() {
             .filter(|s| matches!(s.writable, Writable::Static { .. }))
             .collect();
         for source in &statics {
-            let before = json_at(&edited, &source.path).expect("marked").clone();
+            // A value that follows a slot is edited as the value it reads.
+            let resolved = nakkash_format::slots::resolved(&edited).expect("resolves");
+            let before = json_at(&resolved, &source.path).expect("marked").clone();
             set(&mut edited, &source.path, nudged(&before));
         }
         let plan = plan(&imported.json, &imported.sources, &edited);
