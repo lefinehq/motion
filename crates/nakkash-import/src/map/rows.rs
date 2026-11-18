@@ -562,6 +562,26 @@ const VECTOR_MAP_LEVELS: &[(i64, &str)] = &[
     (7, "hue"),
     (8, "saturation"),
 ];
+const IRISES: &[(i64, &str)] = &[
+    (1, "triangle"),
+    (2, "square"),
+    (3, "pentagon"),
+    (4, "hexagon"),
+    (5, "heptagon"),
+    (6, "octagon"),
+    (7, "nonagon"),
+    (8, "decagon"),
+];
+const BLUR_MAP_LEVELS: &[(i64, &str)] = &[
+    (1, "luminance"),
+    (2, "red"),
+    (3, "green"),
+    (4, "blue"),
+    (5, "alpha"),
+];
+const BLUR_MAP_PLACEMENTS: &[(i64, &str)] = &[(1, "center"), (2, "stretch")];
+/// The lens blur's radius in the scene's px.
+const LENS_RADIUS: Convert = Convert::Number;
 const SHADOW_ONLY: &[(i64, &str)] = &[(0, "shown"), (1, "hidden")];
 const EDGE_LINES: &[(i64, &str)] = &[(0, "dark-on-light"), (1, "light-on-dark")];
 // The project's choices say where the original goes: on top of the glow
@@ -1265,7 +1285,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 58] = [
+pub(super) static KINDS: [Kind; 59] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -3883,6 +3903,158 @@ pub(super) static KINDS: [Kind; 58] = [
                 To::Prop("softness"),
                 Number,
                 Parameter,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Camera Lens Blur",
+        item: "lens-blur",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Camera Lens Blur-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0001",
+                To::Prop("radius"),
+                LENS_RADIUS,
+                Parameter,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0002",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0003",
+                To::Setting("iris", IRISES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0004",
+                To::Prop("roundness"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0005",
+                To::Prop("aspect"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0006",
+                To::Prop("rotation"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0007",
+                To::OnlyDefault("a diffraction fringe other than the plain iris's"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0008",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0009",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Camera Lens Blur-0010", To::Input, Number, Absent),
+            row(
+                "ADBE Camera Lens Blur-0011",
+                To::Setting("map-level", BLUR_MAP_LEVELS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0012",
+                To::Setting("placement", BLUR_MAP_PLACEMENTS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0013",
+                To::Prop("focal-distance"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0014",
+                To::Setting("inverted", OFF_ON),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0015",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0016",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0017",
+                To::OnlyDefault("highlights brightened before they spread"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0018",
+                To::Ignore(
+                    "which pixels count as highlights, which only a gain changes; a gain is reported",
+                ),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0019",
+                To::Ignore(
+                    "the colour highlights keep, which only a gain changes; a gain is reported",
+                ),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0020",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0021",
+                To::Setting("edges", EDGES),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Camera Lens Blur-0022",
+                To::OnlyDefault("an unnamed switch of the effect's, on by default"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
             ),
         ],
         parts: &[],

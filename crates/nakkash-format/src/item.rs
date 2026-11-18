@@ -1443,6 +1443,44 @@ pub static VECTOR_BLUR: Registry = Registry {
     ],
 };
 
+/// The properties of the lens blur.
+pub static LENS_BLUR: Registry = Registry {
+    kind: "lens-blur",
+    rows: &[
+        number(
+            "radius",
+            5.0,
+            Some((0.0, 4_000.0)),
+            "how far each pixel spreads, in px: the radius of the circle the iris's corners lie on",
+        ),
+        number(
+            "roundness",
+            0.0,
+            Some((0.0, 1.0)),
+            "how far the iris's sides bow out towards a circle, 0 to 1",
+        ),
+        number(
+            "aspect",
+            1.0,
+            Some((0.01, 100.0)),
+            "how many times wider than high the iris is",
+        ),
+        number(
+            "rotation",
+            0.0,
+            None,
+            "how far the iris turns, in degrees clockwise",
+        ),
+        number(
+            "focal-distance",
+            0.0,
+            Some((0.0, 1.0)),
+            "the level of `map` that stays sharp; a pixel spreads by `radius` times how far its \
+             level is from it",
+        ),
+    ],
+};
+
 /// The properties of the drop shadow.
 pub static DROP_SHADOW: Registry = Registry {
     kind: "drop-shadow",
@@ -2234,7 +2272,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 41] = [
+pub static EFFECTS: [ItemKind; 42] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -3169,6 +3207,54 @@ pub static EFFECTS: [ItemKind; 41] = [
         outline: None,
         timed: false,
         doc: "smears the layer along the slope of a map's level, its own without one",
+    },
+    ItemKind {
+        name: "lens-blur",
+        role: Role::Effect,
+        registry: &LENS_BLUR,
+        primary: Primary::Property("radius"),
+        settings: &[
+            SettingSpec {
+                name: "iris",
+                choices: &[
+                    "hexagon", "triangle", "square", "pentagon", "heptagon", "octagon", "nonagon",
+                    "decagon",
+                ],
+                default: "hexagon",
+                doc: "the iris's shape: a polygon of three to ten sides, six unless set",
+            },
+            SettingSpec {
+                name: "map-level",
+                choices: &["luminance", "red", "green", "blue", "alpha"],
+                default: "luminance",
+                doc: "which level of `map` sets each pixel's radius",
+            },
+            SettingSpec {
+                name: "placement",
+                choices: &["center", "stretch"],
+                default: "center",
+                doc: "how `map`'s box lies on the layer's: centred on it, or stretched over it",
+            },
+            SettingSpec {
+                name: "inverted",
+                choices: &["off", "on"],
+                default: "off",
+                doc: "whether `map`'s level is taken from 1",
+            },
+            SettingSpec {
+                name: "edges",
+                choices: &["transparent", "repeat"],
+                default: "transparent",
+                doc: "what lies beyond the frame's edges while blurring: nothing, or the edge pixels repeated",
+            },
+        ],
+        input: Some(Input {
+            key: "map",
+            reads: Reads::Drawing,
+        }),
+        outline: None,
+        timed: false,
+        doc: "spreads each pixel over the shape of a lens's iris, by a map's levels or evenly",
     },
     ItemKind {
         name: "drop-shadow",
