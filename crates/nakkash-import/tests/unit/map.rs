@@ -1224,6 +1224,70 @@ mod effects {
         );
     }
 
+    /// Strokes along contours take their threshold as a level, their
+    /// settings by the definition's codes, and a blend mode the project
+    /// leaves out from the definition, which is not the scene's default.
+    /// Bunched strokes are reported.
+    #[test]
+    fn contour_strokes_take_their_settings_and_the_definitions_mode() {
+        let definition = EffectDefinition {
+            name: "Strokes".into(),
+            parameters: vec![
+                parameter("APC Vegas-0000", Control::Layer),
+                parameter(
+                    "APC Vegas-0008",
+                    Control::Popup {
+                        default: 2,
+                        choices: ["Transparent", "Over", "Under", "Stencil"]
+                            .map(String::from)
+                            .to_vec(),
+                    },
+                ),
+                parameter(
+                    "APC Vegas-0026",
+                    Control::Popup {
+                        default: 2,
+                        choices: ["Bunched", "Even"].map(String::from).to_vec(),
+                    },
+                ),
+            ],
+        };
+        let strokes = |properties: Vec<Property>| {
+            group(
+                "APC Vegas",
+                properties.into_iter().map(Child::Property).collect(),
+            )
+        };
+        let import = defined(
+            vec![
+                strokes(vec![
+                    number("APC Vegas-0008", 1.0),
+                    number("APC Vegas-0012", 51.0),
+                    number("APC Vegas-0020", 3.0),
+                    number("APC Vegas-0024", 0.6),
+                    number("APC Vegas-0028", 1.0),
+                    number("APC Vegas-0030", 221.0),
+                    number("APC Vegas-0032", 1.0),
+                    number("APC Vegas-0051", 0.0),
+                ]),
+                strokes(vec![number("APC Vegas-0026", 1.0)]),
+            ],
+            vec![("APC Vegas", definition)],
+        )
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"];
+        assert_eq!(fx[0]["contour-strokes"], 3, "{fx}");
+        assert_eq!(fx[0]["mode"], "transparent", "{fx}");
+        assert_eq!(fx[0]["threshold"], 0.2, "{fx}");
+        assert_eq!(fx[0]["length"], 0.6, "{fx}");
+        assert_eq!(fx[0]["segments"], 1, "{fx}");
+        assert_eq!(fx[0]["rotation"], 221, "{fx}");
+        assert_eq!(fx[0]["random-phase"], "on", "{fx}");
+        assert_eq!(fx[1]["mode"], "over", "{fx}");
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert_eq!(what, ["strokes bunched together round their contour"]);
+    }
+
     #[test]
     fn a_displacement_map_names_its_map_layer() {
         let map = |layer: u32| {

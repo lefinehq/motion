@@ -1139,6 +1139,98 @@ pub static BEAM: Registry = Registry {
     ],
 };
 
+/// The properties of `contour-strokes`.
+pub static CONTOUR_STROKES: Registry = Registry {
+    kind: "contour-strokes",
+    rows: &[
+        number(
+            "threshold",
+            0.498039,
+            Some((0.0, 1.0)),
+            "the level the contours follow, 0 to 1",
+        ),
+        number(
+            "pre-blur",
+            0.0,
+            Some((0.0, 50.0)),
+            "how much the level is blurred before it is traced, as a blurriness",
+        ),
+        number(
+            "tolerance",
+            0.5,
+            Some((0.0, 5.0)),
+            "how far, in px, a traced contour may stray when simplified",
+        ),
+        number(
+            "contour",
+            1.0,
+            Some((1.0, 1000.0)),
+            "which contour `render` `selected` strokes, counting from 1",
+        ),
+        number(
+            "segments",
+            32.0,
+            Some((1.0, 250.0)),
+            "how many strokes each contour takes",
+        ),
+        number(
+            "length",
+            1.0,
+            Some((0.0, 1.0)),
+            "how much of its share of the contour each stroke covers, 0 to 1",
+        ),
+        number(
+            "rotation",
+            0.0,
+            None,
+            "how far round each contour the strokes start, in degrees of a turn",
+        ),
+        number(
+            "seed",
+            1.0,
+            Some((1.0, 1000.0)),
+            "what the random phases are drawn from",
+        ),
+        color("color", [1.0, 1.0, 0.0, 1.0], "the strokes' colour"),
+        number(
+            "width",
+            2.0,
+            Some((0.5, 100.0)),
+            "how wide the strokes are, in px",
+        ),
+        number(
+            "hardness",
+            0.0,
+            Some((0.0, 1.0)),
+            "how sharp the strokes' edges are, 0 soft to 1 hard",
+        ),
+        number(
+            "start-opacity",
+            1.0,
+            Some((0.0, 1.0)),
+            "how opaque each stroke is where it starts",
+        ),
+        number(
+            "mid-opacity",
+            0.0,
+            Some((-1.0, 1.0)),
+            "how much more opaque each stroke is at `mid-position` than the straight line from its start to its end",
+        ),
+        number(
+            "mid-position",
+            0.5,
+            Some((0.0, 1.0)),
+            "where along each stroke `mid-opacity` applies, 0 to 1",
+        ),
+        number(
+            "end-opacity",
+            0.0,
+            Some((0.0, 1.0)),
+            "how opaque each stroke is where it ends",
+        ),
+    ],
+};
+
 /// The properties of the grid.
 pub static GRID: Registry = Registry {
     kind: "grid",
@@ -2299,7 +2391,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 43] = [
+pub static EFFECTS: [ItemKind; 44] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -2987,6 +3079,69 @@ pub static EFFECTS: [ItemKind; 43] = [
         doc: "draws a beam `length` of the line from `start` to `end` long, travelling along \
               it with `time`, its thickness running from `start-thickness` to \
               `end-thickness`, in place of the layer, kept to its box",
+    },
+    ItemKind {
+        name: "contour-strokes",
+        role: Role::Effect,
+        registry: &CONTOUR_STROKES,
+        primary: Primary::Property("width"),
+        settings: &[
+            SettingSpec {
+                name: "source",
+                choices: &["contours", "outline"],
+                default: "contours",
+                doc: "what the strokes follow: the contours of the layer's drawing, or the outline of the layer's mask `along` names",
+            },
+            SettingSpec {
+                name: "channel",
+                choices: &[
+                    "intensity",
+                    "red",
+                    "green",
+                    "blue",
+                    "alpha",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "value",
+                ],
+                default: "intensity",
+                doc: "the level the contours follow",
+            },
+            SettingSpec {
+                name: "render",
+                choices: &["all", "selected"],
+                default: "all",
+                doc: "whether every contour is stroked or only the `contour`-th",
+            },
+            SettingSpec {
+                name: "shorter",
+                choices: &["same", "fewer"],
+                default: "same",
+                doc: "whether shorter contours take as many strokes as the longest, or fewer in proportion",
+            },
+            SettingSpec {
+                name: "random-phase",
+                choices: &["off", "on"],
+                default: "off",
+                doc: "whether each contour's strokes start a random share further round",
+            },
+            SettingSpec {
+                name: "mode",
+                choices: &["transparent", "over", "under", "stencil"],
+                default: "transparent",
+                doc: "how the strokes and the layer combine: the strokes alone, over or under it, or the layer only where they are",
+            },
+        ],
+        input: Some(Input {
+            key: "layer",
+            reads: Reads::Drawing,
+        }),
+        outline: Some("along"),
+        timed: false,
+        doc: "draws strokes along the contours where a level of the layer's drawing, or of the \
+              layer `layer` names, crosses `threshold`, or along the outline of its mask `along` \
+              names",
     },
     ItemKind {
         name: "grid",

@@ -3,7 +3,8 @@
 //! pixel, faded over a share of their half thickness at their edges,
 //! coloured from an inside colour along their middle to an outside colour
 //! at their edges, and kept to the layer's box. The sound effects draw
-//! their bands and waves with it, the beam its beam.
+//! their bands and waves with it, the beam its beam, and the contour
+//! strokes their trails.
 
 use vello_cpu::kurbo::{Affine, Point, Rect};
 
@@ -106,6 +107,85 @@ impl<'a> Pen<'a> {
     pub(crate) fn beam(&mut self, from: Point, to: Point, thickness: [f64; 2]) {
         let halves = thickness.map(|t| t * self.scale / 2.0);
         self.tapered(from, to, halves, true, 0.0);
+    }
+
+    /// A trail along `points`, in the layer's coordinates, with round
+    /// ends: the stroke of the whole polyline at once, so its pieces do
+    /// not lay their colour twice where they meet. `opacity` gives how
+    /// much of the colour shows at each share of the way along it, 0 at
+    /// its first point and 1 at its last.
+    pub(crate) fn trail(&mut self, points: &[Point], opacity: impl Fn(f64) -> f32) {
+        if points.is_empty() {
+            return;
+        }
+        let grid: Vec<Point> = points.iter().map(|p| self.transform * *p).collect();
+        // How far along the trail each point lies, as a share of its length.
+        let mut along = vec![0.0; grid.len()];
+        for i in 1..grid.len() {
+            along[i] = along[i - 1] + (grid[i] - grid[i - 1]).hypot();
+        }
+        let total = along[grid.len() - 1];
+        let half = self.half;
+        let fade = self.fade(half);
+        let reach = half + fade / 2.0;
+        let (width, height) = (
+            i64::from(self.pixels.width()),
+            i64::from(self.pixels.height()),
+        );
+        let lo = |f: fn(&Point) -> f64| grid.iter().map(f).fold(f64::INFINITY, f64::min);
+        let hi = |f: fn(&Point) -> f64| grid.iter().map(f).fold(f64::NEG_INFINITY, f64::max);
+        let x0 = ((lo(|p| p.x) - reach).floor() as i64).max(0);
+        let y0 = ((lo(|p| p.y) - reach).floor() as i64).max(0);
+        let x1 = ((hi(|p| p.x) + reach).ceil() as i64).min(width);
+        let y1 = ((hi(|p| p.y) + reach).ceil() as i64).min(height);
+        if x1 <= x0 || y1 <= y0 {
+            return;
+        }
+        let span = (x1 - x0) as usize;
+        // The most each pixel is covered by any piece, times the opacity
+        // where that piece passes nearest.
+        let mut cover = vec![0.0f32; span * (y1 - y0) as usize];
+        let pieces = grid.len().max(2) - 1;
+        for i in 0..pieces {
+            let a = grid[i];
+            let b = grid[(i + 1).min(grid.len() - 1)];
+            let ab = b - a;
+            let length2 = ab.hypot2();
+            let px0 = ((a.x.min(b.x) - reach).floor() as i64).max(x0);
+            let px1 = ((a.x.max(b.x) + reach).ceil() as i64).min(x1);
+            let py0 = ((a.y.min(b.y) - reach).floor() as i64).max(y0);
+            let py1 = ((a.y.max(b.y) + reach).ceil() as i64).min(y1);
+            for y in py0..py1 {
+                for x in px0..px1 {
+                    let p = Point::new(x as f64 + 0.5, y as f64 + 0.5);
+                    let t = match length2 > 0.0 {
+                        true => ((p - a).dot(ab) / length2).clamp(0.0, 1.0),
+                        false => 0.0,
+                    };
+                    let distance = (p - (a + ab * t)).hypot();
+                    let covered = ((half - distance) / fade + 0.5).clamp(0.0, 1.0);
+                    if covered <= 0.0 {
+                        continue;
+                    }
+                    let share = match total > 0.0 {
+                        true => (along[i] + t * length2.sqrt()) / total,
+                        false => 0.0,
+                    };
+                    let value = covered as f32 * opacity(share).clamp(0.0, 1.0);
+                    let at = (y - y0) as usize * span + (x - x0) as usize;
+                    cover[at] = cover[at].max(value);
+                }
+            }
+        }
+        let color = self.inside;
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let value = cover[(y - y0) as usize * span + (x - x0) as usize];
+                if value > 0.0 {
+                    self.lay(x, y, color, value);
+                }
+            }
+        }
     }
 
     /// A stroke from `from` to `to` whose half thickness in pixels of the

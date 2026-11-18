@@ -415,6 +415,26 @@ const PINNINGS: &[(i64, &str)] = &[
 ];
 const RAMP_SHAPES: &[(i64, &str)] = &[(1, "linear"), (2, "radial")];
 const OFF_ON: &[(i64, &str)] = &[(0, "off"), (1, "on")];
+const STROKE_SOURCES: &[(i64, &str)] = &[(1, "contours"), (2, "outline")];
+const STROKE_CHANNELS: &[(i64, &str)] = &[
+    (1, "intensity"),
+    (2, "red"),
+    (3, "green"),
+    (4, "blue"),
+    (5, "alpha"),
+    (6, "hue"),
+    (7, "lightness"),
+    (8, "saturation"),
+    (9, "value"),
+];
+const STROKE_RENDERS: &[(i64, &str)] = &[(1, "all"), (2, "selected")];
+const STROKE_SHORTER: &[(i64, &str)] = &[(1, "same"), (2, "fewer")];
+const STROKE_MODES: &[(i64, &str)] = &[
+    (1, "transparent"),
+    (2, "over"),
+    (3, "under"),
+    (4, "stencil"),
+];
 const AUDIO_PATHS: &[(i64, &str)] = &[(0, "line"), (1, "circle")];
 const AUDIO_DISPLAYS: &[(i64, &str)] = &[(1, "digital"), (2, "lines"), (3, "dots")];
 const AUDIO_SIDES: &[(i64, &str)] = &[(1, "a"), (2, "b"), (3, "both")];
@@ -1285,7 +1305,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 60] = [
+pub(super) static KINDS: [Kind; 61] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -3475,6 +3495,150 @@ pub(super) static KINDS: [Kind; 60] = [
                 To::Setting("composite", OFF_ON),
                 Number,
                 Parameter,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "APC Vegas",
+        item: "contour-strokes",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "APC Vegas-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Vegas-0052",
+                To::Setting("source", STROKE_SOURCES),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Vegas-0054",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row("APC Vegas-0002", To::Input, Number, Absent),
+            row(
+                "APC Vegas-0004",
+                To::OnlyDefault("a checkbox the definition leaves unnamed, beside the input layer"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "APC Vegas-0006",
+                To::OnlyDefault("an input layer stretched to fit the layer's box"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "APC Vegas-0010",
+                To::Setting("channel", STROKE_CHANNELS),
+                Number,
+                Absent,
+            ),
+            row("APC Vegas-0012", To::Prop("threshold"), Level, Parameter),
+            row("APC Vegas-0014", To::Prop("pre-blur"), Number, Parameter),
+            row("APC Vegas-0016", To::Prop("tolerance"), Number, Parameter),
+            row(
+                "APC Vegas-0044",
+                To::Setting("render", STROKE_RENDERS),
+                Number,
+                Absent,
+            ),
+            row("APC Vegas-0046", To::Prop("contour"), Number, Parameter),
+            row(
+                "APC Vegas-0048",
+                To::Setting("shorter", STROKE_SHORTER),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Vegas-0027",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Vegas-0056",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row("APC Vegas-0050", To::Outline, Number, Absent),
+            row(
+                "APC Vegas-0033",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Vegas-0035",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row("APC Vegas-0028", To::Prop("segments"), Number, Parameter),
+            row("APC Vegas-0024", To::Prop("length"), Number, Parameter),
+            row(
+                "APC Vegas-0026",
+                To::OnlyDefault("strokes bunched together round their contour"),
+                Number,
+                Parameter,
+            ),
+            row("APC Vegas-0030", To::Prop("rotation"), Number, Parameter),
+            row(
+                "APC Vegas-0032",
+                To::Setting("random-phase", OFF_ON),
+                Number,
+                Absent,
+            ),
+            row("APC Vegas-0034", To::Prop("seed"), Number, Parameter),
+            row(
+                "APC Vegas-0049",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Vegas-0051",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Vegas-0008",
+                To::Setting("mode", STROKE_MODES),
+                Number,
+                Parameter,
+            ),
+            row("APC Vegas-0018", To::Prop("color"), Color, Parameter),
+            row("APC Vegas-0020", To::Prop("width"), Number, Parameter),
+            row("APC Vegas-0022", To::Prop("hardness"), Number, Parameter),
+            row(
+                "APC Vegas-0036",
+                To::Prop("start-opacity"),
+                Number,
+                Parameter,
+            ),
+            row("APC Vegas-0038", To::Prop("mid-opacity"), Number, Parameter),
+            row(
+                "APC Vegas-0040",
+                To::Prop("mid-position"),
+                Number,
+                Parameter,
+            ),
+            row("APC Vegas-0042", To::Prop("end-opacity"), Number, Parameter),
+            row(
+                "APC Vegas-0069",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
             ),
         ],
         parts: &[],

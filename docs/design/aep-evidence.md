@@ -476,6 +476,21 @@ Other things we take without evidence:
 - **The surface.** It rises straight from the outline, where alpha crosses one half, to the thickness in, and is flat beyond; a slope goes towards the light's colour, or towards black facing away, by the intensity times how squarely it faces the light. m790's one bevel is 44 px thick at intensity 0.1 on a logo its reference also bends and lenses with effects the scene does not draw, so it cannot tell the profile or the strength; drawn so, its content error falls a little, 0.0525 → 0.0520 over all frames.
 - **The layer's box.** The outline is where alpha falls, and the frame's edge is not one: a layer filling the frame is not bevelled along it.
 
+## Contour strokes
+
+`APC Vegas` becomes the `contour-strokes` effect ([scene format](scene-format.md#shapes-masks-effects-and-compositions)). Its parameters by match name, as the definition lists and names them: `-0052` Stroke (`Image Contours`, `Mask/Path`), `-0002` Input Layer, `-0006` If Layer Sizes Differ, `-0010` Channel (`Intensity` to `Value`, nine), `-0012` Threshold (0 to 255, default 127), `-0014` Pre-Blur, `-0016` Tolerance, `-0044` Render (`All Contours`, `Selected Contour`), `-0046` Selected Contour, `-0048` Shorter Contours Have (`Same Number of Segments`, `Fewer Segments`), `-0050` Path, `-0028` Segments, `-0024` Length, `-0026` Segment Distribution (`Bunched`, `Even`, default 2), `-0030` Rotation, `-0032` Random Phase, `-0034` Random Seed, `-0008` Blend Mode (`Transparent`, `Over`, `Under`, `Stencil`, default 2), `-0018` Color, `-0020` Width, `-0022` Hardness, `-0036` Start, `-0038` Mid-point, `-0042` End Opacity and `-0040` Mid-point Position. `-0027`, `-0033`, `-0049`, `-0054`, `-0056`, `-0035`, `-0051` and `-0069` are the controls' headings. The belief was measured once against the references; the sweep does not check it.
+
+| Belief | Evidence | Held, 2026-11-18 |
+|---|---|---|
+| V1. Blend Mode 1 (`Transparent`) draws the strokes alone, in place of the layer's drawing; the strokes run along the outlines of the layer's drawing, where its intensity crosses the threshold. | m798 strokes the word of a neon logo, white text drawn twice, with Blend Mode 1, one segment 0.6 of each contour long at a fixed rotation and random phases, then glows it. Its reference shows coloured outlines and no filled letters. Drawn so, m798 fails on 36.29% → 18.87% of its content over all frames (content error 0.0551 → 0.0113), where the scene drew the letters filled. | 2 effects in m798. |
+
+Other things we take without evidence:
+- **Where a contour starts and which way it runs.** The scene starts each contour at its topmost, then leftmost crossing and runs with the inside on the right (clockwise on screen); m798's random phases hide where the original starts.
+- **The random phase.** The scene draws its own from the seed and the contour's place in the order, so it cannot match the original's.
+- **Mid-point opacity** (-1 to 1, default 0) is taken as a lift over the straight line from the start to the end opacity at the mid-point position, since its range runs below 0 and its default leaves a plain fade.
+- **Segment Distribution `Bunched`, the unnamed checkbox `-0004`, and an input layer stretched to fit** are reported: no local project sets them.
+- **The other channels, pre-blur, tolerance, selection, fewer segments, the other blend modes and strokes along a mask** follow their names; no local project sets them.
+
 ## Effects that follow a mask
 
 A path parameter (`pard` control 12), such as Audio Spectrum's Path (`ADBE AudSpect-0004`), names one of its layer's masks. Its `cdat` holds 0 whatever it names; the mask is in a `tdli` beside it. These beliefs say how it is named and how the spectrum lays its bands along it. The first is checked by hand over every local sample, the layout measured against m812's reference frames; the sweep does not check them yet.
