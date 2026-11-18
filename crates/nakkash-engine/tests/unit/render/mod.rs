@@ -750,3 +750,67 @@ fn a_blurred_picture_is_drawn_once_and_moved(#[case] layer: &str) {
     );
     assert_eq!(layer.children.len(), 1, "drawn once");
 }
+
+/// A full-frame black rect of a 200x100 scene at 10 fps whose particles
+/// effect sends one white disc 4 px across to the right at 600 px a
+/// second from x 20, with `more` after its keys.
+fn one_particle(more: &str) -> String {
+    scene(&format!(
+        r##"{{"id":"p","rect":"200x100","fill":"#000000","at":"100 50",
+          "fx":[{{"particles":1,"longevity":1,"position":[20,50],"radius-x":0,"radius-y":0,
+            "velocity":600,"resistance":0,"extra":0,"direction":90,"animation":"direction",
+            "birth-size":4,"death-size":4,"size-variation":0,"birth-color":"#FFFFFF",
+            "death-color":"#FFFFFF","shape":"disc","opacity-map":"constant"}}]{more}}}"##
+    ))
+}
+
+/// Particles fly on inside their effect while their layer stands still,
+/// so a blurred particles layer is drawn at each moment, each at its own
+/// time, still or moving, rather than drawn once and moved.
+#[rstest]
+#[case::still(r#","mblur":true"#)]
+#[case::moving(r#","mblur":true,"anim":{"x":"80 -> 120 @0-10f"}"#)]
+fn a_blurred_particles_layer_is_drawn_at_each_moment(#[case] more: &str) {
+    let frame = list(&one_particle(more), 2.0);
+    let layer = only_layer(&frame);
+    assert!(layer.motion.is_empty(), "moved: {:?}", layer.motion);
+    let times: Vec<f64> = layer
+        .children
+        .iter()
+        .map(|child| match child {
+            Node::Layer(sample) => sample.time,
+            other => panic!("not a layer: {other:?}"),
+        })
+        .collect();
+    assert_eq!(times.len(), 16, "{times:?}");
+    assert!(times.windows(2).all(|t| t[0] < t[1]), "{times:?}");
+    // The shutter is open from a quarter frame before frame 2 to a quarter
+    // after it.
+    assert!(
+        times.iter().all(|t| (0.175..=0.225).contains(t)),
+        "{times:?}"
+    );
+}
+
+/// The lit pixels of `scene` at frame 2, and the brightest red.
+fn lit(scene: &str) -> (usize, u8) {
+    let image = session(scene).render(2.0).expect("a frame");
+    let reds = image.pixels().chunks_exact(4).map(|p| p[0]);
+    (
+        reds.clone().filter(|&r| r > 0).count(),
+        reds.max().unwrap_or(0),
+    )
+}
+
+/// With motion blur a fast particle streaks: it covers far more pixels,
+/// each dimmer, rather than draw the same frame as without.
+#[test]
+fn a_blurred_particle_streaks_along_its_flight() {
+    let (sharp, sharp_peak) = lit(&one_particle(""));
+    let (blurred, blurred_peak) = lit(&one_particle(r#","mblur":true"#));
+    // A disc 4 px across, against a streak of 30 px (600 px/s over half a
+    // frame at 10 fps) by 4.
+    assert!(sharp <= 30, "{sharp} sharp pixels");
+    assert!(blurred >= 3 * sharp, "{blurred} blurred, {sharp} sharp");
+    assert!(blurred_peak < sharp_peak, "{blurred_peak} vs {sharp_peak}");
+}

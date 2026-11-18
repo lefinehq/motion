@@ -30,6 +30,18 @@ fn all_kinds() -> impl Iterator<Item = &'static ItemKind> {
         .chain(&PART_KINDS)
 }
 
+/// Particles are the one kind whose drawing runs on with time by itself,
+/// so motion blur draws their layer at each moment.
+#[test]
+fn particles_are_the_effect_that_runs_on_with_time() {
+    let timed: Vec<&str> = all_kinds()
+        .chain(&MASKS)
+        .filter(|kind| kind.timed)
+        .map(|kind| kind.name)
+        .collect();
+    assert_eq!(timed, ["particles"]);
+}
+
 #[test]
 fn every_kind_has_its_primary_settings_and_docs() {
     for kind in all_kinds() {
