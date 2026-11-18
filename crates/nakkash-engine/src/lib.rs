@@ -32,6 +32,7 @@ mod session;
 mod sounds;
 mod stage;
 pub mod telemetry;
+pub mod vary;
 
 #[cfg(test)]
 #[path = "../tests/unit/support.rs"]
@@ -66,6 +67,6 @@ pub use nakkash_format::{
 pub use nakkash_format::{SlotType, color, colors, oklch};
 pub use nakkash_import::map::{Import, Mapping, Options as ImportOptions, StoredText};
 pub use nakkash_import::{Project, Report as ImportReport};
-pub use nakkash_query::{Report, Severity};
+pub use nakkash_query::{Code, Report, Severity};
 pub use nakkash_raster::{Accelerator, Frame, Image, Quality, RenderOptions, Simd, Tally};
 pub use nakkash_scene::{ContentState, FrameState, SceneGraph};

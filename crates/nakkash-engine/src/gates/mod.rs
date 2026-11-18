@@ -68,6 +68,19 @@ pub(crate) fn shrunk_by(
     nakkash_raster::render_with(&small, side(width), side(height), options)
 }
 
+/// Frame `frame` of `session`'s scene drawn at `shrink` of its size: what
+/// the sheets of `vary` show and its reframing reads ([D78]).
+///
+/// [D78]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d78-generated-variants-move-along-measured-axes-and-pass-when-they-add-no-error
+pub(crate) fn small(session: &Session, frame: f64, shrink: f64) -> Result<Image> {
+    shrunk_by(
+        session,
+        session.display_list(frame)?,
+        shrink,
+        RenderOptions::default(),
+    )
+}
+
 /// Linear light of each 8-bit sRGB level.
 static LINEAR: LazyLock<[f64; 256]> = LazyLock::new(|| {
     std::array::from_fn(|level| {

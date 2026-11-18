@@ -10,6 +10,8 @@ The words we use in nakkash, and what they mean.
 
 **Batch.** A file that lists the variants of one master, each an id and its edits; `nakkash batch` makes, checks and renders them in turn. See [Edits and checks](design/edits-and-checks.md#batches-of-variants).
 
+**Generated variant.** A variant `nakkash vary` makes by walking a master along an axis (palette, content) or improving it by the check's repairs; it passes when it adds no error to its master's report. See [Edits and checks](design/edits-and-checks.md#generated-variants).
+
 **Behaviour.** A short description of a whole animation, such as `fade-up 12f stagger 6f`. It is the simplest way to animate.
 
 **Check.** A question nakkash answers about a scene with numbers, without rendering the video. See [Edits and checks](design/edits-and-checks.md).

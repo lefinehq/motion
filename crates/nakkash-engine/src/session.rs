@@ -776,6 +776,32 @@ impl Session {
         }
     }
 
+    /// A session on `raw`, another scene's JSON, as if read from this
+    /// session's file: the files it names resolve from the same folder, and
+    /// it loads fonts from the same cache. What a generated variant is made
+    /// in ([D78]).
+    ///
+    /// [D78]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d78-generated-variants-move-along-measured-axes-and-pass-when-they-add-no-error
+    ///
+    /// # Errors
+    /// The first problem in `raw` as a scene.
+    pub fn with_raw(&self, raw: serde_json::Value) -> Result<Session> {
+        let doc = stage("parse", || Document::from_value(raw))?;
+        Ok(Session {
+            path: self.path.clone(),
+            doc,
+            fonts: OnceLock::new(),
+            graph: OnceLock::new(),
+            checked: OnceLock::new(),
+            before: None,
+            font_cache: self.font_cache.clone(),
+            pictures: Pictures::default(),
+            clips: Clips::default(),
+            sounds: Sounds::default(),
+            accelerator: self.accelerator.clone(),
+        })
+    }
+
     /// The validated document: the scene and the JSON it was read from.
     pub fn document(&self) -> &Document {
         &self.doc

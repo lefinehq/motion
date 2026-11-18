@@ -17,6 +17,7 @@ pub mod ml;
 pub mod render;
 pub mod roles;
 pub mod slots;
+pub mod vary;
 
 use std::process::ExitCode;
 

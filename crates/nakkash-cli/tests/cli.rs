@@ -1080,3 +1080,69 @@ fn the_old_log_variable_still_filters_and_says_it_is_deprecated() {
         "{err}"
     );
 }
+
+#[test]
+fn vary_makes_seeded_palettes_each_checked_against_the_master() {
+    let dir = scratch("vary_palette");
+    // Small and short, so its pixel gates are quick in a debug build.
+    let card = dir.join("card.json");
+    fs::write(
+        &card,
+        r##"{"nakkash":1,"size":"320x180","fps":10,"dur":"1s","bg":"#F4F1EA","layers":[
+        {"id":"card","rect":"200x100","fill":"#1D3557","at":"center center"},
+        {"id":"title","text":"Quiet","font":"Inter Variable 32 800","fill":"#FFFFFF","at":"center center"}]}"##,
+    )
+    .expect("write the master");
+    let card = card.to_string_lossy().into_owned();
+    let run = |out: &str| {
+        let out = dir.join(out).to_string_lossy().into_owned();
+        let o = nakkash(&[
+            "vary",
+            &card,
+            "--seed",
+            "7",
+            "-n",
+            "3",
+            "--axis",
+            "palette",
+            "--dry-run",
+            "--out",
+            &out,
+        ]);
+        (o, PathBuf::from(out))
+    };
+    let (first, a) = run("a");
+    let text = stdout(&first);
+    assert_eq!(first.status.code(), Some(0), "{text}{}", stderr(&first));
+    assert!(text.contains("3 passed, 0 failed"), "{text}");
+    for id in ["v1", "v2", "v3"] {
+        assert!(a.join(id).join("scene.json").is_file(), "{id}");
+        assert!(a.join(id).join("check.txt").is_file(), "{id}");
+    }
+    assert!(a.join("master.check.txt").is_file());
+    // The same seed gives the same scenes; a dry run renders nothing.
+    let (_, b) = run("b");
+    for id in ["v1", "v2", "v3"] {
+        let read = |d: &Path| fs::read_to_string(d.join(id).join("scene.json")).expect("a scene");
+        assert_eq!(read(&a), read(&b), "{id}");
+        assert!(!a.join(id).join("film.mp4").exists(), "{id}");
+    }
+    // A variant's colours are not the master's.
+    let master = fs::read_to_string(&card).expect("the master");
+    let v1 = fs::read_to_string(a.join("v1").join("scene.json")).expect("v1");
+    assert!(
+        master.contains("#1D3557") && !v1.contains("#1D3557"),
+        "{v1}"
+    );
+}
+
+#[test]
+fn vary_without_an_axis_says_what_to_ask_for() {
+    let out = nakkash(&["vary", LAUNCH, "--dry-run"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        stderr(&out).contains("no axis to vary along"),
+        "{}",
+        stderr(&out)
+    );
+}
