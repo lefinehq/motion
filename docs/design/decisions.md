@@ -785,11 +785,11 @@ Status: Draft · 2026-11-17
     | `four-color`, `beam` | 1e-4 | 2.4e-5 |
     | `grid` | 1e-5 | 2.4e-6 |
     | `ramp`, `venetian-blinds`, `linear-wipe`, `iris-wipe` | 1e-6 | 1.8e-7 |
-    | A whole frame of an example, as 8-bit channels | 1 level | 1 level, in at most 1,980 of 8.3 million channels |
+    | A whole frame of an example, as 8-bit channels | 1 level | 1 level, in at most 66 of 8.3 million channels |
 
     The loose rows divide by something small. A straight reading divides a colour by its alpha, so near a transparent pixel it carries a float's rounding of the alpha; a vector blur's streak takes a whole number of samples from a length; a softened vector map is such a reading, sloped and then divided by its steepest slope.
 
-    A long chain of effects carries the kernels' differences on through the CPU effects between them, which can sharpen them: a 1080p frame of a commercial template with 5,339 effect runs differs by 2 levels in 3 channels and by 1 in 969, of 8.3 million. That is a preview's difference, not a delivered frame's, which is why delivered frames are drawn without `--gpu`.
+    A long chain of effects carries each kernel's difference on into the next, and the loose ones (straight readings of a map, a softened vector map) can make it larger. A 1080p frame of a commercial template, with 389 effects on the GPU, is the CPU's in 99.35% of its 8.3 million channels; 46,187 differ by 1 level, 5,186 by 2 and 2,282 by 3 to 18. That is a preview's difference, not a delivered frame's, which is why delivered frames are drawn without `--gpu`.
 
 - **Why:**
   - Heavy effects are where the CPU path is slowest. On one CPU thread a 4K Gaussian of blurriness 50 takes 156 ms and a glow of radius 80 179 ms; the GPU runs them in 9.4 and 12.9 ms. A 1080p frame of a commercial template, with 5,339 effect runs, takes 434 s on one thread. A frame gains only what its time in those kernels is, so a light frame gains nothing and is drawn no slower: the GPU is not touched.

@@ -114,6 +114,8 @@ These numbers are *measured* on an M4 Max through Metal, release builds, `render
 | `social-916` | 18.6 ms | 19.3 ms | 18.0 ms | 1.00× |
 | `showcase/data-story` | 54.3 ms | 55.0 ms | 61.3 ms | 0.89× |
 
+With the GPU, the heavy scene 1 frame is the CPU's in 99.35% of its 8.3 million channels: 46,187 differ by 1 level, 5,186 by 2, and 2,282 by 3 to 18, where the loose kernels' differences (straight map readings, softened vector maps) run on through 389 effects. The eight examples differ by at most 1 level, in at most 66 channels.
+
 The CPU path is unchanged by this work: the same frames take the same time (scene 1: 11.50 to 11.65 s after, 11.66 to 12.26 s before, over three alternating runs), and both heavy frames are the same PNG bytes before and after.
 
 `data-story` is the one frame drawn slower: its small projected planes are laid on the GPU, which for planes this light costs more than the CPU did. `social-916` has nothing for the GPU, so it is drawn on the CPU and the GPU is not touched.
