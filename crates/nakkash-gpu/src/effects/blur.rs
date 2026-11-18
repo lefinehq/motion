@@ -28,12 +28,12 @@ impl Gpu {
             let (whole, part) = (radius.floor() as u32, radius.fract());
             let window = 2 * whole + 1;
             // Enough invocations to fill the GPU, each sliding over at
-            // least 32 pixels and, once the window is long, about as many
-            // as the window holds, so summing its first window costs no
-            // more than sliding it.
+            // least 32 pixels and at least as many as the window holds, so
+            // summing its first window costs no more than sliding it: a
+            // pass costs about the same at any radius.
             let target = u32::try_from((u64::from(n) * u64::from(lines)).div_ceil(65536))
                 .unwrap_or(u32::MAX);
-            let chunk = target.clamp(32, window.max(32));
+            let chunk = target.max(window).clamp(32, n.max(32));
             let params = Params::new()
                 .u32(n)
                 .u32(lines)
