@@ -14,6 +14,7 @@
 
 use std::sync::OnceLock;
 
+mod blurs;
 mod canvas;
 mod composite;
 mod effects;
@@ -40,6 +41,13 @@ const TOLERANCES: &[(&str, f32)] = &[
     ("solid-composite", 5e-5),
     ("drop-shadow", 1e-4),
     ("chain", 5e-5),
+    // The radial blurs sum their lines exactly and read them within a few
+    // 10^-7 px of the CPU, so they differ by a float's rounding. Like the
+    // CPU, a stretch whose weight is under a hundredth of a px takes the
+    // layer at the pixel instead, a jump no limit holds a pixel to when
+    // rounding puts it on the other side; the cases stay off that edge.
+    ("radial-zoom", 3e-6),
+    ("radial-spin", 3e-6),
 ];
 
 pub(crate) fn tolerance(name: &str) -> f32 {

@@ -65,6 +65,9 @@ pub use mask::SIGMA_PER_FEATHER;
 pub use picture::Picture;
 pub use pixels::{Pixel, Pixels};
 pub use plan::{Blur, Glow, GlowComposite, PLANS, Passes, Plan, PlanSpec, Shadow};
+pub use radial::{
+    Fade as RadialFade, RadialBlur, RadialKind, Rays, Ring, Rings, Stretch as RadialStretch,
+};
 pub use render::{Quality, RenderOptions, Simd, render, render_on, render_with};
 pub use sound::{Heard, level};
 pub use style::{

@@ -34,7 +34,7 @@ fn point(values: &[ParamValue], i: usize) -> [f32; 2] {
 
 /// Which way the stretch a pixel takes its mean over lies.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum Stretch {
+pub enum Stretch {
     /// From the pixel back by this much: towards the centre (a zoom) or
     /// clockwise (a spin) when positive, so what is drawn streaks out
     /// from the centre or counterclockwise; the other way when negative.
@@ -45,7 +45,7 @@ pub(crate) enum Stretch {
 
 /// How the pixels of a stretch weigh in its mean.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Fade {
+pub enum Fade {
     /// All alike.
     Flat,
     /// From all at the pixel to none at the stretch's far ends, straight.
@@ -282,6 +282,121 @@ impl View {
     }
 }
 
+/// The rays a zoom reads on a grid: ray `j` runs out from the centre at
+/// `from + j step` radians, counterclockwise from the grid's x axis as
+/// drawn (y down), and is read at `samples` points one px apart from
+/// `first` px out. Every pixel lies between rays `j` and `j + 1` for some
+/// `j` below `count`, so rays `0` to `count` are read.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rays {
+    /// The first ray's angle, in radians.
+    pub from: f64,
+    /// The angle from one ray to the next, in radians.
+    pub step: f64,
+    /// How many spaces between rays the pixels fall in.
+    pub count: usize,
+    /// How far from the centre each ray's first sample is, in px: a whole
+    /// number.
+    pub first: f64,
+    /// How many samples each ray takes.
+    pub samples: usize,
+    /// Whether the rays go all the way round, ray `count` lying on ray 0.
+    pub whole: bool,
+}
+
+impl Rays {
+    /// The rays from `view`: one px apart where the grid is farthest from
+    /// the centre, a ray every 1/far radians.
+    fn of(view: &View) -> Rays {
+        let rays = ((view.width * view.far).ceil() as usize).max(1);
+        let first = view.near.floor();
+        Rays {
+            from: view.from,
+            step: view.width / rays as f64,
+            count: rays,
+            first,
+            samples: (view.far.ceil() - first) as usize + 2,
+            whole: view.whole(),
+        }
+    }
+}
+
+/// The rings a spin reads on a grid: ring `k` has a radius of
+/// `inner + k` px and a whole number of samples round it, about one px
+/// apart. Every pixel lies between rings `k` and `k + 1` for some `k`
+/// below `count`, so rings `0` to `count` are read.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rings {
+    /// The radius of ring 0, in px.
+    pub inner: usize,
+    /// How many spaces between rings the pixels fall in.
+    pub count: usize,
+    /// The first angle the grid spans from the centre, in radians.
+    pub from: f64,
+    /// How wide the angles it spans are: a whole turn when the centre is
+    /// among the pixels.
+    pub width: f64,
+    /// Whether the grid spans a whole turn about the centre.
+    pub whole: bool,
+}
+
+/// One ring of [`Rings`]: its coordinate is the angle in samples, sample
+/// `k` read at `first + k` of it, and it repeats every `round` samples.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Ring {
+    /// Its radius, in px.
+    pub radius: f64,
+    /// How many samples a whole turn of it holds.
+    pub round: usize,
+    /// The angle from one sample to the next, in radians.
+    pub step: f64,
+    /// The coordinate of its first sample: a whole number.
+    pub first: f64,
+    /// How many samples it takes: the whole turn, or the part of it the
+    /// grid spans and one more either side.
+    pub samples: usize,
+}
+
+impl Rings {
+    /// The rings from `view`, one px apart from the nearest pixel's
+    /// distance to the farthest's.
+    fn of(view: &View) -> Rings {
+        let inner = view.near.floor() as usize;
+        Rings {
+            inner,
+            count: view.far.ceil() as usize - inner + 1,
+            from: view.from,
+            width: view.width,
+            whole: view.whole(),
+        }
+    }
+
+    /// How many samples a whole turn of ring `k` holds.
+    pub fn round(&self, k: usize) -> usize {
+        ((TAU * (self.inner + k) as f64).ceil() as usize).max(1)
+    }
+
+    /// Ring `k`.
+    pub fn ring(&self, k: usize) -> Ring {
+        let n = self.round(k);
+        let step = TAU / n as f64;
+        let (first, samples) = match self.whole {
+            true => (0.0, n),
+            false => (
+                (self.from / step).floor(),
+                ((self.width / step).ceil() as usize + 2).min(n),
+            ),
+        };
+        Ring {
+            radius: (self.inner + k) as f64,
+            round: n,
+            step,
+            first,
+            samples,
+        }
+    }
+}
+
 /// The angle of `v`, counterclockwise from the grid's x axis as drawn
 /// (y down), in radians.
 fn angle(v: Vec2) -> f64 {
@@ -373,11 +488,13 @@ pub(crate) fn zoom(pixels: &mut Pixels, centre: Point, stretch: Stretch, fade: F
         return;
     }
     let view = View::of(width as f64, height as f64, centre);
-    // One px apart at the far end: a ray every 1/far radians.
-    let rays = ((view.width * view.far).ceil() as usize).max(1);
-    let step = view.width / rays as f64;
-    let first = view.near.floor();
-    let count = (view.far.ceil() - first) as usize + 2;
+    let Rays {
+        count: rays,
+        step,
+        first,
+        samples: count,
+        ..
+    } = Rays::of(&view);
     let along = |i: usize| (view.unwind(angle(centre_of(i, width) - centre)) - view.from) / step;
     let keys: Vec<u32> = (0..width * height)
         .map(|i| (along(i).floor().max(0.0) as usize).min(rays - 1) as u32)
@@ -427,28 +544,27 @@ pub(crate) fn spin(pixels: &mut Pixels, centre: Point, stretch: Stretch, fade: F
         return;
     }
     let view = View::of(width as f64, height as f64, centre);
-    let inner = view.near.floor() as usize;
-    let rings = view.far.ceil() as usize - inner + 1;
+    let geometry = Rings::of(&view);
+    let Rings {
+        inner,
+        count: rings,
+        ..
+    } = geometry;
     let out_from = |i: usize| centre_of(i, width).distance(centre) - inner as f64;
     let keys: Vec<u32> = (0..width * height)
         .map(|i| (out_from(i).floor().max(0.0) as usize).min(rings - 1) as u32)
         .collect();
     let (order, starts) = sorted(&keys, rings);
     let source = pixels.clone();
-    // Ring k has radius `inner + k` and a whole number of samples round
-    // it, about one px apart; its coordinate is the angle in samples.
-    let round = |k: usize| ((TAU * (inner + k) as f64).ceil() as usize).max(1);
+    let round = |k: usize| geometry.round(k);
     let read = |line: &mut Line, k: usize| {
-        let radius = (inner + k) as f64;
-        let n = round(k);
-        let step = TAU / n as f64;
-        let (first, count) = match view.whole() {
-            true => (0.0, n),
-            false => (
-                (view.from / step).floor(),
-                ((view.width / step).ceil() as usize + 2).min(n),
-            ),
-        };
+        let Ring {
+            radius,
+            round: n,
+            step,
+            first,
+            samples: count,
+        } = geometry.ring(k);
         line.read(first, count, Some(n as f64), |u| {
             let a = u * step;
             source.sample(centre.x + radius * a.cos(), centre.y - radius * a.sin())
@@ -479,15 +595,59 @@ pub(crate) fn spin(pixels: &mut Pixels, centre: Point, stretch: Stretch, fade: F
     }
 }
 
-/// `radial-blur`: what the layer drew streaked along lines out from
-/// `center` (`zoom`) or round it (`spin`), over `amount`: a percentage of
-/// each pixel's distance from the centre for a zoom, degrees for a spin.
-/// `stretch` `behind` takes each pixel's mean back towards the centre or
-/// clockwise, so the layer streaks outwards or counterclockwise (the other
-/// way for a negative amount); `across` takes it half each way. `fade`
-/// `linear` weighs the pixels of a stretch from all at the pixel to none
-/// at its end.
-pub(crate) fn radial_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+/// Whether a radial blur streaks along rays or round rings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RadialKind {
+    /// Along rays out from the centre.
+    Zoom,
+    /// Round rings about the centre.
+    Spin,
+}
+
+/// `radial-blur`'s plan: every pixel the mean of the layer along a
+/// stretch of its ray out from `centre` (a zoom) or its ring round it (a
+/// spin), as `stretch` and `fade` say. A zoom's stretch is a share of
+/// each pixel's distance from the centre, a spin's an angle in radians.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RadialBlur {
+    /// The centre, in px of the grid.
+    pub centre: Point,
+    /// Rays or rings.
+    pub kind: RadialKind,
+    /// Which way, and how far, each pixel's stretch reaches.
+    pub stretch: Stretch,
+    /// How the pixels of a stretch weigh in its mean.
+    pub fade: Fade,
+}
+
+impl RadialBlur {
+    /// The rays a zoom reads on a `width` by `height` grid.
+    pub fn rays(&self, width: usize, height: usize) -> Rays {
+        Rays::of(&View::of(width as f64, height as f64, self.centre))
+    }
+
+    /// The rings a spin reads on a `width` by `height` grid.
+    pub fn rings(&self, width: usize, height: usize) -> Rings {
+        Rings::of(&View::of(width as f64, height as f64, self.centre))
+    }
+
+    /// Whether it changes nothing: a stretch of no length.
+    pub fn none(&self) -> bool {
+        let reach = match self.stretch {
+            Stretch::Behind(s) | Stretch::Across(s) => s,
+        };
+        reach.abs() < 1e-9
+    }
+}
+
+/// [`RadialBlur`] from `radial-blur`'s values in `space`: `amount` a
+/// percentage of each pixel's distance from `center` for a zoom, degrees
+/// for a spin. `stretch` `behind` takes each pixel's mean back towards
+/// the centre or clockwise, so the layer streaks outwards or
+/// counterclockwise (the other way for a negative amount); `across` takes
+/// it half each way. `fade` `linear` weighs the pixels of a stretch from
+/// all at the pixel to none at its end.
+pub(crate) fn radial_blur_plan(values: &[ParamValue], space: &Space) -> RadialBlur {
     let amount = f64::from(number(values, 0));
     let [x, y] = point(values, 1);
     let centre = space.transform * Point::new(f64::from(x), f64::from(y));
@@ -503,9 +663,30 @@ pub(crate) fn radial_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Sp
         0 => Stretch::Behind(reach),
         _ => Stretch::Across(reach.abs()),
     };
-    match choice(values, 2) {
-        0 => zoom(pixels, centre, stretch, fade),
-        _ => spin(pixels, centre, stretch, fade),
+    let kind = match choice(values, 2) {
+        0 => RadialKind::Zoom,
+        _ => RadialKind::Spin,
+    };
+    RadialBlur {
+        centre,
+        kind,
+        stretch,
+        fade,
+    }
+}
+
+/// `radial-blur`: what the layer drew streaked along lines out from
+/// `center` (`zoom`) or round it (`spin`), see [`radial_blur_plan`].
+pub(crate) fn radial_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let RadialBlur {
+        centre,
+        kind,
+        stretch,
+        fade,
+    } = radial_blur_plan(values, space);
+    match kind {
+        RadialKind::Zoom => zoom(pixels, centre, stretch, fade),
+        RadialKind::Spin => spin(pixels, centre, stretch, fade),
     }
 }
 

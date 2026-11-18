@@ -11,6 +11,7 @@ fn sources() -> Vec<(&'static str, String, &'static FamilySpec)> {
         ("pack", PACK.source.to_owned(), &PACK),
         ("transform", TRANSFORM.source.to_owned(), &TRANSFORM),
         ("box_pass", BOX_PASS.source.to_owned(), &BOX_PASS),
+        ("radial", RADIAL.source.to_owned(), &RADIAL),
     ]
 }
 

@@ -7,6 +7,7 @@
 
 mod blur;
 mod composite;
+mod radial;
 
 pub(crate) use composite::operation_row;
 
@@ -23,7 +24,7 @@ pub(crate) fn runs(plan: &Plan) -> bool {
     matches!(
         plan,
         Plan::Blur(_) | Plan::Shadow(_) | Plan::Glow(_) | Plan::SolidComposite(_)
-    )
+    ) || matches!(plan, Plan::Radial(r) if radial::runs(r))
 }
 
 /// Whether `plan` reads the drawing of another layer, which the kernels
@@ -64,6 +65,7 @@ pub(crate) fn run(
         Plan::Glow(glow) => gpu.glow(batch, grid, glow),
         Plan::Shadow(shadow) => gpu.shadow(batch, grid, shadow),
         Plan::SolidComposite(solid) => gpu.solid_composite(batch, grid, solid),
+        Plan::Radial(radial) => gpu.radial(batch, grid, radial),
         _ => {
             return Err(
                 Diagnostic::new(Kind::Invalid, "the GPU has no kernel for this plan")
