@@ -16,6 +16,9 @@ use vello_cpu::kurbo::Vec2;
 use crate::blur::{self, Edges, gaussian_radius};
 use crate::composite::{self, Operation, SolidComposite};
 use crate::effect::{Effect, ParamValue, Space};
+use crate::generate::{
+    self, Beam, FourColor, FractalNoise, GridLines, IrisWipe, LinearWipe, Ramp, VenetianBlinds,
+};
 
 /// The steps an effect runs on its layer's pixels. More variants come as
 /// more effects gain plans, so a match on one needs a catch-all arm.
@@ -30,6 +33,22 @@ pub enum Plan {
     Shadow(Shadow),
     /// The layer laid by an operation over a solid in its box.
     SolidComposite(SolidComposite),
+    /// A gradient between two colours.
+    Ramp(Ramp),
+    /// Four colours at four points, blended.
+    FourColor(FourColor),
+    /// A grid of lines, or its cells.
+    Grid(GridLines),
+    /// The layer hidden in stripes.
+    VenetianBlinds(VenetianBlinds),
+    /// The layer hidden behind a straight edge.
+    LinearWipe(LinearWipe),
+    /// A polygon hole in the layer.
+    IrisWipe(IrisWipe),
+    /// Fractal value noise.
+    FractalNoise(FractalNoise),
+    /// A straight beam along a line.
+    Beam(Beam),
 }
 
 /// Passes of one extended box along one way of the grid: each averages
@@ -164,6 +183,38 @@ pub const PLANS: &[PlanSpec] = &[
     PlanSpec {
         name: "solid-composite",
         plan: |values, space| Plan::SolidComposite(composite::solid_composite_plan(values, space)),
+    },
+    PlanSpec {
+        name: "ramp",
+        plan: |values, space| Plan::Ramp(generate::ramp_plan(values, space)),
+    },
+    PlanSpec {
+        name: "four-color",
+        plan: |values, space| Plan::FourColor(generate::four_color_plan(values, space)),
+    },
+    PlanSpec {
+        name: "grid",
+        plan: |values, space| Plan::Grid(generate::grid_plan(values, space)),
+    },
+    PlanSpec {
+        name: "venetian-blinds",
+        plan: |values, space| Plan::VenetianBlinds(generate::venetian_blinds_plan(values, space)),
+    },
+    PlanSpec {
+        name: "linear-wipe",
+        plan: |values, space| Plan::LinearWipe(generate::linear_wipe_plan(values, space)),
+    },
+    PlanSpec {
+        name: "iris-wipe",
+        plan: |values, space| Plan::IrisWipe(generate::iris_wipe_plan(values, space)),
+    },
+    PlanSpec {
+        name: "fractal-noise",
+        plan: |values, space| Plan::FractalNoise(generate::fractal_noise_plan(values, space)),
+    },
+    PlanSpec {
+        name: "beam",
+        plan: |values, space| Plan::Beam(generate::beam_plan(values, space)),
     },
 ];
 

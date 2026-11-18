@@ -24,6 +24,10 @@ pub(crate) const BLEND: &str = include_str!("shaders/blend.wgsl");
 /// combines an effect's result with a layer by one, after [`BLEND`].
 pub(crate) const OPERATION: &str = include_str!("shaders/operation.wgsl");
 
+/// Drawing in a layer's own coordinates, written in front of every family
+/// of generators, after [`OPERATION`].
+pub(crate) const LAYER: &str = include_str!("shaders/layer.wgsl");
+
 /// The families, and the entry points of each.
 pub(crate) const PIXEL: FamilySpec = FamilySpec {
     source: include_str!("shaders/pixel.wgsl"),
@@ -63,6 +67,24 @@ pub(crate) const TRANSFORM: FamilySpec = FamilySpec {
     reads: 1,
     entries: &["transformed"],
 };
+pub(crate) const NOISE: FamilySpec = FamilySpec {
+    source: include_str!("shaders/noise.wgsl"),
+    reads: 1,
+    entries: &["fractal_noise"],
+};
+pub(crate) const GENERATE: FamilySpec = FamilySpec {
+    source: include_str!("shaders/generate.wgsl"),
+    reads: 1,
+    entries: &[
+        "ramp",
+        "four_color",
+        "grid",
+        "venetian_blinds",
+        "linear_wipe",
+        "iris_wipe",
+        "beam",
+    ],
+};
 pub(crate) const BOX_PASS: FamilySpec = FamilySpec {
     source: include_str!("shaders/boxpass.wgsl"),
     reads: 1,
@@ -92,6 +114,8 @@ pub(crate) struct Kernels {
     pub(crate) operate: Family,
     pub(crate) transform: Family,
     pub(crate) box_pass: Family,
+    pub(crate) noise: Family,
+    pub(crate) generate: Family,
 }
 
 /// The constants the per-pixel kernels name blend modes by, one per row of
@@ -116,6 +140,12 @@ pub(crate) fn with_operations(source: &str) -> String {
     with_blend_modes(&format!("{OPERATION}\n{source}"))
 }
 
+/// `source` with the blend modes, the operations and the layer's points
+/// in front.
+pub(crate) fn with_layer(source: &str) -> String {
+    with_operations(&format!("{LAYER}\n{source}"))
+}
+
 /// The row of `mode` in the rasteriser's table of blend modes.
 pub(crate) fn mode_row(mode: nakkash_raster::BlendMode) -> u32 {
     let row = BLEND_MODES
@@ -137,6 +167,8 @@ impl Kernels {
             operate: Family::new(device, &with_operations(OPERATE.source), &OPERATE),
             transform: Family::new(device, TRANSFORM.source, &TRANSFORM),
             box_pass: Family::new(device, BOX_PASS.source, &BOX_PASS),
+            noise: Family::new(device, &with_layer(NOISE.source), &NOISE),
+            generate: Family::new(device, &with_layer(GENERATE.source), &GENERATE),
         }
     }
 }

@@ -11,6 +11,8 @@ fn sources() -> Vec<(&'static str, String, &'static FamilySpec)> {
         ("pack", PACK.source.to_owned(), &PACK),
         ("transform", TRANSFORM.source.to_owned(), &TRANSFORM),
         ("box_pass", BOX_PASS.source.to_owned(), &BOX_PASS),
+        ("noise", with_layer(NOISE.source), &NOISE),
+        ("generate", with_layer(GENERATE.source), &GENERATE),
     ]
 }
 

@@ -55,6 +55,10 @@ pub use effect::{
     Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Growth, Input, Move, ParamSpec,
     ParamType, ParamValue, Reach, Space,
 };
+pub use generate::{
+    Beam, BeamStroke, FourColor, Fractal, FractalNoise, GridLines, IrisWipe, LinearWipe,
+    NOISE_CELL, NoiseKind, Overflow, Ramp, VenetianBlinds,
+};
 pub use homography::Homography;
 pub use image::Image;
 pub use list::{

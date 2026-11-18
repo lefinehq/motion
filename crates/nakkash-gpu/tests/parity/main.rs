@@ -18,9 +18,10 @@ mod canvas;
 mod composite;
 mod effects;
 mod frames;
+mod generate;
 
 use nakkash_gpu::Gpu;
-use nakkash_raster::kurbo::{Affine, Rect};
+use nakkash_raster::kurbo::{Affine, Point, Rect};
 use nakkash_raster::{Accelerator, Color, Effect, ParamValue, Pixels, Space};
 
 /// The largest difference allowed in any channel of any pixel, on values
@@ -40,6 +41,29 @@ const TOLERANCES: &[(&str, f32)] = &[
     ("solid-composite", 5e-5),
     ("drop-shadow", 1e-4),
     ("chain", 5e-5),
+    // Measured 3.6e-5, at a contrast of 100, which multiplies every
+    // difference; block noise meets the CPU's cells exactly.
+    ("fractal-noise", 1.5e-4),
+    // Layer points some 24 000 px from the noise's origin, where a cell's
+    // coordinate rounds at a few 1e-5 of a cell: warping noise moves each
+    // octave by the level so far, which carries the ease's rounding into
+    // the next octave's point. Measured 8.5e-5.
+    ("fractal-noise-far", 3e-4),
+    // Measured 1.8e-7.
+    ("ramp", 1e-6),
+    // Measured 2.1e-5: the hue of four colours mixed to near grey, which
+    // turns far for a small change; 3.8e-6 otherwise.
+    ("four-color", 1e-4),
+    // Measured 2.4e-6, by the hue mode.
+    ("grid", 1e-5),
+    // The edges, hard ones too, fall where the CPU's do: measured 1.2e-7,
+    // the wipes and the iris alike.
+    ("venetian-blinds", 1e-6),
+    ("linear-wipe", 1e-6),
+    ("iris-wipe", 1e-6),
+    // The pen works in 64 bits, the kernel in 32 from a pixel near the
+    // beam's start: measured 2.4e-5 along a beam across a 4K grid.
+    ("beam", 1e-4),
 ];
 
 pub(crate) fn tolerance(name: &str) -> f32 {
