@@ -964,6 +964,114 @@ mod effects {
         assert!(shape["fx"][1].get("map").is_none(), "{shape}");
     }
 
+    /// A matte names its layer and keeps the project's choices; one taken
+    /// from the layer itself names none, and reads the layer before its
+    /// effects.
+    #[test]
+    fn a_set_matte_names_its_matte_layer_and_its_choices() {
+        let matte = |layer: u32, codes: &[(&str, f64)]| {
+            let mut children = vec![Child::Property(property(
+                "ADBE Set Matte3-0001",
+                Stream::Static(Value::Layer(layer)),
+            ))];
+            children.extend(
+                codes
+                    .iter()
+                    .map(|(name, code)| Child::Property(number(name, *code))),
+            );
+            group("ADBE Set Matte3", children)
+        };
+        let mut shape = layer(1, "Shape", vec![]);
+        shape.kind = LayerKind::Shape;
+        shape.properties.children = vec![Child::Group(group(
+            "ADBE Effect Parade",
+            vec![
+                Child::Group(matte(
+                    7,
+                    &[
+                        ("ADBE Set Matte3-0002", 5.0),
+                        ("ADBE Set Matte3-0003", 1.0),
+                        ("ADBE Set Matte3-0004", 0.0),
+                        ("ADBE Set Matte3-0005", 0.0),
+                        ("ADBE Set Matte3-0006", 0.0),
+                    ],
+                )),
+                Child::Group(matte(1, &[("ADBE Set Matte3-0002", 1.0)])),
+                Child::Group(matte(7, &[])),
+            ],
+        ))];
+        let mut logo = layer(7, "Logo", vec![]);
+        logo.kind = LayerKind::Shape;
+        let project = project(vec![(2, "Main", comp(vec![shape, logo], 2.0))]);
+        let import = import(&project, &Options::default()).expect("imports");
+        let shape = import.json["layers"]
+            .as_array()
+            .and_then(|layers| layers.iter().find(|l| l["id"] == "shape"))
+            .expect("the shape layer");
+        assert_eq!(
+            shape["fx"],
+            json!([
+                {"set-matte":"luminance","matte":"logo","inverted":"on","behaviour":"center",
+                 "composite":"off","premultiply":"off"},
+                {"set-matte":"red"},
+                {"set-matte":"alpha","matte":"logo"}
+            ]),
+            "{shape}"
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
+    /// Shifted channels keep the project's choice for each channel, by its
+    /// code.
+    #[test]
+    fn shifted_channels_keep_each_channels_choice() {
+        let import = imported(vec![group(
+            "ADBE Shift Channels",
+            vec![
+                Child::Property(number("ADBE Shift Channels-0001", 9.0)),
+                Child::Property(number("ADBE Shift Channels-0002", 10.0)),
+                Child::Property(number("ADBE Shift Channels-0003", 5.0)),
+                Child::Property(number("ADBE Shift Channels-0004", 1.0)),
+            ],
+        )])
+        .expect("imports");
+        assert_eq!(
+            import.json["layers"][0]["fx"],
+            json!([{"shift-channels":"full","red-from":"off","green-from":"luminance",
+                    "blue-from":"alpha"}])
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
+    /// A switched-off matte is kept, hidden, so it draws nothing and is
+    /// not reported.
+    #[test]
+    fn a_switched_off_set_matte_is_hidden() {
+        let mut off = group(
+            "ADBE Set Matte3",
+            vec![Child::Property(number("ADBE Set Matte3-0002", 1.0))],
+        );
+        off.enabled = false;
+        let import = imported(vec![off]).expect("imports");
+        assert_eq!(
+            import.json["layers"][0]["fx"],
+            json!([{"set-matte":"red","hidden":true}])
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
     /// A conversion the project leaves out is its definition's default,
     /// which is not the scene's.
     #[test]

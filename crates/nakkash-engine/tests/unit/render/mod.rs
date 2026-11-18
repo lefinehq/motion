@@ -271,6 +271,66 @@ fn an_effect_reads_a_collapsed_comp_as_its_composition() {
     assert_eq!(read.bounds, Some(Rect::new(0.0, 0.0, 40.0, 20.0)));
 }
 
+/// What the matte of a 200x100 grey layer reads, with `fx` its effects
+/// and a 40x20 composition, a 100x50 rect and a shape layer to read.
+fn read_matte(fx: &str) -> Vec<Effect> {
+    let scene = format!(
+        r##"{{"nakkash":1,"size":"200x100","fps":10,"dur":"1s",
+        "comps":{{"m":{{"size":"40x20","dur":"1s","layers":[{{"id":"dot","rect":"10x10","at":"20 10"}}]}}}},
+        "layers":[{{"id":"small","comp":"m","hidden":true,"position":[150,70],"scale":[2,3]}},
+        {{"id":"half","rect":"100x50","hidden":true}},
+        {{"id":"lines","shapes":[{{"rect":[20,20]}},{{"fill":"#FFFFFF"}}],"hidden":true}},
+        {{"id":"grey","rect":"200x100","fill":"#808080","fx":[{fx}]}}]}}"##
+    );
+    let frame = list(&scene, 0.0);
+    only_layer(&frame).effects.clone()
+}
+
+/// The transform the read layer is laid on the reading one by.
+fn laid_by(effect: &Effect) -> Affine {
+    match effect.input() {
+        Some(Node::Layer(read)) => {
+            assert_eq!(read.bounds, None, "laid already");
+            read.transform
+        }
+        other => panic!("a read layer: {other:?}"),
+    }
+}
+
+#[test]
+fn a_matte_is_laid_on_the_layers_box() {
+    let effects = read_matte(
+        r#"{"set-matte":"alpha","matte":"small"},
+        {"set-matte":"alpha","matte":"small","behaviour":"center"},
+        {"set-matte":"alpha","matte":"half","behaviour":"center"},
+        {"set-matte":"alpha","matte":"lines","behaviour":"center"},
+        {"set-matte":"alpha","matte":"lines"}"#,
+    );
+    // The composition's 40x20 canvas stretched over the 200x100 box,
+    // whatever the layer's own transform.
+    assert_eq!(laid_by(&effects[0]), Affine::scale(5.0));
+    // Centred: its middle (20, 10) on the box's (100, 50).
+    assert_eq!(laid_by(&effects[1]), Affine::translate((80.0, 40.0)));
+    assert_eq!(laid_by(&effects[2]), Affine::translate((50.0, 25.0)));
+    // A shape layer's box is the composition's size about its origin, so
+    // its origin lands on the middle, and it is as large as the box.
+    assert_eq!(laid_by(&effects[3]), Affine::translate((100.0, 50.0)));
+    assert_eq!(laid_by(&effects[4]), Affine::translate((100.0, 50.0)));
+}
+
+#[test]
+fn a_matte_without_a_layer_reads_the_layer_before_its_effects() {
+    let effects = read_matte(r##"{"fill":"#FF0000"},{"set-matte":"red"}"##);
+    let Some(Node::Layer(own)) = effects[1].input() else {
+        panic!("its own drawing: {:?}", effects[1].input())
+    };
+    assert!(own.effects.is_empty(), "before its effects");
+    assert_eq!(own.transform, Affine::IDENTITY);
+    assert_eq!(own.bounds, None);
+    // An effect that reads no layer of its own reads none.
+    assert!(effects[0].input().is_none());
+}
+
 #[test]
 fn a_collapsed_comp_without_effects_lets_its_blends_reach_below() {
     let frame = list(&collapsed(false), 7.0);

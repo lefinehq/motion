@@ -1006,7 +1006,7 @@ fn inputs(layers: &[Layer]) -> Result<()> {
             })?;
             let plays = matches!(layers[at].content, Content::Audio(_) | Content::Comp(_));
             match input.reads {
-                Reads::Drawing if matches!(layers[at].content, Content::Audio(_)) => {
+                Reads::Drawing | Reads::Laid if matches!(layers[at].content, Content::Audio(_)) => {
                     return Err(place(
                         Diagnostic::new(
                             Kind::Conflict,
@@ -1015,7 +1015,7 @@ fn inputs(layers: &[Layer]) -> Result<()> {
                         .expected("a layer that draws"),
                     ));
                 }
-                Reads::Drawing => needs.push(at),
+                Reads::Drawing | Reads::Laid => needs.push(at),
                 // Sound is mixed, not drawn, so reading it needs no drawing.
                 Reads::Sound if plays => {}
                 Reads::Sound => {

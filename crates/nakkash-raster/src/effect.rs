@@ -24,7 +24,7 @@ use crate::list::Node;
 use crate::pixels::Pixels;
 use crate::style::Color;
 use crate::total::Total;
-use crate::{blur, colour, composite, distort, generate, particles};
+use crate::{blur, channel, colour, composite, distort, generate, particles};
 
 /// The type of one effect parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1114,6 +1114,146 @@ pub const EFFECTS: &[EffectSpec] = &[
         apply: Apply::Pixels {
             over: None,
             pixels: distort::displacement_map,
+        },
+    },
+    EffectSpec {
+        name: "set-matte",
+        params: &[
+            ParamSpec {
+                name: "channel",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "alpha",
+                    "red",
+                    "green",
+                    "blue",
+                    "luminance",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "full",
+                    "off",
+                ],
+                doc: "which level of the matte becomes the layer's alpha",
+            },
+            ParamSpec {
+                name: "inverted",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["off", "on"],
+                doc: "whether the matte is turned into its opposite",
+            },
+            ParamSpec {
+                name: "behaviour",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["stretch", "center"],
+                doc: "how the matte's box lies on the layer's",
+            },
+            ParamSpec {
+                name: "composite",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["on", "off"],
+                doc: "whether the matte multiplies the layer's alpha or replaces it in its box",
+            },
+            ParamSpec {
+                name: "premultiply",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["on", "off"],
+                doc: "whether the matte's colour is read laid over black",
+            },
+        ],
+        doc: "takes the layer's alpha from a level of another layer, the matte",
+        reach: matte_reach,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: channel::set_matte,
+        },
+    },
+    EffectSpec {
+        name: "shift-channels",
+        params: &[
+            ParamSpec {
+                name: "alpha-from",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "alpha",
+                    "red",
+                    "green",
+                    "blue",
+                    "luminance",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "full",
+                    "off",
+                ],
+                doc: "which level becomes the alpha",
+            },
+            ParamSpec {
+                name: "red-from",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "red",
+                    "alpha",
+                    "green",
+                    "blue",
+                    "luminance",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "full",
+                    "off",
+                ],
+                doc: "which level becomes the red",
+            },
+            ParamSpec {
+                name: "green-from",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "green",
+                    "alpha",
+                    "red",
+                    "blue",
+                    "luminance",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "full",
+                    "off",
+                ],
+                doc: "which level becomes the green",
+            },
+            ParamSpec {
+                name: "blue-from",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "blue",
+                    "alpha",
+                    "red",
+                    "green",
+                    "luminance",
+                    "hue",
+                    "lightness",
+                    "saturation",
+                    "full",
+                    "off",
+                ],
+                doc: "which level becomes the blue",
+            },
+        ],
+        doc: "rebuilds each channel from a level of the layer's straight colour",
+        reach: shift_reach,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: channel::shift_channels,
         },
     },
     EffectSpec {
@@ -2647,6 +2787,24 @@ fn displacement_reach(values: &[ParamValue]) -> Reach {
     match values[5] {
         ParamValue::Choice(1) => Reach::Bounds,
         _ => Reach::Within(number_at(values, 0).abs().max(number_at(values, 1).abs())),
+    }
+}
+
+/// `set-matte` changes pixels only where they are, unless it replaces the
+/// layer's alpha, which it may raise anywhere in the layer's box.
+fn matte_reach(values: &[ParamValue]) -> Reach {
+    match values[3] {
+        ParamValue::Choice(1) => Reach::Bounds,
+        _ => Reach::Within(0.0),
+    }
+}
+
+/// `shift-channels` changes pixels only where they are, unless its alpha
+/// is full, which it is in the whole of the layer's box.
+fn shift_reach(values: &[ParamValue]) -> Reach {
+    match values[0] {
+        ParamValue::Choice(8) => Reach::Bounds,
+        _ => Reach::Within(0.0),
     }
 }
 
