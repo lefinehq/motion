@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 
-use nakkash_format::{Id, SlotType};
+use nakkash_format::SlotType;
 use serde_json::{Map, Value as Json, json};
 use winnow::ascii::{dec_uint, multispace0};
 use winnow::combinator::{alt, delimited, opt, preceded, terminated};
@@ -570,12 +570,6 @@ pub(super) fn is_control_layer(layer: &Layer) -> bool {
         })
 }
 
-/// Whether the format would read `text` as other than itself: `$` and an
-/// id is a reference, and `$$` stands for one `$`.
-fn read_as_slot(text: &str) -> bool {
-    text.starts_with("$$") || text.strip_prefix('$').is_some_and(Id::is_valid)
-}
-
 /// `json`, layers of the scene, with every value read from a control
 /// written as `decided` says, and every other string the format would read
 /// as a reference or an escape escaped.
@@ -589,7 +583,7 @@ pub(super) fn write_references(json: &mut Json, decided: &Decided) {
                     decided.written.get(control)?.get(follower).cloned()
                 });
                 *json = written.expect("every read is decided");
-            } else if read_as_slot(text) {
+            } else if nakkash_format::slots::is_reference(text) {
                 text.insert(0, '$');
             }
         }

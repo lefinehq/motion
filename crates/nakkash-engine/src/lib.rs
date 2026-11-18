@@ -53,13 +53,17 @@ pub use nakkash_import::export::{Change as ExportChange, Plan as ExportPlan};
 pub use session::{Session, limit_threads};
 
 pub use nakkash_format::Id;
+pub use nakkash_format::address::{json_at, key_text};
 pub use nakkash_format::roles::Role;
+pub use nakkash_format::shorthand::Font;
+pub use nakkash_format::slots::{is_reference, resolved};
 pub use nakkash_format::{
     Address, Content, Diagnostic, Document, Kind, Listed, Lock, Result, RoleTarget, Scene,
     write_document,
 };
+pub use nakkash_format::{SlotType, color, colors, oklch};
 pub use nakkash_import::map::{Import, Mapping, Options as ImportOptions, StoredText};
 pub use nakkash_import::{Project, Report as ImportReport};
 pub use nakkash_query::{Report, Severity};
 pub use nakkash_raster::{Accelerator, Frame, Image, Quality, RenderOptions, Simd, Tally};
-pub use nakkash_scene::{FrameState, SceneGraph};
+pub use nakkash_scene::{ContentState, FrameState, SceneGraph};

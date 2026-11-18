@@ -14,7 +14,8 @@ use std::fmt;
 
 use serde_json::Value as Json;
 
-use crate::parse::key::{COMPS, ID, LAYERS, SLOTS, comp_path};
+use crate::oklch::Shift;
+use crate::parse::key::{BG, COMPS, DUR, ID, LAYERS, SLOTS, comp_path};
 use crate::{Address, Diagnostic, Id, Kind, Place, Result, Step};
 
 /// What kind of value a slot holds, which the values following it take.
@@ -28,15 +29,26 @@ pub enum SlotType {
     Color,
     /// Words, for a text layer.
     Text,
+    /// A picture or vector footage file, for an image layer, or `null` for
+    /// none yet ([D77]).
+    ///
+    /// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+    Image,
+    /// A clip, for a video layer, or `null` for none yet ([D77]).
+    ///
+    /// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+    Video,
 }
 
 impl SlotType {
     /// Every type, by the name a declaration writes.
-    pub const NAMES: [(&str, SlotType); 4] = [
+    pub const NAMES: [(&str, SlotType); 6] = [
         ("number", SlotType::Number),
         ("point", SlotType::Point),
         ("color", SlotType::Color),
         ("text", SlotType::Text),
+        ("image", SlotType::Image),
+        ("video", SlotType::Video),
     ];
 
     /// The type named `name`.
@@ -73,6 +85,10 @@ pub struct Slot {
     pub value: Json,
     /// A name for people, such as the control a template exposed.
     pub label: Option<String>,
+    /// What it is for, such as `title`, `accent` or `logo` ([D77]).
+    ///
+    /// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+    pub role: Option<Id>,
 }
 
 /// The slots of a scene: its own, and each composition's by id.
@@ -93,7 +109,7 @@ impl Declared {
 }
 
 /// The written form of a slot's declaration.
-const FORM: &str = r##"a colour, a number, [x, y], or {"text":"…"}, optionally typed and labelled, e.g. {"color":"#E63946","label":"Accent"}"##;
+const FORM: &str = r##"a colour, a number, [x, y], {"text":"…"}, {"image":"…"} or {"video":"…"}, optionally typed, labelled and given a role, e.g. {"color":"#E63946","label":"Accent","role":"accent"}"##;
 
 /// The slots `raw`, a scene's JSON, declares on itself and on its
 /// compositions.
@@ -142,27 +158,34 @@ fn slots_of(owner: &Json) -> Result<Vec<Slot>> {
 /// One slot, `id` declared as `written`.
 fn slot(id: &str, written: &Json) -> Result<Slot> {
     let id: Id = id.parse()?;
-    let (ty, value, label) = match written {
+    let (ty, value, label, role) = match written {
         Json::Object(fields) => {
-            let label = match fields.get("label") {
+            let label = match fields.get(LABEL) {
                 None => None,
                 Some(Json::String(label)) => Some(label.clone()),
                 Some(_) => return Err(invalid(written)),
             };
-            let mut typed = fields.iter().filter(|(name, _)| *name != "label");
+            let role = match fields.get(ROLE) {
+                None => None,
+                Some(Json::String(role)) => Some(role.parse::<Id>().map_err(|e| e.under(ROLE))?),
+                Some(_) => return Err(invalid(written)),
+            };
+            let mut typed = fields
+                .iter()
+                .filter(|(name, _)| *name != LABEL && *name != ROLE);
             let (Some((name, value)), None) = (typed.next(), typed.next()) else {
                 return Err(invalid(written));
             };
             let ty = SlotType::named(name).ok_or_else(|| {
                 Diagnostic::unknown("slot type", name, SlotType::NAMES.map(|(n, _)| n))
             })?;
-            (ty, value.clone(), label)
+            (ty, value.clone(), label, role)
         }
-        Json::Number(_) => (SlotType::Number, written.clone(), None),
+        Json::Number(_) => (SlotType::Number, written.clone(), None, None),
         // Two numbers are a point; three or four, a colour's channels.
-        Json::Array(items) if items.len() == 2 => (SlotType::Point, written.clone(), None),
-        Json::Array(_) => (SlotType::Color, written.clone(), None),
-        Json::String(_) => (SlotType::Color, written.clone(), None),
+        Json::Array(items) if items.len() == 2 => (SlotType::Point, written.clone(), None, None),
+        Json::Array(_) => (SlotType::Color, written.clone(), None, None),
+        Json::String(_) => (SlotType::Color, written.clone(), None, None),
         _ => return Err(invalid(written)),
     };
     check_fits(ty, &value).map_err(|d| d.expected(FORM))?;
@@ -171,8 +194,14 @@ fn slot(id: &str, written: &Json) -> Result<Slot> {
         ty,
         value,
         label,
+        role,
     })
 }
+
+/// The key of a slot's label.
+const LABEL: &str = "label";
+/// The key of a slot's role.
+const ROLE: &str = "role";
 
 /// `Ok` when `value` is a value of type `ty`.
 fn check_fits(ty: SlotType, value: &Json) -> Result<()> {
@@ -180,6 +209,8 @@ fn check_fits(ty: SlotType, value: &Json) -> Result<()> {
         (SlotType::Number, Json::Number(_)) | (SlotType::Text, Json::String(_)) => true,
         (SlotType::Point, Json::Array(xy)) => xy.len() == 2 && xy.iter().all(Json::is_number),
         (SlotType::Color, Json::String(_) | Json::Array(_)) => crate::text::color(value).is_ok(),
+        (SlotType::Image | SlotType::Video, Json::String(path)) => !path.is_empty(),
+        (SlotType::Image | SlotType::Video, Json::Null) => true,
         _ => false,
     };
     match fits {
@@ -238,6 +269,10 @@ fn invalid(written: &Json) -> Diagnostic {
 enum Written<'a> {
     /// `$id`: the value of slot `id`.
     Reference(&'a str),
+    /// `$id l-0.02 / 0.5`: the colour of slot `id`, changed ([D77]).
+    ///
+    /// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+    Changed(&'a str, Shift),
     /// `$$…`: itself, one `$` fewer.
     Escaped(&'a str),
     /// Anything else, itself.
@@ -248,10 +283,28 @@ fn written(text: &str) -> Written<'_> {
     if let Some(rest) = text.strip_prefix("$$") {
         return Written::Escaped(rest);
     }
-    match text.strip_prefix('$') {
-        Some(id) if Id::is_valid(id) => Written::Reference(id),
+    let Some(rest) = text.strip_prefix('$') else {
+        return Written::Plain;
+    };
+    if Id::is_valid(rest) {
+        return Written::Reference(rest);
+    }
+    // A change follows the id after a space; anything else, as `$99 off`,
+    // is plain text.
+    match rest.split_once(' ') {
+        Some((id, change)) if Id::is_valid(id) => match Shift::parse(change) {
+            Some(shift) => Written::Changed(id, shift),
+            None => Written::Plain,
+        },
         _ => Written::Plain,
     }
+}
+
+/// Whether the format reads `text` as other than itself: a reference to a
+/// slot, a changed colour of one, or an escape, `$$`. An import escapes such
+/// a string the project holds, `$$title`, so it stays the text it was.
+pub fn is_reference(text: &str) -> bool {
+    !matches!(written(text), Written::Plain)
 }
 
 /// Where a reference was replaced by its slot's value.
@@ -299,19 +352,67 @@ pub(crate) fn resolve<'j>(raw: &'j Json, declared: &Declared) -> Result<(Cow<'j,
     }
     let mut copy = raw.clone();
     let mut resolved = Resolved::default();
+    let scene = [declared.scene.as_slice()];
+    resolve_canvas(&mut copy, &scene, None, &mut resolved)?;
     if let Some(layers) = copy.get_mut(LAYERS) {
-        let scopes = [declared.scene.as_slice()];
-        resolve_layers(layers, &scopes, None, &mut resolved)?;
+        resolve_layers(layers, &scene, None, &mut resolved)?;
     }
     if let Some(comps) = copy.get_mut(COMPS).and_then(Json::as_object_mut) {
         for (id, comp) in comps {
+            let scopes = [declared.of_comp(id), declared.scene.as_slice()];
+            resolve_canvas(comp, &scopes, Some(id), &mut resolved)?;
             if let Some(layers) = comp.get_mut(LAYERS) {
-                let scopes = [declared.of_comp(id), declared.scene.as_slice()];
                 resolve_layers(layers, &scopes, Some(id), &mut resolved)?;
             }
         }
     }
     Ok((Cow::Owned(copy), resolved))
+}
+
+/// Resolves the references in the canvas keys of the scene or of the
+/// composition `comp`, `owner`: its `bg`, written in hex whatever form its
+/// slot has, and its `dur`, which a number slot gives in seconds ([D77]).
+///
+/// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+fn resolve_canvas(
+    owner: &mut Json,
+    scopes: &[&[Slot]],
+    comp: Option<&str>,
+    resolved: &mut Resolved,
+) -> Result<()> {
+    let place = comp.map_or_else(|| Place::Scene(Address::default()), comp_path);
+    for key in [BG, DUR] {
+        let Some(value) = owner.get_mut(key) else {
+            continue;
+        };
+        let mut steps = vec![Step::Key(key.to_owned())];
+        resolve_value(value, (scopes, comp), &place, &mut steps, resolved)?;
+        // The canvas keys are written as text: a time, and a colour in hex.
+        match (key, &*value) {
+            (DUR, Json::Number(seconds)) => *value = Json::String(format!("{seconds}s")),
+            (BG, Json::Array(_)) => {
+                if let Some(color) = crate::color(value) {
+                    *value = Json::String(hex(color));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// `raw`, a scene's JSON, with every reference replaced by its slot's value
+/// and every `$$` unescaped, as the scene is read: what an export compares
+/// and a listing counts ([D77]).
+///
+/// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+///
+/// # Errors
+/// The diagnostic of a slot that does not read, or of a reference to no
+/// slot in scope.
+pub fn resolved(raw: &Json) -> Result<Json> {
+    let declared = declared(raw)?;
+    resolve(raw, &declared).map(|(json, _)| json.into_owned())
 }
 
 /// Whether any string in `json` starts with `$`.
@@ -367,35 +468,43 @@ fn resolve_value(
     resolved: &mut Resolved,
 ) -> Result<()> {
     match value {
-        Json::String(text) => match written(text) {
-            Written::Plain => {}
-            Written::Escaped(rest) => *value = Json::String(format!("${rest}")),
-            Written::Reference(id) => {
-                let place = layer.clone().join(Place::Scene(Address {
-                    layers: Vec::new(),
-                    keys: steps.clone(),
-                }));
-                let found = scopes.iter().enumerate().find_map(|(scope, slots)| {
-                    slots
-                        .iter()
-                        .find(|s| &*s.id == id)
-                        .map(|slot| (scope, slot))
-                });
-                let Some((scope, slot)) = found else {
-                    let known = scopes
-                        .iter()
-                        .flat_map(|slots| slots.iter())
-                        .map(|s| format!("${}", s.id));
-                    return Err(Diagnostic::unknown("slot", format!("${id}"), known).at(place));
-                };
-                resolved.followed.push(Followed {
-                    place: place.to_string(),
-                    slot: slot.id.clone(),
-                    comp: comp.filter(|_| scope + 1 < scopes.len()).map(str::to_owned),
-                });
-                *value = slot.value.clone();
-            }
-        },
+        Json::String(text) => {
+            let (id, shift) = match written(text) {
+                Written::Plain => return Ok(()),
+                Written::Escaped(rest) => {
+                    *value = Json::String(format!("${rest}"));
+                    return Ok(());
+                }
+                Written::Reference(id) => (id.to_owned(), None),
+                Written::Changed(id, shift) => (id.to_owned(), Some(shift)),
+            };
+            let place = layer.clone().join(Place::Scene(Address {
+                layers: Vec::new(),
+                keys: steps.clone(),
+            }));
+            let found = scopes.iter().enumerate().find_map(|(scope, slots)| {
+                slots
+                    .iter()
+                    .find(|s| *s.id == *id)
+                    .map(|slot| (scope, slot))
+            });
+            let Some((scope, slot)) = found else {
+                let known = scopes
+                    .iter()
+                    .flat_map(|slots| slots.iter())
+                    .map(|s| format!("${}", s.id));
+                return Err(Diagnostic::unknown("slot", format!("${id}"), known).at(place));
+            };
+            resolved.followed.push(Followed {
+                place: place.to_string(),
+                slot: slot.id.clone(),
+                comp: comp.filter(|_| scope + 1 < scopes.len()).map(str::to_owned),
+            });
+            *value = match shift {
+                None => slot.value.clone(),
+                Some(shift) => changed(slot, shift).map_err(|d| d.at(place))?,
+            };
+        }
         Json::Array(items) => {
             for (index, item) in items.iter_mut().enumerate() {
                 steps.push(Step::Index(index));
@@ -413,6 +522,38 @@ fn resolve_value(
         _ => {}
     }
     Ok(())
+}
+
+/// `color`, RGBA from 0 to 1, as `#RRGGBB`, or `#RRGGBBAA` when it is not
+/// opaque.
+fn hex(color: [f64; 4]) -> String {
+    let [r, g, b, a] = color.map(|c| (c * 255.0).round().clamp(0.0, 255.0) as u8);
+    match a {
+        255 => format!("#{r:02X}{g:02X}{b:02X}"),
+        _ => format!("#{r:02X}{g:02X}{b:02X}{a:02X}"),
+    }
+}
+
+/// The colour of `slot` changed by `shift`, as channels.
+///
+/// # Errors
+/// An invalid-value diagnostic when the slot holds no colour.
+fn changed(slot: &Slot, shift: Shift) -> Result<Json> {
+    let color = match slot.ty {
+        SlotType::Color => crate::text::color(&slot.value).ok(),
+        _ => None,
+    };
+    let Some(color) = color else {
+        return Err(Diagnostic::new(
+            Kind::Invalid,
+            format!(
+                "slot `${}` holds a {}, so it takes no change of colour",
+                slot.id, slot.ty
+            ),
+        )
+        .expected(crate::oklch::SHIFT_FORM));
+    };
+    Ok(Json::from(shift.apply(color).to_vec()))
 }
 
 /// A slot as `nakkash slots` lists it: where it is declared, and every value

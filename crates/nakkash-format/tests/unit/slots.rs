@@ -27,6 +27,9 @@ fn error(scene: &Json) -> Diagnostic {
 #[case::colour_channels(json!([1, 0.5, 0, 1]), SlotType::Color, json!([1, 0.5, 0, 1]), None)]
 #[case::text(json!({"text":"Launch"}), SlotType::Text, json!("Launch"), None)]
 #[case::labelled(json!({"color":"#fff","label":"Accent"}), SlotType::Color, json!("#fff"), Some("Accent"))]
+#[case::image(json!({"image":"brand/logo.png"}), SlotType::Image, json!("brand/logo.png"), None)]
+#[case::no_image_yet(json!({"image":null,"label":"Logo"}), SlotType::Image, json!(null), Some("Logo"))]
+#[case::video(json!({"video":"clips/hero.mov"}), SlotType::Video, json!("clips/hero.mov"), None)]
 fn a_slot_is_typed_by_its_value(
     #[case] written: Json,
     #[case] ty: SlotType,
@@ -46,6 +49,9 @@ fn a_slot_is_typed_by_its_value(
 #[case::text_as_number(json!({"text":3}))]
 #[case::two_types(json!({"color":"#fff","number":1}))]
 #[case::null(json!(null))]
+#[case::empty_file(json!({"image":""}))]
+#[case::file_as_number(json!({"video":3}))]
+#[case::role_as_number(json!({"color":"#fff","role":1}))]
 fn a_slot_that_does_not_read_is_refused(#[case] written: Json) {
     assert_eq!(slot("accent", &written).unwrap_err().kind, Kind::Invalid);
 }
@@ -55,7 +61,7 @@ fn an_unknown_type_names_the_types() {
     let err = slot("accent", &json!({"colour":"#fff"})).unwrap_err();
     assert_eq!(
         err.expected.as_deref(),
-        Some("one of number, point, color, text")
+        Some("one of number, point, color, text, image, video")
     );
 }
 
@@ -255,4 +261,111 @@ fn a_listed_slot_has_the_values_that_follow_it_and_no_others() {
             (Some("card"), "accent", vec!["comps.card.layers[r].fill"]),
         ]
     );
+}
+
+#[test]
+fn a_slot_may_say_what_it_is_for() {
+    let slot = slot(
+        "accent",
+        &json!({"color":"#fff","label":"Accent","role":"accent"}),
+    )
+    .unwrap();
+    assert_eq!(slot.role.as_deref(), Some("accent"));
+    let err = slot_error(&json!({"color":"#fff","role":"Not An Id"}));
+    assert_eq!(err.path_text().as_deref(), Some("role"));
+}
+
+fn slot_error(written: &Json) -> Diagnostic {
+    slot("accent", written).unwrap_err()
+}
+
+/// The fill of the root's first layer, as the scene reads it.
+fn fill(extra: Json) -> [f64; 4] {
+    let doc = parse_document(&scene(extra).to_string()).unwrap();
+    let resolved = resolve(doc.raw(), &declared(doc.raw()).unwrap()).unwrap().0;
+    crate::color(&resolved["layers"][0]["fill"]).unwrap()
+}
+
+#[test]
+fn a_reference_may_change_its_colour() {
+    let red = [0.9, 0.2, 0.25, 1.0];
+    let darker = crate::oklch::Shift::between(red, [0.7, 0.1, 0.15, 0.5]);
+    let written = format!("$accent {darker}");
+    let got = fill(json!({
+        "slots":{"accent":red},
+        "layers":[{"id":"r","rect":"10x10","fill":written}]
+    }));
+    assert!(
+        got.iter()
+            .zip([0.7, 0.1, 0.15, 0.5])
+            .all(|(a, b)| (a - b).abs() < 2e-6),
+        "{got:?}"
+    );
+    let half = fill(json!({
+        "slots":{"accent":red},
+        "layers":[{"id":"r","rect":"10x10","fill":"$accent / 0.5"}]
+    }));
+    assert_eq!(half, [0.9, 0.2, 0.25, 0.5]);
+}
+
+#[test]
+fn a_change_of_colour_needs_a_colour_slot() {
+    let err = error(&scene(json!({
+        "slots":{"size":20},
+        "layers":[{"id":"r","rect":"10x10","fill":"$size l+0.1"}]
+    })));
+    assert_eq!(err.path_text().as_deref(), Some("r.fill"));
+    assert!(
+        err.message.contains("takes no change of colour"),
+        "{}",
+        err.message
+    );
+}
+
+#[rstest]
+#[case::words("$title rocks")]
+#[case::price("$99 off")]
+fn text_after_an_id_that_is_no_change_stays(#[case] written: &str) {
+    let doc = parse_document(
+        &scene(json!({"slots":{"title":{"text":"x"}},"layers":[{"id":"t","text":written}]}))
+            .to_string(),
+    )
+    .unwrap();
+    match &doc.scene().root.layers[0].content {
+        crate::Content::Text(content) => assert_eq!(content.text, written),
+        other => panic!("{other:?}"),
+    }
+    assert!(!is_reference(written));
+}
+
+#[rstest]
+#[case("$title", true)]
+#[case("$accent l+0.1", true)]
+#[case("$$99", true)]
+#[case("$99", false)]
+#[case("Sale", false)]
+fn what_reads_as_a_reference(#[case] text: &str, #[case] reference: bool) {
+    assert_eq!(is_reference(text), reference);
+}
+
+#[test]
+fn the_length_and_background_may_follow_slots() {
+    let doc = parse_document(
+        &json!({"nakkash":1,"size":"200x100","dur":"$duration","bg":"$background",
+            "slots":{"duration":{"number":2.5,"role":"duration"},"background":"#102030","card":"#FFFFFF"},
+            "comps":{"card":{"size":"10x10","dur":"$duration","bg":"$card / 0.5","layers":[]}},
+            "layers":[{"id":"c","comp":"card"}]})
+        .to_string(),
+    )
+    .unwrap();
+    assert_eq!(doc.scene().root.duration, crate::units::Time::Seconds(2.5));
+    assert_eq!(
+        doc.scene().comps[0].duration,
+        crate::units::Time::Seconds(2.5)
+    );
+    let listed = doc.slots();
+    let duration = listed.iter().find(|l| &*l.slot.id == "duration").unwrap();
+    assert_eq!(duration.followers, ["dur", "comps.card.dur"]);
+    let background = listed.iter().find(|l| &*l.slot.id == "background").unwrap();
+    assert_eq!(background.followers, ["bg"]);
 }
