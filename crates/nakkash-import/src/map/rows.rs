@@ -376,6 +376,12 @@ const GRID_MODES: &[(i64, &str)] = &[
     (22, "color"),
     (23, "luminosity"),
 ];
+
+const LENS_DISTORTIONS: &[(i64, &str)] = &[(0, "add"), (1, "remove")];
+const LENS_FIELDS: &[(i64, &str)] = &[(1, "horizontal"), (2, "vertical"), (3, "diagonal")];
+/// Growth without a limit (4) is left out: the box cannot hold a lens
+/// whose field reaches a right angle from its axis.
+const LENS_GROWTHS: &[(i64, &str)] = &[(1, "off"), (2, "2x"), (3, "4x")];
 const GRID_SIZES: &[(i64, &str)] = &[(1, "corner"), (2, "width"), (3, "width-height")];
 const GRID_DRAWS: &[(i64, &str)] = &[(0, "lines"), (1, "cells")];
 const FRACTALS: &[(i64, &str)] = &[
@@ -1102,7 +1108,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 47] = [
+pub(super) static KINDS: [Kind; 48] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -2640,6 +2646,57 @@ pub(super) static KINDS: [Kind; 47] = [
             row(
                 "ADBE Force CPU GPU",
                 To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Optics Compensation",
+        item: "lens-distortion",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Optics Compensation-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Optics Compensation-0001",
+                To::Prop("field-of-view"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Optics Compensation-0002",
+                To::Setting("distortion", LENS_DISTORTIONS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Optics Compensation-0003",
+                To::Setting("field", LENS_FIELDS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Optics Compensation-0004",
+                To::Prop("center"),
+                Point,
+                Parameter,
+            ),
+            row(
+                "ADBE Optics Compensation-0005",
+                To::OnlyDefault("a lens fitted to keep the most pixels"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Optics Compensation-0006",
+                To::Setting("grow", LENS_GROWTHS),
                 Number,
                 Absent,
             ),

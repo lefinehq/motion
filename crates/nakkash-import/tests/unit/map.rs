@@ -838,6 +838,98 @@ mod effects {
         );
     }
 
+    /// A lens takes its field of view in degrees and its axis in pixels;
+    /// removing the lens, its field and its growth are settings. A lens
+    /// fitted to keep the most pixels and growth without a limit are
+    /// reported.
+    #[test]
+    fn a_lens_takes_its_field_axis_and_settings() {
+        let popup = |default, choices: &[&str]| Control::Popup {
+            default,
+            choices: choices.iter().map(|c| (*c).into()).collect(),
+        };
+        let definition = EffectDefinition {
+            name: "Lens".into(),
+            parameters: vec![
+                parameter("ADBE Optics Compensation-0000", Control::Layer),
+                parameter(
+                    "ADBE Optics Compensation-0001",
+                    Control::Slider {
+                        default: 0.0,
+                        min: Some(0.0),
+                        max: Some(180.0),
+                        percent: false,
+                    },
+                ),
+                parameter(
+                    "ADBE Optics Compensation-0002",
+                    Control::Checkbox { default: false },
+                ),
+                parameter(
+                    "ADBE Optics Compensation-0003",
+                    popup(1, &["Horizontal", "Vertical", "Diagonal"]),
+                ),
+                parameter(
+                    "ADBE Optics Compensation-0004",
+                    Control::Point {
+                        default: vec![0.5, 0.5],
+                    },
+                ),
+                parameter(
+                    "ADBE Optics Compensation-0005",
+                    Control::Checkbox { default: false },
+                ),
+                parameter(
+                    "ADBE Optics Compensation-0006",
+                    popup(1, &["Off", "Max 2X", "Max 4X", "Unlimited"]),
+                ),
+            ],
+        };
+        let lens = |properties: Vec<Property>| {
+            group(
+                "ADBE Optics Compensation",
+                properties.into_iter().map(Child::Property).collect(),
+            )
+        };
+        let import = defined(
+            vec![
+                lens(vec![
+                    number("ADBE Optics Compensation-0001", 52.5),
+                    number("ADBE Optics Compensation-0002", 1.0),
+                    number("ADBE Optics Compensation-0003", 3.0),
+                    property(
+                        "ADBE Optics Compensation-0004",
+                        Stream::Static(Value::Vector2([0.5, 1.0])),
+                    ),
+                    number("ADBE Optics Compensation-0006", 2.0),
+                ]),
+                lens(vec![
+                    number("ADBE Optics Compensation-0001", 50.0),
+                    number("ADBE Optics Compensation-0005", 1.0),
+                    number("ADBE Optics Compensation-0006", 4.0),
+                ]),
+            ],
+            vec![("ADBE Optics Compensation", definition)],
+        )
+        .expect("imports");
+        assert_eq!(
+            import.json["layers"][0]["fx"],
+            json!([
+                {"lens-distortion":52.5,"grow":"2x","distortion":"remove","field":"diagonal","center":[0,50]},
+                {"lens-distortion":50}
+            ])
+        );
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert!(
+            what.contains(&"a lens fitted to keep the most pixels"),
+            "{what:?}"
+        );
+        assert!(
+            what.contains(&"a `grow` the scene does not have"),
+            "{what:?}"
+        );
+    }
+
     #[test]
     fn a_displacement_map_names_its_map_layer() {
         let map = |layer: u32| {

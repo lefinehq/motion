@@ -6,7 +6,7 @@
 //! ([`Space::bounds`]); a layer without one, such as shapes or text, uses
 //! the frame's box seen from the layer.
 
-use vello_cpu::kurbo::{Affine, Point, Rect, Shape};
+use vello_cpu::kurbo::{Affine, Point, Rect, Shape, Vec2};
 
 use crate::colour::{choice, number};
 use crate::effect::{ParamValue, Space};
@@ -181,6 +181,162 @@ pub(crate) fn polar_coordinates(pixels: &mut Pixels, values: &[ParamValue], spac
             x + (converted[0] - x) * amount,
             y + (converted[1] - y) * amount,
         ])
+    });
+}
+
+/// The lens of `lens-distortion`: a lens that draws a ray at angle φ from
+/// its axis `focal` · sin φ from the axis, where a pinhole draws it
+/// `focal` · tan φ away. Its focal length makes the field of view span the
+/// width, height or diagonal of the layer's box as `field` says, from one
+/// end to the other.
+struct Lens {
+    /// Where its axis meets the layer.
+    center: Point,
+    /// Its focal length, in px of the layer.
+    focal: f64,
+}
+
+impl Lens {
+    /// The lens of the values, over `bounds`; `None` when it bends nothing:
+    /// a field of view of 0, or a box with no span.
+    fn new(values: &[ParamValue], bounds: Rect) -> Option<Lens> {
+        // Just short of a half turn, where the focal length would be 0.
+        let degrees = f64::from(number(values, 0)).min(179.9);
+        let half_span = match choice(values, 3) {
+            0 => bounds.width() / 2.0,
+            1 => bounds.height() / 2.0,
+            _ => bounds.width().hypot(bounds.height()) / 2.0,
+        };
+        if degrees <= 0.0 || half_span <= 0.0 {
+            return None;
+        }
+        let [x, y] = point(values, 1);
+        Some(Lens {
+            center: Point::new(f64::from(x), f64::from(y)),
+            focal: half_span / (degrees / 2.0).to_radians().tan(),
+        })
+    }
+
+    /// How far from the axis the lens draws what a pinhole draws `r` px
+    /// from it: always nearer.
+    fn bent(&self, r: f64) -> f64 {
+        r / (1.0 + (r / self.focal).powi(2)).sqrt()
+    }
+
+    /// How far from the axis a pinhole draws what the lens draws `r` px
+    /// from it; `None` from the focal length out, which the lens draws
+    /// from rays at a right angle to its axis or wider.
+    fn unbent(&self, r: f64) -> Option<f64> {
+        let left = 1.0 - (r / self.focal).powi(2);
+        (left > 0.0).then(|| r / left.sqrt())
+    }
+
+    /// Where the point `p` of what it reads shows once drawn, removing
+    /// the lens or adding it; `None` where it goes beyond every distance.
+    fn moved(&self, p: Point, remove: bool) -> Option<Point> {
+        let d = p - self.center;
+        let r = d.hypot();
+        if r <= 0.0 {
+            return Some(p);
+        }
+        let to = match remove {
+            true => self.unbent(r)?,
+            false => self.bent(r),
+        };
+        Some(self.center + d * (to / r))
+    }
+
+    /// The point read for the drawn point `p`, removing the lens or adding
+    /// it: the inverse of [`Lens::moved`].
+    fn read(&self, p: Point, remove: bool) -> Option<Point> {
+        let d = p - self.center;
+        let r = d.hypot();
+        if r <= 0.0 {
+            return Some(p);
+        }
+        let from = match remove {
+            true => self.bent(r),
+            false => self.unbent(r)?,
+        };
+        Some(self.center + d * (from / r))
+    }
+}
+
+/// The layer's box once `lens-distortion` has run on `bounds`: as it was
+/// with `grow` `off`; else grown to hold all the lens draws of the box,
+/// but no more than twice (`2x`) or four times (`4x`) its width and
+/// height about its middle.
+pub(crate) fn lens_box(bounds: Rect, values: &[ParamValue]) -> Rect {
+    let most = match choice(values, 4) {
+        1 => 2.0,
+        2 => 4.0,
+        _ => return bounds,
+    };
+    let Some(lens) = Lens::new(values, bounds) else {
+        return bounds;
+    };
+    let remove = choice(values, 2) == 1;
+    let cap = Rect::from_center_size(bounds.center(), bounds.size() * most);
+    // The image of the box's outline holds the image of the box: the lens
+    // moves every point along its ray from the axis, keeping their order.
+    let corners = [
+        Point::new(bounds.x0, bounds.y0),
+        Point::new(bounds.x1, bounds.y0),
+        Point::new(bounds.x1, bounds.y1),
+        Point::new(bounds.x0, bounds.y1),
+    ];
+    const STEPS: usize = 256;
+    let mut held = bounds;
+    for side in 0..4 {
+        let (from, to) = (corners[side], corners[(side + 1) % 4]);
+        for step in 0..STEPS {
+            let p = from.lerp(to, step as f64 / STEPS as f64);
+            let shown = match lens.moved(p, remove) {
+                Some(shown) => shown,
+                // Out to infinity along its ray: as far as the cap.
+                None => ray_exit(lens.center, p - lens.center, cap).unwrap_or(p),
+            };
+            held = held.union_pt(shown);
+        }
+    }
+    held.intersect(cap)
+}
+
+/// Where the ray from `from` along `along` leaves `rect`, if it starts in
+/// it.
+fn ray_exit(from: Point, along: Vec2, rect: Rect) -> Option<Point> {
+    if !rect.contains(from) {
+        return None;
+    }
+    let reach = |p: f64, d: f64, lo: f64, hi: f64| match d {
+        d if d > 0.0 => (hi - p) / d,
+        d if d < 0.0 => (lo - p) / d,
+        _ => f64::INFINITY,
+    };
+    let t = reach(from.x, along.x, rect.x0, rect.x1).min(reach(from.y, along.y, rect.y0, rect.y1));
+    t.is_finite().then(|| from + along * t)
+}
+
+/// `lens-distortion`: the layer bent about `center` as a lens whose field
+/// of view, `field-of-view` degrees, spans the box's width, height or
+/// diagonal (`field`) draws it, or, with `distortion` `remove`, unbent as a
+/// pinhole would draw what the lens drew ([`Lens`]). What it draws stays
+/// in the box, or the box `grow` lets it reach ([`lens_box`]), and it reads
+/// only the box.
+pub(crate) fn lens_distortion(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let bounds = layer_box(pixels, space);
+    let Some(lens) = Lens::new(values, bounds) else {
+        return;
+    };
+    let remove = choice(values, 2) == 1;
+    let shown = lens_box(bounds, values);
+    remap(pixels, space, |[x, y]| {
+        let p = Point::new(f64::from(x), f64::from(y));
+        if !shown.contains(p) {
+            return None;
+        }
+        let at = lens.read(p, remove)?;
+        bounds.contains(at).then_some([at.x as f32, at.y as f32])
     });
 }
 

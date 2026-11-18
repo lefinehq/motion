@@ -178,13 +178,34 @@ pub enum Reach {
     /// Anywhere in the layer's box ([`Layer::bounds`](crate::Layer::bounds)),
     /// reading anywhere in it; anywhere at all for a layer without one.
     Bounds,
-    /// Anywhere in the layer's box grown by these px on its left, top,
-    /// right and bottom, reading anywhere in its box: the box it leaves to
-    /// the effects after it, and the one its layer's clip grows to. For a
-    /// layer without a box, anywhere at all.
-    Grows([f32; 4]),
+    /// Anywhere in the layer's box grown as the [`Growth`] says, reading
+    /// anywhere in its box: the box it leaves to the effects after it, and
+    /// the one its layer's clip grows to. For a layer without a box,
+    /// anywhere at all.
+    Grows(Growth),
     /// Anywhere on the layer's plane, reading anywhere on it.
     Anywhere,
+}
+
+/// How an effect grows its layer's box ([`Reach::Grows`]).
+#[derive(Debug, Clone, Copy)]
+pub enum Growth {
+    /// By these px on its left, top, right and bottom.
+    By([f32; 4]),
+    /// To the box this works out from the box before and the effect's
+    /// parameter values, for an effect whose growth follows the box's
+    /// size, such as a lens whose field spans it.
+    To(fn(Rect, &[ParamValue]) -> Rect),
+}
+
+impl PartialEq for Growth {
+    fn eq(&self, other: &Growth) -> bool {
+        match (self, other) {
+            (Growth::By(a), Growth::By(b)) => a == b,
+            (Growth::To(a), Growth::To(b)) => std::ptr::fn_addr_eq(*a, *b),
+            _ => false,
+        }
+    }
 }
 
 /// What an effect does to the layer it is on.
@@ -1315,6 +1336,57 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "lens-distortion",
+        params: &[
+            ParamSpec {
+                name: "field-of-view",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 180.0)),
+                choices: &[],
+                doc: "how wide the lens sees across the span `field` names, in degrees; 0 \
+                      bends nothing",
+            },
+            ParamSpec {
+                name: "center",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "where the lens's axis meets the layer, in px of the layer's own \
+                      coordinates",
+            },
+            ParamSpec {
+                name: "distortion",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["add", "remove"],
+                doc: "`add` draws the layer as the lens sees it, drawn in towards the \
+                      axis; `remove` undoes the lens, stretching the layer out from it",
+            },
+            ParamSpec {
+                name: "field",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["horizontal", "vertical", "diagonal"],
+                doc: "the span of the layer's box the field of view covers: its width, \
+                      its height or its diagonal",
+            },
+            ParamSpec {
+                name: "grow",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["off", "2x", "4x"],
+                doc: "whether the layer's box grows to hold what the lens draws beyond \
+                      it, up to twice or four times its width and height",
+            },
+        ],
+        doc: "bends the layer about a point as a wide lens would, or undoes the bend",
+        reach: lens_reach,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: distort::lens_distortion,
+        },
+    },
+    EffectSpec {
         name: "repeat-tile",
         params: &[
             ParamSpec {
@@ -2303,16 +2375,17 @@ impl Effect {
         (self.spec.reach)(&self.values)
     }
 
-    /// The layer's box once it has run: `bounds` grown on each side by as
-    /// much as it draws beyond them ([`Reach::Grows`]).
+    /// The layer's box once it has run: `bounds` grown as far as it draws
+    /// beyond them ([`Reach::Grows`]).
     pub fn grown(&self, bounds: Rect) -> Rect {
         match self.reach() {
-            Reach::Grows([left, top, right, bottom]) => Rect::new(
+            Reach::Grows(Growth::By([left, top, right, bottom])) => Rect::new(
                 bounds.x0 - f64::from(left),
                 bounds.y0 - f64::from(top),
                 bounds.x1 + f64::from(right),
                 bounds.y1 + f64::from(bottom),
             ),
+            Reach::Grows(Growth::To(grow)) => grow(bounds, &self.values),
             _ => bounds,
         }
     }
@@ -2584,10 +2657,19 @@ fn turbulent_reach(values: &[ParamValue]) -> Reach {
     Reach::Within(2.0 * (number_at(values, 0) / 100.0 * number_at(values, 1)).abs())
 }
 
+/// `lens-distortion` draws within the layer's box, or grows it to hold
+/// what the lens draws beyond it.
+fn lens_reach(values: &[ParamValue]) -> Reach {
+    match values[4] {
+        ParamValue::Choice(0) => Reach::Bounds,
+        _ => Reach::Grows(Growth::To(distort::lens_box)),
+    }
+}
+
 /// `repeat-tile` grows the box by how far its tiles reach each way.
 fn repeat_tile_reach(values: &[ParamValue]) -> Reach {
     let [right, left, down, up] = std::array::from_fn(|i| number_at(values, i));
-    Reach::Grows([left, up, right, down])
+    Reach::Grows(Growth::By([left, up, right, down]))
 }
 
 /// `gaussian-blur` spreads by its Gaussian.

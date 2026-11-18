@@ -38,8 +38,8 @@ mod total;
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use composite::{OPERATIONS, Operation, OperationSpec};
 pub use effect::{
-    Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Input, Move, ParamSpec, ParamType,
-    ParamValue, Reach, Space,
+    Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Growth, Input, Move, ParamSpec,
+    ParamType, ParamValue, Reach, Space,
 };
 pub use homography::Homography;
 pub use image::Image;
