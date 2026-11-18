@@ -393,6 +393,14 @@ An effect parameter that names a layer (`pard` control 0) reads that layer's dra
 | K1. A collapsed precomposition read by an effect is its composition in its own coordinates, as if it were not collapsed: collapsing changes where it draws, not what the effect reads. | m785's `Adjustment Glitch` layers displace the frame by `Noise Precomp 1`, a hidden, collapsed 3840 by 2160 composition of block noise 7.65 % high, scaled to 0.047 by 0.084 under a parent. Its collapsed layers carried the comp layer's transform, and the read laid them on the reading layer's coordinates once more, so the map read as one level almost everywhere: the frame moved as one by the full displacement (164 px across at 0.4 s, every row alike but at the frame's edges). The reference cuts the frame into thin horizontal slices, each moved its own way; read as its composition, ours does too. | 4 local samples read a collapsed composition, all by `ADBE Displacement Map`: m577, m785, and m598 and m601, excluded |
 
 Over all frames, m785 fails on 49.67 % → 45.67 % of its content (content error 0.0608 → 0.0431) and m577's content error goes 0.4441 → 0.4320; m598 and m601 do not move, and no sample passes more frames. m785 still differs in its glitch frames: there the reference shows the clip further along (the runner smaller, nearer the sea) than the scene's clip at the same time, which this change does not explain.
+## Inverted noise
+
+`ADBE Fractal Noise-0003`, the noise's invert checkbox, becomes the `fractal-noise` effect's `polarity` (`inverted`). The belief says where the inversion falls among the level's steps. It was measured once, by hand; the sweep does not check it.
+
+| Belief | Evidence | Held, 2026-11-18 |
+|---|---|---|
+| N1. The level is inverted first, and contrast, brightness and overflow then apply to the inverted level. | A third-party project's background stacks an inverted noise at contrast 1.73 and brightness −0.39 under a curve that sends every level above 0.63 to white. Its reference stills are dark, with bright thin streaks over the whole frame. Inverting last turned the darkened field over into a white one with dark streaks, which the curve then sent to white everywhere. Inverting first gives the reference's dark field and bright streaks. m569, the one corpus sample with an inverted noise, keys its brightness: where our layer draws, the content error falls from 0.6954 to 0.2370 over its 8 scored frames; over the whole frame it moves from 0.7764 to 0.6644. | 1 corpus sample and 1 project outside the corpus |
+
 ## Levels
 
 `ADBE Easy Levels2` keeps its levels in its histogram parameter (`-0002`), as data: 108 bytes in every local sample. The effect definitions the projects carry mark that parameter animatable and the sliders (`-0003` to `-0007`) and the channel menu (`-0001`) not. These beliefs say how the data reads and how the effect applies it. They were checked by hand over every local sample; the sweep does not check them yet.
