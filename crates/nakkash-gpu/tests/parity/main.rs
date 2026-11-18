@@ -48,6 +48,16 @@ const TOLERANCES: &[(&str, f32)] = &[
     // rounding puts it on the other side; the cases stay off that edge.
     ("radial-zoom", 3e-6),
     ("radial-spin", 3e-6),
+    // The vector blur's streaks follow the slope's direction even where
+    // it is all but flat, and take their samples up to 4,000 px away,
+    // where a float holds a px to 2.4e-4.
+    ("vector-blur", 2e-4),
+    // With the map softened, its colour is divided by an alpha that fades
+    // out, which magnifies a float's rounding of the Gaussian into the
+    // slope: streak ends move, and in a few px the number of samples a
+    // streak takes, a whole number by its length, changes by one. Every
+    // other px stays within 1e-5.
+    ("vector-blur-softened", 5e-3),
 ];
 
 pub(crate) fn tolerance(name: &str) -> f32 {

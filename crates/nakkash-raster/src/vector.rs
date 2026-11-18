@@ -16,13 +16,14 @@ use crate::blur::{Edges, SIGMA_PER_BLURRINESS, gaussian};
 use crate::colour::{choice, number};
 use crate::effect::{ParamValue, Space};
 use crate::pixels::{Pixel, Pixels};
+use crate::plan::Blur;
 
 /// The most samples a streak takes: past it they spread out evenly.
 const MOST_SAMPLES: usize = 96;
 
 /// Which streak each pixel takes from its vector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Streak {
+pub enum Streak {
     /// Along the slope, both ways, as long as the slope is steep.
     Natural,
     /// Along the slope, both ways, always the full length.
@@ -50,14 +51,22 @@ impl Streak {
 
 /// A level of a map, 0 to 1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Level {
+pub enum Level {
+    /// The straight red.
     Red,
+    /// The straight green.
     Green,
+    /// The straight blue.
     Blue,
+    /// The alpha.
     Alpha,
+    /// Rec. 601's luma of the straight colour.
     Luminance,
+    /// The mean of the straight colour's largest and smallest channel.
     Lightness,
+    /// The straight colour's hue, a share of a turn from red.
     Hue,
+    /// The straight colour's saturation, by its lightness.
     Saturation,
 }
 
@@ -192,30 +201,82 @@ fn smear(
     }
 }
 
-/// `vector-blur`: the layer smeared along the slope of a level of `map`
-/// (its own drawing without one): `natural` both ways as long as the
-/// slope is steep, `amount` px at the steepest; `constant-length` always
-/// `amount` px; `perpendicular` across the slope; `direction-center` and
-/// `direction-fading` behind the pixel only, the latter fading. The map's
-/// level is softened by `softness` and its slope by `ridge-smoothness`,
-/// each as a blurriness, and every vector turns `angle` degrees
-/// clockwise.
-pub(crate) fn vector_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
-    let amount = number(values, 0);
-    let turn = number(values, 1).to_radians();
-    let ridge = number(values, 2) * SIGMA_PER_BLURRINESS;
-    let softness = number(values, 3) * SIGMA_PER_BLURRINESS;
-    let streak = Streak::ALL[choice(values, 4)];
-    let level = Level::ALL[choice(values, 5)];
-    let (width, height) = (usize::from(pixels.width()), usize::from(pixels.height()));
-    if width == 0 || height == 0 || amount == 0.0 {
-        return;
+/// `vector-blur`'s plan: the layer smeared along the slope of a level of
+/// a map layer (its own drawing without one). The map's level is softened
+/// by `softness` and its slope by `ridge`, each a standard deviation in px
+/// of the layer, and every vector turns `turn` radians clockwise; lengths
+/// reach the grid through `scale`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VectorBlur {
+    /// How long the streaks are at the steepest, in px of the layer.
+    pub amount: f32,
+    /// How far every vector turns, in radians clockwise.
+    pub turn: f32,
+    /// The standard deviation the slope is softened by, in px of the layer.
+    pub ridge: f32,
+    /// The standard deviation the map's level is softened by, in px of the
+    /// layer.
+    pub softness: f32,
+    /// How each streak follows the slope.
+    pub streak: Streak,
+    /// Which level of the map the slope is taken of.
+    pub level: Level,
+    /// How many px of the grid one px of the layer is.
+    pub scale: f32,
+}
+
+impl VectorBlur {
+    /// The Gaussian that softens the map's level, if it does.
+    pub fn softening(&self) -> Option<Blur> {
+        (self.softness > 0.0)
+            .then(|| Blur::gaussian([self.softness * self.scale; 2], Edges::Repeat))
     }
+
+    /// The Gaussian that softens the slope, if it does.
+    pub fn smoothing(&self) -> Option<Blur> {
+        let smoothing = self.ridge * self.scale;
+        (smoothing > 0.0).then(|| Blur::gaussian([smoothing; 2], Edges::Repeat))
+    }
+}
+
+/// [`VectorBlur`] from `vector-blur`'s values in `space`: `natural` both
+/// ways as long as the slope is steep, `amount` px at the steepest;
+/// `constant-length` always `amount` px; `perpendicular` across the
+/// slope; `direction-center` and `direction-fading` behind the pixel
+/// only, the latter fading. `softness` and `ridge-smoothness` are
+/// blurrinesses, and every vector turns `angle` degrees clockwise.
+pub(crate) fn vector_blur_plan(values: &[ParamValue], space: &Space) -> VectorBlur {
     // Lengths in the layer's px, through its scale.
     let scale = {
         let [a, b, c, d, ..] = space.transform.as_coeffs();
         (a * d - b * c).abs().sqrt() as f32
     };
+    VectorBlur {
+        amount: number(values, 0),
+        turn: number(values, 1).to_radians(),
+        ridge: number(values, 2) * SIGMA_PER_BLURRINESS,
+        softness: number(values, 3) * SIGMA_PER_BLURRINESS,
+        streak: Streak::ALL[choice(values, 4)],
+        level: Level::ALL[choice(values, 5)],
+        scale,
+    }
+}
+
+/// `vector-blur`, see [`vector_blur_plan`].
+pub(crate) fn vector_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let VectorBlur {
+        amount,
+        turn,
+        ridge,
+        softness,
+        streak,
+        level,
+        scale,
+    } = vector_blur_plan(values, space);
+    let (width, height) = (usize::from(pixels.width()), usize::from(pixels.height()));
+    if width == 0 || height == 0 || amount == 0.0 {
+        return;
+    }
     let mut map = match &space.input {
         Some(input) => input.pixels.clone(),
         None => pixels.clone(),

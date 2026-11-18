@@ -8,6 +8,7 @@
 mod blur;
 mod composite;
 mod radial;
+mod vector;
 
 pub(crate) use composite::operation_row;
 
@@ -25,15 +26,15 @@ pub(crate) fn runs(plan: &Plan) -> bool {
         plan,
         Plan::Blur(_) | Plan::Shadow(_) | Plan::Glow(_) | Plan::SolidComposite(_)
     ) || matches!(plan, Plan::Radial(r) if radial::runs(r))
+        || matches!(plan, Plan::Vector(_))
 }
 
 /// Whether `plan` reads the drawing of another layer, which the kernels
 /// take from [`Space::input`]. An effect that reads one runs on the GPU
 /// only when its plan says so.
 pub(crate) fn reads_input(plan: &Plan) -> bool {
-    // No family with a kernel reads one yet.
-    let _ = plan;
-    false
+    // The vector blur's map.
+    matches!(plan, Plan::Vector(_))
 }
 
 impl Gpu {
@@ -66,6 +67,7 @@ pub(crate) fn run(
         Plan::Shadow(shadow) => gpu.shadow(batch, grid, shadow),
         Plan::SolidComposite(solid) => gpu.solid_composite(batch, grid, solid),
         Plan::Radial(radial) => gpu.radial(batch, grid, radial),
+        Plan::Vector(vector) => gpu.vector(batch, grid, vector, space),
         _ => {
             return Err(
                 Diagnostic::new(Kind::Invalid, "the GPU has no kernel for this plan")

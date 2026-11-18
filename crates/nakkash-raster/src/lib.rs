@@ -75,6 +75,7 @@ pub use style::{
     Join, Paint, Stop, StrokeStyle,
 };
 pub use total::{Total, TotalPiece};
+pub use vector::{Level as VectorLevel, Streak as VectorStreak, VectorBlur};
 /// The geometry and font types display lists are made of: vocabulary crates
 /// the rasteriser shares, named from themselves so it stays private ([D37]).
 ///

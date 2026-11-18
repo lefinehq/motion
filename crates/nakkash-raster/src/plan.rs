@@ -17,6 +17,7 @@ use crate::blur::{self, Edges, gaussian_radius};
 use crate::composite::{self, Operation, SolidComposite};
 use crate::effect::{Effect, ParamValue, Space};
 use crate::radial::{self, RadialBlur};
+use crate::vector::{self, VectorBlur};
 
 /// The steps an effect runs on its layer's pixels. More variants come as
 /// more effects gain plans, so a match on one needs a catch-all arm.
@@ -33,6 +34,8 @@ pub enum Plan {
     SolidComposite(SolidComposite),
     /// The layer streaked along rays out from a point or rings round it.
     Radial(RadialBlur),
+    /// The layer smeared along the slope of a map's level.
+    Vector(VectorBlur),
 }
 
 /// Passes of one extended box along one way of the grid: each averages
@@ -171,6 +174,10 @@ pub const PLANS: &[PlanSpec] = &[
     PlanSpec {
         name: "radial-blur",
         plan: |values, space| Plan::Radial(radial::radial_blur_plan(values, space)),
+    },
+    PlanSpec {
+        name: "vector-blur",
+        plan: |values, space| Plan::Vector(vector::vector_blur_plan(values, space)),
     },
 ];
 

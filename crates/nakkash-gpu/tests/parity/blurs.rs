@@ -141,3 +141,125 @@ fn radial_blurs_of_nothing_change_nothing() {
         &space(Affine::IDENTITY),
     );
 }
+
+/// A vector blur by `streak` along the slope of `level`.
+fn vector(amount: f32, angle: f32, ridge: f32, softness: f32, streak: u8, level: u8) -> Effect {
+    Effect::new(
+        "vector-blur",
+        &[
+            ("amount", ParamValue::Number(amount)),
+            ("angle", ParamValue::Number(angle)),
+            ("ridge-smoothness", ParamValue::Number(ridge)),
+            ("softness", ParamValue::Number(softness)),
+            ("type", ParamValue::Choice(streak)),
+            ("map-level", ParamValue::Choice(level)),
+        ],
+    )
+    .expect("a vector blur")
+}
+
+/// Checks `vector(...)` on `pixels` in `space`, by the row its softness
+/// puts it in.
+fn vector_matches(case: &str, effect: &Effect, softness: f32, pixels: &Pixels, space: &Space) {
+    let name = match softness > 0.0 {
+        true => "vector-blur-softened",
+        false => "vector-blur",
+    };
+    effect_matches(name, case, effect, pixels, space);
+}
+
+#[test]
+fn vector_blurs_match_by_every_streak_and_level() {
+    let pixels = pattern(181, 117, 60);
+    let one = space(Affine::IDENTITY);
+    for streak in 0..5 {
+        for level in 0..8 {
+            for (ridge, softness) in [(1.0, 0.0), (0.0, 0.0), (1.0, 6.0)] {
+                vector_matches(
+                    &format!("streak {streak} level {level} ridge {ridge} softness {softness}"),
+                    &vector(12.0, 20.0, ridge, softness, streak, level),
+                    softness,
+                    &pixels,
+                    &one,
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn vector_blurs_match_at_their_extremes() {
+    let pixels = pattern(129, 97, 61);
+    let one = space(Affine::IDENTITY);
+    for (amount, angle, ridge, softness) in [
+        (4_000.0, 0.0, 0.0, 0.0),
+        (-4_000.0, 135.0, 30.0, 0.0),
+        (60.0, 400.0, 1_000.0, 0.0),
+        (0.3, 0.0, 1.0, 0.0),
+        (-25.0, -90.0, 0.0, 40.0),
+        (0.3, 0.0, 1.0, 15.0),
+    ] {
+        for streak in 0..5 {
+            vector_matches(
+                &format!("{amount} {angle} {ridge} {softness} streak {streak}"),
+                &vector(amount, angle, ridge, softness, streak, 0),
+                softness,
+                &pixels,
+                &one,
+            );
+        }
+    }
+}
+
+#[test]
+fn vector_blurs_match_on_a_large_grid() {
+    let pixels = pattern(1_920, 1_080, 64);
+    let one = space(Affine::IDENTITY);
+    for streak in [0, 3] {
+        vector_matches(
+            &format!("1080p streak {streak}"),
+            &vector(40.0, 10.0, 2.0, 0.0, streak, 5),
+            0.0,
+            &pixels,
+            &one,
+        );
+    }
+}
+
+#[test]
+fn vector_blurs_match_by_a_map_through_a_scaled_layer() {
+    let pixels = pattern(97, 203, 62);
+    let mut mapped = space(Affine::translate((3.5, -2.0)) * Affine::scale(1.7));
+    mapped.input = Some(nakkash_raster::Input {
+        pixels: pattern(97, 203, 63),
+        bounds: None,
+    });
+    for streak in 0..5 {
+        for level in [0, 4, 6] {
+            for softness in [0.0, 4.0] {
+                vector_matches(
+                    &format!("mapped streak {streak} level {level} softness {softness}"),
+                    &vector(9.0, 30.0, 2.0, softness, streak, level),
+                    softness,
+                    &pixels,
+                    &mapped,
+                );
+            }
+        }
+    }
+    // A flat map: no slope anywhere.
+    let mut flat = space(Affine::IDENTITY);
+    flat.input = Some(nakkash_raster::Input {
+        pixels: Pixels::from_data(97, 203, vec![[0.2, 0.3, 0.4, 1.0]; 97 * 203]),
+        bounds: None,
+    });
+    for streak in 0..5 {
+        vector_matches(
+            &format!("flat streak {streak}"),
+            &vector(9.0, 0.0, 1.0, 1.0, streak, 0),
+            1.0,
+            &pixels,
+            &flat,
+        );
+    }
+}
