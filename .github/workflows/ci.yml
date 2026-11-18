@@ -1,8 +1,16 @@
 name: CI
 
+# Pull requests merge into `development` after the contributor's local checks;
+# CI runs once on each push there, and `main` moves to a `development` commit
+# only after CI passed on it.
 on:
   push:
-  pull_request:
+    branches: [main, development]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/development' }}
 
 jobs:
   check:

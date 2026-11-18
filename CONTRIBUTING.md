@@ -20,7 +20,12 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-CI runs the same commands on Linux and macOS.
+CI runs the same commands on Linux and macOS, on each push to `development` and `main`, not on pull requests.
+
+## Branches
+
+- Open pull requests against `development`. They merge once these local checks pass.
+- `main` only moves forward to a `development` commit whose CI run passed, so `main` is always a commit CI has passed.
 
 ## Where tests live
 
