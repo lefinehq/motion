@@ -176,6 +176,7 @@ fn only_colours_past_the_threshold_glow() {
             ParamValue::Number(1.0),
             ParamValue::Choice(0),
             ParamValue::Choice(0),
+            ParamValue::Choice(0),
         ];
         glow(&mut pixels, &values, &ONE);
         pixels
@@ -185,6 +186,58 @@ fn only_colours_past_the_threshold_glow() {
     assert!(bright.get(12, 0)[3] > 0.0);
     // The original stays, its light added to.
     assert_eq!(bright.get(10, 0)[3], 1.0);
+}
+
+/// A grey bar with a white pixel in its middle, glowing by `composite`
+/// and the operation called `operation`.
+fn glow_by(composite: u8, operation: &str) -> Pixels {
+    let mut pixels = Pixels::transparent(21, 1);
+    pixels.data_mut().fill(GREY);
+    pixels.data_mut()[10] = [1.0; 4];
+    let at = GLOW_OPERATIONS
+        .iter()
+        .position(|o| *o == operation)
+        .unwrap();
+    let values = [
+        ParamValue::Number(0.6),
+        ParamValue::Number(10.0),
+        ParamValue::Number(1.0),
+        ParamValue::Choice(0),
+        ParamValue::Choice(composite),
+        ParamValue::Choice(u8::try_from(at).unwrap()),
+    ];
+    glow(&mut pixels, &values, &ONE);
+    pixels
+}
+
+const GREY: Pixel = [0.4, 0.4, 0.4, 1.0];
+
+#[test]
+fn every_glow_operation_is_an_operation() {
+    assert_eq!(GLOW_OPERATIONS[0], "add");
+    for name in GLOW_OPERATIONS {
+        assert!(Operation::named(name).is_ok(), "{name}");
+    }
+}
+
+#[test]
+fn a_glow_combines_with_its_layer_by_its_operation() {
+    // Beside the white pixel its light is white at some alpha `a`.
+    let alone = glow_by(1, "add").get(12, 0);
+    let a = alone[3];
+    assert!(a > 0.0 && a < 1.0 && alone[0] == a, "{alone:?}");
+    let grey = GREY[0];
+    // Laid over the grey: added, screened, or covering it by `a`.
+    let near = |op: &str, composite: u8| glow_by(composite, op).get(12, 0)[0];
+    assert!((near("add", 0) - (grey + a)).abs() < 1e-6);
+    assert!((near("screen", 0) - (grey + a - grey * a)).abs() < 1e-6);
+    assert!((near("normal", 0) - (grey + (1.0 - grey) * a)).abs() < 1e-6);
+    // Behind the opaque grey, normal light is hidden; screen is the same
+    // either way round.
+    assert_eq!(glow_by(2, "normal").get(12, 0), GREY);
+    assert!((near("screen", 2) - near("screen", 0)).abs() < 1e-6);
+    // Alone, the light is all there is, whatever the operation.
+    assert_eq!(glow_by(1, "screen").get(12, 0), alone);
 }
 
 #[test]

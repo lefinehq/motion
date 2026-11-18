@@ -339,8 +339,42 @@ const OVERFLOWS: &[(i64, &str)] = &[
 const DIMENSIONS: &[(i64, &str)] = &[(1, "both"), (2, "horizontal"), (3, "vertical")];
 const EDGES: &[(i64, &str)] = &[(0, "transparent"), (1, "repeat")];
 const SHADOW_ONLY: &[(i64, &str)] = &[(0, "shown"), (1, "hidden")];
-const GLOW_COMPOSITE: &[(i64, &str)] =
-    &[(1, "with-original"), (2, "with-original"), (3, "glow-only")];
+// The project's choices say where the original goes: on top of the glow
+// (1), behind it (2), or not at all (3).
+const GLOW_COMPOSITE: &[(i64, &str)] = &[
+    (1, "behind-original"),
+    (2, "with-original"),
+    (3, "glow-only"),
+];
+/// The glow's operations by the project's codes, its menu read in order.
+/// 1, none, is reported: no sample shows what a glow combined by no
+/// operation draws.
+const GLOW_OPERATIONS: &[(i64, &str)] = &[
+    (2, "normal"),
+    (3, "add"),
+    (4, "multiply"),
+    (5, "dissolve"),
+    (6, "screen"),
+    (7, "overlay"),
+    (8, "soft-light"),
+    (9, "hard-light"),
+    (10, "darken"),
+    (11, "lighten"),
+    (12, "difference"),
+    (13, "hue"),
+    (14, "saturation"),
+    (15, "color"),
+    (16, "luminosity"),
+    (17, "color-dodge"),
+    (18, "color-burn"),
+    (19, "exclusion"),
+    (20, "stencil-alpha"),
+    (21, "stencil-luma"),
+    (22, "silhouette-alpha"),
+    (23, "silhouette-luma"),
+    (24, "premultiplied-over"),
+    (25, "alpha-add"),
+];
 /// Why a levels effect's channel menu changes nothing a frame shows.
 const PANEL_CHANNEL: &str = "which channel's levels the effect's panel shows";
 /// Why a levels effect's sliders change nothing a frame shows.
@@ -3059,7 +3093,7 @@ pub(super) static KINDS: [Kind; 46] = [
             ),
             row(
                 "ADBE Glo2-0006",
-                To::OnlyDefault("a glow operation other than add"),
+                To::Setting("operation", GLOW_OPERATIONS),
                 Number,
                 Parameter,
             ),

@@ -320,6 +320,20 @@ Other things we take without evidence:
 - **Unequal thicknesses.** Every local laser draws the same thickness at both ends after expressions; the scene runs it straight from one to the other along the line.
 - **3D Perspective and Composite On Original.** No sample shows what 3D Perspective changes; the scene draws the beam flat and reports a laser that turns it off. No sample turns on Composite On Original; the scene keeps the layer under the beam when it is on.
 
+## Glows
+
+`ADBE Glo2` becomes `glow`. Its light is the layer's colours past the threshold, blurred and scaled by the intensity; these beliefs say how that light meets the layer. They were measured once, by hand, against the corpus's reference frames; the sweep does not check them.
+
+| Belief | Evidence | Held, 2026-11-18 |
+|---|---|---|
+| G1. `Glow Operation` (`-0006`) is a menu of 25 choices whose codes count from 1 in the order the effect's definition stores them (`pdnm` beside the parameter's `pard`), with no separators: 1 none, 2 normal, 3 add (the default), 4 multiply, 5 dissolve, 6 screen, 7 overlay, 8 soft light, 9 hard light, 10 darken, 11 lighten, 12 difference, 13 hue, 14 saturation, 15 colour, 16 luminosity, 17 colour dodge, 18 colour burn, 19 exclusion, 20 and 21 stencil by alpha and by luma, 22 and 23 silhouette by alpha and by luma, 24 a premultiplied over, 25 alpha add. | The 33 local projects that define the effect store the same list. The 4 glows of m774 hold 6; as screen its content error falls 0.0490 → 0.0475 over all frames, the light no longer brightening the opaque layers it covers past what screen allows. | 33 definitions, 14 glows that set an operation |
+| G2. `Composite Original` (`-0005`, `On Top`, `Behind`, `None`, default 2) says where the layer goes against its light: behind it, the light is laid over the layer by the operation (`with-original`); on top, the layer over the light (`behind-original`); none, the light alone (`glow-only`). | The names of the parameter and its choices; the default with the default operation, add, is the glow every corpus sample draws. m632's 10 glows use normal behind their layer and recolour it with a fill after, so only their alpha shows; it does not tell the two orders apart (both orders drew the same to the fourth decimal; 0.0974 against 0.0968 as add). | 33 definitions; no local glow sets `-0005` |
+
+Other things we take without evidence:
+- **The operations no sample uses.** Every operation but add, normal and screen is taken from its name: the blend modes blend as the layer blend modes of those names do, and the others as [compositing inside an effect](scene-format.md#shapes-masks-effects-and-compositions) describes them. Dissolve scatters by our own fixed pattern, so its pixels are not the original's.
+- **None (code 1)** is reported: whether a glow combined by no operation draws its layer, its light, or both is not shown by any sample.
+- **The original on top** with an operation other than add and screen, which give the same either way round: no sample sets it.
+
 ## Effects that draw in place of their layer
 
 Some generators draw something sparse of their own, particles, stars, a beam, from their layer and keep none of its pixels. While the scene cannot draw one, the import draws its layer as nothing, rather than the solid the effect covers: the `Policy::InPlace` effects of the import's policy table, reported as unsupported with the layer. Generators that fill their layer (gradients, noise, cells) keep their solid as the nearer stand-in, and effects that draw over their layer's pixels (a lens flare) keep them. The beliefs were measured once, by hand, against the reference frames; the sweep does not check them.
