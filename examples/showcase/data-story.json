@@ -4170,7 +4170,7 @@
           "fill": "#9AA3B0",
           "style": {"tracking": 140, "caps": "all", "align": "right"},
           "anchor": [0, 0],
-          "at": "1824 254",
+          "at": "1821 254",
           "animate": [
             {
               "animator": [{"range": "char-no-space"}],
