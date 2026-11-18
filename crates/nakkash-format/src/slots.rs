@@ -89,6 +89,13 @@ pub struct Slot {
     ///
     /// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
     pub role: Option<Id>,
+    /// Whether changing it was last seen to change the render: `false` when
+    /// `nakkash slots --verify --mark` found it changes nothing, so a
+    /// variant leaves it as it is ([D77]). Most often what follows it is
+    /// drawn under something or not drawn yet, a gap a render fix closes.
+    ///
+    /// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+    pub seen: bool,
 }
 
 /// The slots of a scene: its own, and each composition's by id.
@@ -109,7 +116,7 @@ impl Declared {
 }
 
 /// The written form of a slot's declaration.
-const FORM: &str = r##"a colour, a number, [x, y], {"text":"…"}, {"image":"…"} or {"video":"…"}, optionally typed, labelled and given a role, e.g. {"color":"#E63946","label":"Accent","role":"accent"}"##;
+const FORM: &str = r##"a colour, a number, [x, y], {"text":"…"}, {"image":"…"} or {"video":"…"}, optionally typed, labelled, given a role and marked unseen, e.g. {"color":"#E63946","label":"Accent","role":"accent"}"##;
 
 /// The slots `raw`, a scene's JSON, declares on itself and on its
 /// compositions.
@@ -158,7 +165,7 @@ fn slots_of(owner: &Json) -> Result<Vec<Slot>> {
 /// One slot, `id` declared as `written`.
 fn slot(id: &str, written: &Json) -> Result<Slot> {
     let id: Id = id.parse()?;
-    let (ty, value, label, role) = match written {
+    let (ty, value, label, role, seen) = match written {
         Json::Object(fields) => {
             let label = match fields.get(LABEL) {
                 None => None,
@@ -170,22 +177,29 @@ fn slot(id: &str, written: &Json) -> Result<Slot> {
                 Some(Json::String(role)) => Some(role.parse::<Id>().map_err(|e| e.under(ROLE))?),
                 Some(_) => return Err(invalid(written)),
             };
+            let seen = match fields.get(SEEN) {
+                None => true,
+                Some(Json::Bool(seen)) => *seen,
+                Some(_) => return Err(invalid(written)),
+            };
             let mut typed = fields
                 .iter()
-                .filter(|(name, _)| *name != LABEL && *name != ROLE);
+                .filter(|(name, _)| ![LABEL, ROLE, SEEN].contains(&name.as_str()));
             let (Some((name, value)), None) = (typed.next(), typed.next()) else {
                 return Err(invalid(written));
             };
             let ty = SlotType::named(name).ok_or_else(|| {
                 Diagnostic::unknown("slot type", name, SlotType::NAMES.map(|(n, _)| n))
             })?;
-            (ty, value.clone(), label, role)
+            (ty, value.clone(), label, role, seen)
         }
-        Json::Number(_) => (SlotType::Number, written.clone(), None, None),
+        Json::Number(_) => (SlotType::Number, written.clone(), None, None, true),
         // Two numbers are a point; three or four, a colour's channels.
-        Json::Array(items) if items.len() == 2 => (SlotType::Point, written.clone(), None, None),
-        Json::Array(_) => (SlotType::Color, written.clone(), None, None),
-        Json::String(_) => (SlotType::Color, written.clone(), None, None),
+        Json::Array(items) if items.len() == 2 => {
+            (SlotType::Point, written.clone(), None, None, true)
+        }
+        Json::Array(_) => (SlotType::Color, written.clone(), None, None, true),
+        Json::String(_) => (SlotType::Color, written.clone(), None, None, true),
         _ => return Err(invalid(written)),
     };
     check_fits(ty, &value).map_err(|d| d.expected(FORM))?;
@@ -195,6 +209,7 @@ fn slot(id: &str, written: &Json) -> Result<Slot> {
         value,
         label,
         role,
+        seen,
     })
 }
 
@@ -202,6 +217,8 @@ fn slot(id: &str, written: &Json) -> Result<Slot> {
 const LABEL: &str = "label";
 /// The key of a slot's role.
 const ROLE: &str = "role";
+/// The key that says a slot was seen to change nothing.
+pub const SEEN: &str = "seen";
 
 /// `Ok` when `value` is a value of type `ty`.
 fn check_fits(ty: SlotType, value: &Json) -> Result<()> {

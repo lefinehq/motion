@@ -174,6 +174,11 @@ enum Command {
         /// without one.
         #[arg(long, value_name = "FILE", requires = "verify")]
         clip: Option<PathBuf>,
+        /// Write what `--verify` saw into the scene: `"seen": false` on each
+        /// slot that changes nothing, so variants leave it, and no mark on
+        /// each that changes the render.
+        #[arg(long, requires = "verify")]
+        mark: bool,
     },
     /// Apply an edit line such as `card fill=#FF0000`, save the scene and
     /// print what the edit added to its check; exits 1 when it added an error.
@@ -407,6 +412,7 @@ fn main() -> ExitCode {
             verify,
             picture,
             clip,
+            mark,
         } => commands::slots::run(
             &scene,
             &commands::slots::Args {
@@ -415,6 +421,7 @@ fn main() -> ExitCode {
                 verify,
                 picture,
                 clip,
+                mark,
             },
         ),
         Command::Roles { scene, json } => commands::roles::run(&scene, json),

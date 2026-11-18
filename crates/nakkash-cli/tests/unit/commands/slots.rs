@@ -60,6 +60,7 @@ fn a_neutral_is_changed_into_a_colour() {
             value: json!("#000000"),
             label: None,
             role: None,
+            seen: true,
         },
         followers: Vec::new(),
     };
@@ -93,4 +94,67 @@ fn a_slot_is_drawn_where_its_layers_show() {
     // Where none shows, frames spread over the length.
     let none = set(&["gone"]);
     assert_eq!(where_shown(&samples, &shown, &none, 100).len(), CANDIDATES);
+}
+
+#[test]
+fn coverage_counts_the_slots_marked_unseen() {
+    let raw = json!({"nakkash":1,"size":"100x100","dur":"1s",
+        "slots":{"a":{"color":"#000000","seen":false},"b":"#FFFFFF"},
+        "comps":{"c":{"size":"10x10","dur":"1s","slots":{"d":{"number":1,"seen":false}},"layers":[]}},
+        "layers":[]});
+    assert_eq!(coverage(&raw).unseen, Count { bound: 2, total: 3 });
+}
+
+#[test]
+fn marking_writes_what_verify_saw() {
+    let dir = std::env::temp_dir().join(format!("nakkash-mark-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("scene.json");
+    let scene = json!({"nakkash":1,"size":"100x100","dur":"1s",
+        "slots":{"a":"#000000","b":{"color":"#FFFFFF","seen":false},"c":{"number":0.5,"label":"Size"}},
+        "comps":{"k":{"size":"10x10","dur":"1s","slots":{"d":0.2},"layers":[{"id":"r","rect":"5x5","opacity":"$d"}]}},
+        "layers":[{"id":"x","rect":"10x10","fill":"$a","opacity":"$c"},
+                  {"id":"y","rect":"10x10","fill":"$b"},
+                  {"id":"z","comp":"k"}]});
+    fs::write(&path, scene.to_string()).unwrap();
+    let session = Session::open(&path).unwrap();
+    let one = |comp: Option<&str>, id: &str, ty: &'static str, outcome| Verified {
+        comp: comp.map(str::to_owned),
+        id: id.into(),
+        ty,
+        edit: String::new(),
+        outcome,
+    };
+    let verified = Verification {
+        slots: vec![
+            one(None, "a", "color", Outcome::Unchanged),
+            one(
+                None,
+                "b",
+                "color",
+                Outcome::Changed {
+                    frame: 0,
+                    pixels: 9,
+                },
+            ),
+            one(None, "c", "number", Outcome::Skipped("not tried".into())),
+            one(Some("k"), "d", "number", Outcome::Unchanged),
+        ],
+        together: None,
+    };
+    assert_eq!(mark(&path, &session, &verified).unwrap(), 2);
+    let written: Json = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    // A shorthand is written out typed to take its mark; a slot seen to
+    // change loses its mark; one not tried keeps what it had.
+    assert_eq!(
+        written["slots"]["a"],
+        json!({"color":"#000000","seen":false})
+    );
+    assert_eq!(written["slots"]["b"], json!({"color":"#FFFFFF"}));
+    assert_eq!(written["slots"]["c"], json!({"number":0.5,"label":"Size"}));
+    assert_eq!(
+        written["comps"]["k"]["slots"]["d"],
+        json!({"number":0.2,"seen":false})
+    );
+    fs::remove_dir_all(&dir).ok();
 }

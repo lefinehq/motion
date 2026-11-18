@@ -34,6 +34,9 @@ pub struct Args {
     pub picture: Option<PathBuf>,
     /// The clip a video slot is given when verified.
     pub clip: Option<PathBuf>,
+    /// With `verify`, mark each slot that changes nothing as unseen in the
+    /// scene file, and clear the mark of each that changes the render.
+    pub mark: bool,
 }
 
 /// Lists the slots, their coverage or their check, as `args` says.
@@ -42,6 +45,12 @@ pub fn run(path: &Path, args: &Args) -> Result<ExitCode> {
     if args.verify {
         let verified = verify(&session, args)?;
         print(&verified, args.json, |v| v.to_string())?;
+        if args.mark {
+            let marked = mark(path, &session, &verified)?;
+            if !args.json {
+                println!("{marked} slots marked unseen in {}", path.display());
+            }
+        }
         let dead = verified
             .slots
             .iter()
@@ -99,6 +108,7 @@ fn data(raw: &Json, listed: &Listed) -> Json {
         "value": listed.slot.value,
         "label": listed.slot.label,
         "role": listed.slot.role.as_deref(),
+        "seen": listed.slot.seen,
         "followers": listed.followers,
     });
     let first = listed
@@ -204,8 +214,12 @@ fn listing(slots: &[Listed]) -> String {
             1 => "1 value follows".to_owned(),
             n => format!("{n} values follow"),
         };
+        let unseen = match slot.seen {
+            true => "",
+            false => "  unseen",
+        };
         text.push_str(&format!(
-            "  ${} {} {}{label}{role}  ({follow})\n",
+            "  ${} {} {}{label}{role}  ({follow}){unseen}\n",
             slot.id, slot.ty, slot.value
         ));
     }
@@ -225,6 +239,8 @@ pub struct Coverage {
     pub colors: Count,
     /// Image and video layers.
     pub media: Count,
+    /// Slots marked unseen (`"seen": false`), of all the slots.
+    pub unseen: Count,
     /// Where each value no slot holds is.
     pub unbound: Vec<String>,
 }
@@ -259,6 +275,9 @@ impl std::fmt::Display for Coverage {
         writeln!(f, "  text layers {}", self.text)?;
         writeln!(f, "  colours     {}", self.colors)?;
         writeln!(f, "  media       {}", self.media)?;
+        if self.unseen.bound > 0 {
+            writeln!(f, "unseen slots  {}", self.unseen)?;
+        }
         if !self.unbound.is_empty() {
             writeln!(f, "not held:")?;
             for place in &self.unbound {
@@ -272,6 +291,14 @@ impl std::fmt::Display for Coverage {
 /// What `raw`, a scene's JSON, draws that its slots hold.
 pub fn coverage(raw: &Json) -> Coverage {
     let mut coverage = Coverage::default();
+    for declared in declarations(raw) {
+        for value in declared.values() {
+            coverage.unseen.total += 1;
+            if value.get(SEEN) == Some(&Json::Bool(false)) {
+                coverage.unseen.bound += 1;
+            }
+        }
+    }
     let reference = |value: &Json| {
         value
             .as_str()
@@ -367,6 +394,8 @@ pub enum Outcome {
 /// One slot's check.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Verified {
+    /// The composition whose own slot it is; `None` for the scene's.
+    pub comp: Option<String>,
     /// The slot.
     pub id: String,
     /// Its type.
@@ -417,6 +446,67 @@ impl std::fmt::Display for Verification {
     }
 }
 
+/// The key that marks a slot unseen.
+const SEEN: &str = nakkash_engine::SEEN;
+
+/// The slot declarations of `raw`: the scene's, then each composition's.
+fn declarations(raw: &Json) -> Vec<&serde_json::Map<String, Json>> {
+    let comps = raw["comps"]
+        .as_object()
+        .into_iter()
+        .flat_map(|c| c.values());
+    std::iter::once(raw)
+        .chain(comps)
+        .filter_map(|owner| owner["slots"].as_object())
+        .collect()
+}
+
+/// Marks each slot of the scene at `path` that `verified` found changes
+/// nothing `"seen": false`, writing a shorthand declaration out typed, and
+/// clears the mark of each it saw change the render; slots it did not try
+/// keep theirs. Says how many are marked.
+///
+/// # Errors
+/// An I/O diagnostic when the scene cannot be written, or the format's
+/// when the marked scene does not validate, a bug.
+fn mark(path: &Path, session: &Session, verified: &Verification) -> Result<usize> {
+    let mut raw = session.document().raw().clone();
+    let mut marked = 0;
+    for slot in &verified.slots {
+        let seen = match slot.outcome {
+            Outcome::Unchanged => false,
+            Outcome::Changed { .. } | Outcome::Retimed { .. } => true,
+            Outcome::Broken(_) | Outcome::Skipped(_) => continue,
+        };
+        let owner = match &slot.comp {
+            None => &mut raw,
+            Some(comp) => &mut raw["comps"][comp],
+        };
+        let Some(declared) = owner["slots"].get_mut(&slot.id) else {
+            continue;
+        };
+        if !declared.is_object() {
+            *declared = json!({ slot.ty: declared.clone() });
+        }
+        let Some(fields) = declared.as_object_mut() else {
+            continue;
+        };
+        match seen {
+            true => {
+                fields.remove(SEEN);
+            }
+            false => {
+                fields.insert(SEEN.into(), Json::Bool(false));
+                marked += 1;
+            }
+        }
+    }
+    let written = nakkash_engine::write_document(&raw);
+    written.parse::<Session>()?;
+    fs::write(path, written).map_err(|e| Diagnostic::io("write", path, &e))?;
+    Ok(marked)
+}
+
 /// How many frames a slot is drawn at before it is found to change none.
 const CANDIDATES: usize = 8;
 
@@ -453,6 +543,7 @@ fn verify(session: &Session, args: &Args) -> Result<Verification> {
         let ty = listed.slot.ty.name();
         let Some(value) = changed(&listed, &picture, args.clip.as_deref()) else {
             verified.slots.push(Verified {
+                comp: listed.comp.clone(),
                 id,
                 ty,
                 edit: String::new(),
@@ -489,6 +580,7 @@ fn verify(session: &Session, args: &Args) -> Result<Verification> {
             edits.push(edit.clone());
         }
         verified.slots.push(Verified {
+            comp: listed.comp.clone(),
             id,
             ty,
             edit,

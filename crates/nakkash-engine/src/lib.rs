@@ -58,7 +58,7 @@ pub use nakkash_format::Id;
 pub use nakkash_format::address::{json_at, key_text};
 pub use nakkash_format::roles::Role;
 pub use nakkash_format::shorthand::Font;
-pub use nakkash_format::slots::{is_reference, resolved};
+pub use nakkash_format::slots::{SEEN, is_reference, resolved};
 pub use nakkash_format::{
     Address, Content, Diagnostic, Document, Kind, Listed, Lock, Result, RoleTarget, Scene,
     write_document,
