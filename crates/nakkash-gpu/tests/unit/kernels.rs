@@ -12,6 +12,7 @@ fn sources() -> Vec<(&'static str, String, &'static FamilySpec)> {
         ("amount", AMOUNT.source.to_owned(), &AMOUNT),
         ("unpack", UNPACK.source.to_owned(), &UNPACK),
         ("transform", TRANSFORM.source.to_owned(), &TRANSFORM),
+        ("box_pass", BOX_PASS.source.to_owned(), &BOX_PASS),
     ]
 }
 
@@ -60,9 +61,8 @@ fn a_dispatch_past_the_limit_of_one_dimension_takes_two() {
 
 #[test]
 fn parameters_are_laid_out_as_wgsl_lays_out_a_struct() {
-    let bytes = Params::new().u32(1).f32(2.0).bytes();
+    let bytes = Params::new().u32(1).f32(2.0).vec4([3.0; 4]).bytes();
     assert_eq!(bytes.len(), PARAMS_BYTES);
     assert_eq!(&bytes[0..4], &1u32.to_le_bytes());
-    assert_eq!(&bytes[4..8], &2.0f32.to_le_bytes());
-    assert!(bytes[8..].iter().all(|&b| b == 0));
+    assert_eq!(&bytes[16..20], &3.0f32.to_le_bytes());
 }

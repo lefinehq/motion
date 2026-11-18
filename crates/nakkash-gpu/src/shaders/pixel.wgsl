@@ -1,5 +1,5 @@
 // Per-pixel kernels of the float canvas: laying by a blend mode, mixing,
-// cutting and scaling.
+// cutting, scaling, and the per-pixel steps of the glow and the shadow.
 // Each ports one CPU function of `nakkash-raster`, named beside it; pixels
 // are premultiplied RGBA floats, as `Pixels` holds them.
 //
@@ -16,6 +16,12 @@ struct Params {
     // Whether `amount` holds one value a pixel; else `k` is the amount.
     per_pixel: u32,
     k: f32,
+    // The glow's threshold and intensity, the shadow's opacity.
+    threshold: f32,
+    intensity: f32,
+    opacity: f32,
+    // The glow's luma weights, or the shadow's colour.
+    colour: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -221,4 +227,67 @@ fn scale(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     dst[i] = dst[i] * params.k;
+}
+
+// `glow`: a pixel whose unpremultiplied luma is below the threshold gives
+// no light.
+@compute @workgroup_size(256)
+fn glow_threshold(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = index(gid);
+    if i >= params.count {
+        return;
+    }
+    let p = dst[i];
+    var luma = 0.0;
+    if p.a > 0.0 {
+        luma = (p.r * params.colour.r + p.g * params.colour.g + p.b * params.colour.b) / p.a;
+    }
+    if luma < params.threshold {
+        dst[i] = vec4(0.0);
+    }
+}
+
+// `glow`: the spread light `src` times the intensity added to `dst`, each
+// colour kept within its alpha.
+@compute @workgroup_size(256)
+fn glow_add(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = index(gid);
+    if i >= params.count {
+        return;
+    }
+    let p = min(dst[i] + src[i] * params.intensity, vec4(1.0));
+    dst[i] = vec4(min(p.rgb, vec3(p.a)), p.a);
+}
+
+// `glow` alone: the spread light `src` times the intensity, in place of
+// `dst`.
+@compute @workgroup_size(256)
+fn glow_alone(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = index(gid);
+    if i >= params.count {
+        return;
+    }
+    dst[i] = min(src[i] * params.intensity, vec4(1.0));
+}
+
+// `drop-shadow`: the alpha times the opacity, in the shadow's colour.
+@compute @workgroup_size(256)
+fn shadow_colour(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = index(gid);
+    if i >= params.count {
+        return;
+    }
+    let a = dst[i].a * params.opacity;
+    dst[i] = vec4(params.colour.rgb * a, a);
+}
+
+// `drop-shadow`: the layer `dst` over its shadow `src`.
+@compute @workgroup_size(256)
+fn shadow_under(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = index(gid);
+    if i >= params.count {
+        return;
+    }
+    let p = dst[i];
+    dst[i] = p + src[i] * (1.0 - p.a);
 }

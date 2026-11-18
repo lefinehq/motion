@@ -231,7 +231,7 @@ pub enum Apply {
 
 /// Where an effect's pixels are: lengths and points of its parameters are
 /// in the layer's own coordinates, which `transform` takes to pixels.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Space {
     /// From the layer's own coordinates to pixels of the grid.
     pub transform: Affine,
