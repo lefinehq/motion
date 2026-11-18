@@ -34,6 +34,7 @@ use nakkash_raster::kurbo::{Affine, Rect, RoundedRect, Shape};
 use nakkash_raster::{
     BlendMode, Blending, Clip, Color, DrawStyle, Effect, FillRule, Frame, Heard, Homography,
     ImageDraw, Layer, Matte, MatteMode as RasterMatte, Node, Paint, PathDraw, Picture, Projection,
+    Shared,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -76,6 +77,41 @@ pub(crate) struct Sources<'a> {
     pub(crate) sounds: &'a Sounds<'a>,
     /// The moments motion blur has evaluated so far.
     pub(crate) moments: &'a Moments,
+    /// The compositions drawn so far this frame, by the time they show.
+    pub(crate) instances: &'a Instances,
+}
+
+/// The children of each composition a frame shows, by its index and the
+/// frame of its own clock it shows: a composition at one frame draws the
+/// same wherever it is shown, so its children are made once a frame, and
+/// the layers that show it share them and one [`Shared`] mark, which lets
+/// the rasteriser draw them once at each transform.
+#[derive(Default)]
+pub(crate) struct Instances(RefCell<HashMap<(usize, u64), Instance>>);
+
+/// The mark and the children of one composition at one frame.
+type Instance = (Shared, Vec<Node>);
+
+impl Instances {
+    /// The mark and the children of composition `index` at `frame`, as
+    /// `make` makes them the first time.
+    fn of(
+        &self,
+        index: usize,
+        frame: f64,
+        make: impl FnOnce() -> Result<Vec<Node>>,
+    ) -> Result<(Shared, Vec<Node>)> {
+        let key = (index, frame.to_bits());
+        if let Some((shared, children)) = self.0.borrow().get(&key) {
+            return Ok((shared.clone(), children.clone()));
+        }
+        let children = make()?;
+        let shared = Shared::new();
+        self.0
+            .borrow_mut()
+            .insert(key, (shared.clone(), children.clone()));
+        Ok((shared, children))
+    }
 }
 
 /// A canvas the engine draws: the scene's root, or a composition of
@@ -690,6 +726,7 @@ fn drawing(
     let mut clip = None;
     let mut isolate = false;
     let mut bounds = None;
+    let mut shared = None;
     let children = match &node.content {
         ContentState::Rect(shape) => {
             bounds = Some(Rect::new(0.0, 0.0, shape.width, shape.height));
@@ -745,11 +782,18 @@ fn drawing(
             clip = Some(Clip::Rect(canvas));
             bounds = Some(canvas);
             isolate = true;
-            let mut children = Vec::new();
-            if opaque_enough(comp.background) {
-                children.push(fill(canvas.to_path(TOLERANCE), color(comp.background)));
-            }
-            children.extend(nodes(sources, Canvas::Comp(*index), inner)?);
+            // Every layer of the frame that shows this composition at this
+            // time draws the same children: they are made once and the
+            // layers share them.
+            let (instance, children) = sources.instances.of(*index, inner.frame, || {
+                let mut children = Vec::new();
+                if opaque_enough(comp.background) {
+                    children.push(fill(canvas.to_path(TOLERANCE), color(comp.background)));
+                }
+                children.extend(nodes(sources, Canvas::Comp(*index), inner)?);
+                Ok(children)
+            })?;
+            shared = Some(instance);
             children
         }
         ContentState::Comp(_, None)
@@ -788,6 +832,7 @@ fn drawing(
         isolate,
         bounds,
         time: node.seconds,
+        shared,
         ..Layer::new(children)
     })))
 }

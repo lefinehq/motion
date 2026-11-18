@@ -3,6 +3,8 @@
 //! whatever evaluates a scene at a time writes one of these, and
 //! [`render`](crate::render) draws it.
 
+use std::sync::Arc;
+
 use vello_cpu::kurbo::{Affine, BezPath, Rect, Shape};
 use vello_cpu::peniko::FontData;
 
@@ -103,6 +105,41 @@ pub struct Layer {
     ///
     /// [D58]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
     pub projection: Option<Projection>,
+    /// The mark of children other layers of the frame share: layers with
+    /// the same mark have children that draw the same, such as one
+    /// composition at one time shown by several layers, so the rasteriser
+    /// draws them once at each transform and keeps the drawing for the
+    /// others. `None` for children of its own.
+    pub shared: Option<Shared>,
+}
+
+/// A mark a producer gives layers whose children draw the same
+/// ([`Layer::shared`]): a copy of a mark is the same mark. Marks say
+/// nothing of what is drawn, so any two compare equal, and two frames that
+/// draw the same compare equal whatever marks they carry.
+#[derive(Debug, Clone)]
+pub struct Shared(Arc<()>);
+
+impl Shared {
+    /// A new mark, equal to no other.
+    #[expect(
+        clippy::new_without_default,
+        reason = "a default would read as a mark every layer shares"
+    )]
+    pub fn new() -> Shared {
+        Shared(Arc::new(()))
+    }
+
+    /// Its address, which no other mark has while it lives.
+    pub(crate) fn address(&self) -> usize {
+        Arc::as_ptr(&self.0) as usize
+    }
+}
+
+impl PartialEq for Shared {
+    fn eq(&self, _: &Shared) -> bool {
+        true
+    }
 }
 
 /// How a projected layer lies on its parent ([D58]).
@@ -224,6 +261,7 @@ impl Layer {
             time: 0.0,
             motion: Vec::new(),
             projection: None,
+            shared: None,
         }
     }
 

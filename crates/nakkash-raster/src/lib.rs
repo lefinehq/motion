@@ -53,7 +53,7 @@ pub use homography::Homography;
 pub use image::Image;
 pub use list::{
     Blending, Clip, Frame, Glyph, GlyphDraw, ImageDraw, Layer, LayerMask, MaskMode, Matte,
-    MatteMode, Node, PathDraw, Projection,
+    MatteMode, Node, PathDraw, Projection, Shared,
 };
 pub use mask::SIGMA_PER_FEATHER;
 pub use picture::Picture;

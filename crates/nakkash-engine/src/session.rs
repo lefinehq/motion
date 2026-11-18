@@ -22,7 +22,7 @@ use nakkash_text::{FontSet, Typesetter};
 
 use crate::clips::Clips;
 use crate::pictures::Pictures;
-use crate::render::{Moments, Sources, display_list};
+use crate::render::{Instances, Moments, Sources, display_list};
 use crate::sounds::Sounds;
 use crate::stage::{stage, stage_ok};
 
@@ -255,12 +255,14 @@ impl Session {
         let clips = |path: &str, seconds: f64| self.clips.frame(&base.join(path), seconds);
         let sounds = |path: &str| self.sounds.get(&base.join(path));
         let moments = Moments::default();
+        let instances = Instances::default();
         let sources = Sources {
             graph,
             pictures: &pictures,
             clips: &clips,
             sounds: &sounds,
             moments: &moments,
+            instances: &instances,
         };
         stage("display", || display_list(sources, state))
     }

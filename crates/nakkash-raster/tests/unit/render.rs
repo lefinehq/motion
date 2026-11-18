@@ -4,7 +4,7 @@
 use super::*;
 use crate::blend::BlendMode;
 use crate::effect::{Effect, ParamValue};
-use crate::list::Clip;
+use crate::list::{Clip, Shared};
 use crate::style::{FillRule, Paint};
 use rstest::rstest;
 use vello_cpu::kurbo::{Rect, Shape};
@@ -733,5 +733,39 @@ fn a_layer_read_by_several_effects_draws_the_same_shared_or_not() {
         }
     };
     let drawn = |share| render_with(&frame(share), 16, 16, RenderOptions::default()).unwrap();
+    assert_eq!(drawn(true), drawn(false));
+}
+
+/// Layers marked as sharing their children draw them once a frame: the
+/// frame is the same, pixel for pixel, as without the mark.
+#[test]
+fn layers_sharing_their_children_draw_the_same_marked_or_not() {
+    let children = || {
+        vec![Node::Path(PathDraw {
+            path: Rect::new(2.0, 2.0, 12.0, 9.0).to_path(0.1),
+            paint: Paint::Solid(Color::rgba(0.9, 0.3, 0.1, 0.8)),
+            style: DrawStyle::Fill(FillRule::NonZero),
+        })]
+    };
+    let frame = |marked: bool| {
+        let shared = Shared::new();
+        let layer = |dx: f64, blur: f32| {
+            Node::Layer(Layer {
+                transform: Affine::translate((dx, 0.0)),
+                effects: vec![
+                    Effect::new("gaussian-blur", &[("blurriness", ParamValue::Number(blur))])
+                        .unwrap(),
+                ],
+                isolate: true,
+                shared: marked.then(|| shared.clone()),
+                ..Layer::new(children())
+            })
+        };
+        Frame {
+            nodes: vec![layer(0.0, 2.0), layer(0.0, 4.0), layer(1.5, 2.0)],
+            ..Frame::default()
+        }
+    };
+    let drawn = |marked| render_with(&frame(marked), 16, 16, RenderOptions::default()).unwrap();
     assert_eq!(drawn(true), drawn(false));
 }

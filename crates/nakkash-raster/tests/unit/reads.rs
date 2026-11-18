@@ -75,3 +75,26 @@ fn reads_inside_a_read_node_are_counted_once() {
     assert_eq!(left.get(&(Arc::as_ptr(&outer) as usize)), Some(&2));
     assert_eq!(left.get(&(Arc::as_ptr(&inner) as usize)), Some(&2));
 }
+
+#[test]
+fn children_shared_by_three_layers_are_drawn_once_at_each_transform() {
+    let shared = Shared::new();
+    let layer = || {
+        let mut layer = Layer::new(Vec::new());
+        layer.shared = Some(shared.clone());
+        Node::Layer(layer)
+    };
+    let reads = Reads::of(&[layer(), layer(), layer()]);
+    let drawn = Cell::new(0);
+    let draw = || {
+        drawn.set(drawn.get() + 1);
+        Ok(Pixels::transparent(2, 2))
+    };
+    for _ in 0..3 {
+        reads
+            .shared(&shared, Affine::IDENTITY, (2, 2), draw)
+            .expect("drawn");
+    }
+    assert_eq!(drawn.get(), 1);
+    assert!(locked(&reads.drawn).is_empty());
+}

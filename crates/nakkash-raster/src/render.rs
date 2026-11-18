@@ -784,7 +784,17 @@ impl Painter {
             }
             return drawn;
         }
-        let mut pixels = self.drawn_alone(&layer.children, transform * moved)?;
+        let at = transform * moved;
+        let mut pixels = match &layer.shared {
+            // Layers with the same children draw them once at each
+            // transform.
+            Some(shared) => self
+                .reads
+                .shared(shared, at, (self.width, self.height), || {
+                    self.drawn_alone(&layer.children, at)
+                })?,
+            None => self.drawn_alone(&layer.children, at)?,
+        };
         // An effect that draws beyond the box grows the clip the layer
         // shows within, so the content is cut to its own clip first.
         let clipped = match (&layer.clip, layer.effects_grow()) {
