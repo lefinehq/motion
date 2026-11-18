@@ -29,7 +29,7 @@ fn spaces() -> Vec<(&'static str, Space)> {
 /// `space` reading `pixels` as another layer's drawing, with `bounds`.
 fn reading(space: &Space, pixels: Pixels, bounds: Option<Rect>) -> Space {
     Space {
-        input: Some(Input { pixels, bounds }),
+        input: Some(Input::new(pixels, bounds)),
         ..space.clone()
     }
 }

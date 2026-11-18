@@ -1246,7 +1246,7 @@ pub(crate) fn displacement_map(pixels: &mut Pixels, values: &[ParamValue], space
     } = displacement_map_plan(values);
     let target = layer_box(pixels, space);
     let (map, map_box) = match &space.input {
-        Some(input) => (input.pixels.clone(), input.bounds.unwrap_or(target)),
+        Some(input) => (input.pixels().clone(), input.bounds.unwrap_or(target)),
         None => (pixels.clone(), target),
     };
     let to = space.transform;

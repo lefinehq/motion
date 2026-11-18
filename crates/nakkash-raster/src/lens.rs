@@ -440,7 +440,7 @@ pub(crate) fn lens_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Spac
     let target = map.target(pixels.width(), pixels.height());
     let to = map.transform;
     let back = to.inverse();
-    let source = &input.pixels;
+    let source = input.pixels();
     let radii: Vec<f64> = (0..pixels.data().len())
         .map(|i| {
             let at = back * Point::new((i % width) as f64 + 0.5, (i / width) as f64 + 0.5);

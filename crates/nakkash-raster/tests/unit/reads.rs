@@ -3,6 +3,7 @@ use std::cell::Cell;
 use super::*;
 use crate::effect::Effect;
 use crate::list::Layer;
+use crate::pixels::Pixels;
 
 /// A layer whose effects read `read`, once each.
 fn reading(read: &Arc<Node>, effects: usize) -> Node {
@@ -20,10 +21,11 @@ fn reading(read: &Arc<Node>, effects: usize) -> Node {
 /// Reads `node` at `transform`, counting the drawings in `drawn`.
 fn read(reads: &Reads, node: &Arc<Node>, transform: Affine, drawn: &Cell<usize>) -> Pixels {
     reads
-        .read(node, transform, (2, 2), || {
+        .read(node, transform, (2, 2), None, || {
             drawn.set(drawn.get() + 1);
-            Ok(Pixels::transparent(2, 2))
+            Ok(Surface::Cpu(Pixels::transparent(2, 2)))
         })
+        .and_then(|surface| surface.into_pixels(None))
         .expect("drawn")
 }
 

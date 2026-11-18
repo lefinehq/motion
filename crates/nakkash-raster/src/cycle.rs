@@ -9,7 +9,7 @@
 
 use crate::channel::{Level, Reading};
 use crate::colour::{choice, number};
-use crate::effect::{Curve, ParamValue, Space};
+use crate::effect::{Curve, Input, ParamValue, Space};
 use crate::pixels::Pixels;
 
 /// The levels a phase is read from, in the order of `phase-from`'s and
@@ -157,7 +157,7 @@ pub(crate) fn color_cycle(pixels: &mut Pixels, values: &[ParamValue], space: &Sp
         smooth,
         modify_alpha,
     } = color_cycle_plan(values, space);
-    let added = space.input.as_ref().map(|input| &input.pixels);
+    let added = space.input.as_ref().map(Input::pixels);
     for (i, pixel) in pixels.data_mut().iter_mut().enumerate() {
         let alpha = pixel[3];
         if alpha <= 0.0 {

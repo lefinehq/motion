@@ -233,10 +233,7 @@ fn vector_blurs_match_on_a_large_grid() {
 fn vector_blurs_match_by_a_map_through_a_scaled_layer() {
     let pixels = pattern(97, 203, 62);
     let mut mapped = space(Affine::translate((3.5, -2.0)) * Affine::scale(1.7));
-    mapped.input = Some(nakkash_raster::Input {
-        pixels: pattern(97, 203, 63),
-        bounds: None,
-    });
+    mapped.input = Some(nakkash_raster::Input::new(pattern(97, 203, 63), None));
     for streak in 0..5 {
         for level in [0, 4, 6] {
             for softness in [0.0, 4.0] {
@@ -252,10 +249,10 @@ fn vector_blurs_match_by_a_map_through_a_scaled_layer() {
     }
     // A flat map: no slope anywhere.
     let mut flat = space(Affine::IDENTITY);
-    flat.input = Some(nakkash_raster::Input {
-        pixels: Pixels::from_data(97, 203, vec![[0.2, 0.3, 0.4, 1.0]; 97 * 203]),
-        bounds: None,
-    });
+    flat.input = Some(nakkash_raster::Input::new(
+        Pixels::from_data(97, 203, vec![[0.2, 0.3, 0.4, 1.0]; 97 * 203]),
+        None,
+    ));
     for streak in 0..5 {
         vector_matches(
             &format!("flat streak {streak}"),
@@ -373,16 +370,13 @@ fn lens_blurs_match_by_a_map() {
     let map = pattern(131, 89, 74);
     let mut scaled = space(Affine::translate((6.5, -3.0)) * Affine::scale(1.3));
     scaled.bounds = Some(nakkash_raster::kurbo::Rect::new(10.0, 5.0, 90.0, 60.0));
-    scaled.input = Some(nakkash_raster::Input {
-        pixels: map.clone(),
-        bounds: Some(nakkash_raster::kurbo::Rect::new(0.0, 0.0, 120.0, 70.0)),
-    });
+    scaled.input = Some(nakkash_raster::Input::new(
+        map.clone(),
+        Some(nakkash_raster::kurbo::Rect::new(0.0, 0.0, 120.0, 70.0)),
+    ));
     let mut frame = space(Affine::IDENTITY);
     frame.bounds = None;
-    frame.input = Some(nakkash_raster::Input {
-        pixels: map,
-        bounds: None,
-    });
+    frame.input = Some(nakkash_raster::Input::new(map, None));
     for (name, space) in [("scaled", &scaled), ("frame", &frame)] {
         for level in 0..5 {
             for (stretch, inverted, focal) in [(false, false, 0.0), (true, true, 0.4)] {

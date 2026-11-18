@@ -297,10 +297,7 @@ fn a_displacement_map_moves_pixels_by_its_levels() {
     // A map all red: the most to the right. Green at 0.5: nothing down.
     let mut map = Pixels::transparent(8, 1);
     map.data_mut().fill([1.0, 0.5, 0.0, 1.0]);
-    space.input = Some(Input {
-        pixels: map,
-        bounds: Some(Rect::new(0.0, 0.0, 4.0, 1.0)),
-    });
+    space.input = Some(Input::new(map, Some(Rect::new(0.0, 0.0, 4.0, 1.0))));
     let values = [
         Number(1.0),
         Number(1.0),

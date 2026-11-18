@@ -1,10 +1,15 @@
 //! A frame's work recorded at once: many operations submitted together,
 //! buffers let go of and taken again before the GPU has run what reads
 //! them, several threads recording into one GPU, and a frame read back as
-//! the bytes it is written in.
+//! the bytes it is written in; and layers reading a layer the GPU drew.
 
-use nakkash_raster::kurbo::Affine;
-use nakkash_raster::{Accelerator, Amount, BlendMode, Effect, ParamValue, Pixels, Share};
+use std::sync::Arc;
+
+use nakkash_raster::kurbo::{Affine, Rect, Shape};
+use nakkash_raster::{
+    Accelerator, Amount, BlendMode, Color, DrawStyle, Effect, FillRule, Frame, Layer, Node, Paint,
+    ParamValue, PathDraw, Pixels, RenderOptions, Share, render_on,
+};
 
 use super::{Random, check, gpu, pattern, space};
 
@@ -163,4 +168,68 @@ fn a_frame_read_back_as_bytes_rounds_as_the_cpu_does() {
     assert!(largest <= 1, "a frame's bytes differ by {largest} levels");
     // A level flips only where a quotient sits on a rounding boundary.
     assert!(differ * 1000 <= cpu.len(), "{differ} channels differ");
+}
+
+/// A square of `colour` from `(x, y)`, `side` px wide.
+fn square(x: f64, y: f64, side: f64, colour: Color) -> Node {
+    Node::Path(PathDraw {
+        path: Rect::new(x, y, x + side, y + side).to_path(0.1),
+        paint: Paint::Solid(colour),
+        style: DrawStyle::Fill(FillRule::NonZero),
+    })
+}
+
+/// A layer of `children` with `effects`.
+fn layer(children: Vec<Node>, effects: Vec<Effect>) -> Node {
+    let mut layer = Layer::new(children);
+    layer.effects = effects;
+    Node::Layer(layer)
+}
+
+#[test]
+fn layers_reading_a_layer_drawn_on_the_gpu_match_the_cpu() {
+    let Some(gpu) = gpu() else { return };
+    let blur = |r: f32| {
+        Effect::new("gaussian-blur", &[("blurriness", ParamValue::Number(r))]).expect("a blur")
+    };
+    // Blurred, so the frame draws it on the GPU and leaves it there.
+    let map = Arc::new(layer(
+        vec![
+            square(10.0, 10.0, 60.0, Color::rgba(0.9, 0.2, 0.1, 1.0)),
+            square(50.0, 40.0, 70.0, Color::rgba(0.1, 0.6, 0.9, 0.8)),
+        ],
+        vec![blur(6.0)],
+    ));
+    let reading = |name: &str| {
+        Effect::new(name, &[])
+            .expect("an effect")
+            .with_input(Arc::clone(&map))
+    };
+    let content = || {
+        vec![
+            square(0.0, 0.0, 160.0, Color::rgba(0.3, 0.8, 0.4, 1.0)),
+            square(30.0, 20.0, 50.0, Color::rgba(1.0, 1.0, 0.2, 1.0)),
+        ]
+    };
+    // Read by kernels on the GPU, and by one on the CPU.
+    for name in ["displacement-map", "set-matte", "contour-strokes"] {
+        let frame = Frame {
+            background: Some(Color::rgba(1.0, 1.0, 1.0, 1.0)),
+            nodes: vec![layer(content(), vec![blur(1.0), reading(name)])],
+            ..Frame::default()
+        };
+        let (width, height) = (160, 120);
+        let cpu = render_on(&frame, width, height, RenderOptions::default(), None).expect("drawn");
+        let on_gpu = render_on(&frame, width, height, RenderOptions::default(), Some(gpu))
+            .expect("drawn on the GPU");
+        let largest = cpu
+            .pixels()
+            .iter()
+            .zip(on_gpu.pixels())
+            .map(|(a, b)| a.abs_diff(*b))
+            .max()
+            .unwrap_or(0);
+        eprintln!("{name} reading a layer drawn on the GPU: largest {largest} levels");
+        assert!(largest <= 1, "{name}: frames differ by {largest} levels");
+    }
 }

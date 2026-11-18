@@ -146,10 +146,7 @@ fn a_blur_map_sets_the_radius_pixel_by_pixel() {
     pixels.data_mut()[10 * 60 + 10] = [1.0; 4];
     pixels.data_mut()[10 * 60 + 45] = [1.0; 4];
     let space = Space {
-        input: Some(Input {
-            pixels: map,
-            bounds: Some(Rect::new(0.0, 0.0, 60.0, 20.0)),
-        }),
+        input: Some(Input::new(map, Some(Rect::new(0.0, 0.0, 60.0, 20.0)))),
         bounds: Some(Rect::new(0.0, 0.0, 60.0, 20.0)),
         ..ONE
     };

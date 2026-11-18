@@ -14,12 +14,14 @@
 //! [D34]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d34-a-layer-tree-renderer-on-vello_cpu
 
 use std::fmt;
+use std::sync::Arc;
 
 use nakkash_format::{Diagnostic, Kind, Result};
 use vello_cpu::RenderContext;
 use vello_cpu::kurbo::{Affine, BezPath, Rect, Vec2};
 use vello_cpu::peniko::{BlendMode, Compose, Mix};
 
+use crate::accel::Resident;
 use crate::list::Node;
 use crate::pixels::Pixels;
 use crate::style::Color;
@@ -268,10 +270,55 @@ impl Space {
 /// `transform * p` of the grid, as the reading layer's own point `p` is.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Input {
-    /// What it drew.
-    pub pixels: Pixels,
+    /// What it drew: on the CPU, or in the accelerator the effect runs in.
+    pub drawn: Drawing,
     /// Its box in its own coordinates, when it has one.
     pub bounds: Option<Rect>,
+}
+
+impl Input {
+    /// A drawing on the CPU, with its box.
+    pub fn new(pixels: Pixels, bounds: Option<Rect>) -> Input {
+        Input {
+            drawn: Drawing::Cpu(pixels),
+            bounds,
+        }
+    }
+
+    /// What it drew, on the CPU.
+    ///
+    /// # Panics
+    /// When it is held in an accelerator: an effect runs on the CPU only
+    /// with what it reads on the CPU, and the painter brings a drawing it
+    /// left in the accelerator back before it runs one there.
+    pub fn pixels(&self) -> &Pixels {
+        match &self.drawn {
+            Drawing::Cpu(pixels) => pixels,
+            Drawing::Held(_) => panic!("an effect on the CPU reads its input on the CPU"),
+        }
+    }
+}
+
+/// What the layer an effect reads drew, where it was drawn.
+#[derive(Debug, Clone)]
+pub enum Drawing {
+    /// On the CPU.
+    Cpu(Pixels),
+    /// In the accelerator the effect runs in, for its kernel to read there:
+    /// a frame-sized grid, as [`Pixels`] would be.
+    Held(Arc<Resident>),
+}
+
+impl PartialEq for Drawing {
+    /// Drawings on the CPU by their pixels; held ones only when they are
+    /// the same grid, as what an accelerator holds cannot be compared.
+    fn eq(&self, other: &Drawing) -> bool {
+        match (self, other) {
+            (Drawing::Cpu(a), Drawing::Cpu(b)) => a == b,
+            (Drawing::Held(a), Drawing::Held(b)) => Arc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
 }
 
 /// How a moving effect moves the layer's content.

@@ -279,10 +279,10 @@ fn displacement_maps_read_hues_as_on_the_cpu() {
     for (space_name, space) in spaces() {
         for (map, from) in [(hues(183, 119, 53), [5, 0]), (hues(211, 140, 54), [8, 5])] {
             let space = Space {
-                input: Some(Input {
-                    pixels: map.clone(),
-                    bounds: Some(Rect::new(-31.0, 12.5, 452.0, 288.0)),
-                }),
+                input: Some(Input::new(
+                    map.clone(),
+                    Some(Rect::new(-31.0, 12.5, 452.0, 288.0)),
+                )),
                 ..space.clone()
             };
             for lay in 0..3 {
@@ -352,10 +352,7 @@ fn displacement_maps_read_another_layer_as_on_the_cpu() {
     for (map, bounds, opaque) in maps {
         for (space_name, space) in spaces() {
             let space = Space {
-                input: Some(Input {
-                    pixels: map.clone(),
-                    bounds,
-                }),
+                input: Some(Input::new(map.clone(), bounds)),
                 ..space
             };
             for from in level_pairs() {

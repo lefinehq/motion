@@ -278,7 +278,7 @@ pub(crate) fn vector_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Sp
         return;
     }
     let mut map = match &space.input {
-        Some(input) => input.pixels.clone(),
+        Some(input) => input.pixels().clone(),
         None => pixels.clone(),
     };
     if softness > 0.0 {

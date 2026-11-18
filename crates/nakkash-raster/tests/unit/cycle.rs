@@ -138,10 +138,7 @@ fn an_added_layer_moves_the_phase_by_its_mode() {
     let mut added = Pixels::transparent(1, 1);
     added.data_mut()[0] = [0.5, 0.5, 0.5, 1.0];
     let space = Space {
-        input: Some(Input {
-            pixels: added,
-            bounds: None,
-        }),
+        input: Some(Input::new(added, None)),
         ..ONE
     };
     for (mode, phase) in [

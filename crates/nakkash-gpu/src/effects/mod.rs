@@ -18,10 +18,10 @@ mod vector;
 pub(crate) use composite::operation_row;
 
 use nakkash_format::{Diagnostic, Kind, Result};
-use nakkash_raster::{Plan, Space};
+use nakkash_raster::{Drawing, Plan, Space};
 
 use crate::Gpu;
-use crate::grid::Grid;
+use crate::grid::{Grid, grid};
 use crate::record::Batch;
 
 /// Whether the kernels run `plan` as the CPU does, for every value it
@@ -57,16 +57,21 @@ pub(crate) fn reads_input(plan: &Plan) -> bool {
 }
 
 impl Gpu {
-    /// The drawing of the layer an effect reads ([`Space::input`]), copied
-    /// to the GPU in `batch`, if it reads one.
-    #[allow(dead_code, reason = "for the families that read another layer")]
+    /// The drawing of the layer an effect reads ([`Space::input`]), as a
+    /// grid of its own, if it reads one: copied on the GPU when it was
+    /// drawn there, else copied to it in `batch`.
     pub(crate) fn input(&self, batch: &mut Batch<'_>, space: &Space) -> Option<Grid> {
-        let pixels = &space.input.as_ref()?.pixels;
-        let grid = self.grid(pixels.width(), pixels.height());
-        let bytes: &[u8] = bytemuck::cast_slice(pixels.data());
-        batch.stage(grid.buffer(), bytes);
-        self.counts.upload(bytes.len() as u64);
-        Some(grid)
+        match &space.input.as_ref()?.drawn {
+            // Drawn on the GPU: copied there, as the kernels may change it.
+            Drawing::Held(held) => Some(self.duplicate_grid(batch, grid(held))),
+            Drawing::Cpu(pixels) => {
+                let grid = self.grid(pixels.width(), pixels.height());
+                let bytes: &[u8] = bytemuck::cast_slice(pixels.data());
+                batch.stage(grid.buffer(), bytes);
+                self.counts.upload(bytes.len() as u64);
+                Some(grid)
+            }
+        }
     }
 }
 

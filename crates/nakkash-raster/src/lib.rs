@@ -63,8 +63,8 @@ pub use distort::{
     TurbulentDisplace, WARP_PIECES, WarpMesh, Wrap, distortion_box,
 };
 pub use effect::{
-    Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Growth, Input, Move, ParamSpec,
-    ParamType, ParamValue, Reach, Space,
+    Apply, Curve, Drawing, EFFECTS, Effect, EffectContext, EffectSpec, Growth, Input, Move,
+    ParamSpec, ParamType, ParamValue, Reach, Space,
 };
 pub use generate::{
     Beam, BeamStroke, FourColor, Fractal, FractalNoise, GridLines, IrisWipe, LinearWipe,

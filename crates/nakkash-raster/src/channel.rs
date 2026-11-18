@@ -218,7 +218,7 @@ pub(crate) fn set_matte(pixels: &mut Pixels, values: &[ParamValue], space: &Spac
     let test = area.test(pixels.width(), pixels.height());
     let target = test.bounds;
     let (matte, matte_box) = match &space.input {
-        Some(input) => (input.pixels.clone(), matte_bounds.unwrap_or(target)),
+        Some(input) => (input.pixels().clone(), matte_bounds.unwrap_or(target)),
         None => (pixels.clone(), target),
     };
     let to: Affine = area.transform;

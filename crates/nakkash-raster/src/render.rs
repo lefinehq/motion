@@ -14,7 +14,7 @@ use vello_cpu::{
 
 use crate::accel::{Accelerator, Amount, Share, Surface, Texels, held_by};
 use crate::blend::BlendMode;
-use crate::effect::{Effect, EffectContext, Input, Move, Space};
+use crate::effect::{Drawing, Effect, EffectContext, Input, Move, Space};
 use crate::homography::Homography;
 use crate::image::Image;
 use crate::list::{
@@ -526,12 +526,29 @@ impl<'a> Painter<'a> {
                     Node::Layer(layer) => layer.bounds,
                     _ => None,
                 };
-                // Drawn once a frame for each transform it is read at.
-                self.reads
-                    .read(node, transform, (self.width, self.height), || {
-                        self.drawn_alone(std::slice::from_ref(&**node), transform)
-                    })
-                    .map(|pixels| Input { pixels, bounds })
+                // Drawn once a frame for each transform it is read at:
+                // left in the accelerator for an effect that runs there,
+                // brought to the CPU for one that runs on the CPU.
+                let nodes = std::slice::from_ref(&**node);
+                let size = (self.width, self.height);
+                let drawn = match self.accel.filter(|accel| accel.runs(effect)) {
+                    Some(accel) => {
+                        match self.reads.read(node, transform, size, Some(accel), || {
+                            self.drawn_alone_surface(nodes, transform)
+                        })? {
+                            Surface::Held(held) => Drawing::Held(Arc::new(held)),
+                            Surface::Cpu(pixels) => Drawing::Cpu(pixels),
+                        }
+                    }
+                    None => Drawing::Cpu(
+                        self.reads
+                            .read(node, transform, size, self.accel, || {
+                                self.drawn_alone(nodes, transform).map(Surface::Cpu)
+                            })?
+                            .into_pixels(self.accel)?,
+                    ),
+                };
+                Ok(Input { drawn, bounds })
             })
             .transpose()?;
         Ok(Space {

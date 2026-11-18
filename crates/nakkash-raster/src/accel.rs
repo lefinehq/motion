@@ -30,7 +30,7 @@ use nakkash_format::Result;
 use vello_cpu::kurbo::Affine;
 
 use crate::blend::BlendMode;
-use crate::effect::{Effect, Space};
+use crate::effect::{Drawing, Effect, Input, Space};
 use crate::list::MatteMode;
 use crate::mask::{MaskCoverage, combine_on_cpu};
 use crate::par;
@@ -559,6 +559,21 @@ impl Surface {
             return accel.effect(self.held_mut(accel)?, effect, space);
         }
         accel.fell_back(effect);
+        // What it reads comes back to the CPU with it.
+        let brought;
+        let space = match &space.input {
+            Some(Input {
+                drawn: Drawing::Held(held),
+                bounds,
+            }) => {
+                brought = Space {
+                    input: Some(Input::new(accel.download(held)?, *bounds)),
+                    ..space.clone()
+                };
+                &brought
+            }
+            _ => space,
+        };
         effect.apply(self.pixels_mut(Some(accel))?, space);
         Ok(())
     }

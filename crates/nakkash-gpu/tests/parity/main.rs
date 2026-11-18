@@ -12,7 +12,7 @@
 //!
 //! [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
 
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 mod blurs;
 mod canvas;
@@ -28,7 +28,7 @@ mod generate;
 
 use nakkash_gpu::Gpu;
 use nakkash_raster::kurbo::{Affine, Point, Rect};
-use nakkash_raster::{Accelerator, Color, Effect, ParamValue, Pixels, Space};
+use nakkash_raster::{Accelerator, Color, Drawing, Effect, Input, ParamValue, Pixels, Space};
 
 /// The largest difference allowed in any channel of any pixel, on values
 /// from 0 to 1, by what runs: D74's tolerance table.
@@ -264,4 +264,22 @@ pub(crate) fn effect_matches(
     let mut held = gpu.upload(pixels).expect("uploaded");
     gpu.effect(&mut held, effect, space).expect("ran");
     check(name, case, &cpu, &gpu.download(&held).expect("downloaded"));
+    // The layer it reads drawn on the GPU, as a frame drawn there leaves it.
+    if let Some(Input {
+        drawn: Drawing::Cpu(input),
+        bounds,
+    }) = &space.input
+    {
+        let reading = Space {
+            input: Some(Input {
+                drawn: Drawing::Held(Arc::new(gpu.upload(input).expect("uploaded"))),
+                bounds: *bounds,
+            }),
+            ..space.clone()
+        };
+        let mut held = gpu.upload(pixels).expect("uploaded");
+        gpu.effect(&mut held, effect, &reading).expect("ran");
+        let case = format!("{case}, what it reads held");
+        check(name, &case, &cpu, &gpu.download(&held).expect("downloaded"));
+    }
 }
