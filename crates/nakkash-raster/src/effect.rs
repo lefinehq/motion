@@ -2715,6 +2715,31 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "find-edges",
+        params: &[
+            ParamSpec {
+                name: "blend",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how much of the layer as it was shows through the lines, 0 to 1",
+            },
+            ParamSpec {
+                name: "lines",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["dark-on-light", "light-on-dark"],
+                doc: "whether the edges are dark lines on white or light lines on black",
+            },
+        ],
+        doc: "draws where the colours change as lines",
+        reach: one_pixel,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: blur::find_edges,
+        },
+    },
+    EffectSpec {
         name: "black-white",
         params: &[
             ParamSpec {
@@ -3203,6 +3228,11 @@ fn transform(values: &[ParamValue]) -> Move {
 /// The reach of an effect that changes pixels only where they are.
 fn stays(_: &[ParamValue]) -> Reach {
     Reach::Within(0.0)
+}
+
+/// The reach of an effect that reads the pixels next to each.
+fn one_pixel(_: &[ParamValue]) -> Reach {
+    Reach::Within(1.0)
 }
 
 /// The reach of an effect that draws and reads within the layer's box.

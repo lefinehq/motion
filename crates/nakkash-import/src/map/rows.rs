@@ -563,6 +563,7 @@ const VECTOR_MAP_LEVELS: &[(i64, &str)] = &[
     (8, "saturation"),
 ];
 const SHADOW_ONLY: &[(i64, &str)] = &[(0, "shown"), (1, "hidden")];
+const EDGE_LINES: &[(i64, &str)] = &[(0, "dark-on-light"), (1, "light-on-dark")];
 // The project's choices say where the original goes: on top of the glow
 // (1), behind it (2), or not at all (3).
 const GLOW_COMPOSITE: &[(i64, &str)] = &[
@@ -1264,7 +1265,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 57] = [
+pub(super) static KINDS: [Kind; 58] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -4031,6 +4032,34 @@ pub(super) static KINDS: [Kind; 57] = [
                 Number,
                 Absent,
             ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Find Edges",
+        item: "find-edges",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Find Edges-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Find Edges-0001",
+                To::Setting("lines", EDGE_LINES),
+                Number,
+                Absent,
+            ),
+            row("ADBE Find Edges-0002", To::Prop("blend"), Number, Parameter),
             row(
                 "ADBE Force CPU GPU",
                 To::Ignore("where the original renders it"),
