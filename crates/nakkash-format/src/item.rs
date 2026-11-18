@@ -1206,6 +1206,75 @@ pub static VENETIAN_BLINDS: Registry = Registry {
     ],
 };
 
+/// The properties of `linear-wipe`.
+pub static LINEAR_WIPE: Registry = Registry {
+    kind: "linear-wipe",
+    rows: &[
+        number(
+            "completion",
+            0.0,
+            Some((0.0, 1.0)),
+            "how far the edge has crossed the layer's box, 0 to 1",
+        ),
+        number(
+            "angle",
+            90.0,
+            None,
+            "which way the edge travels, in degrees clockwise from up; 90 runs left to right",
+        ),
+        number(
+            "feather",
+            0.0,
+            Some((0.0, 32_000.0)),
+            "how wide the edge's fade is, in px",
+        ),
+    ],
+};
+
+/// The properties of `iris-wipe`.
+pub static IRIS_WIPE: Registry = Registry {
+    kind: "iris-wipe",
+    rows: &[
+        point(
+            "center",
+            [0.0, 0.0],
+            &[],
+            false,
+            "the middle of the hole, in px of the layer",
+        ),
+        number(
+            "points",
+            6.0,
+            Some((3.0, 32.0)),
+            "how many corners the hole's outline has",
+        ),
+        number(
+            "outer-radius",
+            0.0,
+            Some((0.0, 32_000.0)),
+            "how far its corners are from `center`, in px",
+        ),
+        number(
+            "inner-radius",
+            0.0,
+            Some((0.0, 32_000.0)),
+            "how far every other corner is from `center` with `inner` on, in px",
+        ),
+        number(
+            "rotation",
+            0.0,
+            None,
+            "how far the outline is turned clockwise from a corner straight up, in degrees",
+        ),
+        number(
+            "feather",
+            0.0,
+            Some((0.0, 32_000.0)),
+            "how wide the edge's fade is, inwards, in px",
+        ),
+    ],
+};
+
 /// The properties of fractal noise.
 pub static FRACTAL_NOISE: Registry = Registry {
     kind: "fractal-noise",
@@ -2121,7 +2190,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 37] = [
+pub static EFFECTS: [ItemKind; 39] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -2852,6 +2921,34 @@ pub static EFFECTS: [ItemKind; 37] = [
         outline: None,
         timed: false,
         doc: "hides the layer in stripes, from one side of each",
+    },
+    ItemKind {
+        name: "linear-wipe",
+        role: Role::Effect,
+        registry: &LINEAR_WIPE,
+        primary: Primary::Property("completion"),
+        settings: &[],
+        input: None,
+        outline: None,
+        timed: false,
+        doc: "hides the layer behind a straight edge that crosses its box, from 0 (all shown) \
+              to 1 (all hidden)",
+    },
+    ItemKind {
+        name: "iris-wipe",
+        role: Role::Effect,
+        registry: &IRIS_WIPE,
+        primary: Primary::Property("outer-radius"),
+        settings: &[SettingSpec {
+            name: "inner",
+            choices: &["off", "on"],
+            default: "off",
+            doc: "whether every other corner sits at `inner-radius`, making the outline a star",
+        }],
+        input: None,
+        outline: None,
+        timed: false,
+        doc: "cuts a hole in the layer, a polygon or star around `center`",
     },
     ItemKind {
         name: "fractal-noise",

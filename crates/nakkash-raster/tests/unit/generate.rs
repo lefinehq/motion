@@ -140,6 +140,104 @@ fn venetian_blinds_hide_each_stripe_from_one_side() {
     assert_eq!(pixels.get(0, 12)[3], 0.0);
 }
 
+/// A 100 by 1 grey layer box, wiped `completion` of the way at `angle`
+/// with `feather`: the alpha of every tenth pixel.
+fn wiped(completion: f32, angle: f32, feather: f32) -> Vec<f32> {
+    let mut pixels = solid(100, 1);
+    let space = Space {
+        bounds: Some(vello_cpu::kurbo::Rect::new(0.0, 0.0, 100.0, 1.0)),
+        ..ONE
+    };
+    let values = [Number(completion), Number(angle), Number(feather)];
+    linear_wipe(&mut pixels, &values, &space);
+    (0..10).map(|i| pixels.get(i * 10 + 5, 0)[3]).collect()
+}
+
+#[test]
+fn a_linear_wipe_at_90_degrees_hides_the_box_from_its_left() {
+    assert_eq!(wiped(0.0, 90.0, 0.0), [1.0; 10]);
+    assert_eq!(wiped(1.0, 90.0, 0.0), [0.0; 10]);
+    // Halfway, the left half is hidden.
+    assert_eq!(
+        wiped(0.5, 90.0, 0.0),
+        [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    );
+    // At 270 the right half.
+    assert_eq!(
+        wiped(0.5, 270.0, 0.0),
+        [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    );
+}
+
+#[test]
+fn a_feathered_wipe_takes_its_feather_into_its_travel() {
+    // With a 40 px fade the edge travels 140 px: at 0 all shows, at 1
+    // nothing does, and halfway the fade spans 30 to 70, so pixel 45,
+    // centred at 45.5, shows 15.5 / 40 of the layer.
+    assert_eq!(wiped(0.0, 90.0, 40.0), [1.0; 10]);
+    assert_eq!(wiped(1.0, 90.0, 40.0), [0.0; 10]);
+    let half = wiped(0.5, 90.0, 40.0);
+    assert_eq!(half[..3], [0.0; 3]);
+    assert_eq!(half[7..], [1.0; 3]);
+    assert!((half[4] - 0.3875).abs() < 1e-5, "{half:?}");
+}
+
+/// A 21 by 21 grey layer with an iris about its middle pixel.
+fn iris(values: &[ParamValue]) -> Pixels {
+    let mut pixels = solid(21, 21);
+    iris_wipe(&mut pixels, values, &ONE);
+    pixels
+}
+
+fn iris_values(points: f32, outer: f32, inner: f32, feather: f32, star: u8) -> Vec<ParamValue> {
+    vec![
+        At([10.5, 10.5]),
+        Number(points),
+        Number(outer),
+        Number(inner),
+        Number(0.0),
+        Number(feather),
+        Choice(star),
+    ]
+}
+
+#[test]
+fn an_iris_cuts_a_polygon_hole() {
+    let hole = iris(&iris_values(4.0, 8.0, 0.0, 0.0, 0));
+    // A square turned 45°: its corners up, right, down and left.
+    assert_eq!(hole.get(10, 10)[3], 0.0);
+    assert_eq!(hole.get(10, 4)[3], 0.0);
+    assert_eq!(hole.get(4, 4)[3], 1.0);
+    assert_eq!(hole.get(0, 0)[3], 1.0);
+    // Nothing at a radius of 0.
+    assert!(
+        iris(&iris_values(6.0, 0.0, 0.0, 5.0, 0))
+            .data()
+            .iter()
+            .all(|p| p[3] == 1.0)
+    );
+}
+
+#[test]
+fn an_iris_with_an_inner_radius_is_a_star() {
+    let star = iris(&iris_values(8.0, 9.0, 2.0, 0.0, 1));
+    // Its tip straight up is cut, the gap between tips is not.
+    assert_eq!(star.get(10, 6)[3], 0.0);
+    assert_eq!(star.get(13, 7)[3], 1.0);
+    let polygon = iris(&iris_values(8.0, 9.0, 2.0, 0.0, 0));
+    assert_eq!(polygon.get(13, 7)[3], 0.0);
+}
+
+#[test]
+fn an_iris_fades_inwards_over_its_feather() {
+    let soft = iris(&iris_values(32.0, 8.0, 0.0, 4.0, 0));
+    // Hidden within 4 px of the middle, shown from 8 px out.
+    assert_eq!(soft.get(10, 10)[3], 0.0);
+    let edge = soft.get(16, 10)[3];
+    assert!(edge > 0.0 && edge < 1.0, "{edge}");
+    assert_eq!(soft.get(20, 10)[3], 1.0);
+}
+
 fn noise_values(evolution: f32, seed: f32) -> Vec<ParamValue> {
     let mut values = vec![
         Number(1.0),
