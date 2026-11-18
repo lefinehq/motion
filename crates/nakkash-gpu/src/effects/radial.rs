@@ -174,13 +174,13 @@ fn ray_table(rays: &Rays, centre: Point, shift: u32) -> Vec<f32> {
             centre.x + dx * rays.first - 0.5,
             centre.y + dy * rays.first - 0.5,
         );
-        let (ix, iy) = (x.floor(), y.floor());
+        let (floor_x, floor_y) = (x.floor(), y.floor());
         let (mx, my) = ((dx * scale).round(), (dy * scale).round());
         table.extend_from_slice(&[
-            whole(ix),
-            whole(iy),
-            (x - ix) as f32,
-            (y - iy) as f32,
+            whole(floor_x),
+            whole(floor_y),
+            (x - floor_x) as f32,
+            (y - floor_y) as f32,
             whole(mx),
             whole(my),
             (dx - mx / scale) as f32,
