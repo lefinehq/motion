@@ -29,11 +29,13 @@ pub struct StyledText {
 pub const SMALL_CAPS_SCALE: f64 = 0.7;
 
 /// The space faux bold adds after each character, in thousandths of an em,
-/// as tracking does: the thickened glyphs need room. Measured against a
-/// project's stored layout of a 55 px faux bold title, whose three lines it
-/// fits within 1.2 px (from 5 to 15 px narrow without it); see the research
-/// note on the first sample's fidelity.
-pub const FAUX_BOLD_TRACKING: f64 = 30.0;
+/// as tracking does: the thickened glyphs need room. Fitted over the
+/// corpus's stored layouts: 69 faux bold lines from 25 to 218 px in nine
+/// families, whose widths ours exceeded by a median 2.96 thousandths of an
+/// em per character at 30 (the first fit, on one 55 px title); a
+/// proportional rule fits them with no constant part (0.02795 em less
+/// 0.05 px). See the research note on the first sample's fidelity.
+pub const FAUX_BOLD_TRACKING: f64 = 27.0;
 
 impl StyledText {
     /// `text` in one character style, every paragraph in the default
