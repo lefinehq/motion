@@ -341,6 +341,213 @@ pub(crate) fn lens_distortion(pixels: &mut Pixels, values: &[ParamValue], space:
     });
 }
 
+/// Where each of `bezier-warp`'s twelve points rests, in fractions of the
+/// layer's box: the corners, and the handles a third of the way along
+/// each side, so that at rest each side is straight and the warp changes
+/// nothing. In the order of its parameters: round the box clockwise from
+/// the top-left corner.
+const WARP_REST: [[f64; 2]; 12] = [
+    [0.0, 0.0],
+    [1.0 / 3.0, 0.0],
+    [2.0 / 3.0, 0.0],
+    [1.0, 0.0],
+    [1.0, 1.0 / 3.0],
+    [1.0, 2.0 / 3.0],
+    [1.0, 1.0],
+    [2.0 / 3.0, 1.0],
+    [1.0 / 3.0, 1.0],
+    [0.0, 1.0],
+    [0.0, 2.0 / 3.0],
+    [0.0, 1.0 / 3.0],
+];
+
+/// The surface `bezier-warp` lays the layer's box on: a patch bounded by
+/// four cubic curves, each side of the box bent through its two handles,
+/// filled between them by blending the opposite sides (a Coons patch).
+struct Patch {
+    /// The top side from the top-left corner, the right side from the
+    /// top-right one, the bottom side from the bottom-left one and the
+    /// left side from the top-left one, each as its four control points.
+    top: [Point; 4],
+    right: [Point; 4],
+    bottom: [Point; 4],
+    left: [Point; 4],
+}
+
+impl Patch {
+    /// The patch of the values over `bounds`: each point rests where
+    /// [`WARP_REST`] puts it and moves by its value.
+    fn new(values: &[ParamValue], bounds: Rect) -> Patch {
+        let p: [Point; 12] = std::array::from_fn(|i| {
+            let [dx, dy] = point(values, i);
+            let [fx, fy] = WARP_REST[i];
+            Point::new(
+                bounds.x0 + fx * bounds.width() + f64::from(dx),
+                bounds.y0 + fy * bounds.height() + f64::from(dy),
+            )
+        });
+        Patch {
+            top: [p[0], p[1], p[2], p[3]],
+            right: [p[3], p[4], p[5], p[6]],
+            bottom: [p[9], p[8], p[7], p[6]],
+            left: [p[0], p[11], p[10], p[9]],
+        }
+    }
+
+    /// The point at `u` across and `v` down, 0 to 1 each way; beyond them
+    /// the blend runs on as the same polynomials.
+    fn at(&self, u: f64, v: f64) -> Point {
+        let curve = |c: &[Point; 4], t: f64| {
+            let s = 1.0 - t;
+            let w = [s * s * s, 3.0 * s * s * t, 3.0 * s * t * t, t * t * t];
+            c.iter()
+                .zip(w)
+                .fold(Vec2::ZERO, |sum, (p, w)| sum + p.to_vec2() * w)
+        };
+        let corners = (self.top[0].to_vec2() * (1.0 - u) + self.top[3].to_vec2() * u) * (1.0 - v)
+            + (self.bottom[0].to_vec2() * (1.0 - u) + self.bottom[3].to_vec2() * u) * v;
+        let across = curve(&self.top, u) * (1.0 - v) + curve(&self.bottom, u) * v;
+        let down = curve(&self.left, v) * (1.0 - u) + curve(&self.right, v) * u;
+        (across + down - corners).to_point()
+    }
+}
+
+/// How many pieces `bezier-warp` cuts each side of its patch into: enough
+/// that a piece drawn flat strays from the curved patch by well under a
+/// pixel for patches of a few thousand px.
+const WARP_PIECES: usize = 128;
+
+/// `bezier-warp`: the layer's box laid on the [`Patch`] its twelve points
+/// bound, each point moved by its value from where it rests on the box
+/// ([`WARP_REST`]): what lies `u` across and `v` down the box shows `u`
+/// across and `v` down the patch. Where the patch folds over itself, the
+/// part nearer its bottom right shows. Its outline is smoothed over a
+/// pixel.
+pub(crate) fn bezier_warp(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let bounds = layer_box(pixels, space);
+    if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
+        return;
+    }
+    let patch = Patch::new(values, bounds);
+    let to = space.transform;
+    // The patch on the grid, with its derivatives.
+    let on_grid = |u: f64, v: f64| to * patch.at(u, v);
+    let speed = |u: f64, v: f64| {
+        let h = 1e-3;
+        (
+            (on_grid(u + h, v) - on_grid(u - h, v)).hypot() / (2.0 * h),
+            (on_grid(u, v + h) - on_grid(u, v - h)).hypot() / (2.0 * h),
+        )
+    };
+    // A margin past each side, a pixel and a half wide on the grid, so the
+    // outline's smoothing has room outside it.
+    let slowest = (0..=16)
+        .flat_map(|i| {
+            let t = i as f64 / 16.0;
+            [speed(0.0, t), speed(1.0, t), speed(t, 0.0), speed(t, 1.0)]
+        })
+        .fold((f64::INFINITY, f64::INFINITY), |(a, b), (u, v)| {
+            (a.min(u), b.min(v))
+        });
+    let margin = |s: f64| (1.5 / s.max(1e-6)).min(0.25);
+    let (mu, mv) = (margin(slowest.0), margin(slowest.1));
+    let n = WARP_PIECES;
+    let uv = |i: usize, j: usize| {
+        (
+            -mu + (1.0 + 2.0 * mu) * i as f64 / n as f64,
+            -mv + (1.0 + 2.0 * mv) * j as f64 / n as f64,
+        )
+    };
+    let corners: Vec<Point> = (0..=n)
+        .flat_map(|j| (0..=n).map(move |i| (i, j)))
+        .map(|(i, j)| {
+            let (u, v) = uv(i, j);
+            on_grid(u, v)
+        })
+        .collect();
+    // Which point of the patch each pixel centre shows, piece by piece.
+    let (width, height) = (usize::from(pixels.width()), usize::from(pixels.height()));
+    let mut shows: Vec<Option<(f64, f64)>> = vec![None; width * height];
+    for j in 0..n {
+        for i in 0..n {
+            let at = |di: usize, dj: usize| {
+                let (u, v) = uv(i + di, j + dj);
+                (corners[(j + dj) * (n + 1) + i + di], u, v)
+            };
+            let quad = [at(0, 0), at(1, 0), at(1, 1), at(0, 1)];
+            for tri in [[quad[0], quad[1], quad[2]], [quad[0], quad[2], quad[3]]] {
+                cover(&mut shows, width, height, tri);
+            }
+        }
+    }
+    let half = [
+        to.as_coeffs()[0].hypot(to.as_coeffs()[1]),
+        to.as_coeffs()[2].hypot(to.as_coeffs()[3]),
+    ]
+    .map(|s| 0.5 / s.max(1e-6));
+    let inset = Rect::new(
+        bounds.x0 + half[0].min(bounds.width() / 2.0),
+        bounds.y0 + half[1].min(bounds.height() / 2.0),
+        bounds.x1 - half[0].min(bounds.width() / 2.0),
+        bounds.y1 - half[1].min(bounds.height() / 2.0),
+    );
+    let source = pixels.clone();
+    for (i, pixel) in pixels.data_mut().iter_mut().enumerate() {
+        *pixel = match shows[i] {
+            None => [0.0; 4],
+            Some((u, v)) => {
+                // How far inside the outline the pixel centre lies, in px.
+                let (su, sv) = speed(u.clamp(0.0, 1.0), v.clamp(0.0, 1.0));
+                let inside = (u.min(1.0 - u) * su).min(v.min(1.0 - v) * sv);
+                let kept = (0.5 + inside).clamp(0.0, 1.0) as f32;
+                // Read half a pixel inside the box at most, so its edge is
+                // smoothed once, by the outline.
+                let at = to
+                    * Point::new(
+                        (bounds.x0 + u * bounds.width()).clamp(inset.x0, inset.x1),
+                        (bounds.y0 + v * bounds.height()).clamp(inset.y0, inset.y1),
+                    );
+                source.sample(at.x, at.y).map(|c| c * kept)
+            }
+        };
+    }
+}
+
+/// Marks each pixel whose centre lies in the triangle `tri` of grid points
+/// with the patch point there, `u` and `v` interpolated across it.
+fn cover(
+    shows: &mut [Option<(f64, f64)>],
+    width: usize,
+    height: usize,
+    tri: [(Point, f64, f64); 3],
+) {
+    let [(a, ua, va), (b, ub, vb), (c, uc, vc)] = tri;
+    let area = (b - a).cross(c - a);
+    if area.abs() < 1e-12 {
+        return;
+    }
+    let lo = |f: fn(&Point) -> f64| [a, b, c].iter().map(f).fold(f64::INFINITY, f64::min);
+    let hi = |f: fn(&Point) -> f64| [a, b, c].iter().map(f).fold(f64::NEG_INFINITY, f64::max);
+    let x0 = (lo(|p| p.x) - 0.5).ceil().max(0.0) as usize;
+    let y0 = (lo(|p| p.y) - 0.5).ceil().max(0.0) as usize;
+    let x1 = ((hi(|p| p.x) - 0.5).floor() + 1.0).clamp(0.0, width as f64) as usize;
+    let y1 = ((hi(|p| p.y) - 0.5).floor() + 1.0).clamp(0.0, height as f64) as usize;
+    // A hair of overlap so neighbouring triangles leave no gap.
+    let eps = -1e-9;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let p = Point::new(x as f64 + 0.5, y as f64 + 0.5);
+            let wa = (b - p).cross(c - p) / area;
+            let wb = (c - p).cross(a - p) / area;
+            let wc = 1.0 - wa - wb;
+            if wa >= eps && wb >= eps && wc >= eps {
+                shows[y * width + x] =
+                    Some((wa * ua + wb * ub + wc * uc, wa * va + wb * vb + wc * vc));
+            }
+        }
+    }
+}
+
 /// `repeat-tile`: the layer's box repeated around itself, as far as
 /// `right`, `left`, `down` and `up` reach beyond it. With `repeat` every
 /// tile is the box; with `unfold` every other column of tiles flips

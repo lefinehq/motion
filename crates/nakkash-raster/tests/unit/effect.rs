@@ -43,6 +43,17 @@ fn every_effect_says_how_far_it_reaches() {
         Reach::Bounds
     );
     assert_eq!(reach("particles", &[]), Reach::Anywhere);
+    // A warp grows the box by its farthest move each way, and a pixel.
+    assert_eq!(
+        reach(
+            "bezier-warp",
+            &[
+                ("top-left", ParamValue::Point([-10.0, -5.0])),
+                ("bottom-right", ParamValue::Point([20.0, 0.0])),
+            ]
+        ),
+        Reach::Grows(Growth::By([11.0, 6.0, 21.0, 1.0]))
+    );
 }
 
 #[test]

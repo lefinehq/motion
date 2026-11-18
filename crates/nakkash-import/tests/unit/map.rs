@@ -1006,6 +1006,64 @@ mod effects {
         );
     }
 
+    /// A warp's points are fractions of the layer's effect space; each
+    /// becomes the px it moves from where its parameter rests. Its quality
+    /// changes nothing the scene draws.
+    #[test]
+    fn a_bezier_warp_takes_each_point_as_its_move_from_rest() {
+        let point = |match_name: &str, default: [f64; 2]| {
+            parameter(
+                match_name,
+                Control::Point {
+                    default: default.to_vec(),
+                },
+            )
+        };
+        let definition = EffectDefinition {
+            name: "Warp".into(),
+            parameters: vec![
+                parameter("ADBE BEZMESH-0000", Control::Layer),
+                point("ADBE BEZMESH-0001", [0.0, 0.0]),
+                point("ADBE BEZMESH-0002", [0.25, 0.0]),
+                point("ADBE BEZMESH-0007", [1.0, 1.0]),
+                parameter(
+                    "ADBE BEZMESH-0014",
+                    Control::Slider {
+                        default: 8.0,
+                        min: Some(1.0),
+                        max: Some(10.0),
+                        percent: false,
+                    },
+                ),
+            ],
+        };
+        let vector = |match_name: &str, at: [f64; 2]| {
+            Child::Property(property(match_name, Stream::Static(Value::Vector2(at))))
+        };
+        let import = defined(
+            vec![group(
+                "ADBE BEZMESH",
+                vec![
+                    vector("ADBE BEZMESH-0001", [-0.18, -0.26]),
+                    vector("ADBE BEZMESH-0002", [0.5, -0.05]),
+                    vector("ADBE BEZMESH-0007", [1.0, 1.0]),
+                    Child::Property(number("ADBE BEZMESH-0014", 10.0)),
+                ],
+            )],
+            vec![("ADBE BEZMESH", definition)],
+        )
+        .expect("imports");
+        assert_eq!(
+            import.json["layers"][0]["fx"],
+            json!([{"bezier-warp":[-36,-26],"bottom-right":[0,0],"top-handle-left":[50,-5]}])
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
     #[test]
     fn a_displacement_map_names_its_map_layer() {
         let map = |layer: u32| {

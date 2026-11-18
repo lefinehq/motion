@@ -896,6 +896,99 @@ pub static LENS_DISTORTION: Registry = Registry {
     ],
 };
 
+/// The properties of `bezier-warp`: its twelve points, each in px it
+/// moves from where it rests on the layer's box: the corners, and the
+/// handles a third of the way along each side.
+pub static BEZIER_WARP: Registry = Registry {
+    kind: "bezier-warp",
+    rows: &[
+        point(
+            "top-left",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the top-left corner moves from where it rests, in px of the layer",
+        ),
+        point(
+            "top-handle-left",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the top side's handle nearer its left end moves from where it rests, in px of the layer",
+        ),
+        point(
+            "top-handle-right",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the top side's handle nearer its right end moves from where it rests, in px of the layer",
+        ),
+        point(
+            "top-right",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the top-right corner moves from where it rests, in px of the layer",
+        ),
+        point(
+            "right-handle-top",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the right side's handle nearer its top moves from where it rests, in px of the layer",
+        ),
+        point(
+            "right-handle-bottom",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the right side's handle nearer its bottom moves from where it rests, in px of the layer",
+        ),
+        point(
+            "bottom-right",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the bottom-right corner moves from where it rests, in px of the layer",
+        ),
+        point(
+            "bottom-handle-right",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the bottom side's handle nearer its right end moves from where it rests, in px of the layer",
+        ),
+        point(
+            "bottom-handle-left",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the bottom side's handle nearer its left end moves from where it rests, in px of the layer",
+        ),
+        point(
+            "bottom-left",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the bottom-left corner moves from where it rests, in px of the layer",
+        ),
+        point(
+            "left-handle-bottom",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the left side's handle nearer its bottom moves from where it rests, in px of the layer",
+        ),
+        point(
+            "left-handle-top",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the left side's handle nearer its top moves from where it rests, in px of the layer",
+        ),
+    ],
+};
+
 /// The properties of `repeat-tile`.
 pub static REPEAT_TILE: Registry = Registry {
     kind: "repeat-tile",
@@ -2028,7 +2121,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 36] = [
+pub static EFFECTS: [ItemKind; 37] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -2634,6 +2727,18 @@ pub static EFFECTS: [ItemKind; 36] = [
         timed: false,
         doc: "bends the layer about `center` as a lens with a wide field of view draws it, \
               or undoes that bend",
+    },
+    ItemKind {
+        name: "bezier-warp",
+        role: Role::Effect,
+        registry: &BEZIER_WARP,
+        primary: Primary::Property("top-left"),
+        settings: &[],
+        input: None,
+        outline: None,
+        timed: false,
+        doc: "lays the layer's box on a patch whose four sides are cubic curves through its \
+              corners and handles, each moved from where it rests on the box",
     },
     ItemKind {
         name: "repeat-tile",

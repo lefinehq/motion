@@ -1666,6 +1666,101 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "bezier-warp",
+        params: &[
+            ParamSpec {
+                name: "top-left",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the top-left corner moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "top-handle-left",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the top side's handle nearer its left end moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "top-handle-right",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the top side's handle nearer its right end moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "top-right",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the top-right corner moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "right-handle-top",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the right side's handle nearer its top moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "right-handle-bottom",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the right side's handle nearer its bottom moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "bottom-right",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the bottom-right corner moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "bottom-handle-right",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the bottom side's handle nearer its right end moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "bottom-handle-left",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the bottom side's handle nearer its left end moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "bottom-left",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the bottom-left corner moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "left-handle-bottom",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the left side's handle nearer its bottom moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "left-handle-top",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the left side's handle nearer its top moves from where it rests, in px of the layer",
+            },
+        ],
+        doc: "lays the layer's box on a patch whose four sides are cubic curves",
+        reach: warp_reach,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: distort::bezier_warp,
+        },
+    },
+    EffectSpec {
         name: "repeat-tile",
         params: &[
             ParamSpec {
@@ -3013,6 +3108,28 @@ fn lens_reach(values: &[ParamValue]) -> Reach {
         ParamValue::Choice(0) => Reach::Bounds,
         _ => Reach::Grows(Growth::To(distort::lens_box)),
     }
+}
+
+/// `bezier-warp` grows the box by as far as any of its points moves past
+/// it, and a pixel for its smoothed outline: each side of its patch lies
+/// within the hull of its control points.
+fn warp_reach(values: &[ParamValue]) -> Reach {
+    let [mut left, mut top, mut right, mut bottom] = [0.0f32; 4];
+    for value in &values[..12] {
+        let ParamValue::Point([dx, dy]) = *value else {
+            unreachable!("`Effect::new` checks the parameter types");
+        };
+        left = left.max(-dx);
+        right = right.max(dx);
+        top = top.max(-dy);
+        bottom = bottom.max(dy);
+    }
+    Reach::Grows(Growth::By([
+        left + 1.0,
+        top + 1.0,
+        right + 1.0,
+        bottom + 1.0,
+    ]))
 }
 
 /// `repeat-tile` grows the box by how far its tiles reach each way.

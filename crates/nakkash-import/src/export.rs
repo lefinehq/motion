@@ -290,7 +290,9 @@ fn project_value(
         | Convert::Times(_)
         | Convert::Depth => (ValueType::Number, false),
         Convert::Angles => (ValueType::Orientation, false),
-        Convert::Point | Convert::PointPercent | Convert::Sized { .. } => (ValueType::Point, true),
+        Convert::Point | Convert::FromRest | Convert::PointPercent | Convert::Sized { .. } => {
+            (ValueType::Point, true)
+        }
         Convert::Color => (ValueType::Color, false),
         Convert::Path | Convert::PathIn(_) => {
             return Err("a path, which the export does not write yet".into());
