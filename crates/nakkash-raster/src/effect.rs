@@ -24,7 +24,7 @@ use crate::list::Node;
 use crate::pixels::Pixels;
 use crate::style::Color;
 use crate::total::Total;
-use crate::{blur, channel, colour, composite, cycle, distort, generate, particles};
+use crate::{blur, channel, colour, composite, cycle, distort, generate, particles, radial};
 
 /// The type of one effect parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2282,6 +2282,56 @@ pub const EFFECTS: &[EffectSpec] = &[
         apply: Apply::Pixels {
             over: None,
             pixels: blur::box_blur,
+        },
+    },
+    EffectSpec {
+        name: "radial-blur",
+        params: &[
+            ParamSpec {
+                name: "amount",
+                default: ParamValue::Number(0.0),
+                range: Some((-3_600.0, 3_600.0)),
+                choices: &[],
+                doc: "how long the streaks are: a percentage of each pixel's distance from \
+                      `center` for a zoom, degrees round it for a spin",
+            },
+            ParamSpec {
+                name: "center",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "the point the streaks run out from or round, in px of the layer's own \
+                      coordinates",
+            },
+            ParamSpec {
+                name: "type",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["zoom", "spin"],
+                doc: "rays out from `center`, or rings round it",
+            },
+            ParamSpec {
+                name: "stretch",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["behind", "across"],
+                doc: "each pixel's mean taken from itself back towards `center` or clockwise, \
+                      or half either side",
+            },
+            ParamSpec {
+                name: "fade",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["none", "linear"],
+                doc: "the pixels of a streak weighing alike, or from all at the pixel to none \
+                      at its end",
+            },
+        ],
+        doc: "streaks the layer along rays out from a point, or rings round it",
+        reach: anywhere,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: radial::radial_blur,
         },
     },
     EffectSpec {

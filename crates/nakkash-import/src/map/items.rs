@@ -361,7 +361,7 @@ impl Walk<'_> {
                 out.keys.extend(set_keys(&rgb));
                 self.mapping.count(name, Fate::Mapped);
             }
-            To::Setting(setting, choices) => {
+            To::Setting(..) | To::Settings(..) => {
                 let first = match &property.value {
                     Stream::Static(value) => Some(value),
                     // Keys that all hold one value hold it all the time.
@@ -378,12 +378,14 @@ impl Walk<'_> {
                     Some(Value::Number(n)) => Some(n.round() as i64),
                     _ => None,
                 };
-                match choices.iter().find(|(c, _)| Some(*c) == code) {
-                    Some((_, choice)) => {
-                        out.keys.insert(setting.into(), json!(choice));
+                match row.to.chosen(code).expect("a row that sets settings") {
+                    Ok(chosen) => {
+                        for (setting, choice) in chosen {
+                            out.keys.insert(setting.into(), json!(choice));
+                        }
                         self.mapping.count(name, Fate::Mapped);
                     }
-                    None => {
+                    Err(setting) => {
                         self.mapping.count(name, Fate::Unsupported);
                         self.mapping.unsupported(
                             &place.at,
@@ -605,8 +607,8 @@ impl Walk<'_> {
         let (target, depth) = match row.to {
             To::Prop(target) => (target, None),
             To::Split(point, depth) => (point, Some(depth)),
-            To::Setting(setting, choices) => {
-                return self.put_default_setting(row, (setting, choices), sink, out, place);
+            To::Setting(..) | To::Settings(..) => {
+                return self.put_default_setting(row, sink, out, place);
             }
             _ => return,
         };
@@ -650,30 +652,29 @@ impl Walk<'_> {
 
     /// Writes the default of a setting the project leaves out, the choice
     /// its effect's definition gives, where the scene's own default differs.
-    fn put_default_setting(
-        &mut self,
-        row: &Row,
-        (setting, choices): (&str, &[(i64, &'static str)]),
-        sink: Sink,
-        out: &mut Out,
-        place: &Place<'_>,
-    ) {
+    fn put_default_setting(&mut self, row: &Row, sink: Sink, out: &mut Out, place: &Place<'_>) {
         let Some(Value::Number(code)) = default_value(row, place) else {
             return;
         };
-        let Some((_, choice)) = choices.iter().find(|(c, _)| *c == code.round() as i64) else {
-            self.mapping.count(row.match_name, Fate::Unsupported);
-            return self
-                .mapping
-                .unsupported(&place.at, format!("a `{setting}` the scene does not have"));
+        let chosen = match row.to.chosen(Some(code.round() as i64)) {
+            Some(Ok(chosen)) => chosen,
+            Some(Err(setting)) => {
+                self.mapping.count(row.match_name, Fate::Unsupported);
+                return self
+                    .mapping
+                    .unsupported(&place.at, format!("a `{setting}` the scene does not have"));
+            }
+            None => return,
         };
         self.mapping.count(row.match_name, Fate::Defaulted);
-        let rest = sink
-            .kind
-            .and_then(|kind| kind.setting(setting))
-            .map(|spec| spec.default);
-        if rest != Some(*choice) {
-            out.keys.insert(setting.into(), json!(choice));
+        for (setting, choice) in chosen {
+            let rest = sink
+                .kind
+                .and_then(|kind| kind.setting(setting))
+                .map(|spec| spec.default);
+            if rest != Some(choice) {
+                out.keys.insert(setting.into(), json!(choice));
+            }
         }
     }
 

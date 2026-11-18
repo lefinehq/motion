@@ -1227,6 +1227,27 @@ pub static BOX_BLUR: Registry = Registry {
     ],
 };
 
+/// The properties of the radial blur.
+pub static RADIAL_BLUR: Registry = Registry {
+    kind: "radial-blur",
+    rows: &[
+        number(
+            "amount",
+            0.0,
+            Some((-3_600.0, 3_600.0)),
+            "how long the streaks are: a percentage of each pixel's distance from `center` for \
+             a zoom, degrees round it for a spin; negative runs them the other way",
+        ),
+        point(
+            "center",
+            [0.0, 0.0],
+            &[],
+            false,
+            "the point the streaks run out from or round, in px of the layer",
+        ),
+    ],
+};
+
 /// The properties of the drop shadow.
 pub static DROP_SHADOW: Registry = Registry {
     kind: "drop-shadow",
@@ -2007,7 +2028,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 35] = [
+pub static EFFECTS: [ItemKind; 36] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -2825,6 +2846,39 @@ pub static EFFECTS: [ItemKind; 35] = [
         outline: None,
         timed: false,
         doc: "blurs the layer with boxes run one after another",
+    },
+    ItemKind {
+        name: "radial-blur",
+        role: Role::Effect,
+        registry: &RADIAL_BLUR,
+        primary: Primary::Property("amount"),
+        settings: &[
+            SettingSpec {
+                name: "type",
+                choices: &["zoom", "spin"],
+                default: "zoom",
+                doc: "which lines the streaks run along: rays out from `center`, or rings round it",
+            },
+            SettingSpec {
+                name: "stretch",
+                choices: &["behind", "across"],
+                default: "behind",
+                doc: "where along its line each pixel takes its mean: from itself back towards \
+                      `center` or clockwise, so the layer streaks outwards or counterclockwise, \
+                      or half of it either side",
+            },
+            SettingSpec {
+                name: "fade",
+                choices: &["none", "linear"],
+                default: "none",
+                doc: "how the pixels of a streak weigh: all alike, or from all at the pixel to \
+                      none at the streak's end",
+            },
+        ],
+        input: None,
+        outline: None,
+        timed: false,
+        doc: "streaks the layer along rays out from a point, or rings round it",
     },
     ItemKind {
         name: "drop-shadow",

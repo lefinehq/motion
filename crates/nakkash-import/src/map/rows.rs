@@ -20,6 +20,10 @@ pub(super) enum To {
     Split(&'static str, &'static str),
     /// A setting of the item: the project's code for each choice.
     Setting(&'static str, &'static [(i64, &'static str)]),
+    /// Several settings of the item from one property: for each of the
+    /// project's codes, the choice it makes of each setting. A setting a
+    /// code leaves out keeps its default.
+    Settings(&'static [Choices]),
     /// The layer the kind's input key names, from a layer parameter.
     Input,
     /// The mask the kind's outline key names, from a path parameter.
@@ -43,6 +47,43 @@ pub(super) enum To {
     /// it only says how that property applies. Otherwise it is reported as
     /// unsupported, for the reason given first.
     OnlyDefaultWith(&'static str, &'static str),
+}
+
+/// One code of a [`To::Settings`] row and the choice it makes of each
+/// setting, by name.
+pub(super) type Choices = (i64, &'static [(&'static str, &'static str)]);
+
+impl To {
+    /// The settings and choices `code` makes, for a row that sets
+    /// settings: `None` for any other row. `Err` names the setting it is
+    /// reported by when the scene has no choice for the code.
+    pub(super) fn chosen(
+        &self,
+        code: Option<i64>,
+    ) -> Option<Result<Vec<(&'static str, &'static str)>, &'static str>> {
+        match *self {
+            To::Setting(setting, choices) => Some(
+                choices
+                    .iter()
+                    .find(|(c, _)| Some(*c) == code)
+                    .map(|(_, choice)| vec![(setting, *choice)])
+                    .ok_or(setting),
+            ),
+            To::Settings(codes) => Some(
+                codes
+                    .iter()
+                    .find(|(c, _)| Some(*c) == code)
+                    .map(|(_, choices)| choices.to_vec())
+                    .ok_or(
+                        codes
+                            .first()
+                            .and_then(|(_, c)| c.first())
+                            .map_or("setting", |c| c.0),
+                    ),
+            ),
+            _ => None,
+        }
+    }
 }
 
 /// What a property is when the project leaves it out, in the project's units.
@@ -476,6 +517,34 @@ const OVERFLOWS: &[(i64, &str)] = &[
 ];
 const DIMENSIONS: &[(i64, &str)] = &[(1, "both"), (2, "horizontal"), (3, "vertical")];
 const EDGES: &[(i64, &str)] = &[(0, "transparent"), (1, "repeat")];
+/// How a radial blur's samples along a streak, its quality, change what it
+/// draws: not at all, as the scene sees it.
+const SAMPLED_STREAK: &str =
+    "how finely the original samples each streak; the scene takes the mean over the whole streak";
+/// The streaks of the second radial blur's types, its separator taking
+/// code 4; `Scratch` (6) is not established, so it is reported.
+const STREAK_TYPES: &[Choices] = &[
+    (
+        1,
+        &[("type", "zoom"), ("stretch", "behind"), ("fade", "none")],
+    ),
+    (
+        2,
+        &[("type", "zoom"), ("stretch", "behind"), ("fade", "linear")],
+    ),
+    (
+        3,
+        &[("type", "zoom"), ("stretch", "across"), ("fade", "none")],
+    ),
+    (
+        5,
+        &[("type", "spin"), ("stretch", "across"), ("fade", "none")],
+    ),
+    (
+        7,
+        &[("type", "spin"), ("stretch", "behind"), ("fade", "linear")],
+    ),
+];
 const SHADOW_ONLY: &[(i64, &str)] = &[(0, "shown"), (1, "hidden")];
 // The project's choices say where the original goes: on top of the glow
 // (1), behind it (2), or not at all (3).
@@ -1178,7 +1247,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 51] = [
+pub(super) static KINDS: [Kind; 53] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -3525,6 +3594,53 @@ pub(super) static KINDS: [Kind; 51] = [
         switch: None,
     },
     Kind {
+        match_name: "ADBE Radial Blur",
+        item: "radial-blur",
+        table: &EFFECTS,
+        rows: &SPIN_BLUR,
+        parts: &[],
+        switch: Some(Switch {
+            match_name: "ADBE Radial Blur-0003",
+            missing: 1.0,
+            on: spins,
+            off_rows: &ZOOM_BLUR,
+        }),
+    },
+    Kind {
+        match_name: "CC Radial Blur",
+        item: "radial-blur",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "CC Radial Blur-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Radial Blur-0001",
+                To::Settings(STREAK_TYPES),
+                Number,
+                Parameter,
+            ),
+            row(
+                "CC Radial Blur-0002",
+                To::Prop("amount"),
+                Times(0.5),
+                Parameter,
+            ),
+            row(
+                "CC Radial Blur-0003",
+                To::Ignore(SAMPLED_STREAK),
+                Number,
+                Absent,
+            ),
+            row("CC Radial Blur-0004", To::Prop("center"), Point, Parameter),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
         match_name: "ADBE Drop Shadow",
         item: "drop-shadow",
         table: &EFFECTS,
@@ -4065,6 +4181,88 @@ pub(super) fn policy(match_name: &str) -> Option<Policy> {
         .iter()
         .find(|(name, _)| *name == match_name)
         .map(|(_, policy)| *policy)
+}
+
+/// The rows of the spin/zoom radial blur, its type and amount given.
+macro_rules! radial_blur_rows {
+    ($type:expr, $amount:expr) => {
+        [
+            row(
+                "ADBE Radial Blur-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Radial Blur-0005",
+                To::Ignore("the effect's own preview in its panel"),
+                Number,
+                Absent,
+            ),
+            $amount,
+            row(
+                "ADBE Radial Blur-0002",
+                To::Prop("center"),
+                Point,
+                Parameter,
+            ),
+            $type,
+            row(
+                "ADBE Radial Blur-0004",
+                To::Ignore(SAMPLED_STREAK),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ]
+    };
+}
+
+/// The spin/zoom radial blur spinning: Amount degrees round the centre,
+/// half either side of each pixel.
+static SPIN_BLUR: [Row; 7] = radial_blur_rows!(
+    row(
+        "ADBE Radial Blur-0003",
+        To::Settings(&[(
+            1,
+            &[("type", "spin"), ("stretch", "across"), ("fade", "none")],
+        )]),
+        Number,
+        Parameter,
+    ),
+    row(
+        "ADBE Radial Blur-0001",
+        To::Prop("amount"),
+        Number,
+        Parameter,
+    )
+);
+
+/// The spin/zoom radial blur zooming, whose amount's scale no sample
+/// shows: reported, and drawn as no blur at all.
+static ZOOM_BLUR: [Row; 7] = radial_blur_rows!(
+    row(
+        "ADBE Radial Blur-0003",
+        To::OnlyDefault("a zoom, whose amount's scale no sample shows"),
+        Number,
+        Parameter,
+    ),
+    row(
+        "ADBE Radial Blur-0001",
+        To::Ignore("the amount of a zoom, which is reported"),
+        Number,
+        Absent,
+    )
+);
+
+/// Whether the spin/zoom radial blur's type `code` spins.
+fn spins(code: f64) -> bool {
+    code != 2.0
 }
 
 /// The properties of a layer's root group and their fate, by match name.

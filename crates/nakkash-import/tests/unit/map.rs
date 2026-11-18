@@ -793,6 +793,82 @@ mod effects {
         assert_eq!(what, ["a `mode` the scene does not have"]);
     }
 
+    /// A radial blur's type is three settings at once: which lines, which
+    /// stretch of them and whether it fades. A type the scene does not
+    /// draw is reported, and so is a zoom of the spin/zoom blur, whose
+    /// amount's scale is not known, drawn as no blur.
+    #[test]
+    fn radial_blurs_take_their_streaks_from_their_type() {
+        let center = |match_name: &str| {
+            Child::Property(property(
+                match_name,
+                Stream::Static(Value::Vector2([0.25, 0.5])),
+            ))
+        };
+        let definition = EffectDefinition {
+            name: "CC Radial Blur".into(),
+            parameters: vec![
+                parameter("CC Radial Blur-0000", Control::Layer),
+                parameter(
+                    "CC Radial Blur-0004",
+                    Control::Point {
+                        default: vec![0.5, 0.5],
+                    },
+                ),
+            ],
+        };
+        let import = defined(
+            vec![
+                group(
+                    "CC Radial Blur",
+                    vec![
+                        Child::Property(number("CC Radial Blur-0001", 2.0)),
+                        Child::Property(number("CC Radial Blur-0002", 100.0)),
+                        center("CC Radial Blur-0004"),
+                    ],
+                ),
+                group(
+                    "ADBE Radial Blur",
+                    vec![
+                        Child::Property(number("ADBE Radial Blur-0001", 10.0)),
+                        Child::Property(number("ADBE Radial Blur-0003", 1.0)),
+                        Child::Property(number("ADBE Radial Blur-0004", 2.0)),
+                    ],
+                ),
+                group(
+                    "CC Radial Blur",
+                    vec![Child::Property(number("CC Radial Blur-0001", 6.0))],
+                ),
+                group(
+                    "ADBE Radial Blur",
+                    vec![
+                        Child::Property(number("ADBE Radial Blur-0001", 4.0)),
+                        Child::Property(number("ADBE Radial Blur-0003", 2.0)),
+                    ],
+                ),
+            ],
+            vec![("CC Radial Blur", definition)],
+        )
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"];
+        assert_eq!(
+            fx[0],
+            json!({"radial-blur":50,"type":"zoom","stretch":"behind","fade":"linear","center":[-50,0]}),
+            "{fx}"
+        );
+        assert_eq!(fx[1]["type"], "spin", "{fx}");
+        assert_eq!(fx[1]["stretch"], "across", "{fx}");
+        assert_eq!(fx[3]["radial-blur"], 0, "{fx}");
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert_eq!(
+            what,
+            [
+                "a `type` the scene does not have",
+                "a zoom, whose amount's scale no sample shows"
+            ]
+        );
+    }
+
     /// A mirror's centre is a point of the layer's effect space; one the
     /// project leaves out is its definition's, the right edge's middle.
     #[test]

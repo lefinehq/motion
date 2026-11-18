@@ -32,6 +32,7 @@ mod pen;
 mod picture;
 mod pixels;
 mod projected;
+mod radial;
 mod render;
 mod sound;
 mod style;
