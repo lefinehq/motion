@@ -170,3 +170,21 @@ fn a_node_inside_a_comp_is_measured_by_what_its_clip_lets_draw() {
     assert_eq!(offscreen(&faded, &graph()), None);
     assert!(offscreen(&root(&poking), &graph()).is_some());
 }
+
+#[test]
+fn a_node_showing_a_comp_is_judged_by_what_the_comp_draws() {
+    // A composition's box is its whole canvas, here the scene's size and
+    // 300 px off its left edge; what it draws is checked at its own layers.
+    let shown = NodeState {
+        content: nakkash_scene::ContentState::Comp(0, None),
+        ..node(200.0, 250.0, 1000.0, 500.0, 1.0)
+    };
+    assert_eq!(offscreen(&root(&shown), &graph()), None);
+    assert_eq!(outside_safe_area(&root(&shown), &graph()), None);
+    // The same box as a rect is measured.
+    let rect = node(200.0, 250.0, 1000.0, 500.0, 1.0);
+    assert_eq!(
+        offscreen(&root(&rect), &graph()).map(|o| o.amount),
+        Some(300.0)
+    );
+}
