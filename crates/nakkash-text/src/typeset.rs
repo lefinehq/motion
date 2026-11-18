@@ -297,8 +297,11 @@ impl Typesetter {
             let content = f64::from(metrics.inline_min_coord + metrics.offset);
             let placed = reader.read(&line, out.lines.len(), baseline)?;
             let line_start = match text.frame {
+                // A point line aligns on its width less the tracking after
+                // its last character, which its width still holds.
                 TextFrame::Point => {
-                    paragraph.style.start_indent + content - rule.point_anchor * placed.width
+                    paragraph.style.start_indent + content
+                        - rule.point_anchor * (placed.width - placed.trailing)
                 }
                 TextFrame::Box { left, .. } => left + paragraph.style.start_indent + content,
             };
@@ -610,7 +613,12 @@ impl Cursor {
 /// A line's glyph runs and character advances, x still in Parley's coordinates.
 struct Placed {
     range: Range<usize>,
+    /// Its width, to the end of its last character that is not white
+    /// space, the tracking after it included.
     width: f64,
+    /// The tracking after that last character: its run's tracking, not the
+    /// extra advance of faux bold, which aligns like an advance.
+    trailing: f64,
     advances: Vec<f64>,
     runs: Vec<GlyphRun>,
 }
@@ -678,6 +686,7 @@ impl Reader<'_> {
         let mut by_char: Vec<(usize, f64)> = Vec::new();
         let mut pen = 0.0;
         let mut width: f64 = 0.0;
+        let mut trailing = 0.0;
         for cluster in &clusters {
             let chars: Vec<usize> = self.text.text[cluster.source.clone()]
                 .char_indices()
@@ -691,8 +700,9 @@ impl Reader<'_> {
                 }
             }
             pen += cluster.advance;
-            if !cluster.blank {
-                width = width.max(pen);
+            if !cluster.blank && pen >= width {
+                width = pen;
+                trailing = self.tracking_after(&cluster.source);
             }
         }
         let line_text = line.text_range();
@@ -715,9 +725,18 @@ impl Reader<'_> {
         Ok(Placed {
             range,
             width,
+            trailing,
             advances,
             runs,
         })
+    }
+
+    /// The tracking that follows the cluster of source bytes `source`, in
+    /// px: its run's tracking at the run's size, scaled across as the run
+    /// is ([`Styler::properties`]), without faux bold's extra advance.
+    fn tracking_after(&self, source: &Range<usize>) -> f64 {
+        let style = &self.text.runs[run_at(self.text, source.start)].style;
+        style.tracking / 1000.0 * style.size * style.horizontal_scale
     }
 
     /// The line's glyph runs, each glyph tagged with the source bytes it shows.

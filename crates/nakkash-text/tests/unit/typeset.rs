@@ -195,6 +195,32 @@ fn lines_align_in_their_box_and_about_the_origin(
 }
 
 #[rstest]
+#[case::left(Justification::Left, 0.0)]
+#[case::right(Justification::Right, 1.0)]
+#[case::center(Justification::Center, 0.5)]
+fn tracked_point_lines_align_without_the_tracking_after_their_last_character(
+    #[case] justification: Justification,
+    #[case] anchor: f64,
+) {
+    let mut point = StyledText::plain("Track ", style(REGULAR, 50.0));
+    point.runs[0].style.tracking = 200.0;
+    point.paragraphs[0].justification = justification;
+    let point = lay(&point);
+    let line = &point.lines[0];
+    // The width holds the tracking after the last letter, and not the
+    // trailing space; alignment leaves that tracking out too.
+    let after = 200.0 / 1000.0 * 50.0;
+    assert!(close(line.x, -anchor * (line.width - after)), "{}", line.x);
+    // Faux bold's extra advance is not tracking: it aligns like an advance.
+    let mut bold = StyledText::plain("Track", style(REGULAR, 50.0));
+    bold.runs[0].style.faux_bold = true;
+    bold.paragraphs[0].justification = justification;
+    let bold = lay(&bold);
+    let line = &bold.lines[0];
+    assert!(close(line.x, -anchor * line.width), "{}", line.x);
+}
+
+#[rstest]
 #[case::last_left(Justification::JustifyLastLeft, Some(0.0))]
 #[case::last_right(Justification::JustifyLastRight, Some(1.0))]
 #[case::last_center(Justification::JustifyLastCenter, Some(0.5))]

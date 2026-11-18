@@ -26,7 +26,7 @@ Other fields we read by inference, without a check yet:
 
 ### What the beliefs taught us
 
-- **B3, first version, was wrong.** It took the centre as `-w/2`. A sample with tracking 200 at 30 px starts 3 px right of that: alignment leaves out the tracking after the last character, while the stored width includes it. Our layout aligns tracked text including that tracking, so a tracked, centred line sits half a tracking step left of where it should. This is open; the sample that shows it needs a font we do not have locally yet.
+- **B3, first version, was wrong.** It took the centre as `-w/2`. A sample with tracking 200 at 30 px starts 3 px right of that: alignment leaves out the tracking after the last character, while the stored width includes it. Our layout aligned tracked text including that tracking, so a tracked, centred line sat half a tracking step left of where it should. It now aligns without it: a centred 376 px title with tracking 40 in a local template sat 7.52 px (half of 15.04 px of tracking) left of its stored start and now sits on it, and lines within 0.25 px of their stored layout went from 234 to 356 of 998 over the corpus, none moving further away.
 - **Faux bold is not tracking.** The faux bold title of the first sample is centred on its full stored width, the extra space after its last character included. So faux bold's extra advance (`FAUX_BOLD_TRACKING`) is aligned like an advance, not like tracking.
 
 ## Cameras
