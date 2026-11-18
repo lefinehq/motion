@@ -1,11 +1,13 @@
 name: CI
 
-# Pull requests merge into `development` after the contributor's local checks;
-# CI runs once on each push there, and `main` moves to a `development` commit
-# only after CI passed on it.
+# Pull requests run only the quick jobs (fmt, deny, hygiene) and merge into
+# `development` after the contributor's local checks. The full Linux and macOS
+# builds, tests and coverage run on each push to `development` and `main`, and
+# `main` moves to a `development` commit only after they passed on it.
 on:
   push:
     branches: [main, development]
+  pull_request:
   workflow_dispatch:
 
 concurrency:
@@ -14,6 +16,7 @@ concurrency:
 
 jobs:
   check:
+    if: github.event_name != 'pull_request'
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -37,6 +40,7 @@ jobs:
 
   # Line coverage must stay at or above 85%.
   coverage:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +49,16 @@ jobs:
       - run: rustup component add llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - run: cargo llvm-cov --workspace --locked --fail-under-lines 85
+
+  # Formatting, the one part of `check` that is quick enough for pull requests.
+  fmt:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: rustup toolchain install
+      - run: cargo fmt --all -- --check
 
   # Licences, advisories, bans and sources, as configured in deny.toml.
   deny:

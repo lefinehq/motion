@@ -20,7 +20,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-CI runs the same commands on Linux and macOS, on each push to `development` and `main`, not on pull requests.
+CI runs the same commands on Linux and macOS on each push to `development` and `main`. On pull requests it runs only the quick jobs: formatting, cargo-deny and the hygiene checks.
 
 ## Branches
 
