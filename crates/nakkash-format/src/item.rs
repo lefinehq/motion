@@ -1410,6 +1410,39 @@ pub static RADIAL_BLUR: Registry = Registry {
     ],
 };
 
+/// The properties of the vector blur.
+pub static VECTOR_BLUR: Registry = Registry {
+    kind: "vector-blur",
+    rows: &[
+        number(
+            "amount",
+            0.0,
+            Some((-4_000.0, 4_000.0)),
+            "how long the streaks are, in px: at the map's steepest slope, or everywhere with \
+             `constant-length`",
+        ),
+        number(
+            "angle",
+            0.0,
+            None,
+            "how far every streak turns from the map's slope, in degrees clockwise",
+        ),
+        number(
+            "ridge-smoothness",
+            1.0,
+            Some((0.0, 1_000.0)),
+            "how much the slope is softened, as a blurriness, so streaks shorten where it turns \
+             sharply instead of flipping",
+        ),
+        number(
+            "softness",
+            15.0,
+            Some((0.0, 1_000.0)),
+            "how much the map's level is softened before its slope is taken, as a blurriness",
+        ),
+    ],
+};
+
 /// The properties of the drop shadow.
 pub static DROP_SHADOW: Registry = Registry {
     kind: "drop-shadow",
@@ -2190,7 +2223,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 39] = [
+pub static EFFECTS: [ItemKind; 40] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -3081,6 +3114,50 @@ pub static EFFECTS: [ItemKind; 39] = [
         outline: None,
         timed: false,
         doc: "streaks the layer along rays out from a point, or rings round it",
+    },
+    ItemKind {
+        name: "vector-blur",
+        role: Role::Effect,
+        registry: &VECTOR_BLUR,
+        primary: Primary::Property("amount"),
+        settings: &[
+            SettingSpec {
+                name: "type",
+                choices: &[
+                    "natural",
+                    "constant-length",
+                    "perpendicular",
+                    "direction-center",
+                    "direction-fading",
+                ],
+                default: "natural",
+                doc: "how each streak follows the slope: both ways and as long as the slope is \
+                      steep, always `amount` long, across the slope, or behind the pixel only, \
+                      flat or fading",
+            },
+            SettingSpec {
+                name: "map-level",
+                choices: &[
+                    "lightness",
+                    "red",
+                    "green",
+                    "blue",
+                    "alpha",
+                    "luminance",
+                    "hue",
+                    "saturation",
+                ],
+                default: "lightness",
+                doc: "which level of `map` the slope is taken of",
+            },
+        ],
+        input: Some(Input {
+            key: "map",
+            reads: Reads::Drawing,
+        }),
+        outline: None,
+        timed: false,
+        doc: "smears the layer along the slope of a map's level, its own without one",
     },
     ItemKind {
         name: "drop-shadow",

@@ -24,7 +24,9 @@ use crate::list::Node;
 use crate::pixels::Pixels;
 use crate::style::Color;
 use crate::total::Total;
-use crate::{blur, channel, colour, composite, cycle, distort, generate, particles, radial};
+use crate::{
+    blur, channel, colour, composite, cycle, distort, generate, particles, radial, vector,
+};
 
 /// The type of one effect parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2522,6 +2524,74 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "vector-blur",
+        params: &[
+            ParamSpec {
+                name: "amount",
+                default: ParamValue::Number(0.0),
+                range: Some((-4_000.0, 4_000.0)),
+                choices: &[],
+                doc: "how long the streaks are, in px",
+            },
+            ParamSpec {
+                name: "angle",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "how far every streak turns from the slope, in degrees clockwise",
+            },
+            ParamSpec {
+                name: "ridge-smoothness",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 1_000.0)),
+                choices: &[],
+                doc: "how much the slope is softened, as a blurriness",
+            },
+            ParamSpec {
+                name: "softness",
+                default: ParamValue::Number(15.0),
+                range: Some((0.0, 1_000.0)),
+                choices: &[],
+                doc: "how much the map's level is softened, as a blurriness",
+            },
+            ParamSpec {
+                name: "type",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "natural",
+                    "constant-length",
+                    "perpendicular",
+                    "direction-center",
+                    "direction-fading",
+                ],
+                doc: "how each streak follows the slope",
+            },
+            ParamSpec {
+                name: "map-level",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "lightness",
+                    "red",
+                    "green",
+                    "blue",
+                    "alpha",
+                    "luminance",
+                    "hue",
+                    "saturation",
+                ],
+                doc: "which level of the map the slope is taken of",
+            },
+        ],
+        doc: "smears the layer along the slope of a map's level",
+        reach: vector_reach,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: vector::vector_blur,
+        },
+    },
+    EffectSpec {
         name: "drop-shadow",
         params: &[
             ParamSpec {
@@ -3241,6 +3311,11 @@ fn gaussian_reach(values: &[ParamValue]) -> Reach {
 /// pass.
 fn box_reach(values: &[ParamValue]) -> Reach {
     Reach::Within((number_at(values, 0) + 1.0) * number_at(values, 1).round().max(1.0))
+}
+
+/// `vector-blur` reads up to its amount from each pixel.
+fn vector_reach(values: &[ParamValue]) -> Reach {
+    Reach::Within(number_at(values, 0).abs() + 1.0)
 }
 
 /// `drop-shadow` falls `distance` away and spreads by its softness.

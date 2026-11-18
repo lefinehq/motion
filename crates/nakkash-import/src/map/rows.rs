@@ -545,6 +545,23 @@ const STREAK_TYPES: &[Choices] = &[
         &[("type", "spin"), ("stretch", "behind"), ("fade", "linear")],
     ),
 ];
+const VECTOR_BLURS: &[(i64, &str)] = &[
+    (1, "natural"),
+    (2, "constant-length"),
+    (3, "perpendicular"),
+    (4, "direction-center"),
+    (5, "direction-fading"),
+];
+const VECTOR_MAP_LEVELS: &[(i64, &str)] = &[
+    (1, "red"),
+    (2, "green"),
+    (3, "blue"),
+    (4, "alpha"),
+    (5, "luminance"),
+    (6, "lightness"),
+    (7, "hue"),
+    (8, "saturation"),
+];
 const SHADOW_ONLY: &[(i64, &str)] = &[(0, "shown"), (1, "hidden")];
 // The project's choices say where the original goes: on top of the glow
 // (1), behind it (2), or not at all (3).
@@ -1247,7 +1264,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 56] = [
+pub(super) static KINDS: [Kind; 57] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -3824,6 +3841,48 @@ pub(super) static KINDS: [Kind; 56] = [
                 Absent,
             ),
             row("CC Radial Blur-0004", To::Prop("center"), Point, Parameter),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "CC Vector Blur",
+        item: "vector-blur",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "CC Vector Blur-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Vector Blur-0001",
+                To::Setting("type", VECTOR_BLURS),
+                Number,
+                Absent,
+            ),
+            row("CC Vector Blur-0002", To::Prop("amount"), Number, Parameter),
+            row("CC Vector Blur-0003", To::Prop("angle"), Number, Parameter),
+            row(
+                "CC Vector Blur-0004",
+                To::Prop("ridge-smoothness"),
+                Number,
+                Parameter,
+            ),
+            row("CC Vector Blur-0005", To::Input, Number, Absent),
+            row(
+                "CC Vector Blur-0006",
+                To::Setting("map-level", VECTOR_MAP_LEVELS),
+                Number,
+                Absent,
+            ),
+            row(
+                "CC Vector Blur-0007",
+                To::Prop("softness"),
+                Number,
+                Parameter,
+            ),
         ],
         parts: &[],
         switch: None,
