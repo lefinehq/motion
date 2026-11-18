@@ -1023,9 +1023,10 @@ fn same_box(a: Rect, b: Rect) -> bool {
 /// so nothing that crosses for less can be read cut off.
 const BRIEF: f64 = 0.5;
 
-/// [`BRIEF`] in whole frames of `graph`'s root.
+/// [`BRIEF`] in whole frames of `graph`'s root, to the nearest: 15 at
+/// 29.97 frames a second as at 30.
 fn brief(graph: &SceneGraph) -> usize {
-    (BRIEF * graph.root.fps + EPSILON).floor() as usize
+    (BRIEF * graph.root.fps).round() as usize
 }
 
 /// What one layout rule has seen of one layer, in frame order.
