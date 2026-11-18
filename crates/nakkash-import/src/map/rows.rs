@@ -346,6 +346,27 @@ const GLOW_COMPOSITE: &[(i64, &str)] = &[
     (2, "with-original"),
     (3, "glow-only"),
 ];
+/// The solid composite's blending modes by the project's codes, its menu
+/// read in order, each separator taking a code.
+const SOLID_COMPOSITE_MODES: &[(i64, &str)] = &[
+    (1, "normal"),
+    (3, "add"),
+    (4, "multiply"),
+    (5, "screen"),
+    (6, "overlay"),
+    (7, "soft-light"),
+    (8, "hard-light"),
+    (10, "color-dodge"),
+    (11, "color-burn"),
+    (13, "darken"),
+    (14, "lighten"),
+    (15, "difference"),
+    (16, "exclusion"),
+    (18, "hue"),
+    (19, "saturation"),
+    (20, "color"),
+    (21, "luminosity"),
+];
 /// The glow's operations by the project's codes, its menu read in order.
 /// 1, none, is reported: no sample shows what a glow combined by no
 /// operation draws.
@@ -1019,7 +1040,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 46] = [
+pub(super) static KINDS: [Kind; 47] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -1504,6 +1525,45 @@ pub(super) static KINDS: [Kind; 46] = [
                 Parameter,
             ),
             row("ADBE Fill-0005", To::Prop("opacity"), Number, Parameter),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Solid Composite",
+        item: "solid-composite",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Solid Composite-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Solid Composite-0001",
+                To::Prop("source-opacity"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Solid Composite-0002",
+                To::Prop("color"),
+                Color,
+                Parameter,
+            ),
+            row(
+                "ADBE Solid Composite-0003",
+                To::Prop("opacity"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Solid Composite-0004",
+                To::Setting("mode", SOLID_COMPOSITE_MODES),
+                Number,
+                Parameter,
+            ),
         ],
         parts: &[],
         switch: None,

@@ -1,7 +1,8 @@
 //! Compositing inside an effect: how an effect's result, such as a glow's
 //! light, a generator's colours or a solid, combines with the layer's own
 //! pixels, one pixel at a time. The ways it may combine are one table,
-//! [`OPERATIONS`], that effects pick from by name.
+//! [`OPERATIONS`], that effects pick from by name. The solid composite,
+//! which does nothing but composite, is here too.
 //!
 //! Both sides are premultiplied [`Pixel`]s. A blend mode lays the result
 //! over exactly as the float canvas lays a layer by that mode
@@ -19,8 +20,11 @@
 
 use nakkash_format::{Diagnostic, Result};
 
+use vello_cpu::kurbo::Point;
+
 use crate::blend::BlendMode;
-use crate::colour::LUMA;
+use crate::colour::{LUMA, choice, number, rgb};
+use crate::effect::{ParamValue, Space};
 use crate::pixels::{Pixel, Pixels};
 
 /// How an effect's result (`over`) combines with the pixels under it
@@ -175,6 +179,69 @@ impl Operation {
             let i = i as u32;
             *u = self.pixel(*u, *o, [i % width, i / width]);
         }
+    }
+}
+
+/// How `solid-composite` lays the layer over its solid, by name in
+/// [`OPERATIONS`]; the first is the default.
+pub(crate) const SOLID_COMPOSITE_MODES: &[&str] = &[
+    "normal",
+    "add",
+    "multiply",
+    "screen",
+    "overlay",
+    "soft-light",
+    "hard-light",
+    "color-dodge",
+    "color-burn",
+    "darken",
+    "lighten",
+    "difference",
+    "exclusion",
+    "hue",
+    "saturation",
+    "color",
+    "luminosity",
+];
+
+/// `solid-composite`: the layer, at `source-opacity`, laid by `mode` over
+/// a solid of `color` at `opacity` that fills the layer's box, or the
+/// whole frame for a layer without one. The colour's own alpha changes
+/// nothing: `opacity` says how opaque the solid is.
+pub(crate) fn solid_composite(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let (source, color, opacity) = (number(values, 0), rgb(values, 1), number(values, 2));
+    let operation = Operation::named(SOLID_COMPOSITE_MODES[choice(values, 3)])
+        .expect("every solid composite mode is a row of the operations");
+    let cover = box_coverage(space);
+    let width = u32::from(pixels.width()).max(1);
+    for (i, pixel) in pixels.data_mut().iter_mut().enumerate() {
+        let at = [i as u32 % width, i as u32 / width];
+        let a = opacity * cover(at);
+        let solid = [color[0] * a, color[1] * a, color[2] * a, a];
+        *pixel = operation.pixel(solid, pixel.map(|c| c * source), at);
+    }
+}
+
+/// How much of the pixel `at` the layer's box covers, from 0 to 1: the
+/// overlap of the pixel's square with the box along each of the box's two
+/// sides, measured in px from the pixel's centre, which is exact for a box
+/// the transform keeps upright. A layer without a box covers every pixel.
+fn box_coverage(space: &Space) -> impl Fn([u32; 2]) -> f32 + use<> {
+    let back = space.transform.inverse();
+    let [a, b, c, d, ..] = back.as_coeffs();
+    // How far the layer's x and y move for one px of the grid.
+    let (gx, gy) = (a.hypot(c).max(1e-12), b.hypot(d).max(1e-12));
+    let bounds = space.bounds;
+    move |[x, y]| {
+        let Some(r) = bounds else {
+            return 1.0;
+        };
+        let q = back * Point::new(f64::from(x) + 0.5, f64::from(y) + 0.5);
+        let side = |from: f64, to: f64, at: f64, g: f64| {
+            let (near, far) = ((at - from) / g, (to - at) / g);
+            (near.min(0.5) + far.min(0.5)).clamp(0.0, 1.0)
+        };
+        (side(r.x0, r.x1, q.x, gx) * side(r.y0, r.y1, q.y, gy)) as f32
     }
 }
 

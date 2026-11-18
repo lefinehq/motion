@@ -447,6 +447,43 @@ pub static FILL_EFFECT: Registry = Registry {
     ],
 };
 
+/// The properties of the solid composite.
+pub static SOLID_COMPOSITE: Registry = Registry {
+    kind: "solid-composite",
+    rows: &[
+        number(
+            "source-opacity",
+            1.0,
+            Some((0.0, 1.0)),
+            "how opaque the layer is over the solid, 0 to 1",
+        ),
+        color("color", WHITE, "the solid's colour"),
+        opacity("how opaque the solid is, 0 to 1"),
+    ],
+};
+
+/// How the solid composite lays the layer over its solid, by the names of
+/// the rasteriser's operations; the first is the default.
+const SOLID_COMPOSITE_MODES: &[&str] = &[
+    "normal",
+    "add",
+    "multiply",
+    "screen",
+    "overlay",
+    "soft-light",
+    "hard-light",
+    "color-dodge",
+    "color-burn",
+    "darken",
+    "lighten",
+    "difference",
+    "exclusion",
+    "hue",
+    "saturation",
+    "color",
+    "luminosity",
+];
+
 /// The properties of the tint effect.
 pub static TINT: Registry = Registry {
     kind: "tint",
@@ -1787,7 +1824,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 30] = [
+pub static EFFECTS: [ItemKind; 31] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -1806,6 +1843,24 @@ pub static EFFECTS: [ItemKind; 30] = [
         timed: false,
         doc: "turns every drawn pixel of the layer one colour, keeping its coverage; inverted, \
               fills the rest of the layer's box",
+    },
+    ItemKind {
+        name: "solid-composite",
+        role: Role::Effect,
+        registry: &SOLID_COMPOSITE,
+        primary: Primary::Property("color"),
+        settings: &[SettingSpec {
+            name: "mode",
+            choices: SOLID_COMPOSITE_MODES,
+            default: "normal",
+            doc: "how the layer is laid over the solid: `normal`, `add` or the blend mode of \
+                  that name",
+        }],
+        input: None,
+        outline: None,
+        timed: false,
+        doc: "lays the layer, at `source-opacity`, over a solid of `color` at `opacity` that \
+              fills the layer's box",
     },
     ItemKind {
         name: "transform",
