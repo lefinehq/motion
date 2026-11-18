@@ -152,8 +152,28 @@ fn a_moving_effect_moves_as_the_cpu_does() {
 }
 
 #[test]
-fn an_effect_that_reads_another_layer_stays_on_the_cpu() {
+fn an_effect_without_a_kernel_stays_on_the_cpu() {
     let Some(gpu) = gpu() else { return };
-    let effect = Effect::new("invert", &[]).expect("an effect");
+    let spec = nakkash_raster::EFFECTS
+        .iter()
+        .find(|spec| {
+            let effect = Effect::new(spec.name, &[]).expect("an effect");
+            effect.movement().is_none() && !effect.has_plan()
+        })
+        .expect("an effect without a plan");
+    let effect = Effect::new(spec.name, &[]).expect("an effect");
+    assert!(!gpu.runs(&effect), "{}", spec.name);
+}
+
+#[test]
+fn an_effect_that_reads_another_layer_without_a_kernel_for_it_stays_on_the_cpu() {
+    let Some(gpu) = gpu() else { return };
+    // The fill reads no layer: one handed to it is left to the CPU.
+    let effect =
+        Effect::new("fill", &[])
+            .expect("an effect")
+            .with_input(nakkash_raster::Node::Layer(nakkash_raster::Layer::new(
+                Vec::new(),
+            )));
     assert!(!gpu.runs(&effect));
 }

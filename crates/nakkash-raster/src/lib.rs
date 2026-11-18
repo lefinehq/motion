@@ -49,8 +49,14 @@ mod vector;
 pub use accel::{Accelerator, Amount, Resident, Share, Tally};
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use blur::Edges;
+pub use blur::{FindEdges, Sharpen};
+pub use channel::{LayerBox, Level, Reading, SetMatte, ShiftChannels};
 pub use colour::LUMA;
+pub use colour::{
+    BlackWhite, BoxTest, CurveTable, Curves, Exposure, Fill, HueSaturation, Invert, Levels, Tint,
+};
 pub use composite::{BoxCover, OPERATIONS, Operation, OperationSpec, SolidComposite};
+pub use cycle::ColorCycle;
 pub use effect::{
     Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Growth, Input, Move, ParamSpec,
     ParamType, ParamValue, Reach, Space,

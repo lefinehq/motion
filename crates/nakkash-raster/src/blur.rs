@@ -340,10 +340,27 @@ pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
     }
 }
 
-/// `sharpen`: each pixel moved away from the mean of its four neighbours
-/// by `amount`/100 of the difference, a 3×3 unsharp mask in frame px.
-pub(crate) fn sharpen(pixels: &mut Pixels, values: &[ParamValue], _: &Space) {
-    let amount = number(values, 0) / 100.0;
+/// `sharpen`'s plan: each pixel moved away from the mean of its four
+/// neighbours by `amount` of the difference, each channel held to 0 to 1
+/// and each colour to the alpha, a 3×3 unsharp mask in frame px; past the
+/// grid's edges a pixel stands for its missing neighbours.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Sharpen {
+    /// How far a pixel moves, as a share of its difference from the mean;
+    /// nothing changes when not above 0.
+    pub amount: f32,
+}
+
+/// [`Sharpen`] from `sharpen`'s values.
+pub(crate) fn sharpen_plan(values: &[ParamValue], _: &Space) -> Sharpen {
+    Sharpen {
+        amount: number(values, 0) / 100.0,
+    }
+}
+
+/// `sharpen`, see [`Sharpen`].
+pub(crate) fn sharpen(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let Sharpen { amount } = sharpen_plan(values, space);
     if amount <= 0.0 {
         return;
     }
@@ -383,14 +400,32 @@ pub(crate) fn sharpen(pixels: &mut Pixels, values: &[ParamValue], _: &Space) {
     );
 }
 
-/// `find-edges`: each colour channel's slope across the 3×3 pixels around
-/// each pixel, by the Sobel operator scaled so that a step from 0 to 1
-/// gives 1, and at most 1: light where the colour changes and black where
-/// it is even, or the inverse with `lines` `dark-on-light`. Alpha stays,
-/// and `blend` of the layer as it was shows through. The pixels are the
-/// frame's; past the edges of the grid the edge pixels repeat.
-pub(crate) fn find_edges(pixels: &mut Pixels, values: &[ParamValue], _: &Space) {
-    let (blend, light) = (number(values, 0), choice(values, 1) == 1);
+/// `find-edges`' plan: each colour channel's slope across the 3×3 pixels
+/// around each pixel, by the Sobel operator scaled so that a step from 0 to
+/// 1 gives 1, and at most 1: light where the colour changes and black where
+/// it is even, or the inverse. Alpha stays, and `blend` of the layer as it
+/// was shows through. The pixels are the frame's; past the edges of the
+/// grid the edge pixels repeat.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FindEdges {
+    /// How much of the layer as it was shows through, 0 to 1.
+    pub blend: f32,
+    /// Whether edges are light on dark (`lines` `light-on-dark`), rather
+    /// than dark on light.
+    pub light: bool,
+}
+
+/// [`FindEdges`] from `find-edges`' values.
+pub(crate) fn find_edges_plan(values: &[ParamValue], _: &Space) -> FindEdges {
+    FindEdges {
+        blend: number(values, 0),
+        light: choice(values, 1) == 1,
+    }
+}
+
+/// `find-edges`, see [`FindEdges`].
+pub(crate) fn find_edges(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let FindEdges { blend, light } = find_edges_plan(values, space);
     let source = pixels.clone();
     let (width, height) = (i64::from(source.width()), i64::from(source.height()));
     for (i, p) in pixels.data_mut().iter_mut().enumerate() {

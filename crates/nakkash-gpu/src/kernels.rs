@@ -68,6 +68,30 @@ pub(crate) const BOX_PASS: FamilySpec = FamilySpec {
     reads: 1,
     entries: &["box_pass"],
 };
+pub(crate) const COLOUR: FamilySpec = FamilySpec {
+    source: include_str!("shaders/colour.wgsl"),
+    reads: 1,
+    entries: &[
+        "curves",
+        "tint",
+        "hue_saturation",
+        "exposure",
+        "levels",
+        "invert",
+        "black_white",
+        "fill",
+    ],
+};
+pub(crate) const CHANNEL: FamilySpec = FamilySpec {
+    source: include_str!("shaders/channel.wgsl"),
+    reads: 2,
+    entries: &["set_matte", "shift_channels", "color_cycle"],
+};
+pub(crate) const NEIGHBOURS: FamilySpec = FamilySpec {
+    source: include_str!("shaders/neighbours.wgsl"),
+    reads: 1,
+    entries: &["sharpen", "find_edges"],
+};
 
 /// A WGSL source, how many buffers its kernels read, and its entry points.
 pub(crate) struct FamilySpec {
@@ -92,6 +116,9 @@ pub(crate) struct Kernels {
     pub(crate) operate: Family,
     pub(crate) transform: Family,
     pub(crate) box_pass: Family,
+    pub(crate) colour: Family,
+    pub(crate) channel: Family,
+    pub(crate) neighbours: Family,
 }
 
 /// The constants the per-pixel kernels name blend modes by, one per row of
@@ -137,6 +164,9 @@ impl Kernels {
             operate: Family::new(device, &with_operations(OPERATE.source), &OPERATE),
             transform: Family::new(device, TRANSFORM.source, &TRANSFORM),
             box_pass: Family::new(device, BOX_PASS.source, &BOX_PASS),
+            colour: Family::new(device, COLOUR.source, &COLOUR),
+            channel: Family::new(device, CHANNEL.source, &CHANNEL),
+            neighbours: Family::new(device, NEIGHBOURS.source, &NEIGHBOURS),
         }
     }
 }

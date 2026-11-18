@@ -13,8 +13,13 @@
 
 use vello_cpu::kurbo::Vec2;
 
-use crate::blur::{self, Edges, gaussian_radius};
+use crate::blur::{self, Edges, FindEdges, Sharpen, gaussian_radius};
+use crate::channel::{self, SetMatte, ShiftChannels};
+use crate::colour::{
+    self, BlackWhite, Curves, Exposure, Fill, HueSaturation, Invert, Levels, Tint,
+};
 use crate::composite::{self, Operation, SolidComposite};
+use crate::cycle::{self, ColorCycle};
 use crate::effect::{Effect, ParamValue, Space};
 
 /// The steps an effect runs on its layer's pixels. More variants come as
@@ -30,6 +35,32 @@ pub enum Plan {
     Shadow(Shadow),
     /// The layer laid by an operation over a solid in its box.
     SolidComposite(SolidComposite),
+    /// Each colour level through a curve's table.
+    Curves(Box<Curves>),
+    /// The layer's alpha from a level of a matte.
+    SetMatte(SetMatte),
+    /// Each colour channel's slope across its 3×3 pixels.
+    FindEdges(FindEdges),
+    /// Each colour's luma mapped between two colours.
+    Tint(Tint),
+    /// The content recoloured with one colour, or the rest of its box.
+    Fill(Fill),
+    /// Each channel a level of the colour as it was.
+    ShiftChannels(ShiftChannels),
+    /// Each pixel moved away from the mean of its neighbours.
+    Sharpen(Sharpen),
+    /// Channels turned into 1 minus themselves.
+    Invert(Invert),
+    /// Levels mapped between two ranges through a gamma.
+    Levels(Levels),
+    /// Hues turned, saturation and lightness moved, or colourised.
+    HueSaturation(HueSaturation),
+    /// Light scaled, offset and raised to a gamma.
+    Exposure(Exposure),
+    /// Colours turned grey by their hues' shares, and tinted.
+    BlackWhite(BlackWhite),
+    /// A phase read off each pixel sent round a cycle of colours.
+    ColorCycle(Box<ColorCycle>),
 }
 
 /// Passes of one extended box along one way of the grid: each averages
@@ -164,6 +195,58 @@ pub const PLANS: &[PlanSpec] = &[
     PlanSpec {
         name: "solid-composite",
         plan: |values, space| Plan::SolidComposite(composite::solid_composite_plan(values, space)),
+    },
+    PlanSpec {
+        name: "curves",
+        plan: |values, space| Plan::Curves(Box::new(colour::curves_plan(values, space))),
+    },
+    PlanSpec {
+        name: "set-matte",
+        plan: |values, space| Plan::SetMatte(channel::set_matte_plan(values, space)),
+    },
+    PlanSpec {
+        name: "find-edges",
+        plan: |values, space| Plan::FindEdges(blur::find_edges_plan(values, space)),
+    },
+    PlanSpec {
+        name: "tint",
+        plan: |values, space| Plan::Tint(colour::tint_plan(values, space)),
+    },
+    PlanSpec {
+        name: "fill",
+        plan: |values, space| Plan::Fill(colour::fill_plan(values, space)),
+    },
+    PlanSpec {
+        name: "shift-channels",
+        plan: |values, space| Plan::ShiftChannels(channel::shift_channels_plan(values, space)),
+    },
+    PlanSpec {
+        name: "sharpen",
+        plan: |values, space| Plan::Sharpen(blur::sharpen_plan(values, space)),
+    },
+    PlanSpec {
+        name: "invert",
+        plan: |values, space| Plan::Invert(colour::invert_plan(values, space)),
+    },
+    PlanSpec {
+        name: "levels",
+        plan: |values, space| Plan::Levels(colour::levels_plan(values, space)),
+    },
+    PlanSpec {
+        name: "hue-saturation",
+        plan: |values, space| Plan::HueSaturation(colour::hue_saturation_plan(values, space)),
+    },
+    PlanSpec {
+        name: "exposure",
+        plan: |values, space| Plan::Exposure(colour::exposure_plan(values, space)),
+    },
+    PlanSpec {
+        name: "black-white",
+        plan: |values, space| Plan::BlackWhite(colour::black_white_plan(values, space)),
+    },
+    PlanSpec {
+        name: "color-cycle",
+        plan: |values, space| Plan::ColorCycle(Box::new(cycle::color_cycle_plan(values, space))),
     },
 ];
 
