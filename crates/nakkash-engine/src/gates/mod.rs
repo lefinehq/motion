@@ -48,6 +48,7 @@ fn shrunk(session: &Session, list: Frame) -> Result<Image> {
             time: 0.0,
             motion: Vec::new(),
             projection: None,
+            shared: None,
         })],
     };
     nakkash_raster::render_with(&small, side(width), side(height), RenderOptions::default())

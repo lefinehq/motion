@@ -7,8 +7,13 @@
 //! draws it once for each transform it is read at, then hands out copies.
 //! Drawing is deterministic, so a copy is the drawing pixel for pixel.
 //!
-//! Only nodes read more than once are kept. Each is let go after its last
-//! read, so a frame holds at most the drawings still to be read again.
+//! Layers whose children draw the same, such as one composition at one
+//! time shown by several layers, carry one [`Shared`] mark, and [`Reads`]
+//! draws their children once for each transform in the same way.
+//!
+//! Only nodes read, and children shared, more than once are kept. Each is
+//! let go after its last use, so a frame holds at most the drawings still to
+//! be used again.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -16,11 +21,12 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use nakkash_format::Result;
 use vello_cpu::kurbo::Affine;
 
-use crate::list::Node;
+use crate::list::{Node, Shared};
 use crate::pixels::Pixels;
 
-/// A drawing's key: the read node's address, the size of the canvas it is
-/// drawn on, and the bits of the transform it is drawn at.
+/// A drawing's key: the address of the read node or the shared mark, the
+/// size of the canvas it is drawn on, and the bits of the transform it is
+/// drawn at.
 type Key = (usize, (u16, u16), [u64; 6]);
 
 /// The drawings of read nodes, kept for one frame. It is shared by the
@@ -29,18 +35,26 @@ type Key = (usize, (u16, u16), [u64; 6]);
 pub(crate) struct Reads {
     /// How many reads of each node are still to come, by its address.
     left: Mutex<HashMap<usize, usize>>,
-    /// The drawings kept, each with its node held so that no other node
-    /// takes its address while the drawing is kept.
-    drawn: Mutex<HashMap<Key, Kept>>,
+    /// The drawings kept, each with its node or mark held so that nothing
+    /// else takes its address while the drawing is kept.
+    drawn: Mutex<HashMap<Key, (Owner, Arc<Pixels>)>>,
 }
 
-/// A kept drawing, with the node it is of.
-type Kept = (Arc<Node>, Arc<Pixels>);
+/// What a kept drawing is of, held while it is kept.
+#[derive(Debug)]
+enum Owner {
+    /// A node effects read.
+    Read(#[expect(dead_code, reason = "held only to keep its address")] Arc<Node>),
+    /// The children layers share.
+    Shared(#[expect(dead_code, reason = "held only to keep its address")] Shared),
+}
 
 impl Reads {
     /// The reads of the frame whose nodes are `nodes`: every effect input
-    /// they hold, counted once per effect that reads it. A node read inside
-    /// a read node is counted once, as the read node is drawn once.
+    /// they hold, counted once per effect that reads it, and every shared
+    /// mark, counted once per layer that carries it. What lies inside a
+    /// read node or shared children is counted once, as they are drawn
+    /// once.
     pub(crate) fn of(nodes: &[Node]) -> Reads {
         let mut left = HashMap::new();
         let mut seen = HashSet::new();
@@ -65,6 +79,47 @@ impl Reads {
         draw: impl FnOnce() -> Result<Pixels>,
     ) -> Result<Pixels> {
         let address = Arc::as_ptr(node) as usize;
+        self.kept(
+            address,
+            || Owner::Read(Arc::clone(node)),
+            transform,
+            size,
+            draw,
+        )
+    }
+
+    /// The drawing of the children marked `shared` at `transform` on a
+    /// canvas of `size`: the one kept, or `draw`'s, kept while more layers
+    /// with the mark are to be drawn.
+    ///
+    /// # Errors
+    /// The one `draw` returns.
+    pub(crate) fn shared(
+        &self,
+        shared: &Shared,
+        transform: Affine,
+        size: (u16, u16),
+        draw: impl FnOnce() -> Result<Pixels>,
+    ) -> Result<Pixels> {
+        self.kept(
+            shared.address(),
+            || Owner::Shared(shared.clone()),
+            transform,
+            size,
+            draw,
+        )
+    }
+
+    /// The drawing of what is at `address`, kept by `owner` while more uses
+    /// of it are to come.
+    fn kept(
+        &self,
+        address: usize,
+        owner: impl FnOnce() -> Owner,
+        transform: Affine,
+        size: (u16, u16),
+        draw: impl FnOnce() -> Result<Pixels>,
+    ) -> Result<Pixels> {
         let more = {
             let mut left = locked(&self.left);
             match left.get_mut(&address) {
@@ -79,7 +134,7 @@ impl Reads {
                 None => None,
             }
         };
-        // A node read once, or not counted, is drawn as it is read.
+        // What is used once, or not counted, is drawn as it is used.
         let Some(more) = more else {
             return draw();
         };
@@ -97,7 +152,7 @@ impl Reads {
         if more {
             drawn
                 .entry(key)
-                .or_insert_with(|| (Arc::clone(node), Arc::clone(&pixels)));
+                .or_insert_with(|| (owner(), Arc::clone(&pixels)));
         } else {
             drawn.retain(|&(at, _, _), _| at != address);
         }
@@ -106,8 +161,8 @@ impl Reads {
     }
 }
 
-/// Counts into `left` the reads `nodes` hold, going into each read node the
-/// first time it is met (`seen`).
+/// Counts into `left` the reads and shared marks `nodes` hold, going into
+/// each read node and shared children the first time they are met (`seen`).
 fn count(nodes: &[Node], left: &mut HashMap<usize, usize>, seen: &mut HashSet<usize>) {
     for node in nodes {
         let Node::Layer(layer) = node else {
@@ -123,7 +178,16 @@ fn count(nodes: &[Node], left: &mut HashMap<usize, usize>, seen: &mut HashSet<us
         if let Some(matte) = &layer.matte {
             count(std::slice::from_ref(&*matte.source), left, seen);
         }
-        count(&layer.children, left, seen);
+        match &layer.shared {
+            Some(shared) => {
+                let address = shared.address();
+                *left.entry(address).or_default() += 1;
+                if seen.insert(address) {
+                    count(&layer.children, left, seen);
+                }
+            }
+            None => count(&layer.children, left, seen),
+        }
     }
 }
 
