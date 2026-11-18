@@ -284,7 +284,7 @@ fn relative_to(master: &Session, path: &Path) -> PathBuf {
 }
 
 /// The weight of `weights` nearest `want`, the heavier on a tie.
-fn nearest(weights: &[u16], want: u16) -> u16 {
+pub(crate) fn nearest(weights: &[u16], want: u16) -> u16 {
     weights
         .iter()
         .copied()

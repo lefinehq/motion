@@ -158,7 +158,8 @@ enum Command {
         /// An axis, repeatable: `palette[=rotate|analogous|complementary|invert]`,
         /// `brand=#0F62FE`, `type[=contrast|same]`, `copy=long`, `fonts=<dir>`,
         /// `format=9:16`, `timing=15s`, `bpm=120`, `music=<file>`,
-        /// `pace=snappy|calm`, `rows=<file>`.
+        /// `pace=snappy|calm`, `rows=<file>`, `look[=chrome|acid|amber|paper|duotone|crimson]`,
+        /// `look-fonts=<dir>`.
         #[arg(long = "axis", value_name = "AXIS")]
         axes: Vec<String>,
         /// Apply the check's repairs after the axes, keeping each only when
@@ -171,6 +172,14 @@ enum Command {
         /// Check every variant, and render none.
         #[arg(long)]
         dry_run: bool,
+        /// Measure how far each variant lands from the scene as it looks:
+        /// the OKLab distance of their palettes and of their pixels.
+        #[arg(long)]
+        distance: bool,
+        /// Write each variant's scene and recipe without checking it, to
+        /// draw stills of first; nothing is gated.
+        #[arg(long)]
+        no_check: bool,
         /// Print the report as JSON.
         #[arg(long)]
         json: bool,
@@ -605,6 +614,8 @@ fn main() -> ExitCode {
             improve,
             apart,
             dry_run,
+            distance,
+            no_check,
             json,
             out,
         } => commands::vary::run(
@@ -617,6 +628,8 @@ fn main() -> ExitCode {
                 improve,
                 apart,
                 dry_run,
+                distance,
+                no_check,
                 json,
                 out,
             },

@@ -479,6 +479,7 @@ fn busiest(
             }],
         }),
         None,
+        Vec::new(),
     );
     let Ok(alone) = session.with_raw(backdrop.apply(session.document().raw())) else {
         return Ok(middle);

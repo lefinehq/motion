@@ -72,6 +72,8 @@ pub(crate) struct Wrap {
     shown: Vec<Shown>,
     /// A music track to play at the root.
     music: Option<PathBuf>,
+    /// Effects every layer that draws the master takes: a look's grade.
+    grade: Vec<Json>,
 }
 
 impl Wrap {
@@ -82,6 +84,7 @@ impl Wrap {
         map: Option<TimeMap>,
         layout: Option<Layout>,
         music: Option<PathBuf>,
+        grade: Vec<Json>,
     ) -> Wrap {
         let (size, shown) = match layout {
             Some(layout) => (
@@ -104,6 +107,7 @@ impl Wrap {
             map,
             shown,
             music,
+            grade,
         }
     }
 
@@ -150,6 +154,9 @@ impl Wrap {
             layer.insert("position".into(), json!(shown.position.map(round)));
             if (shown.scale - 1.0).abs() > 1e-9 {
                 layer.insert("scale".into(), json!(round(shown.scale)));
+            }
+            if !self.grade.is_empty() {
+                layer.insert("fx".into(), Json::Array(self.grade.clone()));
             }
             if !shown.hide.is_empty() {
                 let overrides: Map<String, Json> = shown

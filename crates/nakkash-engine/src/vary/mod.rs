@@ -13,6 +13,7 @@ mod colour;
 mod content;
 mod format;
 mod improve;
+mod look;
 mod palette;
 mod places;
 mod rng;
@@ -32,6 +33,7 @@ use serde_json::Value as Json;
 
 use crate::session::Session;
 
+pub use look::{LOOKS, LookStep, Treatment};
 pub use palette::{SCHEMES, Scheme};
 pub use sheet::{Sheet, sheet};
 pub use timing::Pace;
@@ -60,6 +62,8 @@ pub struct Spec {
     pub timing: Option<TimingSpec>,
     /// The format axis.
     pub format: Option<FormatSpec>,
+    /// The look axis.
+    pub look: Option<LookSpec>,
     /// Whether the check's repairs run after the axes.
     pub improve: bool,
     /// Each variant takes one axis alone, the axes in turn, instead of one
@@ -127,6 +131,20 @@ pub struct FormatSpec {
     pub sizes: Vec<String>,
 }
 
+/// The look axis of a spec.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct LookSpec {
+    /// The looks to take in turn ([`LOOKS`]); every one when empty.
+    pub looks: Vec<String>,
+    /// Folders of fonts the looks may set the text in, besides the scene's.
+    pub fonts: Vec<PathBuf>,
+}
+
+/// How many frames of the master place a look's stops, and how tall.
+const LIT_FRAMES: usize = 8;
+const LIT_HEIGHT: f64 = 120.0;
+
 /// One variant as planned: its id and the step of each axis it takes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Recipe {
@@ -166,6 +184,8 @@ pub enum Step {
         /// The new canvas's height, in px.
         height: u32,
     },
+    /// The master graded and its effects and text moved into a look.
+    Look(Box<look::LookStep>),
     /// The check's repairs.
     Improve,
 }
@@ -178,6 +198,7 @@ impl fmt::Display for Step {
             Step::Palette { scheme } => write!(f, "palette {scheme}"),
             Step::Timing(step) => write!(f, "{step}"),
             Step::Format { width, height } => write!(f, "format {width}x{height}"),
+            Step::Look(step) => write!(f, "{step}"),
             Step::Improve => write!(f, "improve"),
         }
     }
@@ -211,6 +232,22 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
         Some(t) => typeface::candidates(master, t, base)?,
         None => Vec::new(),
     };
+    // A look's stops are placed by what the master lights ([`look::lit`]).
+    let look_lit = match &spec.look {
+        Some(_) => look::lit(&samples(master, LIT_FRAMES, LIT_HEIGHT)?),
+        None => look::Lit::default(),
+    };
+    let look_faces = match &spec.look {
+        Some(l) => typeface::candidates(
+            master,
+            &TypeSpec {
+                fonts: l.fonts.clone(),
+                ..TypeSpec::default()
+            },
+            base,
+        )?,
+        None => Vec::new(),
+    };
     let mut recipes = Vec::with_capacity(count);
     let axes = [
         !rows.is_empty(),
@@ -218,6 +255,7 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
         spec.palette.is_some(),
         spec.timing.is_some(),
         spec.format.is_some(),
+        spec.look.is_some(),
     ];
     let named: Vec<usize> = (0..axes.len()).filter(|&i| axes[i]).collect();
     for index in 0..count {
@@ -263,6 +301,45 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
             let mut rng = Rng::new(spec.seed, index, "format");
             let (width, height) = format::draw(master, &f.sizes, &mut rng)?;
             steps.push(Step::Format { width, height });
+        }
+        if let Some(l) = spec.look.as_ref().filter(|_| takes(5)) {
+            let mut rng = Rng::new(spec.seed, index, "look");
+            // Apart, the look of a variant is its turn among the looks.
+            let turn = match spec.apart {
+                true => recipes
+                    .iter()
+                    .filter(|r: &&Recipe| r.steps.iter().any(|s| matches!(s, Step::Look(_))))
+                    .count(),
+                false => index,
+            };
+            let step = look::draw(
+                &l.looks,
+                turn,
+                &look_lit,
+                &look_faces,
+                &l.fonts,
+                held.typefaces,
+                &mut rng,
+            );
+            // A look's pace goes through the timing axis: onto the
+            // variant's own retime when it has one, else one of its own.
+            if let Some(pace) = step.pace {
+                match steps.iter_mut().find_map(|s| match s {
+                    Step::Timing(t) => Some(t),
+                    _ => None,
+                }) {
+                    Some(t) => {
+                        t.pace.get_or_insert(pace);
+                    }
+                    None => steps.push(Step::Timing(TimingStep {
+                        seconds: None,
+                        beats: None,
+                        pace: Some(pace),
+                        music: None,
+                    })),
+                }
+            }
+            steps.push(Step::Look(Box::new(step)));
         }
         if spec.improve {
             steps.push(Step::Improve);
@@ -319,6 +396,9 @@ pub fn make(master: &Session, recipe: &Recipe, base: &Path) -> Result<Made> {
             Step::Content { values, .. } => {
                 notes.push(content::apply(&mut raw, master, &held, values, base)?);
             }
+            Step::Look(step) => {
+                notes.push(look::apply(&mut raw, &held, step));
+            }
             Step::Palette { scheme } => {
                 let slots = master.slots();
                 let palette = palette::gather(&raw, &held, &slots);
@@ -342,7 +422,23 @@ pub fn make(master: &Session, recipe: &Recipe, base: &Path) -> Result<Made> {
             notes.push(note);
             session = master.with_raw(fitted)?;
         }
+        // A look's face is fitted the same way.
+        if let Step::Look(l) = step
+            && let Some(face) = &l.face
+        {
+            let (fitted, note) = typeface::apply(&session, &held, face)?;
+            notes.push(note);
+            session = master.with_raw(fitted)?;
+        }
     }
+    let grade = recipe
+        .steps
+        .iter()
+        .find_map(|s| match s {
+            Step::Look(l) => Some(look::grade(l)),
+            _ => None,
+        })
+        .unwrap_or_default();
     // Then time and size, which wrap the master instead of rewriting it.
     let timing = recipe.steps.iter().find_map(|s| match s {
         Step::Timing(t) => Some(t),
@@ -353,7 +449,7 @@ pub fn make(master: &Session, recipe: &Recipe, base: &Path) -> Result<Made> {
         _ => None,
     });
     let mut wrapped = None;
-    if timing.is_some() || size.is_some() {
+    if timing.is_some() || size.is_some() || !grade.is_empty() {
         let map = match timing {
             Some(t) => {
                 let (map, note) = timing::time_map(&session, t)?;
@@ -373,7 +469,7 @@ pub fn make(master: &Session, recipe: &Recipe, base: &Path) -> Result<Made> {
         let music = timing.and_then(|t| t.music.clone());
         let size = &master.scene().root.size;
         let canvas = (f64::from(size.width), f64::from(size.height));
-        let w = wrap::Wrap::new(canvas, map, groups, music);
+        let w = wrap::Wrap::new(canvas, map, groups, music, grade);
         session = master.with_raw(w.apply(session.document().raw()))?;
         wrapped = Some(w);
     }
@@ -491,6 +587,186 @@ fn unscaled(measure: Measure, scale: f64) -> Measure {
             unit,
         },
         other => other,
+    }
+}
+
+/// How far a variant lands from its master as it looks, in OKLab: the
+/// distance between their palettes, and the mean distance pixel by pixel.
+/// Measured on frames drawn small at the same share of each film's length,
+/// so "very different" is a number ([D78]).
+///
+/// [D78]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d78-generated-variants-move-along-measured-axes-and-pass-when-they-add-no-error
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
+pub struct Distance {
+    /// Each film's colours, binned in OKLab by how much of the frames
+    /// they cover: the mean distance from a colour of one to the nearest of
+    /// the other, both ways, weighted by cover. 0 is the same palette; 0.1
+    /// reads as another, 0.3 as far apart as black from mid grey.
+    pub palette: f64,
+    /// The mean OKLab distance between the two films' pixels at the same
+    /// place and moment; `None` when their canvases differ in shape.
+    pub frames: Option<f64>,
+    /// How far the two films' shapes are apart, whatever their colours:
+    /// one less the correlation of their edge maps (the gradient of OKLab
+    /// lightness) at the same place and moment. 0 is the same drawing
+    /// recoloured, or inverted; 1 shares no edge. `None` as for `frames`.
+    pub structure: Option<f64>,
+}
+
+/// Frames of `session` for [`distance`]: `n` of them, evenly over its
+/// length, each drawn `height` px tall.
+///
+/// # Errors
+/// When a frame cannot be evaluated or drawn.
+pub fn samples(session: &Session, n: usize, height: f64) -> Result<Vec<crate::Image>> {
+    let frames: Vec<u32> = session.frames()?.collect();
+    let (_, h) = session.canvas()?;
+    let shrink = (height / f64::from(h)).min(1.0);
+    (0..n.max(1))
+        .map(|i| {
+            let pick = ((i as f64 + 0.5) / n.max(1) as f64 * frames.len() as f64) as usize;
+            let at = frames[pick.min(frames.len().saturating_sub(1))];
+            crate::gates::small(session, f64::from(at), shrink)
+        })
+        .collect()
+}
+
+/// How far `variant`'s [`samples`] are from `master`'s.
+pub fn distance(master: &[crate::Image], variant: &[crate::Image]) -> Distance {
+    let lab = |px: &[u8]| {
+        let a = f64::from(px[3]) / 255.0;
+        let c = |v: u8| f64::from(v) / 255.0 * a;
+        let lch = colour::to_lch([c(px[0]), c(px[1]), c(px[2]), 1.0]);
+        let h = lch.h.to_radians();
+        [lch.l, lch.c * h.cos(), lch.c * h.sin()]
+    };
+    let gap = |p: [f64; 3], q: [f64; 3]| {
+        ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt()
+    };
+    // A palette: OKLab in bins, each its mean colour and its share.
+    let palette = |images: &[crate::Image]| {
+        let mut bins: BTreeMap<(i32, i32, i32), ([f64; 3], f64)> = BTreeMap::new();
+        let mut total: f64 = 0.0;
+        for image in images {
+            for px in image.pixels().chunks_exact(4) {
+                let p = lab(px);
+                let key = (
+                    (p[0] * 10.0).floor() as i32,
+                    (p[1] * 15.0).floor() as i32,
+                    (p[2] * 15.0).floor() as i32,
+                );
+                let bin = bins.entry(key).or_insert(([0.0; 3], 0.0));
+                for (sum, v) in bin.0.iter_mut().zip(p) {
+                    *sum += v;
+                }
+                bin.1 += 1.0;
+                total += 1.0;
+            }
+        }
+        bins.into_values()
+            .filter(|(_, n)| *n / total.max(1.0) >= 0.005)
+            .map(|(sum, n)| ([sum[0] / n, sum[1] / n, sum[2] / n], n))
+            .collect::<Vec<_>>()
+    };
+    let (pa, pb) = (palette(master), palette(variant));
+    let towards = |from: &[([f64; 3], f64)], to: &[([f64; 3], f64)]| {
+        let weight: f64 = from.iter().map(|(_, n)| n).sum();
+        from.iter()
+            .map(|(c, n)| {
+                n * to
+                    .iter()
+                    .map(|(d, _)| gap(*c, *d))
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .sum::<f64>()
+            / weight.max(1.0)
+    };
+    let palette = match pa.is_empty() || pb.is_empty() {
+        true => 0.0,
+        false => (towards(&pa, &pb) + towards(&pb, &pa)) / 2.0,
+    };
+    let same = master.len() == variant.len()
+        && master
+            .iter()
+            .zip(variant)
+            .all(|(a, b)| a.width() == b.width() && a.height() == b.height());
+    let frames = same.then(|| {
+        let (mut sum, mut n) = (0.0, 0.0);
+        for (a, b) in master.iter().zip(variant) {
+            for (p, q) in a.pixels().chunks_exact(4).zip(b.pixels().chunks_exact(4)) {
+                sum += gap(lab(p), lab(q));
+                n += 1.0;
+            }
+        }
+        sum / f64::max(n, 1.0)
+    });
+    let structure = same.then(|| {
+        let edges = |image: &crate::Image| {
+            let (w, h) = (image.width() as usize, image.height() as usize);
+            let l: Vec<f64> = image
+                .pixels()
+                .chunks_exact(4)
+                .map(|px| lab(px)[0])
+                .collect();
+            edges(&l, w, h)
+        };
+        let (a, b): (Vec<f64>, Vec<f64>) = master
+            .iter()
+            .zip(variant)
+            .flat_map(|(m, v)| edges(m).into_iter().zip(edges(v)))
+            .unzip();
+        (1.0 - correlation(&a, &b)).clamp(0.0, 1.0)
+    });
+    let round = |v: f64| (v * 1e4).round() / 1e4;
+    Distance {
+        palette: round(palette),
+        frames: frames.map(round),
+        structure: structure.map(round),
+    }
+}
+
+/// The gradient magnitude of `l`, a `w` by `h` plane, by Sobel's kernels;
+/// the outermost px read their nearest neighbour inside.
+fn edges(l: &[f64], w: usize, h: usize) -> Vec<f64> {
+    let at = |x: isize, y: isize| {
+        let x = x.clamp(0, w as isize - 1) as usize;
+        let y = y.clamp(0, h as isize - 1) as usize;
+        l[y * w + x]
+    };
+    let mut out = Vec::with_capacity(w * h);
+    for y in 0..h as isize {
+        for x in 0..w as isize {
+            let gx = at(x + 1, y - 1) + 2.0 * at(x + 1, y) + at(x + 1, y + 1)
+                - at(x - 1, y - 1)
+                - 2.0 * at(x - 1, y)
+                - at(x - 1, y + 1);
+            let gy = at(x - 1, y + 1) + 2.0 * at(x, y + 1) + at(x + 1, y + 1)
+                - at(x - 1, y - 1)
+                - 2.0 * at(x, y - 1)
+                - at(x + 1, y - 1);
+            out.push(gx.hypot(gy));
+        }
+    }
+    out
+}
+
+/// Pearson's correlation of `a` and `b`; 1 when either is flat, as two
+/// blank films share all the edges they have.
+fn correlation(a: &[f64], b: &[f64]) -> f64 {
+    let n = a.len().min(b.len()) as f64;
+    if n == 0.0 {
+        return 1.0;
+    }
+    let (ma, mb) = (a.iter().sum::<f64>() / n, b.iter().sum::<f64>() / n);
+    let (mut ab, mut aa, mut bb) = (0.0, 0.0, 0.0);
+    for (x, y) in a.iter().zip(b) {
+        ab += (x - ma) * (y - mb);
+        aa += (x - ma).powi(2);
+        bb += (y - mb).powi(2);
+    }
+    match aa > 0.0 && bb > 0.0 {
+        true => ab / (aa * bb).sqrt(),
+        false => 1.0,
     }
 }
 

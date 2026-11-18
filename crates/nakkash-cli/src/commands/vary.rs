@@ -9,8 +9,8 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use nakkash_engine::vary::{
-    ContentSpec, FormatSpec, Made, Pace, PaletteSpec, Recipe, Sheet, Spec, TimingSpec, TypeSpec,
-    gate, make, plan, repair, sheet,
+    ContentSpec, FormatSpec, LOOKS, LookSpec, Made, Pace, PaletteSpec, Recipe, Sheet, Spec,
+    TimingSpec, TypeSpec, distance, gate, make, plan, repair, samples, sheet,
 };
 use nakkash_engine::{
     Code, Diagnostic, Kind, Quality, RenderOptions, Report, Result, Session, Severity,
@@ -18,6 +18,12 @@ use nakkash_engine::{
 use serde_json::{Value as Json, json};
 
 use super::render::{Encoding, video};
+
+/// How many frames `--distance` compares, evenly over each film.
+const DISTANCE_FRAMES: usize = 8;
+
+/// How tall `--distance` draws them, in px.
+const DISTANCE_HEIGHT: f64 = 180.0;
 
 /// What the command line asks for, besides the spec file.
 #[derive(Debug, Default)]
@@ -38,6 +44,11 @@ pub struct Asked {
     pub apart: bool,
     /// `--dry-run`: check only.
     pub dry_run: bool,
+    /// `--distance`: measure how far each variant lands from the master.
+    pub distance: bool,
+    /// `--no-check`: write each variant's scene and recipe, unchecked, to
+    /// draw stills of before the gate has run.
+    pub no_check: bool,
     /// `--json`.
     pub json: bool,
     /// The output folder.
@@ -81,6 +92,7 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
         && spec.content.is_none()
         && spec.timing.is_none()
         && spec.format.is_none()
+        && spec.look.is_none()
         && !spec.improve;
     if nothing {
         return Err(Diagnostic::new(Kind::Missing, "no axis to vary along")
@@ -88,7 +100,10 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
     }
     let master = Session::open(scene)?;
     let started = Instant::now();
-    let baseline = master.full_check()?;
+    let baseline = match asked.no_check {
+        true => Report::default(),
+        false => master.full_check()?,
+    };
     let out = &asked.out;
     fs::create_dir_all(out).map_err(|e| Diagnostic::io("create", out, &e))?;
     write(&out.join("master.check.txt"), &format!("{baseline}\n"))?;
@@ -96,11 +111,35 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
     let mut rows = Vec::with_capacity(recipes.len());
     let mut made_sessions = Vec::new();
     let mut passed = 0;
+    // The master's frames for `--distance`, drawn once.
+    let master_samples = match asked.distance {
+        true => Some(samples(&master, DISTANCE_FRAMES, DISTANCE_HEIGHT)?),
+        false => None,
+    };
     for recipe in &recipes {
+        let begun = Instant::now();
         let dir = out.join(&recipe.id);
         fs::create_dir_all(&dir).map_err(|e| Diagnostic::io("create", &dir, &e))?;
         write(&dir.join("recipe.json"), &pretty(&json!(recipe))?)?;
         let row = match make(&master, recipe, &base) {
+            Ok(made) if asked.no_check => {
+                made.session.save_as(&dir.join("scene.json"))?;
+                let far = match &master_samples {
+                    Some(m) => Some(distance(
+                        m,
+                        &samples(&made.session, DISTANCE_FRAMES, DISTANCE_HEIGHT)?,
+                    )),
+                    None => None,
+                };
+                json!({
+                    "id": recipe.id,
+                    "recipe": recipe.to_string(),
+                    "passed": null,
+                    "notes": made.notes,
+                    "distance": far,
+                    "seconds": (begun.elapsed().as_secs_f64() * 10.0).round() / 10.0,
+                })
+            }
             Ok(mut made) => {
                 let report = checked(&mut made, &master, &baseline);
                 match report {
@@ -128,6 +167,13 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
                             let image = sheet(&[&made.session], Sheet::default())?;
                             write_png(&dir.join("sheet.png"), &image)?;
                         }
+                        let far = match &master_samples {
+                            Some(m) => Some(distance(
+                                m,
+                                &samples(&made.session, DISTANCE_FRAMES, DISTANCE_HEIGHT)?,
+                            )),
+                            None => None,
+                        };
                         let row = json!({
                             "id": recipe.id,
                             "recipe": recipe.to_string(),
@@ -137,6 +183,8 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
                             "new_error": first_new,
                             "notes": made.notes,
                             "film": film,
+                            "distance": far,
+                            "seconds": (begun.elapsed().as_secs_f64() * 10.0).round() / 10.0,
                         });
                         if !asked.dry_run {
                             made_sessions.push(made.session);
@@ -172,13 +220,13 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
         println!("{}", pretty(&report)?);
     } else {
         let failed = recipes.len() - passed;
-        println!(
-            "{passed} passed, {failed} failed  ·  {} s  ·  {}",
-            seconds,
-            out.display()
-        );
+        let counted = match asked.no_check {
+            true => format!("{} unchecked", recipes.len()),
+            false => format!("{passed} passed, {failed} failed"),
+        };
+        println!("{counted}  ·  {} s  ·  {}", seconds, out.display());
     }
-    Ok(match passed == recipes.len() {
+    Ok(match passed == recipes.len() || asked.no_check {
         true => ExitCode::SUCCESS,
         false => ExitCode::from(1),
     })
@@ -215,6 +263,8 @@ fn line(row: &Json) -> String {
     let recipe = row["recipe"].as_str().unwrap_or_default();
     let what = if let Some(error) = row["error"].as_str() {
         format!("not made: {error}")
+    } else if row["passed"].is_null() {
+        "unchecked".to_owned()
     } else if row["passed"] == json!(true) {
         let known = row["known"].as_u64().unwrap_or(0);
         let film = row["film"]
@@ -230,7 +280,17 @@ fn line(row: &Json) -> String {
     } else {
         format!("new: {}", row["new_error"].as_str().unwrap_or("an error"))
     };
-    format!("{id:<4} {recipe:<48}  {what}")
+    let far = match row["distance"]["palette"].as_f64() {
+        Some(p) => match row["distance"]["frames"].as_f64() {
+            Some(f) => {
+                let shape = row["distance"]["structure"].as_f64().unwrap_or(0.0);
+                format!("  Δ palette {p:.3} frames {f:.3} structure {shape:.3}")
+            }
+            None => format!("  Δ palette {p:.3}"),
+        },
+        None => String::new(),
+    };
+    format!("{id:<4} {recipe:<48}  {what}{far}")
 }
 
 /// Renders `session` into `dir/film.mp4`.
@@ -258,7 +318,7 @@ fn add_axis(spec: &mut Spec, axis: &str) -> Result<()> {
     };
     let bad = || {
         Diagnostic::new(Kind::Invalid, format!("`{axis}` is not an axis"))
-            .expected("palette[=scheme], brand=#hex, type[=contrast|same], copy=long|<text>, format=9:16, timing=15s, bpm=120, music=<file>, pace=snappy|calm, rows=<file>")
+            .expected("palette[=scheme], brand=#hex, type[=contrast|same], copy=long|<text>, format=9:16, timing=15s, bpm=120, music=<file>, pace=snappy|calm, rows=<file>, look[=chrome|acid|amber|paper|duotone|crimson], look-fonts=<dir>")
     };
     match name {
         "palette" => {
@@ -301,6 +361,23 @@ fn add_axis(spec: &mut Spec, axis: &str) -> Result<()> {
         "music" => {
             let t = spec.timing.get_or_insert_with(TimingSpec::default);
             t.music = value.map(PathBuf::from);
+        }
+        "look" => {
+            let l = spec.look.get_or_insert_with(LookSpec::default);
+            // `look=acid,amber` names several, taken in turn.
+            for name in value.iter().flat_map(|v| v.split(',')).map(str::trim) {
+                if !LOOKS.contains(&name) {
+                    return Err(
+                        Diagnostic::new(Kind::Invalid, format!("`{name}` is not a look"))
+                            .expected(format!("one of {}", LOOKS.join(", "))),
+                    );
+                }
+                l.looks.push(name.to_owned());
+            }
+        }
+        "look-fonts" => {
+            let l = spec.look.get_or_insert_with(LookSpec::default);
+            l.fonts.extend(value.map(PathBuf::from));
         }
         "pace" => {
             let t = spec.timing.get_or_insert_with(TimingSpec::default);
