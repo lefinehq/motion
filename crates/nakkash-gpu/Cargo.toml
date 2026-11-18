@@ -1,0 +1,34 @@
+[package]
+name = "nakkash-gpu"
+description = "An optional GPU backend for nakkash's float canvas, on wgpu: compositing and the heaviest effects, approximate against the CPU reference."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+nakkash-format = { path = "../nakkash-format" }
+nakkash-raster = { path = "../nakkash-raster" }
+# Float pixels as the bytes a GPU buffer holds, without copying them.
+bytemuck = "1"
+# Metal, Vulkan and DX12 only: the GL backend is how software rasterisers
+# are usually offered, and it is never used (D74).
+wgpu = { version = "30", default-features = false, features = [
+  "std",
+  "parking_lot",
+  "wgsl",
+  "metal",
+  "vulkan",
+  "dx12",
+] }
+
+[dev-dependencies]
+rstest.workspace = true
+# Parses and validates every kernel on the CPU, so CI checks them without a
+# GPU; the same version wgpu compiles them with.
+naga = { version = "30", features = ["wgsl-in"] }
+
+[lints]
+workspace = true

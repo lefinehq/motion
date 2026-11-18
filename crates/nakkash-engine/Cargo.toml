@@ -11,6 +11,8 @@ publish.workspace = true
 [features]
 # Bakes expressions at import (D38). Only the CLI turns it on.
 bake = ["nakkash-import/bake"]
+# The optional GPU backend (D74), which `nakkash render --gpu` uses.
+gpu = ["dep:nakkash-gpu"]
 
 [dependencies]
 glam.workspace = true
@@ -22,6 +24,7 @@ nakkash-query = { path = "../nakkash-query" }
 nakkash-edit = { path = "../nakkash-edit" }
 nakkash-import = { path = "../nakkash-import" }
 nakkash-raster = { path = "../nakkash-raster" }
+nakkash-gpu = { path = "../nakkash-gpu", optional = true }
 nakkash-audio = { path = "../nakkash-audio" }
 nakkash-video = { path = "../nakkash-video" }
 # Vector footage image layers draw (D70).

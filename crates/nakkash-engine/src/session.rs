@@ -17,7 +17,7 @@ use nakkash_format::units::Time;
 use nakkash_format::{Address, Diagnostic, Kind, Result};
 use nakkash_format::{Document, Scene, parse_document, write_document};
 use nakkash_query::{Report, at, check};
-use nakkash_raster::{Frame, Image, RenderOptions};
+use nakkash_raster::{Accelerator, Frame, Image, RenderOptions, Tally};
 use nakkash_scene::{FrameState, evaluate};
 use nakkash_scene::{SceneGraph, compile};
 use nakkash_text::{FontSet, Typesetter};
@@ -52,6 +52,11 @@ pub struct Session {
     /// The sounds audio layers play, each read once, on first use, and
     /// dropped by an edit.
     sounds: Sounds,
+    /// What renders hand the float canvas's work to, if anything ([D74]):
+    /// approximate frames, never the reference.
+    ///
+    /// [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
+    accelerator: Option<Arc<dyn Accelerator>>,
 }
 
 impl Session {
@@ -306,8 +311,41 @@ impl Session {
     pub(crate) fn draw(&self, list: &Frame, options: RenderOptions) -> Result<Image> {
         let (width, height) = self.canvas()?;
         stage("render", || {
+            on_pool(|| {
+                nakkash_raster::render_on(list, width, height, options, self.accelerator.as_deref())
+            })
+        })
+    }
+
+    /// Draws `list` on the scene's canvas on the CPU, whatever accelerator
+    /// renders use: the reference, which fidelity is measured on ([D74]).
+    ///
+    /// # Errors
+    /// As [`Session::render_with`].
+    ///
+    /// [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
+    pub(crate) fn draw_reference(&self, list: &Frame, options: RenderOptions) -> Result<Image> {
+        let (width, height) = self.canvas()?;
+        stage("render", || {
             on_pool(|| nakkash_raster::render_with(list, width, height, options))
         })
+    }
+
+    /// Hands the float canvas's work of every render after this to
+    /// `accelerator`, or, with `None`, to nobody: renders draw on the CPU,
+    /// the reference ([D74]). With one, frames approximate the reference
+    /// within the tolerances D74 sets; `diff` and every check still draw on
+    /// the CPU.
+    ///
+    /// [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
+    pub fn set_accelerator(&mut self, accelerator: Option<Arc<dyn Accelerator>>) {
+        self.accelerator = accelerator;
+    }
+
+    /// What the accelerator did over this session's renders so far, if
+    /// renders have one.
+    pub fn tally(&self) -> Option<Tally> {
+        self.accelerator.as_ref().map(|a| a.tally())
     }
 
     /// Whether any layer at any depth plays sound.
@@ -596,6 +634,7 @@ impl Session {
             pictures: Pictures::default(),
             clips: Clips::default(),
             sounds: Sounds::default(),
+            accelerator: self.accelerator.clone(),
         }
     }
 
@@ -670,6 +709,7 @@ impl FromStr for Session {
             pictures: Pictures::default(),
             clips: Clips::default(),
             sounds: Sounds::default(),
+            accelerator: None,
         })
     }
 }

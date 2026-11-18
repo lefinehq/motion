@@ -20,6 +20,8 @@ mod fonts;
 mod footage;
 mod gates;
 mod geometry;
+#[cfg(feature = "gpu")]
+pub mod gpu;
 mod import;
 mod level;
 mod mix;
@@ -59,5 +61,5 @@ pub use nakkash_format::{
 pub use nakkash_import::map::{Import, Mapping, Options as ImportOptions, StoredText};
 pub use nakkash_import::{Project, Report as ImportReport};
 pub use nakkash_query::{Report, Severity};
-pub use nakkash_raster::{Frame, Image, Quality, RenderOptions, Simd};
+pub use nakkash_raster::{Accelerator, Frame, Image, Quality, RenderOptions, Simd, Tally};
 pub use nakkash_scene::{FrameState, SceneGraph};

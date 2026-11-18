@@ -197,6 +197,11 @@ enum Command {
             value_parser = PossibleValuesParser::new(<VideoQuality as VariantNames>::VARIANTS)
         )]
         video_quality: Option<String>,
+        /// Hand compositing and the heaviest effects to the GPU, for a
+        /// faster preview that approximates the CPU's frames (D74). A
+        /// machine without a hardware GPU says so and draws on the CPU.
+        #[arg(long)]
+        gpu: bool,
     },
     /// Compare a scene with a reference render's frames: the error where the
     /// scene draws, and over everything it draws in the compared frames.
@@ -401,6 +406,7 @@ fn main() -> ExitCode {
             quality,
             codec,
             video_quality,
+            gpu,
         } => commands::render::Encoding::named(codec.as_deref(), video_quality.as_deref())
             .and_then(|encoding| {
                 commands::render::run(
@@ -409,6 +415,7 @@ fn main() -> ExitCode {
                     &out,
                     quality.into(),
                     encoding,
+                    commands::render::Backend::from_flag(gpu),
                 )
             }),
         Command::Diff {
