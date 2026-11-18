@@ -22,6 +22,7 @@ use crate::list::{
 };
 use crate::pixels::Pixels;
 use crate::projected::{self, Buffer, Extent, Plan};
+use crate::reads::Reads;
 use crate::style::{Color, DrawStyle};
 
 /// How the rasteriser computes colours.
@@ -112,7 +113,7 @@ pub fn render_with(
         )
         .expected("gamma blending"));
     }
-    let mut painter = Painter::new(w, h, options);
+    let mut painter = Painter::new(w, h, options, Arc::new(Reads::of(&frame.nodes)));
     // The background is drawn as the bottom-most shape, not used to clear the
     // target: the rasteriser keeps a cleared target out of blending, and a
     // layer that multiplies must multiply with the background too.
@@ -208,11 +209,14 @@ struct Painter {
     pending: bool,
     /// How many layers are open in the context.
     open: usize,
+    /// The drawings of read layers, shared by the frame's painters.
+    reads: Arc<Reads>,
 }
 
 impl Painter {
-    /// A painter for a `width` by `height` target, drawing with `options`.
-    fn new(width: u16, height: u16, options: RenderOptions) -> Painter {
+    /// A painter for a `width` by `height` target, drawing with `options`
+    /// and sharing the frame's `reads`.
+    fn new(width: u16, height: u16, options: RenderOptions, reads: Arc<Reads>) -> Painter {
         Painter {
             ctx: RenderContext::new_with(
                 width,
@@ -229,12 +233,18 @@ impl Painter {
             canvas: None,
             pending: false,
             open: 0,
+            reads,
         }
     }
 
     /// A painter of this one's size and options, to draw something alone.
     fn alone(&self) -> Painter {
-        Painter::new(self.width, self.height, self.options)
+        Painter::new(
+            self.width,
+            self.height,
+            self.options,
+            Arc::clone(&self.reads),
+        )
     }
 
     /// Whether pixels are laid on a float canvas.
@@ -381,11 +391,15 @@ impl Painter {
         let input = effect
             .input()
             .map(|node| {
-                let bounds = match node {
+                let bounds = match &**node {
                     Node::Layer(layer) => layer.bounds,
                     _ => None,
                 };
-                self.drawn_alone(std::slice::from_ref(node), transform)
+                // Drawn once a frame for each transform it is read at.
+                self.reads
+                    .read(node, transform, (self.width, self.height), || {
+                        self.drawn_alone(std::slice::from_ref(&**node), transform)
+                    })
                     .map(|pixels| Input { pixels, bounds })
             })
             .transpose()?;
@@ -723,7 +737,12 @@ impl Painter {
         maps: &[Homography],
         draw: impl FnOnce(&mut Painter) -> Result<()>,
     ) -> Result<Pixels> {
-        let mut sub = Painter::new(plan.width, plan.height, self.options);
+        let mut sub = Painter::new(
+            plan.width,
+            plan.height,
+            self.options,
+            Arc::clone(&self.reads),
+        );
         draw(&mut sub)?;
         let (width, height) = (self.width, self.height);
         Ok(match sub.finish() {

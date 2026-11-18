@@ -254,7 +254,7 @@ fn read_map(map: &str) -> Node {
     );
     let frame = list(&scene, 0.0);
     let grey = only_layer(&frame);
-    grey.effects[0].input().expect("the map's drawing").clone()
+    (**grey.effects[0].input().expect("the map's drawing")).clone()
 }
 
 #[test]
@@ -288,7 +288,7 @@ fn read_matte(fx: &str) -> Vec<Effect> {
 
 /// The transform the read layer is laid on the reading one by.
 fn laid_by(effect: &Effect) -> Affine {
-    match effect.input() {
+    match effect.input().map(|node| &**node) {
         Some(Node::Layer(read)) => {
             assert_eq!(read.bounds, None, "laid already");
             read.transform
@@ -321,7 +321,7 @@ fn a_matte_is_laid_on_the_layers_box() {
 #[test]
 fn a_matte_without_a_layer_reads_the_layer_before_its_effects() {
     let effects = read_matte(r##"{"fill":"#FF0000"},{"set-matte":"red"}"##);
-    let Some(Node::Layer(own)) = effects[1].input() else {
+    let Some(Node::Layer(own)) = effects[1].input().map(|node| &**node) else {
         panic!("its own drawing: {:?}", effects[1].input())
     };
     assert!(own.effects.is_empty(), "before its effects");

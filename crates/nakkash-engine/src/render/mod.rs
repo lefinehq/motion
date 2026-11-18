@@ -38,6 +38,7 @@ use nakkash_raster::{
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::pictures::Still;
 
@@ -139,10 +140,29 @@ pub(crate) fn display_list(sources: Sources<'_>, state: &FrameState) -> Result<F
 /// The layers of one canvas's nodes, back to front: `at` is the canvas,
 /// `state` its nodes' state at this frame.
 fn nodes(sources: Sources<'_>, at: Canvas, state: &FrameState) -> Result<Vec<Node>> {
+    let read = ReadLayers::default();
     paint_order(state)
         .into_iter()
-        .filter_map(|i| matted(sources, at, state, i).transpose())
+        .filter_map(|i| matted(sources, at, state, i, &read).transpose())
         .collect()
+}
+
+/// The layers of one canvas that its effects read, each drawn once and
+/// shared by every effect that reads it, so the rasteriser draws it once
+/// too: by the layer's index in the canvas.
+#[derive(Default)]
+struct ReadLayers(RefCell<HashMap<usize, Arc<Node>>>);
+
+impl ReadLayers {
+    /// The node of layer `source`, as `draw` makes it the first time.
+    fn node(&self, source: usize, draw: impl FnOnce() -> Result<Node>) -> Result<Arc<Node>> {
+        if let Some(node) = self.0.borrow().get(&source) {
+            return Ok(Arc::clone(node));
+        }
+        let node = Arc::new(draw()?);
+        self.0.borrow_mut().insert(source, Arc::clone(&node));
+        Ok(node)
+    }
 }
 
 /// The visible nodes of `state` that draw, in the order they draw ([D58]): list
@@ -257,7 +277,13 @@ fn canvas(comp: &CompGraph) -> Rect {
 
 /// The layer of node `i` of the canvas `at`, with its matte if it has
 /// one, or `None` when it draws nothing.
-fn matted(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Result<Option<Node>> {
+fn matted(
+    sources: Sources<'_>,
+    at: Canvas,
+    state: &FrameState,
+    i: usize,
+    read: &ReadLayers,
+) -> Result<Option<Node>> {
     let list = &at.graph(sources.graph).nodes;
     let drawn = match blurs(&list[i]) {
         true => blurred(sources, at, state, i)?,
@@ -313,31 +339,39 @@ fn matted(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Res
             }
             continue;
         };
-        let read = match state.nodes[source].shown {
-            true => drawing(
-                sources,
-                &list[source],
-                &state.view,
-                &state.nodes[source],
-                false,
-            )?,
-            false => None,
-        };
-        let read = match read {
-            Some(Node::Layer(read)) => Layer {
-                transform: Affine::IDENTITY,
-                projection: None,
-                opacity: 1.0,
-                ..read
-            },
-            _ => Layer::new(Vec::new()),
-        };
+        let node = read.node(source, || {
+            let drawn = match state.nodes[source].shown {
+                true => drawing(
+                    sources,
+                    &list[source],
+                    &state.view,
+                    &state.nodes[source],
+                    false,
+                )?,
+                false => None,
+            };
+            Ok(Node::Layer(match drawn {
+                Some(Node::Layer(drawn)) => Layer {
+                    transform: Affine::IDENTITY,
+                    projection: None,
+                    opacity: 1.0,
+                    ..drawn
+                },
+                _ => Layer::new(Vec::new()),
+            }))
+        })?;
         // One that reads a laid layer reads it already laid on its own
-        // effect box, so nothing it reads falls outside the frame.
-        let read = match item.kind.input {
+        // effect box, so nothing it reads falls outside the frame. That
+        // read is laid for this effect alone, so it is not shared.
+        let laid_read = matches!(
+            item.kind.input,
             Some(Input {
-                reads: Reads::Laid, ..
-            }) => {
+                reads: Reads::Laid,
+                ..
+            })
+        );
+        let node = match (laid_read, &*node) {
+            (true, Node::Layer(read)) => {
                 let around = canvas(at.graph(sources.graph));
                 let from = effect_box(sources, &state.nodes[source], around);
                 // A collapsed composition runs its effects in the
@@ -346,15 +380,15 @@ fn matted(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Res
                     true if matches!(state.nodes[i].content, ContentState::Comp(..)) => around,
                     _ => effect_box(sources, &state.nodes[i], around),
                 };
-                Layer {
+                Arc::new(Node::Layer(Layer {
                     transform: laid(item, from, onto),
                     bounds: None,
-                    ..read
-                }
+                    ..read.clone()
+                }))
             }
-            _ => read,
+            _ => node,
         };
-        *effect = effect.clone().with_input(Node::Layer(read));
+        *effect = effect.clone().with_input(node);
     }
     let Some((source, mode)) = list[i].matte else {
         return Ok(Some(Node::Layer(drawn)));
@@ -363,7 +397,7 @@ fn matted(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Res
     // nothing outside its span; it may be matted in turn.
     let matte = &state.nodes[source];
     let source = match matte.shown {
-        true => matted(sources, at, state, source)?,
+        true => matted(sources, at, state, source, read)?,
         false => None,
     };
     Ok(Some(Node::Layer(Layer {

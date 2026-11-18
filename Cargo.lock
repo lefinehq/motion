@@ -1821,6 +1821,7 @@ dependencies = [
  "proptest",
  "rstest",
  "skrifa",
+ "tracing",
  "vello_cpu",
  "zune-jpeg",
 ]
