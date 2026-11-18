@@ -493,6 +493,19 @@ mod effects {
         assert_eq!(fx["transform"], json!([-1, 1.5]), "{fx}");
     }
 
+    /// A scale set apart with one axis left out keeps that axis at its
+    /// rest, 1: a 0 would flatten the layer to nothing.
+    #[test]
+    fn a_scale_set_apart_keeps_the_axis_it_leaves_out_at_its_rest() {
+        let import = imported(vec![transform(vec![
+            number("ADBE Geometry2-0011", 0.0),
+            number("ADBE Geometry2-0004", 150.0),
+        ])])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"][0];
+        assert_eq!(fx["transform"], json!([1.5, 1]), "{fx}");
+    }
+
     #[test]
     fn a_pseudo_effect_is_an_expression_control() {
         let import = imported(vec![group("Pseudo/MHAC PrCtrl", vec![])]).expect("imports");

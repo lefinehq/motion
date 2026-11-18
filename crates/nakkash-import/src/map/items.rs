@@ -83,16 +83,26 @@ pub(super) struct Out {
 
 impl Out {
     /// Sets one component of a property's resting value, which a scene
-    /// writes whole: the other components stay as set, or 0 until they are.
+    /// writes whole: the other components stay as set, or at the property's
+    /// rest until they are, so an axis the project leaves out keeps its
+    /// rest (a scale of 1, not 0).
     pub(super) fn set_component(&mut self, target: Target, value: Json) {
         let (Some(index), name) = (target.component, target.prop.name()) else {
             return;
         };
-        let count = target.prop.spec().components.len();
-        let whole = self
-            .keys
-            .entry(name)
-            .or_insert_with(|| Json::Array(vec![json!(0); count]));
+        let spec = target.prop.spec();
+        let count = spec.components.len();
+        let whole = self.keys.entry(name).or_insert_with(|| {
+            let rest = match &spec.rest {
+                Rest::Value(rest) if rest.components().len() == count => rest.components(),
+                _ => &[],
+            };
+            Json::Array(
+                (0..count)
+                    .map(|i| rest.get(i).map_or(json!(0), |&c| num(c)))
+                    .collect(),
+            )
+        });
         if let Some(slot) = whole.as_array_mut().and_then(|parts| parts.get_mut(index)) {
             *slot = value;
         }

@@ -93,15 +93,17 @@ impl Pixels {
             "laid pixels are the canvas's size"
         );
         for (i, (below, &[r, g, b, a])) in self.data.iter_mut().zip(&source.data).enumerate() {
+            // A level that is not a number covers nothing: such a pixel is
+            // left out, never laid (and never a panic in the clamps below).
             let a = a.clamp(0.0, 1.0);
-            if a <= 0.0 {
+            if a.is_nan() || a <= 0.0 {
                 continue;
             }
             let k = amount(i).clamp(0.0, 1.0);
-            if k <= 0.0 {
+            if k.is_nan() || k <= 0.0 {
                 continue;
             }
-            let within = |c: f32| c.clamp(0.0, a) * k;
+            let within = |c: f32| if c.is_nan() { 0.0 } else { c.clamp(0.0, a) * k };
             *below = mode.lay(*below, [within(r), within(g), within(b), a * k]);
         }
     }
@@ -157,6 +159,11 @@ impl Pixels {
     pub fn transformed(&self, transform: Affine) -> Pixels {
         let back = transform.inverse();
         let mut out = Pixels::transparent(self.width, self.height);
+        // A move that flattens the pixels to a line or a point has no
+        // finite way back: nothing of them is left to see.
+        if !back.as_coeffs().iter().all(|c| c.is_finite()) {
+            return out;
+        }
         let width = usize::from(self.width);
         for (i, pixel) in out.data.iter_mut().enumerate() {
             let (x, y) = ((i % width) as f64 + 0.5, (i / width) as f64 + 0.5);
