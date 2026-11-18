@@ -25,9 +25,10 @@ use crate::edit_word::NONE;
 use crate::item::{EFFECTS, MASKS, Reads, SHAPES};
 use crate::parse::key::{
     ADJUST, ANIM, ANIMATE, AT, AUDIO, BG, BLEND, BOX, CAMERA, COLLAPSE, COMP, COMPS, CONTINUOUS,
-    CROP, DUR, FILL, FONT, FPS, FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION, NAKKASH,
-    OFFSET, OUT, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS, SHAPES as SHAPES_KEY,
-    SHUTTER, SIZE, SPAN, STRETCH, STYLE, TEXT, THREE_D, VIDEO, comp_path, layer_path,
+    CROP, DUR, FILL, FIT, FONT, FPS, FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION,
+    NAKKASH, OFFSET, OUT, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS,
+    SHAPES as SHAPES_KEY, SHUTTER, SIZE, SPAN, STRETCH, STYLE, TEXT, THREE_D, VIDEO, comp_path,
+    layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -39,7 +40,7 @@ use crate::value::{Value, ValueType};
 use crate::when::{Base, Moment, Moments, add, label_name};
 use crate::{
     Address, AudioContent, BLEND_MODES, CameraContent, Comp, CompContent, Content, Curve,
-    ImageContent, Layer, Scene, Step, VideoContent, fmt_num,
+    ImageContent, Layer, MediaFit, Scene, Step, VideoContent, fmt_num,
 };
 
 use crate::Place;
@@ -1119,6 +1120,7 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
             only_on(doc.collapse.is_some(), COLLAPSE, FX, &[COMP])?;
             only_on(doc.crop.is_some(), CROP, FX, &[IMAGE])?;
             only_on(doc.continuous.is_some(), CONTINUOUS, FX, &[IMAGE])?;
+            only_on(doc.fit.is_some(), FIT, FX, &[TEXT, IMAGE, VIDEO])?;
             return Ok(Content::Filter);
         }
         (None, _) => return Err(Diagnostic::new(Kind::Missing, one_of()).expected(EXAMPLE)),
@@ -1133,6 +1135,8 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
     only_on(doc.collapse.is_some(), COLLAPSE, key, &[COMP])?;
     only_on(doc.crop.is_some(), CROP, key, &[IMAGE])?;
     only_on(doc.continuous.is_some(), CONTINUOUS, key, &[IMAGE])?;
+    // A text layer's `fit` (D77) is its own, and not checked here.
+    only_on(doc.fit.is_some(), FIT, key, &[TEXT, IMAGE, VIDEO])?;
     only_on(doc.frame.is_some(), BOX, key, &[TEXT, IMAGE, VIDEO])?;
     let Object(style) = &doc.style;
     for (written, name) in [
@@ -1187,8 +1191,8 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
             };
             Ok(Content::Comp(CompContent { id, instance }))
         }
-        IMAGE => image(doc, doc.image.as_deref().expect("written")),
-        VIDEO => video(doc.video.as_deref().expect("written"), doc.frame.as_ref()),
+        IMAGE => image(doc, doc.image.as_ref().expect("written").as_deref()),
+        VIDEO => video(doc, doc.video.as_ref().expect("written").as_deref()),
         AUDIO => audio(doc.audio.as_deref().expect("written")),
         CAMERA => match *doc.camera {
             Some(true) => Ok(Content::Camera(CameraContent {
@@ -1325,16 +1329,16 @@ fn instance(canvas: &Canvas, overrides: &OverridesDoc, shared: &Shared) -> Resul
     layers(&docs, &context)
 }
 
-/// An image layer: a picture file, relative to the scene file, filling the
-/// layer's `box`, which it must have since the scene is read without
-/// opening its files. `crop`, the part of the picture shown, is written
-/// as a box is.
-fn image(doc: &LayerDoc, path: &str) -> Result<Content> {
-    if path.trim().is_empty() {
+/// An image layer: a picture file, relative to the scene file, fitted to
+/// the layer's `box`, which it must have since the scene is read without
+/// opening its files; or, `null`, no file yet, which draws nothing. `crop`,
+/// the part of the picture shown, is written as a box is.
+fn image(doc: &LayerDoc, path: Option<&str>) -> Result<Content> {
+    if path.is_some_and(|path| path.trim().is_empty()) {
         return Err(Diagnostic::new(Kind::Invalid, "an empty image path")
             .at(IMAGE)
             .expected(
-                "a PNG, JPEG or PDF file, relative to the scene file, e.g. `photos/beach.jpg`",
+                "a PNG, JPEG or PDF file, relative to the scene file, e.g. `photos/beach.jpg`, or null for none yet",
             ));
     }
     let frame = doc.frame.as_ref().ok_or_else(|| {
@@ -1347,32 +1351,44 @@ fn image(doc: &LayerDoc, path: &str) -> Result<Content> {
         .map(|crop| text::frame(crop).map_err(|e| e.under(CROP)))
         .transpose()?;
     Ok(Content::Image(ImageContent {
-        path: path.to_owned(),
+        path: path.map(str::to_owned),
         frame: text::frame(frame).map_err(|e| e.under(BOX))?,
         crop,
+        fit: media_fit(doc)?,
         continuous: doc.continuous.unwrap_or(false),
     }))
 }
 
-/// A video layer: a clip file, relative to the scene file, filling the
+/// A video layer: a clip file, relative to the scene file, fitted to the
 /// layer's `box`, which it must have since the scene is read without
-/// opening its files.
-fn video(path: &str, frame: Option<&ValueDoc>) -> Result<Content> {
-    if path.trim().is_empty() {
+/// opening its files; or, `null`, no file yet, which draws nothing.
+fn video(doc: &LayerDoc, path: Option<&str>) -> Result<Content> {
+    if path.is_some_and(|path| path.trim().is_empty()) {
         return Err(Diagnostic::new(Kind::Invalid, "an empty video path")
             .at(VIDEO)
             .expected(
-                "an MP4 or QuickTime clip, relative to the scene file, e.g. `clips/sea.mov`",
+                "an MP4 or QuickTime clip, relative to the scene file, e.g. `clips/sea.mov`, or null for none yet",
             ));
     }
-    let frame = frame.ok_or_else(|| {
+    let frame = doc.frame.as_ref().ok_or_else(|| {
         Diagnostic::new(Kind::Missing, "missing `box`: a video layer fills its box")
             .expected(r#"the clip's size in px, e.g. "box":[1920,1080]"#)
     })?;
     Ok(Content::Video(VideoContent {
-        path: path.to_owned(),
+        path: path.map(str::to_owned),
         frame: text::frame(frame).map_err(|e| e.under(BOX))?,
+        fit: media_fit(doc)?,
     }))
+}
+
+/// An image or video layer's `fit`, `fill` when it writes none.
+fn media_fit(doc: &LayerDoc) -> Result<MediaFit> {
+    let Some(name) = doc.fit.as_deref() else {
+        return Ok(MediaFit::default());
+    };
+    MediaFit::named(name).ok_or_else(|| {
+        Diagnostic::unknown("fit", name, MediaFit::NAMES.map(|n| format!("`{n}`"))).at(FIT)
+    })
 }
 
 /// An audio layer: a sound file, relative to the scene file. It draws

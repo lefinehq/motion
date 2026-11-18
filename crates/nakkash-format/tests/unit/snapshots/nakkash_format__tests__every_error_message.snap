@@ -59,9 +59,14 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","text":"x","font":1}` → a.font: invalid type: integer `1`; expected `<family> <size> [<weight>]`, e.g. `Inter 96 700`
 `{"id":"a","rect":"1x1","font":"Inter 9"}` → a.font: `font` only applies to `text` layers; expected `font` only next to `text`
 `{"id":"a","image":"a.png"}` → a: missing `box`: an image layer fills its box; expected the picture's size in px, e.g. "box":[1920,1080]
-`{"id":"a","image":"","box":[1,1]}` → a.image: an empty image path; expected a PNG, JPEG or PDF file, relative to the scene file, e.g. `photos/beach.jpg`
+`{"id":"a","image":"","box":[1,1]}` → a.image: an empty image path; expected a PNG, JPEG or PDF file, relative to the scene file, e.g. `photos/beach.jpg`, or null for none yet
 `{"id":"a","image":"a.png","box":[0,1]}` → a.box: a box's width and height are above zero; expected `[width, height]` from the layer's origin, or `[x, y, width, height]` from the box's top-left corner, in px, the sizes above zero, e.g. `[600, 300]` or `[-300, -150, 600, 300]`
 `{"id":"a","image":3,"box":[1,1]}` → a.image: invalid type: integer `3`; expected a string
+`{"id":"a","image":null}` → a: missing `box`: an image layer fills its box; expected the picture's size in px, e.g. "box":[1920,1080]
+`{"id":"a","image":"a.png","box":[1,1],"fit":"stretch"}` → a.fit: unknown fit `stretch`; expected one of `fill`, `contain`, `cover`
+`{"id":"a","video":"a.mov","box":[1,1],"fit":3}` → a.fit: invalid type: integer `3`; expected a string
+`{"id":"a","rect":"1x1","fit":"cover"}` → a.fit: `fit` only applies to `text` or `image` or `video` layers; expected `fit` only next to `text` or `image` or `video`
+`{"id":"a","fx":[{"fill":"#FFFFFF"}],"fit":"cover"}` → a.fit: `fit` only applies to `text` or `image` or `video` layers; expected `fit` only next to `text` or `image` or `video`
 `{"id":"a","rect":"1x1","fill":1}` → a.fill: 1 numbers do not make a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
 `{"id":"a","rect":"1x1","fill":"red"}` → a.fill: `red` is not a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
 `{"id":"a","rect":"1x1","at":1}` → a.at: invalid type: integer `1`; expected `<x> <y>`, each a number of pixels or `center`, e.g. `center 260`
@@ -70,7 +75,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","in":"zoom"}` → a.in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in, rise, slam, push-up, push-down, push-left, push-right, swing-in
 `{"id":"a","rect":"1x1","anim":null}` → a.anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
 `{"id":"a","rect":"1x1","anim":[]}` → a.anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
-`{"id":"a","rect":"1x1","x":1}` → a.x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, overrides, image, video, audio, pivot, camera, font, fill, style, runs, paragraphs, box, crop, continuous, animate, at, in, out, anim, parent, span, offset, stretch, mask, fx, adjust, collapse, hidden, matte, blend, mblur, 3d, position, anchor, scale, rotate, opacity, volume, z, anchor-z, scale-z, rotate-x, rotate-y, orient, zoom, target, target-z, remap
+`{"id":"a","rect":"1x1","x":1}` → a.x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, overrides, image, video, audio, pivot, camera, font, fill, style, runs, paragraphs, box, crop, continuous, fit, animate, at, in, out, anim, parent, span, offset, stretch, mask, fx, adjust, collapse, hidden, matte, blend, mblur, 3d, position, anchor, scale, rotate, opacity, volume, z, anchor-z, scale-z, rotate-x, rotate-y, orient, zoom, target, target-z, remap
 `{"id":"a","rect":"1x1","z":10}` → a.z: `z` places a layer in depth, and `a` is flat; expected "3d":true on the layer
 `{"id":"a","rect":"1x1","anim":{"rotate-y":"0 -> 90 @0-5f"}}` → a.anim.rotate-y: `rotate-y` places a layer in depth, and `a` is flat; expected "3d":true on the layer
 `{"id":"a","rect":"1x1","3d":true,"zoom":900}` → a.zoom: `zoom` is a camera's, and `a` is not a camera; expected "camera":true on the layer
@@ -129,7 +134,7 @@ expression: "report.join(\"\\n\\n\")"
 `"overrides":{"title":{"rect":"1x1"}}` → card/title.rect: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video`, `audio`, `pivot` or `camera`, or only `fx` for a filter layer; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov", "audio":"music.mp3" or "pivot":true
 `"overrides":{"title":{"fill":"red"}}` → card/title.fill: `red` is not a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
 `"overrides":{"title/x":{"text":"x"}}` → card/title.overrides: `overrides` only applies to `comp` layers; expected `overrides` only next to `comp`
-`"overrides":{"title":{"skew":1}}` → card/title.skew: unknown layer key `skew`; expected one of id, text, rect, shapes, comp, overrides, image, video, audio, pivot, camera, font, fill, style, runs, paragraphs, box, crop, continuous, animate, at, in, out, anim, parent, span, offset, stretch, mask, fx, adjust, collapse, hidden, matte, blend, mblur, 3d, position, anchor, scale, rotate, opacity, volume, z, anchor-z, scale-z, rotate-x, rotate-y, orient, zoom, target, target-z, remap
+`"overrides":{"title":{"skew":1}}` → card/title.skew: unknown layer key `skew`; expected one of id, text, rect, shapes, comp, overrides, image, video, audio, pivot, camera, font, fill, style, runs, paragraphs, box, crop, continuous, fit, animate, at, in, out, anim, parent, span, offset, stretch, mask, fx, adjust, collapse, hidden, matte, blend, mblur, 3d, position, anchor, scale, rotate, opacity, volume, z, anchor-z, scale-z, rotate-x, rotate-y, orient, zoom, target, target-z, remap
 `"overrides":{"$ghost":"x"}` → card.overrides.$ghost: unknown slot `$ghost`; expected a slot of the composition, which declares none
 
 ## collapse

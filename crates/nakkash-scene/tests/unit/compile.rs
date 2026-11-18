@@ -108,13 +108,15 @@ fn an_image_node_keeps_its_file_and_its_box_is_the_layers_box() {
     let NodeContent::Image(image) = &node.content else {
         panic!("not an image: {:?}", node.content);
     };
-    assert_eq!(image.path, "a.png");
+    assert_eq!(image.path.as_deref(), Some("a.png"));
     assert_eq!(node.bounds, Rect::new(-10.0, 0.0, 30.0, 20.0));
     // The anchor rests at the box's centre, and `at` places it.
     assert_eq!(track(node, "anchor-x").sample(0.0), 10.0);
     assert_eq!(track(node, "x").sample(0.0), 100.0);
     let state = crate::evaluate(&g, 0.0);
-    assert!(matches!(&state.nodes[0].content, crate::ContentState::Image(i) if i.path == "a.png"));
+    assert!(
+        matches!(&state.nodes[0].content, crate::ContentState::Image(i) if i.path.as_deref() == Some("a.png"))
+    );
     assert_eq!(state.nodes[0].bounds(), Rect::new(80.0, 40.0, 120.0, 60.0));
 }
 

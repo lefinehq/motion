@@ -124,6 +124,262 @@ fn a_missing_picture_is_an_error_at_its_layers_image() {
     assert!(hidden.display_list(0.0).is_ok());
 }
 
+/// A scratch file holding `bytes`, named `name`, for one test.
+fn scratch_file(name: &str, bytes: &[u8]) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("nakkash-engine-fit-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(name);
+    std::fs::write(&path, bytes).unwrap();
+    path
+}
+
+/// An opaque 8x4 PNG in three bands across: two columns green, four red,
+/// two blue.
+fn bands() -> std::path::PathBuf {
+    let pixel = |x: usize| match x {
+        0..2 => [0, 255, 0, 255],
+        2..6 => [255, 0, 0, 255],
+        _ => [0, 0, 255, 255],
+    };
+    let pixels = (0..32).flat_map(|i| pixel(i % 8)).collect();
+    let png = nakkash_raster::Image::new(8, 4, pixels)
+        .unwrap()
+        .to_png()
+        .unwrap();
+    scratch_file("bands.png", &png)
+}
+
+/// The colour of each pixel at `points` of `scene` drawn at frame 0, as
+/// RGB rounded to whole tens, so sampling at no edge reads exactly.
+fn colours(scene: &str, points: &[(usize, usize)]) -> Vec<[u8; 3]> {
+    let drawn = session(scene)
+        .render_with(0.0, nakkash_raster::RenderOptions::GOLDEN)
+        .unwrap();
+    let width = drawn.width() as usize;
+    points
+        .iter()
+        .map(|&(x, y)| {
+            let at = 4 * (y * width + x);
+            let p = &drawn.pixels()[at..at + 3];
+            [p[0], p[1], p[2]].map(|c| ((f64::from(c) / 10.0).round() * 10.0) as u8)
+        })
+        .collect()
+}
+
+/// An 80x80 white scene with one layer.
+fn white(layer: &str) -> String {
+    format!(
+        r##"{{"nakkash":1,"size":"80x80","fps":10,"dur":"1s","bg":"#FFFFFF","layers":[{layer}]}}"##
+    )
+}
+
+// A full channel rounds up to 260, which saturates at 255.
+const WHITE: [u8; 3] = [255, 255, 255];
+const RED: [u8; 3] = [255, 0, 0];
+const GREEN: [u8; 3] = [0, 255, 0];
+const BLUE: [u8; 3] = [0, 0, 255];
+
+#[test]
+fn contain_and_cover_keep_a_wide_pictures_proportions_in_a_square_box() {
+    let path = bands();
+    let layer = |fit: &str| {
+        white(&format!(
+            r#"{{"id":"p","image":"{}","box":[40,40],"at":"40 40"{fit}}}"#,
+            path.display()
+        ))
+    };
+    // Points: above the middle, the left and right inside the box, the
+    // middle, and left of the box; each at no band's edge in any fit.
+    let points = [(40, 25), (26, 40), (53, 40), (40, 40), (15, 40)];
+    // Fill stretches all three bands over the whole box.
+    assert_eq!(colours(&layer(""), &points), [RED, GREEN, BLUE, RED, WHITE]);
+    assert_eq!(
+        colours(&layer(r#","fit":"fill""#), &points),
+        colours(&layer(""), &points)
+    );
+    // Contain: 40x20, centred, so above it is white.
+    assert_eq!(
+        colours(&layer(r#","fit":"contain""#), &points),
+        [WHITE, GREEN, BLUE, RED, WHITE]
+    );
+    // Cover: the middle 4x4, the red band, over the whole box, and
+    // nothing of the green beyond its left edge.
+    assert_eq!(
+        colours(&layer(r#","fit":"cover""#), &points),
+        [RED, RED, RED, RED, WHITE]
+    );
+    let frame = list(&layer(r#","fit":"contain""#), 0.0);
+    let [Node::Image(image)] = only_layer(&frame).children.as_slice() else {
+        panic!("one picture");
+    };
+    assert_eq!(image.rect, Rect::new(0.0, 10.0, 40.0, 30.0));
+}
+
+#[test]
+fn a_crop_is_fitted_by_its_own_proportions() {
+    let path = bands();
+    // The green and two red columns, 4x4, contained in a wide box: drawn
+    // 20x20 in its middle.
+    let scene = white(&format!(
+        r#"{{"id":"p","image":"{}","box":[40,20],"crop":[0,0,4,4],"fit":"contain","at":"40 40"}}"#,
+        path.display()
+    ));
+    assert_eq!(
+        colours(&scene, &[(25, 40), (33, 40), (47, 40), (55, 40)]),
+        [WHITE, GREEN, RED, WHITE]
+    );
+}
+
+#[test]
+fn a_picture_shaped_as_its_box_draws_the_same_whatever_its_fit() {
+    let path = bands();
+    let drawn = |fit: &str| {
+        let scene = white(&format!(
+            r#"{{"id":"p","image":"{}","box":[-3,-1,62,31],"at":"40 40","rotate":7{fit}}}"#,
+            path.display()
+        ));
+        let s = session(&scene);
+        (
+            s.display_list(0.0).unwrap(),
+            s.render_with(0.0, nakkash_raster::RenderOptions::GOLDEN)
+                .unwrap(),
+        )
+    };
+    let fill = drawn("");
+    for fit in [r#","fit":"contain""#, r#","fit":"cover""#] {
+        let (frame, image) = drawn(fit);
+        assert_eq!(frame, fill.0, "{fit}");
+        assert!(image.pixels() == fill.1.pixels(), "{fit}");
+    }
+}
+
+#[test]
+fn a_video_is_fitted_by_its_frames_proportions() {
+    // The clip is 32x16; drawn in a 32x32 box filling the canvas.
+    let layer = |fit: &str| {
+        format!(r#"{{"id":"v","video":"{CLIPS}/rgb.mov","box":[32,32],"at":"16 16"{fit}}}"#)
+    };
+    let scene = |fit: &str| {
+        format!(
+            r##"{{"nakkash":1,"size":"32x32","fps":10,"dur":"1s","bg":"#000000","layers":[{}]}}"##,
+            layer(fit)
+        )
+    };
+    let rect = |fit: &str| {
+        let frame = list(&scene(fit), 0.0);
+        match only_layer(&frame).children.as_slice() {
+            [Node::Image(image)] => (image.rect, None),
+            [Node::Layer(cut)] => match cut.children.as_slice() {
+                [Node::Image(image)] => (image.rect, cut.clip.clone()),
+                other => panic!("one picture: {other:?}"),
+            },
+            other => panic!("one picture: {other:?}"),
+        }
+    };
+    assert_eq!(rect(""), (Rect::new(0.0, 0.0, 32.0, 32.0), None));
+    assert_eq!(
+        rect(r#","fit":"contain""#),
+        (Rect::new(0.0, 8.0, 32.0, 24.0), None)
+    );
+    // Cover: the middle half of the frame over the box, cut by it.
+    assert_eq!(
+        rect(r#","fit":"cover""#),
+        (
+            Rect::new(-16.0, 0.0, 48.0, 32.0),
+            Some(Clip::Rect(Rect::new(0.0, 0.0, 32.0, 32.0)))
+        )
+    );
+    // Contained, its rows above and below are the background.
+    let drawn = session(&scene(r#","fit":"contain""#))
+        .render_with(0.0, nakkash_raster::RenderOptions::GOLDEN)
+        .unwrap();
+    let rows = |from: usize, to: usize| drawn.pixels()[4 * 32 * from..4 * 32 * to].to_vec();
+    assert!(rows(0, 8).chunks(4).all(|p| p == [0, 0, 0, 255]));
+    assert!(rows(24, 32).chunks(4).all(|p| p == [0, 0, 0, 255]));
+    assert!(rows(8, 24).chunks(4).any(|p| p != [0, 0, 0, 255]));
+    // Of its own proportions, a clip draws as fill draws it.
+    let own = |fit: &str| {
+        list(
+            &format!(
+                r#"{{"nakkash":1,"size":"32x16","fps":10,"dur":"1s","layers":[{{"id":"v","video":"{CLIPS}/rgb.mov","box":[32,16]{fit}}}]}}"#
+            ),
+            0.0,
+        )
+    };
+    assert_eq!(own(r#","fit":"cover""#), own(""));
+    assert_eq!(own(r#","fit":"contain""#), own(""));
+}
+
+#[test]
+fn vector_footage_is_fitted_by_its_pages_proportions() {
+    // A 30x10 page whose left third is red.
+    let pdf = crate::test_support::pdf(30, 10, "", "", "1 0 0 rg 0 0 10 10 re f");
+    let path = scratch_file("third.pdf", &pdf);
+    for continuous in ["", r#","continuous":true"#] {
+        let scene = |fit: &str| {
+            white(&format!(
+                r#"{{"id":"p","image":"{}","box":[30,30],"at":"40 40"{fit}{continuous}}}"#,
+                path.display()
+            ))
+        };
+        // Points: the left of the box's top row, its left in the middle,
+        // and its middle.
+        let points = [(28, 28), (28, 40), (40, 40)];
+        assert_eq!(
+            colours(&scene(""), &points),
+            [RED, RED, WHITE],
+            "{continuous}"
+        );
+        // Contain: 30x10 across the middle.
+        assert_eq!(
+            colours(&scene(r#","fit":"contain""#), &points),
+            [WHITE, RED, WHITE],
+            "{continuous}"
+        );
+        // Cover: the page's empty middle third, the red cut away.
+        assert_eq!(
+            colours(&scene(r#","fit":"cover""#), &points),
+            [WHITE, WHITE, WHITE],
+            "{continuous}"
+        );
+        assert_eq!(
+            colours(&scene(r#","fit":"cover""#), &[(20, 40), (24, 40)]),
+            [WHITE, WHITE],
+            "{continuous}"
+        );
+    }
+}
+
+#[test]
+fn an_image_or_video_with_no_file_draws_nothing_and_checks_clean() {
+    let scene = |content: &str| {
+        format!(
+            r##"{{"nakkash":1,"size":"80x80","fps":10,"dur":"1s","bg":"#FFFFFF","layers":[
+            {{"id":"slot",{content},"box":[40,40],"at":"40 40","fit":"contain"}},
+            {{"id":"tag","rect":"10x10","fill":"#FF0000","parent":"slot","matte":"slot"}},
+            {{"id":"dot","rect":"10x10","fill":"#00FF00","parent":"slot"}}]}}"##
+        )
+    };
+    for content in [r#""image":null"#, r#""video":null"#] {
+        let s = session(&scene(content));
+        // Only the dot draws: the slot draws nothing, so the layer it
+        // mattes shows nothing either.
+        let drawn = s
+            .render_with(0.0, nakkash_raster::RenderOptions::GOLDEN)
+            .unwrap();
+        let pixels: Vec<&[u8]> = drawn.pixels().chunks(4).collect();
+        assert!(pixels.iter().any(|p| p[..3] == [0, 255, 0]), "{content}");
+        assert!(
+            !pixels.iter().any(|p| p[0] > p[1] && p[0] > p[2]),
+            "{content}"
+        );
+        let report = s.check().unwrap();
+        assert!(report.violations.is_empty(), "{content}: {report}");
+        let gates = s.gates().unwrap();
+        assert!(gates.violations.is_empty(), "{content}: {gates}");
+    }
+}
+
 #[test]
 fn rounding_stops_at_half_the_shorter_side() {
     let pill = rect(

@@ -304,15 +304,18 @@ pub struct ImageContent {
     /// The picture file, as written: relative to the scene file's folder,
     /// or absolute. A PNG or JPEG file, or vector footage (a PDF file, an
     /// `.ai` file that is PDF inside, or an EPS file), recognised by how it
-    /// starts.
-    pub path: String,
-    /// The layer's box, which the picture is stretched to fill, in the
-    /// layer's own coordinates.
+    /// starts. `None` for a layer with no file yet (`"image": null`), which
+    /// draws nothing.
+    pub path: Option<String>,
+    /// The layer's box, which the picture is fitted to, in the layer's own
+    /// coordinates.
     pub frame: kurbo::Rect,
-    /// The part of the picture stretched over the box, in the picture's
-    /// own units from its top-left corner: pixels for a raster picture,
-    /// the page's units for vector footage. `None` for the whole picture.
+    /// The part of the picture fitted to the box, in the picture's own
+    /// units from its top-left corner: pixels for a raster picture, the
+    /// page's units for vector footage. `None` for the whole picture.
     pub crop: Option<kurbo::Rect>,
+    /// How the picture, or its `crop`, fills the box.
+    pub fit: MediaFit,
     /// Vector footage is drawn through the layer's transform at the
     /// output's resolution every frame, rather than once into a picture of
     /// the box's size that is then transformed. A raster picture is drawn
@@ -321,14 +324,103 @@ pub struct ImageContent {
 }
 
 /// What a `video` layer plays: a clip file, and the layer's box its frames
-/// fill.
+/// are fitted to.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VideoContent {
-    /// The clip, as written: relative to the scene file's folder, or absolute.
-    pub path: String,
-    /// The layer's box, which the frames are stretched to fill, in the
-    /// layer's own coordinates.
+    /// The clip, as written: relative to the scene file's folder, or
+    /// absolute. `None` for a layer with no file yet (`"video": null`),
+    /// which draws nothing.
+    pub path: Option<String>,
+    /// The layer's box, which the frames are fitted to, in the layer's own
+    /// coordinates.
     pub frame: kurbo::Rect,
+    /// How each frame fills the box.
+    pub fit: MediaFit,
+}
+
+/// How an image or video layer's picture fills its box, the layer's `fit`.
+///
+/// The box stays the layer's box for layout, its anchor and `check`, so a
+/// fit only moves where the picture is drawn inside it. The proportions
+/// are those of what is shown: the `crop` when there is one, else the
+/// whole picture, raster pixels, a vector page or a clip's frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MediaFit {
+    /// Stretched over the box, whatever its proportions.
+    #[default]
+    Fill,
+    /// Its proportions kept, as large as fits inside the box, centred.
+    Contain,
+    /// Its proportions kept, as small as covers the box, centred, and cut
+    /// by the box.
+    Cover,
+}
+
+/// Where a fitted picture is drawn: the part of it shown, laid over a
+/// rectangle of the layer's box.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fitted {
+    /// The part of the picture shown, in the picture's own units.
+    pub shown: kurbo::Rect,
+    /// Where that part lands, in the layer's own coordinates: inside the box.
+    pub rect: kurbo::Rect,
+}
+
+impl MediaFit {
+    /// The values `fit` takes on an image or video layer, the default first.
+    pub const NAMES: [&str; 3] = ["fill", "contain", "cover"];
+
+    /// The fit `name` spells, one of [`NAMES`](Self::NAMES).
+    pub fn named(name: &str) -> Option<Self> {
+        match name {
+            "fill" => Some(Self::Fill),
+            "contain" => Some(Self::Contain),
+            "cover" => Some(Self::Cover),
+            _ => None,
+        }
+    }
+
+    /// The part `region` of a picture fitted to `frame`.
+    ///
+    /// `contain` shrinks the rectangle it lands on and `cover` the part
+    /// shown, so neither draws outside the box. A fitted picture within one
+    /// unit of the box across and down (half a unit on each side) is drawn
+    /// as `fill` would, exactly: a box written in whole units over a page in
+    /// fractional points draws as it did before the fit was written.
+    pub fn place(self, region: kurbo::Rect, frame: kurbo::Rect) -> Fitted {
+        let filled = Fitted {
+            shown: region,
+            rect: frame,
+        };
+        let (across, down) = (
+            frame.width() / region.width(),
+            frame.height() / region.height(),
+        );
+        let scale = match self {
+            Self::Fill => return filled,
+            Self::Contain => across.min(down),
+            Self::Cover => across.max(down),
+        };
+        let size = kurbo::Size::new(region.width() * scale, region.height() * scale);
+        let near =
+            (size.width - frame.width()).abs() < 1.0 && (size.height - frame.height()).abs() < 1.0;
+        if near || !scale.is_finite() {
+            return filled;
+        }
+        match self {
+            Self::Contain => Fitted {
+                shown: region,
+                rect: kurbo::Rect::from_center_size(frame.center(), size),
+            },
+            _ => Fitted {
+                shown: kurbo::Rect::from_center_size(
+                    region.center(),
+                    (frame.width() / scale, frame.height() / scale),
+                ),
+                rect: frame,
+            },
+        }
+    }
 }
 
 /// What an `audio` layer plays.
