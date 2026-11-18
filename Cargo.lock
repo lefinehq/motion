@@ -2113,6 +2113,7 @@ dependencies = [
  "proptest",
  "rstest",
  "skrifa",
+ "strum",
  "vello_cpu",
 ]
 

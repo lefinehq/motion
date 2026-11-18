@@ -19,7 +19,7 @@ nakkash works on the scene itself:
 - **Existing projects → programmable workflows.** Import a designer's `.aep` project, find its text, colours and timings as named slots, and drive them from data.
 - **One project → many formats and variations.** New copy, other languages, 9:16 and 1:1 cuts, shorter versions, all from one master.
 - **AI agents → inspect, edit and render.** An agent reads what a scene holds (`roles`, `slots`, `at`), changes it with one-line edits, checks the result in text and renders it, without writing web code.
-- **Motion design → automated production.** Batch a master into every variant it needs: `nakkash batch` applies each variant's edits through the master's locks, checks it, and renders those that pass. `nakkash vary` generates them instead, each checked against the master.
+- **Motion design → automated production.** Batch a master into every variant it needs: `nakkash batch` applies each variant's edits through the master's locks, checks it, and renders those that pass. `nakkash vary` generates them instead: new palettes, faces and copy, lengths and sizes, each checked against the master.
 
 ## Try it
 
