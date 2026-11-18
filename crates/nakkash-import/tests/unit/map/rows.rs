@@ -20,19 +20,24 @@ fn check(
             row.match_name,
             registry.kind
         ),
-        To::Setting(name, choices) => {
-            let setting = kind.and_then(|kind| kind.setting(name)).unwrap_or_else(|| {
-                panic!(
-                    "{at}: `{}` sets `{name}`, which is no setting",
-                    row.match_name
-                )
-            });
-            choices.iter().for_each(|(_, choice)| {
+        To::Setting(..) | To::Settings(..) => {
+            let codes: Vec<(&str, &str)> = match row.to {
+                To::Setting(name, choices) => choices.iter().map(|(_, c)| (name, *c)).collect(),
+                To::Settings(codes) => codes.iter().flat_map(|(_, c)| c.iter().copied()).collect(),
+                _ => unreachable!(),
+            };
+            for (name, choice) in codes {
+                let setting = kind.and_then(|kind| kind.setting(name)).unwrap_or_else(|| {
+                    panic!(
+                        "{at}: `{}` sets `{name}`, which is no setting",
+                        row.match_name
+                    )
+                });
                 assert!(
-                    setting.choices.contains(choice),
+                    setting.choices.contains(&choice),
                     "{at}: `{choice}` is no `{name}`"
                 );
-            });
+            }
         }
         To::Curves => super::super::curves::NAMES.iter().for_each(|name| {
             assert!(
