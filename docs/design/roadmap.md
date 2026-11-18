@@ -55,7 +55,7 @@ These are throwaway tests on 3–5 of the lead designer's real projects. Each te
 - swap, reframe, cut down, localise and reinterpret
 - batch rendering
 
-See [Variants](variants.md). Roles, locks and batches are done ([plan](../plans/2026-11-18-variant-surface.md)); beats and the style profile come next.
+See [Variants](variants.md). Roles, locks and batches are done ([plan](../plans/2026-11-18-variant-surface.md)). Every imported template names its words, palette, media and timing as slots next ([plan](../plans/2026-11-24-template-slots.md), [D77](decisions.md#d77-every-imported-template-names-what-a-designer-would-vary)); beats and the style profile come after.
 
 **Release:** 0.3.
 
