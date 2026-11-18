@@ -359,7 +359,7 @@ impl Session {
             )
             .expected("reference frames of the scene's size"));
         }
-        let ours = self.draw(&list, RenderOptions::default())?;
+        let ours = self.draw_reference(&list, RenderOptions::default())?;
         let shown = shown
             .map(|session| self.coverage(session.display_list(frame)?))
             .transpose()?;
@@ -378,7 +378,7 @@ impl Session {
             ..list
         };
         Ok(self
-            .draw(&bare, RenderOptions::default())?
+            .draw_reference(&bare, RenderOptions::default())?
             .pixels()
             .chunks_exact(4)
             .map(|p| p[3] > 0)

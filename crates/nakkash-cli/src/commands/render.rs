@@ -85,9 +85,74 @@ impl Encoding {
     }
 }
 
+/// What draws the frames.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Backend {
+    /// The CPU: the reference, and the default.
+    #[default]
+    Cpu,
+    /// The GPU where it has kernels, the CPU elsewhere: frames that
+    /// approximate the reference ([D74]).
+    ///
+    /// [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
+    Gpu,
+}
+
+impl Backend {
+    /// The backend `--gpu` asks for.
+    pub fn from_flag(gpu: bool) -> Backend {
+        match gpu {
+            true => Backend::Gpu,
+            false => Backend::Cpu,
+        }
+    }
+}
+
+/// Hands `session`'s renders to the GPU, saying on stderr that its frames
+/// approximate the reference, or why there is none and the CPU draws.
+fn use_gpu(session: &mut Session) {
+    match nakkash_engine::gpu::open() {
+        Ok(opened) => {
+            eprintln!(
+                "note: --gpu draws on {}: frames approximate the CPU reference within D74's tolerances; render without --gpu to deliver",
+                opened.adapter
+            );
+            session.set_accelerator(Some(opened.accelerator));
+        }
+        Err(refusal) => eprintln!("warning: --gpu: {refusal}; drawing on the CPU"),
+    }
+}
+
+/// Says on stderr what the GPU did, and which effects it left to the CPU.
+fn report_gpu(session: &Session) {
+    let Some(tally) = session.tally() else {
+        return;
+    };
+    let list = |effects: &[(String, u64)]| {
+        let runs: u64 = effects.iter().map(|(_, n)| n).sum();
+        let names: Vec<String> = effects.iter().map(|(e, n)| format!("{e} {n}")).collect();
+        match names.is_empty() {
+            true => "0".to_owned(),
+            false => format!("{runs} ({})", names.join(", ")),
+        }
+    };
+    let gib = |bytes: u64| bytes as f64 / f64::from(1u32 << 30);
+    eprintln!(
+        "gpu: effects on the GPU {}; on the CPU, without a kernel {}; {} other operations; {} uploads ({:.2} GiB), {} downloads ({:.2} GiB)",
+        list(&tally.accelerated),
+        list(&tally.fell_back),
+        tally.operations,
+        tally.uploads.0,
+        gib(tally.uploads.1),
+        tally.downloads.0,
+        gib(tally.downloads.1),
+    );
+}
+
 /// Draws `frames` of the scene (all of them when `None`) into `out`: a video
 /// file encoded as `encoding` asks when its extension names a container,
-/// else a folder of PNG files, created if missing. Prints what was written.
+/// else a folder of PNG files, created if missing, on `backend`. Prints what
+/// was written.
 ///
 /// # Errors
 /// As drawing and writing, or an invalid-value diagnostic when `encoding`
@@ -98,6 +163,7 @@ pub fn run(
     out: &Path,
     quality: Quality,
     encoding: Encoding,
+    backend: Backend,
 ) -> Result<ExitCode> {
     if is_sound(out) {
         if encoding != Encoding::default() {
@@ -129,7 +195,10 @@ pub fn run(
         )
         .expected("a video file for `--out`, such as `launch.mp4`"));
     }
-    let session = Session::open(path)?;
+    let mut session = Session::open(path)?;
+    if backend == Backend::Gpu {
+        use_gpu(&mut session);
+    }
     let frames = match frames {
         Some(frames) => frames.range(),
         None => session.frames()?,
@@ -138,14 +207,16 @@ pub fn run(
         quality,
         ..RenderOptions::default()
     };
-    match is_video {
+    let done = match is_video {
         true => {
             let written = video(&session, frames, options, out, encoding)?;
             println!("{written}");
             Ok(ExitCode::SUCCESS)
         }
         false => pictures(&session, frames, options, out),
-    }
+    };
+    report_gpu(&session);
+    done
 }
 
 /// Whether `out` names a sound file, which gets the mix alone: a `.wav`.

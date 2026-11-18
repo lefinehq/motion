@@ -49,7 +49,7 @@ The rasteriser sits behind a small interface, so it can be swapped later (see [D
 
 **Compositing** combines the layers: effects, masks, mattes, blend modes and 2.5D depth. In v1 it runs on the CPU, written once in Rust. That gives us one implementation, bit-identical results and the same behaviour on every server. Layers with no effects skip this step entirely.
 
-**GPU acceleration** is planned for phase 2. It covers the heavy cases: 4K, strong motion blur, large blurs and procedural noise. If the CPU version misses our speed target at milestone M2, it moves into v1 (see [D3](decisions.md#d3-cpu-first-compositor)).
+**GPU acceleration** is opt-in: `nakkash render --gpu` hands the float canvas's work to a GPU through `wgpu` (Metal on macOS, Vulkan or DX12 elsewhere), for faster previews of heavy frames ([D74](decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference)). Paths, glyphs and pictures are still drawn on the CPU; the GPU lays layers by every blend mode with their clips, masks and mattes, mixes filter layers, moves pixels, and runs the effects with a plan (`gaussian-blur`, `box-blur`, `glow`, `drop-shadow`). Any other effect runs on the CPU, its pixels copied back and forth at its boundary, and the command lists it after the render. The frames approximate the CPU's: each kernel is held to a measured tolerance against the CPU function it ports, and a whole frame to one 8-bit level. A machine without a hardware GPU says so and draws on the CPU; a software adapter is never used. Every check, `diff`, fidelity measurement and delivered file stays on the CPU.
 
 **Motion blur** blends several in-between moments of the same frame. Because nakkash can compute any moment exactly, this costs no extra work in the engine. It only multiplies the drawing work. A layer whose content and effects stay the same over the shutter (a picture, a `comp` layer, most effect stacks) is drawn once and moved to each moment; any other, particles included, is drawn at each moment ([D57](decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter)).
 
@@ -158,7 +158,7 @@ nakkash has neither.
 
 - **Frames:** on the CPU path, the same scene, nakkash version, operating system and CPU type always produce identical pixels. Golden images are drawn with portable scalar code instead of the processor's SIMD instructions, so the same PNGs compare exactly on every machine CI runs on; delivered frames use the fastest instructions, which may differ from the goldens by a rounding step.
 - **Encoded files:** these are not guaranteed identical, because hardware encoders are not.
-- **The future GPU path:** it will promise frames that look the same, not frames that are bit-identical.
+- **The GPU path** (`--gpu`) promises frames within the tolerances of [D74](decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference), not bit-identical ones: drivers compile its kernels differently.
 
 ## Install and distribution
 
