@@ -63,7 +63,8 @@ fn a_blur_along_one_way_plans_no_passes_along_the_other() {
 
 #[test]
 fn an_effect_without_a_row_has_no_plan() {
-    let effect = Effect::new("invert", &[]).expect("an effect");
+    // A move has no plan: it moves pixels, as `Effect::movement` says.
+    let effect = Effect::new("transform", &[]).expect("an effect");
     assert!(!effect.has_plan());
     assert_eq!(effect.plan(&space(1.0)), None);
 }

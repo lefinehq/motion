@@ -6,6 +6,7 @@
 //! [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
 
 mod blur;
+mod colour;
 mod composite;
 
 pub(crate) use composite::operation_row;
@@ -23,16 +24,14 @@ pub(crate) fn runs(plan: &Plan) -> bool {
     matches!(
         plan,
         Plan::Blur(_) | Plan::Shadow(_) | Plan::Glow(_) | Plan::SolidComposite(_)
-    )
+    ) || colour::runs(plan)
 }
 
 /// Whether `plan` reads the drawing of another layer, which the kernels
 /// take from [`Space::input`]. An effect that reads one runs on the GPU
 /// only when its plan says so.
 pub(crate) fn reads_input(plan: &Plan) -> bool {
-    // No family with a kernel reads one yet.
-    let _ = plan;
-    false
+    colour::reads_input(plan)
 }
 
 impl Gpu {
@@ -64,6 +63,7 @@ pub(crate) fn run(
         Plan::Glow(glow) => gpu.glow(batch, grid, glow),
         Plan::Shadow(shadow) => gpu.shadow(batch, grid, shadow),
         Plan::SolidComposite(solid) => gpu.solid_composite(batch, grid, solid),
+        plan if colour::runs(plan) => colour::run(gpu, batch, grid, plan, space),
         _ => {
             return Err(
                 Diagnostic::new(Kind::Invalid, "the GPU has no kernel for this plan")

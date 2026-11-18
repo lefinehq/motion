@@ -15,6 +15,8 @@
 use std::sync::OnceLock;
 
 mod canvas;
+mod channel;
+mod colour;
 mod composite;
 mod effects;
 mod frames;
@@ -44,6 +46,32 @@ const TOLERANCES: &[(&str, f32)] = &[
     ("chain", 5e-5),
     ("plane", 1e-4),
     ("mask", 1e-5),
+    // The colour effects divide by alpha as the CPU rounds it, so most
+    // differ by a last bit or two of their result.
+    ("curves", 1e-6),
+    ("tint", 1e-6),
+    ("hue-saturation", 1e-6),
+    ("invert", 1e-6),
+    ("levels", 1e-6),
+    // A range of no width: a threshold, which a level a bit off would
+    // send the other way.
+    ("levels-threshold", 1e-6),
+    ("black-white", 1e-6),
+    ("fill", 1e-6),
+    ("sharpen", 1e-6),
+    ("find-edges", 1e-6),
+    // Powers are the GPU's own, less exact than the CPU's.
+    ("exposure", 1e-5),
+    ("shift-channels", 1e-6),
+    // A hue jumps from 1 back to 0 at red, so a bit there would be a jump.
+    ("shift-channels-hue", 1e-6),
+    // The matte is resampled at points worked out in f32, as moving pixels
+    // are.
+    ("set-matte", 1e-4),
+    ("color-cycle", 1e-5),
+    // Held at each point's level, a cycle steps, so a phase a bit off at a
+    // point would be a step.
+    ("color-cycle-held", 5e-6),
 ];
 
 pub(crate) fn tolerance(name: &str) -> f32 {

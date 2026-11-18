@@ -17,7 +17,7 @@ use std::fmt;
 
 use nakkash_format::{Diagnostic, Kind, Result};
 use vello_cpu::RenderContext;
-use vello_cpu::kurbo::{Affine, BezPath, Point, Rect, Vec2};
+use vello_cpu::kurbo::{Affine, BezPath, Rect, Vec2};
 use vello_cpu::peniko::{BlendMode, Compose, Mix};
 
 use crate::list::Node;
@@ -3472,19 +3472,15 @@ fn fill(ctx: &mut EffectContext<'_>, values: &[ParamValue]) {
 
 /// The `fill` effect on pixels: the colour, at its alpha times `opacity`,
 /// laid "source-atop" each pixel, or "xor" each pixel of the layer's box
-/// when inverted, as [`fill`] paints it.
+/// when inverted, as [`fill`] paints it; see [`Fill`](crate::colour::Fill).
 fn fill_pixels(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
-    let [
-        ParamValue::Color(color),
-        ParamValue::Number(opacity),
-        ParamValue::Choice(invert),
-    ] = values
-    else {
-        unreachable!("`Effect::new` checks the fill parameters");
-    };
-    let share = color.a * opacity;
-    let rgb = [color.r, color.g, color.b];
-    if *invert == 0 {
+    let crate::colour::Fill {
+        rgb,
+        share,
+        inverted,
+        inside,
+    } = crate::colour::fill_plan(values, space);
+    if !inverted {
         for pixel in pixels.data_mut() {
             let alpha = pixel[3];
             for c in 0..3 {
@@ -3493,10 +3489,9 @@ fn fill_pixels(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
         }
         return;
     }
-    let inside = box_test(space);
     let width = usize::from(pixels.width());
     for (i, pixel) in pixels.data_mut().iter_mut().enumerate() {
-        if !inside(i % width, i / width) {
+        if !inside.is_none_or(|inside| inside.contains(i % width, i / width)) {
             continue;
         }
         let clear = 1.0 - pixel[3];
@@ -3505,14 +3500,6 @@ fn fill_pixels(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
         }
         pixel[3] = share * clear + pixel[3] * (1.0 - share);
     }
-}
-
-/// Whether the centre of pixel `(x, y)` lies in the layer's box; every
-/// pixel does for a layer without one.
-fn box_test(space: &Space) -> impl Fn(usize, usize) -> bool {
-    let back = space.transform.inverse();
-    let bounds = space.bounds;
-    move |x, y| bounds.is_none_or(|b| b.contains(back * Point::new(x as f64 + 0.5, y as f64 + 0.5)))
 }
 
 /// The `transform` effect: the content's anchor goes to `position`, scaled
