@@ -1980,8 +1980,16 @@ pub const EFFECTS: &[EffectSpec] = &[
                 name: "composite",
                 default: ParamValue::Choice(0),
                 range: None,
-                choices: &["with-original", "glow-only"],
-                doc: "whether the glow is added to the layer or drawn alone",
+                choices: &["with-original", "glow-only", "behind-original"],
+                doc: "whether the glow is laid over the layer, drawn alone, or drawn behind \
+                      the layer laid over it",
+            },
+            ParamSpec {
+                name: "operation",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: blur::GLOW_OPERATIONS,
+                doc: "how the glow and the layer combine",
             },
         ],
         doc: "adds the blurred light of the bright colours",

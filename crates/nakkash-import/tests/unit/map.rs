@@ -656,6 +656,24 @@ mod effects {
                     Child::Property(number("ADBE Glo2-0006", 6.0)),
                 ],
             ),
+            group(
+                "ADBE Glo2",
+                vec![
+                    Child::Property(number("ADBE Glo2-0005", 1.0)),
+                    Child::Property(number("ADBE Glo2-0006", 2.0)),
+                ],
+            ),
+            group(
+                "ADBE Glo2",
+                vec![
+                    Child::Property(number("ADBE Glo2-0005", 3.0)),
+                    Child::Property(number("ADBE Glo2-0006", 25.0)),
+                ],
+            ),
+            group(
+                "ADBE Glo2",
+                vec![Child::Property(number("ADBE Glo2-0006", 1.0))],
+            ),
         ])
         .expect("imports");
         let fx = &import.json["layers"][0]["fx"];
@@ -667,8 +685,19 @@ mod effects {
             json!({"gaussian-blur":20,"dimensions":"vertical","edges":"repeat"})
         );
         assert_eq!(fx[2]["threshold"], 0.4, "{fx}");
+        // The menu read in order: 6 is screen, 2 normal, 25 alpha add; the
+        // original on top (1) draws the glow behind it.
+        assert_eq!(fx[2]["operation"], "screen", "{fx}");
+        assert_eq!(
+            fx[3],
+            json!({"glow":10,"composite":"behind-original","operation":"normal"})
+        );
+        assert_eq!(
+            fx[4],
+            json!({"glow":10,"composite":"glow-only","operation":"alpha-add"})
+        );
         let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
-        assert_eq!(what, ["a glow operation other than add"]);
+        assert_eq!(what, ["a `operation` the scene does not have"]);
     }
 
     /// A mirror's centre is a point of the layer's effect space; one the

@@ -1152,6 +1152,35 @@ pub static DROP_SHADOW: Registry = Registry {
     ],
 };
 
+/// How the glow combines with its layer, by the names of the rasteriser's
+/// operations; the first is the default.
+const GLOW_OPERATIONS: &[&str] = &[
+    "add",
+    "normal",
+    "multiply",
+    "dissolve",
+    "screen",
+    "overlay",
+    "soft-light",
+    "hard-light",
+    "darken",
+    "lighten",
+    "difference",
+    "hue",
+    "saturation",
+    "color",
+    "luminosity",
+    "color-dodge",
+    "color-burn",
+    "exclusion",
+    "stencil-alpha",
+    "stencil-luma",
+    "silhouette-alpha",
+    "silhouette-luma",
+    "premultiplied-over",
+    "alpha-add",
+];
+
 /// The properties of the glow.
 pub static GLOW: Registry = Registry {
     kind: "glow",
@@ -2388,9 +2417,23 @@ pub static EFFECTS: [ItemKind; 30] = [
             },
             SettingSpec {
                 name: "composite",
-                choices: &["with-original", "glow-only"],
+                choices: &["with-original", "glow-only", "behind-original"],
                 default: "with-original",
-                doc: "whether the glow is added to the layer, or drawn alone",
+                doc: "`with-original` lays the glow over the layer by `operation`; `glow-only` \
+                      draws the glow alone; `behind-original` draws it behind the layer, laid \
+                      over it by `operation`",
+            },
+            SettingSpec {
+                name: "operation",
+                choices: GLOW_OPERATIONS,
+                default: "add",
+                doc: "how the glow and the layer combine: `add` sums them; `normal` and the \
+                      blend modes of the same names blend them; `dissolve` shows the glow at a \
+                      scattered share of the pixels as large as its alpha; `stencil-alpha` and \
+                      `stencil-luma` keep the layer where the glow has alpha or brightness, \
+                      `silhouette-alpha` and `silhouette-luma` cut it out there; \
+                      `premultiplied-over` lays the glow over without holding its colours to its \
+                      alpha; `alpha-add` adds their alphas",
             },
         ],
         input: None,

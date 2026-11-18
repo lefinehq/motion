@@ -12,6 +12,7 @@
 use vello_cpu::kurbo::{Affine, Vec2};
 
 use crate::colour::{LUMA, choice, number, rgb};
+use crate::composite::Operation;
 use crate::effect::{ParamValue, Space};
 use crate::pixels::{Pixel, Pixels};
 
@@ -221,13 +222,46 @@ pub(crate) fn drop_shadow(pixels: &mut Pixels, values: &[ParamValue], space: &Sp
     }
 }
 
+/// How `glow` combines its light with the layer, by name in
+/// [`crate::composite::OPERATIONS`]; the first is the default.
+pub(crate) const GLOW_OPERATIONS: &[&str] = &[
+    "add",
+    "normal",
+    "multiply",
+    "dissolve",
+    "screen",
+    "overlay",
+    "soft-light",
+    "hard-light",
+    "darken",
+    "lighten",
+    "difference",
+    "hue",
+    "saturation",
+    "color",
+    "luminosity",
+    "color-dodge",
+    "color-burn",
+    "exclusion",
+    "stencil-alpha",
+    "stencil-luma",
+    "silhouette-alpha",
+    "silhouette-luma",
+    "premultiplied-over",
+    "alpha-add",
+];
+
 /// `glow`: the colours brighter than `threshold`, blurred by `radius` as a
-/// blurriness, times `intensity`, added to the layer; with `composite`
-/// `none`, the glow alone.
+/// blurriness, times `intensity`, held to 0 to 1. With `composite`
+/// `with-original` the light is laid over the layer by `operation`; with
+/// `behind-original` the layer is laid over the light by it; with
+/// `glow-only` the light is drawn alone.
 pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
     let (threshold, radius, intensity) = (number(values, 0), number(values, 1), number(values, 2));
     let [x, y] = ways(choice(values, 3));
-    let alone = choice(values, 4) == 1;
+    let composite = choice(values, 4);
+    let operation = Operation::named(GLOW_OPERATIONS[choice(values, 5)])
+        .expect("every glow operation is a row of the operations");
     let mut light = pixels.clone();
     for p in light.data_mut() {
         let a = p[3];
@@ -249,21 +283,16 @@ pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
         ],
         Edges::Transparent,
     );
-    if alone {
-        for p in light.data_mut() {
-            *p = p.map(|c| (c * intensity).min(1.0));
-        }
-        *pixels = light;
-        return;
+    for p in light.data_mut() {
+        *p = p.map(|c| (c * intensity).min(1.0));
     }
-    for (p, g) in pixels.data_mut().iter_mut().zip(light.data()) {
-        for c in 0..4 {
-            p[c] = (p[c] + g[c] * intensity).min(1.0);
+    match composite {
+        1 => *pixels = light,
+        2 => {
+            operation.pixels(&mut light, pixels);
+            *pixels = light;
         }
-        let a = p[3];
-        for c in &mut p[..3] {
-            *c = c.min(a);
-        }
+        _ => operation.pixels(pixels, &light),
     }
 }
 

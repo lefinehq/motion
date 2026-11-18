@@ -17,6 +17,7 @@
 mod blend;
 mod blur;
 mod colour;
+mod composite;
 mod distort;
 mod effect;
 mod generate;
@@ -35,6 +36,7 @@ mod style;
 mod total;
 
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
+pub use composite::{OPERATIONS, Operation, OperationSpec};
 pub use effect::{
     Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Input, Move, ParamSpec, ParamType,
     ParamValue, Reach, Space,
