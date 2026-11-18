@@ -11,7 +11,7 @@ nakkash works on the scene itself:
 - **The scene is data.** A scene says what should happen ("five cards fade up, six frames apart"), not where every element is on every frame. The example above is 290 bytes.
 - **Edits are small.** `nakkash edit scene.json 'card fill=#FF0000'` changes one value and keeps the rest of the file as it was.
 - **Checks speak in numbers, not pictures.** `nakkash check` reports layers leaving the frame, text too faint or too brief to read, and flashing, each with the fix, so an agent never has to look at frames to find out.
-- **Rendering is native.** Layers are composited in linear light at float precision, with true motion blur, and encoded straight to H.264, HEVC, ProRes or AV1.
+- **Rendering is native.** Layers are composited at float precision in the blending space the project uses (linear-light blending is planned), with true motion blur, and encoded straight to H.264, HEVC, ProRes or AV1.
 - **Existing projects come in.** nakkash imports `.aep` projects and `.mogrt` templates, so work that already exists can become a programmable workflow (see [compatibility](../compatibility.md)).
 
 ## What you can build with it
