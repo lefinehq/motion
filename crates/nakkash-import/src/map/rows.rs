@@ -457,6 +457,8 @@ const FRACTALS: &[(i64, &str)] = &[
     (3, "turbulent-smooth"),
     (4, "turbulent-basic"),
     (5, "turbulent-sharp"),
+    (12, "smeary"),
+    (13, "swirly"),
 ];
 const NOISES: &[(i64, &str)] = &[
     (1, "block"),

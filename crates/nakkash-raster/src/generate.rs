@@ -323,7 +323,8 @@ impl Noise {
             (-dx * sin + dy * cos) / self.scale[1],
         ];
         let (sub_sin, sub_cos) = self.sub_rotation.sin_cos();
-        let turbulent = self.fractal > 0;
+        let turbulent = matches!(self.fractal, 1..=3);
+        let warp = Warp::of(self.fractal);
         let (mut sum, mut total, mut weight) = (0.0f32, 0.0f32, 1.0f32);
         let octaves = self.complexity.ceil() as u32;
         for octave in 0..octaves {
@@ -338,7 +339,12 @@ impl Noise {
             sum += n * weight * share;
             total += weight * share;
             weight *= self.influence;
-            let scaled = [p[0] / self.scaling, p[1] / self.scaling];
+            let mut scaled = [p[0] / self.scaling, p[1] / self.scaling];
+            // A warping type moves the next octave by the level so far.
+            if let Some(warp) = warp {
+                let [dx, dy] = warp.by(sum / total.max(f32::EPSILON));
+                scaled = [scaled[0] + dx, scaled[1] + dy];
+            }
             p = [
                 scaled[0] * sub_cos + scaled[1] * sub_sin + self.sub_offset[0] / NOISE_CELL,
                 -scaled[0] * sub_sin + scaled[1] * sub_cos + self.sub_offset[1] / NOISE_CELL,
@@ -362,6 +368,42 @@ impl Noise {
                 if t > 1.0 { 2.0 - t } else { t }
             }
             _ => v.clamp(0.0, 1.0),
+        }
+    }
+}
+
+/// How a warping fractal type moves each octave after the first: by the
+/// level of the octaves before it, in cells of the next octave, so its
+/// detail follows the shapes of the larger ones.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Warp {
+    /// `smeary`: along the noise's own x axis, by up to one cell either
+    /// way, which drags the detail into streaks across.
+    Smear,
+    /// `swirly`: half a cell in a direction that turns once around as the
+    /// level runs from 0 to 1, which curls the detail around the larger
+    /// shapes.
+    Swirl,
+}
+
+impl Warp {
+    /// The warp of the fractal type at index `fractal`, if it warps.
+    fn of(fractal: usize) -> Option<Warp> {
+        match fractal {
+            4 => Some(Warp::Smear),
+            5 => Some(Warp::Swirl),
+            _ => None,
+        }
+    }
+
+    /// How far it moves the next octave, at `level` so far, 0 to 1.
+    fn by(self, level: f32) -> [f32; 2] {
+        match self {
+            Warp::Smear => [2.0 * level - 1.0, 0.0],
+            Warp::Swirl => {
+                let (sin, cos) = (std::f32::consts::TAU * level).sin_cos();
+                [0.5 * cos, 0.5 * sin]
+            }
         }
     }
 }

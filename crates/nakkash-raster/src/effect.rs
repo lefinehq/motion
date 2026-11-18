@@ -2172,6 +2172,8 @@ pub const EFFECTS: &[EffectSpec] = &[
                     "turbulent-smooth",
                     "turbulent-basic",
                     "turbulent-sharp",
+                    "smeary",
+                    "swirly",
                 ],
                 doc: "how octaves sum",
             },

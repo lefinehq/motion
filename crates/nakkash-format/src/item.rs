@@ -2740,9 +2740,11 @@ pub static EFFECTS: [ItemKind; 35] = [
                     "turbulent-smooth",
                     "turbulent-basic",
                     "turbulent-sharp",
+                    "smeary",
+                    "swirly",
                 ],
                 default: "basic",
-                doc: "how octaves sum: as they are, or folded about mid grey",
+                doc: "how octaves sum: as they are, folded about mid grey, or each moved by the octaves before it (`smeary` across, `swirly` turning)",
             },
             SettingSpec {
                 name: "noise",

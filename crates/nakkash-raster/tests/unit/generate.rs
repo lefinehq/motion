@@ -359,3 +359,22 @@ fn fractal_noise_screens_and_multiplies_the_layer() {
         close(*m, [0.5 * v, 0.5 * v, 0.5 * v, 1.0]);
     }
 }
+
+#[rstest::rstest]
+#[case::smeary(4)]
+#[case::swirly(5)]
+fn warping_fractal_types_move_each_octave_by_the_ones_before(#[case] fractal: u8) {
+    let render = |fractal: u8, complexity: f32| {
+        let mut values = noise_values(0.0, 0.0);
+        values[7] = Number(complexity);
+        values[15] = Choice(fractal);
+        let mut pixels = solid(64, 64);
+        fractal_noise(&mut pixels, &values, &ONE);
+        pixels
+    };
+    let warped = render(fractal, 6.0);
+    assert!(warped.data().iter().all(|p| (0.0..=1.0).contains(&p[0])));
+    assert_ne!(warped, render(0, 6.0));
+    // One octave has none before it to move it: it is the basic noise.
+    assert_eq!(render(fractal, 1.0), render(0, 1.0));
+}
