@@ -5,20 +5,26 @@ use nakkash_raster::kurbo::{Point, Rect, Vec2};
 use nakkash_raster::{
     DisplacementMap, Distortion, LUMA, Lay, LensDistortion, MapLevel, Mirror, MotionTile,
     PolarCoordinates, RepeatTile, Space, TURBULENCE_Y_SEED, Tiling, Turbulence, TurbulentDisplace,
-    Wrap, distortion_box,
+    WARP_PIECES, WarpMesh, Wrap, distortion_box,
 };
 
 use crate::Gpu;
+use crate::f32_bytes;
 use crate::grid::Grid;
 use crate::kernels::{Params, pixel_groups};
-use crate::pool::Pooled;
+use crate::pool::{Kind as BufferKind, Pooled};
 use crate::record::Batch;
 
 /// Whether the kernels run `distortion` as the CPU does, for every value
-/// it may hold.
+/// it may hold: all of them do.
 pub(crate) fn runs(distortion: &Distortion) -> bool {
-    !matches!(distortion, Distortion::BezierWarp(_))
+    let _ = distortion;
+    true
 }
+
+/// How many rows of one triangle one invocation of the cover kernel
+/// covers.
+const COVER_BAND: u32 = 16;
 
 /// The least 32-bit float at or above `v`: `x >= v` and `x < v` for a
 /// 32-bit `x` are `x >= up(v)` and `x < up(v)`.
@@ -194,6 +200,7 @@ impl Gpu {
         let bounds = distortion_box(space, grid.width, grid.height);
         let mut p = DistortParams::new(grid, space, bounds);
         let mut map = None;
+        let mut mesh = None;
         let entry = match distortion {
             Distortion::MotionTile(plan) => {
                 motion_tile(&mut p, plan);
@@ -239,8 +246,13 @@ impl Gpu {
                 displacement_map(&mut p, plan, bounds, map_box, space);
                 "displacement_map"
             }
-            // `runs` keeps the others on the CPU.
-            _ => return,
+            Distortion::BezierWarp(plan) => {
+                let Some(warp) = plan.mesh(bounds, space.transform) else {
+                    return;
+                };
+                mesh = Some(self.cover(batch, grid, &warp, bounds, &mut p));
+                "bezier_warp"
+            }
         };
         let table = centres(grid, space).map(|table| self.values(batch, &table));
         p.exact = table.is_some();
@@ -256,10 +268,72 @@ impl Gpu {
                 grid.buffer(),
                 map.as_ref().unwrap_or(grid).buffer(),
                 table.as_ref().map_or(&self.empty, Pooled::buffer),
+                mesh.as_ref().map_or(&self.empty, Pooled::buffer),
             ],
             groups,
         );
         grid.pixels = out.pixels;
+    }
+}
+
+impl Gpu {
+    /// Records `warp`'s mesh, over `bounds`, laid on `grid`: its words
+    /// copied into a buffer and the pixels each triangle holds marked
+    /// (`cover.wgsl`), and the draw's values set in `p`.
+    fn cover(
+        &self,
+        batch: &mut Batch<'_>,
+        grid: &Grid,
+        warp: &WarpMesh,
+        bounds: Rect,
+        p: &mut DistortParams,
+    ) -> Pooled {
+        let n = u32::try_from(WARP_PIECES).expect("a few pieces");
+        // The patch's points less the box's middle, which its speed does
+        // not see, so they keep more of their digits in 32 bits.
+        let middle = bounds.center();
+        let mut words: Vec<f32> = warp.points.iter().flat_map(|q| f32s(*q - middle)).collect();
+        let corners = u32::try_from(words.len()).expect("twelve points");
+        words.extend(warp.corners.iter().flat_map(|q| [q.x as f32, q.y as f32]));
+        let shows = u32::try_from(words.len()).expect("a mesh of a few thousand corners");
+        let count = grid.count();
+        let buffer = self.buffer(
+            4 * (u64::from(shows) + u64::from(count)),
+            BufferKind::Storage,
+        );
+        batch.stage(buffer.buffer(), f32_bytes(&words));
+        batch.encoder().clear_buffer(
+            buffer.buffer(),
+            4 * u64::from(shows),
+            Some(4 * u64::from(count)),
+        );
+        let triangles = 2 * n * n;
+        let (groups, _) = pixel_groups(triangles);
+        let bands = u32::from(grid.height).div_ceil(COVER_BAND).max(1);
+        let params = Params::new()
+            .u32(triangles)
+            .u32(n)
+            .u32(u32::from(grid.width))
+            .u32(u32::from(grid.height))
+            .u32(corners)
+            .u32(shows)
+            .u32(COVER_BAND);
+        self.kernels.cover.dispatch(
+            &self.device,
+            batch.encoder(),
+            "warp_cover",
+            &params,
+            buffer.buffer(),
+            &[],
+            (groups.0, bands),
+        );
+        p.v[0] = p.origin;
+        let r = warp.inset;
+        p.v[1] = [r.x0, r.y0, r.x1, r.y1].map(|v| v as f32);
+        p.v[2] = [warp.margin[0] as f32, warp.margin[1] as f32, 0.0, 0.0];
+        p.choices[0] = n;
+        p.choices[1] = shows;
+        buffer
     }
 }
 

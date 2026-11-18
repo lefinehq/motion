@@ -696,6 +696,8 @@ const WARP_REST: [[f64; 2]; 12] = [
 /// four cubic curves, each side of the box bent through its two handles,
 /// filled between them by blending the opposite sides (a Coons patch).
 struct Patch {
+    /// Its twelve points, in the order of `bezier-warp`'s parameters.
+    points: [Point; 12],
     /// The top side from the top-left corner, the right side from the
     /// top-right one, the bottom side from the bottom-left one and the
     /// left side from the top-left one, each as its four control points.
@@ -709,15 +711,20 @@ impl Patch {
     /// The patch of the values over `bounds`: each point rests where
     /// [`WARP_REST`] puts it and moves by its value.
     fn new(plan: &BezierWarp, bounds: Rect) -> Patch {
-        let p: [Point; 12] = std::array::from_fn(|i| {
+        Patch::of(std::array::from_fn(|i| {
             let [dx, dy] = plan.moves[i];
             let [fx, fy] = WARP_REST[i];
             Point::new(
                 bounds.x0 + fx * bounds.width() + f64::from(dx),
                 bounds.y0 + fy * bounds.height() + f64::from(dy),
             )
-        });
+        }))
+    }
+
+    /// The patch its twelve points `p` bound.
+    fn of(p: [Point; 12]) -> Patch {
         Patch {
+            points: p,
             top: [p[0], p[1], p[2], p[3]],
             right: [p[3], p[4], p[5], p[6]],
             bottom: [p[9], p[8], p[7], p[6]],
@@ -741,12 +748,109 @@ impl Patch {
         let down = curve(&self.left, v) * (1.0 - u) + curve(&self.right, v) * u;
         (across + down - corners).to_point()
     }
+
+    /// How fast the patch moves on the grid `to` takes it to, across and
+    /// down, at `u` across and `v` down: in px of the grid for the whole
+    /// of `u` or `v`.
+    fn speed(&self, to: Affine, u: f64, v: f64) -> (f64, f64) {
+        let on_grid = |u: f64, v: f64| to * self.at(u, v);
+        let h = 1e-3;
+        (
+            (on_grid(u + h, v) - on_grid(u - h, v)).hypot() / (2.0 * h),
+            (on_grid(u, v + h) - on_grid(u, v - h)).hypot() / (2.0 * h),
+        )
+    }
+}
+
+/// `bezier-warp`'s patch laid on a grid: the pieces it is cut into, flat,
+/// and the box it reads.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WarpMesh {
+    /// The patch's twelve points in the layer's coordinates, in the order
+    /// of `bezier-warp`'s parameters: round the box clockwise from its
+    /// top-left corner, the corners and the handles a third of the way
+    /// along each side. The patch blends its four sides, each a cubic
+    /// curve through two corners and their side's handles (a Coons
+    /// patch).
+    pub points: [Point; 12],
+    /// How far the pieces reach past each side, as a share of the patch,
+    /// across and down: a pixel and a half on the grid, at most a quarter.
+    pub margin: [f64; 2],
+    /// The corners of the pieces on the grid, [`WARP_PIECES`] + 1 rows of
+    /// [`WARP_PIECES`] + 1, row by row: column `i` of row `j` is the
+    /// patch's point at [`WarpMesh::uv`] of `i`, `j`.
+    pub corners: Vec<Point>,
+    /// The part of the box it reads: half a pixel of the grid inside it, so
+    /// its edge is smoothed once, by the outline.
+    pub inset: Rect,
+}
+
+impl WarpMesh {
+    /// How far across and down the patch the corner in column `i` of row
+    /// `j` lies.
+    pub fn uv(&self, i: usize, j: usize) -> (f64, f64) {
+        let ([mu, mv], n) = (self.margin, WARP_PIECES);
+        (
+            -mu + (1.0 + 2.0 * mu) * i as f64 / n as f64,
+            -mv + (1.0 + 2.0 * mv) * j as f64 / n as f64,
+        )
+    }
+}
+
+impl BezierWarp {
+    /// Its mesh over `bounds`, on the grid `to` takes the layer's
+    /// coordinates to; `None` for a box with no area, which it leaves as
+    /// it is.
+    pub fn mesh(&self, bounds: Rect, to: Affine) -> Option<WarpMesh> {
+        if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
+            return None;
+        }
+        let patch = Patch::new(self, bounds);
+        let speed = |u: f64, v: f64| patch.speed(to, u, v);
+        // A margin past each side, a pixel and a half wide on the grid, so
+        // the outline's smoothing has room outside it.
+        let slowest = (0..=16)
+            .flat_map(|i| {
+                let t = i as f64 / 16.0;
+                [speed(0.0, t), speed(1.0, t), speed(t, 0.0), speed(t, 1.0)]
+            })
+            .fold((f64::INFINITY, f64::INFINITY), |(a, b), (u, v)| {
+                (a.min(u), b.min(v))
+            });
+        let margin = |s: f64| (1.5 / s.max(1e-6)).min(0.25);
+        let mut mesh = WarpMesh {
+            points: patch.points,
+            margin: [margin(slowest.0), margin(slowest.1)],
+            corners: Vec::new(),
+            inset: bounds,
+        };
+        let n = WARP_PIECES;
+        mesh.corners = (0..=n)
+            .flat_map(|j| (0..=n).map(move |i| (i, j)))
+            .map(|(i, j)| {
+                let (u, v) = mesh.uv(i, j);
+                to * patch.at(u, v)
+            })
+            .collect();
+        let half = [
+            to.as_coeffs()[0].hypot(to.as_coeffs()[1]),
+            to.as_coeffs()[2].hypot(to.as_coeffs()[3]),
+        ]
+        .map(|s| 0.5 / s.max(1e-6));
+        mesh.inset = Rect::new(
+            bounds.x0 + half[0].min(bounds.width() / 2.0),
+            bounds.y0 + half[1].min(bounds.height() / 2.0),
+            bounds.x1 - half[0].min(bounds.width() / 2.0),
+            bounds.y1 - half[1].min(bounds.height() / 2.0),
+        );
+        Some(mesh)
+    }
 }
 
 /// How many pieces `bezier-warp` cuts each side of its patch into: enough
 /// that a piece drawn flat strays from the curved patch by well under a
 /// pixel for patches of a few thousand px.
-const WARP_PIECES: usize = 128;
+pub const WARP_PIECES: usize = 128;
 
 /// [`BezierWarp`] from `bezier-warp`'s values.
 pub(crate) fn bezier_warp_plan(values: &[ParamValue]) -> BezierWarp {
@@ -763,46 +867,15 @@ pub(crate) fn bezier_warp_plan(values: &[ParamValue]) -> BezierWarp {
 /// pixel.
 pub(crate) fn bezier_warp(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
     let bounds = layer_box(pixels, space);
-    if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
-        return;
-    }
-    let patch = Patch::new(&bezier_warp_plan(values), bounds);
     let to = space.transform;
-    // The patch on the grid, with its derivatives.
-    let on_grid = |u: f64, v: f64| to * patch.at(u, v);
-    let speed = |u: f64, v: f64| {
-        let h = 1e-3;
-        (
-            (on_grid(u + h, v) - on_grid(u - h, v)).hypot() / (2.0 * h),
-            (on_grid(u, v + h) - on_grid(u, v - h)).hypot() / (2.0 * h),
-        )
+    let Some(mesh) = bezier_warp_plan(values).mesh(bounds, to) else {
+        return;
     };
-    // A margin past each side, a pixel and a half wide on the grid, so the
-    // outline's smoothing has room outside it.
-    let slowest = (0..=16)
-        .flat_map(|i| {
-            let t = i as f64 / 16.0;
-            [speed(0.0, t), speed(1.0, t), speed(t, 0.0), speed(t, 1.0)]
-        })
-        .fold((f64::INFINITY, f64::INFINITY), |(a, b), (u, v)| {
-            (a.min(u), b.min(v))
-        });
-    let margin = |s: f64| (1.5 / s.max(1e-6)).min(0.25);
-    let (mu, mv) = (margin(slowest.0), margin(slowest.1));
+    let patch = Patch::of(mesh.points);
+    let speed = |u: f64, v: f64| patch.speed(to, u, v);
     let n = WARP_PIECES;
-    let uv = |i: usize, j: usize| {
-        (
-            -mu + (1.0 + 2.0 * mu) * i as f64 / n as f64,
-            -mv + (1.0 + 2.0 * mv) * j as f64 / n as f64,
-        )
-    };
-    let corners: Vec<Point> = (0..=n)
-        .flat_map(|j| (0..=n).map(move |i| (i, j)))
-        .map(|(i, j)| {
-            let (u, v) = uv(i, j);
-            on_grid(u, v)
-        })
-        .collect();
+    let uv = |i: usize, j: usize| mesh.uv(i, j);
+    let (corners, inset) = (&mesh.corners, mesh.inset);
     // Which point of the patch each pixel centre shows, piece by piece.
     let (width, height) = (usize::from(pixels.width()), usize::from(pixels.height()));
     let mut shows: Vec<Option<(f64, f64)>> = vec![None; width * height];
@@ -818,17 +891,6 @@ pub(crate) fn bezier_warp(pixels: &mut Pixels, values: &[ParamValue], space: &Sp
             }
         }
     }
-    let half = [
-        to.as_coeffs()[0].hypot(to.as_coeffs()[1]),
-        to.as_coeffs()[2].hypot(to.as_coeffs()[3]),
-    ]
-    .map(|s| 0.5 / s.max(1e-6));
-    let inset = Rect::new(
-        bounds.x0 + half[0].min(bounds.width() / 2.0),
-        bounds.y0 + half[1].min(bounds.height() / 2.0),
-        bounds.x1 - half[0].min(bounds.width() / 2.0),
-        bounds.y1 - half[1].min(bounds.height() / 2.0),
-    );
     let source = pixels.clone();
     for (i, pixel) in pixels.data_mut().iter_mut().enumerate() {
         *pixel = match shows[i] {

@@ -55,6 +55,11 @@ const TOLERANCES: &[(&str, f32)] = &[
     // and all, so a nearly transparent map pixel moves its pixel by more
     // (`distort.rs`).
     ("displacement-map-straight", 2e-2),
+    ("bezier-warp", 1e-4),
+    // 3,000 px out, where the CPU's own points are 32-bit floats a step
+    // of 2.4e-4 px apart, so any arithmetic the GPU reorders moves a
+    // point by about that.
+    ("distort-far", 1e-3),
 ];
 
 pub(crate) fn tolerance(name: &str) -> f32 {

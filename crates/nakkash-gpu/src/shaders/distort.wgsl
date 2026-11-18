@@ -64,6 +64,10 @@ struct Params {
 // row those of 0 and the row's centre. Each is a 64-bit two's complement
 // number of 2^-32 px, its high word first.
 @group(0) @binding(4) var<storage, read> table: array<u32>;
+// `bezier-warp`'s mesh, covered (`cover.wgsl`): the patch's twelve points
+// less the box's middle, the corners of its pieces on the grid, then the
+// number of the triangle each pixel shows, one past its place, or 0.
+@group(0) @binding(5) var<storage, read> mesh: array<u32>;
 
 // `std::f32::consts::TAU` and `SQRT_2`.
 const TURN: f32 = 6.2831855;
@@ -742,4 +746,105 @@ fn displacement_map(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
     }
     dst[p.i] = read_at(p, source);
+}
+
+// A float of `bezier-warp`'s mesh.
+fn mesh_at(k: u32) -> f32 {
+    return bitcast<f32>(mesh[k]);
+}
+
+// The patch's point `k`, less the box's middle.
+fn patch_point(k: u32) -> vec2<f32> {
+    return vec2(mesh_at(2u * k), mesh_at(2u * k + 1u));
+}
+
+// The corner in column `i` of row `j` of the mesh, on the grid, and where
+// it lies across and down the patch (`WarpMesh::uv`). v2: the margins.
+// a: how many pieces along each side.
+fn mesh_corner(i: u32, j: u32) -> vec4<f32> {
+    let k = 24u + 2u * (j * (params.a + 1u) + i);
+    let n = f32(params.a);
+    let margin = params.v2.xy;
+    return vec4(
+        mesh_at(k),
+        mesh_at(k + 1u),
+        -margin.x + (1.0 + 2.0 * margin.x) * f32(i) / n,
+        -margin.y + (1.0 + 2.0 * margin.y) * f32(j) / n,
+    );
+}
+
+// A cubic curve through four control points, at `t`.
+fn curve(p0: vec2<f32>, p1: vec2<f32>, p2: vec2<f32>, p3: vec2<f32>, t: f32) -> vec2<f32> {
+    let s = 1.0 - t;
+    return p0 * (s * s * s) + p1 * (3.0 * s * s * t) + p2 * (3.0 * s * t * t) + p3 * (t * t * t);
+}
+
+// `Patch::at`, less the box's middle.
+fn patch_at(u: f32, v: f32) -> vec2<f32> {
+    var q: array<vec2<f32>, 12>;
+    for (var k = 0u; k < 12u; k++) {
+        q[k] = patch_point(k);
+    }
+    let corners = (q[0] * (1.0 - u) + q[3] * u) * (1.0 - v) + (q[9] * (1.0 - u) + q[6] * u) * v;
+    let across = curve(q[0], q[1], q[2], q[3], u) * (1.0 - v) + curve(q[9], q[8], q[7], q[6], u) * v;
+    let down = curve(q[0], q[11], q[10], q[9], v) * (1.0 - u) + curve(q[3], q[4], q[5], q[6], v) * u;
+    return across + down - corners;
+}
+
+// `Patch::speed`: how fast the patch moves on the grid across and down.
+fn speed(u: f32, v: f32) -> vec2<f32> {
+    let h = 1e-3;
+    let du = on_grid(patch_at(u + h, v) - patch_at(u - h, v));
+    let dv = on_grid(patch_at(u, v + h) - patch_at(u, v - h));
+    return vec2(length(du) / (2.0 * h), length(dv) / (2.0 * h));
+}
+
+fn cross2(a: vec2<f32>, b: vec2<f32>) -> f32 {
+    return a.x * b.y - a.y * b.x;
+}
+
+// `bezier_warp`, once the mesh is covered. v0: the box's left, top, width
+// and height; v1: the box it reads, x0, y0, x1, y1; v2: the margins. a:
+// how many pieces along each side; b: where the pixels' numbers start in
+// the mesh.
+@compute @workgroup_size(256)
+fn bezier_warp(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let p = pixel_of(gid);
+    if p.i >= params.count {
+        return;
+    }
+    let shown = mesh[params.b + p.i];
+    if shown == 0u {
+        dst[p.i] = vec4(0.0);
+        return;
+    }
+    let t = shown - 1u;
+    let quad = t / 2u;
+    let i = quad % params.a;
+    let j = quad / params.a;
+    let a = mesh_corner(i, j);
+    var b = mesh_corner(i + 1u, j);
+    var c = mesh_corner(i + 1u, j + 1u);
+    if t % 2u == 1u {
+        b = c;
+        c = mesh_corner(i, j + 1u);
+    }
+    // The patch point at the pixel's centre, from the triangle's corners.
+    let centre = vec2(f32(p.x) + 0.5, f32(p.y) + 0.5);
+    let area = cross2(b.xy - a.xy, c.xy - a.xy);
+    let wa = cross2(b.xy - centre, c.xy - centre) / area;
+    let wb = cross2(c.xy - centre, a.xy - centre) / area;
+    let wc = 1.0 - wa - wb;
+    let uv = a.zw * wa + b.zw * wb + c.zw * wc;
+    // How far inside the outline the pixel centre lies, in px.
+    let s = speed(clamp(uv.x, 0.0, 1.0), clamp(uv.y, 0.0, 1.0));
+    let inside = min(min(uv.x, 1.0 - uv.x) * s.x, min(uv.y, 1.0 - uv.y) * s.y);
+    let kept = clamp(0.5 + inside, 0.0, 1.0);
+    let r = params.v0;
+    let reads = params.v1;
+    let at = vec2(
+        clamp(r.x + uv.x * r.z, reads.x, reads.z),
+        clamp(r.y + uv.y * r.w, reads.y, reads.w),
+    );
+    dst[p.i] = read_at(p, at) * kept;
 }

@@ -65,7 +65,7 @@ pub(crate) const TRANSFORM: FamilySpec = FamilySpec {
 };
 pub(crate) const DISTORT: FamilySpec = FamilySpec {
     source: include_str!("shaders/distort.wgsl"),
-    reads: 3,
+    reads: 4,
     entries: &[
         "motion_tile",
         "wrap",
@@ -75,7 +75,13 @@ pub(crate) const DISTORT: FamilySpec = FamilySpec {
         "repeat_tile",
         "turbulent_displace",
         "displacement_map",
+        "bezier_warp",
     ],
+};
+pub(crate) const COVER: FamilySpec = FamilySpec {
+    source: include_str!("shaders/cover.wgsl"),
+    reads: 0,
+    entries: &["warp_cover"],
 };
 pub(crate) const BOX_PASS: FamilySpec = FamilySpec {
     source: include_str!("shaders/boxpass.wgsl"),
@@ -107,6 +113,7 @@ pub(crate) struct Kernels {
     pub(crate) transform: Family,
     pub(crate) box_pass: Family,
     pub(crate) distort: Family,
+    pub(crate) cover: Family,
 }
 
 /// The constants the per-pixel kernels name blend modes by, one per row of
@@ -153,6 +160,7 @@ impl Kernels {
             transform: Family::new(device, TRANSFORM.source, &TRANSFORM),
             box_pass: Family::new(device, BOX_PASS.source, &BOX_PASS),
             distort: Family::new(device, DISTORT.source, &DISTORT),
+            cover: Family::new(device, COVER.source, &COVER),
         }
     }
 }

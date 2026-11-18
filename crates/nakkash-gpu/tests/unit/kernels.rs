@@ -12,6 +12,7 @@ fn sources() -> Vec<(&'static str, String, &'static FamilySpec)> {
         ("transform", TRANSFORM.source.to_owned(), &TRANSFORM),
         ("box_pass", BOX_PASS.source.to_owned(), &BOX_PASS),
         ("distort", DISTORT.source.to_owned(), &DISTORT),
+        ("cover", COVER.source.to_owned(), &COVER),
     ]
 }
 

@@ -391,9 +391,125 @@ fn a_displacement_map_reading_a_layer_runs_on_the_gpu() {
     assert!(gpu.runs(&effect));
 }
 
+/// `bezier-warp`'s parameters, round the box clockwise from its top-left
+/// corner.
+const WARP_POINTS: [&str; 12] = [
+    "top-left",
+    "top-handle-left",
+    "top-handle-right",
+    "top-right",
+    "right-handle-top",
+    "right-handle-bottom",
+    "bottom-right",
+    "bottom-handle-right",
+    "bottom-handle-left",
+    "bottom-left",
+    "left-handle-bottom",
+    "left-handle-top",
+];
+
 #[test]
-fn a_bezier_warp_stays_on_the_cpu() {
-    let Some(gpu) = gpu() else { return };
-    let effect = Effect::new("bezier-warp", &[]).expect("an effect");
-    assert!(!gpu.runs(&effect));
+fn bezier_warps_match() {
+    let alike = [[17.0, -9.5]; 12];
+    let mut bent = [[0.0; 2]; 12];
+    bent[1] = [-30.0, 80.0];
+    bent[2] = [45.0, -60.0];
+    bent[4] = [70.0, 25.0];
+    bent[8] = [-20.0, -90.0];
+    bent[10] = [-55.0, 10.0];
+    let mut pinched = [[0.0; 2]; 12];
+    pinched[0] = [150.0, 110.0];
+    pinched[6] = [-120.0, -95.0];
+    pinched[3] = [-60.0, 210.0];
+    // The right side pulled past the left, so the patch folds over itself.
+    let mut folded = [[0.0; 2]; 12];
+    for k in [3, 4, 5, 6] {
+        folded[k] = [-520.0, 15.0 * k as f32];
+    }
+    folded[2] = [-300.0, 40.0];
+    folded[7] = [-280.0, -30.0];
+    for (case, moves) in [
+        ("rest", [[0.0; 2]; 12]),
+        ("alike", alike),
+        ("bent", bent),
+        ("pinched", pinched),
+        ("folded", folded),
+    ] {
+        let values: Vec<(&str, ParamValue)> = WARP_POINTS
+            .iter()
+            .zip(moves)
+            .map(|(name, m)| (*name, ParamValue::Point(m)))
+            .collect();
+        matches("bezier-warp", "bezier-warp", case, &values);
+    }
+}
+
+#[test]
+fn distortions_hold_where_points_are_as_far_out_as_on_a_4k_frame() {
+    // A layer whose box lies 3,000 px out, scaled a little, as the right
+    // of a 4K frame.
+    let mut far = space(Affine::scale(1.07) * Affine::translate((-3100.0, -1650.0)));
+    far.bounds = Some(Rect::new(3080.5, 1640.25, 3290.0, 1771.5));
+    let pixels = pattern(229, 143, 61);
+    let point = |x: f32, y: f32| ParamValue::Point([3100.0 + x, 1650.0 + y]);
+    let cases: [(&str, Vec<(&str, ParamValue)>); 9] = [
+        (
+            "motion-tile",
+            vec![
+                ("center", point(40.0, 31.0)),
+                ("tile-width", ParamValue::Number(0.37)),
+            ],
+        ),
+        ("wrap", vec![("to", point(61.0, 23.0))]),
+        (
+            "mirror",
+            vec![
+                ("center", point(73.0, 51.0)),
+                ("angle", ParamValue::Number(37.0)),
+            ],
+        ),
+        (
+            "polar-coordinates",
+            vec![("interpolation", ParamValue::Number(0.6))],
+        ),
+        (
+            "lens-distortion",
+            vec![
+                ("field-of-view", ParamValue::Number(121.0)),
+                ("center", point(90.0, 60.0)),
+            ],
+        ),
+        (
+            "repeat-tile",
+            vec![
+                ("right", ParamValue::Number(80.0)),
+                ("tiling", ParamValue::Choice(1)),
+            ],
+        ),
+        (
+            "turbulent-displace",
+            vec![
+                ("size", ParamValue::Number(31.0)),
+                ("complexity", ParamValue::Number(3.5)),
+            ],
+        ),
+        ("displacement-map", displacement([3, 8], 2, 1).to_vec()),
+        (
+            "bezier-warp",
+            vec![
+                ("top-handle-left", ParamValue::Point([-30.0, 40.0])),
+                ("bottom-right", ParamValue::Point([25.0, -12.0])),
+            ],
+        ),
+    ];
+    for (name, values) in cases {
+        let effect = Effect::new(name, &values).expect("an effect");
+        effect_matches(
+            "distort-far",
+            &format!("{name} far out"),
+            &effect,
+            &pixels,
+            &far,
+        );
+    }
 }

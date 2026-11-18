@@ -54,7 +54,7 @@ pub use composite::{BoxCover, OPERATIONS, Operation, OperationSpec, SolidComposi
 pub use distort::{
     BezierWarp, DisplacementMap, Distortion, Lay, LensDistortion, LensField, MapLevel, Mirror,
     MotionTile, Pinning, PolarCoordinates, RepeatTile, TURBULENCE_Y_SEED, Tiling, Turbulence,
-    TurbulentDisplace, Wrap, distortion_box,
+    TurbulentDisplace, WARP_PIECES, WarpMesh, Wrap, distortion_box,
 };
 pub use effect::{
     Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Growth, Input, Move, ParamSpec,
