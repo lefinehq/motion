@@ -58,6 +58,14 @@ fn a_transform_moves_the_pixels_and_leaves_the_rest_clear() {
 }
 
 #[test]
+fn a_transform_that_flattens_the_pixels_leaves_them_clear() {
+    for flat in [Affine::scale_non_uniform(1.5, 0.0), Affine::scale(0.0)] {
+        let moved = ramp().transformed(flat);
+        assert!(moved.data().iter().all(|p| *p == [0.0; 4]), "{flat:?}");
+    }
+}
+
+#[test]
 fn mixing_moves_each_pixel_by_its_own_share() {
     let mut pixels = Pixels::transparent(2, 1);
     let mut white = Pixels::transparent(2, 1);

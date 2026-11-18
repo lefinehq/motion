@@ -157,6 +157,11 @@ impl Pixels {
     pub fn transformed(&self, transform: Affine) -> Pixels {
         let back = transform.inverse();
         let mut out = Pixels::transparent(self.width, self.height);
+        // A move that flattens the pixels to a line or a point has no
+        // finite way back: nothing of them is left to see.
+        if !back.as_coeffs().iter().all(|c| c.is_finite()) {
+            return out;
+        }
         let width = usize::from(self.width);
         for (i, pixel) in out.data.iter_mut().enumerate() {
             let (x, y) = ((i % width) as f64 + 0.5, (i / width) as f64 + 0.5);
