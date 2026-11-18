@@ -1583,6 +1583,17 @@ pub static SHARPEN: Registry = Registry {
     )],
 };
 
+/// The properties of `find-edges`.
+pub static FIND_EDGES: Registry = Registry {
+    kind: "find-edges",
+    rows: &[number(
+        "blend",
+        0.0,
+        Some((0.0, 1.0)),
+        "how much of the layer as it was shows through the lines, 0 to 1",
+    )],
+};
+
 /// The properties of the black and white effect: how light each of six
 /// hues turns, and a tint.
 pub static BLACK_WHITE: Registry = Registry {
@@ -2223,7 +2234,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 40] = [
+pub static EFFECTS: [ItemKind; 41] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -3223,6 +3234,23 @@ pub static EFFECTS: [ItemKind; 40] = [
         outline: None,
         timed: false,
         doc: "sharpens edges by moving pixels away from their neighbours",
+    },
+    ItemKind {
+        name: "find-edges",
+        role: Role::Effect,
+        registry: &FIND_EDGES,
+        primary: Primary::Setting("lines"),
+        settings: &[SettingSpec {
+            name: "lines",
+            choices: &["dark-on-light", "light-on-dark"],
+            default: "dark-on-light",
+            doc: "whether the edges are dark lines on white or light lines on black",
+        }],
+        input: None,
+        outline: None,
+        timed: false,
+        doc: "draws where the colours change as lines, by each channel's slope across the \
+              pixels around",
     },
     ItemKind {
         name: "black-white",

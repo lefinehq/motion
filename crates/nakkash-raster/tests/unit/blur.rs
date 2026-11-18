@@ -252,3 +252,44 @@ fn sharpen_pushes_a_pixel_away_from_its_neighbours() {
     assert!((pixels.get(1, 0)[0] - 0.475).abs() < 1e-6);
     assert!((pixels.get(0, 0)[0] - 0.5).abs() < 1e-6);
 }
+
+/// An opaque 6 by 3 grid, black in its left half and white in its right.
+fn step() -> Pixels {
+    let mut pixels = Pixels::transparent(6, 3);
+    for (i, p) in pixels.data_mut().iter_mut().enumerate() {
+        let v = if i % 6 < 3 { 0.0 } else { 1.0 };
+        *p = [v, v, v, 1.0];
+    }
+    pixels
+}
+
+#[test]
+fn edges_are_lines_where_the_colour_changes() {
+    use ParamValue::{Choice, Number};
+    // Light on dark: the two columns either side of the step light up
+    // fully, the others stay black.
+    let mut pixels = step();
+    find_edges(&mut pixels, &[Number(0.0), Choice(1)], &ONE);
+    let row: Vec<f32> = (0..6).map(|x| pixels.get(x, 1)[0]).collect();
+    assert_eq!(row, [0.0, 0.0, 1.0, 1.0, 0.0, 0.0]);
+    assert_eq!(pixels.get(2, 1)[3], 1.0);
+    // Dark on light is the inverse, and the blend lets the layer through.
+    let mut pixels = step();
+    find_edges(&mut pixels, &[Number(0.5), Choice(0)], &ONE);
+    let row: Vec<f32> = (0..6).map(|x| pixels.get(x, 1)[0]).collect();
+    assert_eq!(row, [0.5, 0.5, 0.0, 0.5, 1.0, 1.0]);
+}
+
+#[test]
+fn edges_keep_the_layers_alpha() {
+    use ParamValue::{Choice, Number};
+    // A clear pixel stays clear; the edge of an opaque one against it is
+    // a change of colour.
+    let mut pixels = impulse(3, 3, 1, 1);
+    find_edges(&mut pixels, &[Number(0.0), Choice(1)], &ONE);
+    assert_eq!(pixels.get(0, 0), [0.0; 4]);
+    assert_eq!(pixels.get(1, 1), [0.0, 0.0, 0.0, 1.0]);
+    let mut pixels = impulse(3, 3, 1, 1);
+    find_edges(&mut pixels, &[Number(0.0), Choice(0)], &ONE);
+    assert_eq!(pixels.get(1, 1), [1.0; 4]);
+}

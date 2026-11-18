@@ -1141,6 +1141,38 @@ mod effects {
         );
     }
 
+    /// Find edges takes its inversion as which lines it draws, light on
+    /// dark when on, and its blend as it is.
+    #[test]
+    fn found_edges_take_their_lines_and_blend() {
+        let edges = |properties: Vec<Property>| {
+            group(
+                "ADBE Find Edges",
+                properties.into_iter().map(Child::Property).collect(),
+            )
+        };
+        let import = imported(vec![
+            edges(vec![
+                number("ADBE Find Edges-0001", 1.0),
+                number("ADBE Find Edges-0002", 0.07),
+            ]),
+            edges(vec![number("ADBE Find Edges-0001", 0.0)]),
+        ])
+        .expect("imports");
+        assert_eq!(
+            import.json["layers"][0]["fx"],
+            json!([
+                {"find-edges":"light-on-dark","blend":0.07},
+                {"find-edges":"dark-on-light"}
+            ])
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
     #[test]
     fn a_displacement_map_names_its_map_layer() {
         let map = |layer: u32| {

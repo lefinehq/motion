@@ -441,6 +441,18 @@ Other things we take without evidence:
 - **Layers without a box.** A shape or text layer has no box in the scene, so its inverted fill covers the whole frame. Its box in the original is the composition's size, in the layer's own coordinates; no sample shows where they differ.
 - **Masks.** `Fill Mask` and `All Masks` are still only read at their defaults; an inverted fill of a chosen mask is reported, as before.
 
+## Found edges
+
+`ADBE Find Edges` becomes the `find-edges` effect ([scene format](scene-format.md#shapes-masks-effects-and-compositions)). Its parameters: `-0001`, a checkbox the definition leaves unnamed and projects call Invert, off by default, and `-0002` Blend With Original, a share from 0 to 1. The belief was checked once, by eye, against reference frames; the sweep does not check it.
+
+| Belief | Evidence | Held, 2026-11-18 |
+|---|---|---|
+| G1. With Invert on, the edges are light lines on a dark ground; off, dark lines on a light ground. | m616 eases Blend With Original from 0 to 1 over its first 1.5 s on inverted edges of its footage. Its reference frame 2 (0.5 s), while the edges still dominate, is dark, with light lines along the footage's edges; dark lines on white would leave it mostly white. | 7 inverted edge effects in m616 and m771. |
+
+Other things we take without evidence:
+- **The operator.** The scene takes each colour channel's Sobel slope over the 3×3 frame pixels, scaled so a step from 0 to 1 gives 1, and caps it at 1. m616 draws its edges on stock footage its project does not have and m771 on a hidden map whose reference shows other photos, so neither can measure the operator's size or strength.
+- **Transparent layers.** The slope is taken on colour times alpha, so an opaque shape on nothing has edges along its outline, and alpha stays as it was.
+
 ## Effects that follow a mask
 
 A path parameter (`pard` control 12), such as Audio Spectrum's Path (`ADBE AudSpect-0004`), names one of its layer's masks. Its `cdat` holds 0 whatever it names; the mask is in a `tdli` beside it. These beliefs say how it is named and how the spectrum lays its bands along it. The first is checked by hand over every local sample, the layout measured against m812's reference frames; the sweep does not check them yet.

@@ -329,6 +329,37 @@ pub(crate) fn sharpen(pixels: &mut Pixels, values: &[ParamValue], _: &Space) {
     }
 }
 
+/// `find-edges`: each colour channel's slope across the 3×3 pixels around
+/// each pixel, by the Sobel operator scaled so that a step from 0 to 1
+/// gives 1, and at most 1: light where the colour changes and black where
+/// it is even, or the inverse with `lines` `dark-on-light`. Alpha stays,
+/// and `blend` of the layer as it was shows through. The pixels are the
+/// frame's; past the edges of the grid the edge pixels repeat.
+pub(crate) fn find_edges(pixels: &mut Pixels, values: &[ParamValue], _: &Space) {
+    let (blend, light) = (number(values, 0), choice(values, 1) == 1);
+    let source = pixels.clone();
+    let (width, height) = (i64::from(source.width()), i64::from(source.height()));
+    for (i, p) in pixels.data_mut().iter_mut().enumerate() {
+        let (x, y) = (i as i64 % width, i as i64 / width);
+        let at = |dx: i64, dy: i64| {
+            source.get((x + dx).clamp(0, width - 1), (y + dy).clamp(0, height - 1))
+        };
+        let me = source.get(x, y);
+        let a = me[3];
+        for c in 0..3 {
+            let v = |dx, dy| at(dx, dy)[c];
+            let across =
+                (v(1, -1) + 2.0 * v(1, 0) + v(1, 1)) - (v(-1, -1) + 2.0 * v(-1, 0) + v(-1, 1));
+            let down =
+                (v(-1, 1) + 2.0 * v(0, 1) + v(1, 1)) - (v(-1, -1) + 2.0 * v(0, -1) + v(1, -1));
+            let edge = (across.hypot(down) / 4.0).min(1.0);
+            let line = if light { edge } else { 1.0 - edge };
+            // The colour channels stay premultiplied by the layer's alpha.
+            p[c] = line * a * (1.0 - blend) + me[c] * blend;
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "../tests/unit/blur.rs"]
 mod tests;
