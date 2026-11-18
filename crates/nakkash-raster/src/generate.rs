@@ -10,6 +10,7 @@ use vello_cpu::kurbo::{Affine, Point};
 
 use crate::colour::{choice, number, rgb};
 use crate::composite::Operation;
+use crate::distort::layer_box;
 use crate::effect::{ParamValue, Space};
 use crate::pen::Pen;
 use crate::pixels::Pixels;
@@ -247,6 +248,100 @@ pub(crate) fn venetian_blinds(pixels: &mut Pixels, values: &[ParamValue], space:
         };
         [under[0], under[1], under[2], shown]
     });
+}
+
+/// `linear-wipe`: the layer hidden behind an edge that crosses its box
+/// along `angle` (0° up, turning clockwise, so 90° runs left to right),
+/// `completion` of the way. The edge fades over `feather` px, and its
+/// travel takes the feather in, so 0 shows the whole box and 1 hides it.
+pub(crate) fn linear_wipe(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let (completion, angle) = (number(values, 0), number(values, 1).to_radians());
+    let feather = number(values, 2);
+    let (sin, cos) = angle.sin_cos();
+    // How far along the wipe's direction a point of the layer lies.
+    let along = |[x, y]: [f32; 2]| x * sin - y * cos;
+    let bounds = layer_box(pixels, space);
+    let corners = [
+        [bounds.x0, bounds.y0],
+        [bounds.x1, bounds.y0],
+        [bounds.x0, bounds.y1],
+        [bounds.x1, bounds.y1],
+    ]
+    .map(|p| along(p.map(|c| c as f32)));
+    let (from, to) = corners
+        .iter()
+        .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), &c| {
+            (lo.min(c), hi.max(c))
+        });
+    let edge = from - feather / 2.0 + completion * (to - from + feather);
+    each_in_layer(pixels, space, |at, under, _| {
+        [
+            under[0],
+            under[1],
+            under[2],
+            shown(along(at) - edge, feather),
+        ]
+    });
+}
+
+/// How much of the layer shows `beyond` px past a wipe's edge, on the side
+/// it moves towards, with the edge faded over `feather` px about it; a
+/// hard edge still covers a pixel in part.
+fn shown(beyond: f32, feather: f32) -> f32 {
+    (beyond / feather.max(1.0) + 0.5).clamp(0.0, 1.0)
+}
+
+/// `iris-wipe`: a hole in the layer around `center`, a polygon of
+/// `points` corners (rounded) `outer-radius` px from it, its first corner
+/// straight up and turned `rotation` degrees clockwise; with `inner` on,
+/// every other corner sits `inner-radius` px from it instead, a star. The
+/// hole's edge fades over `feather` px inwards, so a radius of 0 hides
+/// nothing.
+pub(crate) fn iris_wipe(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let center = point(values, 0);
+    let corners = number(values, 1).round().max(3.0) as usize;
+    let (outer, inner) = (number(values, 2), number(values, 3));
+    let rotation = number(values, 4).to_radians();
+    let feather = number(values, 5);
+    let star = choice(values, 6) == 1;
+    let outline: Vec<[f32; 2]> = (0..corners)
+        .map(|i| {
+            let r = if star && i % 2 == 1 { inner } else { outer };
+            let turn = rotation + i as f32 / corners as f32 * std::f32::consts::TAU;
+            [center[0] + r * turn.sin(), center[1] - r * turn.cos()]
+        })
+        .collect();
+    if outer <= 0.0 && (!star || inner <= 0.0) {
+        return;
+    }
+    each_in_layer(pixels, space, |at, under, _| {
+        let outside = signed_distance(&outline, at);
+        let shown = match feather > 0.0 {
+            true => (outside / feather + 1.0).clamp(0.0, 1.0),
+            false => (outside + 0.5).clamp(0.0, 1.0),
+        };
+        [under[0], under[1], under[2], shown]
+    });
+}
+
+/// How far `at` lies outside the closed polygon `outline`, in px: negative
+/// inside.
+fn signed_distance(outline: &[[f32; 2]], [x, y]: [f32; 2]) -> f32 {
+    let mut nearest = f32::INFINITY;
+    let mut inside = false;
+    for (i, &[ax, ay]) in outline.iter().enumerate() {
+        let [bx, by] = outline[(i + 1) % outline.len()];
+        let (dx, dy) = (bx - ax, by - ay);
+        let t = (((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy).max(1e-12)).clamp(0.0, 1.0);
+        let (px, py) = (ax + t * dx - x, ay + t * dy - y);
+        nearest = nearest.min(px * px + py * py);
+        // Even-odd crossings of the ray to the right.
+        if (ay > y) != (by > y) && x < ax + (y - ay) / (by - ay) * dx {
+            inside = !inside;
+        }
+    }
+    let distance = nearest.sqrt();
+    if inside { -distance } else { distance }
 }
 
 /// The layer's px across one noise cell at a `scale` of 1.

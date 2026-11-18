@@ -554,6 +554,53 @@ mod effects {
         );
     }
 
+    /// A linear wipe takes its completion from percent, its angle and
+    /// feather as they are; an iris its count, radii, rotation, feather and
+    /// whether it is a star, and six corners where the project leaves the
+    /// count out.
+    #[test]
+    fn wipes_keep_their_edges() {
+        let import = imported(vec![
+            group(
+                "ADBE Linear Wipe",
+                vec![
+                    Child::Property(number("ADBE Linear Wipe-0001", 45.0)),
+                    Child::Property(number("ADBE Linear Wipe-0002", 180.0)),
+                    Child::Property(number("ADBE Linear Wipe-0003", 300.0)),
+                ],
+            ),
+            group(
+                "ADBE IRIS_WIPE",
+                vec![
+                    Child::Property(number("ADBE IRIS_WIPE-0003", 225.0)),
+                    Child::Property(number("ADBE IRIS_WIPE-0004", 1.0)),
+                    Child::Property(number("ADBE IRIS_WIPE-0005", 40.0)),
+                    Child::Property(number("ADBE IRIS_WIPE-0006", 15.0)),
+                    Child::Property(number("ADBE IRIS_WIPE-0007", 704.0)),
+                ],
+            ),
+        ])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"];
+        assert_eq!(
+            fx[0],
+            json!({"linear-wipe":0.45,"angle":180,"feather":300}),
+            "{fx}"
+        );
+        assert_eq!(fx[1]["iris-wipe"], 225, "{fx}");
+        // Six corners, the scene's own rest, so nothing is written.
+        assert!(fx[1].get("points").is_none(), "{fx}");
+        assert_eq!(fx[1]["inner"], "on", "{fx}");
+        assert_eq!(fx[1]["inner-radius"], 40, "{fx}");
+        assert_eq!(fx[1]["rotation"], 15, "{fx}");
+        assert_eq!(fx[1]["feather"], 704, "{fx}");
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
     /// A laser is a beam: its length and time as they are, its thickness in
     /// px, and a beam without 3D perspective reported.
     #[test]

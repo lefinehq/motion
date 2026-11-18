@@ -1247,7 +1247,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 54] = [
+pub(super) static KINDS: [Kind; 56] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -3552,6 +3552,99 @@ pub(super) static KINDS: [Kind; 54] = [
                 To::Ignore("where the original renders it"),
                 Number,
                 Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Linear Wipe",
+        item: "linear-wipe",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Linear Wipe-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Linear Wipe-0001",
+                To::Prop("completion"),
+                Percent,
+                Parameter,
+            ),
+            row(
+                "ADBE Linear Wipe-0002",
+                To::Prop("angle"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Linear Wipe-0003",
+                To::Prop("feather"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE IRIS_WIPE",
+        item: "iris-wipe",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE IRIS_WIPE-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE IRIS_WIPE-0001", To::Prop("center"), Point, Parameter),
+            // The definition stores a default of 3 below its own least
+            // of 6; a project leaves the count out at the 6 it shows.
+            row(
+                "ADBE IRIS_WIPE-0002",
+                To::Prop("points"),
+                Number,
+                Missing::Number(6.0),
+            ),
+            row(
+                "ADBE IRIS_WIPE-0003",
+                To::Prop("outer-radius"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE IRIS_WIPE-0004",
+                To::Setting("inner", OFF_ON),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE IRIS_WIPE-0005",
+                To::Prop("inner-radius"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE IRIS_WIPE-0006",
+                To::Prop("rotation"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE IRIS_WIPE-0007",
+                To::Prop("feather"),
+                Number,
+                Parameter,
             ),
         ],
         parts: &[],

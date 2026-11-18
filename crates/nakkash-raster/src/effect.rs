@@ -2151,6 +2151,98 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "linear-wipe",
+        params: &[
+            ParamSpec {
+                name: "completion",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how far the edge has crossed the layer's box",
+            },
+            ParamSpec {
+                name: "angle",
+                default: ParamValue::Number(90.0),
+                range: None,
+                choices: &[],
+                doc: "which way the edge travels, in degrees clockwise from up",
+            },
+            ParamSpec {
+                name: "feather",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 32_000.0)),
+                choices: &[],
+                doc: "how wide the edge's fade is, in px",
+            },
+        ],
+        doc: "hides the layer behind a straight edge that crosses its box",
+        reach: stays,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: generate::linear_wipe,
+        },
+    },
+    EffectSpec {
+        name: "iris-wipe",
+        params: &[
+            ParamSpec {
+                name: "center",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "the middle of the hole, in px of the layer's own coordinates",
+            },
+            ParamSpec {
+                name: "points",
+                default: ParamValue::Number(6.0),
+                range: Some((3.0, 32.0)),
+                choices: &[],
+                doc: "how many corners the outline has",
+            },
+            ParamSpec {
+                name: "outer-radius",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 32_000.0)),
+                choices: &[],
+                doc: "how far its corners are from `center`, in px",
+            },
+            ParamSpec {
+                name: "inner-radius",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 32_000.0)),
+                choices: &[],
+                doc: "how far every other corner is from `center` with `inner` on",
+            },
+            ParamSpec {
+                name: "rotation",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "how far the outline is turned clockwise, in degrees",
+            },
+            ParamSpec {
+                name: "feather",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 32_000.0)),
+                choices: &[],
+                doc: "how wide the edge's fade is, inwards, in px",
+            },
+            ParamSpec {
+                name: "inner",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["off", "on"],
+                doc: "whether every other corner sits at `inner-radius`",
+            },
+        ],
+        doc: "cuts a hole in the layer, a polygon or star",
+        reach: stays,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: generate::iris_wipe,
+        },
+    },
+    EffectSpec {
         name: "fractal-noise",
         params: &[
             ParamSpec {
