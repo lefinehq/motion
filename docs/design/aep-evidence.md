@@ -429,6 +429,18 @@ What is left open:
 - **Alpha.** Every sample's alpha set is identity; an alpha set applies to straight alpha as the scene's `levels` does, unmeasured.
 - **Keys.** No sample keys the histogram; a keyed one keeps its first key and is reported.
 
+## Animated curves
+
+A curves effect keeps its curves as data (`aRbp`, see [Levels](#levels) for its sibling): five 256-level tables, then the same five curves as their points. A keyed curves effect keeps that data at each key. These beliefs say how the keys read and how the scene moves between them.
+
+| Belief | Evidence | Held, 2026-11-18 |
+|---|---|---|
+| K1. Each key's data reads as a still curves effect's does; keys may hold different numbers of points, and different first and last inputs. | Five keyed curves in one local template, each key's points in rising input within 0 to 255, two to five points a key; one pair of keys starts at inputs 2 and 0. | 13 keys of 5 effects |
+| K2. Between two keys the original moves each curve level by level, from one key's curve to the next one's, through the key's ease: a key's curve is a function from input to output level, and the curve between keys is the mix of the two functions. Keys with different points have no other common reading. | The data keeps each key as a 256-level table, a function of the input, whatever its points; mixing tables is defined for any two keys. Unmeasured against a reference: the one corpus sample with a keyed curve (m593) has it on video footage drawn as nothing. | by construction |
+| K3. A natural cubic spline is linear in its levels on fixed inputs, and a natural spline through its own levels at more inputs between the same ends is itself. So keys put on the inputs of all of them, and moved point by point, give the mix of K2 exactly between each key's ends. | Unit tests in `nakkash-format` (`spline`) and `nakkash-import` (`map::curves`): the shared-input spline equals the key's own to 1e-9 at every level, and a mix of levels on shared inputs is the mix of the splines to 1e-12. | always |
+
+A key that starts or ends inside the others' inputs is flat beyond its ends, and a spline meets that flat part without the corner the original has. The input beyond the key's end takes the level that keeps the key's curve closest over the whole range, by least squares, held between 0 and 1. The template's keys that start at 2 and at 0 then stray 0.51 levels at most (2.44 with the flat level). Within one 8-bit level, the stored tables' own rounding (half a level) and the scene's (half a level), the key is kept; beyond it, or with more than 16 inputs together, the import keeps the first key and reports the stray.
+
 ## Colours
 
 A colour property stores four channels, its alpha among them. This belief says what the original draws of that alpha. It was checked by hand over every local sample; the sweep does not check it yet.

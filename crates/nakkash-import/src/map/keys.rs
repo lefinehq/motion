@@ -360,30 +360,43 @@ pub(super) fn written(
                     .collect::<Option<_>>(),
                 None => keys.iter().map(|k| convert.value(&k.value)).collect(),
             }?;
-            let first = values.first()?.clone();
-            let written: Vec<Json> = keys
-                .iter()
-                .zip(&values)
-                .enumerate()
-                .map(|(i, (key, value))| {
-                    let mut object = serde_json::Map::new();
-                    object.insert("t".into(), Json::String(clock.time(key.time)));
-                    object.insert("v".into(), value.clone());
-                    if let Some(next) = keys.get(i + 1) {
-                        object.insert("curve".into(), curve(key, next, convert, spatial, clock));
-                        if let Some(path) = spatial.then(|| bend(key, next, convert)).flatten() {
-                            object.insert("path".into(), path);
-                        }
-                    }
-                    Json::Object(object)
-                })
-                .collect();
-            Some(Written::Track {
-                keys: Json::Array(written),
-                first,
-            })
+            track(keys, &values, convert, spatial, clock)
         }
     }
+}
+
+/// A key list for `anim` with `values` at the times of `keys` and the
+/// curves between them, or `None` without keys. `spatial` tracks take one
+/// curve and keep their motion-path tangents.
+pub(super) fn track(
+    keys: &[Keyframe],
+    values: &[Json],
+    convert: Convert,
+    spatial: bool,
+    clock: Clock,
+) -> Option<Written> {
+    let first = values.first()?.clone();
+    let written: Vec<Json> = keys
+        .iter()
+        .zip(values)
+        .enumerate()
+        .map(|(i, (key, value))| {
+            let mut object = serde_json::Map::new();
+            object.insert("t".into(), Json::String(clock.time(key.time)));
+            object.insert("v".into(), value.clone());
+            if let Some(next) = keys.get(i + 1) {
+                object.insert("curve".into(), curve(key, next, convert, spatial, clock));
+                if let Some(path) = spatial.then(|| bend(key, next, convert)).flatten() {
+                    object.insert("path".into(), path);
+                }
+            }
+            Json::Object(object)
+        })
+        .collect();
+    Some(Written::Track {
+        keys: Json::Array(written),
+        first,
+    })
 }
 
 /// A stream of 3D vectors as a point and its depth: the point through

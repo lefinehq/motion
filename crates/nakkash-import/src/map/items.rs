@@ -6,7 +6,7 @@ use nakkash_format::item::{ItemKind, Primary};
 use nakkash_format::property::{Registry, Rest, Target, default_zoom};
 use serde_json::{Map, Value as Json, json};
 
-use super::keys::{Clock, Convert, Written, num, split, written};
+use super::keys::{Clock, Convert, Written, num, split, track, written};
 use super::report::{ControlReport, Fate};
 use super::rows::{self, Kind, Missing, Part, Policy, Row, To};
 use super::slots::{Held, address};
@@ -286,40 +286,10 @@ impl Walk<'_> {
                     }
                 }
             }
-            To::Curves => {
-                let first = match &property.value {
-                    Stream::Static(value) => Some(value),
-                    Stream::Animated(keys) => {
-                        self.mapping.unsupported(
-                            &place.at,
-                            "animated curves (the first keyframe's are kept)",
-                        );
-                        keys.first().map(|key| &key.value)
-                    }
-                };
-                let curves = match first {
-                    Some(Value::Data(data)) => curves::read(data),
-                    _ => None,
-                };
-                let Some(curves) = curves else {
-                    // The kind's key holds `rgb`: straight, the effect
-                    // changes nothing.
-                    out.keys.insert("rgb".into(), json!(curves::path(&[])));
-                    self.mapping.count(name, Fate::Unsupported);
-                    return self.mapping.unsupported(
-                        &place.at,
-                        "curves kept in a layout the import does not read",
-                    );
-                };
-                // The kind's key holds `rgb`, so it is written even straight.
-                for (curve, points) in curves::NAMES.iter().zip(&curves) {
-                    if *curve == "rgb" || !curves::is_straight(points) {
-                        out.keys
-                            .insert((*curve).into(), json!(curves::path(points)));
-                    }
-                }
-                self.mapping.count(name, Fate::Mapped);
-            }
+            To::Curves => match &property.value {
+                Stream::Static(value) => self.put_curves(value, name, out, place),
+                Stream::Animated(keys) => self.put_animated_curves(keys, name, sink, out, place),
+            },
             To::Levels => {
                 let first = match &property.value {
                     Stream::Static(value) => Some(value),
@@ -504,6 +474,99 @@ impl Walk<'_> {
         };
         let source = writable.map(|w| self.source(w));
         insert(out, sink, target, component, written, source);
+    }
+
+    /// Writes the five curves of a curves effect from the data it keeps.
+    fn put_curves(&mut self, value: &Value, name: &str, out: &mut Out, place: &Place<'_>) {
+        let curves = match value {
+            Value::Data(data) => curves::read(data),
+            _ => None,
+        };
+        let Some(curves) = curves else {
+            return self.unread_curves(name, out, place);
+        };
+        // The kind's key holds `rgb`, so it is written even straight.
+        for (curve, points) in curves::NAMES.iter().zip(&curves) {
+            if *curve == "rgb" || !curves::is_straight(points) {
+                out.keys
+                    .insert((*curve).into(), json!(curves::path(points)));
+            }
+        }
+        self.mapping.count(name, Fate::Mapped);
+    }
+
+    /// Writes the five curves of an animated curves effect, each as a track
+    /// whose keys share their inputs ([`curves::on_shared_inputs`]), so it
+    /// moves from key to key as the original does, level by level.
+    fn put_animated_curves(
+        &mut self,
+        keys: &[Keyframe],
+        name: &str,
+        sink: Sink,
+        out: &mut Out,
+        place: &Place<'_>,
+    ) {
+        let read: Option<Vec<[curves::Points; 5]>> = keys
+            .iter()
+            .map(|key| match &key.value {
+                Value::Data(data) => curves::read(data),
+                _ => None,
+            })
+            .collect();
+        let Some(read) = read.filter(|read| !read.is_empty()) else {
+            return self.unread_curves(name, out, place);
+        };
+        let mut whole = true;
+        for (i, curve) in curves::NAMES.iter().enumerate() {
+            let each: Vec<curves::Points> = read.iter().map(|key| key[i].clone()).collect();
+            let kept = match curves::on_shared_inputs(&each) {
+                curves::Shared::Straight => None,
+                curves::Shared::Points(points) => {
+                    let values: Vec<Json> = points.iter().map(|p| json!(curves::path(p))).collect();
+                    match track(keys, &values, Convert::Path, false, place.clock) {
+                        Some(written) => {
+                            insert(out, sink, curve, None, written, None);
+                            continue;
+                        }
+                        None => None,
+                    }
+                }
+                curves::Shared::TooMany(inputs) => Some(format!(
+                    "an animated curve whose keys have {inputs} inputs together, more than {} (the first key's is kept)",
+                    curves::MOST_POINTS
+                )),
+                curves::Shared::Strays(stray) => Some(format!(
+                    "an animated curve whose keys start or end at other inputs, off by up to {} levels (the first key's is kept)",
+                    nakkash_format::fmt_num(stray * 255.0)
+                )),
+            };
+            if let Some(why) = kept {
+                whole = false;
+                self.mapping.unsupported(&place.at, why);
+            }
+            // A straight curve, or one kept at its first key.
+            if *curve == "rgb" || !curves::is_straight(&each[0]) {
+                out.keys
+                    .insert((*curve).into(), json!(curves::path(&each[0])));
+            }
+        }
+        let fate = match whole {
+            true => Fate::Mapped,
+            false => Fate::Unsupported,
+        };
+        self.mapping.count(name, fate);
+    }
+
+    /// Reports curves data laid out in a way the import does not read; the
+    /// effect is written straight, so it changes nothing.
+    fn unread_curves(&mut self, name: &str, out: &mut Out, place: &Place<'_>) {
+        // The kind's key holds `rgb`: straight, the effect changes nothing.
+        out.keys.insert("rgb".into(), json!(curves::path(&[])));
+        self.mapping.count(name, Fate::Unsupported);
+        self.mapping.unsupported(
+            &place.at,
+            "curves kept in a layout the import does not read",
+        );
     }
 
     /// Writes the default of a row the project leaves out, where the scene's

@@ -259,17 +259,6 @@ fn curves_are_flat_beyond_their_ends() {
 }
 
 #[test]
-fn a_natural_spline_bends_through_its_points() {
-    let spline = Spline::new(&[[0.0, 0.0], [0.25, 0.4], [1.0, 1.0]]);
-    assert_eq!(spline.at(0.0), 0.0);
-    assert!((spline.at(0.25) - 0.4).abs() < 1e-6);
-    assert_eq!(spline.at(1.0), 1.0);
-    // A straight line through three points stays straight.
-    let line = Spline::new(&[[0.0, 0.0], [0.4, 0.4], [1.0, 1.0]]);
-    assert!((0..=10).all(|i| (line.at(f64::from(i) / 10.0) - f64::from(i) / 10.0).abs() < 1e-9));
-}
-
-#[test]
 fn black_white_turns_each_hue_as_light_as_its_share() {
     let defaults: Vec<ParamValue> = [0.4, 0.6, 0.4, 0.6, 0.2, 0.8, 0.0]
         .map(Number)

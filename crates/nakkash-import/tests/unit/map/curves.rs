@@ -63,3 +63,74 @@ fn data_laid_out_otherwise_reads_as_nothing() {
     ]);
     assert!(read(&backwards).is_none());
 }
+
+/// Levels from 0 to 255 as points from 0 to 1.
+fn levels(points: &[[u16; 2]]) -> Points {
+    points
+        .iter()
+        .map(|p| p.map(|c| f64::from(c) / 255.0))
+        .collect()
+}
+
+#[test]
+fn keys_with_other_points_share_the_inputs_of_all_of_them() {
+    let keys = [
+        levels(&[[0, 0], [129, 67], [255, 255]]),
+        levels(&[[0, 0], [47, 33], [177, 184], [255, 255]]),
+    ];
+    let Shared::Points(shared) = on_shared_inputs(&keys) else {
+        panic!("not shared");
+    };
+    let inputs = |points: &Points| points.iter().map(|p| p[0]).collect::<Vec<_>>();
+    assert_eq!(inputs(&shared[0]), inputs(&shared[1]));
+    assert_eq!(shared[0].len(), 5);
+    // Each key keeps its own curve, at its own points and between them.
+    for (key, points) in keys.iter().zip(&shared) {
+        let (own, other) = (Spline::new(key), Spline::new(points));
+        assert!((0..=255).all(|i| {
+            let x = f64::from(i) / 255.0;
+            (own.at(x) - other.at(x)).abs() < 1e-9
+        }));
+    }
+}
+
+#[test]
+fn straight_keys_need_no_track() {
+    let keys = [levels(STRAIGHT), Vec::new()];
+    assert_eq!(on_shared_inputs(&keys), Shared::Straight);
+}
+
+#[test]
+fn a_key_that_starts_a_level_later_keeps_every_level() {
+    // The starts differ by two levels: the spline through the earlier
+    // start keeps the later key's curve within one level.
+    let keys = [
+        levels(&[[0, 0], [51, 66], [98, 202], [176, 255], [255, 255]]),
+        levels(&[[2, 0], [80, 43], [127, 179], [194, 255], [255, 255]]),
+    ];
+    assert!(matches!(on_shared_inputs(&keys), Shared::Points(_)));
+}
+
+#[test]
+fn a_key_that_ends_far_from_the_others_is_reported_with_its_stray() {
+    let keys = [
+        levels(&[[0, 0], [255, 255]]),
+        levels(&[[128, 0], [160, 255]]),
+    ];
+    match on_shared_inputs(&keys) {
+        Shared::Strays(stray) => assert!(stray > 1.0 / 255.0),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn more_inputs_than_a_curve_keeps_are_reported() {
+    let many = |offset: u16| -> Points {
+        levels(
+            &(0..10)
+                .map(|i| [i * 25 + offset, i * 25 + offset])
+                .collect::<Vec<_>>(),
+        )
+    };
+    assert_eq!(on_shared_inputs(&[many(0), many(1)]), Shared::TooMany(20));
+}
