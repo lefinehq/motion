@@ -157,3 +157,48 @@ fn an_effect_that_reads_another_layer_stays_on_the_cpu() {
     let effect = Effect::new("invert", &[]).expect("an effect");
     assert!(!gpu.runs(&effect));
 }
+
+#[test]
+fn a_blur_leaves_transparent_what_it_does_not_reach_as_the_cpu_does() {
+    let Some(gpu) = gpu() else { return };
+    // Two squares, one over the other, on a transparent grid: a running
+    // sum in f32 would leave its rounding where the blur does not reach,
+    // and an effect that reads straight colour would make any colour of it.
+    let (width, height) = (160u16, 120u16);
+    let mut pixels = Pixels::transparent(width, height);
+    for (i, p) in pixels.data_mut().iter_mut().enumerate() {
+        let (x, y) = (i % usize::from(width), i / usize::from(width));
+        if (10..70).contains(&x) && (10..70).contains(&y) {
+            *p = [0.9, 0.2, 0.1, 1.0];
+        }
+        if (50..120).contains(&x) && (40..110).contains(&y) {
+            *p = std::array::from_fn(|c| [0.08, 0.48, 0.72, 0.8][c] + p[c] * 0.2);
+        }
+    }
+    for blurriness in [6.0, 40.0] {
+        let effect = Effect::new(
+            "gaussian-blur",
+            &[("blurriness", ParamValue::Number(blurriness))],
+        )
+        .expect("a blur");
+        let mut cpu = pixels.clone();
+        effect.apply(&mut cpu, &space(Affine::IDENTITY));
+        let mut held = gpu.upload(&pixels).expect("uploaded");
+        gpu.effect(&mut held, &effect, &space(Affine::IDENTITY))
+            .expect("ran");
+        let on_gpu = gpu.download(&held).expect("downloaded");
+        let zeros = |p: &Pixels| p.data().iter().filter(|p| p[3] == 0.0).count();
+        assert_eq!(zeros(&on_gpu), zeros(&cpu), "blurriness {blurriness}");
+        for (c, g) in cpu.data().iter().zip(on_gpu.data()) {
+            if c[3] == 0.0 {
+                assert_eq!(g, &[0.0; 4], "blurriness {blurriness}");
+            }
+        }
+        check(
+            "gaussian-blur",
+            &format!("two squares, {blurriness}"),
+            &cpu,
+            &on_gpu,
+        );
+    }
+}
