@@ -34,6 +34,7 @@ use crate::effect::{Effect, Space};
 use crate::list::MatteMode;
 use crate::par;
 use crate::pixels::Pixels;
+use crate::projected::{self, Buffer, Landing};
 
 /// A frame-sized grid of premultiplied RGBA float pixels held in an
 /// accelerator's memory. What it holds is the accelerator's own type; the
@@ -150,6 +151,26 @@ impl<'a> Amount<'a> {
     }
 }
 
+/// A projected layer's buffer, as it was drawn, for
+/// [`Accelerator::project`] to lay.
+#[derive(Debug, Clone, Copy)]
+pub enum Texels<'a> {
+    /// As the rasteriser drew it: premultiplied RGBA at 8 bits a channel,
+    /// row by row, `width` by `height` px.
+    Bytes {
+        /// The bytes.
+        rgba: &'a [u8],
+        /// Its width in px.
+        width: u16,
+        /// Its height in px.
+        height: u16,
+    },
+    /// Float pixels on the CPU.
+    Floats(&'a Pixels),
+    /// Float pixels held in the accelerator.
+    Held(&'a Resident),
+}
+
 /// What an accelerator did over a render, for the caller to report.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Tally {
@@ -257,6 +278,27 @@ pub trait Accelerator: Send + Sync {
     /// When the work fails.
     fn transformed(&self, pixels: &Resident, transform: Affine) -> Result<Resident>;
 
+    /// A `width` by `height` grid of what a projected layer's `buffer`
+    /// lays on it ([D58]): each px of the grid seen through each of
+    /// `landings` onto the buffer, sampled by its footprint from the
+    /// buffer's halved copies, adding `share` of it. By default, on the
+    /// CPU, copied in.
+    ///
+    /// # Errors
+    /// When the work fails.
+    ///
+    /// [D58]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+    fn project(
+        &self,
+        buffer: Texels<'_>,
+        landings: &[Landing],
+        share: f32,
+        width: u16,
+        height: u16,
+    ) -> Result<Resident> {
+        project_on_cpu(self, buffer, landings, share, width, height)
+    }
+
     /// Whether it has a kernel for `effect` with its values. An effect
     /// without one runs on the CPU.
     fn runs(&self, effect: &Effect) -> bool;
@@ -279,6 +321,36 @@ impl fmt::Debug for dyn Accelerator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Accelerator")
     }
+}
+
+/// What [`Accelerator::project`] gives, worked out on the CPU and copied
+/// into `accel`: the reference, and what an accelerator does for a buffer
+/// it cannot hold.
+///
+/// # Errors
+/// When a copy fails.
+pub fn project_on_cpu(
+    accel: &(impl Accelerator + ?Sized),
+    buffer: Texels<'_>,
+    landings: &[Landing],
+    share: f32,
+    width: u16,
+    height: u16,
+) -> Result<Resident> {
+    let downloaded;
+    let buffer = match buffer {
+        Texels::Bytes {
+            rgba,
+            width,
+            height,
+        } => Buffer::Bytes(rgba, width, height),
+        Texels::Floats(pixels) => Buffer::Floats(pixels),
+        Texels::Held(held) => {
+            downloaded = accel.download(held)?;
+            Buffer::Floats(&downloaded)
+        }
+    };
+    accel.upload(&projected::lay(buffer, landings, share, width, height))
 }
 
 /// A layer's or a canvas's pixels while the painter works on them: on the

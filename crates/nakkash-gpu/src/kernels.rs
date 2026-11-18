@@ -53,6 +53,16 @@ pub(crate) const OPERATE: FamilySpec = FamilySpec {
     reads: 1,
     entries: &["operate", "light", "solid_composite"],
 };
+pub(crate) const HALVE: FamilySpec = FamilySpec {
+    source: include_str!("shaders/halve.wgsl"),
+    reads: 0,
+    entries: &["halve"],
+};
+pub(crate) const PROJECT: FamilySpec = FamilySpec {
+    source: include_str!("shaders/project.wgsl"),
+    reads: 3,
+    entries: &["project"],
+};
 pub(crate) const PACK: FamilySpec = FamilySpec {
     source: include_str!("shaders/pack.wgsl"),
     reads: 1,
@@ -90,6 +100,8 @@ pub(crate) struct Kernels {
     pub(crate) unpack: Family,
     pub(crate) pack: Family,
     pub(crate) operate: Family,
+    pub(crate) halve: Family,
+    pub(crate) project: Family,
     pub(crate) transform: Family,
     pub(crate) box_pass: Family,
 }
@@ -135,6 +147,8 @@ impl Kernels {
             unpack: Family::new(device, UNPACK.source, &UNPACK),
             pack: Family::new(device, PACK.source, &PACK),
             operate: Family::new(device, &with_operations(OPERATE.source), &OPERATE),
+            halve: Family::new(device, HALVE.source, &HALVE),
+            project: Family::new(device, PROJECT.source, &PROJECT),
             transform: Family::new(device, TRANSFORM.source, &TRANSFORM),
             box_pass: Family::new(device, BOX_PASS.source, &BOX_PASS),
         }

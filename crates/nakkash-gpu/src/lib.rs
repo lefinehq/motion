@@ -29,6 +29,7 @@ mod effects;
 mod grid;
 mod kernels;
 mod pool;
+mod project;
 mod record;
 mod tally;
 
@@ -37,8 +38,8 @@ use std::sync::{Arc, Mutex, mpsc};
 use nakkash_format::{Diagnostic, Kind, Result};
 use nakkash_raster::kurbo::Affine;
 use nakkash_raster::{
-    Accelerator, Amount, BlendMode, Effect, MatteMode, Move, Pixel, Pixels, Resident, Share, Space,
-    Tally,
+    Accelerator, Amount, BlendMode, Effect, Landing, MatteMode, Move, Pixel, Pixels, Resident,
+    Share, Space, Tally, Texels,
 };
 
 pub use device::{Adapter, Refusal};
@@ -57,7 +58,7 @@ pub struct Gpu {
     pub(crate) device: wgpu::Device,
     queue: wgpu::Queue,
     adapter: Adapter,
-    max_binding: u64,
+    pub(crate) max_binding: u64,
     pool: Arc<Pool>,
     pub(crate) kernels: Kernels,
     pub(crate) counts: Counts,
@@ -513,6 +514,20 @@ impl Accelerator for Gpu {
         self.finish(batch);
         self.counts.operation();
         Ok(out.into_resident())
+    }
+
+    fn project(
+        &self,
+        buffer: Texels<'_>,
+        landings: &[Landing],
+        share: f32,
+        width: u16,
+        height: u16,
+    ) -> Result<Resident> {
+        match self.projected(buffer, landings, share, width, height) {
+            Some(grid) => Ok(grid.into_resident()),
+            None => project::on_cpu(self, buffer, landings, share, width, height),
+        }
     }
 
     fn runs(&self, effect: &Effect) -> bool {

@@ -18,6 +18,7 @@ mod canvas;
 mod composite;
 mod effects;
 mod frames;
+mod planes;
 
 use nakkash_gpu::Gpu;
 use nakkash_raster::kurbo::{Affine, Rect};
@@ -40,6 +41,7 @@ const TOLERANCES: &[(&str, f32)] = &[
     ("solid-composite", 5e-5),
     ("drop-shadow", 1e-4),
     ("chain", 5e-5),
+    ("plane", 1e-4),
 ];
 
 pub(crate) fn tolerance(name: &str) -> f32 {

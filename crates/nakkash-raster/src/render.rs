@@ -12,7 +12,7 @@ use vello_cpu::{
     RenderSettings, Resources, TargetInit,
 };
 
-use crate::accel::{Accelerator, Amount, Share, Surface, held_by};
+use crate::accel::{Accelerator, Amount, Share, Surface, Texels, held_by};
 use crate::blend::BlendMode;
 use crate::effect::{Effect, EffectContext, Input, Move, Space};
 use crate::homography::Homography;
@@ -632,7 +632,7 @@ impl<'a> Painter<'a> {
                 let transform = maps[0]
                     .tangent(plan.seen)
                     .unwrap_or(parent * filter.transform);
-                (transform, Some(Surface::Cpu(region)), None)
+                (transform, Some(region), None)
             }
         };
         let mut changed = drawn.duplicate(self.accel)?;
@@ -862,7 +862,7 @@ impl<'a> Painter<'a> {
                 .map(Matted::share)
                 .into_iter()
                 .fold(Amount::constant(opacity), Amount::and);
-            return self.lay_on_canvas(&Surface::Cpu(laid), layer.blend, &amount);
+            return self.lay_on_canvas(&laid, layer.blend, &amount);
         }
         let mask = layer
             .matte
@@ -877,19 +877,20 @@ impl<'a> Painter<'a> {
             mask,
             None,
         );
-        let drawn = self.draw_pixels(Surface::Cpu(laid));
+        let drawn = self.draw_pixels(laid);
         self.ctx.pop_layer();
         drawn
     }
 
     /// What `draw` paints on a painter of `plan`'s buffer, laid onto this
-    /// painter's grid through each of `maps` and averaged.
+    /// painter's grid through each of `maps` and averaged: in the
+    /// accelerator when the float canvas's work is done there.
     fn laid(
         &self,
         plan: &Plan,
         maps: &[Homography],
         draw: impl FnOnce(&mut Painter<'a>) -> Result<()>,
-    ) -> Result<Pixels> {
+    ) -> Result<Surface> {
         let mut sub = Painter::new(
             plan.width,
             plan.height,
@@ -899,15 +900,36 @@ impl<'a> Painter<'a> {
         );
         draw(&mut sub)?;
         let (width, height) = (self.width, self.height);
-        Ok(match sub.finish()? {
-            Drawn::Bytes(pixmap) => {
-                projected::lay(Buffer::Bytes(&pixmap), plan, maps, width, height)
-            }
+        let landings = plan.landings(maps);
+        let share = 1.0 / maps.len() as f32;
+        let drawn = sub.finish()?;
+        if let (Some(accel), true) = (self.accel, self.floats()) {
+            let texels = match &drawn {
+                Drawn::Bytes(pixmap) => Texels::Bytes {
+                    rgba: bytes_of(pixmap),
+                    width: pixmap.width(),
+                    height: pixmap.height(),
+                },
+                Drawn::Floats(Surface::Held(held)) => Texels::Held(held),
+                Drawn::Floats(Surface::Cpu(pixels)) => Texels::Floats(pixels),
+            };
+            return accel
+                .project(texels, &landings, share, width, height)
+                .map(Surface::Held);
+        }
+        Ok(Surface::Cpu(match drawn {
+            Drawn::Bytes(pixmap) => projected::lay(
+                Buffer::Bytes(bytes_of(&pixmap), pixmap.width(), pixmap.height()),
+                &landings,
+                share,
+                width,
+                height,
+            ),
             Drawn::Floats(pixels) => {
                 let pixels = pixels.into_pixels(self.accel)?;
-                projected::lay(Buffer::Floats(&pixels), plan, maps, width, height)
+                projected::lay(Buffer::Floats(&pixels), &landings, share, width, height)
             }
-        })
+        }))
     }
 
     /// Draws a layer's content inside the buffer it was given, in
