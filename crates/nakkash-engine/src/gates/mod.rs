@@ -22,7 +22,9 @@ const SHRINK: f64 = 0.25;
 /// Both gates over the whole scene: `flash`, then `contrast`.
 pub(crate) fn gates(session: &Session) -> Result<Report> {
     let mut report = flash::check(session)?;
-    report.join(contrast::check(session)?);
+    // `flash` draws every frame whole, unless the scene has one frame.
+    let drawn_whole = session.frames()?.len() >= 2;
+    report.join(contrast::check(session, drawn_whole)?);
     Ok(report)
 }
 

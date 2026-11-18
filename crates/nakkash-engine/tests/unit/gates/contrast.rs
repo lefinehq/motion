@@ -43,6 +43,7 @@ fn titled(fill: &str, bg: &str, size: u32) -> String {
                 {{"id":"title","text":"Launch Week","font":"Inter Variable {size} 700","fill":"{fill}","at":"center center"}}]}}"##
         ))
         .expect("scene"),
+        false,
     )
     .expect("contrast");
     report.to_string()
@@ -90,6 +91,7 @@ fn titled_in_comp(fill: &str, bg: &str) -> String {
             "layers":[{{"id":"a","comp":"a"}}]}}"##
         ))
         .expect("scene"),
+        false,
     )
     .expect("contrast");
     report.to_string()
@@ -108,4 +110,19 @@ fn text_on_a_composition_background_of_its_own_tone_is_an_error() {
         titled_in_comp("#111111", "#0b0b0b"),
         "E contrast a/h 0-45f 1:1 <3\nOK 0"
     );
+}
+
+/// Texts: one plain, one too faint to read, one clipped to a sliver by a
+/// matte, one scaled to nothing, so some glyphs cover under a px.
+const SOME_UNSEEN: &str = r##"{"nakkash":1,"size":"640x360","fps":4,"dur":"2s","bg":"#202020","layers":[
+    {"id":"plain","text":"Plain","font":"Inter Variable 40","fill":"#FFFFFF","at":"center 80"},
+    {"id":"cut","rect":"1x1","at":"10 10"},
+    {"id":"thin","text":"Clipped","font":"Inter Variable 40","fill":"#303030","at":"10 10","matte":"cut"},
+    {"id":"tiny","text":"Gone","font":"Inter Variable 40","fill":"#222222","at":"center 250","scale":0.001}]}"##;
+
+#[test]
+fn passing_over_glyphs_under_a_px_changes_nothing() {
+    let session = Session::from_str(SOME_UNSEEN).expect("scene");
+    let drawn = check(&session, false).expect("contrast").to_string();
+    assert_eq!(check(&session, true).expect("contrast").to_string(), drawn);
 }

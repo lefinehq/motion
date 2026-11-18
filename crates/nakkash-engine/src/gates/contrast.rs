@@ -46,21 +46,70 @@ struct Seen {
 /// The `contrast` report of the scene: one error line per run of failing
 /// samples of a text layer, and a pass for each text layer measured that
 /// never fails.
-pub(super) fn check(session: &Session) -> Result<Report> {
+///
+/// Each readable text at each sample is measured on its own thread. When
+/// `drawn_whole`, every frame of the scene has been drawn whole without
+/// failing (by `flash`), so drawing a frame with one layer left out cannot
+/// fail either; then a text whose glyphs cover less than a px is passed
+/// over without drawing what is behind it, which it would not be measured
+/// against.
+pub(super) fn check(session: &Session, drawn_whole: bool) -> Result<Report> {
     let graph = session.graph()?;
     let frames = session.frames()?.end;
     let stride = ((graph.root.fps / SAMPLES_A_SECOND).round() as u32).max(1);
     let bare = bare(graph);
-    let seen = Mutex::new(Vec::new());
-    session.on_threads(0..frames.div_ceil(stride), |sample| {
-        let frame = sample * stride;
-        let found = measure(session, graph, &bare, frame).map_err(|d| (frame, d))?;
-        seen.lock()
+    let samples: Vec<(u32, FrameState)> = (0..frames.div_ceil(stride))
+        .map(|sample| {
+            let frame = sample * stride;
+            session.frame(f64::from(frame)).map(|state| (frame, state))
+        })
+        .collect::<Result<_>>()?;
+    // Every readable text of every sample, in frame order, then paint order.
+    let texts: Vec<Text> = samples
+        .iter()
+        .enumerate()
+        .flat_map(|(at, (frame, state))| {
+            walk(graph, state).filter_map(move |visit| {
+                let size = readable(&visit)?;
+                Some(Text {
+                    sample: at,
+                    frame: *frame,
+                    index: visit.index,
+                    ids: visit.ids.iter().map(|id| (*id).to_owned()).collect(),
+                    size,
+                    scale: visit.transform.determinant().abs().sqrt(),
+                })
+            })
+        })
+        .collect();
+    let measured = Mutex::new(Vec::with_capacity(texts.len()));
+    let count = u32::try_from(texts.len()).unwrap_or(u32::MAX);
+    session.on_threads(0..count, |item| {
+        let text = &texts[item as usize];
+        let state = &samples[text.sample].1;
+        let found = measure(session, graph, &bare, state, text, drawn_whole);
+        measured
+            .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .extend(found);
+            .push((item, found));
         Ok(())
     })?;
-    let mut seen = seen.into_inner().unwrap_or_else(PoisonError::into_inner);
+    let mut measured = measured
+        .into_inner()
+        .unwrap_or_else(PoisonError::into_inner);
+    measured.sort_by_key(|(item, _)| *item);
+    let mut seen = Vec::new();
+    for (item, found) in measured {
+        // The first failure in frame order, then paint order, as one frame
+        // after another would meet it.
+        match found {
+            Ok(found) => seen.extend(found),
+            Err(mut d) => {
+                d.message = format!("frame {}: {}", texts[item as usize].frame, d.message);
+                return Err(d);
+            }
+        }
+    }
     seen.sort_by_key(|s| (s.index, s.frame));
 
     let paths = graph.paths();
@@ -97,6 +146,22 @@ pub(super) fn check(session: &Session) -> Result<Report> {
     Ok(report)
 }
 
+/// A text layer readable at one sample, to be measured there.
+struct Text {
+    /// Which sample it is read at.
+    sample: usize,
+    /// The frame of that sample.
+    frame: u32,
+    /// Its place in the graph's paths.
+    index: usize,
+    /// The ids leading to it.
+    ids: Vec<String>,
+    /// The smallest size it is set in, in its own px.
+    size: f64,
+    /// How much its transform scales it, on the canvas.
+    scale: f64,
+}
+
 /// `graph` with no composition drawing a background, for the glyphs alone:
 /// a `comp` layer draws its composition's `bg` across its canvas, which
 /// would cover the glyphs' surroundings and read as glyphs.
@@ -108,37 +173,39 @@ fn bare(graph: &SceneGraph) -> SceneGraph {
     bare
 }
 
-/// Every readable text layer of `frame`, measured: `bare` is `graph` as
-/// [`bare`] gives it.
+/// `text` measured at its sample, `state`: `bare` is the graph as [`bare`]
+/// gives it. `None` when its glyphs cover less than a px. With
+/// `drawn_whole`, as [`check`] says, what is behind such glyphs is not
+/// drawn; else it is drawn first, so a failure to draw it is the one met.
 fn measure(
     session: &Session,
     graph: &SceneGraph,
     bare: &SceneGraph,
-    frame: u32,
-) -> Result<Vec<Seen>> {
-    let state = session.frame(f64::from(frame))?;
-    let height = graph.root.height;
-    let mut found = Vec::new();
-    for visit in walk(graph, &state) {
-        let Some(size) = readable(&visit) else {
-            continue;
-        };
-        let behind = shrunk(session, session.list_of(&without(&state, &visit.ids))?)?;
-        let mut list = session.list_in(bare, &alone(&state, &visit.ids))?;
-        list.background = None;
-        let glyphs = shrunk(session, list)?;
-        let Some(ratio) = ratio(&glyphs, &behind) else {
-            continue;
-        };
-        let large = size * visit.transform.determinant().abs().sqrt() * 1080.0 / height;
-        found.push(Seen {
-            index: visit.index,
-            frame,
-            ratio,
-            limit: if large >= LARGE_PX { LARGE } else { NORMAL },
+    state: &FrameState,
+    text: &Text,
+    drawn_whole: bool,
+) -> Result<Option<Seen>> {
+    let ids: Vec<&str> = text.ids.iter().map(String::as_str).collect();
+    let glyphs = session
+        .list_in(bare, &alone(state, &ids))
+        .and_then(|mut list| {
+            list.background = None;
+            shrunk(session, list)
         });
+    if drawn_whole && glyphs.as_ref().is_ok_and(|g| coverage(g) < 1.0) {
+        return Ok(None);
     }
-    Ok(found)
+    let behind = shrunk(session, session.list_of(&without(state, &ids))?)?;
+    let Some(ratio) = ratio(&glyphs?, &behind) else {
+        return Ok(None);
+    };
+    let large = text.size * text.scale * 1080.0 / graph.root.height;
+    Ok(Some(Seen {
+        index: text.index,
+        frame: text.frame,
+        ratio,
+        limit: if large >= LARGE_PX { LARGE } else { NORMAL },
+    }))
 }
 
 /// The smallest size a text layer is set in, in its own px, when it is
@@ -170,7 +237,7 @@ fn ratio(glyphs: &Image, behind: &Image) -> Option<f64> {
             (ratio, f64::from(glyph[3]) / 255.0)
         })
         .collect();
-    let total: f64 = seen.iter().map(|&(_, cover)| cover).sum();
+    let total = coverage(glyphs);
     if total < 1.0 {
         return None;
     }
@@ -180,6 +247,17 @@ fn ratio(glyphs: &Image, behind: &Image) -> Option<f64> {
         under += cover;
         (under >= (1.0 - MOST_OF) * total).then_some(ratio)
     })
+}
+
+/// How many px the glyphs in `glyphs` cover, adding up their coverage in
+/// px order.
+fn coverage(glyphs: &Image) -> f64 {
+    glyphs
+        .pixels()
+        .chunks_exact(4)
+        .filter(|glyph| glyph[3] > 0)
+        .map(|glyph| f64::from(glyph[3]) / 255.0)
+        .sum()
 }
 
 /// `state` with the node at `ids` hidden.
