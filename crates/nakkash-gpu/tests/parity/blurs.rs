@@ -263,3 +263,145 @@ fn vector_blurs_match_by_a_map_through_a_scaled_layer() {
         );
     }
 }
+
+/// A lens blur of `radius` by `iris`, with the rest of its parameters.
+#[allow(clippy::too_many_arguments)]
+fn lens(
+    radius: f32,
+    roundness: f32,
+    aspect: f32,
+    rotation: f32,
+    iris: u8,
+    repeat: bool,
+    level: u8,
+    stretch: bool,
+    inverted: bool,
+    focal: f32,
+) -> Effect {
+    Effect::new(
+        "lens-blur",
+        &[
+            ("radius", ParamValue::Number(radius)),
+            ("roundness", ParamValue::Number(roundness)),
+            ("aspect", ParamValue::Number(aspect)),
+            ("rotation", ParamValue::Number(rotation)),
+            ("focal-distance", ParamValue::Number(focal)),
+            ("iris", ParamValue::Choice(iris)),
+            ("map-level", ParamValue::Choice(level)),
+            ("placement", ParamValue::Choice(u8::from(stretch))),
+            ("inverted", ParamValue::Choice(u8::from(inverted))),
+            ("edges", ParamValue::Choice(u8::from(repeat))),
+        ],
+    )
+    .expect("a lens blur")
+}
+
+#[test]
+fn lens_blurs_match_by_every_iris_and_edge() {
+    let pixels = pattern(181, 117, 70);
+    let one = space(Affine::IDENTITY);
+    for iris in 0..8 {
+        for repeat in [false, true] {
+            for (radius, roundness, aspect, rotation) in [
+                (0.3, 0.0, 1.0, 0.0),
+                (4.6, 0.4, 1.0, 17.0),
+                (13.0, 1.0, 2.5, -40.0),
+            ] {
+                effect_matches(
+                    "lens-blur",
+                    &format!(
+                        "iris {iris} repeat {repeat} radius {radius} {roundness} {aspect} {rotation}"
+                    ),
+                    &lens(
+                        radius, roundness, aspect, rotation, iris, repeat, 0, false, false, 0.0,
+                    ),
+                    &pixels,
+                    &one,
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn lens_blurs_match_at_their_extremes() {
+    let pixels = pattern(97, 63, 71);
+    let one = space(Affine::IDENTITY);
+    for (radius, aspect) in [
+        (0.04, 1.0),
+        (0.05, 1.0),
+        (300.0, 1.0),
+        (4_000.0, 1.0),
+        (20.0, 0.01),
+        (2.0, 100.0),
+    ] {
+        for repeat in [false, true] {
+            effect_matches(
+                "lens-blur",
+                &format!("radius {radius} aspect {aspect} repeat {repeat}"),
+                &lens(radius, 0.3, aspect, 10.0, 2, repeat, 0, false, false, 0.0),
+                &pixels,
+                &one,
+            );
+        }
+    }
+}
+
+#[test]
+fn lens_blurs_match_on_a_large_grid() {
+    // Running sums of 1,920 px reach a few hundred, where a float holds
+    // them to 3e-5: they must round as the CPU's do.
+    let pixels = pattern(1_920, 1_080, 72);
+    let one = space(Affine::IDENTITY);
+    for radius in [0.7, 6.0] {
+        effect_matches(
+            "lens-blur",
+            &format!("1080p radius {radius}"),
+            &lens(radius, 0.5, 1.0, 0.0, 0, false, 0, false, false, 0.0),
+            &pixels,
+            &one,
+        );
+    }
+}
+
+#[test]
+fn lens_blurs_match_by_a_map() {
+    let pixels = pattern(131, 89, 73);
+    let map = pattern(131, 89, 74);
+    let mut scaled = space(Affine::translate((6.5, -3.0)) * Affine::scale(1.3));
+    scaled.bounds = Some(nakkash_raster::kurbo::Rect::new(10.0, 5.0, 90.0, 60.0));
+    scaled.input = Some(nakkash_raster::Input {
+        pixels: map.clone(),
+        bounds: Some(nakkash_raster::kurbo::Rect::new(0.0, 0.0, 120.0, 70.0)),
+    });
+    let mut frame = space(Affine::IDENTITY);
+    frame.bounds = None;
+    frame.input = Some(nakkash_raster::Input {
+        pixels: map,
+        bounds: None,
+    });
+    for (name, space) in [("scaled", &scaled), ("frame", &frame)] {
+        for level in 0..5 {
+            for (stretch, inverted, focal) in [(false, false, 0.0), (true, true, 0.4)] {
+                effect_matches(
+                    "lens-blur",
+                    &format!("{name} level {level} stretch {stretch} inverted {inverted}"),
+                    &lens(
+                        9.0,
+                        0.2,
+                        1.4,
+                        25.0,
+                        0,
+                        level == 2,
+                        level,
+                        stretch,
+                        inverted,
+                        focal,
+                    ),
+                    &pixels,
+                    space,
+                );
+            }
+        }
+    }
+}

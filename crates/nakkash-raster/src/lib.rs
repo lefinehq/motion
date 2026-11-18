@@ -57,6 +57,7 @@ pub use effect::{
 };
 pub use homography::Homography;
 pub use image::Image;
+pub use lens::{IRIS_ROWS, Iris, LensBlur, LensMap, Level as LensLevel, Row as IrisRow};
 pub use list::{
     Blending, Clip, Frame, Glyph, GlyphDraw, ImageDraw, Layer, LayerMask, MaskMode, Matte,
     MatteMode, Node, PathDraw, Projection, Shared,

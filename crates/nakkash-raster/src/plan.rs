@@ -16,6 +16,7 @@ use vello_cpu::kurbo::Vec2;
 use crate::blur::{self, Edges, gaussian_radius};
 use crate::composite::{self, Operation, SolidComposite};
 use crate::effect::{Effect, ParamValue, Space};
+use crate::lens::{self, LensBlur};
 use crate::radial::{self, RadialBlur};
 use crate::vector::{self, VectorBlur};
 
@@ -36,6 +37,8 @@ pub enum Plan {
     Radial(RadialBlur),
     /// The layer smeared along the slope of a map's level.
     Vector(VectorBlur),
+    /// The layer spread over the shape of a lens's iris.
+    Lens(LensBlur),
 }
 
 /// Passes of one extended box along one way of the grid: each averages
@@ -178,6 +181,10 @@ pub const PLANS: &[PlanSpec] = &[
     PlanSpec {
         name: "vector-blur",
         plan: |values, space| Plan::Vector(vector::vector_blur_plan(values, space)),
+    },
+    PlanSpec {
+        name: "lens-blur",
+        plan: |values, space| Plan::Lens(lens::lens_blur_plan(values, space)),
     },
 ];
 

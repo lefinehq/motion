@@ -58,6 +58,11 @@ const TOLERANCES: &[(&str, f32)] = &[
     // streak takes, a whole number by its length, changes by one. Every
     // other px stays within 1e-5.
     ("vector-blur-softened", 5e-3),
+    // The lens blur's running sums round as the CPU's do, so its irises
+    // differ by a float's rounding of their few small parts; a map's
+    // level, worked out in 32-bit floats here and 64 there, moves a radius
+    // by its rounding.
+    ("lens-blur", 2e-5),
 ];
 
 pub(crate) fn tolerance(name: &str) -> f32 {

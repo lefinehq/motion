@@ -95,6 +95,12 @@ pub(crate) const EXACT_BOX: FamilySpec = FamilySpec {
     entries: &["exact_box"],
 };
 
+pub(crate) const LENS: FamilySpec = FamilySpec {
+    source: include_str!("shaders/lens.wgsl"),
+    reads: 5,
+    entries: &["row_chunks", "row_scan", "row_sums", "spread"],
+};
+
 /// A WGSL source, how many buffers its kernels read, and its entry points.
 pub(crate) struct FamilySpec {
     pub(crate) source: &'static str,
@@ -121,6 +127,7 @@ pub(crate) struct Kernels {
     pub(crate) radial: Family,
     pub(crate) vector: Family,
     pub(crate) exact_box: Family,
+    pub(crate) lens: Family,
 }
 
 /// The constants the per-pixel kernels name blend modes by, one per row of
@@ -169,6 +176,7 @@ impl Kernels {
             radial: Family::new(device, RADIAL.source, &RADIAL),
             vector: Family::new(device, VECTOR.source, &VECTOR),
             exact_box: Family::new(device, EXACT_BOX.source, &EXACT_BOX),
+            lens: Family::new(device, LENS.source, &LENS),
         }
     }
 }
