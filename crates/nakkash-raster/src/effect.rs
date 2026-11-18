@@ -24,7 +24,7 @@ use crate::list::Node;
 use crate::pixels::Pixels;
 use crate::style::Color;
 use crate::total::Total;
-use crate::{blur, colour, distort, generate, particles};
+use crate::{blur, colour, composite, distort, generate, particles};
 
 /// The type of one effect parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -307,6 +307,45 @@ pub const EFFECTS: &[EffectSpec] = &[
         apply: Apply::Pixels {
             over: Some(fill),
             pixels: fill_pixels,
+        },
+    },
+    EffectSpec {
+        name: "solid-composite",
+        params: &[
+            ParamSpec {
+                name: "source-opacity",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how opaque the layer is over the solid, 0 to 1",
+            },
+            ParamSpec {
+                name: "color",
+                default: ParamValue::Color(Color::rgba(1.0, 1.0, 1.0, 1.0)),
+                range: None,
+                choices: &[],
+                doc: "the solid's colour",
+            },
+            ParamSpec {
+                name: "opacity",
+                default: ParamValue::Number(1.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how opaque the solid is, 0 to 1",
+            },
+            ParamSpec {
+                name: "mode",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: composite::SOLID_COMPOSITE_MODES,
+                doc: "how the layer is laid over the solid",
+            },
+        ],
+        doc: "lays the layer over a solid that fills its box",
+        reach: in_box,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: composite::solid_composite,
         },
     },
     EffectSpec {

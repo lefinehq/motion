@@ -700,6 +700,47 @@ mod effects {
         assert_eq!(what, ["a `operation` the scene does not have"]);
     }
 
+    /// The solid composite takes its opacities as shares and its blending
+    /// mode by the project's menu, separators counted.
+    #[test]
+    fn a_solid_composite_takes_its_opacities_and_its_mode() {
+        let black = Value::Color(crate::model::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
+        let import = imported(vec![
+            group(
+                "ADBE Solid Composite",
+                vec![
+                    Child::Property(number("ADBE Solid Composite-0001", 50.0)),
+                    Child::Property(property("ADBE Solid Composite-0002", Stream::Static(black))),
+                    Child::Property(number("ADBE Solid Composite-0003", 25.0)),
+                    Child::Property(number("ADBE Solid Composite-0004", 5.0)),
+                ],
+            ),
+            group(
+                "ADBE Solid Composite",
+                vec![Child::Property(number("ADBE Solid Composite-0004", 21.0))],
+            ),
+            group(
+                "ADBE Solid Composite",
+                vec![Child::Property(number("ADBE Solid Composite-0004", 2.0))],
+            ),
+        ])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"];
+        assert_eq!(
+            fx[0],
+            json!({"solid-composite":[0,0,0,1],"source-opacity":0.5,"opacity":0.25,"mode":"screen"})
+        );
+        assert_eq!(fx[1]["mode"], "luminosity", "{fx}");
+        // Code 2 is a separator, which no project can hold.
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert_eq!(what, ["a `mode` the scene does not have"]);
+    }
+
     /// A mirror's centre is a point of the layer's effect space; one the
     /// project leaves out is its definition's, the right edge's middle.
     #[test]

@@ -226,3 +226,102 @@ fn a_blend_lays_as_the_float_canvas_lays_a_layer() {
         );
     }
 }
+
+/// A 4 by 1 grid: clear, half-covered red, opaque grey, and clear again
+/// past the layer's box, which covers the first three pixels.
+fn layer() -> (Pixels, Space) {
+    let mut pixels = Pixels::transparent(4, 1);
+    pixels.data_mut()[1] = [0.5, 0.0, 0.0, 0.5];
+    pixels.data_mut()[2] = GREY;
+    let space = Space {
+        transform: vello_cpu::kurbo::Affine::IDENTITY,
+        bounds: Some(vello_cpu::kurbo::Rect::new(0.0, 0.0, 3.0, 1.0)),
+        input: None,
+        time: 0.0,
+        sound: None,
+        outline: None,
+        totals: Vec::new(),
+    };
+    (pixels, space)
+}
+
+fn solid(source: f32, color: [f32; 3], opacity: f32, mode: &str) -> Pixels {
+    let (mut pixels, space) = layer();
+    let at = SOLID_COMPOSITE_MODES
+        .iter()
+        .position(|m| *m == mode)
+        .unwrap();
+    let values = [
+        ParamValue::Number(source),
+        ParamValue::Color(crate::style::Color::rgba(color[0], color[1], color[2], 0.0)),
+        ParamValue::Number(opacity),
+        ParamValue::Choice(u8::try_from(at).unwrap()),
+    ];
+    solid_composite(&mut pixels, &values, &space);
+    pixels
+}
+
+#[test]
+fn every_solid_composite_mode_is_an_operation() {
+    assert_eq!(SOLID_COMPOSITE_MODES[0], "normal");
+    for name in SOLID_COMPOSITE_MODES {
+        assert!(Operation::named(name).is_ok(), "{name}");
+    }
+}
+
+#[test]
+fn a_solid_composite_lays_the_layer_over_a_solid_in_its_box() {
+    // Over black, the clear pixel turns black and the half-covered red
+    // opaque; the colour's alpha of 0 changes nothing. Past the box,
+    // nothing is drawn.
+    let black = solid(1.0, [0.0; 3], 1.0, "normal");
+    close(black.get(0, 0), [0.0, 0.0, 0.0, 1.0]);
+    close(black.get(1, 0), [0.5, 0.0, 0.0, 1.0]);
+    close(black.get(2, 0), GREY);
+    close(black.get(3, 0), CLEAR);
+    // The layer at half its opacity over a half-opaque white solid.
+    let faded = solid(0.5, [1.0; 3], 0.5, "normal");
+    close(faded.get(0, 0), [0.5, 0.5, 0.5, 0.5]);
+    close(faded.get(2, 0), [0.5, 0.5, 0.5, 0.75]);
+    // With no solid, the layer at its source opacity alone.
+    let alone = solid(0.25, [1.0; 3], 0.0, "normal");
+    close(alone.get(2, 0), GREY.map(|c| c * 0.25));
+    // Screened over white, every pixel in the box turns white.
+    let screened = solid(1.0, [1.0; 3], 1.0, "screen");
+    close(screened.get(2, 0), [1.0; 4]);
+    close(screened.get(3, 0), CLEAR);
+}
+
+#[test]
+fn the_solid_covers_the_share_of_a_pixel_its_box_does() {
+    let mut pixels = Pixels::transparent(4, 1);
+    let space = Space {
+        transform: vello_cpu::kurbo::Affine::IDENTITY,
+        bounds: Some(vello_cpu::kurbo::Rect::new(0.25, 0.0, 2.5, 1.0)),
+        input: None,
+        time: 0.0,
+        sound: None,
+        outline: None,
+        totals: Vec::new(),
+    };
+    let values = [
+        ParamValue::Number(1.0),
+        ParamValue::Color(crate::style::Color::rgba(1.0, 1.0, 1.0, 1.0)),
+        ParamValue::Number(1.0),
+        ParamValue::Choice(0),
+    ];
+    solid_composite(&mut pixels, &values, &space);
+    let alpha: Vec<f32> = pixels.data().iter().map(|p| p[3]).collect();
+    assert_eq!(alpha, [0.75, 1.0, 0.5, 0.0]);
+    // Seen through a transform that doubles it, the box covers twice as
+    // many pixels.
+    let doubled = Space {
+        transform: vello_cpu::kurbo::Affine::scale(2.0),
+        bounds: Some(vello_cpu::kurbo::Rect::new(0.0, 0.0, 1.25, 1.0)),
+        ..space
+    };
+    let mut pixels = Pixels::transparent(4, 2);
+    solid_composite(&mut pixels, &values, &doubled);
+    let alpha: Vec<f32> = pixels.data()[..4].iter().map(|p| p[3]).collect();
+    assert_eq!(alpha, [1.0, 1.0, 0.5, 0.0]);
+}

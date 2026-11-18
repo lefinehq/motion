@@ -334,6 +334,20 @@ Other things we take without evidence:
 - **None (code 1)** is reported: whether a glow combined by no operation draws its layer, its light, or both is not shown by any sample.
 - **The original on top** with an operation other than add and screen, which give the same either way round: no sample sets it.
 
+## Solid composites
+
+`ADBE Solid Composite` becomes `solid-composite`. Its parameters by match name: `-0001` Source Opacity and `-0003` Opacity, sliders from 0 to 100 (default 100) that the scene takes as shares; `-0002` Color (default white); `-0004` Blending Mode. The beliefs were measured once, by hand, against the corpus's reference frames; the sweep does not check them.
+
+| Belief | Evidence | Held, 2026-11-18 |
+|---|---|---|
+| S1. `Blending Mode` is a menu whose codes count from 1 in the order the effect's definition stores it, each separator (`(-`) taking a code: 1 normal (the default), 3 add, 4 multiply, 5 screen, 6 overlay, 7 soft light, 8 hard light, 10 colour dodge, 11 colour burn, 13 darken, 14 lighten, 15 difference, 16 exclusion, 18 hue, 19 saturation, 20 colour, 21 luminosity. | The 4 local projects that define the effect store the same 21 entries. m568 holds 5, which as screen over its white solid draws its title white, as its reference does. | 4 definitions, 1 mode set |
+| S2. The effect lays the layer, at the source opacity, over a solid of the colour at the opacity by the blending mode, and the solid fills the layer's box: where the layer is clear the solid shows. | m568's particle composition, matted by its title, is clear where the title is until the effect fills it: its reference shows 53,873 bright px in the title at 3.5 s, the scene drew 4 before and draws 38,904 now, 13,802 of them where the reference's are; the title's font is substituted, so its letters do not land where the reference's do. m830 and m840 set the solid's opacity to 0 and fade the layer by its source opacity: m830 errs 0.0155 → 0.0146 over all frames, m840 holds 0.0043 (2.92 % → 2.89 % failing). | 4 samples, 9 effects |
+
+Other things we take without evidence:
+- **The modes no sample uses** blend as compositing inside an effect describes them ([scene format](scene-format.md#shapes-masks-effects-and-compositions)).
+- **The colour's alpha** changes nothing ([C1](#colours)); the opacity is the solid's.
+- **m591** puts a black solid composite on the adjustment layers of six transitions whose photo placeholders the reference fills with photos the project does not have. With nothing in the placeholders, the black now covers what showed through them: 0.1071 → 0.1662 over all frames, on a sample excluded from the score for those photos.
+
 ## Effects that draw in place of their layer
 
 Some generators draw something sparse of their own, particles, stars, a beam, from their layer and keep none of its pixels. While the scene cannot draw one, the import draws its layer as nothing, rather than the solid the effect covers: the `Policy::InPlace` effects of the import's policy table, reported as unsupported with the layer. Generators that fill their layer (gradients, noise, cells) keep their solid as the nearer stand-in, and effects that draw over their layer's pixels (a lens flare) keep them. The beliefs were measured once, by hand, against the reference frames; the sweep does not check them.
