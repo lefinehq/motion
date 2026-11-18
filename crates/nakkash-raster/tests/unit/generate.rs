@@ -186,6 +186,32 @@ fn fractal_noise_is_grey_varied_and_moved_by_evolution_and_seed() {
     assert_ne!(render(&noise_values(0.0, 7.0)), base);
 }
 
+/// Inverting comes before the brightness, which then moves the inverted
+/// level: with brightness `b`, a level `v` reads `v + b` plain and
+/// `1 - v + b` inverted, so the two add up to `1 + 2b` wherever neither is
+/// clipped (inverting after would give 1).
+#[test]
+fn inverted_noise_is_turned_over_before_its_contrast_and_brightness() {
+    let levels = |invert: u8| {
+        let mut values = noise_values(0.0, 0.0);
+        values[1] = Number(-0.1);
+        values[18] = Choice(invert);
+        let mut pixels = solid(64, 64);
+        fractal_noise(&mut pixels, &values, &ONE);
+        pixels.data().iter().map(|p| p[0]).collect::<Vec<f32>>()
+    };
+    let (plain, inverted) = (levels(0), levels(1));
+    let inside = |v: f32| v > 0.001 && v < 0.999;
+    let mut checked = 0;
+    for (p, i) in plain.iter().zip(&inverted) {
+        if inside(*p) && inside(*i) {
+            assert!((p + i - 0.8).abs() < 1e-4, "{p} + {i}");
+            checked += 1;
+        }
+    }
+    assert!(checked > 1000, "{checked}");
+}
+
 /// A white beam along the middle row of a 20 by 5 layer, from x 0 to 20,
 /// `length` and `time` given, 3 px thick, its edges hard.
 fn beam_at(length: f32, time: f32, composite: u8) -> Pixels {

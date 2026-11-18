@@ -188,8 +188,9 @@ pub const NOISE_CELL: f32 = 100.0;
 /// `fractal-noise`: grey value noise in `complexity` octaves, each
 /// `sub-scaling` the size of the one before, turned by `sub-rotation`,
 /// moved by `sub-offset` and weighed by `sub-influence`; `evolution` moves
-/// through a third dimension, one turn a cell. Contrast and brightness
-/// apply around mid grey, then `overflow` brings the level into 0 to 1.
+/// through a third dimension, one turn a cell. `invert` turns the level
+/// over first; contrast and brightness then apply around mid grey, and
+/// `overflow` brings the level into 0 to 1.
 pub(crate) fn fractal_noise(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
     let noise = Noise::from_values(values);
     let (opacity, replace) = (number(values, 14), choice(values, 19) == 1);
@@ -283,6 +284,9 @@ impl Noise {
         } else if self.fractal == 3 {
             v = v.sqrt();
         }
+        // Inverted before the contrast and brightness, which then shape the
+        // inverted level: a dark, contrasted field keeps its bright lines.
+        let v = if self.invert { 1.0 - v } else { v };
         let v = (v - 0.5) * self.contrast + 0.5 + self.brightness;
         let v = match self.overflow {
             1 => 1.0 / (1.0 + (-4.0 * (v - 0.5)).exp()),
@@ -292,7 +296,7 @@ impl Noise {
             }
             _ => v.clamp(0.0, 1.0),
         };
-        if self.invert { 1.0 - v } else { v }
+        v
     }
 }
 
