@@ -60,7 +60,7 @@ pub struct MaskStep {
 }
 
 /// A mask whose outline the rasteriser drew, for an accelerator to
-/// combine ([`Accelerator::masks`](crate::Accelerator::masks)).
+/// combine ([`Accelerator::mask`](crate::Accelerator::mask)).
 #[derive(Debug, Clone, Copy)]
 pub struct MaskCoverage<'a> {
     /// The outline filled in white, as the rasteriser drew it on a canvas
