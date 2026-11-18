@@ -255,6 +255,19 @@ impl Report {
         before - self.violations.len()
     }
 
+    /// Whether this report, an earlier version's, already has `v`: one by
+    /// the same rule on the same layer (and the same other layer, for a
+    /// rule that measures two) measured as bad or worse, whatever its
+    /// frames. What [`Report::since`] leaves out.
+    pub fn knows(&self, v: &Violation) -> bool {
+        self.violations.iter().any(|b| {
+            b.code == v.code
+                && b.address == v.address
+                && b.with == v.with
+                && v.measure.no_worse_than(b.measure)
+        })
+    }
+
     /// Whether any violation is an error (warnings do not count).
     pub fn has_errors(&self) -> bool {
         self.violations

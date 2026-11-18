@@ -627,6 +627,20 @@ impl Session {
         stage("gates", || crate::gates::gates(self))
     }
 
+    /// The whole report `nakkash check` prints: the scene's rules, then its
+    /// pixel gates ([`Session::check`], [`Session::gates`]). What a variant
+    /// is measured by against its master ([D78]).
+    ///
+    /// [D78]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d78-generated-variants-move-along-measured-axes-and-pass-when-they-add-no-error
+    ///
+    /// # Errors
+    /// As [`Session::check`] and [`Session::gates`].
+    pub fn full_check(&self) -> Result<Report> {
+        let mut report = self.check()?;
+        report.join(self.gates()?);
+        Ok(report)
+    }
+
     /// Where the layers in `ids` (all when empty) are at `time`, such as
     /// `1.5s` or `45f` (steps `time` and `at`).
     ///
