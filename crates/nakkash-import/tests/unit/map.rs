@@ -946,6 +946,33 @@ mod effects {
         );
     }
 
+    /// A lens blur takes its radius in px, its iris and its edges; a gain
+    /// on its highlights is reported.
+    #[test]
+    fn a_lens_blur_takes_its_iris_and_reports_a_gain() {
+        let import = imported(vec![group(
+            "ADBE Camera Lens Blur",
+            vec![
+                Child::Property(number("ADBE Camera Lens Blur-0001", 20.0)),
+                Child::Property(number("ADBE Camera Lens Blur-0003", 3.0)),
+                Child::Property(number("ADBE Camera Lens Blur-0004", 50.0)),
+                Child::Property(number("ADBE Camera Lens Blur-0005", 1.06)),
+                Child::Property(number("ADBE Camera Lens Blur-0017", 100.0)),
+                Child::Property(number("ADBE Camera Lens Blur-0018", 0.5)),
+                Child::Property(number("ADBE Camera Lens Blur-0021", 1.0)),
+            ],
+        )])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"][0];
+        assert_eq!(fx["lens-blur"], 20, "{fx}");
+        assert_eq!(fx["iris"], "pentagon", "{fx}");
+        assert_eq!(fx["roundness"], 0.5, "{fx}");
+        assert_eq!(fx["aspect"], 1.06, "{fx}");
+        assert_eq!(fx["edges"], "repeat", "{fx}");
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert_eq!(what, ["highlights brightened before they spread"]);
+    }
+
     /// A mirror's centre is a point of the layer's effect space; one the
     /// project leaves out is its definition's, the right edge's middle.
     #[test]

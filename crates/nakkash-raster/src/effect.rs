@@ -25,7 +25,7 @@ use crate::pixels::Pixels;
 use crate::style::Color;
 use crate::total::Total;
 use crate::{
-    blur, channel, colour, composite, cycle, distort, generate, particles, radial, vector,
+    blur, channel, colour, composite, cycle, distort, generate, lens, particles, radial, vector,
 };
 
 /// The type of one effect parameter.
@@ -2592,6 +2592,90 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "lens-blur",
+        params: &[
+            ParamSpec {
+                name: "radius",
+                default: ParamValue::Number(5.0),
+                range: Some((0.0, 4_000.0)),
+                choices: &[],
+                doc: "how far each pixel spreads, in px",
+            },
+            ParamSpec {
+                name: "roundness",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how far the iris's sides bow out towards a circle",
+            },
+            ParamSpec {
+                name: "aspect",
+                default: ParamValue::Number(1.0),
+                range: Some((0.01, 100.0)),
+                choices: &[],
+                doc: "how many times wider than high the iris is",
+            },
+            ParamSpec {
+                name: "rotation",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "how far the iris turns, in degrees clockwise",
+            },
+            ParamSpec {
+                name: "focal-distance",
+                default: ParamValue::Number(0.0),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "the level of the map that stays sharp",
+            },
+            ParamSpec {
+                name: "iris",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &[
+                    "hexagon", "triangle", "square", "pentagon", "heptagon", "octagon", "nonagon",
+                    "decagon",
+                ],
+                doc: "the iris's shape",
+            },
+            ParamSpec {
+                name: "map-level",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["luminance", "red", "green", "blue", "alpha"],
+                doc: "which level of the map sets each pixel's radius",
+            },
+            ParamSpec {
+                name: "placement",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["center", "stretch"],
+                doc: "how the map's box lies on the layer's",
+            },
+            ParamSpec {
+                name: "inverted",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["off", "on"],
+                doc: "whether the map's level is taken from 1",
+            },
+            ParamSpec {
+                name: "edges",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["transparent", "repeat"],
+                doc: "what lies beyond the edges",
+            },
+        ],
+        doc: "spreads each pixel over the shape of a lens's iris",
+        reach: lens_blur_reach,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: lens::lens_blur,
+        },
+    },
+    EffectSpec {
         name: "drop-shadow",
         params: &[
             ParamSpec {
@@ -3346,6 +3430,12 @@ fn box_reach(values: &[ParamValue]) -> Reach {
 /// `vector-blur` reads up to its amount from each pixel.
 fn vector_reach(values: &[ParamValue]) -> Reach {
     Reach::Within(number_at(values, 0).abs() + 1.0)
+}
+
+/// `lens-blur` spreads by its radius, as far as the iris's corners at
+/// its widest.
+fn lens_blur_reach(values: &[ParamValue]) -> Reach {
+    Reach::Within(number_at(values, 0) * number_at(values, 2).max(1.0) + 1.0)
 }
 
 /// `drop-shadow` falls `distance` away and spreads by its softness.
