@@ -271,6 +271,47 @@ pub(crate) fn read_reach(layer: &Layer) -> Option<f64> {
     })
 }
 
+/// The least landed reach, in px of the canvas, at which an effect drawn
+/// at the size its layer lands at gives what drawing the layer at its own
+/// size and shrinking it gives, within the reference tolerance ([D76]).
+/// Kernels a few px across take another shape on the coarser grid.
+///
+/// [D76]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d76-a-composition-is-drawn-at-the-size-it-lands-at
+pub(crate) const LANDED_REACH: f64 = 8.0;
+
+/// The scale a flat layer is drawn at when drawing it at the size it
+/// lands at would not be exact ([D76]): its own size, in buffer px per unit
+/// of its coordinates. That is when what holds it (`parent`, to the
+/// canvas) shrinks it and one of its effects reads less than
+/// [`LANDED_REACH`] px of the canvas round each pixel, and none reads its
+/// whole box or beyond; `None` otherwise, and for a layer with motion
+/// blur of a drawing made once, which is laid as moves.
+pub(crate) fn whole_scale(layer: &Layer, parent: Affine) -> Option<f64> {
+    if !layer.motion.is_empty() || layer.projection.is_some() {
+        return None;
+    }
+    let least = |a: Affine| {
+        let [a, b, c, d, ..] = a.as_coeffs();
+        a.hypot(b).min(c.hypot(d))
+    };
+    let (shrink, own) = (least(parent), least(layer.transform));
+    let landed = shrink * own;
+    // Effects that read the layer's whole box, or anywhere, see what the
+    // canvas shows of it where it lands; drawn whole they would see all of
+    // it, which is another question than the size it is drawn at.
+    let mut reaches = layer
+        .effects
+        .iter()
+        .filter(|e| e.movement().is_none())
+        .map(Effect::reach);
+    let local = reaches.clone().all(|r| matches!(r, Reach::Within(_)));
+    let fine = reaches.any(|r| match r {
+        Reach::Within(by) => by > 0.0 && f64::from(by) * landed < LANDED_REACH,
+        Reach::Bounds | Reach::Grows(_) | Reach::Anywhere => false,
+    });
+    (shrink < 1.0 - 1e-9 && own > 0.0 && local && fine).then_some(own)
+}
+
 /// How far `masks` read from each point they cut, in the layer's units:
 /// the most any feathers or moves its edge.
 pub(crate) fn mask_reach(masks: &[LayerMask]) -> f64 {
@@ -311,6 +352,20 @@ impl Plan {
         maps: &[Homography],
         width: u16,
         height: u16,
+    ) -> Option<Plan> {
+        Plan::at_least(extent, reach, maps, width, height, 0.0)
+    }
+
+    /// As [`Plan::new`], with the buffer at least `least` px per unit of
+    /// the layer's own coordinates however small the maps make it, within
+    /// [`MAX_SCALE`] and [`MAX_SIDE`].
+    pub(crate) fn at_least(
+        extent: Extent,
+        reach: Option<f64>,
+        maps: &[Homography],
+        width: u16,
+        height: u16,
+        least: f64,
     ) -> Option<Plan> {
         let start = match extent {
             Extent::Nothing => return None,
@@ -355,6 +410,7 @@ impl Plan {
             .fold(0.0, f64::max);
         let room = MAX_SIDE - 2.0 * BORDER - 1.0;
         let scale = most
+            .max(least)
             .min(MAX_SCALE)
             .min(room / region.width())
             .min(room / region.height());
@@ -362,9 +418,16 @@ impl Plan {
             return None;
         }
         // The region starts on a whole buffer px, so a map that only moves
-        // by whole px lays the buffer's px exactly on the canvas's.
-        let snap = |v: f64| (v * scale).floor() / scale;
-        let region = Rect::new(snap(region.x0), snap(region.y0), region.x1, region.y1);
+        // by whole px lays the buffer's px exactly on the canvas's. A
+        // buffer drawn larger than it lands starts on a whole px of the
+        // canvas instead, so its halved copies' px fall on the canvas's.
+        let region = match (least > most, on_canvas_grid(region, &maps[0])) {
+            (true, Some(origin)) => Rect::new(origin.x, origin.y, region.x1, region.y1),
+            _ => {
+                let snap = |v: f64| (v * scale).floor() / scale;
+                Rect::new(snap(region.x0), snap(region.y0), region.x1, region.y1)
+            }
+        };
         let side = |length: f64| (length * scale + 2.0 * BORDER).ceil() as u16;
         let local = Affine::translate((BORDER, BORDER))
             * Affine::scale(scale)
@@ -385,6 +448,16 @@ impl Plan {
             seen: Point::new(middle.x / first.len() as f64, middle.y / first.len() as f64),
         })
     }
+}
+
+/// The point of the plane `map` takes to the whole px of the canvas at or
+/// before the top left of `region`, no further right or down than it.
+fn on_canvas_grid(region: Rect, map: &Homography) -> Option<Point> {
+    let corner = map.project(Point::new(region.x0, region.y0))?;
+    let origin = map
+        .inverse()?
+        .project(Point::new(corner.x.floor(), corner.y.floor()))?;
+    Some(Point::new(origin.x.min(region.x0), origin.y.min(region.y0)))
 }
 
 /// The part of the convex `polygon` of a plane that `map` shows in a

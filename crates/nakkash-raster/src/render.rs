@@ -32,11 +32,16 @@ pub enum Quality {
     /// 32-bit float per channel while compositing: no banding from repeated
     /// blending. Pixels effects make stay floats to the end of the frame:
     /// filter layers, compositions, mattes and planes read them, and they
-    /// are laid on a float canvas, rounded to 8 bits once. For delivered
+    /// are laid on a float canvas, rounded to 8 bits once. A layer shrunk
+    /// by what holds it, whose effects read only a few px where it lands,
+    /// is drawn at its own size and laid down ([D76]). For delivered
     /// frames and golden images.
+    ///
+    /// [D76]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d76-a-composition-is-drawn-at-the-size-it-lands-at
     #[default]
     Precise,
-    /// 8- and 16-bit integers: faster, for previews.
+    /// 8- and 16-bit integers, and every layer drawn at the size it lands
+    /// at: faster, for previews.
     Fast,
 }
 
@@ -558,14 +563,23 @@ impl Painter {
             return Ok(());
         }
         if let Some(projection) = &layer.projection {
-            return self.projected(layer, projection, &steps, opacity, parent);
+            return self.projected(layer, projection, &steps, opacity, parent, 0.0);
         }
         if let Some(flat) = self.whole_box(layer, parent) {
-            return self.projected(layer, &flat, &steps, opacity, parent);
+            return self.projected(layer, &flat, &steps, opacity, parent, 0.0);
         }
         let transform = parent * layer.transform;
         if !layer.is_isolated() {
             return self.nodes(&layer.children, transform);
+        }
+        // Precise colours draw a shrunk layer whose effects read a few px
+        // at its own size, as a plane laid down through its transform
+        // ([D76]), when it is laid on the float canvas itself rather than
+        // inside a layer the context holds open.
+        let on_canvas = self.floats() && self.open == 0;
+        if let Some(own) = projected::whole_scale(layer, parent).filter(|_| on_canvas) {
+            let flat = Projection::new(Homography::from(layer.transform));
+            return self.projected(layer, &flat, &steps, opacity, parent, own);
         }
         // On the float canvas, a layer that makes pixels is laid in floats,
         // and so is one that blends otherwise than source-over with what
@@ -663,6 +677,7 @@ impl Painter {
         steps: &Steps<'_>,
         opacity: f32,
         parent: Affine,
+        least: f64,
     ) -> Result<()> {
         if !layer.motion.is_empty() {
             return Err(Diagnostic::new(
@@ -678,7 +693,8 @@ impl Painter {
         };
         let extent = projected::extent(layer);
         let reach = projected::read_reach(layer);
-        let Some(plan) = Plan::new(extent, reach, &maps, self.width, self.height) else {
+        let Some(plan) = Plan::at_least(extent, reach, &maps, self.width, self.height, least)
+        else {
             return Ok(());
         };
         let laid = self.laid(&plan, &maps, |sub| {

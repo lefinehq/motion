@@ -3001,7 +3001,7 @@ pub const EFFECTS: &[EffectSpec] = &[
             doc: "in percent of the difference from the neighbours' mean",
         }],
         doc: "sharpens edges",
-        reach: stays,
+        reach: one_px,
         apply: Apply::Pixels {
             over: None,
             pixels: blur::sharpen,
@@ -3574,6 +3574,12 @@ fn gaussian_span(sigma: f32) -> f32 {
 
 /// `displacement-map` moves a pixel at most its larger distance; wrapping
 /// reads across the whole box.
+/// The reach of a kernel one px of its grid round each pixel, taken as
+/// one unit of the layer's.
+fn one_px(_: &[ParamValue]) -> Reach {
+    Reach::Within(1.0)
+}
+
 fn displacement_reach(values: &[ParamValue]) -> Reach {
     match values[5] {
         ParamValue::Choice(1) => Reach::Bounds,
