@@ -35,6 +35,6 @@ pub use level::{Hearing, Levels, hearings};
 pub use rect::content_rects;
 pub use shape::{ShapeDraw, bezier, outline};
 pub use state::{ContentState, FrameState, ItemState, NodeState};
-pub use text::{TextNode, set as set_text};
+pub use text::{TextNode, set as set_text, set_as_written as set_text_as_written};
 pub use track::{INTEGRAL_PARTS, Integral, IntegralPiece, Key, KeySpec, PathSpan, Track};
 pub use walk::{Visit, Walk, address_of, walk};

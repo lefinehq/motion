@@ -7,15 +7,17 @@ use nakkash_format::Result;
 
 use crate::animate::Parts;
 use nakkash_format::key::{FONT, RUNS};
-use nakkash_format::text::{Align, Caps, CharacterStyle, Kerning, Leading, TextContent};
+use nakkash_format::text::{Align, Caps, CharacterStyle, Kerning, Leading, TextContent, TextFit};
 use nakkash_text::{
-    FontQuery, FontSet, Slant, StyledRun, StyledText, TextFrame, TextLayout, Typesetter,
+    Fit, FontQuery, FontSet, Slant, StyledRun, StyledText, TextFrame, TextLayout, Typesetter,
 };
 
 /// A text layer, set: its content and the lines and glyphs it lays out to.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextNode {
-    /// The words and their style, as the scene wrote them.
+    /// The words and their style, as the scene wrote them, with every
+    /// length that goes with the size scaled as the layout's fit scaled it
+    /// ([`TextLayout::scale`]).
     pub content: TextContent,
     /// The lines and glyph runs, in the layer's own coordinates: point
     /// text's first baseline starts at the origin, box text's box does.
@@ -59,7 +61,12 @@ pub fn set(content: &TextContent, typesetter: &mut Typesetter) -> Result<Arc<Tex
     }
     let layout = typesetter.layout(&styled)?;
     let mut node = TextNode {
-        content: content.clone(),
+        // A fit that scaled the text scales its stroke and the sizes animators read too.
+        content: if layout.scale == 1.0 {
+            content.clone()
+        } else {
+            content.scaled(layout.scale)
+        },
         layout,
         parts: Parts {
             glyphs: Vec::new(),
@@ -68,6 +75,20 @@ pub fn set(content: &TextContent, typesetter: &mut Typesetter) -> Result<Arc<Tex
     };
     node.parts = Parts::of(&node);
     Ok(Arc::new(node))
+}
+
+/// Lays out `content` as written, leaving its `fit` out: the lines whose
+/// size an import writes as the fit's size, so the original text fits at
+/// scale 1.
+///
+/// # Errors
+/// As [`set`].
+pub fn set_as_written(content: &TextContent, typesetter: &mut Typesetter) -> Result<Arc<TextNode>> {
+    let written = TextContent {
+        fit: None,
+        ..content.clone()
+    };
+    set(&written, typesetter)
 }
 
 /// `content` as the typesetter takes it: byte ranges, font queries and its enums.
@@ -115,6 +136,11 @@ fn styled(content: &TextContent, fonts: &FontSet) -> StyledText {
             },
             None => TextFrame::Point,
         },
+        fit: content.fit.map(|fit| match fit {
+            TextFit::Shrink { width, height } => Fit::Shrink { width, height },
+            TextFit::Wrap { width, height } => Fit::Wrap { width, height },
+            TextFit::ShrinkToBox => Fit::Box,
+        }),
         small_caps_scale: nakkash_text::SMALL_CAPS_SCALE,
     }
 }

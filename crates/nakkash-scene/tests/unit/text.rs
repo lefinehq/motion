@@ -144,3 +144,26 @@ fn a_set_node_keeps_its_runs_styles() {
     assert_eq!(node.style_of(last).fill, [1.0, 0.0, 0.0, 1.0]);
     assert!(node.layout.bounds().width() > 0.0);
 }
+
+#[test]
+fn a_fitted_text_scales_the_content_it_keeps_and_as_written_leaves_the_fit_out() {
+    let keys = r##""text":"Extraordinarily","font":"Inter Variable 40","style":{"stroke":"#000000","stroke-width":4},"fit":"shrink 150x100""##;
+    let fitted = content(keys);
+    assert_eq!(
+        styled(&fitted, &FontSet::builtin()).fit,
+        Some(Fit::Shrink {
+            width: 150.0,
+            height: 100.0
+        })
+    );
+    let mut typesetter = Typesetter::new(FontSet::builtin());
+    let node = set(&fitted, &mut typesetter).unwrap();
+    let s = node.layout.scale;
+    assert!(s < 1.0 && node.layout.size().width <= 150.0);
+    let style = node.content.first_style();
+    assert_eq!((style.font.size, style.stroke_width), (40.0 * s, 4.0 * s));
+    let written = set_as_written(&fitted, &mut typesetter).unwrap();
+    assert_eq!(written.layout.scale, 1.0);
+    assert!(written.layout.size().width > 150.0);
+    assert_eq!(written.content.first_style().font.size, 40.0);
+}

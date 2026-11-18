@@ -13,7 +13,8 @@
 //! - [`Typesetter::layout`] turns it into a [`TextLayout`]: [`Line`]s with
 //!   baselines, boxes, character ranges and cumulative character advances,
 //!   and [`GlyphRun`]s whose font data is the type the renderer draws with.
-//!   [`Typesetter::measure`] gives only the size.
+//!   [`Typesetter::measure`] gives only the size. A text with a [`Fit`]
+//!   is laid out to fit the size given for it, scaled down or wrapped.
 //!
 //! A font the set does not have, or a character its font has no glyph for,
 //! is a [`Diagnostic`](nakkash_format::Diagnostic); nothing falls back silently.
@@ -24,6 +25,7 @@
 
 mod caps;
 mod fallback;
+mod fit;
 mod font;
 mod layout;
 mod set;
@@ -38,8 +40,8 @@ pub use font::{Face, Slant};
 pub use layout::{Glyph, GlyphRun, Line, TextLayout};
 pub use set::{FontQuery, FontSet};
 pub use style::{
-    AUTO_LEADING, Caps, CharacterStyle, FAUX_BOLD_TRACKING, Justification, Leading, ParagraphStyle,
-    SMALL_CAPS_SCALE, StyledRun, StyledText, TextFrame,
+    AUTO_LEADING, Caps, CharacterStyle, FAUX_BOLD_TRACKING, Fit, Justification, Leading,
+    ParagraphStyle, SMALL_CAPS_SCALE, StyledRun, StyledText, TextFrame,
 };
 pub use typeset::Typesetter;
 

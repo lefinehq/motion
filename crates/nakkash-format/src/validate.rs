@@ -1135,7 +1135,6 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
     only_on(doc.collapse.is_some(), COLLAPSE, key, &[COMP])?;
     only_on(doc.crop.is_some(), CROP, key, &[IMAGE])?;
     only_on(doc.continuous.is_some(), CONTINUOUS, key, &[IMAGE])?;
-    // A text layer's `fit` (D77) is its own, and not checked here.
     only_on(doc.fit.is_some(), FIT, key, &[TEXT, IMAGE, VIDEO])?;
     only_on(doc.frame.is_some(), BOX, key, &[TEXT, IMAGE, VIDEO])?;
     let Object(style) = &doc.style;

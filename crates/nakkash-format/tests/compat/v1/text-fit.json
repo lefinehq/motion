@@ -1,0 +1,6 @@
+{"nakkash":1,"size":"480x320","fps":24,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"shrunk","at":"240 70","text":"Extraordinarily long","font":"Inter Variable 64 800","fill":"#1E3A5F","style":{"align":"center","stroke":"#E63946","stroke-width":3},"fit":"shrink 400x80"},
+{"id":"wrapped","at":"240 150","text":"Longer words break into lines and shrink to fit","font":"Inter Variable 32 600","fill":"#101010","style":{"align":"center"},"fit":"wrap 360x90"},
+{"id":"boxed","at":"40 240","text":"Box text shrinks until its lines fit the box","font":"Inter Variable 30","fill":"#2A9D8F","box":[400,60],"fit":"shrink"}
+]}

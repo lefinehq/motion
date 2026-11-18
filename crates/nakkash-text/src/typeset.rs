@@ -188,7 +188,7 @@ impl Typesetter {
         &self.fonts
     }
 
-    /// Lays out `text`.
+    /// Lays out `text`, made to fit as its [`Fit`](crate::Fit) says.
     ///
     /// # Errors
     /// A [`Diagnostic`] when the text breaks a rule of [`StyledText::check`],
@@ -196,12 +196,33 @@ impl Typesetter {
     /// has no glyph for.
     pub fn layout(&mut self, text: &StyledText) -> Result<TextLayout> {
         text.check()?;
+        match text.fit {
+            None => self.set(text, None),
+            Some(fit) => self.fitted(text, fit),
+        }
+    }
+
+    /// Lays out `text` as written, leaving its [`Fit`](crate::Fit) out: the
+    /// layout whose [`TextLayout::size`] a fit's size is measured against,
+    /// as an import writes it from the original text.
+    ///
+    /// # Errors
+    /// As [`Typesetter::layout`].
+    pub fn layout_as_written(&mut self, text: &StyledText) -> Result<TextLayout> {
+        let written = StyledText {
+            fit: None,
+            ..text.clone()
+        };
+        written.check()?;
+        self.set(&written, None)
+    }
+
+    /// Lays out `text`, checked, at the sizes it is written in; point text
+    /// breaks its lines at `wrap` pixels when one is given.
+    pub(crate) fn set(&mut self, text: &StyledText, wrap: Option<f64>) -> Result<TextLayout> {
         if text.runs.is_empty() {
             // Only an empty text has no runs, and it has nothing to lay out.
-            return Ok(TextLayout {
-                lines: Vec::new(),
-                runs: Vec::new(),
-            });
+            return Ok(TextLayout::empty());
         }
         let faces = text
             .runs
@@ -217,10 +238,7 @@ impl Typesetter {
             self.register(face);
         }
         let cased = caps::apply(text);
-        let mut out = TextLayout {
-            lines: Vec::new(),
-            runs: Vec::new(),
-        };
+        let mut out = TextLayout::empty();
         let mut cursor = Cursor::new(text.frame);
         for (index, source) in text.paragraph_ranges().into_iter().enumerate() {
             let paragraph = Paragraph {
@@ -229,7 +247,15 @@ impl Typesetter {
                 set: set_range(&cased, &source),
                 source,
             };
-            self.paragraph(text, &cased, &faces, &paragraph, &mut cursor, &mut out)?;
+            self.paragraph(
+                text,
+                wrap,
+                &cased,
+                &faces,
+                &paragraph,
+                &mut cursor,
+                &mut out,
+            )?;
         }
         Ok(out)
     }
@@ -242,10 +268,16 @@ impl Typesetter {
         self.layout(text).map(|layout| layout.size())
     }
 
-    /// Lays out one paragraph and appends its lines and runs to `out`.
+    /// Lays out one paragraph and appends its lines and runs to `out`; point
+    /// text breaks its lines at `wrap` pixels when one is given.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the layout's state, passed down as the loop over paragraphs holds it"
+    )]
     fn paragraph(
         &mut self,
         text: &StyledText,
+        wrap: Option<f64>,
         cased: &Cased,
         faces: &[usize],
         paragraph: &Paragraph,
@@ -258,17 +290,14 @@ impl Typesetter {
             paragraph.style.first_line_indent as f32,
             IndentOptions::default(),
         );
-        // Point text never wraps; its lines are anchored below, so Parley sets them flush left.
+        // Point text wraps only when its fit asks; its lines are anchored
+        // below, so Parley sets them flush left.
+        let inside = |width: f64| {
+            (width - paragraph.style.start_indent - paragraph.style.end_indent).max(0.0) as f32
+        };
         let (available, alignment, last_line) = match text.frame {
-            TextFrame::Point => (None, Alignment::Left, None),
-            TextFrame::Box { width, .. } => (
-                Some(
-                    (width - paragraph.style.start_indent - paragraph.style.end_indent).max(0.0)
-                        as f32,
-                ),
-                rule.in_box,
-                rule.last_line,
-            ),
+            TextFrame::Point => (wrap.map(inside), Alignment::Left, None),
+            TextFrame::Box { width, .. } => (Some(inside(width)), rule.in_box, rule.last_line),
         };
         layout.set_alignment(
             alignment,

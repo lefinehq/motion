@@ -13,7 +13,7 @@
 use nakkash_format::text::TextContent;
 use nakkash_format::{Address, Content, Diagnostic, Kind, Result, Scene};
 use nakkash_import::map::StoredText;
-use nakkash_scene::{NodeContent, SceneGraph, set_text};
+use nakkash_scene::{NodeContent, SceneGraph, set_text, set_text_as_written};
 use nakkash_text::{TextLayout, Typesetter};
 use serde::Serialize;
 
@@ -177,6 +177,25 @@ pub fn check_text(
     Ok(check(text, &node.layout))
 }
 
+/// The size the text layer at `layer` covers as written, its `fit` left
+/// out: the [`TextLayout::size`] an import writes as the size the fit keeps
+/// a replacement in ([D77]), so the original text fits at scale 1. Set by
+/// `typesetter` alone, without compiling the rest of the scene.
+///
+/// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+///
+/// # Errors
+/// A missing-value diagnostic when the scene has no such text layer, or the
+/// typesetter's when its fonts lack one the text asks for.
+pub fn written_text_size(
+    scene: &Scene,
+    layer: &Address,
+    typesetter: &mut Typesetter,
+) -> Result<nakkash_raster::kurbo::Size> {
+    let node = set_text_as_written(text_at(scene, layer)?, typesetter)?;
+    Ok(node.layout.size())
+}
+
 fn check(text: &StoredText, layout: &TextLayout) -> TextCheck {
     TextCheck {
         layer: text.layer.clone(),
@@ -186,14 +205,17 @@ fn check(text: &StoredText, layout: &TextLayout) -> TextCheck {
 
 /// The text of the layer `text` names, as `scene` writes it.
 pub(crate) fn content_of<'s>(scene: &'s Scene, text: &StoredText) -> Result<&'s TextContent> {
-    let layer = scene
-        .find(&text.layer)
-        .ok_or_else(|| unknown(&text.layer))?;
+    text_at(scene, &text.layer)
+}
+
+/// The text of the layer at `address`, as `scene` writes it.
+fn text_at<'s>(scene: &'s Scene, address: &Address) -> Result<&'s TextContent> {
+    let layer = scene.find(address).ok_or_else(|| unknown(address))?;
     match &layer.content {
         Content::Text(content) => Ok(content),
         _ => Err(Diagnostic::new(
             Kind::Missing,
-            format!("layer `{}` holds no text to check", text.layer),
+            format!("layer `{address}` holds no text to check"),
         )),
     }
 }

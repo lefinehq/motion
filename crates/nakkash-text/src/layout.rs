@@ -21,6 +21,10 @@ pub struct TextLayout {
     pub lines: Vec<Line>,
     /// The glyph runs, line by line, in visual order within a line.
     pub runs: Vec<GlyphRun>,
+    /// How much [`Fit`](crate::Fit) scaled every size in the text, 1 for a
+    /// text set at the sizes it was written in. Lengths the layout does not
+    /// hold, such as a stroke's width, scale by it too.
+    pub scale: f64,
 }
 
 /// One line of a [`TextLayout`].
@@ -125,6 +129,25 @@ impl GlyphRun {
 }
 
 impl TextLayout {
+    /// A layout of no lines, at the sizes written.
+    pub fn empty() -> TextLayout {
+        TextLayout {
+            lines: Vec::new(),
+            runs: Vec::new(),
+            scale: 1.0,
+        }
+    }
+
+    /// Moves every line and glyph down by `dy`.
+    pub(crate) fn shift_down(&mut self, dy: f64) {
+        for line in &mut self.lines {
+            line.baseline += dy;
+        }
+        for glyph in self.runs.iter_mut().flat_map(|run| &mut run.glyphs) {
+            glyph.y += dy;
+        }
+    }
+
     /// The box the lines cover: each from its start to its width, from its
     /// ascent to its descent; an empty box at the origin when there are none.
     pub fn bounds(&self) -> Rect {

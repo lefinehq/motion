@@ -127,3 +127,26 @@ fn refuses_layers_the_scene_has_not_or_that_hold_no_text() {
         assert!(error.message.contains(says), "{}", error.message);
     }
 }
+
+#[test]
+fn the_written_size_of_a_fitted_text_leaves_its_fit_out() {
+    let session: Session = r#"{"nakkash":1,"size":"400x200","fps":10,"dur":"1s","layers":[{"id":"t","text":"Extraordinarily","font":"InterVariable 40","fit":"shrink 100x20"},{"id":"box","rect":"10x10"}]}"#
+        .parse()
+        .expect("a valid scene");
+    let scene = session.scene();
+    let mut typesetter = Typesetter::new(nakkash_text::FontSet::builtin());
+    let at = |id: &str| nakkash_format::Address::written(None, id.parse().unwrap());
+    let size = written_text_size(scene, &at("t"), &mut typesetter).unwrap();
+    assert!(size.width > 100.0 && size.height > 20.0, "{size:?}");
+    let fitted = layout_of(
+        session.graph().unwrap(),
+        &StoredText {
+            layer: at("t"),
+            lines: Vec::new(),
+        },
+    )
+    .unwrap();
+    assert!(fitted.scale < 1.0 && fitted.size().width <= 100.0);
+    assert!(written_text_size(scene, &at("box"), &mut typesetter).is_err());
+    assert!(written_text_size(scene, &at("ghost"), &mut typesetter).is_err());
+}

@@ -269,3 +269,30 @@ fn a_negative_blur_blurs_nothing() {
     let nodes = chosen_second("", r#""blur":-3"#);
     assert!(nodes.iter().all(|node| matches!(node, Node::Glyphs(_))));
 }
+
+#[test]
+fn a_shrunk_text_draws_its_glyphs_and_stroke_at_the_fitted_size() {
+    let layer = |fit: &str| {
+        format!(
+            r##""text":"Extraordinarily","font":"Inter Variable 40","style":{{"stroke":"#000000","stroke-width":4}}{fit}"##
+        )
+    };
+    let written = text_draws(&layer(""), 0.0);
+    let fitted = text_draws(&layer(r#","fit":"shrink 150x100""#), 0.0);
+    let session = session(&scene(&format!(
+        r#"{{"id":"t",{}}}"#,
+        layer(r#","fit":"shrink 150x100""#)
+    )));
+    let state = session.frame(0.0).unwrap();
+    let ContentState::Text { text, .. } = &state.nodes[0].content else {
+        panic!("not text");
+    };
+    let s = text.layout.scale;
+    assert!(s < 1.0 && text.layout.size().width <= 150.0, "{s}");
+    assert_eq!(styles(&written), ["stroke 4", "fill"]);
+    let DrawStyle::Stroke(stroke) = &glyphs_of(&fitted[0]).style else {
+        panic!("the stroke first: {fitted:?}");
+    };
+    assert!((stroke.width - 4.0 * s).abs() < 1e-4, "{}", stroke.width);
+    assert!((f64::from(glyphs_of(&fitted[1]).size) - 40.0 * s).abs() < 1e-3);
+}

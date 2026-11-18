@@ -414,3 +414,36 @@ fn renders_draw_on_one_thread_per_processor_or_the_limit(
 ) {
     assert_eq!(threads_for(frames, processors, limit), threads);
 }
+
+#[test]
+fn check_and_at_measure_a_fitted_text_as_it_is_drawn() {
+    let scene = |fit: &str| {
+        format!(
+            r##"{{"nakkash":1,"size":"1280x720","fps":10,"dur":"1s","layers":[{{"id":"title","at":"400 360","text":"Extraordinarily","font":"Inter Variable 120","fill":"#FFFFFF"{fit}}}]}}"##
+        )
+    };
+    let session = |fit: &str| scene(fit).parse::<Session>().expect("a valid scene");
+    let found = |session: &Session| {
+        let report = session.check().expect("check");
+        report
+            .violations
+            .iter()
+            .map(|v| v.code.to_string())
+            .collect::<Vec<_>>()
+    };
+    let ids = ["title".to_string()];
+    let written = session("");
+    let fitted = session(r#","fit":"shrink 600x300""#);
+    // Set as written the word runs off the canvas's left edge; fitted it is inside.
+    assert!(
+        found(&written).contains(&"offscreen".to_string()),
+        "{:?}",
+        found(&written)
+    );
+    assert_eq!(found(&fitted), Vec::<String>::new());
+    assert_ne!(written.at("0s", &ids), fitted.at("0s", &ids));
+    // A text that already fits is the same scene.
+    let roomy = session(r#","fit":"shrink 4000x1000""#);
+    assert_eq!(written.at("0s", &ids), roomy.at("0s", &ids));
+    assert_eq!(written.display_list(0.0), roomy.display_list(0.0));
+}
