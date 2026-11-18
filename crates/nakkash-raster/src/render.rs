@@ -20,6 +20,7 @@ use crate::list::{
     Blending, Clip, Frame, GlyphDraw, ImageDraw, Layer, LayerMask, Matte, MatteMode, Node,
     PathDraw, Projection,
 };
+use crate::par;
 use crate::pixels::Pixels;
 use crate::projected::{self, Buffer, Extent, Plan};
 use crate::reads::Reads;
@@ -314,22 +315,18 @@ impl Painter {
         let mut painter = self.alone();
         painter.nodes(std::slice::from_ref(&*matte.source), parent)?;
         let pixels = painter.finish().into_pixels();
-        let data = pixels
-            .data()
-            .iter()
-            .map(|&[r, g, b, a]| {
-                // Premultiplied, so transparent pixels read as black; Rec.
-                // 709 weights, as the CSS masking module uses.
-                let luma = || (r * 0.2126 + g * 0.7152 + b * 0.0722).clamp(0.0, 1.0);
-                let a = a.clamp(0.0, 1.0);
-                match matte.mode {
-                    MatteMode::Alpha => a,
-                    MatteMode::AlphaInverted => 1.0 - a,
-                    MatteMode::Luma => luma(),
-                    MatteMode::LumaInverted => 1.0 - luma(),
-                }
-            })
-            .collect();
+        let data = par::map(pixels.data(), |_, &[r, g, b, a]| {
+            // Premultiplied, so transparent pixels read as black; Rec.
+            // 709 weights, as the CSS masking module uses.
+            let luma = || (r * 0.2126 + g * 0.7152 + b * 0.0722).clamp(0.0, 1.0);
+            let a = a.clamp(0.0, 1.0);
+            match matte.mode {
+                MatteMode::Alpha => a,
+                MatteMode::AlphaInverted => 1.0 - a,
+                MatteMode::Luma => luma(),
+                MatteMode::LumaInverted => 1.0 - luma(),
+            }
+        });
         Ok(data)
     }
 
@@ -345,12 +342,7 @@ impl Painter {
             painter.ctx.set_paint(Color::WHITE.to_vello());
             painter.ctx.set_fill_rule(vello_cpu::peniko::Fill::NonZero);
             painter.ctx.fill_path(&mask.path);
-            painter
-                .rendered()
-                .data()
-                .iter()
-                .map(|p| f32::from(p.a) / 255.0)
-                .collect()
+            par::map(painter.rendered().data(), |_, p| f32::from(p.a) / 255.0)
         })
     }
 
@@ -363,12 +355,7 @@ impl Painter {
         painter.ctx.set_paint(Color::WHITE.to_vello());
         painter.ctx.set_fill_rule(rule.to_vello());
         painter.ctx.fill_path(&path);
-        painter
-            .rendered()
-            .data()
-            .iter()
-            .map(|p| f32::from(p.a) / 255.0)
-            .collect()
+        par::map(painter.rendered().data(), |_, p| f32::from(p.a) / 255.0)
     }
 
     /// Draws `nodes` on a canvas of their own and returns its pixels.
@@ -522,9 +509,9 @@ impl Painter {
                         false => sub.drawn_alone(&filter.children, plan.local)?,
                     };
                     if let Some(cut) = sub.cut(&filter.masks, plan.local) {
-                        for (pixel, kept) in pixels.data_mut().iter_mut().zip(cut) {
+                        par::each_with(pixels.data_mut(), &cut, |_, pixel, &kept| {
                             *pixel = pixel.map(|c| c * kept);
-                        }
+                        });
                     }
                     sub.draw_pixels(&pixels);
                     Ok(())
@@ -823,9 +810,9 @@ impl Painter {
             _ => None,
         };
         for cut in [&cut, &clipped].into_iter().flatten() {
-            for (pixel, kept) in pixels.data_mut().iter_mut().zip(cut) {
+            par::each_with(pixels.data_mut(), cut, |_, pixel, &kept| {
                 *pixel = pixel.map(|c| c * kept);
-            }
+            });
         }
         // Each effect sees the box the ones before it grew.
         let mut bounds = layer.bounds;
@@ -999,17 +986,26 @@ fn moved_average(pixels: &Pixels, moves: &[Affine], parent: Affine) -> Pixels {
             (landed.x0.floor().max(0.0) as usize)..(landed.x1.ceil().min(width as f64) as usize);
         let ys =
             (landed.y0.floor().max(0.0) as usize)..(landed.y1.ceil().min(height as f64) as usize);
-        let data = sum.data_mut();
-        for y in ys {
-            for x in xs.clone() {
-                let from = back * Point::new(x as f64 + 0.5, y as f64 + 0.5);
-                let pixel = pixels.sample(from.x, from.y);
-                let total = &mut data[y * width + x];
-                for c in 0..4 {
-                    total[c] += pixel[c] * share;
-                }
-            }
+        if ys.is_empty() || xs.is_empty() {
+            continue;
         }
+        let rows = &mut sum.data_mut()[ys.start * width..ys.end * width];
+        par::rows(
+            rows,
+            width,
+            || (),
+            |row, data, ()| {
+                let y = ys.start + row;
+                for x in xs.clone() {
+                    let from = back * Point::new(x as f64 + 0.5, y as f64 + 0.5);
+                    let pixel = pixels.sample(from.x, from.y);
+                    let total = &mut data[x];
+                    for c in 0..4 {
+                        total[c] += pixel[c] * share;
+                    }
+                }
+            },
+        );
     }
     sum
 }

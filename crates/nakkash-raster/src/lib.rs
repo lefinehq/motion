@@ -30,6 +30,7 @@ mod lens;
 mod light;
 mod list;
 mod mask;
+mod par;
 mod particles;
 mod pen;
 mod picture;

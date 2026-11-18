@@ -9,8 +9,8 @@ use nakkash_raster::kurbo::{Affine, BezPath, Circle, Rect, Shape};
 use nakkash_raster::peniko::{Blob, FontData};
 use nakkash_raster::{
     Cap, Clip, Color, DrawStyle, Effect, FillRule, Frame, Glyph, GlyphDraw, Homography, Join,
-    Layer, Node, Paint, ParamValue, PathDraw, Projection, Quality, RenderOptions, StrokeStyle,
-    render_with,
+    Layer, Node, Paint, ParamValue, PathDraw, Pixels, Projection, Quality, RenderOptions, Space,
+    StrokeStyle, render_with,
 };
 
 const FONT: &[u8] = include_bytes!("fixtures/FixtureSans-Black.ttf");
@@ -220,5 +220,127 @@ fn story_frame() {
         }
         let ms = start.elapsed().as_secs_f64() * 1000.0 / f64::from(runs);
         println!("{name}: {ms:.1} ms per 1080x1920 frame");
+    }
+}
+
+/// A `width` by `height` grid of varied, partly transparent colours.
+fn textured(width: u16, height: u16) -> Pixels {
+    let mut pixels = Pixels::transparent(width, height);
+    let w = usize::from(width);
+    for (i, p) in pixels.data_mut().iter_mut().enumerate() {
+        let (x, y) = ((i % w) as f32, (i / w) as f32);
+        let a = (0.6 + 0.4 * (x * 0.013).sin() * (y * 0.017).cos()).clamp(0.0, 1.0);
+        let c = |k: f32| (0.5 + 0.5 * (x * k + y * (0.02 - k)).sin()) * a;
+        *p = [c(0.007), c(0.011), c(0.003), a];
+    }
+    pixels
+}
+
+/// An effect to time: what to print, its name and its parameters.
+type Timed = (&'static str, &'static str, Vec<(&'static str, ParamValue)>);
+
+/// The median of `runs` timings of `effect` on `pixels`, on a pool of
+/// `threads`, in ms, and what it drew.
+fn effect_ms(effect: &Effect, pixels: &Pixels, threads: usize, runs: usize) -> (f64, Pixels) {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .unwrap();
+    let space = Space {
+        transform: Affine::IDENTITY,
+        bounds: None,
+        input: None,
+        time: 0.5,
+        sound: None,
+        outline: None,
+        totals: Vec::new(),
+    };
+    pool.install(|| {
+        let mut drawn = pixels.clone();
+        let mut times: Vec<f64> = (0..runs)
+            .map(|_| {
+                drawn = pixels.clone();
+                let start = Instant::now();
+                effect.apply(&mut drawn, &space);
+                start.elapsed().as_secs_f64() * 1000.0
+            })
+            .collect();
+        times.sort_by(f64::total_cmp);
+        (times[runs / 2], drawn)
+    })
+}
+
+#[test]
+#[ignore = "a timing, not a check"]
+fn effects_on_one_thread_and_on_all() {
+    let all = std::thread::available_parallelism().map_or(1, usize::from);
+    let number = |v: f32| ParamValue::Number(v);
+    let effects: [Timed; 10] = [
+        (
+            "gaussian-blur 20",
+            "gaussian-blur",
+            vec![("blurriness", number(20.0))],
+        ),
+        (
+            "box-blur r10 x3",
+            "box-blur",
+            vec![("radius", number(10.0)), ("iterations", number(3.0))],
+        ),
+        (
+            "glow r20",
+            "glow",
+            vec![("radius", number(20.0)), ("threshold", number(0.3))],
+        ),
+        (
+            "fractal-noise",
+            "fractal-noise",
+            vec![("complexity", number(6.0))],
+        ),
+        (
+            "turbulent-displace",
+            "turbulent-displace",
+            vec![("amount", number(50.0))],
+        ),
+        (
+            "displacement-map",
+            "displacement-map",
+            vec![("horizontal", number(20.0))],
+        ),
+        (
+            "drop-shadow",
+            "drop-shadow",
+            vec![("softness", number(30.0))],
+        ),
+        ("sharpen", "sharpen", vec![("amount", number(50.0))]),
+        (
+            "hue-saturation",
+            "hue-saturation",
+            vec![("hue", number(40.0))],
+        ),
+        (
+            "polar-coordinates",
+            "polar-coordinates",
+            vec![("interpolation", number(1.0))],
+        ),
+    ];
+    for (width, height) in [(1920, 1080), (3840, 2160)] {
+        let pixels = textured(width, height);
+        for (what, name, params) in &effects {
+            let effect = Effect::new(name, params).unwrap();
+            let (one, serial) = effect_ms(&effect, &pixels, 1, 3);
+            let mut line = format!("{width}x{height} {what}: {one:.1} ms on 1 thread");
+            let mut counts = vec![2, 4, all];
+            counts.retain(|&n| n > 1 && n <= all);
+            counts.dedup();
+            for threads in counts {
+                let (ms, drawn) = effect_ms(&effect, &pixels, threads, 5);
+                assert!(
+                    drawn == serial,
+                    "{what} differs between 1 and {threads} threads"
+                );
+                line += &format!(", {ms:.1} on {threads} ({:.1}x)", one / ms);
+            }
+            println!("{line}, the same bits on each");
+        }
     }
 }

@@ -7,16 +7,30 @@ use vello_cpu::peniko::ImageAlphaType;
 use vello_cpu::{PixelMetadata, Pixmap};
 
 use crate::blend::BlendMode;
+use crate::par;
 
 /// One pixel: premultiplied red, green, blue and alpha, each 0 to 1.
 pub type Pixel = [f32; 4];
 
 /// A frame-sized grid of pixels, row by row from the top.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Pixels {
     width: u16,
     height: u16,
     data: Vec<Pixel>,
+}
+
+impl Clone for Pixels {
+    /// A copy, made on every thread: effects copy whole frames to read
+    /// while they write, and a copy made on one thread would be most of
+    /// the time of a fast effect on many.
+    fn clone(&self) -> Pixels {
+        Pixels {
+            width: self.width,
+            height: self.height,
+            data: par::copied(&self.data),
+        }
+    }
 }
 
 impl Pixels {
@@ -31,11 +45,9 @@ impl Pixels {
 
     /// The pixels of a drawn pixmap.
     pub(crate) fn from_pixmap(pixmap: &Pixmap) -> Pixels {
-        let data = pixmap
-            .data()
-            .iter()
-            .map(|p| [p.r, p.g, p.b, p.a].map(|c| f32::from(c) / 255.0))
-            .collect();
+        let data = par::map(pixmap.data(), |_, p| {
+            [p.r, p.g, p.b, p.a].map(|c| f32::from(c) / 255.0)
+        });
         Pixels {
             width: pixmap.width(),
             height: pixmap.height(),
@@ -47,15 +59,11 @@ impl Pixels {
     /// within its alpha, as premultiplied pixels must be.
     pub(crate) fn to_pixmap(&self) -> Pixmap {
         let byte = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
-        let data = self
-            .data
-            .iter()
-            .flat_map(|&[r, g, b, a]| {
-                let a = byte(a);
-                let channel = |c: f32| byte(c).min(a);
-                [channel(r), channel(g), channel(b), a]
-            })
-            .collect();
+        let data = self.bytes(|[r, g, b, a]| {
+            let a = byte(a);
+            let channel = |c: f32| byte(c).min(a);
+            [channel(r), channel(g), channel(b), a]
+        });
         Pixmap::from_parts(
             data,
             self.width,
@@ -69,16 +77,30 @@ impl Pixels {
     /// 0 to 1, and a colour within its alpha, before it is rounded.
     pub(crate) fn to_rgba8(&self) -> Vec<u8> {
         let byte = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
-        self.data
-            .iter()
-            .flat_map(|&[r, g, b, a]| {
-                let a = a.clamp(0.0, 1.0);
-                match byte(a) {
-                    0 => [0; 4],
-                    alpha => [byte(r / a), byte(g / a), byte(b / a), alpha],
+        self.bytes(|[r, g, b, a]| {
+            let a = a.clamp(0.0, 1.0);
+            match byte(a) {
+                0 => [0; 4],
+                alpha => [byte(r / a), byte(g / a), byte(b / a), alpha],
+            }
+        })
+    }
+
+    /// The four bytes `byte` gives for each pixel, row by row.
+    fn bytes(&self, byte: impl Fn(Pixel) -> [u8; 4] + Sync) -> Vec<u8> {
+        let mut bytes = vec![0; self.data.len() * 4];
+        par::rows(
+            &mut bytes,
+            4 * par::TASK,
+            || (),
+            |run, out, ()| {
+                let first = run * par::TASK;
+                for (i, px) in out.chunks_exact_mut(4).enumerate() {
+                    px.copy_from_slice(&byte(self.data[first + i]));
                 }
-            })
-            .collect()
+            },
+        );
+        bytes
     }
 
     /// Lays `source`, the same size, on these pixels by `mode`, each of
@@ -86,26 +108,31 @@ impl Pixels {
     /// to 1: how the float canvas composites a layer. Like
     /// [`Pixels::to_pixmap`], each source pixel is kept within 0 to 1 and
     /// its colour within its alpha, but nothing is rounded.
-    pub(crate) fn lay(&mut self, source: &Pixels, mode: BlendMode, amount: impl Fn(usize) -> f32) {
+    pub(crate) fn lay(
+        &mut self,
+        source: &Pixels,
+        mode: BlendMode,
+        amount: impl Fn(usize) -> f32 + Sync,
+    ) {
         debug_assert_eq!(
             (self.width, self.height),
             (source.width, source.height),
             "laid pixels are the canvas's size"
         );
-        for (i, (below, &[r, g, b, a])) in self.data.iter_mut().zip(&source.data).enumerate() {
+        par::each_with(&mut self.data, &source.data, |i, below, &[r, g, b, a]| {
             // A level that is not a number covers nothing: such a pixel is
             // left out, never laid (and never a panic in the clamps below).
             let a = a.clamp(0.0, 1.0);
             if a.is_nan() || a <= 0.0 {
-                continue;
+                return;
             }
             let k = amount(i).clamp(0.0, 1.0);
             if k.is_nan() || k <= 0.0 {
-                continue;
+                return;
             }
             let within = |c: f32| if c.is_nan() { 0.0 } else { c.clamp(0.0, a) * k };
             *below = mode.lay(*below, [within(r), within(g), within(b), a * k]);
-        }
+        });
     }
 
     /// Its width in pixels.
@@ -165,23 +192,23 @@ impl Pixels {
             return out;
         }
         let width = usize::from(self.width);
-        for (i, pixel) in out.data.iter_mut().enumerate() {
+        par::each(&mut out.data, |i, pixel| {
             let (x, y) = ((i % width) as f64 + 0.5, (i / width) as f64 + 0.5);
             let from = back * Point::new(x, y);
             *pixel = self.sample(from.x, from.y);
-        }
+        });
         out
     }
 
     /// Each pixel moved from this one towards `other`'s by the share
     /// `amount` gives for it, from 0 (this one) to 1 (`other`'s).
-    pub fn mix(&mut self, other: &Pixels, amount: impl Fn(usize) -> f32) {
-        for (i, (pixel, to)) in self.data.iter_mut().zip(&other.data).enumerate() {
+    pub fn mix(&mut self, other: &Pixels, amount: impl Fn(usize) -> f32 + Sync) {
+        par::each_with(&mut self.data, &other.data, |i, pixel, to| {
             let t = amount(i).clamp(0.0, 1.0);
             for c in 0..4 {
                 pixel[c] += (to[c] - pixel[c]) * t;
             }
-        }
+        });
     }
 }
 

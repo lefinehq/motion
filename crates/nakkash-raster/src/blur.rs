@@ -14,6 +14,7 @@ use vello_cpu::kurbo::{Affine, Vec2};
 use crate::colour::{LUMA, choice, number, rgb};
 use crate::composite::Operation;
 use crate::effect::{ParamValue, Space};
+use crate::par;
 use crate::pixels::{Pixel, Pixels};
 
 /// A Gaussian's standard deviation per unit of a project's blurriness.
@@ -103,29 +104,14 @@ fn along(pixels: &mut Pixels, way: usize, radius: f32, passes: usize, edges: Edg
     }
     let (width, height) = (usize::from(pixels.width()), usize::from(pixels.height()));
     let data = pixels.data_mut();
-    let mut padded = Vec::new();
+    let line = |line: &mut [Pixel], padded: &mut Vec<Pixel>| {
+        for _ in 0..passes {
+            box_pass(line, whole, part, edges, padded);
+        }
+    };
     match way {
-        0 => {
-            for row in data.chunks_exact_mut(width) {
-                for _ in 0..passes {
-                    box_pass(row, whole, part, edges, &mut padded);
-                }
-            }
-        }
-        _ => {
-            let mut column = vec![[0.0; 4]; height];
-            for x in 0..width {
-                for (y, p) in column.iter_mut().enumerate() {
-                    *p = data[y * width + x];
-                }
-                for _ in 0..passes {
-                    box_pass(&mut column, whole, part, edges, &mut padded);
-                }
-                for (y, p) in column.iter().enumerate() {
-                    data[y * width + x] = *p;
-                }
-            }
-        }
+        0 => par::rows(data, width, Vec::new, |_, row, padded| line(row, padded)),
+        _ => par::columns(data, width, height, Vec::new, line),
     }
 }
 
@@ -199,10 +185,10 @@ pub(crate) fn drop_shadow(pixels: &mut Pixels, values: &[ParamValue], space: &Sp
     });
     let offset = linear * towards.to_point();
     let mut shadow = pixels.transformed(Affine::translate(offset.to_vec2()));
-    for p in shadow.data_mut() {
+    par::each(shadow.data_mut(), |_, p| {
         let a = p[3] * opacity;
         *p = [color[0] * a, color[1] * a, color[2] * a, a];
-    }
+    });
     let [sx, sy] = scales(space);
     gaussian(
         &mut shadow,
@@ -214,12 +200,12 @@ pub(crate) fn drop_shadow(pixels: &mut Pixels, values: &[ParamValue], space: &Sp
         return;
     }
     // The layer over its shadow.
-    for (p, s) in pixels.data_mut().iter_mut().zip(shadow.data()) {
+    par::each_with(pixels.data_mut(), shadow.data(), |_, p, s| {
         let under = 1.0 - p[3];
         for c in 0..4 {
             p[c] += s[c] * under;
         }
-    }
+    });
 }
 
 /// How `glow` combines its light with the layer, by name in
@@ -263,7 +249,7 @@ pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
     let operation = Operation::named(GLOW_OPERATIONS[choice(values, 5)])
         .expect("every glow operation is a row of the operations");
     let mut light = pixels.clone();
-    for p in light.data_mut() {
+    par::each(light.data_mut(), |_, p| {
         let a = p[3];
         let luma = match a > 0.0 {
             true => (p[0] * LUMA[0] + p[1] * LUMA[1] + p[2] * LUMA[2]) / a,
@@ -272,7 +258,7 @@ pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
         if luma < threshold {
             *p = [0.0; 4];
         }
-    }
+    });
     let sigma = radius * SIGMA_PER_BLURRINESS;
     let [sx, sy] = scales(space);
     gaussian(
@@ -283,9 +269,9 @@ pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
         ],
         Edges::Transparent,
     );
-    for p in light.data_mut() {
+    par::each(light.data_mut(), |_, p| {
         *p = p.map(|c| (c * intensity).min(1.0));
-    }
+    });
     match composite {
         1 => *pixels = light,
         2 => {
@@ -305,28 +291,38 @@ pub(crate) fn sharpen(pixels: &mut Pixels, values: &[ParamValue], _: &Space) {
     }
     let source = pixels.clone();
     let width = i64::from(source.width());
-    for (i, p) in pixels.data_mut().iter_mut().enumerate() {
-        let (x, y) = (i as i64 % width, i as i64 / width);
-        let at = |dx: i64, dy: i64| {
-            let (nx, ny) = (x + dx, y + dy);
-            let inside = nx >= 0 && ny >= 0 && nx < width && ny < i64::from(source.height());
-            if inside {
-                source.get(nx, ny)
-            } else {
-                source.get(x, y)
+    let row_width = usize::from(source.width());
+    par::rows(
+        pixels.data_mut(),
+        row_width,
+        || (),
+        |y, row, ()| {
+            let y = y as i64;
+            for (x, p) in row.iter_mut().enumerate() {
+                let x = x as i64;
+                let at = |dx: i64, dy: i64| {
+                    let (nx, ny) = (x + dx, y + dy);
+                    let inside =
+                        nx >= 0 && ny >= 0 && nx < width && ny < i64::from(source.height());
+                    if inside {
+                        source.get(nx, ny)
+                    } else {
+                        source.get(x, y)
+                    }
+                };
+                let around = [at(-1, 0), at(1, 0), at(0, -1), at(0, 1)];
+                let me = source.get(x, y);
+                for c in 0..4 {
+                    let mean = around.iter().map(|n| n[c]).sum::<f32>() / 4.0;
+                    p[c] = (me[c] + (me[c] - mean) * amount).clamp(0.0, 1.0);
+                }
+                let a = p[3];
+                for c in &mut p[..3] {
+                    *c = c.min(a);
+                }
             }
-        };
-        let around = [at(-1, 0), at(1, 0), at(0, -1), at(0, 1)];
-        let me = source.get(x, y);
-        for c in 0..4 {
-            let mean = around.iter().map(|n| n[c]).sum::<f32>() / 4.0;
-            p[c] = (me[c] + (me[c] - mean) * amount).clamp(0.0, 1.0);
-        }
-        let a = p[3];
-        for c in &mut p[..3] {
-            *c = c.min(a);
-        }
-    }
+        },
+    );
 }
 
 /// `find-edges`: each colour channel's slope across the 3×3 pixels around

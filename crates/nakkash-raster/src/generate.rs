@@ -12,6 +12,7 @@ use crate::colour::{choice, number, rgb};
 use crate::composite::Operation;
 use crate::distort::layer_box;
 use crate::effect::{ParamValue, Space};
+use crate::par;
 use crate::pen::Pen;
 use crate::pixels::Pixels;
 
@@ -38,14 +39,14 @@ fn alpha(values: &[ParamValue], i: usize) -> f32 {
 fn each_in_layer(
     pixels: &mut Pixels,
     space: &Space,
-    paint: impl Fn([f32; 2], [f32; 4], [u32; 2]) -> [f32; 4],
+    paint: impl Fn([f32; 2], [f32; 4], [u32; 2]) -> [f32; 4] + Sync,
 ) {
     let back: Affine = space.transform.inverse();
     let width = usize::from(pixels.width());
-    for (i, pixel) in pixels.data_mut().iter_mut().enumerate() {
+    par::each(pixels.data_mut(), |i, pixel| {
         let coverage = pixel[3];
         if coverage <= 0.0 {
-            continue;
+            return;
         }
         let at = back * Point::new((i % width) as f64 + 0.5, (i / width) as f64 + 0.5);
         let straight = [
@@ -59,7 +60,7 @@ fn each_in_layer(
             paint([at.x as f32, at.y as f32], straight, place).map(|c| c.clamp(0.0, 1.0));
         let a = a * coverage;
         *pixel = [r * a, g * a, b * a, a];
-    }
+    });
 }
 
 /// How `four-color` and `grid` draw over the layer, by name in

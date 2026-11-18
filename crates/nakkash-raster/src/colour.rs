@@ -9,6 +9,7 @@
 use nakkash_format::spline::Spline;
 
 use crate::effect::{Curve, ParamValue, Space};
+use crate::par;
 use crate::pixels::Pixels;
 
 /// Rec. 601 luma weights, which tints and colourising read lightness by.
@@ -16,16 +17,16 @@ pub(crate) const LUMA: [f32; 3] = [0.299, 0.587, 0.114];
 
 /// Runs `change` on the straight RGBA of every pixel that is not
 /// transparent, and premultiplies the result again.
-fn each(pixels: &mut Pixels, change: impl Fn([f32; 4]) -> [f32; 4]) {
-    for pixel in pixels.data_mut() {
+fn each(pixels: &mut Pixels, change: impl Fn([f32; 4]) -> [f32; 4] + Sync) {
+    par::each(pixels.data_mut(), |_, pixel| {
         let alpha = pixel[3];
         if alpha <= 0.0 {
-            continue;
+            return;
         }
         let straight = [pixel[0] / alpha, pixel[1] / alpha, pixel[2] / alpha, alpha];
         let [r, g, b, a] = change(straight).map(|c| c.clamp(0.0, 1.0));
         *pixel = [r * a, g * a, b * a, a];
-    }
+    });
 }
 
 /// The number in `values[i]`.

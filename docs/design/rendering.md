@@ -80,7 +80,7 @@ The rasteriser sits behind a small interface, so it can be swapped later (see [D
 
 In a fast renderer, encoding is usually the slowest step.
 
-`nakkash render --out <file>` encodes when the name ends in `.mp4` or `.mov`; a folder gets PNG frames. Frames are drawn on every core and handed to the encoder in order (`Session::render_in_order`), at most two per thread waiting, so memory does not grow with the video's length. It grows with the threads instead: each holds the frame it draws, and a frame with 3D planes seen up close holds about a gigabyte. `--threads N` draws on at most N threads, for a machine shared with other work. `--timings` shows `encode` apart from `render`.
+`nakkash render --out <file>` encodes when the name ends in `.mp4` or `.mov`; a folder gets PNG frames. Frames are drawn on every core and handed to the encoder in order (`Session::render_in_order`), at most two per thread waiting, so memory does not grow with the video's length. It grows with the threads instead: each holds the frame it draws, and a frame with 3D planes seen up close holds about a gigabyte. `--threads N` draws on at most N threads, for a machine shared with other work. The frames and the rows of each frame share those threads ([D75](decisions.md#d75-a-frame-is-drawn-on-every-thread-of-its-render)): each thread takes the next frame while frames are left, and the threads without one work the rows of the frames still drawn, so one frame alone, such as `--frame N`, is drawn on all of them. `--timings` shows `encode` apart from `render`.
 
 | Codec | Where | From | Container | Default |
 |---|---|---|---|---|
