@@ -769,3 +769,48 @@ fn layers_sharing_their_children_draw_the_same_marked_or_not() {
     let drawn = |marked| render_with(&frame(marked), 16, 16, RenderOptions::default()).unwrap();
     assert_eq!(drawn(true), drawn(false));
 }
+
+/// A flat layer whose effect reads its whole box draws the part of the box
+/// off the canvas too: the frame shows what a canvas big enough for the
+/// box shows there.
+#[test]
+fn an_effect_reading_its_whole_box_reads_the_part_off_the_canvas() {
+    // A 16 by 32 box: red above, blue below, turned into rings about its
+    // middle, so the red top row lands in the middle.
+    let layer = |y: f64| {
+        let half = |y0: f64, color: Color| {
+            Node::Path(PathDraw {
+                path: Rect::new(0.0, y0, 16.0, y0 + 16.0).to_path(0.1),
+                paint: Paint::Solid(color),
+                style: DrawStyle::Fill(FillRule::NonZero),
+            })
+        };
+        Node::Layer(Layer {
+            transform: Affine::translate((0.0, y)),
+            effects: vec![
+                Effect::new(
+                    "polar-coordinates",
+                    &[("interpolation", ParamValue::Number(1.0))],
+                )
+                .unwrap(),
+            ],
+            bounds: Some(Rect::new(0.0, 0.0, 16.0, 32.0)),
+            ..Layer::new(vec![
+                half(0.0, Color::rgba(1.0, 0.0, 0.0, 1.0)),
+                half(16.0, Color::rgba(0.0, 0.0, 1.0, 1.0)),
+            ])
+        })
+    };
+    let frame = |y| Frame {
+        nodes: vec![layer(y)],
+        ..Frame::default()
+    };
+    // The whole box on a 16 by 32 canvas, and its lower half on a 16 by 16
+    // one, the box's top 16 rows above the canvas.
+    let whole = render_with(&frame(0.0), 16, 32, RenderOptions::GOLDEN).unwrap();
+    let cut = render_with(&frame(-16.0), 16, 16, RenderOptions::GOLDEN).unwrap();
+    for (x, y) in [(8, 0), (8, 1), (4, 6), (12, 9), (2, 14)] {
+        let (a, b) = (cut.pixel(x, y).unwrap(), whole.pixel(x, y + 16).unwrap());
+        assert!(near(a, b), "({x}, {y}): {a:?} against {b:?}");
+    }
+}

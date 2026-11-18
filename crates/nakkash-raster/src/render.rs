@@ -573,6 +573,9 @@ impl Painter {
         if let Some(projection) = &layer.projection {
             return self.projected(layer, projection, &steps, opacity, parent);
         }
+        if let Some(flat) = self.whole_box(layer, parent) {
+            return self.projected(layer, &flat, &steps, opacity, parent);
+        }
         let transform = parent * layer.transform;
         if !layer.is_isolated() {
             return self.nodes(&layer.children, transform);
@@ -612,6 +615,24 @@ impl Painter {
         self.ctx.pop_layer();
         self.open -= 1;
         drawn
+    }
+
+    /// The plane a flat layer is drawn on when its effects read anywhere in
+    /// its box and the box leaves the canvas: its own transform, as a
+    /// projection, so it draws on a buffer of its whole box as a projected
+    /// layer does. On the canvas's grid, the part of the box off the canvas
+    /// would never be drawn, and an effect that reads it (a polar
+    /// conversion, a wrap, a lens) would read nothing there. `None` for any
+    /// other layer, and for one with motion-blur moves, which a projected
+    /// layer takes as samples of its projection instead.
+    fn whole_box(&self, layer: &Layer, parent: Affine) -> Option<Projection> {
+        if !layer.motion.is_empty() || projected::read_reach(layer).is_some() {
+            return None;
+        }
+        let landed = (parent * layer.transform).transform_rect_bbox(layer.bounds?);
+        let canvas = Rect::new(0.0, 0.0, f64::from(self.width), f64::from(self.height));
+        let inside = landed.union(canvas) == canvas;
+        (!inside).then(|| Projection::new(Homography::from(layer.transform)))
     }
 
     /// Draws an isolated flat layer on the float canvas: its content and
