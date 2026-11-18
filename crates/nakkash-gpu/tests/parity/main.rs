@@ -18,6 +18,7 @@ mod canvas;
 mod channel;
 mod colour;
 mod composite;
+mod distort;
 mod effects;
 mod frames;
 mod masks;
@@ -72,6 +73,25 @@ const TOLERANCES: &[(&str, f32)] = &[
     // Held at each point's level, a cycle steps, so a phase a bit off at a
     // point would be a step.
     ("color-cycle-held", 5e-6),
+    // The distortions read the pattern's hard edges at points worked out
+    // in 32-bit floats, a few hundred thousandths of a px from the CPU's.
+    ("motion-tile", 2e-4),
+    ("wrap", 5e-5),
+    ("mirror", 1e-4),
+    ("polar-coordinates", 1e-4),
+    ("lens-distortion", 3e-4),
+    ("repeat-tile", 5e-5),
+    ("turbulent-displace", 2e-4),
+    ("displacement-map", 3e-4),
+    // A map's colour read straight is divided by its alpha, rounding
+    // and all, so a nearly transparent map pixel moves its pixel by more
+    // (`distort.rs`).
+    ("displacement-map-straight", 2e-2),
+    ("bezier-warp", 1e-4),
+    // 3,000 px out, where the CPU's own points are 32-bit floats a step
+    // of 2.4e-4 px apart, so any arithmetic the GPU reorders moves a
+    // point by about that.
+    ("distort-far", 1e-3),
 ];
 
 pub(crate) fn tolerance(name: &str) -> f32 {

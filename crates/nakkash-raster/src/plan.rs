@@ -20,6 +20,7 @@ use crate::colour::{
 };
 use crate::composite::{self, Operation, SolidComposite};
 use crate::cycle::{self, ColorCycle};
+use crate::distort::{self, Distortion};
 use crate::effect::{Effect, ParamValue, Space};
 
 /// The steps an effect runs on its layer's pixels. More variants come as
@@ -61,6 +62,9 @@ pub enum Plan {
     BlackWhite(BlackWhite),
     /// A phase read off each pixel sent round a cycle of colours.
     ColorCycle(Box<ColorCycle>),
+    /// Every pixel redrawn from a point of the layer the distortion moves
+    /// it to.
+    Distort(Distortion),
 }
 
 /// Passes of one extended box along one way of the grid: each averages
@@ -247,6 +251,58 @@ pub const PLANS: &[PlanSpec] = &[
     PlanSpec {
         name: "color-cycle",
         plan: |values, space| Plan::ColorCycle(Box::new(cycle::color_cycle_plan(values, space))),
+    },
+    PlanSpec {
+        name: "displacement-map",
+        plan: |values, _| {
+            Plan::Distort(Distortion::DisplacementMap(distort::displacement_map_plan(
+                values,
+            )))
+        },
+    },
+    PlanSpec {
+        name: "turbulent-displace",
+        plan: |values, _| {
+            Plan::Distort(Distortion::TurbulentDisplace(
+                distort::turbulent_displace_plan(values),
+            ))
+        },
+    },
+    PlanSpec {
+        name: "polar-coordinates",
+        plan: |values, _| {
+            Plan::Distort(Distortion::PolarCoordinates(
+                distort::polar_coordinates_plan(values),
+            ))
+        },
+    },
+    PlanSpec {
+        name: "lens-distortion",
+        plan: |values, _| {
+            Plan::Distort(Distortion::LensDistortion(distort::lens_distortion_plan(
+                values,
+            )))
+        },
+    },
+    PlanSpec {
+        name: "repeat-tile",
+        plan: |values, _| Plan::Distort(Distortion::RepeatTile(distort::repeat_tile_plan(values))),
+    },
+    PlanSpec {
+        name: "motion-tile",
+        plan: |values, _| Plan::Distort(Distortion::MotionTile(distort::motion_tile_plan(values))),
+    },
+    PlanSpec {
+        name: "wrap",
+        plan: |values, _| Plan::Distort(Distortion::Wrap(distort::wrap_plan(values))),
+    },
+    PlanSpec {
+        name: "mirror",
+        plan: |values, _| Plan::Distort(Distortion::Mirror(distort::mirror_plan(values))),
+    },
+    PlanSpec {
+        name: "bezier-warp",
+        plan: |values, _| Plan::Distort(Distortion::BezierWarp(distort::bezier_warp_plan(values))),
     },
 ];
 

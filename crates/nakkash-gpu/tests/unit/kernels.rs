@@ -17,6 +17,8 @@ fn sources() -> Vec<(&'static str, String, &'static FamilySpec)> {
         ("colour", COLOUR.source.to_owned(), &COLOUR),
         ("channel", CHANNEL.source.to_owned(), &CHANNEL),
         ("neighbours", NEIGHBOURS.source.to_owned(), &NEIGHBOURS),
+        ("distort", DISTORT.source.to_owned(), &DISTORT),
+        ("cover", COVER.source.to_owned(), &COVER),
     ]
 }
 
