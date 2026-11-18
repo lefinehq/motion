@@ -831,6 +831,27 @@ pub static POLAR_COORDINATES: Registry = Registry {
     )],
 };
 
+/// The properties of `lens-distortion`.
+pub static LENS_DISTORTION: Registry = Registry {
+    kind: "lens-distortion",
+    rows: &[
+        number(
+            "field-of-view",
+            0.0,
+            Some((0.0, 180.0)),
+            "how wide the lens sees across the span `field` names, in degrees; 0 bends \
+             nothing",
+        ),
+        point(
+            "center",
+            [0.0, 0.0],
+            &[],
+            false,
+            "where the lens's axis meets the layer, in px of the layer",
+        ),
+    ],
+};
+
 /// The properties of `repeat-tile`.
 pub static REPEAT_TILE: Registry = Registry {
     kind: "repeat-tile",
@@ -1872,7 +1893,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 31] = [
+pub static EFFECTS: [ItemKind; 32] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -2285,6 +2306,40 @@ pub static EFFECTS: [ItemKind; 31] = [
         outline: None,
         timed: false,
         doc: "turns the layer between rows and columns and rings about its middle",
+    },
+    ItemKind {
+        name: "lens-distortion",
+        role: Role::Effect,
+        registry: &LENS_DISTORTION,
+        primary: Primary::Property("field-of-view"),
+        settings: &[
+            SettingSpec {
+                name: "distortion",
+                choices: &["add", "remove"],
+                default: "add",
+                doc: "`add` draws the layer as the lens sees it, drawn in towards its axis; \
+                      `remove` undoes the lens, stretching the layer out from its axis",
+            },
+            SettingSpec {
+                name: "field",
+                choices: &["horizontal", "vertical", "diagonal"],
+                default: "horizontal",
+                doc: "the span of the layer's box the field of view covers: its width, its \
+                      height or its diagonal",
+            },
+            SettingSpec {
+                name: "grow",
+                choices: &["off", "2x", "4x"],
+                default: "off",
+                doc: "whether the layer's box grows to hold what the lens draws beyond it, \
+                      up to twice or four times its width and height about its middle",
+            },
+        ],
+        input: None,
+        outline: None,
+        timed: false,
+        doc: "bends the layer about `center` as a lens with a wide field of view draws it, \
+              or undoes that bend",
     },
     ItemKind {
         name: "repeat-tile",

@@ -315,3 +315,103 @@ fn a_displacement_map_moves_pixels_by_its_levels() {
     assert_eq!(pixels.get(2, 0), [1.0; 4]);
     assert_eq!(pixels.get(3, 0), [1.0, 0.0, 0.0, 1.0]);
 }
+
+/// The values of a lens of `degrees` about `center`, removing the lens
+/// or adding it, over a `field` (0 width, 1 height, 2 diagonal), growing
+/// as `grow` says (0 off, 1 twice, 2 four times).
+fn lens(degrees: f32, center: [f32; 2], remove: bool, field: u8, grow: u8) -> [ParamValue; 5] {
+    [
+        Number(degrees),
+        At(center),
+        Choice(u8::from(remove)),
+        Choice(field),
+        Choice(grow),
+    ]
+}
+
+#[test]
+fn a_lens_of_no_field_bends_nothing() {
+    let (mut pixels, space) = ramps();
+    let before = pixels.clone();
+    lens_distortion(&mut pixels, &lens(0.0, [32.0, 32.0], true, 0, 0), &space);
+    assert_eq!(pixels, before);
+}
+
+#[test]
+fn removing_a_lens_reads_each_point_nearer_its_axis() {
+    // A 90° field across the 64 px width puts the focal length at 32 px:
+    // the point 32 px out on the axis's row reads the point 32/√2 out.
+    let (mut pixels, space) = ramps();
+    lens_distortion(&mut pixels, &lens(90.0, [32.0, 32.5], true, 0, 0), &space);
+    let focal = 32.0f32;
+    for x in [40, 50, 63] {
+        let r = x as f32 + 0.5 - 32.0;
+        let expected = 32.0 + r / (1.0 + (r / focal).powi(2)).sqrt();
+        let read = read_at(&pixels, x, 32);
+        assert!(near(read, [expected, 32.5]), "{x}: {read:?} {expected}");
+    }
+    // The axis itself stays put.
+    assert!(near(read_at(&pixels, 31, 32), [31.5, 32.5]));
+}
+
+#[test]
+fn adding_a_lens_reads_each_point_farther_out_and_nothing_past_its_focal_length() {
+    // A 90° field across the 64 px box's diagonal: the focal length is
+    // half the diagonal, 32√2 px, over tan 45°.
+    let (mut pixels, space) = ramps();
+    lens_distortion(&mut pixels, &lens(90.0, [0.0, 0.0], false, 2, 0), &space);
+    let focal = 64.0f32.hypot(64.0) / 2.0;
+    let at = [10.5f32, 20.5];
+    let r = at[0].hypot(at[1]);
+    let k = 1.0 / (1.0 - (r / focal).powi(2)).sqrt();
+    assert!(near(read_at(&pixels, 10, 20), [at[0] * k, at[1] * k]));
+    // The far corner lies past the focal length, and points just inside it
+    // read beyond the box: both clear.
+    assert_eq!(pixels.get(63, 63), [0.0; 4]);
+    assert_eq!(pixels.get(40, 0), [0.0; 4]);
+}
+
+#[test]
+fn a_lens_grows_the_box_only_as_far_as_its_cap() {
+    let bounds = Rect::new(0.0, 0.0, 64.0, 32.0);
+    // Off, or adding a lens about the middle, keeps the box.
+    assert_eq!(
+        lens_box(bounds, &lens(120.0, [32.0, 16.0], true, 0, 0)),
+        bounds
+    );
+    assert_eq!(
+        lens_box(bounds, &lens(120.0, [32.0, 16.0], false, 0, 1)),
+        bounds
+    );
+    // Removing a lens whose field reaches the corners' right angle grows
+    // the box to its cap: twice its size about its middle.
+    let capped = lens_box(bounds, &lens(120.0, [32.0, 16.0], true, 0, 1));
+    let cap = Rect::new(-32.0, -16.0, 96.0, 48.0);
+    assert!(
+        (capped.x0 - cap.x0).abs() < 1e-9
+            && (capped.y0 - cap.y0).abs() < 1e-9
+            && (capped.x1 - cap.x1).abs() < 1e-9
+            && (capped.y1 - cap.y1).abs() < 1e-9,
+        "{capped:?}"
+    );
+    // A narrow one grows it to where its corners go, under the cap.
+    let grown = lens_box(bounds, &lens(40.0, [32.0, 16.0], true, 0, 2));
+    let focal = 32.0 / 20f64.to_radians().tan();
+    let r = 32f64.hypot(16.0);
+    let k = 1.0 / (1.0 - (r / focal).powi(2)).sqrt();
+    assert!((grown.x1 - (32.0 + 32.0 * k)).abs() < 1e-9, "{grown:?}");
+    assert!((grown.y0 - (16.0 - 16.0 * k)).abs() < 1e-9, "{grown:?}");
+}
+
+#[test]
+fn a_grown_lens_draws_in_the_grown_box() {
+    // A 32 px box in a 64 px grid: removing a wide lens draws past the box.
+    let (mut pixels, mut space) = ramps();
+    space.bounds = Some(Rect::new(16.0, 16.0, 48.0, 48.0));
+    let values = lens(120.0, [32.0, 32.0], true, 0, 1);
+    let mut kept = pixels.clone();
+    lens_distortion(&mut pixels, &values, &space);
+    assert_ne!(pixels.get(8, 32), [0.0; 4]);
+    lens_distortion(&mut kept, &lens(120.0, [32.0, 32.0], true, 0, 0), &space);
+    assert_eq!(kept.get(8, 32), [0.0; 4]);
+}
