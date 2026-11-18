@@ -4,8 +4,9 @@
 //! [`Gpu`] is an [`Accelerator`] the rasteriser hands work to when a caller
 //! asks for it (`nakkash render --gpu`). It lays layers by every blend mode
 //! with their opacity, clips, masks and mattes, mixes filter layers, moves
-//! pixels, and runs the moving effects. Every other effect runs on the
-//! CPU, with a copy each way. Paths, glyphs and pictures
+//! pixels, and runs the effects that have a plan ([`nakkash_raster::PLANS`]):
+//! the box and Gaussian blurs, the glow and the drop shadow. Every other
+//! effect runs on the CPU, with a copy each way. Paths, glyphs and pictures
 //! are always drawn on the CPU.
 //!
 //! Frames it draws approximate the CPU's, which stays the reference: the
@@ -28,14 +29,14 @@ use std::sync::{Arc, mpsc};
 use nakkash_format::{Diagnostic, Kind, Result};
 use nakkash_raster::kurbo::Affine;
 use nakkash_raster::{
-    Accelerator, Amount, BlendMode, Effect, MatteMode, Move, Pixel, Pixels, Resident, Share, Space,
-    Tally,
+    Accelerator, Amount, BlendMode, Blur, Edges, Effect, Glow, GlowComposite, MatteMode, Move,
+    Operation, Pixel, Pixels, Plan, Resident, Shadow, Share, Space, Tally,
 };
 
 pub use device::{Adapter, Refusal};
 
 use grid::{Grid, grid, grid_mut};
-use kernels::{Kernels, Params, mode_row, pixel_groups};
+use kernels::{Kernels, LINE_GROUP, Params, mode_row, pixel_groups};
 use pool::{Kind as BufferKind, Pool, Pooled};
 use tally::Counts;
 
@@ -228,6 +229,55 @@ impl Gpu {
         out
     }
 
+    /// Records `blur`'s passes on `grid`, each into a new buffer.
+    fn blur(&self, batch: &mut Batch, grid: &mut Grid, blur: &Blur) {
+        let (width, height) = (u32::from(grid.width), u32::from(grid.height));
+        // Rows: lines of `width` pixels, one after another; columns: lines
+        // of `height` pixels a row apart.
+        let ways = [
+            (blur.rows, width, height, 1, width),
+            (blur.columns, height, width, width, 1),
+        ];
+        for (passes, n, lines, along, across) in ways {
+            if !passes.any() {
+                continue;
+            }
+            let radius = passes.radius.max(0.0);
+            let (whole, part) = (radius.floor() as u32, radius.fract());
+            let window = 2 * whole + 1;
+            // Enough invocations to fill the GPU, each sliding over at
+            // least 32 pixels and, once the window is long, about as many
+            // as the window holds, so summing its first window costs no
+            // more than sliding it.
+            let target = u32::try_from((u64::from(n) * u64::from(lines)).div_ceil(65536))
+                .unwrap_or(u32::MAX);
+            let chunk = target.clamp(32, window.max(32));
+            let params = Params::new()
+                .u32(n)
+                .u32(lines)
+                .u32(along)
+                .u32(across)
+                .u32(chunk)
+                .u32(whole)
+                .f32(part)
+                .f32(window as f32 + 2.0 * part)
+                .u32(u32::from(blur.edges == Edges::Repeat));
+            for _ in 0..passes.count {
+                let out = self.buffer(grid_bytes(grid.width, grid.height), BufferKind::Storage);
+                self.kernels.box_pass.dispatch(
+                    &self.device,
+                    &mut batch.encoder,
+                    "box_pass",
+                    &params,
+                    out.buffer(),
+                    &[grid.buffer()],
+                    (lines.div_ceil(LINE_GROUP), n.div_ceil(chunk)),
+                );
+                batch.keep(Some(std::mem::replace(&mut grid.pixels, out)));
+            }
+        }
+    }
+
     /// Records a copy of `grid`.
     fn duplicate_grid(&self, batch: &mut Batch, grid: &Grid) -> Grid {
         let out = self.grid(grid.width, grid.height);
@@ -235,6 +285,86 @@ impl Gpu {
             .encoder
             .copy_buffer_to_buffer(grid.buffer(), 0, out.buffer(), 0, None);
         out
+    }
+
+    /// Records `glow` on `grid`.
+    fn glow(&self, batch: &mut Batch, grid: &mut Grid, glow: &Glow) {
+        let count = grid.count();
+        let mut light = self.duplicate_grid(batch, grid);
+        let [r, g, b] = glow.luma;
+        self.pixel_kernel(
+            batch,
+            "glow_threshold",
+            count,
+            |p| {
+                p.u32(0)
+                    .u32(0)
+                    .f32(0.0)
+                    .f32(glow.threshold)
+                    .f32(0.0)
+                    .f32(0.0)
+                    .vec4([r, g, b, 0.0])
+            },
+            light.buffer(),
+            None,
+            None,
+        );
+        self.blur(batch, &mut light, &glow.blur);
+        // Added light is the same either way round, so behind the layer
+        // too ([`glow_on_kernels`]).
+        let entry = match glow.composite {
+            GlowComposite::GlowOnly => "glow_alone",
+            GlowComposite::WithOriginal | GlowComposite::BehindOriginal => "glow_add",
+        };
+        self.pixel_kernel(
+            batch,
+            entry,
+            count,
+            |p| p.u32(0).u32(0).f32(0.0).f32(0.0).f32(glow.intensity),
+            grid.buffer(),
+            Some(light.buffer()),
+            None,
+        );
+        batch.keep(Some(light.pixels));
+    }
+
+    /// Records `shadow` on `grid`.
+    fn shadow(&self, batch: &mut Batch, grid: &mut Grid, shadow: &Shadow) {
+        let count = grid.count();
+        let mut cast = self.transform_into(batch, grid, Affine::translate(shadow.offset));
+        let [r, g, b] = shadow.color;
+        self.pixel_kernel(
+            batch,
+            "shadow_colour",
+            count,
+            |p| {
+                p.u32(0)
+                    .u32(0)
+                    .f32(0.0)
+                    .f32(0.0)
+                    .f32(0.0)
+                    .f32(shadow.opacity)
+                    .vec4([r, g, b, 0.0])
+            },
+            cast.buffer(),
+            None,
+            None,
+        );
+        self.blur(batch, &mut cast, &shadow.blur);
+        if shadow.alone {
+            batch.keep(Some(std::mem::replace(&mut grid.pixels, cast.pixels)));
+            return;
+        }
+        self.pixel_kernel(
+            batch,
+            "shadow_under",
+            count,
+            |p| p,
+            grid.buffer(),
+            Some(cast.buffer()),
+            None,
+        );
+        batch.keep(Some(cast.pixels));
     }
 
     /// Submits `batch`, then lets go of what it kept: the GPU runs the
@@ -457,14 +587,22 @@ impl Accelerator for Gpu {
     }
 
     fn runs(&self, effect: &Effect) -> bool {
-        effect.input().is_none() && effect.movement().is_some()
+        effect.input().is_none()
+            && (effect.movement().is_some()
+                // A glow's composite and operation come from its values
+                // alone, so any space shows whether its kernels draw it.
+                || match effect.plan(&Space::default()) {
+                    Some(Plan::Glow(glow)) => glow_on_kernels(&glow),
+                    Some(Plan::Blur(_) | Plan::Shadow(_)) => true,
+                    None => false,
+                })
     }
 
     fn effect(&self, pixels: &mut Resident, effect: &Effect, space: &Space) -> Result<()> {
         let mut batch = self.batch();
         let grid = grid_mut(pixels);
-        match effect.movement() {
-            Some(Move { transform, opacity }) => {
+        match (effect.movement(), effect.plan(space)) {
+            (Some(Move { transform, opacity }), _) => {
                 // As `Effect::apply` moves pixels.
                 let inside = space.transform * transform * space.transform.inverse();
                 if inside != Affine::IDENTITY {
@@ -483,7 +621,10 @@ impl Accelerator for Gpu {
                     );
                 }
             }
-            None => {
+            (None, Some(Plan::Blur(blur))) => self.blur(&mut batch, grid, &blur),
+            (None, Some(Plan::Glow(glow))) => self.glow(&mut batch, grid, &glow),
+            (None, Some(Plan::Shadow(shadow))) => self.shadow(&mut batch, grid, &shadow),
+            (None, None) => {
                 return Err(Diagnostic::new(
                     Kind::Invalid,
                     format!("the GPU has no kernel for `{}`", effect.spec().name),
@@ -503,6 +644,13 @@ impl Accelerator for Gpu {
     fn tally(&self) -> Tally {
         self.counts.tally()
     }
+}
+
+/// Whether the glow kernels draw `glow`: its light alone, or added to the
+/// layer, which is the same with the layer behind it. Its other operations
+/// combine the light with the layer on the CPU.
+fn glow_on_kernels(glow: &Glow) -> bool {
+    glow.composite == GlowComposite::GlowOnly || glow.operation == Operation::Blend(BlendMode::Add)
 }
 
 #[cfg(test)]

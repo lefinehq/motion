@@ -11,6 +11,8 @@ use wgpu::util::DeviceExt;
 
 /// The invocations of one workgroup of the per-pixel kernels.
 pub(crate) const PIXEL_GROUP: u32 = 256;
+/// The invocations of one workgroup of the box pass, one line each.
+pub(crate) const LINE_GROUP: u32 = 64;
 /// The most workgroups one dimension of a dispatch may have.
 const MAX_GROUPS: u32 = 65535;
 
@@ -18,7 +20,17 @@ const MAX_GROUPS: u32 = 65535;
 pub(crate) const PIXEL: FamilySpec = FamilySpec {
     source: include_str!("shaders/pixel.wgsl"),
     reads: 2,
-    entries: &["lay", "mix_towards", "cut", "scale"],
+    entries: &[
+        "lay",
+        "mix_towards",
+        "cut",
+        "scale",
+        "glow_threshold",
+        "glow_add",
+        "glow_alone",
+        "shadow_colour",
+        "shadow_under",
+    ],
 };
 pub(crate) const AMOUNT: FamilySpec = FamilySpec {
     source: include_str!("shaders/amount.wgsl"),
@@ -35,6 +47,12 @@ pub(crate) const TRANSFORM: FamilySpec = FamilySpec {
     reads: 1,
     entries: &["transformed"],
 };
+pub(crate) const BOX_PASS: FamilySpec = FamilySpec {
+    source: include_str!("shaders/boxpass.wgsl"),
+    reads: 1,
+    entries: &["box_pass"],
+};
+
 /// A WGSL source, how many buffers its kernels read, and its entry points.
 pub(crate) struct FamilySpec {
     pub(crate) source: &'static str,
@@ -55,6 +73,7 @@ pub(crate) struct Kernels {
     pub(crate) amount: Family,
     pub(crate) unpack: Family,
     pub(crate) transform: Family,
+    pub(crate) box_pass: Family,
 }
 
 /// The constants the per-pixel kernels name blend modes by, one per row of
@@ -87,6 +106,7 @@ impl Kernels {
             amount: Family::new(device, AMOUNT.source, &AMOUNT),
             unpack: Family::new(device, UNPACK.source, &UNPACK),
             transform: Family::new(device, TRANSFORM.source, &TRANSFORM),
+            box_pass: Family::new(device, BOX_PASS.source, &BOX_PASS),
         }
     }
 }
@@ -217,7 +237,7 @@ pub(crate) fn pixel_groups(count: u32) -> ((u32, u32), u32) {
 const PARAMS_BYTES: usize = 64;
 
 /// A kernel's uniform block, written field by field as WGSL lays out a
-/// struct of 32-bit scalars.
+/// struct of 32-bit scalars and `vec4<f32>`s.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Params(Vec<u8>);
 
@@ -236,6 +256,18 @@ impl Params {
     /// The block with a float after what it holds.
     pub(crate) fn f32(mut self, value: f32) -> Params {
         self.0.extend_from_slice(&value.to_le_bytes());
+        self
+    }
+
+    /// The block with a `vec4<f32>` after what it holds, aligned to 16
+    /// bytes as WGSL aligns one.
+    pub(crate) fn vec4(mut self, value: [f32; 4]) -> Params {
+        while !self.0.len().is_multiple_of(16) {
+            self.0.push(0);
+        }
+        for v in value {
+            self = self.f32(v);
+        }
         self
     }
 
