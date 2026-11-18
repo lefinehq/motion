@@ -895,8 +895,9 @@ impl LayerScan {
             Some(_) => Place::Moving,
         };
         self.seen = drawn.map(|b| (frame, b));
+        let brief = brief(graph);
         for (scan, found) in self.runs.iter_mut().zip(&look.found) {
-            scan.observe(frame, place, *found);
+            scan.observe(frame, place, *found, brief);
         }
         if let (Some(b), Some(parent)) = (drawn, look.parent) {
             self.frame = self.frame.and(parent);
@@ -922,7 +923,7 @@ impl LayerScan {
         let mut failed: Vec<Code> = Vec::new();
         let mut rules_run = 0;
         for (rule, scan) in RULES.iter().zip(self.runs) {
-            let runs = scan.finish();
+            let runs = scan.finish(brief(graph));
             if rule.suppressed_by.is_some_and(|by| failed.contains(&by)) {
                 continue;
             }
@@ -1017,12 +1018,27 @@ fn same_box(a: Rect, b: Rect) -> bool {
         .all(|(x, y)| (x - y).abs() < 1e-6)
 }
 
+/// The longest a layer may move across the edge and not be checked there,
+/// in seconds: the least time any text is held to be read (`text_hold`),
+/// so nothing that crosses for less can be read cut off.
+const BRIEF: f64 = 0.5;
+
+/// [`BRIEF`] in whole frames of `graph`'s root.
+fn brief(graph: &SceneGraph) -> usize {
+    (BRIEF * graph.root.fps + EPSILON).floor() as usize
+}
+
 /// What one layout rule has seen of one layer, in frame order.
 ///
 /// A layer waiting wholly off the canvas is not checked: nothing of it shows.
 /// Nor is one passing through the edge on its way in from there or out to
-/// there, as a push or slide does. A layer at rest across the edge is, and so
-/// is one that never comes onto the canvas at all.
+/// there, as a push or slide does, nor one that moves across the edge for
+/// no longer than [`BRIEF`] and then leaves it, inside or out of sight, as a
+/// zoom through the frame or a glitch's copies do. These depend only on
+/// where the layer moves and for how long, never on its size, so a master
+/// and a smaller or larger copy of it are judged alike as they move. A layer at rest
+/// across the edge is checked, as is one that moves across it for longer,
+/// and one that never comes onto the canvas at all.
 #[derive(Default)]
 struct LayoutScan {
     /// The failing runs found so far; the last may still grow.
@@ -1043,9 +1059,9 @@ struct LayoutScan {
 impl LayoutScan {
     /// Reads the layer at `frame`, later than any seen so far: where it is,
     /// and what the rule found there.
-    fn observe(&mut self, frame: u32, place: Place, found: Option<Overshoot>) {
+    fn observe(&mut self, frame: u32, place: Place, found: Option<Overshoot>, brief: usize) {
         if self.last.is_some_and(|last| last + 1 != frame) {
-            self.settle();
+            self.settle(brief);
         }
         self.last = Some(frame);
         let found = found.map(|found| Finding {
@@ -1053,7 +1069,7 @@ impl LayoutScan {
             limit: 0.0,
         });
         match (place, found) {
-            (Place::Unseen, _) => self.settle(),
+            (Place::Unseen, _) => self.settle(brief),
             (Place::Off, found) => {
                 // The move reached the outside: it was a way in or out.
                 self.passing.clear();
@@ -1066,21 +1082,25 @@ impl LayoutScan {
                 self.on = true;
                 self.passing.push((frame, found));
             }
-            (Place::Resting | Place::Moving, found) => {
+            (Place::Resting, Some(found)) => {
+                // The move came to rest across the edge: all of it counts.
                 self.on = true;
-                self.settle();
-                if let Some(found) = found {
-                    add(&mut self.runs, frame, found);
-                }
+                self.settle(0);
+                add(&mut self.runs, frame, found);
+            }
+            (Place::Resting | Place::Moving, None) => {
+                self.on = true;
+                self.settle(brief);
             }
         }
     }
 
     /// Ends the move under way: its failing frames count unless it came in
-    /// from off the canvas.
-    fn settle(&mut self) {
+    /// from off the canvas, or lasted no more than `brief` frames.
+    fn settle(&mut self, brief: usize) {
+        let passed = self.from_off || self.passing.len() <= brief;
         for (frame, found) in self.passing.drain(..) {
-            if !self.from_off {
+            if !passed {
                 add(&mut self.runs, frame, found);
             }
         }
@@ -1089,8 +1109,8 @@ impl LayoutScan {
 
     /// The failing runs, once the frames run out: those it spent off the
     /// canvas count too when it never came onto it.
-    fn finish(mut self) -> Vec<Run> {
-        self.settle();
+    fn finish(mut self, brief: usize) -> Vec<Run> {
+        self.settle(brief);
         match self.on {
             true => self.runs,
             false => self.off,

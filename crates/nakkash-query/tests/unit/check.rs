@@ -120,10 +120,9 @@ fn has_hint(report: &Report) -> bool {
 #[case::absolute_preset_start_gets_no_hint_on_that_axis(
     r#"{"nakkash":1,"dur":"1s","presets":{"swoop":{"x":1900}},"layers":[{"id":"a","rect":"300x100","at":"center center","in":"swoop 12f linear"}]}"#,
     // It swoops in from x 1900 in 12 frames at one speed: about 79 px a
-    // frame.
+    // frame, through the right edge for two frames, which is brief.
     report(
         vec![
-            offscreen("a", 0..=1, 130.0, None),
             Violation {
                 measure: Measure::Above {
                     value: 79.0,
@@ -141,8 +140,8 @@ fn has_hint(report: &Report) -> bool {
             },
             linear("a", 0..=12),
         ],
-        // The crowd passes.
-        1,
+        // The crowd and both layout rules pass.
+        3,
     )
 )]
 #[case::empty_scene_is_ok_zero(r#"{"nakkash":1,"dur":"1s","layers":[]}"#, report(vec![], 0))]
@@ -152,16 +151,28 @@ fn reports(#[case] json: &str, #[case] expected: Report) {
 
 /// A one-second scene with the one layer in each case.
 #[rstest]
-#[case::entrance_overshoot_is_caught_only_while_visible(
+#[case::an_entrance_rising_through_the_edge_is_not_offscreen(
     r#"{"id":"card","rect":"300x100","at":"center 1000","in":"fade-up 60px 12f linear @0f"}"#,
+    // It crosses the bottom edge for frames 1 to 5 of its rise, then rests
+    // inside, though past the safe area: a brief pass in motion, then a rest.
     // The 60 px rise takes 5 px a frame, at one speed: a judder pass, an
     // easing finding and a crowd pass.
     report(
         vec![
-            offscreen("card", 1..=5, 25.0, Some(r#"card at="center 921""#)),
+            Violation {
+                measure: Measure::Overshoot(79.0),
+                ..violation(
+                    Severity::Warning,
+                    Code::Unsafe,
+                    "card",
+                    1..=29,
+                    0.0,
+                    Some(r#"card at="center 921""#),
+                )
+            },
             linear("card", 1..=12),
         ],
-        2,
+        3,
     )
 )]
 #[case::left_edge_fix_adds_and_resolves_only_the_moving_axis(
@@ -484,6 +495,37 @@ fn a_layer_that_comes_in_and_stops_across_the_edge_is_offscreen_once_it_rests() 
             Code::Offscreen,
             11..=29,
             Measure::Overshoot(30.0)
+        )]
+    );
+}
+
+#[rstest]
+// A copy zooms through the right edge and is gone after a third of a
+// second, as a glitch's copies do; at half the size it is judged alike.
+#[case::a_zoom_through_the_edge(
+    r#""rect":"400x100","position":[700,500],"span":"0f-10f","anim":{"scale":"1 -> 3 @0-10f"}"#
+)]
+#[case::the_same_zoom_at_half_the_size(
+    r#""rect":"200x50","position":[850,500],"span":"0f-10f","anim":{"scale":"1 -> 3 @0-10f"}"#
+)]
+// It swings past the edge for a few frames and settles inside.
+#[case::an_overshoot_past_the_edge(r#""rect":"400x100","anim":{"x":"500 -> 850 -> 700 @0-20f"}"#)]
+fn a_layer_moving_briefly_across_the_edge_is_not_offscreen(#[case] keys: &str) {
+    let r = square(&format!(r#"{{"id":"card",{keys}}}"#));
+    assert_eq!(layout(&r), []);
+}
+
+#[test]
+fn a_layer_moving_across_the_edge_for_longer_is_offscreen() {
+    // It drifts out past the right edge for the whole second.
+    let r = square(r#"{"id":"card","rect":"400x100","anim":{"x":"800 -> 1000 @0-29f"}}"#);
+    assert_eq!(
+        layout(&r),
+        [(
+            "card".into(),
+            Code::Offscreen,
+            1..=29,
+            Measure::Overshoot(200.0)
         )]
     );
 }
