@@ -72,6 +72,8 @@ pub use generate::{
 };
 pub use homography::Homography;
 pub use image::Image;
+pub use lens::{IRIS_ROWS, Iris, LensBlur, LensMap, Level as LensLevel, Row as IrisRow};
+pub use light::Bevel;
 pub use list::{
     Blending, Clip, Frame, Glyph, GlyphDraw, ImageDraw, Layer, LayerMask, MaskMode, Matte,
     MatteMode, Node, PathDraw, Projection, Shared,
@@ -81,6 +83,9 @@ pub use picture::Picture;
 pub use pixels::{Pixel, Pixels};
 pub use plan::{Blur, Glow, GlowComposite, PLANS, Passes, Plan, PlanSpec, Shadow};
 pub use projected::Landing;
+pub use radial::{
+    Fade as RadialFade, RadialBlur, RadialKind, Rays, Ring, Rings, Stretch as RadialStretch,
+};
 pub use render::{Quality, RenderOptions, Simd, render, render_on, render_with};
 pub use sound::{Heard, level};
 pub use style::{
@@ -88,6 +93,7 @@ pub use style::{
     Join, Paint, Stop, StrokeStyle,
 };
 pub use total::{Total, TotalPiece};
+pub use vector::{Level as VectorLevel, Streak as VectorStreak, VectorBlur};
 /// The geometry and font types display lists are made of: vocabulary crates
 /// the rasteriser shares, named from themselves so it stays private ([D37]).
 ///

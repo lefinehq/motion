@@ -25,6 +25,10 @@ use crate::effect::{Effect, ParamValue, Space};
 use crate::generate::{
     self, Beam, FourColor, FractalNoise, GridLines, IrisWipe, LinearWipe, Ramp, VenetianBlinds,
 };
+use crate::lens::{self, LensBlur};
+use crate::light::{self, Bevel};
+use crate::radial::{self, RadialBlur};
+use crate::vector::{self, VectorBlur};
 
 /// The steps an effect runs on its layer's pixels. More variants come as
 /// more effects gain plans, so a match on one needs a catch-all arm.
@@ -84,6 +88,14 @@ pub enum Plan {
     FractalNoise(FractalNoise),
     /// A straight beam along a line.
     Beam(Beam),
+    /// The layer streaked along rays out from a point or rings round it.
+    Radial(RadialBlur),
+    /// The layer smeared along the slope of a map's level.
+    Vector(VectorBlur),
+    /// The layer spread over the shape of a lens's iris.
+    Lens(LensBlur),
+    /// The layer's alpha raised into a surface and lit from one side.
+    Bevel(Bevel),
 }
 
 /// Passes of one extended box along one way of the grid: each averages
@@ -354,6 +366,22 @@ pub const PLANS: &[PlanSpec] = &[
     PlanSpec {
         name: "beam",
         plan: |values, space| Plan::Beam(generate::beam_plan(values, space)),
+    },
+    PlanSpec {
+        name: "radial-blur",
+        plan: |values, space| Plan::Radial(radial::radial_blur_plan(values, space)),
+    },
+    PlanSpec {
+        name: "vector-blur",
+        plan: |values, space| Plan::Vector(vector::vector_blur_plan(values, space)),
+    },
+    PlanSpec {
+        name: "lens-blur",
+        plan: |values, space| Plan::Lens(lens::lens_blur_plan(values, space)),
+    },
+    PlanSpec {
+        name: "bevel",
+        plan: |values, space| Plan::Bevel(light::bevel_plan(values, space)),
     },
 ];
 

@@ -14,6 +14,7 @@
 
 use std::sync::OnceLock;
 
+mod blurs;
 mod canvas;
 mod channel;
 mod colour;
@@ -116,6 +117,31 @@ const TOLERANCES: &[(&str, f32)] = &[
     // The pen works in 64 bits, the kernel in 32 from a pixel near the
     // beam's start: measured 2.4e-5 along a beam across a 4K grid.
     ("beam", 1e-4),
+    // The radial blurs sum their lines exactly and read them within a few
+    // 10^-7 px of the CPU, so they differ by a float's rounding. Like the
+    // CPU, a stretch whose weight is under a hundredth of a px takes the
+    // layer at the pixel instead, a jump no limit holds a pixel to when
+    // rounding puts it on the other side; the cases stay off that edge.
+    ("radial-zoom", 3e-6),
+    ("radial-spin", 3e-6),
+    // The vector blur's streaks follow the slope's direction even where
+    // it is all but flat, and take their samples up to 4,000 px away,
+    // where a float holds a px to 2.4e-4.
+    ("vector-blur", 2e-4),
+    // With the map softened, its colour is divided by an alpha that fades
+    // out, which magnifies a float's rounding of the Gaussian into the
+    // slope: streak ends move, and in a few px the number of samples a
+    // streak takes, a whole number by its length, changes by one. Every
+    // other px stays within 1e-5.
+    ("vector-blur-softened", 5e-3),
+    // The lens blur's running sums round as the CPU's do, so its irises
+    // differ by a float's rounding of their few small parts; a map's
+    // level, worked out in 32-bit floats here and 64 there, moves a radius
+    // by its rounding.
+    ("lens-blur", 2e-5),
+    // The bevel's distances are whole numbers, found exactly; its slopes
+    // and light differ by a float's rounding.
+    ("bevel", 5e-6),
 ];
 
 pub(crate) fn tolerance(name: &str) -> f32 {

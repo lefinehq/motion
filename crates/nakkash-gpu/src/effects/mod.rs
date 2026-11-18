@@ -5,11 +5,15 @@
 //!
 //! [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
 
+mod bevel;
 mod blur;
 mod colour;
 mod composite;
 mod distort;
 mod generate;
+mod lens;
+mod radial;
+mod vector;
 
 pub(crate) use composite::operation_row;
 
@@ -33,17 +37,22 @@ pub(crate) fn runs(plan: &Plan) -> bool {
         plan,
         Plan::Blur(_) | Plan::Shadow(_) | Plan::Glow(_) | Plan::SolidComposite(_)
     ) || colour::runs(plan)
+        || matches!(plan, Plan::Radial(r) if radial::runs(r))
+        || matches!(plan, Plan::Vector(_) | Plan::Lens(_) | Plan::Bevel(_))
 }
 
 /// Whether `plan` reads the drawing of another layer, which the kernels
 /// take from [`Space::input`]. An effect that reads one runs on the GPU
 /// only when its plan says so.
 pub(crate) fn reads_input(plan: &Plan) -> bool {
-    // A displacement map reads its map layer.
+    // A displacement map reads its map layer, and so do the vector blur
+    // and the lens blur.
     colour::reads_input(plan)
         || matches!(
             plan,
             Plan::Distort(nakkash_raster::Distortion::DisplacementMap(_))
+                | Plan::Vector(_)
+                | Plan::Lens(_)
         )
 }
 
@@ -81,6 +90,10 @@ pub(crate) fn run(
         Plan::SolidComposite(solid) => gpu.solid_composite(batch, grid, solid),
         plan if colour::runs(plan) => colour::run(gpu, batch, grid, plan, space),
         Plan::Distort(distortion) => gpu.distort(batch, grid, distortion, space),
+        Plan::Radial(radial) => gpu.radial(batch, grid, radial),
+        Plan::Vector(vector) => gpu.vector(batch, grid, vector, space),
+        Plan::Lens(lens) => gpu.lens(batch, grid, lens, space),
+        Plan::Bevel(bevel) => gpu.bevel(batch, grid, bevel),
         _ => {
             return Err(
                 Diagnostic::new(Kind::Invalid, "the GPU has no kernel for this plan")

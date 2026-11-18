@@ -150,6 +150,44 @@ pub(crate) const NEIGHBOURS: FamilySpec = FamilySpec {
     entries: &["sharpen", "find_edges"],
 };
 
+pub(crate) const RADIAL: FamilySpec = FamilySpec {
+    source: include_str!("shaders/radial.wgsl"),
+    reads: 5,
+    entries: &[
+        "read_lines",
+        "sums",
+        "prefix",
+        "zoom_keys",
+        "zoom_pixels",
+        "spin_keys",
+        "spin_pixels",
+    ],
+};
+
+pub(crate) const VECTOR: FamilySpec = FamilySpec {
+    source: include_str!("shaders/vector.wgsl"),
+    reads: 3,
+    entries: &["slopes", "steepest", "most_of", "smear"],
+};
+
+pub(crate) const EXACT_BOX: FamilySpec = FamilySpec {
+    source: include_str!("shaders/exactbox.wgsl"),
+    reads: 1,
+    entries: &["exact_box"],
+};
+
+pub(crate) const LENS: FamilySpec = FamilySpec {
+    source: include_str!("shaders/lens.wgsl"),
+    reads: 5,
+    entries: &["row_chunks", "row_scan", "row_sums", "spread"],
+};
+
+pub(crate) const BEVEL: FamilySpec = FamilySpec {
+    source: include_str!("shaders/bevel.wgsl"),
+    reads: 2,
+    entries: &["columns", "rows", "light"],
+};
+
 /// A WGSL source, how many buffers its kernels read, and its entry points.
 pub(crate) struct FamilySpec {
     pub(crate) source: &'static str,
@@ -183,6 +221,11 @@ pub(crate) struct Kernels {
     pub(crate) cover: Family,
     pub(crate) noise: Family,
     pub(crate) generate: Family,
+    pub(crate) radial: Family,
+    pub(crate) vector: Family,
+    pub(crate) exact_box: Family,
+    pub(crate) lens: Family,
+    pub(crate) bevel: Family,
 }
 
 /// The constants the per-pixel kernels name blend modes by, one per row of
@@ -244,6 +287,11 @@ impl Kernels {
             cover: Family::new(device, COVER.source, &COVER),
             noise: Family::new(device, &with_layer(NOISE.source), &NOISE),
             generate: Family::new(device, &with_layer(GENERATE.source), &GENERATE),
+            radial: Family::new(device, RADIAL.source, &RADIAL),
+            vector: Family::new(device, VECTOR.source, &VECTOR),
+            exact_box: Family::new(device, EXACT_BOX.source, &EXACT_BOX),
+            lens: Family::new(device, LENS.source, &LENS),
+            bevel: Family::new(device, BEVEL.source, &BEVEL),
         }
     }
 }

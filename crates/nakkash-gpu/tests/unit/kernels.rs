@@ -21,6 +21,11 @@ fn sources() -> Vec<(&'static str, String, &'static FamilySpec)> {
         ("cover", COVER.source.to_owned(), &COVER),
         ("noise", with_layer(NOISE.source), &NOISE),
         ("generate", with_layer(GENERATE.source), &GENERATE),
+        ("radial", RADIAL.source.to_owned(), &RADIAL),
+        ("vector", VECTOR.source.to_owned(), &VECTOR),
+        ("exact_box", EXACT_BOX.source.to_owned(), &EXACT_BOX),
+        ("lens", LENS.source.to_owned(), &LENS),
+        ("bevel", BEVEL.source.to_owned(), &BEVEL),
     ]
 }
 
