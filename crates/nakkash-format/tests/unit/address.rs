@@ -67,7 +67,7 @@ fn an_invalid_id_says_the_rule() {
 }
 
 fn an_id() -> impl Strategy<Value = Id> {
-    "[a-z][a-z0-9_-]{0,6}".prop_map(Id)
+    "[a-z][a-z0-9_-]{0,6}".prop_map(|s: String| Id(s.into()))
 }
 
 fn a_step() -> impl Strategy<Value = Step> {

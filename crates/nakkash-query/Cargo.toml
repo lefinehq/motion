@@ -11,12 +11,14 @@ publish.workspace = true
 [dependencies]
 strum.workspace = true
 kurbo.workspace = true
+rustc-hash.workspace = true
 nakkash-format = { path = "../nakkash-format" }
 nakkash-scene = { path = "../nakkash-scene" }
 tracing.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true
+proptest.workspace = true
 pretty_assertions.workspace = true
 insta.workspace = true
 nakkash-text = { path = "../nakkash-text" }

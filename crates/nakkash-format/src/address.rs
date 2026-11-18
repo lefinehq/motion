@@ -22,6 +22,8 @@ use winnow::token::{one_of, take_while};
 
 use crate::doc::Form;
 use crate::grammar::{Parsed, parse_whole};
+use std::sync::Arc;
+
 use crate::{Diagnostic, Kind, Result};
 
 /// The id rule, as an accepted form.
@@ -33,11 +35,13 @@ const EXPECTED: &str = "`scene` or layer ids joined by `/`, then `.key`s, each w
 /// The name of the scene itself in an address, which no layer may take.
 pub const SCENE: &str = "scene";
 
-/// An id: of a layer, a composition, a preset or an item.
+/// An id: of a layer, a composition, a preset or an item. Its text is
+/// shared, so copies of an address, which a check report holds one of per
+/// finding, cost no copies of their ids.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, AsRef, Deref)]
 #[as_ref(str)]
 #[deref(forward)]
-pub struct Id(String);
+pub struct Id(Arc<str>);
 
 impl Id {
     /// Whether `text` follows the id rule.
@@ -51,7 +55,7 @@ impl FromStr for Id {
 
     fn from_str(text: &str) -> Result<Id> {
         match Id::is_valid(text) {
-            true => Ok(Id(text.to_owned())),
+            true => Ok(Id(text.into())),
             false => Err(
                 Diagnostic::new(Kind::Invalid, format!("invalid id `{text}`")).expected(ID_RULE),
             ),
@@ -61,7 +65,7 @@ impl FromStr for Id {
 
 impl From<Id> for String {
     fn from(id: Id) -> String {
-        id.0
+        id.0.as_ref().to_owned()
     }
 }
 
@@ -241,10 +245,10 @@ pub fn id<'s, R>(input: &mut &'s str) -> Parsed<&'s str, R> {
 /// The layer part of an address: `scene`, or layer ids joined by `/`. A
 /// layer path never starts with `scene`.
 pub fn target<R>(input: &mut &str) -> Parsed<Vec<Id>, R> {
-    let ids = separated(1.., id.map(|id: &str| Id(id.to_owned())), '/');
+    let ids = separated(1.., id.map(|id: &str| Id(id.into())), '/');
     alt((
         terminated(SCENE, scene_ends).value(Vec::new()),
-        ids.verify(|ids: &Vec<Id>| ids[0].0 != SCENE),
+        ids.verify(|ids: &Vec<Id>| &*ids[0].0 != SCENE),
     ))
     .parse_next(input)
 }
@@ -289,7 +293,7 @@ fn step<R>(input: &mut &str) -> Parsed<(Step, Option<Step>), R> {
         '[',
         alt((
             dec_uint.map(Step::Index),
-            id.map(|id: &str| Step::Id(Id(id.to_owned()))),
+            id.map(|id: &str| Step::Id(Id(id.into()))),
         )),
         ']',
     );

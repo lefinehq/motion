@@ -5,6 +5,7 @@
 mod animate;
 mod audio;
 mod boolean;
+mod changes;
 mod compile;
 mod curve;
 mod evaluate;
@@ -25,6 +26,7 @@ mod walk;
 
 pub use animate::{COUNTS, GlyphParts, GlyphState, Parts};
 pub use audio::{Playing, Route, routes, routes_from};
+pub use changes::changed_paths;
 pub use compile::{compile, compile_with};
 pub use curve::Ease;
 pub use evaluate::{evaluate, evaluate_comp, local_transform};
