@@ -5,6 +5,7 @@
 //!
 //! [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
 
+mod bevel;
 mod blur;
 mod composite;
 mod lens;
@@ -27,7 +28,7 @@ pub(crate) fn runs(plan: &Plan) -> bool {
         plan,
         Plan::Blur(_) | Plan::Shadow(_) | Plan::Glow(_) | Plan::SolidComposite(_)
     ) || matches!(plan, Plan::Radial(r) if radial::runs(r))
-        || matches!(plan, Plan::Vector(_) | Plan::Lens(_))
+        || matches!(plan, Plan::Vector(_) | Plan::Lens(_) | Plan::Bevel(_))
 }
 
 /// Whether `plan` reads the drawing of another layer, which the kernels
@@ -70,6 +71,7 @@ pub(crate) fn run(
         Plan::Radial(radial) => gpu.radial(batch, grid, radial),
         Plan::Vector(vector) => gpu.vector(batch, grid, vector, space),
         Plan::Lens(lens) => gpu.lens(batch, grid, lens, space),
+        Plan::Bevel(bevel) => gpu.bevel(batch, grid, bevel),
         _ => {
             return Err(
                 Diagnostic::new(Kind::Invalid, "the GPU has no kernel for this plan")

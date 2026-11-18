@@ -63,6 +63,9 @@ const TOLERANCES: &[(&str, f32)] = &[
     // level, worked out in 32-bit floats here and 64 there, moves a radius
     // by its rounding.
     ("lens-blur", 2e-5),
+    // The bevel's distances are whole numbers, found exactly; its slopes
+    // and light differ by a float's rounding.
+    ("bevel", 5e-6),
 ];
 
 pub(crate) fn tolerance(name: &str) -> f32 {

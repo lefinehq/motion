@@ -1,6 +1,9 @@
-//! The blurs that gather along lines and discs: the radial blur's zoom and
-//! spin, by every stretch and fade, from centres inside, on the edge of and
-//! outside the grid, at the largest amounts they take.
+//! The blurs that gather along lines and discs, and the bevel: the radial
+//! blur's zoom and spin by every stretch and fade, from centres inside, on
+//! the edge of and outside the grid; the vector blur by every streak and
+//! level, with and without a map; the lens blur by every iris, edge and
+//! map placement; the bevel by thickness and light. Each at the largest
+//! amounts it takes, on odd and large grids.
 
 use super::*;
 
@@ -404,4 +407,61 @@ fn lens_blurs_match_by_a_map() {
             }
         }
     }
+}
+
+/// A bevel `thickness` px thick, lit from `angle`.
+fn bevel(thickness: f32, angle: f32, intensity: f32) -> Effect {
+    Effect::new(
+        "bevel",
+        &[
+            ("thickness", ParamValue::Number(thickness)),
+            ("angle", ParamValue::Number(angle)),
+            (
+                "color",
+                ParamValue::Color(nakkash_raster::Color::rgba(1.0, 0.9, 0.6, 1.0)),
+            ),
+            ("intensity", ParamValue::Number(intensity)),
+        ],
+    )
+    .expect("a bevel")
+}
+
+#[test]
+fn bevels_match() {
+    let pixels = pattern(181, 117, 80);
+    let one = space(Affine::IDENTITY);
+    let turned = space(Affine::rotate(0.3) * Affine::scale(1.6));
+    for (thickness, angle, intensity) in [
+        (1.0, 0.0, 1.0),
+        (4.5, 135.0, 0.7),
+        (12.0, -60.0, 0.4),
+        (200.0, 300.0, 1.0),
+        (0.0, 0.0, 1.0),
+        (5.0, 0.0, 0.0),
+    ] {
+        for (name, space) in [("plain", &one), ("turned", &turned)] {
+            effect_matches(
+                "bevel",
+                &format!("{thickness} {angle} {intensity} {name}"),
+                &bevel(thickness, angle, intensity),
+                &pixels,
+                space,
+            );
+        }
+    }
+    // All inside: no outline anywhere.
+    let full = Pixels::from_data(37, 29, vec![[0.4, 0.5, 0.6, 1.0]; 37 * 29]);
+    effect_matches("bevel", "no outline", &bevel(6.0, 45.0, 1.0), &full, &one);
+}
+
+#[test]
+fn bevels_match_on_a_large_grid() {
+    let pixels = pattern(1_920, 1_080, 81);
+    effect_matches(
+        "bevel",
+        "1080p",
+        &bevel(30.0, 120.0, 0.8),
+        &pixels,
+        &space(Affine::IDENTITY),
+    );
 }

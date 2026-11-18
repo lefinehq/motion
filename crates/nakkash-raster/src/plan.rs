@@ -17,6 +17,7 @@ use crate::blur::{self, Edges, gaussian_radius};
 use crate::composite::{self, Operation, SolidComposite};
 use crate::effect::{Effect, ParamValue, Space};
 use crate::lens::{self, LensBlur};
+use crate::light::{self, Bevel};
 use crate::radial::{self, RadialBlur};
 use crate::vector::{self, VectorBlur};
 
@@ -39,6 +40,8 @@ pub enum Plan {
     Vector(VectorBlur),
     /// The layer spread over the shape of a lens's iris.
     Lens(LensBlur),
+    /// The layer's alpha raised into a surface and lit from one side.
+    Bevel(Bevel),
 }
 
 /// Passes of one extended box along one way of the grid: each averages
@@ -185,6 +188,10 @@ pub const PLANS: &[PlanSpec] = &[
     PlanSpec {
         name: "lens-blur",
         plan: |values, space| Plan::Lens(lens::lens_blur_plan(values, space)),
+    },
+    PlanSpec {
+        name: "bevel",
+        plan: |values, space| Plan::Bevel(light::bevel_plan(values, space)),
     },
 ];
 
