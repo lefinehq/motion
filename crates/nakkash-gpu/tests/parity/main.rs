@@ -18,6 +18,7 @@ mod canvas;
 mod composite;
 mod effects;
 mod frames;
+mod masks;
 mod planes;
 
 use nakkash_gpu::Gpu;
@@ -42,6 +43,7 @@ const TOLERANCES: &[(&str, f32)] = &[
     ("drop-shadow", 1e-4),
     ("chain", 5e-5),
     ("plane", 1e-4),
+    ("mask", 1e-5),
 ];
 
 pub(crate) fn tolerance(name: &str) -> f32 {

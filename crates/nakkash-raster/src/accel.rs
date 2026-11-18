@@ -32,6 +32,7 @@ use vello_cpu::kurbo::Affine;
 use crate::blend::BlendMode;
 use crate::effect::{Effect, Space};
 use crate::list::MatteMode;
+use crate::mask::{MaskCoverage, combine_on_cpu};
 use crate::par;
 use crate::pixels::Pixels;
 use crate::projected::{self, Buffer, Landing};
@@ -271,6 +272,44 @@ pub trait Accelerator: Send + Sync {
     /// When the work fails.
     fn cut(&self, pixels: &mut Resident, kept: &[f32]) -> Result<()>;
 
+    /// Multiplies every channel of each pixel of `pixels` by the alpha of
+    /// `kept`'s: masks' coverage the accelerator worked out
+    /// ([`Accelerator::mask`]). By default, the coverage copied back and
+    /// [`Accelerator::cut`].
+    ///
+    /// # Errors
+    /// When the work fails.
+    fn cut_by(&self, pixels: &mut Resident, kept: &Resident) -> Result<()> {
+        let kept: Vec<f32> = self.download(kept)?.data().iter().map(|p| p[3]).collect();
+        self.cut(pixels, &kept)
+    }
+
+    /// A layer's masks' coverage, `width` by `height`, after one more mask
+    /// the rasteriser drew: `kept`, the coverage so far, or `start`
+    /// everywhere when it is the first, combined with `mask` as
+    /// [`combine_on_cpu`] does. Every channel of a pixel holds its
+    /// coverage. By default, on the CPU, copied in.
+    ///
+    /// # Errors
+    /// When the work fails.
+    fn mask(
+        &self,
+        kept: Option<Resident>,
+        start: f32,
+        mask: &MaskCoverage<'_>,
+        width: u16,
+        height: u16,
+    ) -> Result<Resident> {
+        let mut values = match kept {
+            Some(kept) => self.download(&kept)?.data().iter().map(|p| p[3]).collect(),
+            None => vec![start; usize::from(width) * usize::from(height)],
+        };
+        combine_on_cpu(&mut values, mask, width, height);
+        let mut pixels = Pixels::transparent(width, height);
+        par::each_with(pixels.data_mut(), &values, |_, p, &k| *p = [k; 4]);
+        self.upload(&pixels)
+    }
+
     /// `pixels` moved by `transform`, in pixels of the grid, as
     /// [`Pixels::transformed`] gives.
     ///
@@ -470,6 +509,18 @@ impl Surface {
                 };
                 self.pixels_mut(accel)?.mix(other, |i| amount.at(i));
                 Ok(())
+            }
+        }
+    }
+
+    /// Multiplies each pixel by the alpha of `kept`, masks' coverage the
+    /// accelerator holds.
+    pub(crate) fn cut_by(&mut self, kept: &Resident, accel: &dyn Accelerator) -> Result<()> {
+        match self {
+            Surface::Held(held) => accel.cut_by(held, kept),
+            Surface::Cpu(_) => {
+                let kept: Vec<f32> = accel.download(kept)?.data().iter().map(|p| p[3]).collect();
+                self.cut(&kept, Some(accel))
             }
         }
     }

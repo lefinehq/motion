@@ -73,6 +73,11 @@ pub(crate) const TRANSFORM: FamilySpec = FamilySpec {
     reads: 1,
     entries: &["transformed"],
 };
+pub(crate) const MASK: FamilySpec = FamilySpec {
+    source: include_str!("shaders/mask.wgsl"),
+    reads: 1,
+    entries: &["spread", "combine"],
+};
 pub(crate) const BOX_PASS: FamilySpec = FamilySpec {
     source: include_str!("shaders/boxpass.wgsl"),
     reads: 1,
@@ -104,6 +109,7 @@ pub(crate) struct Kernels {
     pub(crate) project: Family,
     pub(crate) transform: Family,
     pub(crate) box_pass: Family,
+    pub(crate) mask: Family,
 }
 
 /// The constants the per-pixel kernels name blend modes by, one per row of
@@ -151,6 +157,7 @@ impl Kernels {
             project: Family::new(device, PROJECT.source, &PROJECT),
             transform: Family::new(device, TRANSFORM.source, &TRANSFORM),
             box_pass: Family::new(device, BOX_PASS.source, &BOX_PASS),
+            mask: Family::new(device, MASK.source, &MASK),
         }
     }
 }

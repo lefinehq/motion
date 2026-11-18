@@ -61,7 +61,7 @@ pub use list::{
     Blending, Clip, Frame, Glyph, GlyphDraw, ImageDraw, Layer, LayerMask, MaskMode, Matte,
     MatteMode, Node, PathDraw, Projection, Shared,
 };
-pub use mask::SIGMA_PER_FEATHER;
+pub use mask::{MaskCoverage, MaskStep, SIGMA_PER_FEATHER, combine_on_cpu};
 pub use picture::Picture;
 pub use pixels::{Pixel, Pixels};
 pub use plan::{Blur, Glow, GlowComposite, PLANS, Passes, Plan, PlanSpec, Shadow};

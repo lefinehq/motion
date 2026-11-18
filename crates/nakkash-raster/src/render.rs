@@ -18,8 +18,8 @@ use crate::effect::{Effect, EffectContext, Input, Move, Space};
 use crate::homography::Homography;
 use crate::image::Image;
 use crate::list::{
-    Blending, Clip, Frame, GlyphDraw, ImageDraw, Layer, LayerMask, Matte, MatteMode, Node,
-    PathDraw, Projection,
+    Blending, Clip, Frame, GlyphDraw, ImageDraw, Layer, LayerMask, MaskMode, Matte, MatteMode,
+    Node, PathDraw, Projection,
 };
 use crate::par;
 use crate::pixels::Pixels;
@@ -437,19 +437,48 @@ impl<'a> Painter<'a> {
     }
 
     /// How much of a layer its `masks` keep at each pixel, in coordinates
-    /// `transform` maps to the frame; `None` when they cut nothing.
-    fn cut(&self, masks: &[LayerMask], transform: Affine) -> Option<Vec<f32>> {
-        if masks.is_empty() {
-            return None;
-        }
-        crate::mask::coverage(masks, transform, self.width, self.height, |mask| {
+    /// `transform` maps to the frame; `None` when they cut nothing. Worked
+    /// out in the accelerator when `held` and it holds the frame, so it
+    /// cuts pixels held there without a copy back, else on the CPU.
+    fn cut(&self, masks: &[LayerMask], transform: Affine, held: bool) -> Result<Option<Kept>> {
+        let Some((start, steps)) = crate::mask::steps(masks, transform) else {
+            return Ok(None);
+        };
+        let draw = |mask: &LayerMask| {
             let mut painter = self.alone();
             painter.ctx.set_transform(transform);
             painter.ctx.set_paint(Color::WHITE.to_vello());
             painter.ctx.set_fill_rule(vello_cpu::peniko::Fill::NonZero);
             painter.ctx.fill_path(&mask.path);
-            par::map(painter.rendered().data(), |_, p| f32::from(p.a) / 255.0)
-        })
+            painter.rendered()
+        };
+        let (width, height) = (self.width, self.height);
+        match self.accel.filter(|a| held && a.holds(width, height)) {
+            Some(accel) => {
+                let mut kept = None;
+                for (mask, step) in steps {
+                    let drawn = draw(mask);
+                    let mask = crate::mask::MaskCoverage {
+                        drawn: bytes_of(&drawn),
+                        step,
+                    };
+                    kept = Some(accel.mask(kept, start, &mask, width, height)?);
+                }
+                Ok(kept.map(Kept::Held))
+            }
+            None => {
+                let mut kept = vec![start; usize::from(width) * usize::from(height)];
+                for (mask, step) in steps {
+                    let drawn = draw(mask);
+                    let mask = crate::mask::MaskCoverage {
+                        drawn: bytes_of(&drawn),
+                        step,
+                    };
+                    crate::mask::combine_on_cpu(&mut kept, &mask, width, height);
+                }
+                Ok(Some(Kept::Values(kept)))
+            }
+        }
     }
 
     /// How much of each pixel of the grid lies inside `clip`, drawn in
@@ -596,7 +625,8 @@ impl<'a> Painter<'a> {
                     true => None,
                     false => Some(self.drawn_alone_surface(&filter.children, transform)?),
                 };
-                (transform, region, self.cut(&filter.masks, transform))
+                let cut = self.cut(&filter.masks, transform, drawn.is_held())?;
+                (transform, region, cut)
             }
             Some(projection) => {
                 let maps = [Homography::from(parent) * projection.matrix];
@@ -622,7 +652,7 @@ impl<'a> Painter<'a> {
                         }
                         false => sub.drawn_alone(&filter.children, plan.local)?,
                     };
-                    if let Some(cut) = sub.cut(&filter.masks, plan.local) {
+                    if let Some(Kept::Values(cut)) = sub.cut(&filter.masks, plan.local, false)? {
                         par::each_with(pixels.data_mut(), &cut, |_, pixel, &kept| {
                             *pixel = pixel.map(|c| c * kept);
                         });
@@ -660,7 +690,7 @@ impl<'a> Painter<'a> {
             _ => None,
         };
         let amount = [
-            cut.as_deref().map(Share::Values),
+            cut.as_ref().map(Kept::share),
             matte.as_ref().map(Matted::share),
             region_share,
         ]
@@ -946,8 +976,8 @@ impl<'a> Painter<'a> {
         parent: Affine,
     ) -> Result<()> {
         let moved = steps.moved.transform;
-        let cut = self.cut(&layer.masks, transform * moved);
-        if steps.on_pixels.is_empty() && cut.is_none() && layer.motion.is_empty() {
+        let cuts = layer.masks.iter().any(|m| m.mode != MaskMode::None);
+        if steps.on_pixels.is_empty() && !cuts && layer.motion.is_empty() {
             self.pending = true;
             let drawn = self.nodes(&layer.children, transform * moved);
             let mut effects = EffectContext {
@@ -993,8 +1023,13 @@ impl<'a> Painter<'a> {
             (Some(clip), true) => Some(self.coverage(clip, transform)),
             _ => None,
         };
-        for cut in [&cut, &clipped].into_iter().flatten() {
-            pixels.cut(cut, self.accel)?;
+        match (self.cut(&layer.masks, at, pixels.is_held())?, self.accel) {
+            (Some(Kept::Held(kept)), Some(accel)) => pixels.cut_by(&kept, accel)?,
+            (Some(Kept::Values(kept)), _) => pixels.cut(&kept, self.accel)?,
+            _ => {}
+        }
+        if let Some(clipped) = &clipped {
+            pixels.cut(clipped, self.accel)?;
         }
         // Each effect sees the box the ones before it grew.
         let mut bounds = layer.bounds;
@@ -1107,6 +1142,23 @@ fn matte_read(pixels: &Pixels, mode: MatteMode) -> Vec<f32> {
             MatteMode::LumaInverted => 1.0 - luma(),
         }
     })
+}
+
+/// What a layer's masks keep of it at each pixel: worked out on the CPU,
+/// one value a pixel, or in the accelerator, in every channel of a pixel.
+enum Kept {
+    Values(Vec<f32>),
+    Held(crate::accel::Resident),
+}
+
+impl Kept {
+    /// What it scales an amount by.
+    fn share(&self) -> Share<'_> {
+        match self {
+            Kept::Values(values) => Share::Values(values),
+            Kept::Held(held) => Share::Alpha(held),
+        }
+    }
 }
 
 /// A matte, read: its values on the CPU, or its source's pixels in the

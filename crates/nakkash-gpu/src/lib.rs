@@ -28,6 +28,7 @@ mod device;
 mod effects;
 mod grid;
 mod kernels;
+mod mask;
 mod pool;
 mod project;
 mod record;
@@ -38,8 +39,8 @@ use std::sync::{Arc, Mutex, mpsc};
 use nakkash_format::{Diagnostic, Kind, Result};
 use nakkash_raster::kurbo::Affine;
 use nakkash_raster::{
-    Accelerator, Amount, BlendMode, Effect, Landing, MatteMode, Move, Pixel, Pixels, Resident,
-    Share, Space, Tally, Texels,
+    Accelerator, Amount, BlendMode, Effect, Landing, MaskCoverage, MatteMode, Move, Pixel, Pixels,
+    Resident, Share, Space, Tally, Texels,
 };
 
 pub use device::{Adapter, Refusal};
@@ -506,6 +507,41 @@ impl Accelerator for Gpu {
         self.finish(batch);
         self.counts.operation();
         Ok(())
+    }
+
+    fn cut_by(&self, pixels: &mut Resident, kept: &Resident) -> Result<()> {
+        let mut batch = self.batch();
+        let count = grid(pixels).count();
+        let amount = self
+            .amount(
+                &mut batch,
+                &Amount::constant(1.0).and(Share::Alpha(kept)),
+                count,
+            )
+            .expect("an amount with a share");
+        self.pixel_kernel(
+            &mut batch,
+            "cut",
+            count,
+            |p| p,
+            grid(pixels).buffer(),
+            None,
+            Some(amount.buffer()),
+        );
+        self.finish(batch);
+        self.counts.operation();
+        Ok(())
+    }
+
+    fn mask(
+        &self,
+        kept: Option<Resident>,
+        start: f32,
+        mask: &MaskCoverage<'_>,
+        width: u16,
+        height: u16,
+    ) -> Result<Resident> {
+        Ok(self.combine_mask(kept, start, mask, width, height))
     }
 
     fn transformed(&self, pixels: &Resident, transform: Affine) -> Result<Resident> {

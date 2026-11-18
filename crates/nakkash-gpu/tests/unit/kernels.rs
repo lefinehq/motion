@@ -13,6 +13,7 @@ fn sources() -> Vec<(&'static str, String, &'static FamilySpec)> {
         ("project", PROJECT.source.to_owned(), &PROJECT),
         ("transform", TRANSFORM.source.to_owned(), &TRANSFORM),
         ("box_pass", BOX_PASS.source.to_owned(), &BOX_PASS),
+        ("mask", MASK.source.to_owned(), &MASK),
     ]
 }
 
