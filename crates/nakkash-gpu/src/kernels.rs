@@ -16,6 +16,14 @@ pub(crate) const LINE_GROUP: u32 = 64;
 /// The most workgroups one dimension of a dispatch may have.
 const MAX_GROUPS: u32 = 65535;
 
+/// The blend modes' functions, written in front of every family that lays
+/// a pixel by a mode.
+pub(crate) const BLEND: &str = include_str!("shaders/blend.wgsl");
+
+/// The operations inside effects, written in front of every family that
+/// combines an effect's result with a layer by one, after [`BLEND`].
+pub(crate) const OPERATION: &str = include_str!("shaders/operation.wgsl");
+
 /// The families, and the entry points of each.
 pub(crate) const PIXEL: FamilySpec = FamilySpec {
     source: include_str!("shaders/pixel.wgsl"),
@@ -26,8 +34,6 @@ pub(crate) const PIXEL: FamilySpec = FamilySpec {
         "cut",
         "scale",
         "glow_threshold",
-        "glow_add",
-        "glow_alone",
         "shadow_colour",
         "shadow_under",
     ],
@@ -41,6 +47,11 @@ pub(crate) const UNPACK: FamilySpec = FamilySpec {
     source: include_str!("shaders/unpack.wgsl"),
     reads: 2,
     entries: &["unpack"],
+};
+pub(crate) const OPERATE: FamilySpec = FamilySpec {
+    source: include_str!("shaders/operate.wgsl"),
+    reads: 1,
+    entries: &["operate", "light", "solid_composite"],
 };
 pub(crate) const PACK: FamilySpec = FamilySpec {
     source: include_str!("shaders/pack.wgsl"),
@@ -78,6 +89,7 @@ pub(crate) struct Kernels {
     pub(crate) amount: Family,
     pub(crate) unpack: Family,
     pub(crate) pack: Family,
+    pub(crate) operate: Family,
     pub(crate) transform: Family,
     pub(crate) box_pass: Family,
 }
@@ -94,6 +106,16 @@ pub(crate) fn mode_constants() -> String {
     constants
 }
 
+/// `source` with the blend modes' constants and functions in front.
+pub(crate) fn with_blend_modes(source: &str) -> String {
+    format!("{}\n{BLEND}\n{source}", mode_constants())
+}
+
+/// `source` with the blend modes and the operations in front.
+pub(crate) fn with_operations(source: &str) -> String {
+    with_blend_modes(&format!("{OPERATION}\n{source}"))
+}
+
 /// The row of `mode` in the rasteriser's table of blend modes.
 pub(crate) fn mode_row(mode: nakkash_raster::BlendMode) -> u32 {
     let row = BLEND_MODES
@@ -106,12 +128,13 @@ pub(crate) fn mode_row(mode: nakkash_raster::BlendMode) -> u32 {
 impl Kernels {
     /// Compiles every family on `device`.
     pub(crate) fn new(device: &wgpu::Device) -> Kernels {
-        let pixel_source = format!("{}\n{}", mode_constants(), PIXEL.source);
+        let pixel_source = with_blend_modes(PIXEL.source);
         Kernels {
             pixel: Family::new(device, &pixel_source, &PIXEL),
             amount: Family::new(device, AMOUNT.source, &AMOUNT),
             unpack: Family::new(device, UNPACK.source, &UNPACK),
             pack: Family::new(device, PACK.source, &PACK),
+            operate: Family::new(device, &with_operations(OPERATE.source), &OPERATE),
             transform: Family::new(device, TRANSFORM.source, &TRANSFORM),
             box_pass: Family::new(device, BOX_PASS.source, &BOX_PASS),
         }
@@ -241,7 +264,7 @@ pub(crate) fn pixel_groups(count: u32) -> ((u32, u32), u32) {
 }
 
 /// The bytes of every uniform block: more than the largest kernel's.
-const PARAMS_BYTES: usize = 64;
+const PARAMS_BYTES: usize = 256;
 
 /// A kernel's uniform block, written field by field as WGSL lays out a
 /// struct of 32-bit scalars and `vec4<f32>`s.
@@ -291,3 +314,107 @@ impl Params {
 #[cfg(test)]
 #[path = "../tests/unit/kernels.rs"]
 mod tests;
+
+/// The uniform block of the operate family (`operate.wgsl`), field by
+/// field.
+#[derive(Debug, Clone)]
+pub(crate) struct OperateParams {
+    count: u32,
+    row: u32,
+    width: u32,
+    op: u32,
+    mode: u32,
+    boxed: u32,
+    k: f32,
+    source: f32,
+    colour: [f32; 4],
+    back: [f32; 4],
+    back_shift: [f32; 4],
+    bounds: [f32; 4],
+    step: [f32; 4],
+    opacity: f32,
+}
+
+impl OperateParams {
+    /// The block over `count` pixels of a grid `width` wide, `row`
+    /// invocations a row of workgroups.
+    pub(crate) fn new(count: u32, row: u32, width: u32) -> OperateParams {
+        OperateParams {
+            count,
+            row,
+            width,
+            op: 0,
+            mode: 0,
+            boxed: 0,
+            k: 1.0,
+            source: 1.0,
+            colour: [0.0; 4],
+            back: [0.0; 4],
+            back_shift: [0.0; 4],
+            bounds: [0.0; 4],
+            step: [1.0; 4],
+            opacity: 1.0,
+        }
+    }
+
+    /// The operation combining the two sides.
+    pub(crate) fn operation(mut self, operation: nakkash_raster::Operation) -> OperateParams {
+        (self.op, self.mode) = crate::effects::operation_row(operation);
+        self
+    }
+
+    /// What a kernel multiplies by: the glow's intensity.
+    pub(crate) fn k(mut self, k: f32) -> OperateParams {
+        self.k = k;
+        self
+    }
+
+    /// What the layer's pixels are multiplied by first.
+    pub(crate) fn source(mut self, source: f32) -> OperateParams {
+        self.source = source;
+        self
+    }
+
+    /// A solid's straight colour and opacity.
+    pub(crate) fn solid(mut self, [r, g, b]: [f32; 3], opacity: f32) -> OperateParams {
+        self.colour = [r, g, b, 0.0];
+        self.opacity = opacity;
+        self
+    }
+
+    /// Where a solid is: a layer's box, or everywhere for `None`.
+    pub(crate) fn cover(mut self, cover: Option<&nakkash_raster::BoxCover>) -> OperateParams {
+        let Some(cover) = cover else {
+            self.boxed = 0;
+            return self;
+        };
+        let [a, b, c, d, ..] = cover.back.as_coeffs();
+        let shift = cover.back * nakkash_raster::kurbo::Point::new(0.5, 0.5);
+        let r = cover.bounds;
+        self.boxed = 1;
+        self.back = [a, b, c, d].map(|v| v as f32);
+        self.back_shift = [shift.x as f32, shift.y as f32, 0.0, 0.0];
+        self.bounds = [r.x0, r.y0, r.x1, r.y1].map(|v| v as f32);
+        self.step = [cover.step[0] as f32, cover.step[1] as f32, 1.0, 1.0];
+        self
+    }
+
+    /// The block's bytes.
+    pub(crate) fn params(&self) -> Params {
+        Params::new()
+            .u32(self.count)
+            .u32(self.row)
+            .u32(self.width)
+            .u32(self.op)
+            .u32(self.mode)
+            .u32(self.boxed)
+            .f32(self.k)
+            .f32(self.source)
+            .vec4(self.colour)
+            .vec4(self.back)
+            .vec4(self.back_shift)
+            .vec4(self.bounds)
+            .vec4(self.step)
+            .f32(self.opacity)
+    }
+}

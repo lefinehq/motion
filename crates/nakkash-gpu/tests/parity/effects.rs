@@ -157,25 +157,3 @@ fn an_effect_that_reads_another_layer_stays_on_the_cpu() {
     let effect = Effect::new("invert", &[]).expect("an effect");
     assert!(!gpu.runs(&effect));
 }
-
-#[test]
-fn a_glow_combined_by_an_operation_other_than_add_stays_on_the_cpu() {
-    let Some(gpu) = gpu() else { return };
-    // Operations by their row in the glow's menu: 0 add, 2 multiply;
-    // composites 0 with the original, 1 the light alone, 2 behind it.
-    let glow = |operation: u8, composite: u8| {
-        Effect::new(
-            "glow",
-            &[
-                ("operation", ParamValue::Choice(operation)),
-                ("composite", ParamValue::Choice(composite)),
-            ],
-        )
-        .expect("a glow")
-    };
-    assert!(gpu.runs(&glow(0, 0)));
-    assert!(gpu.runs(&glow(0, 2)));
-    assert!(gpu.runs(&glow(2, 1)));
-    assert!(!gpu.runs(&glow(2, 0)));
-    assert!(!gpu.runs(&glow(2, 2)));
-}

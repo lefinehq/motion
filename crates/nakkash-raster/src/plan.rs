@@ -14,11 +14,13 @@
 use vello_cpu::kurbo::Vec2;
 
 use crate::blur::{self, Edges, gaussian_radius};
-use crate::composite::Operation;
+use crate::composite::{self, Operation, SolidComposite};
 use crate::effect::{Effect, ParamValue, Space};
 
-/// The steps an effect runs on its layer's pixels.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// The steps an effect runs on its layer's pixels. More variants come as
+/// more effects gain plans, so a match on one needs a catch-all arm.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Plan {
     /// A blur: box passes along rows, then along columns.
     Blur(Blur),
@@ -26,6 +28,8 @@ pub enum Plan {
     Glow(Glow),
     /// The layer's alpha, coloured, moved and blurred, behind the layer.
     Shadow(Shadow),
+    /// The layer laid by an operation over a solid in its box.
+    SolidComposite(SolidComposite),
 }
 
 /// Passes of one extended box along one way of the grid: each averages
@@ -156,6 +160,10 @@ pub const PLANS: &[PlanSpec] = &[
     PlanSpec {
         name: "drop-shadow",
         plan: |values, space| Plan::Shadow(blur::drop_shadow_plan(values, space)),
+    },
+    PlanSpec {
+        name: "solid-composite",
+        plan: |values, space| Plan::SolidComposite(composite::solid_composite_plan(values, space)),
     },
 ];
 

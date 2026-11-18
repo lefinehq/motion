@@ -13,7 +13,7 @@ use crate::par;
 use crate::pixels::Pixels;
 
 /// Rec. 601 luma weights, which tints and colourising read lightness by.
-pub(crate) const LUMA: [f32; 3] = [0.299, 0.587, 0.114];
+pub const LUMA: [f32; 3] = [0.299, 0.587, 0.114];
 
 /// Runs `change` on the straight RGBA of every pixel that is not
 /// transparent, and premultiplies the result again.

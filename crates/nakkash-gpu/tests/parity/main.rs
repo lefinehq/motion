@@ -15,6 +15,7 @@
 use std::sync::OnceLock;
 
 mod canvas;
+mod composite;
 mod effects;
 mod frames;
 
@@ -35,6 +36,8 @@ const TOLERANCES: &[(&str, f32)] = &[
     ("gaussian-blur", 1e-5),
     ("box-blur", 1e-5),
     ("glow", 1e-5),
+    ("glow-dissolve", 1e-4),
+    ("solid-composite", 5e-5),
     ("drop-shadow", 1e-4),
     ("chain", 5e-5),
 ];

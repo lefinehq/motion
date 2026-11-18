@@ -49,7 +49,8 @@ mod vector;
 pub use accel::{Accelerator, Amount, Resident, Share, Tally};
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use blur::Edges;
-pub use composite::{OPERATIONS, Operation, OperationSpec};
+pub use colour::LUMA;
+pub use composite::{BoxCover, OPERATIONS, Operation, OperationSpec, SolidComposite};
 pub use effect::{
     Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Growth, Input, Move, ParamSpec,
     ParamType, ParamValue, Reach, Space,
