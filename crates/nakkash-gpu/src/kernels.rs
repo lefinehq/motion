@@ -170,12 +170,6 @@ pub(crate) const VECTOR: FamilySpec = FamilySpec {
     entries: &["slopes", "steepest", "most_of", "smear"],
 };
 
-pub(crate) const EXACT_BOX: FamilySpec = FamilySpec {
-    source: include_str!("shaders/exactbox.wgsl"),
-    reads: 1,
-    entries: &["exact_box"],
-};
-
 pub(crate) const LENS: FamilySpec = FamilySpec {
     source: include_str!("shaders/lens.wgsl"),
     reads: 5,
@@ -223,7 +217,6 @@ pub(crate) struct Kernels {
     pub(crate) generate: Family,
     pub(crate) radial: Family,
     pub(crate) vector: Family,
-    pub(crate) exact_box: Family,
     pub(crate) lens: Family,
     pub(crate) bevel: Family,
 }
@@ -289,7 +282,6 @@ impl Kernels {
             generate: Family::new(device, &with_layer(GENERATE.source), &GENERATE),
             radial: Family::new(device, RADIAL.source, &RADIAL),
             vector: Family::new(device, VECTOR.source, &VECTOR),
-            exact_box: Family::new(device, EXACT_BOX.source, &EXACT_BOX),
             lens: Family::new(device, LENS.source, &LENS),
             bevel: Family::new(device, BEVEL.source, &BEVEL),
         }

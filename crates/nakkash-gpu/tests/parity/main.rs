@@ -22,9 +22,9 @@ mod composite;
 mod distort;
 mod effects;
 mod frames;
+mod generate;
 mod masks;
 mod planes;
-mod generate;
 
 use nakkash_gpu::Gpu;
 use nakkash_raster::kurbo::{Affine, Point, Rect};

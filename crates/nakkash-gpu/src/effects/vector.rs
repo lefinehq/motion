@@ -1,21 +1,20 @@
 //! The vector blur: the slope of a map's level, softened by Gaussians
 //! summed exactly, and every pixel smeared along it
-//! (`shaders/vector.wgsl`, `shaders/exactbox.wgsl`).
+//! (`shaders/vector.wgsl`, the box passes of `shaders/boxpass.wgsl`).
 //!
 //! The streaks' lengths are each slope over the steepest, and their
 //! directions the slope's, of a level of the straight colour: the map's
 //! colour divided by its alpha. Where the map fades out that division
-//! magnifies what the Gaussian rounds, so its box passes sum their windows
-//! exactly rather than to a float's precision of the window; with them the
-//! GPU's streaks follow the CPU's to the float.
+//! magnifies what the Gaussian rounds; the box passes sum their windows
+//! exactly, so the GPU's streaks follow the CPU's to the float.
 
-use nakkash_raster::{Blur, Edges, Space, VectorBlur, VectorLevel, VectorStreak};
+use nakkash_raster::{Space, VectorBlur, VectorLevel, VectorStreak};
 
+use crate::Gpu;
 use crate::grid::Grid;
-use crate::kernels::{LINE_GROUP, Params, pixel_groups};
+use crate::kernels::{Params, pixel_groups};
 use crate::pool::Kind as BufferKind;
 use crate::record::Batch;
-use crate::{Gpu, grid_bytes};
 
 /// The number the kernels read `streak` by.
 fn streak_row(streak: VectorStreak) -> u32 {
@@ -43,52 +42,6 @@ fn level_row(level: VectorLevel) -> u32 {
 }
 
 impl Gpu {
-    /// Records `blur`'s passes on `grid` as [`Gpu::blur`] does, each
-    /// window summed exactly.
-    fn exact_blur(&self, batch: &mut Batch<'_>, grid: &mut Grid, blur: &Blur) {
-        let (width, height) = (u32::from(grid.width), u32::from(grid.height));
-        let ways = [
-            (blur.rows, width, height, 1, width),
-            (blur.columns, height, width, width, 1),
-        ];
-        for (passes, n, lines, along, across) in ways {
-            if !passes.any() {
-                continue;
-            }
-            let radius = passes.radius.max(0.0);
-            let (whole, part) = (radius.floor() as u32, radius.fract());
-            let window = 2 * whole + 1;
-            // As the float box pass: enough invocations to fill the GPU,
-            // each sliding at least 32 pixels and about a window's worth.
-            let target = u32::try_from((u64::from(n) * u64::from(lines)).div_ceil(65536))
-                .unwrap_or(u32::MAX);
-            let chunk = target.clamp(32, window.max(32));
-            let params = Params::new()
-                .u32(n)
-                .u32(lines)
-                .u32(along)
-                .u32(across)
-                .u32(chunk)
-                .u32(whole)
-                .f32(part)
-                .f32(window as f32 + 2.0 * part)
-                .u32(u32::from(blur.edges == Edges::Repeat));
-            for _ in 0..passes.count {
-                let out = self.buffer(grid_bytes(grid.width, grid.height), BufferKind::Storage);
-                self.kernels.exact_box.dispatch(
-                    &self.device,
-                    batch.encoder(),
-                    "exact_box",
-                    &params,
-                    out.buffer(),
-                    &[grid.buffer()],
-                    (lines.div_ceil(LINE_GROUP), n.div_ceil(chunk)),
-                );
-                grid.pixels = out;
-            }
-        }
-    }
-
     /// Records `plan` on `grid` in `space`, whose input, if any, is the map.
     pub(crate) fn vector(
         &self,
@@ -107,7 +60,7 @@ impl Gpu {
             None => self.duplicate_grid(batch, grid),
         };
         if let Some(softening) = plan.softening() {
-            self.exact_blur(batch, &mut map, &softening);
+            self.blur(batch, &mut map, &softening);
         }
         // Each workgroup of `steepest` takes 4,096 pixels.
         let partials = count.div_ceil(4096);
@@ -151,7 +104,7 @@ impl Gpu {
         );
         drop(map);
         if let Some(smoothing) = plan.smoothing() {
-            self.exact_blur(batch, &mut field, &smoothing);
+            self.blur(batch, &mut field, &smoothing);
         }
         let partial = self.buffer(16 * u64::from(partials), BufferKind::Storage);
         dispatch(
