@@ -16,6 +16,7 @@
 
 mod blend;
 mod blur;
+mod channel;
 mod colour;
 mod composite;
 mod distort;

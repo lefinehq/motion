@@ -127,6 +127,15 @@ pub enum Reads {
     /// Its drawing, with its effects but not its transform: a layer that
     /// draws.
     Drawing,
+    /// Its drawing, as [`Reads::Drawing`], laid on the reading layer's
+    /// effect box as the effect's `behaviour` setting says: `stretch`ed
+    /// over it or `center`ed on it. A layer's effect box is what its
+    /// content fills (a rect, an image's or video's frame, a composition's
+    /// canvas), or for content without one (shapes, text) a box the size
+    /// of the composition it sits in, centred on its origin. With no layer
+    /// named, the reading layer's own drawing before any of its effects
+    /// run: what it drew, cut by its masks.
+    Laid,
     /// The sound it plays, with its volume: an `audio` layer, or a `comp`
     /// layer for everything its composition plays.
     Sound,
@@ -626,6 +635,41 @@ pub static DISPLACEMENT_MAP: Registry = Registry {
         ),
     ],
 };
+
+/// The properties of `set-matte`: none, its choices are settings.
+pub static SET_MATTE: Registry = Registry {
+    kind: "set-matte",
+    rows: &[],
+};
+
+/// The properties of `shift-channels`: none, its choices are settings.
+pub static SHIFT_CHANNELS: Registry = Registry {
+    kind: "shift-channels",
+    rows: &[],
+};
+
+/// The levels a channel may be taken from, the channel's own first.
+macro_rules! shift_levels {
+    ($own:literal, $($other:literal),*) => {
+        &[$own, $($other,)* "luminance", "hue", "lightness", "saturation", "full", "off"]
+    };
+}
+
+/// The levels a matte may be taken from: alpha, the default, then the
+/// colours, luminance, hue, lightness and saturation, then fixed full and
+/// off.
+const MATTE_LEVELS: &[&str] = &[
+    "alpha",
+    "red",
+    "green",
+    "blue",
+    "luminance",
+    "hue",
+    "lightness",
+    "saturation",
+    "full",
+    "off",
+];
 
 /// The properties every sound-reading effect shares, in order: where it
 /// stands, how tall and thick it draws, the window of sound it reads, and
@@ -1893,7 +1937,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 32] = [
+pub static EFFECTS: [ItemKind; 34] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -2110,6 +2154,94 @@ pub static EFFECTS: [ItemKind; 32] = [
         outline: None,
         timed: false,
         doc: "moves each pixel by the levels of another layer, the map",
+    },
+    ItemKind {
+        name: "set-matte",
+        role: Role::Effect,
+        registry: &SET_MATTE,
+        primary: Primary::Setting("channel"),
+        settings: &[
+            SettingSpec {
+                name: "channel",
+                choices: MATTE_LEVELS,
+                default: "alpha",
+                doc: "which level of the matte layer becomes the layer's alpha; `full` keeps all \
+                      of it and `off` none",
+            },
+            SettingSpec {
+                name: "inverted",
+                choices: &["off", "on"],
+                default: "off",
+                doc: "whether the matte is turned into its opposite, keeping the layer where the \
+                      level is low",
+            },
+            SettingSpec {
+                name: "behaviour",
+                choices: &["stretch", "center"],
+                default: "stretch",
+                doc: "how the matte layer's box lies on the layer's when their sizes differ: \
+                      stretched over it, or centred on it at its own size",
+            },
+            SettingSpec {
+                name: "composite",
+                choices: &["on", "off"],
+                default: "on",
+                doc: "whether the matte multiplies the layer's own alpha (`on`) or replaces it \
+                      inside the layer's box (`off`)",
+            },
+            SettingSpec {
+                name: "premultiply",
+                choices: &["on", "off"],
+                default: "on",
+                doc: "whether the matte layer's colour is read laid over black (`on`), so its \
+                      transparent parts read as 0, or as its own colour (`off`)",
+            },
+        ],
+        input: Some(Input {
+            key: "matte",
+            reads: Reads::Laid,
+        }),
+        outline: None,
+        timed: false,
+        doc: "takes the layer's alpha from a level of another layer, the matte, or of its own \
+              drawing before its effects when it names none",
+    },
+    ItemKind {
+        name: "shift-channels",
+        role: Role::Effect,
+        registry: &SHIFT_CHANNELS,
+        primary: Primary::Setting("alpha-from"),
+        settings: &[
+            SettingSpec {
+                name: "alpha-from",
+                choices: shift_levels!("alpha", "red", "green", "blue"),
+                default: "alpha",
+                doc: "which level of the layer's own colour becomes its alpha",
+            },
+            SettingSpec {
+                name: "red-from",
+                choices: shift_levels!("red", "alpha", "green", "blue"),
+                default: "red",
+                doc: "which level becomes its red",
+            },
+            SettingSpec {
+                name: "green-from",
+                choices: shift_levels!("green", "alpha", "red", "blue"),
+                default: "green",
+                doc: "which level becomes its green",
+            },
+            SettingSpec {
+                name: "blue-from",
+                choices: shift_levels!("blue", "alpha", "red", "green"),
+                default: "blue",
+                doc: "which level becomes its blue",
+            },
+        ],
+        input: None,
+        outline: None,
+        timed: false,
+        doc: "rebuilds each channel from a level of the layer's straight colour: a channel, \
+              luminance, hue, lightness, saturation, or fixed `full` or `off`",
     },
     ItemKind {
         name: "audio-spectrum",

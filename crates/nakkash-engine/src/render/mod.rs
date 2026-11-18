@@ -44,7 +44,7 @@ use crate::pictures::Still;
 use nakkash_format::shorthand::Shutter;
 use nakkash_scene::space::{self, View};
 use nakkash_scene::{
-    CompGraph, ContentState, FrameState, Node as GraphNode, NodeState, SceneGraph,
+    CompGraph, ContentState, FrameState, ItemState, Node as GraphNode, NodeState, SceneGraph,
 };
 
 /// How closely curves are flattened into the outlines this module builds
@@ -277,8 +277,40 @@ fn matted(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Res
     // matte; nothing outside its span. A collapsed composition is read as
     // its composition, uncollapsed: collapsing changes where it draws, not
     // what it is.
-    for (effect, input) in drawn.effects.iter_mut().zip(&list[i].inputs) {
+    // One that reads its own layer when it names none reads the layer's
+    // drawing before its effects, cut by its masks, in its own
+    // coordinates.
+    let items = &state.nodes[i].fx;
+    let own = items
+        .iter()
+        .any(|item| {
+            item.kind
+                .input
+                .is_some_and(|input| input.reads == Reads::Laid)
+        })
+        .then(|| Layer {
+            transform: Affine::IDENTITY,
+            projection: None,
+            opacity: 1.0,
+            blend: BlendMode::default(),
+            effects: Vec::new(),
+            matte: None,
+            adjust: false,
+            motion: Vec::new(),
+            bounds: None,
+            ..drawn.clone()
+        });
+    for ((effect, input), item) in drawn.effects.iter_mut().zip(&list[i].inputs).zip(items) {
         let Some(source) = *input else {
+            if let (
+                Some(own),
+                Some(Input {
+                    reads: Reads::Laid, ..
+                }),
+            ) = (&own, item.kind.input)
+            {
+                *effect = effect.clone().with_input(Node::Layer(own.clone()));
+            }
             continue;
         };
         let read = match state.nodes[source].shown {
@@ -299,6 +331,28 @@ fn matted(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Res
                 ..read
             },
             _ => Layer::new(Vec::new()),
+        };
+        // One that reads a laid layer reads it already laid on its own
+        // effect box, so nothing it reads falls outside the frame.
+        let read = match item.kind.input {
+            Some(Input {
+                reads: Reads::Laid, ..
+            }) => {
+                let around = canvas(at.graph(sources.graph));
+                let from = effect_box(sources, &state.nodes[source], around);
+                // A collapsed composition runs its effects in the
+                // coordinates of the canvas it draws into.
+                let onto = match list[i].collapse {
+                    true if matches!(state.nodes[i].content, ContentState::Comp(..)) => around,
+                    _ => effect_box(sources, &state.nodes[i], around),
+                };
+                Layer {
+                    transform: laid(item, from, onto),
+                    bounds: None,
+                    ..read
+                }
+            }
+            _ => read,
         };
         *effect = effect.clone().with_input(Node::Layer(read));
     }
@@ -324,6 +378,45 @@ fn matted(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Res
         }),
         ..drawn
     })))
+}
+
+/// A node's effect box in its own coordinates: what its content fills (a
+/// rect, an image's or video's frame, a composition's canvas), or for
+/// content without a box of its own, `around`, the canvas it sits in, with
+/// its middle on the node's origin.
+fn effect_box(sources: Sources<'_>, node: &NodeState, around: Rect) -> Rect {
+    match &node.content {
+        ContentState::Rect(shape) => Rect::new(0.0, 0.0, shape.width, shape.height),
+        ContentState::Image(content) => content.frame,
+        ContentState::Video { video, .. } => video.frame,
+        ContentState::Comp(index, _) => canvas(&sources.graph.comps[*index]),
+        _ => around - around.center().to_vec2(),
+    }
+}
+
+/// From the coordinates of a layer an effect reads, whose effect box is
+/// `from`, to those of the layer it is on, whose box is `onto`: the box
+/// stretched over the other, or its middle on the other's, as the
+/// effect's `behaviour` setting says.
+fn laid(item: &ItemState, from: Rect, onto: Rect) -> Affine {
+    let behaviour = item
+        .kind
+        .settings
+        .iter()
+        .zip(&item.settings)
+        .find(|(setting, _)| setting.name == "behaviour")
+        .and_then(|(setting, &choice)| setting.choices.get(choice).copied());
+    match behaviour {
+        Some("stretch") if from.width() > 0.0 && from.height() > 0.0 => {
+            Affine::translate(onto.origin().to_vec2())
+                * Affine::scale_non_uniform(
+                    onto.width() / from.width(),
+                    onto.height() / from.height(),
+                )
+                * Affine::translate(-from.origin().to_vec2())
+        }
+        _ => Affine::translate(onto.center() - from.center()),
+    }
 }
 
 /// Gives each effect of node `i` that reads a layer's sound the window it

@@ -8,6 +8,7 @@
 
 use vello_cpu::kurbo::{Affine, Point, Rect, Shape, Vec2};
 
+use crate::channel::{Level, Reading};
 use crate::colour::{choice, number};
 use crate::effect::{ParamValue, Space};
 use crate::generate::value_noise;
@@ -22,7 +23,7 @@ fn point(values: &[ParamValue], i: usize) -> [f32; 2] {
 }
 
 /// The layer's box in its own coordinates: its own, or the frame's.
-fn layer_box(pixels: &Pixels, space: &Space) -> Rect {
+pub(crate) fn layer_box(pixels: &Pixels, space: &Space) -> Rect {
     space.bounds.unwrap_or_else(|| {
         let frame = Rect::new(
             0.0,
@@ -481,15 +482,34 @@ mod tests;
 /// What a displacement reads from the map, for each choice of
 /// `horizontal-from` and `vertical-from` (each lists its default first).
 const MAP_CHANNELS: [[MapChannel; 11]; 2] = {
-    use MapChannel::{
-        Alpha, Blue, Full, Green, Half, Hue, Lightness, Luminance, Off, Red, Saturation,
-    };
+    use Level::{Alpha, Blue, Green, Hue, Lightness, Luminance, Red, Saturation};
+    use MapChannel::{Full, Half, Of, Off};
     [
         [
-            Red, Green, Blue, Alpha, Luminance, Hue, Lightness, Saturation, Full, Half, Off,
+            Of(Red),
+            Of(Green),
+            Of(Blue),
+            Of(Alpha),
+            Of(Luminance),
+            Of(Hue),
+            Of(Lightness),
+            Of(Saturation),
+            Full,
+            Half,
+            Off,
         ],
         [
-            Green, Red, Blue, Alpha, Luminance, Hue, Lightness, Saturation, Full, Half, Off,
+            Of(Green),
+            Of(Red),
+            Of(Blue),
+            Of(Alpha),
+            Of(Luminance),
+            Of(Hue),
+            Of(Lightness),
+            Of(Saturation),
+            Full,
+            Half,
+            Off,
         ],
     ]
 };
@@ -497,57 +517,66 @@ const MAP_CHANNELS: [[MapChannel; 11]; 2] = {
 /// A level a displacement reads from its map, 0 to 1, 0.5 moving nothing.
 #[derive(Debug, Clone, Copy)]
 enum MapChannel {
-    Red,
-    Green,
-    Blue,
-    Alpha,
-    Luminance,
-    Hue,
-    Lightness,
-    Saturation,
+    /// A level of the map's straight colour.
+    Of(Level),
+    /// The most one way.
     Full,
+    /// Half of that.
     Half,
+    /// Nothing.
     Off,
 }
 
 impl MapChannel {
-    fn level(self, [r, g, b, a]: [f32; 4]) -> f32 {
-        let straight = |c: f32| if a > 0.0 { c / a } else { 0.0 };
-        let (r, g, b) = (straight(r), straight(g), straight(b));
-        let (max, min) = (r.max(g).max(b), r.min(g).min(b));
+    fn level(self, pixel: [f32; 4]) -> f32 {
         match self {
-            MapChannel::Red => r,
-            MapChannel::Green => g,
-            MapChannel::Blue => b,
-            MapChannel::Alpha => a,
-            MapChannel::Luminance => r * 0.299 + g * 0.587 + b * 0.114,
-            MapChannel::Hue => {
-                let d = max - min;
-                if d <= 0.0 {
-                    0.0
-                } else if max == r {
-                    ((g - b) / d).rem_euclid(6.0) / 6.0
-                } else if max == g {
-                    ((b - r) / d + 2.0) / 6.0
-                } else {
-                    ((r - g) / d + 4.0) / 6.0
-                }
-            }
-            MapChannel::Lightness => (max + min) / 2.0,
-            MapChannel::Saturation => {
-                let (l, d) = ((max + min) / 2.0, max - min);
-                if d <= 0.0 {
-                    0.0
-                } else {
-                    d / (1.0 - (2.0 * l - 1.0).abs()).max(1e-6)
-                }
-            }
+            MapChannel::Of(level) => level.of(pixel, Reading::Straight),
             MapChannel::Full => 1.0,
             MapChannel::Half => 0.75,
             MapChannel::Off => 0.5,
         }
     }
 }
+
+/// How one box, a map's or a matte's, lies on a layer's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Lay {
+    /// At its own size, its middle on the layer's.
+    Center,
+    /// Stretched over the layer's box, corner to corner.
+    Stretch,
+    /// At its own size from the layer's middle, repeated on every side.
+    Tile,
+}
+
+impl Lay {
+    /// The point of `map`, a box in the layer's own coordinates, that the
+    /// layer's point `[x, y]` reads, with `map` laid on `target`, the
+    /// layer's box.
+    pub(crate) fn point(self, target: Rect, map: Rect, [x, y]: [f64; 2]) -> [f64; 2] {
+        if self == Lay::Stretch {
+            return [
+                map.x0 + (x - target.x0) / target.width().max(1e-6) * map.width(),
+                map.y0 + (y - target.y0) / target.height().max(1e-6) * map.height(),
+            ];
+        }
+        let m = [
+            x - target.center().x + map.center().x,
+            y - target.center().y + map.center().y,
+        ];
+        match self {
+            Lay::Tile if map.width() > 0.0 && map.height() > 0.0 => [
+                map.x0 + (m[0] - map.x0).rem_euclid(map.width()),
+                map.y0 + (m[1] - map.y0).rem_euclid(map.height()),
+            ],
+            _ => m,
+        }
+    }
+}
+
+/// The placements of `displacement-map`'s `behaviour`, in the order of
+/// its choices.
+const MAP_LAYS: [Lay; 3] = [Lay::Center, Lay::Stretch, Lay::Tile];
 
 /// `displacement-map`: every pixel read from up to `horizontal` and
 /// `vertical` px away, by levels of the map layer (its own drawing when it
@@ -561,38 +590,15 @@ pub(crate) fn displacement_map(pixels: &mut Pixels, values: &[ParamValue], space
         MAP_CHANNELS[0][choice(values, 2)],
         MAP_CHANNELS[1][choice(values, 3)],
     ];
-    let (behaviour, wrap) = (choice(values, 4), choice(values, 5) == 1);
+    let (lay, wrap) = (MAP_LAYS[choice(values, 4)], choice(values, 5) == 1);
     let target = layer_box(pixels, space);
     let (map, map_box) = match &space.input {
         Some(input) => (input.pixels.clone(), input.bounds.unwrap_or(target)),
         None => (pixels.clone(), target),
     };
     let to = space.transform;
-    // Where on the map a point of the layer reads.
-    let on_map = |[x, y]: [f32; 2]| -> [f64; 2] {
-        let (x, y) = (f64::from(x), f64::from(y));
-        match behaviour {
-            1 => [
-                map_box.x0 + (x - target.x0) / target.width().max(1e-6) * map_box.width(),
-                map_box.y0 + (y - target.y0) / target.height().max(1e-6) * map_box.height(),
-            ],
-            _ => {
-                let m = [
-                    x - target.center().x + map_box.center().x,
-                    y - target.center().y + map_box.center().y,
-                ];
-                match behaviour {
-                    2 if map_box.width() > 0.0 && map_box.height() > 0.0 => [
-                        map_box.x0 + (m[0] - map_box.x0).rem_euclid(map_box.width()),
-                        map_box.y0 + (m[1] - map_box.y0).rem_euclid(map_box.height()),
-                    ],
-                    _ => m,
-                }
-            }
-        }
-    };
     remap(pixels, space, |p| {
-        let [mx, my] = on_map(p);
+        let [mx, my] = lay.point(target, map_box, p.map(f64::from));
         let there = to * Point::new(mx, my);
         let level = map.sample(there.x, there.y);
         let d = [

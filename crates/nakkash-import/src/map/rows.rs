@@ -282,6 +282,35 @@ const MAP_LEVELS: &[(i64, &str)] = &[
     (10, "half"),
     (11, "off"),
 ];
+/// The levels a matte is taken from, by the project's codes.
+const MATTE_LEVELS: &[(i64, &str)] = &[
+    (1, "red"),
+    (2, "green"),
+    (3, "blue"),
+    (4, "alpha"),
+    (5, "luminance"),
+    (6, "hue"),
+    (7, "lightness"),
+    (8, "saturation"),
+    (9, "full"),
+    (10, "off"),
+];
+/// The levels a channel is taken from, by the project's codes.
+const SHIFT_LEVELS: &[(i64, &str)] = &[
+    (1, "alpha"),
+    (2, "red"),
+    (3, "green"),
+    (4, "blue"),
+    (5, "luminance"),
+    (6, "hue"),
+    (7, "lightness"),
+    (8, "saturation"),
+    (9, "full"),
+    (10, "off"),
+];
+/// A matte's box stretched over the layer's when their sizes differ, or
+/// centred on it.
+const MATTE_LAYS: &[(i64, &str)] = &[(0, "center"), (1, "stretch")];
 const MAP_BEHAVIOURS: &[(i64, &str)] = &[(1, "center"), (2, "stretch"), (3, "tile")];
 const MAP_EDGES: &[(i64, &str)] = &[(0, "clear"), (1, "wrap")];
 const TILE_EDGES: &[(i64, &str)] = &[(0, "repeat"), (1, "mirror")];
@@ -1108,7 +1137,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 48] = [
+pub(super) static KINDS: [Kind; 50] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -2299,6 +2328,91 @@ pub(super) static KINDS: [Kind; 48] = [
             row(
                 "ADBE Force CPU GPU",
                 To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Set Matte3",
+        item: "set-matte",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Set Matte3-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row("ADBE Set Matte3-0001", To::Input, Number, Absent),
+            row(
+                "ADBE Set Matte3-0002",
+                To::Setting("channel", MATTE_LEVELS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Set Matte3-0003",
+                To::Setting("inverted", OFF_ON),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Set Matte3-0004",
+                To::Setting("behaviour", MATTE_LAYS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Set Matte3-0005",
+                To::Setting("composite", OFF_ON),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Set Matte3-0006",
+                To::Setting("premultiply", OFF_ON),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Shift Channels",
+        item: "shift-channels",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Shift Channels-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Shift Channels-0001",
+                To::Setting("alpha-from", SHIFT_LEVELS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Shift Channels-0002",
+                To::Setting("red-from", SHIFT_LEVELS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Shift Channels-0003",
+                To::Setting("green-from", SHIFT_LEVELS),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Shift Channels-0004",
+                To::Setting("blue-from", SHIFT_LEVELS),
                 Number,
                 Absent,
             ),
