@@ -18,6 +18,7 @@ use crate::bake::{Ask, Layouts};
 use crate::model::{ComposedLine, Composition, Item, ItemKind, Layer, LayerKind, Project};
 
 mod curves;
+mod cycle;
 mod expressions;
 mod fonts;
 mod footage;

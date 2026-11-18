@@ -1051,6 +1051,47 @@ mod effects {
         );
     }
 
+    /// A colour cycle writes its stored stops as four curves, keeps its
+    /// choices by code, and reports a pixel selection it does not draw.
+    #[test]
+    fn a_colour_cycle_keeps_its_stops_and_choices() {
+        let stops = [(0, [255, 0, 0, 0]), (65_535, [255, 230, 239, 255])];
+        let cycle = |extra: Vec<Property>| {
+            let mut children = vec![Child::Property(property(
+                "APC Colorama-0012",
+                Stream::Static(Value::Data(crate::map::cycle::tests::data(&stops, 0))),
+            ))];
+            children.extend(extra.into_iter().map(Child::Property));
+            group("APC Colorama", children)
+        };
+        let import = imported(vec![
+            cycle(vec![
+                number("APC Colorama-0002", 6.0),
+                number("APC Colorama-0016", 8.0),
+                number("APC Colorama-0018", 0.0),
+                number("APC Colorama-0014", 0.0),
+                number("APC Colorama-0038", 2.0),
+                number("APC Colorama-0036", 25.0),
+            ]),
+            cycle(vec![number("APC Colorama-0026", 2.0)]),
+        ])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"];
+        assert_eq!(fx[0]["color-cycle"], "lightness", "{fx}");
+        assert_eq!(fx[0]["red"], "M 0,0 L 1,0.901961", "{fx}");
+        assert_eq!(fx[0]["alpha"], "M 0,1 L 1,1", "{fx}");
+        assert_eq!(fx[0]["modify"], "hue", "{fx}");
+        assert_eq!(fx[0]["modify-alpha"], "off", "{fx}");
+        assert_eq!(fx[0]["interpolate"], "off", "{fx}");
+        assert_eq!(fx[0]["repetitions"], 2, "{fx}");
+        assert_eq!(fx[0]["blend"], 0.25, "{fx}");
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert!(
+            what.contains(&"a colour cycle kept to the pixels near a matching colour"),
+            "{what:?}"
+        );
+    }
+
     /// A switched-off matte is kept, hidden, so it draws nothing and is
     /// not reported.
     #[test]

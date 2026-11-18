@@ -27,6 +27,9 @@ pub(super) enum To {
     /// The five curves of a curves effect, from the data the project keeps
     /// for them (`aRbp`).
     Curves,
+    /// The cycle of a colour cycle effect, its four curves, from the data
+    /// the project keeps for its output cycle.
+    Cycle,
     /// The five sets of levels of a levels effect, from the data the
     /// project keeps for them in its histogram parameter.
     Levels,
@@ -311,6 +314,42 @@ const SHIFT_LEVELS: &[(i64, &str)] = &[
 /// A matte's box stretched over the layer's when their sizes differ, or
 /// centred on it.
 const MATTE_LAYS: &[(i64, &str)] = &[(0, "center"), (1, "stretch")];
+/// The levels a colour cycle's phase is read from, by the project's codes.
+const PHASE_LEVELS: &[(i64, &str)] = &[
+    (1, "intensity"),
+    (2, "red"),
+    (3, "green"),
+    (4, "blue"),
+    (5, "hue"),
+    (6, "lightness"),
+    (7, "saturation"),
+    (8, "value"),
+    (9, "alpha"),
+    (10, "zero"),
+];
+/// How a colour cycle adds a second phase, by the project's codes.
+const ADD_MODES: &[(i64, &str)] = &[(1, "wrap"), (2, "clamp"), (3, "average"), (4, "screen")];
+/// Which channels a colour cycle changes, by the project's codes.
+const CYCLE_MODIFIES: &[(i64, &str)] = &[
+    (1, "all"),
+    (2, "red"),
+    (3, "green"),
+    (4, "blue"),
+    (5, "red-green"),
+    (6, "green-blue"),
+    (7, "red-blue"),
+    (8, "hue"),
+    (9, "lightness"),
+    (10, "saturation"),
+    (11, "hue-lightness"),
+    (12, "lightness-saturation"),
+    (13, "hue-saturation"),
+    (14, "none"),
+];
+/// A checkbox whose scene setting lists `on` first.
+const ON_OFF: &[(i64, &str)] = &[(1, "on"), (0, "off")];
+/// Whether a colour cycle runs smoothly between its stops.
+const INTERPOLATIONS: &[(i64, &str)] = &[(1, "on"), (0, "off")];
 const MAP_BEHAVIOURS: &[(i64, &str)] = &[(1, "center"), (2, "stretch"), (3, "tile")];
 const MAP_EDGES: &[(i64, &str)] = &[(0, "clear"), (1, "wrap")];
 const TILE_EDGES: &[(i64, &str)] = &[(0, "repeat"), (1, "mirror")];
@@ -1137,7 +1176,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 50] = [
+pub(super) static KINDS: [Kind; 51] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -1846,6 +1885,183 @@ pub(super) static KINDS: [Kind; 50] = [
                 Percent,
                 Absent,
             ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "APC Colorama",
+        item: "color-cycle",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "APC Colorama-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0003",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0002",
+                To::Setting("phase-from", PHASE_LEVELS),
+                Number,
+                Absent,
+            ),
+            row("APC Colorama-0004", To::Input, Number, Absent),
+            row(
+                "APC Colorama-0006",
+                To::Setting("add-from", PHASE_LEVELS),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0040",
+                To::Setting("add-mode", ADD_MODES),
+                Number,
+                Absent,
+            ),
+            row("APC Colorama-0008", To::Prop("shift"), Number, Parameter),
+            row(
+                "APC Colorama-0015",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0017",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0010",
+                To::Ignore(
+                    "the preset the stored cycle came from; the stored stops are what draws",
+                ),
+                Number,
+                Absent,
+            ),
+            row("APC Colorama-0012", To::Cycle, Number, Absent),
+            row(
+                "APC Colorama-0038",
+                To::Prop("repetitions"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "APC Colorama-0014",
+                To::Setting("interpolate", INTERPOLATIONS),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0027",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0029",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0016",
+                To::Setting("modify", CYCLE_MODIFIES),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0018",
+                To::Setting("modify-alpha", ON_OFF),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0034",
+                To::OnlyDefault("a colour cycle that colours the pixels its layer left empty"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "APC Colorama-0037",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0039",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0020",
+                To::OnlyDefault("a colour cycle kept to the pixels near a matching colour"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "APC Colorama-0022",
+                To::OnlyDefault("a colour cycle kept to the pixels near a matching colour"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "APC Colorama-0024",
+                To::OnlyDefault("a colour cycle kept to the pixels near a matching colour"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "APC Colorama-0026",
+                To::OnlyDefault("a colour cycle kept to the pixels near a matching colour"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "APC Colorama-0049",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0051",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0028",
+                To::OnlyDefault("a colour cycle masked by another layer"),
+                Number,
+                Missing::Number(0.0),
+            ),
+            row(
+                "APC Colorama-0030",
+                To::OnlyDefault("a colour cycle masked by another layer"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "APC Colorama-0057",
+                To::Ignore("a group of parameters"),
+                Number,
+                Absent,
+            ),
+            row(
+                "APC Colorama-0032",
+                To::OnlyDefault("a colour cycle drawn in place of its layer, not over it"),
+                Number,
+                Parameter,
+            ),
+            row("APC Colorama-0036", To::Prop("blend"), Percent, Parameter),
         ],
         parts: &[],
         switch: None,

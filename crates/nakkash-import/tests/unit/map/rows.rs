@@ -42,6 +42,14 @@ fn check(
                 registry.kind
             );
         }),
+        To::Cycle => super::super::cycle::NAMES.iter().for_each(|name| {
+            assert!(
+                registry.target(name).is_some(),
+                "{at}: `{}` writes the cycle's `{name}`, which `{}` lacks",
+                row.match_name,
+                registry.kind
+            );
+        }),
         To::Levels => {
             super::super::levels::NAMES.iter().for_each(|name| {
                 assert!(
