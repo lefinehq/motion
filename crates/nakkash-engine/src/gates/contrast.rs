@@ -7,12 +7,20 @@
 //! scene and of each composition it sits in, and the layers below it), and
 //! once with only the layer, inside the `comp` layers it sits in but with no
 //! `bg` drawn, for its glyphs.
+//!
+//! Copies of one text, the same words drawn over each other where a
+//! template stacks them for a split, an echo or a glow, are read as one
+//! text: each copy's glyphs are the others' too, so against the others
+//! every copy would read 1:1, and no change to the film around them could
+//! read worse. The copies are drawn together, and measured against what
+//! is behind all of them.
 
 use std::sync::{Mutex, PoisonError};
 
 use nakkash_format::Result;
 use nakkash_query::{Code, Measure, Report, Severity, Unit, Violation};
 use nakkash_raster::Image;
+use nakkash_raster::kurbo::Rect;
 use nakkash_scene::{ContentState, FrameState, NodeState, SceneGraph, Visit, address_of, walk};
 
 use super::{luminance, over_black, shrunk};
@@ -71,6 +79,9 @@ pub(super) fn check(session: &Session, drawn_whole: bool) -> Result<Report> {
         .flat_map(|(at, (frame, state))| {
             walk(graph, state).filter_map(move |visit| {
                 let size = readable(&visit)?;
+                let ContentState::Text { text, .. } = &visit.node.content else {
+                    return None;
+                };
                 Some(Text {
                     sample: at,
                     frame: *frame,
@@ -78,16 +89,19 @@ pub(super) fn check(session: &Session, drawn_whole: bool) -> Result<Report> {
                     ids: visit.ids.iter().map(|id| (*id).to_owned()).collect(),
                     size,
                     scale: visit.transform.determinant().abs().sqrt(),
+                    words: text.content.text.clone(),
+                    area: visit.transform.transform_rect_bbox(text.layout.bounds()),
                 })
             })
         })
         .collect();
-    let measured = Mutex::new(Vec::with_capacity(texts.len()));
-    let count = u32::try_from(texts.len()).unwrap_or(u32::MAX);
+    let groups = copies(&texts);
+    let measured = Mutex::new(Vec::with_capacity(groups.len()));
+    let count = u32::try_from(groups.len()).unwrap_or(u32::MAX);
     session.on_threads(0..count, |item| {
-        let text = &texts[item as usize];
-        let state = &samples[text.sample].1;
-        let found = measure(session, graph, &bare, state, text, drawn_whole);
+        let members: Vec<&Text> = groups[item as usize].iter().map(|&i| &texts[i]).collect();
+        let state = &samples[members[0].sample].1;
+        let found = measure(session, graph, &bare, state, &members, drawn_whole);
         measured
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -105,7 +119,8 @@ pub(super) fn check(session: &Session, drawn_whole: bool) -> Result<Report> {
         match found {
             Ok(found) => seen.extend(found),
             Err(mut d) => {
-                d.message = format!("frame {}: {}", texts[item as usize].frame, d.message);
+                let first = groups[item as usize][0];
+                d.message = format!("frame {}: {}", texts[first].frame, d.message);
                 return Err(d);
             }
         }
@@ -160,6 +175,44 @@ struct Text {
     size: f64,
     /// How much its transform scales it, on the canvas.
     scale: f64,
+    /// Its words.
+    words: String,
+    /// Its layout's box on the canvas.
+    area: Rect,
+}
+
+/// The share of the smaller of two boxes the two must share for two texts
+/// of the same words to be copies of one.
+const SAME_PLACE: f64 = 0.6;
+
+/// `texts` gathered into the copies of one text, in the order they come:
+/// at one sample, the same words over most of the same box as the first of
+/// the gathering. Each gathering is measured once.
+fn copies(texts: &[Text]) -> Vec<Vec<usize>> {
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    for (i, text) in texts.iter().enumerate() {
+        let found = groups.iter_mut().find(|group| {
+            let first = &texts[group[0]];
+            first.sample == text.sample
+                && first.words == text.words
+                && overlap(first.area, text.area) >= SAME_PLACE
+        });
+        match found {
+            Some(group) => group.push(i),
+            None => groups.push(vec![i]),
+        }
+    }
+    groups
+}
+
+/// The share of the smaller of boxes `a` and `b` the two share.
+fn overlap(a: Rect, b: Rect) -> f64 {
+    let shared = a.intersect(b);
+    let smaller = a.area().min(b.area());
+    match smaller > 0.0 && shared.width() > 0.0 && shared.height() > 0.0 {
+        true => shared.area() / smaller,
+        false => 0.0,
+    }
 }
 
 /// `graph` with no composition drawing a background, for the glyphs alone:
@@ -173,8 +226,10 @@ fn bare(graph: &SceneGraph) -> SceneGraph {
     bare
 }
 
-/// `text` measured at its sample, `state`: `bare` is the graph as [`bare`]
-/// gives it. `None` when its glyphs cover less than a px. With
+/// `members`, the copies of one text, measured together at their sample,
+/// `state`: one measure for each, the same ratio against its own limit.
+/// `bare` is the graph as [`bare`] gives it. None when their glyphs cover
+/// less than a px. With
 /// `drawn_whole`, as [`check`] says, what is behind such glyphs is not
 /// drawn; else it is drawn first, so a failure to draw it is the one met.
 fn measure(
@@ -182,30 +237,44 @@ fn measure(
     graph: &SceneGraph,
     bare: &SceneGraph,
     state: &FrameState,
-    text: &Text,
+    members: &[&Text],
     drawn_whole: bool,
-) -> Result<Option<Seen>> {
-    let ids: Vec<&str> = text.ids.iter().map(String::as_str).collect();
-    let glyphs = session
-        .list_in(bare, &alone(state, &ids))
-        .and_then(|mut list| {
+) -> Result<Vec<Seen>> {
+    let all: Vec<Vec<&str>> = members
+        .iter()
+        .map(|text| text.ids.iter().map(String::as_str).collect())
+        .collect();
+    let only = alone(state, &all);
+    let draw = |state: &FrameState| {
+        session.list_in(bare, state).and_then(|mut list| {
             list.background = None;
             shrunk(session, list)
-        });
-    if drawn_whole && glyphs.as_ref().is_ok_and(|g| coverage(g) < 1.0) {
-        return Ok(None);
-    }
-    let behind = shrunk(session, session.list_of(&without(state, &ids))?)?;
-    let Some(ratio) = ratio(&glyphs?, &behind) else {
-        return Ok(None);
+        })
     };
-    let large = text.size * text.scale * 1080.0 / graph.root.height;
-    Ok(Some(Seen {
-        index: text.index,
-        frame: text.frame,
-        ratio,
-        limit: if large >= LARGE_PX { LARGE } else { NORMAL },
-    }))
+    // The glyphs' shape, where their drawing reaches: an effect that wipes
+    // or mattes the text away leaves no glyph there.
+    let glyphs =
+        draw(&shape(&only)).and_then(|shape| draw(&only).and_then(|drawn| reached(&shape, &drawn)));
+    if drawn_whole && glyphs.as_ref().is_ok_and(|g| coverage(g) < 1.0) {
+        return Ok(Vec::new());
+    }
+    let behind = shrunk(session, session.list_of(&without(state, &all))?)?;
+    let whole = shrunk(session, session.list_of(state)?)?;
+    let Some(ratio) = ratio(&glyphs?, &behind, &whole) else {
+        return Ok(Vec::new());
+    };
+    Ok(members
+        .iter()
+        .map(|text| {
+            let large = text.size * text.scale * 1080.0 / graph.root.height;
+            Seen {
+                index: text.index,
+                frame: text.frame,
+                ratio,
+                limit: if large >= LARGE_PX { LARGE } else { NORMAL },
+            }
+        })
+        .collect())
 }
 
 /// The smallest size a text layer is set in, in its own px, when it is
@@ -222,22 +291,50 @@ fn readable(visit: &Visit<'_>) -> Option<f64> {
     Some(sizes.fold(content.base.font.size, f64::min))
 }
 
-/// The ratio [`MOST_OF`] of the glyphs' coverage in `glyphs` reaches
-/// against `behind`, px by px; `None` when they cover less than a px.
-fn ratio(glyphs: &Image, behind: &Image) -> Option<f64> {
-    let mut seen: Vec<(f64, f64)> = glyphs
+/// The ratio [`MOST_OF`] of the glyphs' coverage reaches, px by px, read
+/// in the frame as drawn: `glyphs` is the shape of the text alone, with no
+/// effect of its own or of its compositions, where its drawing reaches, `whole` the frame and
+/// `behind` the frame without the text. `None` when the glyphs cover less
+/// than a px.
+///
+/// The text's colour is the frame's where its glyphs are, with all that
+/// is drawn over it, its effects and its compositions' and the way they
+/// are blended, so a title a template draws through fills, tints and glows
+/// reads as it shows. At a glyph's edge the frame is the glyph laid over
+/// what is behind at the glyph's cover, and that cover is taken off again,
+/// so the edge reads as the core does; where that gives the glyph's own
+/// colour, within the frame's rounding, the text is drawn as set and its
+/// colour is read exactly.
+fn ratio(glyphs: &Image, behind: &Image, whole: &Image) -> Option<f64> {
+    let mut seen: Vec<(f64, f64)> = Vec::new();
+    let mut total = 0.0;
+    let all = glyphs
         .pixels()
         .chunks_exact(4)
         .zip(behind.pixels().chunks_exact(4))
-        .filter(|(glyph, _)| glyph[3] > 0)
-        .map(|(glyph, behind)| {
-            let text = luminance([glyph[0], glyph[1], glyph[2]]);
-            let back = luminance(over_black(behind));
-            let ratio = (text.max(back) + 0.05) / (text.min(back) + 0.05);
-            (ratio, f64::from(glyph[3]) / 255.0)
-        })
-        .collect();
-    let total = coverage(glyphs);
+        .zip(whole.pixels().chunks_exact(4));
+    for ((glyph, behind), whole) in all {
+        let a = f64::from(glyph[3]) / 255.0;
+        if a <= 0.0 {
+            continue;
+        }
+        let back = over_black(behind);
+        let drawn = over_black(whole);
+        let unmixed: [f64; 3] =
+            std::array::from_fn(|c| (f64::from(drawn[c]) - (1.0 - a) * f64::from(back[c])) / a);
+        // Within the frame's rounding of the glyph's own colour, the text
+        // is drawn as set: read that colour, exactly.
+        let slack = 0.5 / a + 1.0;
+        let as_set = (0..3).all(|c| (unmixed[c] - f64::from(glyph[c])).abs() <= slack);
+        let text: [u8; 3] = match as_set {
+            true => [glyph[0], glyph[1], glyph[2]],
+            false => unmixed.map(|v| v.round().clamp(0.0, 255.0) as u8),
+        };
+        let (t, b) = (luminance(text), luminance(back));
+        let ratio = (t.max(b) + 0.05) / (t.min(b) + 0.05);
+        seen.push((ratio, a));
+        total += a;
+    }
     if total < 1.0 {
         return None;
     }
@@ -260,33 +357,69 @@ fn coverage(glyphs: &Image) -> f64 {
         .sum()
 }
 
-/// `state` with the node at `ids` hidden.
-fn without(state: &FrameState, ids: &[&str]) -> FrameState {
+/// `state` with the nodes at each of `all` hidden.
+fn without(state: &FrameState, all: &[Vec<&str>]) -> FrameState {
     let mut state = state.clone();
-    if let Some(node) = node_mut(&mut state, ids) {
-        node.hidden = true;
+    for ids in all {
+        if let Some(node) = node_mut(&mut state, ids) {
+            node.hidden = true;
+        }
     }
     state
 }
 
-/// `state` with only the node at `ids` drawn, inside the `comp` nodes
-/// around it.
-fn alone(state: &FrameState, ids: &[&str]) -> FrameState {
+/// `state` with only the nodes at each of `all` drawn, inside the `comp`
+/// nodes around them.
+fn alone(state: &FrameState, all: &[Vec<&str>]) -> FrameState {
     let mut state = state.clone();
-    keep(&mut state, ids);
+    let all: Vec<&[&str]> = all.iter().map(Vec::as_slice).collect();
+    keep(&mut state, &all);
     state
 }
 
-/// Hides every node of `state` but the one `ids` leads through.
-fn keep(state: &mut FrameState, ids: &[&str]) {
-    let Some((id, inner)) = ids.split_first() else {
-        return;
-    };
+/// `shape` where `drawn` reaches: each px's cover the less of the two.
+fn reached(shape: &Image, drawn: &Image) -> Result<Image> {
+    let px: Vec<u8> = shape
+        .pixels()
+        .chunks_exact(4)
+        .zip(drawn.pixels().chunks_exact(4))
+        .flat_map(|(s, d)| [s[0], s[1], s[2], s[3].min(d[3])])
+        .collect();
+    Image::new(shape.width(), shape.height(), px)
+}
+
+/// `state` with no node's effects: what is drawn is the nodes' shapes, a
+/// text's glyphs where they fall in the frame.
+fn shape(state: &FrameState) -> FrameState {
+    fn strip(state: &mut FrameState) {
+        for node in &mut state.nodes {
+            node.fx.clear();
+            if let ContentState::Comp(_, Some(comp)) = &mut node.content {
+                strip(comp);
+            }
+        }
+    }
+    let mut state = state.clone();
+    strip(&mut state);
+    state
+}
+
+/// Hides every node of `state` but those the paths in `all` lead through.
+fn keep(state: &mut FrameState, all: &[&[&str]]) {
     for node in &mut state.nodes {
-        if node.id != *id {
+        let inner: Vec<&[&str]> = all
+            .iter()
+            .filter_map(|ids| ids.split_first())
+            .filter(|(id, _)| **id == node.id)
+            .map(|(_, inner)| inner)
+            .collect();
+        if inner.is_empty() {
             node.hidden = true;
         } else if let ContentState::Comp(_, Some(comp)) = &mut node.content {
-            keep(comp, inner);
+            // A path that ends here keeps the whole composition.
+            if inner.iter().all(|ids| !ids.is_empty()) {
+                keep(comp, &inner);
+            }
         }
     }
 }

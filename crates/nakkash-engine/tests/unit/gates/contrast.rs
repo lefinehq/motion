@@ -9,11 +9,43 @@ fn row(px: &[[u8; 4]]) -> Image {
     Image::new(px.len() as u32, 1, px.concat()).expect("image")
 }
 
+/// [`ratio`] of `glyphs` laid over `behind`, as a text blended normally.
+fn read(glyphs: &Image, behind: &Image) -> Option<f64> {
+    let whole: Vec<u8> = glyphs
+        .pixels()
+        .chunks_exact(4)
+        .zip(behind.pixels().chunks_exact(4))
+        .flat_map(|(g, b)| {
+            let a = f64::from(g[3]) / 255.0;
+            let mix = |c: usize| (f64::from(g[c]) * a + f64::from(b[c]) * (1.0 - a)).round() as u8;
+            [mix(0), mix(1), mix(2), 255]
+        })
+        .collect();
+    let whole = Image::new(glyphs.width(), glyphs.height(), whole).expect("image");
+    ratio(glyphs, behind, &whole)
+}
+
+#[test]
+fn a_text_reads_as_the_frame_shows_it() {
+    // White glyphs that a template's compositions blend over a mid-grey
+    // frame so that they lift it only a little read near 1:1, as they
+    // show, not as the white they were set in.
+    let glyphs = row(&[[255, 255, 255, 255], [255, 255, 255, 255], [0, 0, 0, 0]]);
+    let behind = row(&[[128, 128, 128, 255]; 3]);
+    let whole = row(&[
+        [150, 150, 150, 255],
+        [150, 150, 150, 255],
+        [128, 128, 128, 255],
+    ]);
+    let ratio = ratio(&glyphs, &behind, &whole).unwrap();
+    assert!(ratio < 1.6, "{ratio}");
+}
+
 #[test]
 fn white_on_black_is_21_to_1() {
     let glyphs = row(&[[255, 255, 255, 255], [0, 0, 0, 0]]);
     let behind = row(&[[0, 0, 0, 255], [0, 0, 0, 255]]);
-    assert_eq!(ratio(&glyphs, &behind), Some(21.0));
+    assert_eq!(read(&glyphs, &behind), Some(21.0));
 }
 
 #[test]
@@ -22,17 +54,17 @@ fn the_worst_tenth_of_the_coverage_may_fall_short() {
     let glyphs = row(&[[255, 255, 255, 255]; 10]);
     let mut back = [[0, 0, 0, 255]; 10];
     back[0] = [255, 255, 255, 255];
-    assert_eq!(ratio(&glyphs, &row(&back)), Some(1.0));
+    assert_eq!(read(&glyphs, &row(&back)), Some(1.0));
     back[1] = [0, 0, 0, 255];
     let behind = row(&back[1..]);
-    assert_eq!(ratio(&row(&[[255, 255, 255, 255]; 9]), &behind), Some(21.0));
+    assert_eq!(read(&row(&[[255, 255, 255, 255]; 9]), &behind), Some(21.0));
 }
 
 #[test]
 fn glyphs_covering_less_than_a_px_are_not_measured() {
     let glyphs = row(&[[255, 255, 255, 100], [255, 255, 255, 100]]);
     let behind = row(&[[0, 0, 0, 255], [0, 0, 0, 255]]);
-    assert_eq!(ratio(&glyphs, &behind), None);
+    assert_eq!(read(&glyphs, &behind), None);
 }
 
 /// A scene of one title, `fill` on `bg`, at `size` px.
@@ -76,8 +108,51 @@ fn what_is_behind_leaves_out_the_layer_and_alone_keeps_only_it() {
     .expect("scene");
     let state = session.frame(0.0).expect("frame");
     let hidden = |s: &FrameState| s.nodes.iter().map(|n| n.hidden).collect::<Vec<_>>();
-    assert_eq!(hidden(&without(&state, &["a"])), [true, false]);
-    assert_eq!(hidden(&alone(&state, &["a"])), [false, true]);
+    assert_eq!(hidden(&without(&state, &[vec!["a"]])), [true, false]);
+    assert_eq!(hidden(&alone(&state, &[vec!["a"]])), [false, true]);
+    // Two paths keep both, or hide both.
+    assert_eq!(
+        hidden(&alone(&state, &[vec!["a"], vec!["b"]])),
+        [false, false]
+    );
+    assert_eq!(
+        hidden(&without(&state, &[vec!["a"], vec!["b"]])),
+        [true, true]
+    );
+}
+
+/// A title drawn as `copies` stacked copies, a px apart as a split or an
+/// echo stacks them, `fill` on `bg`.
+fn stacked(fill: &str, bg: &str, copies: usize) -> String {
+    let layers: Vec<String> = (0..copies)
+        .map(|i| {
+            format!(
+                r##"{{"id":"title-{i}","text":"Launch Week","font":"Inter Variable 96 700","fill":"{fill}","position":[{},540]}}"##,
+                400 + i
+            )
+        })
+        .collect();
+    let report = check(
+        &Session::from_str(&format!(
+            r##"{{"nakkash":1,"size":"1080p","dur":"1s","bg":"{bg}","layers":[{}]}}"##,
+            layers.join(",")
+        ))
+        .expect("scene"),
+        false,
+    )
+    .expect("contrast");
+    report.to_string()
+}
+
+#[test]
+fn copies_of_one_text_are_read_together_against_what_is_behind_them() {
+    // Each copy alone would read 1:1 against the others.
+    assert_eq!(stacked("#FFFFFF", "#000000", 3), "OK 3");
+    // And a muddy title still is one, however many copies draw it.
+    assert_eq!(
+        stacked("#777777", "#666666", 3),
+        "E contrast title-0 0-15f 1.2:1 <3\nE contrast title-1 0-15f 1.2:1 <3\nE contrast title-2 0-15f 1.2:1 <3\nOK 0"
+    );
 }
 
 /// A scene whose one layer is a composition with `bg`, holding a title in
@@ -125,4 +200,13 @@ fn passing_over_glyphs_under_a_px_changes_nothing() {
     let session = Session::from_str(SOME_UNSEEN).expect("scene");
     let drawn = check(&session, false).expect("contrast").to_string();
     assert_eq!(check(&session, true).expect("contrast").to_string(), drawn);
+}
+
+#[test]
+fn a_glyph_counts_only_where_the_text_is_drawn() {
+    // The shape covers two px; a wipe has taken the second away.
+    let shape = row(&[[255, 255, 255, 255], [255, 255, 255, 255]]);
+    let drawn = row(&[[255, 0, 0, 255], [0, 0, 0, 0]]);
+    let glyphs = reached(&shape, &drawn).unwrap();
+    assert_eq!(glyphs.pixels(), &[255, 255, 255, 255, 255, 255, 255, 0]);
 }
