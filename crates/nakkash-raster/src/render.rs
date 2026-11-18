@@ -139,6 +139,9 @@ pub fn render_on(
         )
         .expected("gamma blending"));
     }
+    // A frame with nothing for the accelerator is drawn on the CPU, as
+    // without one: its pixels would only be copied there and back.
+    let accel = accel.filter(|accel| has_work(*accel, &frame.nodes));
     let mut painter = Painter::new(w, h, options, Arc::new(Reads::of(&frame.nodes)), accel);
     // The background is drawn as the bottom-most shape, not used to clear the
     // target: the rasteriser keeps a cleared target out of blending, and a
@@ -157,6 +160,29 @@ pub fn render_on(
         Drawn::Floats(Surface::Cpu(pixels)) => pixels.to_rgba8(),
     };
     Image::new(width, height, rgba)
+}
+
+/// Whether `nodes` hold work `accel` does better than the CPU: an effect
+/// it has a kernel for, or a projected layer, anywhere in them, the layers
+/// effects read and mattes included.
+fn has_work(accel: &dyn Accelerator, nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| {
+        let Node::Layer(layer) = node else {
+            return false;
+        };
+        layer.projection.is_some()
+            || layer.effects.iter().any(|effect| {
+                accel.runs(effect)
+                    || effect
+                        .input()
+                        .is_some_and(|input| has_work(accel, std::slice::from_ref(&**input)))
+            })
+            || layer
+                .matte
+                .as_ref()
+                .is_some_and(|matte| has_work(accel, std::slice::from_ref(&*matte.source)))
+            || has_work(accel, &layer.children)
+    })
 }
 
 /// What a painter drew: the rasteriser's 8-bit target when nothing it drew

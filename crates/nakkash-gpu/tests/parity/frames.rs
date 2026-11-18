@@ -233,3 +233,53 @@ fn layers_reading_a_layer_drawn_on_the_gpu_match_the_cpu() {
         assert!(largest <= 1, "{name}: frames differ by {largest} levels");
     }
 }
+
+#[test]
+fn a_frame_with_nothing_for_the_gpu_does_not_touch_it() {
+    if gpu().is_none() {
+        return;
+    }
+    // A GPU of its own, so no other test's work is counted.
+    let gpu = nakkash_gpu::Gpu::open().expect("a GPU, as the shared one opened");
+    let mut faded = Layer::new(vec![square(
+        20.0,
+        10.0,
+        60.0,
+        Color::rgba(0.2, 0.4, 0.9, 1.0),
+    )]);
+    faded.opacity = 0.5;
+    let blur =
+        Effect::new("gaussian-blur", &[("blurriness", ParamValue::Number(3.0))]).expect("a blur");
+    let frame = Frame {
+        background: Some(Color::rgba(1.0, 1.0, 1.0, 1.0)),
+        nodes: vec![
+            square(0.0, 0.0, 50.0, Color::rgba(0.9, 0.2, 0.1, 1.0)),
+            Node::Layer(faded),
+        ],
+        ..Frame::default()
+    };
+    let drawn = render_on(&frame, 96, 64, RenderOptions::default(), Some(&gpu)).expect("drawn");
+    let cpu = render_on(&frame, 96, 64, RenderOptions::default(), None).expect("drawn");
+    assert_eq!(drawn.pixels(), cpu.pixels(), "drawn on the CPU, to the bit");
+    let tally = gpu.tally();
+    assert_eq!(
+        (tally.uploads.0, tally.downloads.0, tally.submissions),
+        (0, 0, 0),
+        "{tally:?}"
+    );
+    // One effect it runs, and the frame is drawn there.
+    let mut blurred = Layer::new(vec![square(
+        20.0,
+        10.0,
+        60.0,
+        Color::rgba(0.2, 0.4, 0.9, 1.0),
+    )]);
+    blurred.effects = vec![blur];
+    let frame = Frame {
+        nodes: vec![Node::Layer(blurred)],
+        ..frame
+    };
+    render_on(&frame, 96, 64, RenderOptions::default(), Some(&gpu)).expect("drawn");
+    let tally = gpu.tally();
+    assert!(tally.submissions > 0, "{tally:?}");
+}
