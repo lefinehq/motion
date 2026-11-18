@@ -841,7 +841,18 @@ pub(crate) fn value_noise(p: [f32; 3], seed: u32, kind: usize) -> f32 {
         _ => t,
     };
     let w = f.map(ease);
-    let corner = |dx: i32, dy: i32, dz: i32| lattice([at[0] + dx, at[1] + dy, at[2] + dz], seed);
+    // Wrapping, as a release build adds: a cell far out saturates at the
+    // largest i32, and its neighbour wraps round.
+    let corner = |dx: i32, dy: i32, dz: i32| {
+        lattice(
+            [
+                at[0].wrapping_add(dx),
+                at[1].wrapping_add(dy),
+                at[2].wrapping_add(dz),
+            ],
+            seed,
+        )
+    };
     let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
     let plane = |dz: i32| {
         lerp(
