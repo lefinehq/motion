@@ -12,6 +12,7 @@ use vello_cpu::{
     RenderSettings, Resources, TargetInit,
 };
 
+use crate::blend::BlendMode;
 use crate::effect::{Effect, EffectContext, Input, Move, Space};
 use crate::homography::Homography;
 use crate::image::Image;
@@ -20,14 +21,17 @@ use crate::list::{
     PathDraw, Projection,
 };
 use crate::pixels::Pixels;
-use crate::projected::{self, Extent, Plan};
+use crate::projected::{self, Buffer, Extent, Plan};
 use crate::style::{Color, DrawStyle};
 
 /// How the rasteriser computes colours.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Quality {
     /// 32-bit float per channel while compositing: no banding from repeated
-    /// blending. For delivered frames and golden images.
+    /// blending. Pixels effects make stay floats to the end of the frame:
+    /// filter layers, compositions, mattes and planes read them, and they
+    /// are laid on a float canvas, rounded to 8 bits once. For delivered
+    /// frames and golden images.
     #[default]
     Precise,
     /// 8- and 16-bit integers: faster, for previews.
@@ -118,9 +122,54 @@ pub fn render_with(
             .ctx
             .fill_rect(&Rect::new(0.0, 0.0, f64::from(w), f64::from(h)));
     }
+    painter.pending = true;
     painter.nodes(&frame.nodes, Affine::IDENTITY)?;
-    let pixmap = painter.finish();
-    Image::new(width, height, pixmap.take_rgba8(ImageAlphaType::Alpha))
+    let rgba = match painter.finish() {
+        Drawn::Bytes(pixmap) => pixmap.take_rgba8(ImageAlphaType::Alpha),
+        Drawn::Floats(pixels) => pixels.to_rgba8(),
+    };
+    Image::new(width, height, rgba)
+}
+
+/// What a painter drew: the rasteriser's 8-bit target when nothing it drew
+/// made pixels of its own, or else the float canvas ([`Quality::Precise`]).
+enum Drawn {
+    /// As the rasteriser drew it.
+    Bytes(Pixmap),
+    /// The float canvas.
+    Floats(Pixels),
+}
+
+impl Drawn {
+    /// Its pixels, as floats.
+    fn into_pixels(self) -> Pixels {
+        match self {
+            Drawn::Bytes(pixmap) => Pixels::from_pixmap(&pixmap),
+            Drawn::Floats(pixels) => pixels,
+        }
+    }
+}
+
+/// Whether drawing `layer` lays pixels made by the rasteriser's own code
+/// rather than the vello context: it adjusts what is below, is a plane, has
+/// masks, motion blur of a drawing made once, or an effect that reads its
+/// pixels, or a layer under it does. On the float canvas such a layer is
+/// drawn alone and laid in floats, and so is every layer it sits in.
+fn makes_pixels(layer: &Layer) -> bool {
+    layer.adjust
+        || layer.projection.is_some()
+        || !layer.masks.is_empty()
+        || !layer.motion.is_empty()
+        || layer.effects.iter().any(Effect::reads_pixels)
+        || children_make_pixels(layer)
+}
+
+/// Whether a layer among `layer`'s children makes pixels ([`makes_pixels`]).
+fn children_make_pixels(layer: &Layer) -> bool {
+    layer
+        .children
+        .iter()
+        .any(|child| matches!(child, Node::Layer(layer) if makes_pixels(layer)))
 }
 
 /// One side of the image, which the rasteriser holds in 16 bits.
@@ -136,12 +185,29 @@ fn side(pixels: u32, name: &str) -> Result<u16> {
 }
 
 /// The render context of one frame and what drawing it needs.
+///
+/// With [`Quality::Fast`] everything is drawn by the vello context, and
+/// pixels effects make are laid into it as 8-bit pictures. With
+/// [`Quality::Precise`] they are laid on a float canvas instead, the
+/// painter's `canvas`: what the context drew is laid on it first, then the
+/// context goes on drawing over a clear target. Laying source-over is
+/// associative, so a run of paths and normal layers drawn by the context
+/// and then laid gives what drawing them on the canvas would; a layer that
+/// blends otherwise with what the canvas holds is drawn alone and laid in
+/// floats.
 struct Painter {
     ctx: RenderContext,
     resources: Resources,
     width: u16,
     height: u16,
     options: RenderOptions,
+    /// The float canvas, once something was laid on it.
+    canvas: Option<Pixels>,
+    /// Whether the context drew anything since it was last laid on the
+    /// canvas.
+    pending: bool,
+    /// How many layers are open in the context.
+    open: usize,
 }
 
 impl Painter {
@@ -160,11 +226,25 @@ impl Painter {
             width,
             height,
             options,
+            canvas: None,
+            pending: false,
+            open: 0,
         }
     }
 
-    /// Renders what was drawn into a cleared pixmap of the target's size.
-    fn finish(mut self) -> Pixmap {
+    /// A painter of this one's size and options, to draw something alone.
+    fn alone(&self) -> Painter {
+        Painter::new(self.width, self.height, self.options)
+    }
+
+    /// Whether pixels are laid on a float canvas.
+    fn floats(&self) -> bool {
+        self.options.quality == Quality::Precise
+    }
+
+    /// Renders what the context drew into a cleared pixmap of the target's
+    /// size.
+    fn rendered(&mut self) -> Pixmap {
         self.ctx.flush();
         let mut pixmap = Pixmap::new(self.width, self.height);
         self.ctx.render_with(
@@ -179,35 +259,64 @@ impl Painter {
         pixmap
     }
 
+    /// What was drawn: the float canvas with what the context drew since
+    /// laid on it, or what the context drew when nothing was laid.
+    fn finish(mut self) -> Drawn {
+        match self.canvas.is_some() {
+            true => {
+                self.canvas_mut();
+                Drawn::Floats(self.canvas.take().expect("the canvas was laid on"))
+            }
+            false => Drawn::Bytes(self.rendered()),
+        }
+    }
+
+    /// The float canvas, with what the context drew since laid on it; a
+    /// clear one if nothing was.
+    fn canvas_mut(&mut self) -> &mut Pixels {
+        debug_assert_eq!(self.open, 0, "the canvas is laid on outside layers");
+        if self.pending {
+            let drawn = Pixels::from_pixmap(&self.rendered());
+            self.ctx.reset();
+            self.pending = false;
+            match &mut self.canvas {
+                Some(canvas) => canvas.lay(&drawn, BlendMode::Normal, |_| 1.0),
+                None => self.canvas = Some(drawn),
+            }
+        }
+        self.canvas
+            .get_or_insert_with(|| Pixels::transparent(self.width, self.height))
+    }
+
     /// The mask `matte` makes: its source drawn on its own, in coordinates
     /// `parent` maps to the frame, each pixel read as `matte.mode` says.
     fn mask(&self, matte: &Matte, parent: Affine) -> Result<Mask> {
-        let data = self.matte_values(matte, parent)?;
+        let data = self
+            .matte_values(matte, parent)?
+            .into_iter()
+            .map(|v| (v * 255.0).round() as u8)
+            .collect();
         Ok(Mask::from_parts(data, self.width, self.height))
     }
 
-    /// How much of a layer `matte` lets show at each pixel, 0 to 255.
-    fn matte_values(&self, matte: &Matte, parent: Affine) -> Result<Vec<u8>> {
-        let mut painter = Painter::new(self.width, self.height, self.options);
+    /// How much of a layer `matte` lets show at each pixel, 0 to 1.
+    fn matte_values(&self, matte: &Matte, parent: Affine) -> Result<Vec<f32>> {
+        let mut painter = self.alone();
         painter.nodes(std::slice::from_ref(&*matte.source), parent)?;
-        let pixmap = painter.finish();
-        let data = pixmap
+        let pixels = painter.finish().into_pixels();
+        let data = pixels
             .data()
             .iter()
-            .map(|pixel| {
-                // Premultiplied, so transparent pixels read as black.
-                let luma = || {
-                    let [r, g, b] = [pixel.r, pixel.g, pixel.b].map(f32::from);
-                    // Rec. 709 weights, as the CSS masking module uses.
-                    (r * 0.2126 + g * 0.7152 + b * 0.0722)
-                        .round()
-                        .clamp(0.0, 255.0) as u8
-                };
+            .map(|&[r, g, b, a]| {
+                // Premultiplied, so transparent pixels read as black; Rec.
+                // 709 weights, as the CSS masking module uses.
+                let luma = || (r * 0.2126 + g * 0.7152 + b * 0.0722).clamp(0.0, 1.0);
+                let a = a.clamp(0.0, 1.0);
                 match matte.mode {
-                    MatteMode::Alpha => pixel.a,
-                    MatteMode::AlphaInverted => 255 - pixel.a,
+                    MatteMode::Alpha => a,
+                    MatteMode::AlphaInverted => 1.0 - a,
                     MatteMode::Luma => luma(),
-                    MatteMode::LumaInverted => 255 - luma(),
+                    MatteMode::LumaInverted => 1.0 - luma(),
                 }
             })
             .collect();
@@ -221,13 +330,13 @@ impl Painter {
             return None;
         }
         crate::mask::coverage(masks, transform, self.width, self.height, |mask| {
-            let mut painter = Painter::new(self.width, self.height, self.options);
+            let mut painter = self.alone();
             painter.ctx.set_transform(transform);
             painter.ctx.set_paint(Color::WHITE.to_vello());
             painter.ctx.set_fill_rule(vello_cpu::peniko::Fill::NonZero);
             painter.ctx.fill_path(&mask.path);
             painter
-                .finish()
+                .rendered()
                 .data()
                 .iter()
                 .map(|p| f32::from(p.a) / 255.0)
@@ -239,13 +348,13 @@ impl Painter {
     /// coordinates `transform` takes to the grid.
     fn coverage(&self, clip: &Clip, transform: Affine) -> Vec<f32> {
         let (path, rule) = clip.outline();
-        let mut painter = Painter::new(self.width, self.height, self.options);
+        let mut painter = self.alone();
         painter.ctx.set_transform(transform);
         painter.ctx.set_paint(Color::WHITE.to_vello());
         painter.ctx.set_fill_rule(rule.to_vello());
         painter.ctx.fill_path(&path);
         painter
-            .finish()
+            .rendered()
             .data()
             .iter()
             .map(|p| f32::from(p.a) / 255.0)
@@ -254,9 +363,9 @@ impl Painter {
 
     /// Draws `nodes` on a canvas of their own and returns its pixels.
     fn drawn_alone(&self, nodes: &[Node], transform: Affine) -> Result<Pixels> {
-        let mut painter = Painter::new(self.width, self.height, self.options);
+        let mut painter = self.alone();
         painter.nodes(nodes, transform)?;
-        Ok(Pixels::from_pixmap(&painter.finish()))
+        Ok(painter.finish().into_pixels())
     }
 
     /// Where `effect` runs on a layer whose own coordinates `transform`
@@ -290,8 +399,14 @@ impl Painter {
         })
     }
 
-    /// Lays `pixels`, the size of the frame, over what is drawn so far.
+    /// Lays `pixels`, the size of the frame, over what is drawn so far: on
+    /// the float canvas, or as a picture the context draws.
     fn draw_pixels(&mut self, pixels: &Pixels) {
+        if self.floats() {
+            self.canvas_mut().lay(pixels, BlendMode::Normal, |_| 1.0);
+            return;
+        }
+        self.pending = true;
         let paint = vello_cpu::Image {
             image: ImageSource::Pixmap(Arc::new(pixels.to_pixmap())),
             // Pixel for pixel: the grid lines up with the frame's.
@@ -325,11 +440,16 @@ impl Painter {
         nodes.iter().try_for_each(|node| match node {
             Node::Layer(layer) => self.layer(layer, transform),
             Node::Path(path) => {
+                self.pending = true;
                 self.path(path, transform);
                 Ok(())
             }
-            Node::Glyphs(glyphs) => self.glyphs(glyphs, transform),
+            Node::Glyphs(glyphs) => {
+                self.pending = true;
+                self.glyphs(glyphs, transform)
+            }
             Node::Image(image) => {
+                self.pending = true;
                 self.image(image, transform);
                 Ok(())
             }
@@ -378,11 +498,11 @@ impl Painter {
                 let region = self.laid(&plan, &maps, |sub| {
                     let mut pixels = match filter.children.is_empty() {
                         true => {
-                            let mut whole = Painter::new(sub.width, sub.height, sub.options);
+                            let mut whole = sub.alone();
                             whole.ctx.set_transform(plan.local);
                             whole.ctx.set_paint(Color::WHITE.to_vello());
                             whole.ctx.fill_rect(&filter.bounds.unwrap_or(plan.region));
-                            Pixels::from_pixmap(&whole.finish())
+                            Pixels::from_pixmap(&whole.rendered())
                         }
                         false => sub.drawn_alone(&filter.children, plan.local)?,
                     };
@@ -416,7 +536,7 @@ impl Painter {
         mixed.mix(&changed, |i| {
             cut.as_ref().map_or(1.0, |c| c[i])
                 * filter.opacity
-                * matte.as_ref().map_or(1.0, |m| f32::from(m[i]) / 255.0)
+                * matte.as_ref().map_or(1.0, |m| m[i])
                 * region.as_ref().map_or(1.0, |r| r.data()[i][3])
         });
         self.draw_pixels(&mixed);
@@ -429,7 +549,7 @@ impl Painter {
     /// layer's buffer is in its own coordinates and laid through its
     /// projection.
     fn layer(&mut self, layer: &Layer, parent: Affine) -> Result<()> {
-        let steps = Steps::of(layer);
+        let steps = Steps::of(layer, self.floats() && children_make_pixels(layer));
         // A transparent layer draws nothing, effects included.
         let opacity = layer.opacity * steps.moved.opacity;
         if opacity <= 0.0 {
@@ -442,6 +562,16 @@ impl Painter {
         if !layer.is_isolated() {
             return self.nodes(&layer.children, transform);
         }
+        // On the float canvas, a layer that makes pixels is laid in floats,
+        // and so is one that blends otherwise than source-over with what
+        // the canvas holds; one inside a layer open in the context blends
+        // with that layer's buffer, which the context holds.
+        let blends_with_canvas =
+            self.canvas.is_some() && self.open == 0 && layer.blend != BlendMode::Normal;
+        if self.floats() && (makes_pixels(layer) || blends_with_canvas) {
+            return self.floated(layer, &steps, opacity, parent);
+        }
+        self.pending = true;
         // The matte is drawn in the coordinates the layer's parent gives, as
         // the layer's siblings are; the rasteriser applies masks untransformed.
         let mask = layer
@@ -461,10 +591,40 @@ impl Painter {
             mask,
             None,
         );
+        self.open += 1;
         let drawn = self.content(layer, &steps, transform, parent);
         // Pop even after a failure, so the context's layers stay balanced.
         self.ctx.pop_layer();
+        self.open -= 1;
         drawn
+    }
+
+    /// Draws an isolated flat layer on the float canvas: its content and
+    /// effects alone, then laid in floats with its opacity, clip, matte
+    /// and blend mode, as the context would lay its buffer.
+    fn floated(
+        &mut self,
+        layer: &Layer,
+        steps: &Steps<'_>,
+        opacity: f32,
+        parent: Affine,
+    ) -> Result<()> {
+        let transform = parent * layer.transform;
+        let mut alone = self.alone();
+        alone.content(layer, steps, transform, parent)?;
+        let drawn = alone.finish().into_pixels();
+        let clip = layer
+            .shown_clip()
+            .map(|clip| self.coverage(&clip, transform));
+        let matte = layer
+            .matte
+            .as_ref()
+            .map(|matte| self.matte_values(matte, parent))
+            .transpose()?;
+        self.canvas_mut().lay(&drawn, layer.blend, |i| {
+            opacity * clip.as_ref().map_or(1.0, |c| c[i]) * matte.as_ref().map_or(1.0, |m| m[i])
+        });
+        Ok(())
     }
 
     /// Draws a projected layer ([D58]): its clipped content, masks and
@@ -505,13 +665,37 @@ impl Painter {
             let Some((path, rule)) = layer.shown_clip().as_ref().map(Clip::outline) else {
                 return sub.content(layer, steps, plan.local, Affine::IDENTITY);
             };
+            if sub.floats() && makes_pixels(layer) {
+                // Its content is laid on the buffer's float canvas, cut
+                // to the clip there.
+                let mut alone = sub.alone();
+                alone.content(layer, steps, plan.local, Affine::IDENTITY)?;
+                let drawn = alone.finish().into_pixels();
+                let clip = sub.coverage(&Clip::Path(path, rule), plan.local);
+                sub.canvas_mut().lay(&drawn, BlendMode::Normal, |i| clip[i]);
+                return Ok(());
+            }
+            sub.pending = true;
             sub.ctx.set_transform(plan.local);
             sub.ctx.set_fill_rule(rule.to_vello());
             sub.ctx.push_layer(Some(&path), None, None, None, None);
+            sub.open += 1;
             let drawn = sub.content(layer, steps, plan.local, Affine::IDENTITY);
             sub.ctx.pop_layer();
+            sub.open -= 1;
             drawn
         })?;
+        if self.floats() {
+            let matte = layer
+                .matte
+                .as_ref()
+                .map(|matte| self.matte_values(matte, parent))
+                .transpose()?;
+            self.canvas_mut().lay(&laid, layer.blend, |i| {
+                opacity * matte.as_ref().map_or(1.0, |m| m[i])
+            });
+            return Ok(());
+        }
         let mask = layer
             .matte
             .as_ref()
@@ -540,8 +724,15 @@ impl Painter {
     ) -> Result<Pixels> {
         let mut sub = Painter::new(plan.width, plan.height, self.options);
         draw(&mut sub)?;
-        let buffer = sub.finish();
-        Ok(projected::lay(&buffer, plan, maps, self.width, self.height))
+        let (width, height) = (self.width, self.height);
+        Ok(match sub.finish() {
+            Drawn::Bytes(pixmap) => {
+                projected::lay(Buffer::Bytes(&pixmap), plan, maps, width, height)
+            }
+            Drawn::Floats(pixels) => {
+                projected::lay(Buffer::Floats(&pixels), plan, maps, width, height)
+            }
+        })
     }
 
     /// Draws a layer's content inside the buffer it was given, in
@@ -560,6 +751,7 @@ impl Painter {
         let moved = steps.moved.transform;
         let cut = self.cut(&layer.masks, transform * moved);
         if steps.on_pixels.is_empty() && cut.is_none() && layer.motion.is_empty() {
+            self.pending = true;
             let drawn = self.nodes(&layer.children, transform * moved);
             let mut effects = EffectContext {
                 ctx: &mut self.ctx,
@@ -697,13 +889,16 @@ impl Steps<'_> {
     /// effect but moves, on its pixels, and a drawing moved for motion
     /// blur is made on pixels too, so with either only the moves before
     /// the first effect that reads pixels apply as it is drawn.
-    fn of(layer: &Layer) -> Steps<'_> {
+    /// With `floated_children`, its children make pixels on the float
+    /// canvas ([`makes_pixels`]), which the context cannot paint over, so
+    /// its effects run on its pixels too.
+    fn of(layer: &Layer, floated_children: bool) -> Steps<'_> {
         let reads = layer
             .effects
             .iter()
             .position(Effect::reads_pixels)
             .unwrap_or(layer.effects.len());
-        let on_canvas = !layer.masks.is_empty() || !layer.motion.is_empty();
+        let on_canvas = !layer.masks.is_empty() || !layer.motion.is_empty() || floated_children;
         let (drawing, on_pixels) = match reads < layer.effects.len() || on_canvas {
             true => {
                 let moves = layer.effects[..reads]

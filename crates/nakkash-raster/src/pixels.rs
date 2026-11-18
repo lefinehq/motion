@@ -6,6 +6,8 @@ use vello_cpu::kurbo::{Affine, Point};
 use vello_cpu::peniko::ImageAlphaType;
 use vello_cpu::{PixelMetadata, Pixmap};
 
+use crate::blend::BlendMode;
+
 /// One pixel: premultiplied red, green, blue and alpha, each 0 to 1.
 pub type Pixel = [f32; 4];
 
@@ -60,6 +62,48 @@ impl Pixels {
             self.height,
             PixelMetadata::new(ImageAlphaType::AlphaPremultiplied, true),
         )
+    }
+
+    /// The pixels as straight (not premultiplied) RGBA at 8 bits a
+    /// channel, row by row: an image's bytes. Each channel is kept within
+    /// 0 to 1, and a colour within its alpha, before it is rounded.
+    pub(crate) fn to_rgba8(&self) -> Vec<u8> {
+        let byte = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+        self.data
+            .iter()
+            .flat_map(|&[r, g, b, a]| {
+                let a = a.clamp(0.0, 1.0);
+                match byte(a) {
+                    0 => [0; 4],
+                    alpha => [byte(r / a), byte(g / a), byte(b / a), alpha],
+                }
+            })
+            .collect()
+    }
+
+    /// Lays `source`, the same size, on these pixels by `mode`, each of
+    /// its pixels first scaled by the share `amount` gives for it, from 0
+    /// to 1: how the float canvas composites a layer. Like
+    /// [`Pixels::to_pixmap`], each source pixel is kept within 0 to 1 and
+    /// its colour within its alpha, but nothing is rounded.
+    pub(crate) fn lay(&mut self, source: &Pixels, mode: BlendMode, amount: impl Fn(usize) -> f32) {
+        debug_assert_eq!(
+            (self.width, self.height),
+            (source.width, source.height),
+            "laid pixels are the canvas's size"
+        );
+        for (i, (below, &[r, g, b, a])) in self.data.iter_mut().zip(&source.data).enumerate() {
+            let a = a.clamp(0.0, 1.0);
+            if a <= 0.0 {
+                continue;
+            }
+            let k = amount(i).clamp(0.0, 1.0);
+            if k <= 0.0 {
+                continue;
+            }
+            let within = |c: f32| c.clamp(0.0, a) * k;
+            *below = mode.lay(*below, [within(r), within(g), within(b), a * k]);
+        }
     }
 
     /// Its width in pixels.

@@ -26,6 +26,7 @@ use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::{FontRef, GlyphId, MetadataProvider};
 use vello_cpu::Pixmap;
 use vello_cpu::kurbo::{Affine, Point, Rect, Shape};
+use vello_cpu::peniko::color::PremulRgba8;
 
 use crate::effect::{Effect, Reach};
 use crate::homography::Homography;
@@ -479,30 +480,80 @@ fn landed(polygon: &[Point], map: &Homography, width: u16, height: u16) -> Optio
     (px[0] < px[2] && px[1] < px[3]).then_some(px)
 }
 
-/// A drawn buffer's px, premultiplied RGBA at 8 bits a channel, row by
-/// row: the buffer as the rasteriser drew it, or one of its halved
-/// copies. Eight bits keep the drawing exact and a quarter the size of
-/// floats, and laying a plane is bound by reading them.
-struct Texture<'a> {
-    width: usize,
-    height: usize,
-    data: Cow<'a, [u8]>,
+/// One px of a drawn buffer, premultiplied RGBA: 8 bits a channel as the
+/// rasteriser draws it, or floats when the buffer was drawn on the float
+/// canvas ([`Quality::Precise`]) and holds pixels effects made.
+///
+/// [`Quality::Precise`]: crate::Quality::Precise
+pub(crate) trait Texel: Copy + Sync + Send + 'static {
+    /// A clear px.
+    const CLEAR: Self;
+    /// What one step of a channel is worth, so a channel times it is 0 to 1.
+    const UNIT: f32;
+    /// Its channels, in steps of [`Texel::UNIT`].
+    fn channels(self) -> [f32; 4];
+    /// The mean of four px.
+    fn mean(four: [Self; 4]) -> Self;
 }
 
-impl Texture<'_> {
+impl Texel for PremulRgba8 {
+    const CLEAR: PremulRgba8 = PremulRgba8 {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 0,
+    };
+    const UNIT: f32 = 1.0 / 255.0;
+
+    #[inline(always)]
+    fn channels(self) -> [f32; 4] {
+        [self.r, self.g, self.b, self.a].map(f32::from)
+    }
+
+    #[inline(always)]
+    fn mean(four: [PremulRgba8; 4]) -> PremulRgba8 {
+        // All four in 16-bit lanes: at most 4·255 each.
+        let sum: u64 = four
+            .iter()
+            .map(|p| spread(u32::from_le_bytes([p.r, p.g, p.b, p.a])))
+            .sum();
+        let [r, g, b, a] = std::array::from_fn(|c| ((((sum >> (16 * c)) & 0xffff) + 2) / 4) as u8);
+        PremulRgba8 { r, g, b, a }
+    }
+}
+
+impl Texel for Pixel {
+    const CLEAR: Pixel = [0.0; 4];
+    const UNIT: f32 = 1.0;
+
+    #[inline(always)]
+    fn channels(self) -> [f32; 4] {
+        self
+    }
+
+    #[inline(always)]
+    fn mean(four: [Pixel; 4]) -> Pixel {
+        std::array::from_fn(|c| (four[0][c] + four[1][c] + four[2][c] + four[3][c]) * 0.25)
+    }
+}
+
+/// A drawn buffer's px, row by row: the buffer as it was drawn, or one of
+/// its halved copies. A buffer the rasteriser drew alone keeps its 8 bits,
+/// which keep the drawing exact at a quarter the size of floats; laying a
+/// plane is bound by reading them.
+struct Texture<'a, T: Texel> {
+    width: usize,
+    height: usize,
+    data: Cow<'a, [T]>,
+}
+
+impl<T: Texel> Texture<'_, T> {
     /// The px at `x`, `y`, clear beyond the edges.
-    fn get(&self, x: i64, y: i64) -> [u8; 4] {
+    #[inline(always)]
+    fn get(&self, x: i64, y: i64) -> T {
         match (usize::try_from(x), usize::try_from(y)) {
-            (Ok(x), Ok(y)) if x < self.width && y < self.height => {
-                let i = (y * self.width + x) * 4;
-                [
-                    self.data[i],
-                    self.data[i + 1],
-                    self.data[i + 2],
-                    self.data[i + 3],
-                ]
-            }
-            _ => [0; 4],
+            (Ok(x), Ok(y)) if x < self.width && y < self.height => self.data[y * self.width + x],
+            _ => T::CLEAR,
         }
     }
 
@@ -516,16 +567,15 @@ impl Texture<'_> {
         let (fx, fy) = ((x - x0) as f32, (y - y0) as f32);
         let inside =
             x0 >= 0.0 && y0 >= 0.0 && x0 + 1.0 < self.width as f64 && y0 + 1.0 < self.height as f64;
-        let four: [[u8; 4]; 4] = match inside {
+        let four: [T; 4] = match inside {
             true => {
-                let i = (y0 as usize * self.width + x0 as usize) * 4;
-                let j = i + self.width * 4;
-                let (top, bottom) = (&self.data[i..i + 8], &self.data[j..j + 8]);
+                let i = y0 as usize * self.width + x0 as usize;
+                let j = i + self.width;
                 [
-                    [top[0], top[1], top[2], top[3]],
-                    [top[4], top[5], top[6], top[7]],
-                    [bottom[0], bottom[1], bottom[2], bottom[3]],
-                    [bottom[4], bottom[5], bottom[6], bottom[7]],
+                    self.data[i],
+                    self.data[i + 1],
+                    self.data[j],
+                    self.data[j + 1],
                 ]
             }
             false => {
@@ -538,47 +588,37 @@ impl Texture<'_> {
                 ]
             }
         };
-        let k = 1.0 / 255.0;
+        let k = T::UNIT;
         let weights = [
             (1.0 - fx) * (1.0 - fy) * k,
             fx * (1.0 - fy) * k,
             (1.0 - fx) * fy * k,
             fx * fy * k,
         ];
+        let four = four.map(T::channels);
         std::array::from_fn(|c| {
-            f32::from(four[0][c]) * weights[0]
-                + f32::from(four[1][c]) * weights[1]
-                + f32::from(four[2][c]) * weights[2]
-                + f32::from(four[3][c]) * weights[3]
+            four[0][c] * weights[0]
+                + four[1][c] * weights[1]
+                + four[2][c] * weights[2]
+                + four[3][c] * weights[3]
         })
     }
 
     /// The texture at half the size each way, rounded up, each px the
     /// mean of the four it covers, clear beyond the edges.
-    fn halved(&self) -> Texture<'static> {
+    fn halved(&self) -> Texture<'static, T> {
         let (hw, hh) = (self.width.div_ceil(2), self.height.div_ceil(2));
-        let mut data = vec![0u8; hw * hh * 4];
-        let row = |y: usize| match y < self.height {
-            true => &self.data[y * self.width * 4..(y + 1) * self.width * 4],
-            false => &[][..],
-        };
-        // A px of a row, as a u32, clear beyond its end.
-        let at = |line: &[u8], x: usize| match line.get(x * 4..x * 4 + 4) {
-            Some(p) => u32::from_le_bytes([p[0], p[1], p[2], p[3]]),
-            None => 0,
-        };
-        for (r, line) in data.chunks_exact_mut(hw * 4).enumerate() {
-            let (top, bottom) = (row(r * 2), row(r * 2 + 1));
-            for (col, px) in line.chunks_exact_mut(4).enumerate() {
-                let x = col * 2;
-                // All four in 16-bit lanes: at most 4·255 each.
-                let sum = spread(at(top, x))
-                    + spread(at(top, x + 1))
-                    + spread(at(bottom, x))
-                    + spread(at(bottom, x + 1));
-                for (c, v) in px.iter_mut().enumerate() {
-                    *v = ((((sum >> (16 * c)) & 0xffff) + 2) / 4) as u8;
-                }
+        let mut data = vec![T::CLEAR; hw * hh];
+        for (r, line) in data.chunks_exact_mut(hw).enumerate() {
+            let y = r as i64 * 2;
+            for (col, px) in line.iter_mut().enumerate() {
+                let x = col as i64 * 2;
+                *px = T::mean([
+                    self.get(x, y),
+                    self.get(x + 1, y),
+                    self.get(x, y + 1),
+                    self.get(x + 1, y + 1),
+                ]);
             }
         }
         Texture {
@@ -599,20 +639,20 @@ fn spread(px: u32) -> u64 {
 /// A buffer and its halved copies, each half the size of the one before,
 /// down to a px. A copy is made the first time a footprint needs it, so a
 /// plane seen at its own size or larger makes none.
-struct Chain<'a> {
-    base: Texture<'a>,
-    halves: Vec<OnceCell<Texture<'static>>>,
+struct Chain<'a, T: Texel> {
+    base: Texture<'a, T>,
+    halves: Vec<OnceCell<Texture<'static, T>>>,
 }
 
-impl<'a> Chain<'a> {
-    /// The chain of the drawn `buffer`.
-    fn new(buffer: &'a Pixmap) -> Chain<'a> {
+impl<'a, T: Texel> Chain<'a, T> {
+    /// The chain of a drawn buffer, `width` by `height` px.
+    fn new(data: &'a [T], width: u16, height: u16) -> Chain<'a, T> {
         let base = Texture {
-            width: usize::from(buffer.width()),
-            height: usize::from(buffer.height()),
-            data: Cow::Borrowed(buffer.data_as_u8_slice()),
+            width: usize::from(width),
+            height: usize::from(height),
+            data: Cow::Borrowed(data),
         };
-        let longest = buffer.width().max(buffer.height());
+        let longest = width.max(height);
         // Halving `n` times takes the longest side to a px.
         let levels = (u16::BITS - longest.saturating_sub(1).leading_zeros()) as usize;
         Chain {
@@ -622,7 +662,7 @@ impl<'a> Chain<'a> {
     }
 
     /// The copy at `level`, 0 for the buffer itself, at most the last.
-    fn level(&self, level: usize) -> &Texture<'_> {
+    fn level(&self, level: usize) -> &Texture<'_, T> {
         match level.min(self.halves.len()) {
             0 => &self.base,
             n => self.halves[n - 1].get_or_init(|| self.level(n - 1).halved()),
@@ -670,16 +710,50 @@ fn log2(x: f64) -> f64 {
     exponent + m * (a + m * (b + m * (1.0 - a - b)))
 }
 
+/// A buffer drawn as a [`Plan`] says, to lay: as the rasteriser drew it,
+/// or on the float canvas.
+pub(crate) enum Buffer<'a> {
+    /// 8 bits a channel.
+    Bytes(&'a Pixmap),
+    /// Floats.
+    Floats(&'a Pixels),
+}
+
 /// `buffer`, drawn as `plan` says, laid onto a `width` by `height` canvas
 /// through each of `maps` and averaged.
 pub(crate) fn lay(
-    buffer: &Pixmap,
+    buffer: Buffer<'_>,
     plan: &Plan,
     maps: &[Homography],
     width: u16,
     height: u16,
 ) -> Pixels {
-    let chain = Chain::new(buffer);
+    match buffer {
+        Buffer::Bytes(pixmap) => lay_chain(
+            &Chain::new(pixmap.data(), pixmap.width(), pixmap.height()),
+            plan,
+            maps,
+            width,
+            height,
+        ),
+        Buffer::Floats(pixels) => lay_chain(
+            &Chain::new(pixels.data(), pixels.width(), pixels.height()),
+            plan,
+            maps,
+            width,
+            height,
+        ),
+    }
+}
+
+/// [`lay`] from the chain of the buffer.
+fn lay_chain<T: Texel>(
+    chain: &Chain<'_, T>,
+    plan: &Plan,
+    maps: &[Homography],
+    width: u16,
+    height: u16,
+) -> Pixels {
     let mut out = Pixels::transparent(width, height);
     let share = 1.0 / maps.len() as f32;
     for (map, landed) in maps.iter().zip(&plan.landed) {
@@ -687,15 +761,15 @@ pub(crate) fn lay(
             continue;
         };
         let to_buffer = Homography::from(plan.local) * back;
-        lay_one(&chain, &to_buffer, *landed, share, &mut out);
+        lay_one(chain, &to_buffer, *landed, share, &mut out);
     }
     out
 }
 
 /// Adds `share` of the buffer seen through `to_buffer`, from px of the
 /// canvas to px of the buffer, to the px of `out` within `landed`.
-fn lay_one(
-    chain: &Chain<'_>,
+fn lay_one<T: Texel>(
+    chain: &Chain<'_, T>,
     to_buffer: &Homography,
     [x0, y0, x1, y1]: [usize; 4],
     share: f32,
@@ -726,8 +800,8 @@ const TILE: usize = 32;
 
 /// [`lay_one`] over the px `[x0, y0, x1, y1)` of `data`, a canvas `width`
 /// px wide.
-fn lay_tile(
-    chain: &Chain<'_>,
+fn lay_tile<T: Texel>(
+    chain: &Chain<'_, T>,
     to_buffer: &Homography,
     [x0, y0, x1, y1]: [usize; 4],
     share: f32,
@@ -811,7 +885,7 @@ impl Footprint {
     /// long axis, as many as it is longer than wide (rounded, up to
     /// [`MAX_ANISOTROPY`]), each read trilinearly over the width it
     /// covers. One no wider than a buffer px reads the buffer alone.
-    fn sample(&self, chain: &Chain<'_>, b: Point) -> Pixel {
+    fn sample<T: Texel>(&self, chain: &Chain<'_, T>, b: Point) -> Pixel {
         if self.long2 <= 1.0 {
             return chain.base.bilinear(b.x, b.y);
         }

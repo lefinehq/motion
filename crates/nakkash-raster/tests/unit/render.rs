@@ -528,3 +528,168 @@ fn a_glyph_the_font_does_not_hold_is_an_error() {
     assert_eq!(e.kind, Kind::Invalid);
     assert_eq!(e.expected.as_deref(), Some("glyph ids the font holds"));
 }
+
+/// A ramp from a dim blue at the left of a `width`-px strip to black at
+/// its right, as an effect: what a faint light falling off looks like.
+fn dim_ramp(width: f32) -> Effect {
+    Effect::new(
+        "ramp",
+        &[
+            ("start", ParamValue::Point([0.0, 0.0])),
+            (
+                "start-color",
+                ParamValue::Color(Color::rgba(5.0 / 255.0, 10.0 / 255.0, 34.0 / 255.0, 1.0)),
+            ),
+            ("end", ParamValue::Point([width, 0.0])),
+            ("end-color", ParamValue::Color(Color::BLACK)),
+        ],
+    )
+    .unwrap()
+}
+
+/// Four stops brighter, in linear light.
+fn four_stops() -> Effect {
+    Effect::new(
+        "exposure",
+        &[
+            ("exposure", ParamValue::Number(4.0)),
+            ("space", ParamValue::Choice(0)),
+        ],
+    )
+    .unwrap()
+}
+
+/// How many different colours the middle row of `frame` holds, drawn
+/// `width` by 4 px with `quality`.
+fn distinct_colours(frame: &Frame, width: u32, quality: Quality) -> usize {
+    let options = RenderOptions {
+        quality,
+        simd: Simd::Portable,
+    };
+    let image = render_with(frame, width, 4, options).unwrap();
+    let row: std::collections::BTreeSet<[u8; 4]> =
+        (0..width).map(|x| image.pixel(x, 2).unwrap()).collect();
+    row.len()
+}
+
+/// A dim ramp graded four stops: on the layer that draws it, through a
+/// filter layer over it, through a composition holding it, and through a
+/// plane holding it. Each grade reads the ramp's float pixels, so each
+/// keeps as many colours as the grade on the layer itself; read at 8 bits,
+/// a dim ramp has a few dozen levels, which the grade spreads into bands.
+#[rstest]
+#[case::through_a_filter_layer("filter")]
+#[case::through_a_composition("composition")]
+#[case::through_a_plane("plane")]
+fn precise_grades_keep_the_floats_effects_made(#[case] path: &str) {
+    const WIDTH: u32 = 940;
+    let strip = Rect::new(0.0, 0.0, f64::from(WIDTH), 4.0);
+    let ramp = |effects: Vec<Effect>| {
+        Node::Layer(Layer {
+            effects,
+            bounds: Some(strip),
+            ..Layer::new(vec![cover(f64::from(WIDTH), Color::BLACK)])
+        })
+    };
+    let frame = |nodes: Vec<Node>| Frame {
+        background: Some(Color::BLACK),
+        nodes,
+        ..Frame::default()
+    };
+    let on_the_layer = frame(vec![ramp(vec![dim_ramp(WIDTH as f32), four_stops()])]);
+    let holding = |extra: &dyn Fn(Layer) -> Layer| {
+        Node::Layer(extra(Layer {
+            effects: vec![four_stops()],
+            isolate: true,
+            ..Layer::new(vec![ramp(vec![dim_ramp(WIDTH as f32)])])
+        }))
+    };
+    let graded = match path {
+        "filter" => frame(vec![
+            ramp(vec![dim_ramp(WIDTH as f32)]),
+            filter(vec![four_stops()], 1.0),
+        ]),
+        "composition" => frame(vec![holding(&|layer| layer)]),
+        _ => frame(vec![holding(&|layer| Layer {
+            projection: Some(Projection::new(Homography::IDENTITY)),
+            bounds: Some(strip),
+            ..layer
+        })]),
+    };
+    let wanted = distinct_colours(&on_the_layer, WIDTH, Quality::Precise);
+    let precise = distinct_colours(&graded, WIDTH, Quality::Precise);
+    let eight_bit = distinct_colours(&graded, WIDTH, Quality::Fast);
+    // A step or two of rounding apart, and far more than at 8 bits.
+    assert!(
+        precise + 2 >= wanted && precise > eight_bit * 2,
+        "{path}: {precise} colours, {wanted} on the layer, {eight_bit} at 8 bits"
+    );
+}
+
+/// Every blend mode lays a float layer as the context lays a drawn one:
+/// within a step of rounding, over a backdrop of several colours.
+#[rstest]
+fn the_float_canvas_blends_as_the_context_does(
+    #[values(
+        "normal",
+        "multiply",
+        "screen",
+        "overlay",
+        "darken",
+        "lighten",
+        "color-dodge",
+        "color-burn",
+        "hard-light",
+        "soft-light",
+        "difference",
+        "exclusion",
+        "hue",
+        "saturation",
+        "color",
+        "luminosity",
+        "add"
+    )]
+    mode: &str,
+) {
+    let blend = BlendMode::named(mode).unwrap();
+    // Four backdrop colours in columns, then a half-opaque layer over all.
+    let column = |x: f64, color: Color| {
+        Node::Path(PathDraw {
+            path: Rect::new(x, 0.0, x + 2.0, 8.0).to_path(0.1),
+            paint: Paint::Solid(color),
+            style: DrawStyle::Fill(FillRule::NonZero),
+        })
+    };
+    let backdrop = [
+        column(0.0, Color::rgba(0.9, 0.2, 0.1, 1.0)),
+        column(2.0, Color::rgba(0.1, 0.6, 0.3, 1.0)),
+        column(4.0, Color::rgba(0.3, 0.3, 0.8, 0.6)),
+        column(6.0, Color::rgba(0.95, 0.9, 0.85, 1.0)),
+    ];
+    let layer = |effects: Vec<Effect>| {
+        Node::Layer(Layer {
+            blend,
+            opacity: 0.8,
+            effects,
+            ..Layer::new(vec![cover(8.0, Color::rgba(0.4, 0.7, 0.55, 0.75))])
+        })
+    };
+    let drawn = |top: Node| {
+        let frame = Frame {
+            background: Some(Color::rgba(0.5, 0.5, 0.5, 1.0)),
+            nodes: backdrop.iter().cloned().chain([top]).collect(),
+            ..Frame::default()
+        };
+        render_with(&frame, 8, 8, RenderOptions::GOLDEN).unwrap()
+    };
+    // Exposure at rest reads the pixels, so the layer is laid in floats.
+    let floated = drawn(layer(vec![Effect::new("exposure", &[]).unwrap()]));
+    let drawn_by_the_context = drawn(layer(Vec::new()));
+    let worst = floated
+        .pixels()
+        .iter()
+        .zip(drawn_by_the_context.pixels())
+        .map(|(a, b)| a.abs_diff(*b))
+        .max();
+    assert!(worst <= Some(1), "{mode}: {worst:?}");
+}
