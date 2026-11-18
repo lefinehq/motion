@@ -916,6 +916,36 @@ mod effects {
         );
     }
 
+    /// A vector blur keeps its amount, angle and softness as they are and
+    /// takes its type and the level it reads by the project's codes.
+    #[test]
+    fn a_vector_blur_takes_its_type_and_level() {
+        let import = imported(vec![group(
+            "CC Vector Blur",
+            vec![
+                Child::Property(number("CC Vector Blur-0001", 3.0)),
+                Child::Property(number("CC Vector Blur-0002", 40.0)),
+                Child::Property(number("CC Vector Blur-0003", 30.0)),
+                Child::Property(number("CC Vector Blur-0004", 20.0)),
+                Child::Property(number("CC Vector Blur-0006", 5.0)),
+                Child::Property(number("CC Vector Blur-0007", 90.0)),
+            ],
+        )])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"][0];
+        assert_eq!(
+            *fx,
+            json!({"vector-blur":40,"type":"perpendicular","angle":30,"ridge-smoothness":20,
+                "map-level":"luminance","softness":90}),
+            "{fx}"
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
     /// A mirror's centre is a point of the layer's effect space; one the
     /// project leaves out is its definition's, the right edge's middle.
     #[test]

@@ -37,6 +37,7 @@ mod render;
 mod sound;
 mod style;
 mod total;
+mod vector;
 
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use composite::{OPERATIONS, Operation, OperationSpec};
