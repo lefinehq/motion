@@ -1200,6 +1200,30 @@ mod effects {
         );
     }
 
+    /// A bevel takes its thickness in px, its light's angle in degrees,
+    /// its colour and its intensity as they are.
+    #[test]
+    fn a_bevel_takes_its_light_as_it_is() {
+        let import = imported(vec![group(
+            "ADBE Bevel Alpha",
+            vec![
+                Child::Property(number("ADBE Bevel Alpha-0001", 20.0)),
+                Child::Property(number("ADBE Bevel Alpha-0002", 122.0)),
+                Child::Property(number("ADBE Bevel Alpha-0004", 0.8)),
+            ],
+        )])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"][0];
+        assert_eq!(fx["bevel"], 20, "{fx}");
+        assert_eq!(fx["angle"], 122, "{fx}");
+        assert_eq!(fx["intensity"], 0.8, "{fx}");
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
     #[test]
     fn a_displacement_map_names_its_map_layer() {
         let map = |layer: u32| {

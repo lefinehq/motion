@@ -1285,7 +1285,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 59] = [
+pub(super) static KINDS: [Kind; 60] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -4047,6 +4047,46 @@ pub(super) static KINDS: [Kind; 59] = [
             row(
                 "ADBE Camera Lens Blur-0022",
                 To::OnlyDefault("an unnamed switch of the effect's, on by default"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Bevel Alpha",
+        item: "bevel",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Bevel Alpha-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Bevel Alpha-0001",
+                To::Prop("thickness"),
+                Number,
+                Parameter,
+            ),
+            row(
+                "ADBE Bevel Alpha-0002",
+                To::Prop("angle"),
+                Number,
+                Parameter,
+            ),
+            row("ADBE Bevel Alpha-0003", To::Prop("color"), Color, Parameter),
+            row(
+                "ADBE Bevel Alpha-0004",
+                To::Prop("intensity"),
                 Number,
                 Parameter,
             ),

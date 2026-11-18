@@ -467,6 +467,15 @@ Other things we take without evidence:
 - **The operator.** The scene takes each colour channel's Sobel slope over the 3×3 frame pixels, scaled so a step from 0 to 1 gives 1, and caps it at 1. m616 draws its edges on stock footage its project does not have and m771 on a hidden map whose reference shows other photos, so neither can measure the operator's size or strength.
 - **Transparent layers.** The slope is taken on colour times alpha, so an opaque shape on nothing has edges along its outline, and alpha stays as it was.
 
+## Bevels
+
+`ADBE Bevel Alpha` becomes the `bevel` effect ([scene format](scene-format.md#shapes-masks-effects-and-compositions)). Its parameters, by the definition: `-0001` Edge Thickness (px, 0 to 200, default 2), `-0002` Light Angle (degrees, default -60), `-0003` Light Color (white) and `-0004` Light Intensity (0 to 1, default 0.4). None of the beliefs below is measured; they are what the scene takes, so the next sample that shows a strong bevel can test them.
+
+Other things we take without evidence:
+- **The angle.** The light comes from the angle clockwise from straight up, as the project's other angles turn, so the default -60 lights the upper left.
+- **The surface.** It rises straight from the outline, where alpha crosses one half, to the thickness in, and is flat beyond; a slope goes towards the light's colour, or towards black facing away, by the intensity times how squarely it faces the light. m790's one bevel is 44 px thick at intensity 0.1 on a logo its reference also bends and lenses with effects the scene does not draw, so it cannot tell the profile or the strength; drawn so, its content error falls a little, 0.0525 → 0.0520 over all frames.
+- **The layer's box.** The outline is where alpha falls, and the frame's edge is not one: a layer filling the frame is not bevelled along it.
+
 ## Effects that follow a mask
 
 A path parameter (`pard` control 12), such as Audio Spectrum's Path (`ADBE AudSpect-0004`), names one of its layer's masks. Its `cdat` holds 0 whatever it names; the mask is in a `tdli` beside it. These beliefs say how it is named and how the spectrum lays its bands along it. The first is checked by hand over every local sample, the layout measured against m812's reference frames; the sweep does not check them yet.

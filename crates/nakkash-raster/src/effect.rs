@@ -25,7 +25,8 @@ use crate::pixels::Pixels;
 use crate::style::Color;
 use crate::total::Total;
 use crate::{
-    blur, channel, colour, composite, cycle, distort, generate, lens, particles, radial, vector,
+    blur, channel, colour, composite, cycle, distort, generate, lens, light, particles, radial,
+    vector,
 };
 
 /// The type of one effect parameter.
@@ -2729,6 +2730,46 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "bevel",
+        params: &[
+            ParamSpec {
+                name: "thickness",
+                default: ParamValue::Number(2.0),
+                range: Some((0.0, 200.0)),
+                choices: &[],
+                doc: "how far in from the layer's outline its surface rises, in px",
+            },
+            ParamSpec {
+                name: "angle",
+                default: ParamValue::Number(-60.0),
+                range: None,
+                choices: &[],
+                doc: "where the light comes from, in degrees clockwise from straight up",
+            },
+            ParamSpec {
+                name: "color",
+                default: ParamValue::Color(Color::rgba(1.0, 1.0, 1.0, 1.0)),
+                range: None,
+                choices: &[],
+                doc: "the light's colour",
+            },
+            ParamSpec {
+                name: "intensity",
+                default: ParamValue::Number(0.4),
+                range: Some((0.0, 1.0)),
+                choices: &[],
+                doc: "how far a slope facing the light goes towards its colour, and one \
+                      facing away towards black, 0 to 1",
+            },
+        ],
+        doc: "lights the layer as if its alpha rose from its outline",
+        reach: bevel_reach,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: light::bevel,
+        },
+    },
+    EffectSpec {
         name: "glow",
         params: &[
             ParamSpec {
@@ -3443,6 +3484,12 @@ fn shadow_reach(values: &[ParamValue]) -> Reach {
     Reach::Within(
         number_at(values, 3) + gaussian_span(number_at(values, 4) * blur::SIGMA_PER_BLURRINESS),
     )
+}
+
+/// `bevel` changes pixels only where they are, from what lies within its
+/// thickness of each.
+fn bevel_reach(values: &[ParamValue]) -> Reach {
+    Reach::Within(number_at(values, 0))
 }
 
 /// `glow` spreads by its radius, as a blurriness.

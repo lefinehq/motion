@@ -1481,6 +1481,33 @@ pub static LENS_BLUR: Registry = Registry {
     ],
 };
 
+/// The properties of `bevel`.
+pub static BEVEL: Registry = Registry {
+    kind: "bevel",
+    rows: &[
+        number(
+            "thickness",
+            2.0,
+            Some((0.0, 200.0)),
+            "how far in from the layer's outline its surface rises, in px",
+        ),
+        number(
+            "angle",
+            -60.0,
+            None,
+            "where the light comes from, in degrees clockwise from straight up",
+        ),
+        color("color", WHITE, "the light's colour"),
+        number(
+            "intensity",
+            0.4,
+            Some((0.0, 1.0)),
+            "how far a slope facing the light goes towards its colour, and one facing away \
+             towards black, 0 to 1",
+        ),
+    ],
+};
+
 /// The properties of the drop shadow.
 pub static DROP_SHADOW: Registry = Registry {
     kind: "drop-shadow",
@@ -2272,7 +2299,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 42] = [
+pub static EFFECTS: [ItemKind; 43] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -3271,6 +3298,18 @@ pub static EFFECTS: [ItemKind; 42] = [
         outline: None,
         timed: false,
         doc: "draws the layer's shape as a soft shadow behind it",
+    },
+    ItemKind {
+        name: "bevel",
+        role: Role::Effect,
+        registry: &BEVEL,
+        primary: Primary::Property("thickness"),
+        settings: &[],
+        input: None,
+        outline: None,
+        timed: false,
+        doc: "lights the layer as if its alpha rose from its outline over `thickness` px, \
+              from `angle`",
     },
     ItemKind {
         name: "glow",

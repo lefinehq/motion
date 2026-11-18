@@ -26,6 +26,7 @@ mod generate;
 mod homography;
 mod image;
 mod lens;
+mod light;
 mod list;
 mod mask;
 mod particles;
