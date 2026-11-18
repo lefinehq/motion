@@ -52,6 +52,7 @@ fn a_slot_is_typed_by_its_value(
 #[case::empty_file(json!({"image":""}))]
 #[case::file_as_number(json!({"video":3}))]
 #[case::role_as_number(json!({"color":"#fff","role":1}))]
+#[case::seen_as_text(json!({"color":"#fff","seen":"no"}))]
 fn a_slot_that_does_not_read_is_refused(#[case] written: Json) {
     assert_eq!(slot("accent", &written).unwrap_err().kind, Kind::Invalid);
 }
@@ -273,6 +274,24 @@ fn a_slot_may_say_what_it_is_for() {
     assert_eq!(slot.role.as_deref(), Some("accent"));
     let err = slot_error(&json!({"color":"#fff","role":"Not An Id"}));
     assert_eq!(err.path_text().as_deref(), Some("role"));
+}
+
+#[test]
+fn a_slot_may_be_marked_unseen() {
+    let marked = slot("accent", &json!({"color":"#fff","seen":false})).unwrap();
+    assert!(!marked.seen);
+    assert_eq!(marked.ty, SlotType::Color);
+    assert!(
+        slot("accent", &json!({"color":"#fff","seen":true}))
+            .unwrap()
+            .seen
+    );
+    assert!(slot("accent", &json!("#fff")).unwrap().seen);
+    // Only a boolean says it.
+    assert_eq!(
+        slot_error(&json!({"color":"#fff","seen":"no"})).kind,
+        Kind::Invalid
+    );
 }
 
 fn slot_error(written: &Json) -> Diagnostic {
