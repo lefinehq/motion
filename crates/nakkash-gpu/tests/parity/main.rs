@@ -16,6 +16,7 @@ use std::sync::OnceLock;
 
 mod canvas;
 mod composite;
+mod distort;
 mod effects;
 mod frames;
 
@@ -40,6 +41,20 @@ const TOLERANCES: &[(&str, f32)] = &[
     ("solid-composite", 5e-5),
     ("drop-shadow", 1e-4),
     ("chain", 5e-5),
+    // The distortions read the pattern's hard edges at points worked out
+    // in 32-bit floats, a few hundred thousandths of a px from the CPU's.
+    ("motion-tile", 2e-4),
+    ("wrap", 5e-5),
+    ("mirror", 1e-4),
+    ("polar-coordinates", 1e-4),
+    ("lens-distortion", 3e-4),
+    ("repeat-tile", 5e-5),
+    ("turbulent-displace", 2e-4),
+    ("displacement-map", 3e-4),
+    // A map's colour read straight is divided by its alpha, rounding
+    // and all, so a nearly transparent map pixel moves its pixel by more
+    // (`distort.rs`).
+    ("displacement-map-straight", 2e-2),
 ];
 
 pub(crate) fn tolerance(name: &str) -> f32 {

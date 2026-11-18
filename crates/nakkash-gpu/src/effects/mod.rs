@@ -7,6 +7,7 @@
 
 mod blur;
 mod composite;
+mod distort;
 
 pub(crate) use composite::operation_row;
 
@@ -20,6 +21,9 @@ use crate::record::Batch;
 /// Whether the kernels run `plan` as the CPU does, for every value it
 /// may hold.
 pub(crate) fn runs(plan: &Plan) -> bool {
+    if let Plan::Distort(distortion) = plan {
+        return distort::runs(distortion);
+    }
     matches!(
         plan,
         Plan::Blur(_) | Plan::Shadow(_) | Plan::Glow(_) | Plan::SolidComposite(_)
@@ -30,6 +34,10 @@ pub(crate) fn runs(plan: &Plan) -> bool {
 /// take from [`Space::input`]. An effect that reads one runs on the GPU
 /// only when its plan says so.
 pub(crate) fn reads_input(plan: &Plan) -> bool {
+    // A displacement map reads its map layer.
+    if let Plan::Distort(nakkash_raster::Distortion::DisplacementMap(_)) = plan {
+        return true;
+    }
     // No family with a kernel reads one yet.
     let _ = plan;
     false
@@ -64,6 +72,7 @@ pub(crate) fn run(
         Plan::Glow(glow) => gpu.glow(batch, grid, glow),
         Plan::Shadow(shadow) => gpu.shadow(batch, grid, shadow),
         Plan::SolidComposite(solid) => gpu.solid_composite(batch, grid, solid),
+        Plan::Distort(distortion) => gpu.distort(batch, grid, distortion, space),
         _ => {
             return Err(
                 Diagnostic::new(Kind::Invalid, "the GPU has no kernel for this plan")

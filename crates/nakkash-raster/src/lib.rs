@@ -51,6 +51,11 @@ pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use blur::Edges;
 pub use colour::LUMA;
 pub use composite::{BoxCover, OPERATIONS, Operation, OperationSpec, SolidComposite};
+pub use distort::{
+    BezierWarp, DisplacementMap, Distortion, Lay, LensDistortion, LensField, MapLevel, Mirror,
+    MotionTile, Pinning, PolarCoordinates, RepeatTile, TURBULENCE_Y_SEED, Tiling, Turbulence,
+    TurbulentDisplace, Wrap, distortion_box,
+};
 pub use effect::{
     Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Growth, Input, Move, ParamSpec,
     ParamType, ParamValue, Reach, Space,
