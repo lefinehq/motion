@@ -741,6 +741,58 @@ mod effects {
         assert_eq!(what, ["a `mode` the scene does not have"]);
     }
 
+    /// Each generator reads its blending mode by its own menu: fractal
+    /// noise has no colour mode, and the grid's third is a stencil.
+    #[test]
+    fn generators_read_their_blending_modes_by_their_own_menus() {
+        let one = |name: &str, code: f64| {
+            group(
+                name,
+                vec![Child::Property(number(
+                    &format!(
+                        "{name}-{}",
+                        match name {
+                            "ADBE Fractal Noise" => "0030",
+                            _ => "0014",
+                        }
+                    ),
+                    code,
+                ))],
+            )
+        };
+        let import = imported(vec![
+            one("ADBE Fractal Noise", 5.0),
+            one("ADBE Fractal Noise", 6.0),
+            one("ADBE Fractal Noise", 21.0),
+            one("ADBE 4ColorGradient", 21.0),
+            one("ADBE 4ColorGradient", 22.0),
+            one("ADBE Grid", 3.0),
+            one("ADBE Grid", 7.0),
+            one("ADBE Grid", 4.0),
+        ])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"];
+        let modes: Vec<&str> = (0..7)
+            .map(|i| fx[i]["mode"].as_str().unwrap_or(""))
+            .collect();
+        assert_eq!(
+            modes,
+            [
+                "multiply",
+                "screen",
+                "luminosity",
+                "color",
+                "luminosity",
+                "stencil-alpha",
+                "screen"
+            ],
+            "{fx}"
+        );
+        // Code 4 of the grid's menu is a separator.
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert_eq!(what, ["a `mode` the scene does not have"]);
+    }
+
     /// A mirror's centre is a point of the layer's effect space; one the
     /// project leaves out is its definition's, the right edge's middle.
     #[test]

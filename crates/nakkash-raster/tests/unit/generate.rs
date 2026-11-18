@@ -267,3 +267,95 @@ fn a_beam_draws_in_place_of_its_layer_unless_it_composites() {
     close(beam_at(1.0, 0.5, 0).get(10, 0), [0.0; 4]);
     close(beam_at(1.0, 0.5, 1).get(10, 0), [0.5, 0.5, 0.5, 1.0]);
 }
+
+/// The index of `name` in `modes`, as a choice.
+fn mode_of(modes: &[&str], name: &str) -> ParamValue {
+    Choice(u8::try_from(modes.iter().position(|m| *m == name).unwrap()).unwrap())
+}
+
+#[test]
+fn every_generator_mode_is_an_operation() {
+    assert_eq!(GENERATOR_MODES[0], "replace");
+    assert_eq!(NOISE_MODES[0], "over");
+    for name in GENERATOR_MODES.iter().chain(NOISE_MODES) {
+        assert!(Operation::named(name).is_ok(), "{name}");
+    }
+    let mut names = GENERATOR_MODES.to_vec();
+    names.sort_unstable();
+    let mut noise = NOISE_MODES.to_vec();
+    noise.sort_unstable();
+    assert_eq!(names, noise);
+}
+
+#[test]
+fn four_colors_blend_with_the_layer_by_their_mode() {
+    // Four whites over grey: multiply keeps the grey, screen whitens it,
+    // difference halves it, over at half opacity goes half way.
+    let blended = |name: &str, opacity: f32| {
+        let mut values = vec![];
+        for p in [[0.5, 0.5], [20.5, 0.5], [0.5, 20.5], [20.5, 20.5]] {
+            values.extend([At(p), color(1.0, 1.0, 1.0)]);
+        }
+        values.extend([
+            Number(100.0),
+            Number(opacity),
+            mode_of(GENERATOR_MODES, name),
+        ]);
+        let mut pixels = solid(21, 21);
+        four_color(&mut pixels, &values, &ONE);
+        pixels.get(10, 10)
+    };
+    close(blended("multiply", 1.0), [0.5, 0.5, 0.5, 1.0]);
+    close(blended("screen", 1.0), [1.0; 4]);
+    close(blended("difference", 1.0), [0.5, 0.5, 0.5, 1.0]);
+    close(blended("over", 0.5), [0.75, 0.75, 0.75, 1.0]);
+    close(blended("screen", 0.5), [0.75, 0.75, 0.75, 1.0]);
+    close(blended("replace", 0.5), [0.5, 0.5, 0.5, 0.5]);
+}
+
+#[test]
+fn a_grid_as_a_stencil_keeps_the_layer_on_its_lines() {
+    let values = [
+        At([0.0, 0.0]),
+        At([0.0, 0.0]),
+        Number(10.0),
+        Number(10.0),
+        Number(2.0),
+        color(1.0, 0.0, 0.0),
+        Number(1.0),
+        Choice(1),
+        Choice(0),
+        mode_of(GENERATOR_MODES, "stencil-alpha"),
+    ];
+    let mut pixels = solid(20, 20);
+    grid(&mut pixels, &values, &ONE);
+    close(pixels.get(10, 5), [0.5, 0.5, 0.5, 1.0]);
+    close(pixels.get(5, 5), [0.0; 4]);
+}
+
+#[test]
+fn fractal_noise_screens_and_multiplies_the_layer() {
+    let by = |name: &str| {
+        let mut values = noise_values(0.0, 0.0);
+        values[19] = mode_of(NOISE_MODES, name);
+        let mut pixels = solid(32, 32);
+        fractal_noise(&mut pixels, &values, &ONE);
+        pixels
+    };
+    let noise = by("replace");
+    let screened = by("screen");
+    let multiplied = by("multiply");
+    for ((n, s), m) in noise
+        .data()
+        .iter()
+        .zip(screened.data())
+        .zip(multiplied.data())
+    {
+        let v = n[0];
+        close(
+            *s,
+            [0.5 + v - 0.5 * v, 0.5 + v - 0.5 * v, 0.5 + v - 0.5 * v, 1.0],
+        );
+        close(*m, [0.5 * v, 0.5 * v, 0.5 * v, 1.0]);
+    }
+}
