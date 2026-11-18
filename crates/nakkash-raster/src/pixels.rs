@@ -43,6 +43,23 @@ impl Pixels {
         }
     }
 
+    /// `width` by `height` pixels holding `data`, row by row from the top.
+    ///
+    /// # Panics
+    /// When `data` does not hold `width` × `height` pixels.
+    pub fn from_data(width: u16, height: u16, data: Vec<Pixel>) -> Pixels {
+        assert_eq!(
+            data.len(),
+            usize::from(width) * usize::from(height),
+            "pixels for every place of the grid"
+        );
+        Pixels {
+            width,
+            height,
+            data,
+        }
+    }
+
     /// The pixels of a drawn pixmap.
     pub(crate) fn from_pixmap(pixmap: &Pixmap) -> Pixels {
         let data = par::map(pixmap.data(), |_, p| {
@@ -105,15 +122,10 @@ impl Pixels {
 
     /// Lays `source`, the same size, on these pixels by `mode`, each of
     /// its pixels first scaled by the share `amount` gives for it, from 0
-    /// to 1: how the float canvas composites a layer. Like
-    /// [`Pixels::to_pixmap`], each source pixel is kept within 0 to 1 and
+    /// to 1: how the float canvas composites a layer. As when the pixels
+    /// become an 8-bit picture, each source pixel is kept within 0 to 1 and
     /// its colour within its alpha, but nothing is rounded.
-    pub(crate) fn lay(
-        &mut self,
-        source: &Pixels,
-        mode: BlendMode,
-        amount: impl Fn(usize) -> f32 + Sync,
-    ) {
+    pub fn lay(&mut self, source: &Pixels, mode: BlendMode, amount: impl Fn(usize) -> f32 + Sync) {
         debug_assert_eq!(
             (self.width, self.height),
             (source.width, source.height),
