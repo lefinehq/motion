@@ -55,6 +55,8 @@ kurbo = { version = "0.13", features = ["serde"] }
 linesweeper = { version = "0.5", default-features = false }
 # Paint and font vocabulary shared with the rasteriser (D37).
 peniko = { version = "0.6", default-features = false, features = ["std"] }
+# Work inside one frame, split over rows on the render's thread pool (D75).
+rayon = "1.12"
 rstest = { version = "0.28", default-features = false }
 pretty_assertions = "1"
 # Text layout and shaping (D33). No system fonts: fonts come from given files.

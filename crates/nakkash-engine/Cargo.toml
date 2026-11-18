@@ -32,6 +32,7 @@ serde.workspace = true
 serde_json.workspace = true
 # Footage paths written relative to the scene that names them.
 pathdiff = "0.2"
+rayon.workspace = true
 
 [dev-dependencies]
 # The import tests bake.

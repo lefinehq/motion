@@ -365,6 +365,41 @@ fn render_is_timed_as_display_and_render_steps() {
     }
 }
 
+#[test]
+fn a_frame_is_the_same_drawn_on_one_thread_and_on_many() {
+    const UI_REVEAL: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../examples/advanced/ui-reveal.json"
+    );
+    let session = Session::open(UI_REVEAL).unwrap();
+    let before = THREADS.load(Ordering::Relaxed);
+    let drawn = |threads: usize| {
+        limit_threads(NonZero::new(threads).unwrap());
+        session.render_with(40.0, RenderOptions::GOLDEN).unwrap()
+    };
+    let (one, many) = (drawn(1), drawn(5));
+    THREADS.store(before, Ordering::Relaxed);
+    assert!(one == many, "the frame differs between one thread and five");
+}
+
+#[test]
+fn frames_share_the_pool_with_their_rows() {
+    let session: Session = TINY.parse().unwrap();
+    let pools = Mutex::new(Vec::new());
+    session
+        .on_threads(0..5, |_| {
+            pools.lock().unwrap().push(rayon::current_thread_index());
+            Ok(())
+        })
+        .unwrap();
+    let pools = pools.into_inner().unwrap();
+    assert_eq!(pools.len(), 5);
+    assert!(
+        pools.iter().all(Option::is_some),
+        "every frame is drawn on the pool"
+    );
+}
+
 #[rstest::rstest]
 #[case::one_per_processor(100, 8, 0, 8)]
 #[case::the_limit(100, 8, 2, 2)]

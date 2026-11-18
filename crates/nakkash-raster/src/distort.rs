@@ -12,6 +12,7 @@ use crate::channel::{Level, Reading};
 use crate::colour::{choice, number};
 use crate::effect::{ParamValue, Space};
 use crate::generate::value_noise;
+use crate::par;
 use crate::pixels::Pixels;
 
 /// The point in `values[i]`.
@@ -37,12 +38,12 @@ pub(crate) fn layer_box(pixels: &Pixels, space: &Space) -> Rect {
 
 /// Redraws every pixel from the point of the layer `from` gives for the
 /// layer point at its centre, or transparent where it gives none.
-fn remap(pixels: &mut Pixels, space: &Space, from: impl Fn([f32; 2]) -> Option<[f32; 2]>) {
+fn remap(pixels: &mut Pixels, space: &Space, from: impl Fn([f32; 2]) -> Option<[f32; 2]> + Sync) {
     let source = pixels.clone();
     let to: Affine = space.transform;
     let back = to.inverse();
     let width = usize::from(pixels.width());
-    for (i, pixel) in pixels.data_mut().iter_mut().enumerate() {
+    par::each(pixels.data_mut(), |i, pixel| {
         let at = back * Point::new((i % width) as f64 + 0.5, (i / width) as f64 + 0.5);
         *pixel = match from([at.x as f32, at.y as f32]) {
             Some([x, y]) => {
@@ -51,7 +52,7 @@ fn remap(pixels: &mut Pixels, space: &Space, from: impl Fn([f32; 2]) -> Option<[
             }
             None => [0.0; 4],
         };
-    }
+    });
 }
 
 /// `motion-tile`: the layer's box shrunk to `tile-width` by `tile-height`

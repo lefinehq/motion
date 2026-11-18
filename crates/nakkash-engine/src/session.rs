@@ -7,8 +7,10 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
-use std::sync::{Condvar, Mutex, OnceLock, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, OnceLock, PoisonError};
 use std::thread;
+
+use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use nakkash_fonts::{Cache, Lock};
 use nakkash_format::units::Time;
@@ -304,7 +306,7 @@ impl Session {
     pub(crate) fn draw(&self, list: &Frame, options: RenderOptions) -> Result<Image> {
         let (width, height) = self.canvas()?;
         stage("render", || {
-            nakkash_raster::render_with(list, width, height, options)
+            on_pool(|| nakkash_raster::render_with(list, width, height, options))
         })
     }
 
@@ -452,26 +454,34 @@ impl Session {
         let next = AtomicU32::new(frames.start);
         let stop = AtomicBool::new(false);
         let failure: Mutex<Option<(u32, Diagnostic)>> = Mutex::new(None);
-        thread::scope(|scope| {
-            for _ in 0..workers(frames.len()) {
-                scope.spawn(|| {
-                    while !stop.load(Ordering::Relaxed) {
-                        let frame = next.fetch_add(1, Ordering::Relaxed);
-                        if frame >= frames.end {
-                            break;
-                        }
-                        if let Err((frame, mut d)) = work(frame) {
-                            stop.store(true, Ordering::Relaxed);
-                            d.message = format!("frame {frame}: {}", d.message);
-                            let mut first = failure.lock().unwrap_or_else(PoisonError::into_inner);
-                            if first.as_ref().is_none_or(|(at, _)| frame < *at) {
-                                *first = Some((frame, d));
-                            }
-                        }
+        let worker = || {
+            while !stop.load(Ordering::Relaxed) {
+                let frame = next.fetch_add(1, Ordering::Relaxed);
+                if frame >= frames.end {
+                    break;
+                }
+                if let Err((frame, mut d)) = work(frame) {
+                    stop.store(true, Ordering::Relaxed);
+                    d.message = format!("frame {frame}: {}", d.message);
+                    let mut first = failure.lock().unwrap_or_else(PoisonError::into_inner);
+                    if first.as_ref().is_none_or(|(at, _)| frame < *at) {
+                        *first = Some((frame, d));
                     }
-                });
+                }
             }
-        });
+        };
+        // Every thread of the pool takes frames until none is left, then
+        // works the rows of frames still being drawn. The frames are not
+        // tasks of the pool: a thread waiting for a frame's rows takes only
+        // rows, never a frame that would sit on top of the one it is in.
+        match pool() {
+            Some(pool) if pool.current_thread_index().is_none() => {
+                pool.broadcast(|_| worker());
+            }
+            // Already drawing on the pool, or without one: this thread
+            // takes every frame.
+            _ => worker(),
+        }
         match failure.into_inner().unwrap_or_else(PoisonError::into_inner) {
             Some((_, d)) => Err(d),
             None => Ok(()),
@@ -687,19 +697,69 @@ fn temp_path(path: &Path) -> PathBuf {
 /// one per processor.
 static THREADS: AtomicUsize = AtomicUsize::new(0);
 
-/// Draws on at most `threads` threads from now on, in this process. Each
+/// Draws on at most `threads` threads from now on, in this process: the
+/// frames of a render and the rows of each frame share them ([D75]). Each
 /// thread holds the frame it draws, so fewer threads take less memory: on
 /// a machine shared with other work, or for scenes whose frames are large
 /// (3D planes seen up close).
+///
+/// [D75]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d75-a-frame-is-drawn-on-every-thread-of-its-render
 pub fn limit_threads(threads: NonZero<usize>) {
     THREADS.store(threads.get(), Ordering::Relaxed);
 }
 
-/// How many threads draw `frames` frames: one per processor, or the limit
-/// set, no more than there are frames.
+/// How many threads draw: one per processor, or the limit set.
+fn threads() -> usize {
+    let processors = thread::available_parallelism().map_or(1, NonZero::get);
+    match THREADS.load(Ordering::Relaxed) {
+        0 => processors,
+        limit => limit,
+    }
+}
+
+/// How many threads take frames of a render of `frames` frames: one per
+/// processor, or the limit set, no more than there are frames.
 fn workers(frames: usize) -> u32 {
     let processors = thread::available_parallelism().map_or(1, NonZero::get);
     threads_for(frames, processors, THREADS.load(Ordering::Relaxed))
+}
+
+/// The room on each thread's stack: a frame's layers are drawn by
+/// recursion, and the rows of another frame worked while one waits sit on
+/// top of it.
+const STACK: usize = 8 << 20;
+
+/// The pool every frame is drawn on, with [`threads`] threads: made the
+/// first time it is needed, and again when the limit changes. `None` where
+/// threads cannot be started, such as WebAssembly without them; a frame is
+/// then drawn on the thread that asks for it.
+fn pool() -> Option<Arc<ThreadPool>> {
+    static POOL: Mutex<Option<(usize, Arc<ThreadPool>)>> = Mutex::new(None);
+    let threads = threads();
+    let mut pool = POOL.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some((made, pool)) = &*pool
+        && *made == threads
+    {
+        return Some(Arc::clone(pool));
+    }
+    let made = ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .stack_size(STACK)
+        .thread_name(|i| format!("nakkash-draw-{i}"))
+        .build()
+        .ok()
+        .map(Arc::new)?;
+    *pool = Some((threads, Arc::clone(&made)));
+    Some(made)
+}
+
+/// Runs `work` on the drawing pool, so the rows it splits share the
+/// render's threads: on this thread when it is one of them.
+fn on_pool<R: Send>(work: impl FnOnce() -> R + Send) -> R {
+    match pool() {
+        Some(pool) if pool.current_thread_index().is_none() => pool.install(work),
+        _ => work(),
+    }
 }
 
 /// How many threads draw `frames` frames on `processors`, at most `limit`

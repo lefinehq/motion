@@ -11,6 +11,7 @@ use vello_cpu::kurbo::Affine;
 
 use crate::blur::{Edges, gaussian};
 use crate::list::{LayerMask, MaskMode};
+use crate::par;
 use crate::pixels::Pixels;
 
 /// The Gaussian's standard deviation per px of feather: an edge feathered
@@ -45,13 +46,13 @@ pub(crate) fn coverage(
         if sigma.iter().any(|s| *s > 0.0) {
             own = feathered(own, width, height, sigma);
         }
-        for (a, m) in kept.iter_mut().zip(own) {
+        par::each_with(&mut kept, &own, |_, a, &m| {
             let m = match mask.inverted {
                 true => 1.0 - m,
                 false => m,
             } * mask.opacity;
             *a = combine(*a, m, mask.mode);
-        }
+        });
     }
     Some(kept)
 }
@@ -78,11 +79,9 @@ fn scales(transform: Affine) -> [f32; 2] {
 /// `coverage` blurred by a Gaussian of standard deviation `sigma` each way.
 fn feathered(coverage: Vec<f32>, width: u16, height: u16, sigma: [f32; 2]) -> Vec<f32> {
     let mut pixels = Pixels::transparent(width, height);
-    for (pixel, c) in pixels.data_mut().iter_mut().zip(coverage) {
-        *pixel = [c; 4];
-    }
+    par::each_with(pixels.data_mut(), &coverage, |_, pixel, &c| *pixel = [c; 4]);
     gaussian(&mut pixels, sigma, Edges::Transparent);
-    pixels.data().iter().map(|p| p[3].clamp(0.0, 1.0)).collect()
+    par::map(pixels.data(), |_, p| p[3].clamp(0.0, 1.0))
 }
 
 /// Grows `coverage` by `by` px, or shrinks it when `by` is negative: each
@@ -92,21 +91,13 @@ fn spread(coverage: &mut [f32], width: u16, height: u16, by: f32) {
     let (w, h) = (usize::from(width), usize::from(height));
     let radius = by.abs() as usize;
     let grow = by > 0.0;
-    let mut line = Vec::with_capacity(w.max(h));
-    for y in 0..h {
+    let line = |out: &mut [f32], line: &mut Vec<f32>| {
         line.clear();
-        line.extend_from_slice(&coverage[y * w..(y + 1) * w]);
-        window(&line, radius, grow, &mut coverage[y * w..(y + 1) * w]);
-    }
-    let mut out = vec![0.0; h];
-    for x in 0..w {
-        line.clear();
-        line.extend((0..h).map(|y| coverage[y * w + x]));
-        window(&line, radius, grow, &mut out);
-        for (y, v) in out.iter().enumerate() {
-            coverage[y * w + x] = *v;
-        }
-    }
+        line.extend_from_slice(out);
+        window(line, radius, grow, out);
+    };
+    par::rows(coverage, w, Vec::new, |_, row, room| line(row, room));
+    par::columns(coverage, w, h, Vec::new, line);
 }
 
 /// Each of `out` the largest (`max`) or smallest of `line` within `radius`

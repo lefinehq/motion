@@ -42,8 +42,10 @@ struct Cli {
     /// Print each step's time to stderr at the end.
     #[arg(long, global = true)]
     timings: bool,
-    /// Draw frames on at most N threads; one per processor when not given.
-    /// Each thread holds the frame it draws, so fewer take less memory.
+    /// Draw on at most N threads, one per processor when not given: frames
+    /// and the rows of each frame share them, so one frame is drawn on all
+    /// of them. Each thread holds the frame it draws, so fewer take less
+    /// memory.
     #[arg(long, value_name = "N", global = true)]
     threads: Option<std::num::NonZero<usize>>,
     #[command(subcommand)]

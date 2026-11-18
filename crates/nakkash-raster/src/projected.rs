@@ -20,7 +20,7 @@
 //! [D58]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
 
 use std::borrow::Cow;
-use std::cell::OnceCell;
+use std::sync::OnceLock;
 
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::{FontRef, GlyphId, MetadataProvider};
@@ -31,6 +31,7 @@ use vello_cpu::peniko::color::PremulRgba8;
 use crate::effect::{Effect, Reach};
 use crate::homography::Homography;
 use crate::list::{Clip, GlyphDraw, Layer, LayerMask, Node};
+use crate::par;
 use crate::pixels::{Pixel, Pixels};
 use crate::style::DrawStyle;
 
@@ -638,10 +639,13 @@ fn spread(px: u32) -> u64 {
 
 /// A buffer and its halved copies, each half the size of the one before,
 /// down to a px. A copy is made the first time a footprint needs it, so a
-/// plane seen at its own size or larger makes none.
+/// plane seen at its own size or larger makes none. The bands a plane is
+/// laid in share the chain: the first to need a copy makes it, alone and
+/// on its own thread (making it must not wait on other work, which could
+/// be a band that needs it too), and the others wait for it.
 struct Chain<'a, T: Texel> {
     base: Texture<'a, T>,
-    halves: Vec<OnceCell<Texture<'static, T>>>,
+    halves: Vec<OnceLock<Texture<'static, T>>>,
 }
 
 impl<'a, T: Texel> Chain<'a, T> {
@@ -657,7 +661,7 @@ impl<'a, T: Texel> Chain<'a, T> {
         let levels = (u16::BITS - longest.saturating_sub(1).leading_zeros()) as usize;
         Chain {
             base,
-            halves: (0..levels).map(|_| OnceCell::new()).collect(),
+            halves: (0..levels).map(|_| OnceLock::new()).collect(),
         }
     }
 
@@ -776,36 +780,43 @@ fn lay_one<T: Texel>(
     out: &mut Pixels,
 ) {
     let width = usize::from(out.width());
-    let data = out.data_mut();
+    if x0 >= x1 || y0 >= y1 {
+        return;
+    }
     // In tiles, so the px of the buffer a tile reads stay in cache while
     // it is laid: a row of the canvas crosses many rows of a plane seen in
-    // perspective.
-    let tiles = (y0..y1)
-        .step_by(TILE)
-        .flat_map(|ty| (x0..x1).step_by(TILE).map(move |tx| (tx, ty)));
-    for (tx, ty) in tiles {
-        lay_tile(
-            chain,
-            to_buffer,
-            [tx, ty, (tx + TILE).min(x1), (ty + TILE).min(y1)],
-            share,
-            width,
-            data,
-        );
-    }
+    // perspective. Each band of a tile's height is one task.
+    let rows = &mut out.data_mut()[y0 * width..y1 * width];
+    par::bands(rows, width, TILE, |band, data| {
+        let ty = y0 + band;
+        let y1 = (ty + TILE).min(y1);
+        for tx in (x0..x1).step_by(TILE) {
+            lay_tile(
+                chain,
+                to_buffer,
+                [tx, ty, (tx + TILE).min(x1), y1],
+                share,
+                width,
+                ty,
+                data,
+            );
+        }
+    });
 }
 
 /// The side of the tiles a plane is laid in, in px of the canvas.
 const TILE: usize = 32;
 
-/// [`lay_one`] over the px `[x0, y0, x1, y1)` of `data`, a canvas `width`
-/// px wide.
+/// [`lay_one`] over the px `[x0, y0, x1, y1)` of a canvas `width` px
+/// wide, whose rows from `first` on are `data`.
+#[allow(clippy::too_many_arguments)]
 fn lay_tile<T: Texel>(
     chain: &Chain<'_, T>,
     to_buffer: &Homography,
     [x0, y0, x1, y1]: [usize; 4],
     share: f32,
     width: usize,
+    first: usize,
     data: &mut [Pixel],
 ) {
     let [g0, g1, g2] = to_buffer.rows();
@@ -844,7 +855,7 @@ fn lay_tile<T: Texel>(
                 }
             }
             let pixel = foot.sample(chain, b);
-            let total = &mut data[y * width + x];
+            let total = &mut data[(y - first) * width + x];
             for c in 0..4 {
                 total[c] += pixel[c] * share;
             }
