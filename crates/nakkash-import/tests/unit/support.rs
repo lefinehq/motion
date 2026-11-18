@@ -173,6 +173,7 @@ pub(crate) fn sample_project() -> Project {
             end: 4.0,
         },
         layers: vec![title, null],
+        markers: Vec::new(),
         panel: Vec::new(),
     };
     let solid = Footage {
@@ -564,6 +565,7 @@ pub(crate) mod build {
                 end: duration,
             },
             layers,
+            markers: Vec::new(),
             panel: Vec::new(),
         }
     }

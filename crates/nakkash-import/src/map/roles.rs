@@ -31,11 +31,6 @@ const VOCABULARY: [(&str, &[&str]); 9] = [
 /// The roles a text holds, which a template's text control may take.
 const TEXT_ROLES: [&str; 6] = ["headline", "subhead", "body", "cta", "price", "date"];
 
-/// The locks a master with a logo gets ([D51]).
-///
-/// [D51]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d51-locks-are-refused-in-the-edit
-pub(super) const DEFAULT_LOCKS: [&str; 3] = ["@logo", "palette", "typefaces"];
-
 /// A role the import proposed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProposedRole {

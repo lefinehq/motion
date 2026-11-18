@@ -228,6 +228,7 @@ fn clip_import(codec: &str, decodes: bool) -> crate::map::Import {
     let options = crate::map::Options {
         footage: BTreeMap::from([("/old/clip.mov".to_owned(), "clip.mov".to_owned())]),
         videos: BTreeMap::from([("/old/clip.mov".to_owned(), video(codec, decodes))]),
+        plain: true,
         ..crate::map::Options::default()
     };
     crate::map::import(&project, &options).expect("imports")
@@ -251,9 +252,11 @@ fn a_found_clip_with_a_decoder_becomes_a_video_layer_filling_its_size() {
 #[test]
 fn a_found_clip_without_a_decoder_is_reported_by_its_codec() {
     let import = clip_import("H.264", false);
+    // A video layer with no file yet, its box kept for one a variant gives.
     let layer = &import.json["layers"][0];
-    assert_eq!(layer["pivot"], true);
-    assert!(layer.get("video").is_none(), "{layer}");
+    assert_eq!(layer["video"], serde_json::Value::Null, "{layer}");
+    assert_eq!(layer["box"], serde_json::json!([640, 360]));
+    assert!(layer.get("pivot").is_none(), "{layer}");
     let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
     assert_eq!(what, ["video footage in H.264 (drawn as nothing)"]);
 }
@@ -342,6 +345,7 @@ mod sounds {
         let options = Options {
             footage: BTreeMap::from([("/old/song.mp3".to_owned(), "song.mp3".to_owned())]),
             sounds: BTreeMap::from([("/old/song.mp3".to_owned(), sound("MP3", true))]),
+            plain: true,
             ..Options::default()
         };
         crate::map::import(project, &options).expect("imports")

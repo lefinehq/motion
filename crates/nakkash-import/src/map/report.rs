@@ -89,8 +89,14 @@ pub struct Mapping {
     pub slots: usize,
     /// The roles proposed for the designer to confirm.
     pub roles: Vec<super::roles::ProposedRole>,
-    /// The locks written, the defaults of a master with a logo.
+    /// The locks the import wrote: none since D77, as a template's logo,
+    /// palette and type are what its user replaces.
     pub locks: Vec<String>,
+    /// The slots made of what a designer would vary ([D77]): words,
+    /// palette, media and timing.
+    ///
+    /// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+    pub variables: super::Variables,
     /// What became of a template's panel ([D53]), for a `.mogrt`.
     ///
     /// [D53]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d53-a-mogrt-imports-as-its-project-with-its-controls-as-slots
@@ -274,6 +280,17 @@ impl fmt::Display for Mapping {
                     self.slots
                 )?;
             }
+        }
+        let v = &self.variables;
+        if v.text + v.colors + v.media + v.timing > 0 {
+            writeln!(
+                f,
+                "  slots to vary: {} text, {} colour, {} media, {} timing",
+                v.text, v.colors, v.media, v.timing
+            )?;
+        }
+        if !v.edit_comps.is_empty() {
+            writeln!(f, "  compositions for editing: {}", v.edit_comps.join(", "))?;
         }
         if !self.roles.is_empty() {
             let shown: Vec<String> = self

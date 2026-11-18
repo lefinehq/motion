@@ -146,11 +146,15 @@ const MAX_LAYOUT_PASSES: usize = 8;
 ///   property while its own expression runs.
 /// - **Limits.** After 8 imports again, what is still not
 ///   measured stays not baked, and is reported.
+/// - **Fits.** Last, the size in each fitted text's `fit` is measured the
+///   same way, as the text is set as written ([D77]).
 ///
 /// # Errors
 /// As [`import_scene`] and [`substitute_fonts`]. A scene that does not
 /// compile, such as one with a glyph no font has, is not an error here: the
 /// rectangles it would give are reported as not measured, with why.
+///
+/// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
 pub fn measure_layouts(
     path: impl AsRef<Path>,
     options: &Options,
@@ -159,7 +163,7 @@ pub fn measure_layouts(
     fonts: &FontSet,
 ) -> Result<()> {
     if import.unmeasured.is_empty() {
-        return Ok(());
+        return measure_fits(import, fonts);
     }
     let path = path.as_ref();
     let (project, panel) = read(path)?;
@@ -178,7 +182,24 @@ pub fn measure_layouts(
             break;
         }
     }
-    Ok(())
+    measure_fits(import, fonts)
+}
+
+/// Writes the size in each fitted text's `fit` as the scene's own layout
+/// sets the text as written, in `fonts` ([D77]): the space a longer text
+/// shrinks or wraps into is the one this text covers, so the text as
+/// imported draws as it would without `fit`. A text that cannot be set
+/// keeps the size the project laid out.
+///
+/// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
+fn measure_fits(import: &mut Import, fonts: &FontSet) -> Result<()> {
+    stage("layout", || {
+        let mut typesetter = Typesetter::new(fonts.clone());
+        import.measure_fits(|document, address| {
+            let size = crate::written_text_size(document.scene(), address, &mut typesetter).ok()?;
+            Some([size.width, size.height])
+        })
+    })
 }
 
 /// What a pass measures of `unmeasured`: the rectangles of layers whose

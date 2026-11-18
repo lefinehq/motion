@@ -10,8 +10,8 @@ use std::collections::{BTreeMap, HashMap};
 use nakkash_format::{Diagnostic, Kind, Place, Result};
 
 use crate::model::{
-    Color, Composition, EffectDefinition, ExpressionEngine, Footage, Item, ItemKind, Layer,
-    MotionBlur, Project, Renderer, Source, Span, Switches, Version,
+    Child, Color, CompMarker, Composition, EffectDefinition, ExpressionEngine, Footage, Item,
+    ItemKind, Layer, MotionBlur, Project, Renderer, Source, Span, Stream, Switches, Value, Version,
 };
 use crate::record::{
     self, Alias, Cdta, Head, Idta, Ldta, Nhed, PlaceholderOpti, Prin, Ratio, Record, SolidOpti,
@@ -34,6 +34,8 @@ const SFDR: Name = Name::list(b"Sfdr");
 const LAYR: Name = Name::list(b"Layr");
 /// A composition's 3D renderer.
 const PRIN: Name = Name::list(b"PRin");
+/// A composition's marker layer, which holds its own markers.
+const SECL: Name = Name::list(b"SecL");
 /// A footage source.
 const PIN: Name = Name::list(b"Pin ");
 /// A file path, around its `alas`.
@@ -245,6 +247,10 @@ impl Decoder {
                 .lists(LAYR)
                 .map(|layer| self.layer(layer?))
                 .collect::<Result<_>>()?,
+            markers: match scan.list(SECL)? {
+                Some(secl) => comp_markers(&self.layer(secl)?),
+                None => Vec::new(),
+            },
             panel: match scan.list(panel::CIF3)? {
                 Some(cif3) => self.panel(cif3)?,
                 None => Vec::new(),
@@ -501,6 +507,37 @@ impl Drop for Scan<'_, '_> {
         let rest = self.chunks.get(self.next..).unwrap_or_default();
         self.decoder.skip(rest.iter().map(|c| c.name));
     }
+}
+
+/// The markers of a composition, from its marker layer: the keys of that
+/// layer's marker stream, each at its time. A stream with no key holds no
+/// marker.
+fn comp_markers(layer: &Layer) -> Vec<CompMarker> {
+    let streams = layer
+        .properties
+        .children
+        .iter()
+        .filter_map(|child| match child {
+            Child::Property(p) if p.match_name == "ADBE Marker" => Some(&p.value),
+            _ => None,
+        });
+    let mut markers: Vec<CompMarker> = streams
+        .flat_map(|stream| match stream {
+            Stream::Animated(keys) => keys
+                .iter()
+                .filter_map(|key| match &key.value {
+                    Value::Marker(marker) => Some(CompMarker {
+                        time: key.time,
+                        marker: (**marker).clone(),
+                    }),
+                    _ => None,
+                })
+                .collect(),
+            Stream::Static(_) => Vec::new(),
+        })
+        .collect();
+    markers.sort_by(|a, b| a.time.total_cmp(&b.time));
+    markers
 }
 
 #[cfg(test)]

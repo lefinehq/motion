@@ -119,12 +119,26 @@ pub struct Composition {
     pub renderer: Option<Renderer>,
     /// The layers, top first.
     pub layers: Vec<Layer>,
+    /// Its own markers, on its timeline, in time order: the moments a
+    /// designer marked, such as where a section starts.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub markers: Vec<CompMarker>,
     /// The controls of the template panel made from it, in a `.mogrt`'s
     /// project ([D53]); empty otherwise.
     ///
     /// [D53]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d53-a-mogrt-imports-as-its-project-with-its-controls-as-slots
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub panel: Vec<PanelControl>,
+}
+
+/// One marker of a composition, at its time in the composition's seconds
+/// ([spec](https://github.com/forticheprod/aep_parser/blob/main/docs/file_format.md#listsecl)).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CompMarker {
+    /// When it is, in composition seconds.
+    pub time: f64,
+    /// What it holds.
+    pub marker: Marker,
 }
 
 /// The renderer that draws a composition's 3D layers

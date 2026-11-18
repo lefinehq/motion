@@ -208,6 +208,15 @@ fn layer<'j>(import: &'j Import, id: &str) -> &'j serde_json::Value {
         .expect("the layer")
 }
 
+/// Options that leave the slots of D77 out, so the footage is written as
+/// mapped.
+fn plain() -> Options {
+    Options {
+        plain: true,
+        ..Options::default()
+    }
+}
+
 #[test]
 fn still_footage_found_beside_the_project_becomes_an_image_layer() {
     // A copy elsewhere shares less of the stored path, so it loses.
@@ -218,7 +227,7 @@ fn still_footage_found_beside_the_project_becomes_an_image_layer() {
         .with_file_name("out")
         .join("scene.json");
     fs::create_dir_all(scene.parent().unwrap()).unwrap();
-    let mut import = import_scene(&project, &Options::default(), Some(&scene)).expect("imports");
+    let mut import = import_scene(&project, &plain(), Some(&scene)).expect("imports");
     let heart = layer(&import, "heart-80-png");
     assert_eq!(heart["image"], "../template/Images/Heart-80.png");
     assert_eq!(heart["box"], serde_json::json!([80, 80]));
@@ -249,8 +258,11 @@ fn still_footage_found_beside_the_project_becomes_an_image_layer() {
 #[test]
 fn still_footage_that_cannot_be_found_is_reported_with_its_file() {
     let project = footage_project("missing", &[]);
-    let import = import_scene(&project, &Options::default(), None).expect("imports");
-    assert_eq!(layer(&import, "heart-80-png")["pivot"], true);
+    let import = import_scene(&project, &plain(), None).expect("imports");
+    // An image layer with no file yet, its box kept for one a variant gives.
+    let heart = layer(&import, "heart-80-png");
+    assert_eq!(heart["image"], serde_json::Value::Null, "{heart}");
+    assert_eq!(heart["box"], serde_json::json!([80, 80]));
     let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
     assert!(
         what.contains(&"image footage it cannot find (drawn as nothing)"),
@@ -272,7 +284,7 @@ fn vector_footage_becomes_an_image_layer_reporting_what_it_cannot_draw() {
         "/G0 gs 1 0 0 rg 10 10 60 60 re f",
     );
     fs::write(&file, heart).unwrap();
-    let import = import_scene(&project, &Options::default(), None).expect("imports");
+    let import = import_scene(&project, &plain(), None).expect("imports");
     let layer = layer(&import, "heart-80-png");
     assert!(layer["image"].as_str().unwrap().ends_with("Heart-80.png"));
     assert_eq!(layer["box"], serde_json::json!([80, 80]));
@@ -291,8 +303,11 @@ fn vector_footage_that_cannot_be_read_is_reported_by_its_format() {
     let file = project.with_file_name("Images/Heart-80.png");
     fs::create_dir_all(file.parent().unwrap()).unwrap();
     fs::write(&file, "%PDF-1.7\nno objects").unwrap();
-    let import = import_scene(&project, &Options::default(), None).expect("imports");
-    assert_eq!(layer(&import, "heart-80-png")["pivot"], true);
+    let import = import_scene(&project, &plain(), None).expect("imports");
+    assert_eq!(
+        layer(&import, "heart-80-png")["image"],
+        serde_json::Value::Null
+    );
     let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
     assert!(
         what.contains(&"vector footage in PDF it cannot read (drawn as nothing)"),

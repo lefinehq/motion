@@ -164,7 +164,12 @@ fn a_sample_is_measured_over_the_background_its_reference_shows() {
     let work = dir.join("work");
     // The reference: the scene drawn over another background than the
     // project's, as some references were rendered.
-    let mut import = import_scene(STAR, &Options::default(), None).unwrap();
+    // Imported plain, so the scene writes its own background, not a slot.
+    let plain = Options {
+        plain: true,
+        ..Options::default()
+    };
+    let mut import = import_scene(STAR, &plain, None).unwrap();
     let own = import.json["bg"].as_str().unwrap().to_owned();
     let other = if own == "#000000" {
         "#FFFFFF"
@@ -209,7 +214,7 @@ fn a_sample_is_measured_over_the_background_its_reference_shows() {
     assert_eq!(measure.all.content_failing, Some(0.0));
     assert_eq!(measure.all.frames_passing, Some(2));
     assert_eq!(measure.bg.as_deref(), Some(other));
-    let again = import_scene(STAR, &Options::default(), None).unwrap();
+    let again = import_scene(STAR, &plain, None).unwrap();
     assert_eq!(again.json["bg"].as_str(), Some(own.as_str()));
     // The ledger records it, and one written before it reads as measured
     // over the project's.

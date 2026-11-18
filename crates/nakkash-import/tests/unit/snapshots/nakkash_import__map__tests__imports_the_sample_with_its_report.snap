@@ -2,10 +2,10 @@
 source: crates/nakkash-import/src/../tests/unit/map.rs
 expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ---
-{"nakkash":1,"size":"1920x1080","fps":29.97,"dur":"4s","bg":"#000000","fonts":["fonts"],"roles":{"headline":"title"},
+{"nakkash":1,"size":"1920x1080","fps":29.97,"dur":"$duration","bg":"$background","fonts":["fonts"],"slots":{"title":{"text":"Hello\nworld","label":"Title in Main","role":"title"},"background":{"color":[0,0,0,1],"label":"black #000000","role":"background"},"light":{"color":[1,1,1,1],"label":"white #FFFFFF","role":"light"},"text":{"color":[1,0,0,1],"label":"red #FF0000","role":"text"},"duration":{"number":4,"label":"Duration in seconds","role":"duration"}},"roles":{"headline":"title"},
 "layers":[
 {"id":"ctrl","pivot":true,"anchor":[0,0],"position":[960,540]},
-{"id":"title","text":"Hello\nworld","position":[960,540.5],"z":0,"anchor":[0,0],"font":"Inter-Bold 44","fill":[1,1,1,1],"style":{"stroke":[1,0,0,1],"stroke-width":2,"caps":"all","align":"center"},"box":[-110,-70,220,140],"parent":"ctrl","3d":true,"anim":{"opacity":[{"t":"0.5s","v":0,"curve":"speed(0,0.166667,0,0)"},{"t":"1.25s","v":1}]}}
+{"id":"title","text":"$title","position":[960,540.5],"z":0,"anchor":[0,0],"font":"Inter-Bold 44","fill":"$light","style":{"stroke":"$text","stroke-width":2,"caps":"all","align":"center"},"box":[-110,-70,220,140],"parent":"ctrl","3d":true,"anim":{"opacity":[{"t":"0.5s","v":0,"curve":"speed(0,0.166667,0,0)"},{"t":"1.25s","v":1}]},"fit":"shrink"}
 ]}
 
 imported `Main`
@@ -13,6 +13,7 @@ imported `Main`
   ignored, drawing nothing:
     an expression control, which draws nothing (1)
     layer styles, all switched off (1)
+  slots to vary: 1 text, 3 colour, 0 media, 1 timing
   roles, to confirm: headline title (from its name)
   unsupported:
     `ADBE Layer Source Alternate` (1): Main/Title/ADBE Text Properties/ADBE Layer Source Alternate
