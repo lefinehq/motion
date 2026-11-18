@@ -81,6 +81,9 @@ pub mod key {
     /// An image layer whose vector footage is drawn at the output's
     /// resolution every frame.
     pub const CONTINUOUS: &str = "continuous";
+    /// How a layer's content fits its box: for an image or video layer,
+    /// how its picture fills the box (`fill`, `contain` or `cover`).
+    pub const FIT: &str = "fit";
     /// A text layer's animators.
     pub const ANIMATE: &str = "animate";
     /// A layer's position.
@@ -171,7 +174,7 @@ pub const COMP_KEYS: [&str; 8] = [
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 37] = [
+pub const LAYER_KEYS: [&str; 38] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -191,6 +194,7 @@ pub const LAYER_KEYS: [&str; 37] = [
     key::BOX,
     key::CROP,
     key::CONTINUOUS,
+    key::FIT,
     key::ANIMATE,
     key::AT,
     key::IN,

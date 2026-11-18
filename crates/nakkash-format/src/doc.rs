@@ -72,8 +72,10 @@ pub(crate) struct LayerDoc {
     pub(crate) shapes: Present<List<ItemsDoc>>,
     pub(crate) comp: Present<String>,
     pub(crate) overrides: Object<OverridesDoc>,
-    pub(crate) image: Present<String>,
-    pub(crate) video: Present<String>,
+    /// `null` for an image layer with no file yet.
+    pub(crate) image: Present<Option<String>>,
+    /// `null` for a video layer with no file yet.
+    pub(crate) video: Present<Option<String>>,
     pub(crate) audio: Present<String>,
     pub(crate) pivot: Present<bool>,
     pub(crate) camera: Present<bool>,
@@ -86,6 +88,9 @@ pub(crate) struct LayerDoc {
     pub(crate) frame: Present<ValueDoc>,
     pub(crate) crop: Present<ValueDoc>,
     pub(crate) continuous: Present<bool>,
+    /// Kept as written: each content kind that takes a `fit` reads its own
+    /// values from it in `crate::validate`.
+    pub(crate) fit: Present<String>,
     pub(crate) animate: Present<List<ItemsDoc>>,
     pub(crate) at: Present<Shorthand<Position>>,
     #[serde(rename = "in")]

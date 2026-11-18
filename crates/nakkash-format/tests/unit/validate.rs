@@ -6,7 +6,7 @@ use crate::anim::KeyValue;
 use crate::parse_document;
 use crate::shorthand::{Coord, Position};
 use crate::units::{Color, Size, Time};
-use crate::{Content, Document, ImageContent};
+use crate::{Content, Document, ImageContent, MediaFit, VideoContent};
 use crate::{Diagnostic, Kind};
 
 fn doc(json: &str) -> Document {
@@ -188,13 +188,14 @@ fn an_image_layer_names_its_file_and_fills_its_box() {
     assert_eq!(
         image(0),
         ImageContent {
-            path: "photos/beach.jpg".into(),
+            path: Some("photos/beach.jpg".into()),
             frame: kurbo::Rect::new(0.0, 0.0, 192.0, 108.0),
             crop: None,
+            fit: MediaFit::Fill,
             continuous: false,
         }
     );
-    assert_eq!(image(1).path, "/abs/b.png");
+    assert_eq!(image(1).path.as_deref(), Some("/abs/b.png"));
     assert_eq!(image(1).frame, kurbo::Rect::new(-8.0, -4.0, 8.0, 4.0));
 }
 
@@ -252,6 +253,151 @@ fn an_image_needs_a_path_and_a_box() {
     assert_eq!(
         fails(&scene(r#"{"id":"a","image":3,"box":[1,1]}"#)),
         at(Kind::WrongType, "a.image")
+    );
+}
+
+#[test]
+fn an_image_or_video_layer_fits_its_picture_as_its_fit_says() {
+    let d = doc(&scene(
+        r#"{"id":"a","image":"a.png","box":[4,4],"fit":"contain"},{"id":"b","video":"b.mov","box":[4,4],"fit":"cover"},{"id":"c","image":"c.png","box":[4,4],"fit":"fill"},{"id":"d","video":"d.mov","box":[4,4]}"#,
+    ));
+    let fit = |i: usize| match &d.scene().root.layers[i].content {
+        Content::Image(image) => image.fit,
+        Content::Video(video) => video.fit,
+        other => panic!("not an image or a video: {other:?}"),
+    };
+    assert_eq!(
+        [fit(0), fit(1), fit(2), fit(3)],
+        [
+            MediaFit::Contain,
+            MediaFit::Cover,
+            MediaFit::Fill,
+            MediaFit::Fill
+        ]
+    );
+}
+
+#[test]
+fn a_fit_is_one_of_three_and_only_on_an_image_or_a_video() {
+    let unknown = err(&scene(
+        r#"{"id":"a","image":"a.png","box":[4,4],"fit":"stretch"}"#,
+    ));
+    assert_eq!(
+        (unknown.kind, unknown.path_text().as_deref()),
+        (Kind::UnknownName, Some("a.fit"))
+    );
+    assert_eq!(
+        unknown.expected.as_deref(),
+        Some("one of `fill`, `contain`, `cover`")
+    );
+    assert_eq!(
+        fails(&scene(
+            r#"{"id":"a","video":"a.mov","box":[4,4],"fit":"Cover"}"#
+        )),
+        at(Kind::UnknownName, "a.fit")
+    );
+    assert_eq!(
+        fails(&scene(r#"{"id":"a","video":"a.mov","box":[4,4],"fit":1}"#)),
+        at(Kind::WrongType, "a.fit")
+    );
+    for layer in [
+        r#"{"id":"a","rect":"4x4","fit":"cover"}"#,
+        r#"{"id":"a","audio":"a.mp3","fit":"cover"}"#,
+        r#"{"id":"a","pivot":true,"fit":"contain"}"#,
+        r##"{"id":"a","fx":[{"fill":"#FFFFFF"}],"fit":"contain"}"##,
+    ] {
+        assert_eq!(fails(&scene(layer)), at(Kind::Conflict, "a.fit"), "{layer}");
+    }
+}
+
+#[test]
+fn an_image_or_video_layer_may_have_no_file_yet() {
+    let d = doc(&scene(
+        r#"{"id":"a","image":null,"box":[40,20],"fit":"contain"},{"id":"b","video":null,"box":[-8,-4,16,8]},{"id":"c","rect":"4x4","parent":"a","matte":"b"}"#,
+    ));
+    let layers = &d.scene().root.layers;
+    assert_eq!(
+        layers[0].content,
+        Content::Image(ImageContent {
+            path: None,
+            frame: kurbo::Rect::new(0.0, 0.0, 40.0, 20.0),
+            crop: None,
+            fit: MediaFit::Contain,
+            continuous: false,
+        })
+    );
+    assert_eq!(
+        layers[1].content,
+        Content::Video(VideoContent {
+            path: None,
+            frame: kurbo::Rect::new(-8.0, -4.0, 8.0, 4.0),
+            fit: MediaFit::Fill,
+        })
+    );
+    // With no file, it still needs its box, and is still one content.
+    assert_eq!(
+        fails(&scene(r#"{"id":"a","image":null}"#)),
+        at(Kind::Missing, "a")
+    );
+    assert_eq!(
+        fails(&scene(
+            r#"{"id":"a","video":null,"rect":"4x4","box":[4,4]}"#
+        )),
+        at(Kind::Conflict, "a.video")
+    );
+}
+
+#[test]
+fn a_fit_places_the_picture_inside_the_box() {
+    use kurbo::Rect;
+    let square = Rect::new(0.0, 0.0, 100.0, 100.0);
+    let wide = Rect::new(0.0, 0.0, 200.0, 100.0);
+    // Contain: the whole picture, as large as fits, centred.
+    let contain = MediaFit::Contain.place(wide, square);
+    assert_eq!(contain.shown, wide);
+    assert_eq!(contain.rect, Rect::new(0.0, 25.0, 100.0, 75.0));
+    // Cover: the middle of the picture, over the whole box.
+    let cover = MediaFit::Cover.place(wide, square);
+    assert_eq!(cover.shown, Rect::new(50.0, 0.0, 150.0, 100.0));
+    assert_eq!(cover.rect, square);
+    // Fill: all of it over all of the box.
+    let fill = MediaFit::Fill.place(wide, square);
+    assert_eq!((fill.shown, fill.rect), (wide, square));
+    // A crop's proportions are what counts, and where it lies.
+    let crop = Rect::new(10.0, 20.0, 30.0, 30.0);
+    let tall_box = Rect::new(-10.0, -40.0, 10.0, 40.0);
+    assert_eq!(
+        MediaFit::Contain.place(crop, tall_box).rect,
+        Rect::new(-10.0, -5.0, 10.0, 5.0)
+    );
+    assert_eq!(
+        MediaFit::Cover.place(crop, tall_box).shown,
+        Rect::new(18.75, 20.0, 21.25, 30.0)
+    );
+}
+
+#[test]
+fn a_picture_shaped_as_its_box_is_placed_as_fill_places_it() {
+    use kurbo::Rect;
+    let frame = Rect::new(-1920.0, -400.0, 1920.0, 400.0);
+    // The same proportions, a page in fractional points over a box in
+    // whole units, and nearly a unit off across: each is drawn as fill
+    // draws it.
+    for region in [
+        Rect::new(0.0, 0.0, 384.0, 80.0),
+        Rect::new(3.25, 7.5, 3843.6, 807.55),
+        Rect::new(0.0, 0.0, 3840.9, 800.0),
+    ] {
+        let fill = MediaFit::Fill.place(region, frame);
+        for fit in [MediaFit::Contain, MediaFit::Cover] {
+            assert_eq!(fit.place(region, frame), fill, "{fit:?} {region:?}");
+        }
+    }
+    // Fitted more than a unit inside the box, it is placed.
+    let off = Rect::new(0.0, 0.0, 3845.0, 800.0);
+    assert_ne!(
+        MediaFit::Contain.place(off, frame),
+        MediaFit::Fill.place(off, frame)
     );
 }
 

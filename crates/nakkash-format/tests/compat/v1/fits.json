@@ -1,0 +1,12 @@
+{"nakkash":1,"size":"160x90","fps":12,"dur":"1s","bg":"#F4F1EA",
+"layers":[
+{"id":"contained","image":"images/tiles.png","box":[30,30],"at":"25 25","fit":"contain"},
+{"id":"covered","image":"images/tiles.png","box":[30,30],"at":"65 25","fit":"cover",
+ "anim":{"rotate":"0 -> 10 @0-1s"}},
+{"id":"filled","image":"images/tiles.png","box":[30,30],"at":"105 25","fit":"fill"},
+{"id":"page","image":"images/badge.pdf","box":[24,24],"crop":[10,4,20,18],"at":"140 25","fit":"cover","continuous":true},
+{"id":"clip","video":"videos/photo.mov","box":[40,40],"at":"40 65","fit":"contain"},
+{"id":"empty","image":null,"box":[30,20],"at":"100 65","fit":"cover"},
+{"id":"none","video":null,"box":[30,20],"position":[10,0],"parent":"empty"},
+{"id":"mark","rect":"12x8","fill":"#1D4ED8","at":"140 65","matte":"empty"}
+]}

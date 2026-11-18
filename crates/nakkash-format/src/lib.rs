@@ -46,8 +46,8 @@ pub use parse::{COMP_KEYS, LAYER_KEYS, SCENE_KEYS, key, layer_keys, parse_docume
 pub use path::{Path, Vertex};
 pub use roles::RoleTarget;
 pub use scene::{
-    AudioContent, BLEND_MODES, CameraContent, Comp, CompContent, Content, Document, ImageContent,
-    Layer, Scene, VideoContent,
+    AudioContent, BLEND_MODES, CameraContent, Comp, CompContent, Content, Document, Fitted,
+    ImageContent, Layer, MediaFit, Scene, VideoContent,
 };
 pub use slots::{Listed, Slot, SlotType};
 

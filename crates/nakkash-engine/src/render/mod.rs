@@ -28,7 +28,7 @@ mod text;
 use nakkash_format::key::{AUDIO, BLEND, IMAGE, VIDEO};
 use nakkash_format::property::Prop;
 use nakkash_format::shorthand::{MatteMode, RectShape};
-use nakkash_format::{ImageContent, Place, Result};
+use nakkash_format::{ImageContent, Place, Result, VideoContent};
 use nakkash_format::{Input, Reads, Value};
 use nakkash_raster::kurbo::{Affine, Rect, RoundedRect, Shape};
 use nakkash_raster::{
@@ -736,19 +736,18 @@ fn drawing(
         ContentState::Text { text, glyphs } => text::draws(text, glyphs),
         ContentState::Image(content) => {
             bounds = Some(content.frame);
-            vec![image(content, sources.pictures).map_err(|e| e.under(Place::of_layer(&node.id)))?]
+            image(content, sources.pictures)
+                .map_err(|e| e.under(Place::of_layer(&node.id)))?
+                .into_iter()
+                .collect()
         }
-        ContentState::Video { video, seconds } => {
-            bounds = Some(video.frame);
-            let frame = (sources.clips)(&video.path, *seconds)
-                .map_err(|e| e.at(VIDEO).under(Place::of_layer(&node.id)))?;
-            frame
-                .map(|picture| {
-                    Node::Image(ImageDraw {
-                        picture,
-                        rect: video.frame,
-                    })
-                })
+        ContentState::Video {
+            video: content,
+            seconds,
+        } => {
+            bounds = Some(content.frame);
+            video(content, *seconds, sources.clips)
+                .map_err(|e| e.under(Place::of_layer(&node.id)))?
                 .into_iter()
                 .collect()
         }
@@ -883,54 +882,101 @@ fn rect(shape: &RectShape, rgba: [f64; 4]) -> Node {
     fill(outline, color(rgba))
 }
 
-/// An image node: its picture, or the part `crop` names, stretched over its
-/// box. Vector footage ([D70]) is drawn into a picture the size of the box
-/// once, which is then transformed like any picture, or, `continuous`, laid
-/// over the box as vectors, drawn at the output's resolution every frame.
-/// The picture's errors are placed at `image`, and name the file.
+/// An image node: its picture, or the part `crop` names, fitted to its box
+/// as its `fit` says; `None` for a layer with no file yet. Vector footage
+/// ([D70]) is drawn into a picture the size of the rectangle it lands on
+/// once, which is then transformed like any picture, or, `continuous`,
+/// laid over that rectangle as vectors, drawn at the output's resolution
+/// every frame. The picture's errors are placed at `image`, and name the
+/// file.
 ///
 /// [D70]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d70-vector-footage-is-drawn-from-its-outlines
-fn image(content: &ImageContent, pictures: &Pictures<'_>) -> Result<Node> {
+fn image(content: &ImageContent, pictures: &Pictures<'_>) -> Result<Option<Node>> {
+    let Some(path) = &content.path else {
+        return Ok(None);
+    };
     let frame = content.frame;
-    match pictures(&content.path).map_err(|e| e.at(IMAGE))? {
-        Still::Picture(picture) => Ok(match content.crop {
-            None => Node::Image(ImageDraw {
-                picture,
-                rect: frame,
-            }),
-            // The whole picture, placed so the part lands on the box, and
-            // cut to the box.
-            Some(crop) => {
-                let (sx, sy) = (frame.width() / crop.width(), frame.height() / crop.height());
-                let x0 = frame.x0 - crop.x0 * sx;
-                let y0 = frame.y0 - crop.y0 * sy;
-                let rect = Rect::new(
-                    x0,
-                    y0,
-                    x0 + f64::from(picture.width()) * sx,
-                    y0 + f64::from(picture.height()) * sy,
-                );
-                Node::Layer(Layer {
-                    clip: Some(Clip::Rect(frame)),
-                    ..Layer::new(vec![Node::Image(ImageDraw { picture, rect })])
-                })
-            }
-        }),
+    match pictures(path).map_err(|e| e.at(IMAGE))? {
+        Still::Picture(picture) => {
+            let whole = whole(&picture);
+            let fitted = content.fit.place(content.crop.unwrap_or(whole), frame);
+            // A picture shown whole is laid over its rectangle; a part of
+            // one is cut, as a crop always was.
+            let part = (content.crop.is_some() || fitted.shown != whole).then_some(fitted.shown);
+            Ok(Some(placed(picture, part, fitted.rect)))
+        }
         Still::Drawing(drawing) => {
             let region = content.crop.unwrap_or_else(|| drawing.bounds());
+            let fitted = content.fit.place(region, frame);
             if content.continuous {
-                return Ok(drawing.placed(region, frame));
+                return Ok(Some(drawing.placed(fitted.shown, fitted.rect)));
             }
             let side = |length: f64| length.abs().ceil().max(1.0) as u32;
             let picture = drawing
-                .picture(region, side(frame.width()), side(frame.height()))
+                .picture(
+                    fitted.shown,
+                    side(fitted.rect.width()),
+                    side(fitted.rect.height()),
+                )
                 .map_err(|e| e.at(IMAGE))?;
-            Ok(Node::Image(ImageDraw {
+            Ok(Some(Node::Image(ImageDraw {
                 picture,
-                rect: frame,
-            }))
+                rect: fitted.rect,
+            })))
         }
     }
+}
+
+/// A video node: the frame its clip shows `seconds` into the layer's own
+/// time, fitted to its box as its `fit` says; `None` for a layer with no
+/// file yet, and before or after its clip. The clip's errors are placed
+/// at `video`, and name the file.
+fn video(content: &VideoContent, seconds: f64, clips: &Clips<'_>) -> Result<Option<Node>> {
+    let Some(path) = &content.path else {
+        return Ok(None);
+    };
+    let Some(picture) = clips(path, seconds).map_err(|e| e.at(VIDEO))? else {
+        return Ok(None);
+    };
+    let whole = whole(&picture);
+    let fitted = content.fit.place(whole, content.frame);
+    let part = (fitted.shown != whole).then_some(fitted.shown);
+    Ok(Some(placed(picture, part, fitted.rect)))
+}
+
+/// The whole of `picture`, in its pixels from its top-left corner.
+fn whole(picture: &Picture) -> Rect {
+    Rect::new(
+        0.0,
+        0.0,
+        f64::from(picture.width()),
+        f64::from(picture.height()),
+    )
+}
+
+/// `picture` laid over `rect`: all of it, stretched, or, when `part` names
+/// a part of it in its pixels, the whole picture placed so that part lands
+/// on `rect`, and cut to `rect`.
+fn placed(picture: Picture, part: Option<Rect>, rect: Rect) -> Node {
+    let Some(part) = part else {
+        return Node::Image(ImageDraw { picture, rect });
+    };
+    let (sx, sy) = (rect.width() / part.width(), rect.height() / part.height());
+    let x0 = rect.x0 - part.x0 * sx;
+    let y0 = rect.y0 - part.y0 * sy;
+    let whole = Rect::new(
+        x0,
+        y0,
+        x0 + f64::from(picture.width()) * sx,
+        y0 + f64::from(picture.height()) * sy,
+    );
+    Node::Layer(Layer {
+        clip: Some(Clip::Rect(rect)),
+        ..Layer::new(vec![Node::Image(ImageDraw {
+            picture,
+            rect: whole,
+        })])
+    })
 }
 
 /// `path` filled with `color` by the non-zero rule.
