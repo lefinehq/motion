@@ -8,7 +8,7 @@ Describe a video as a small scene file. nakkash checks it, edits it and renders 
 
 - **Scenes are data.** A few lines say what should happen; nakkash works out every frame.
 - **Made for agents.** One-line edits, checks that answer in numbers, and no frames to look at.
-- **Native rendering.** Linear-light compositing, true motion blur, H.264/HEVC/ProRes/AV1 straight out.
+- **Native rendering.** Float-precision compositing, true motion blur, H.264/HEVC/ProRes/AV1 straight out.
 - **Existing work comes in.** `.aep` projects and `.mogrt` templates import as scenes ([compatibility](docs/compatibility.md)).
 
 **Status:** early development; build from source. The project was called motion until 2026-11-17 ([why nakkash](docs/design/decisions.md#d73-the-project-is-named-nakkash)).
