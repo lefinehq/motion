@@ -3,6 +3,7 @@
 use vello_cpu::kurbo::Affine;
 
 use super::*;
+use crate::blend::BlendMode;
 
 /// A 4 by 2 grid whose pixel at `x`, `y` is opaque grey `(x + 4y) / 8`.
 fn ramp() -> Pixels {
@@ -63,6 +64,29 @@ fn a_transform_that_flattens_the_pixels_leaves_them_clear() {
         let moved = ramp().transformed(flat);
         assert!(moved.data().iter().all(|p| *p == [0.0; 4]), "{flat:?}");
     }
+}
+
+#[test]
+fn a_pixel_that_is_not_a_number_is_left_out_when_laid() {
+    let mut canvas = ramp();
+    let mut source = Pixels::transparent(canvas.width(), canvas.height());
+    source.data_mut()[0] = [f32::NAN; 4];
+    source.data_mut()[1] = [0.5, 0.5, 0.5, f32::NAN];
+    source.data_mut()[2] = [f32::NAN, 0.25, 0.25, 0.5];
+    canvas.lay(&source, BlendMode::Normal, |_| 1.0);
+    assert_eq!(canvas.data()[0], ramp().data()[0]);
+    assert_eq!(canvas.data()[1], ramp().data()[1]);
+    assert!(
+        canvas.data()[2].iter().all(|c| c.is_finite()),
+        "{:?}",
+        canvas.data()[2]
+    );
+    // An amount that is not a number lays nothing either.
+    let mut canvas = ramp();
+    let mut solid = Pixels::transparent(canvas.width(), canvas.height());
+    solid.data_mut().fill([0.5, 0.5, 0.5, 1.0]);
+    canvas.lay(&solid, BlendMode::Normal, |_| f32::NAN);
+    assert_eq!(canvas.data(), ramp().data());
 }
 
 #[test]
