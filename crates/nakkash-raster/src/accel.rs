@@ -9,11 +9,17 @@
 //! drawn by the rasteriser on the CPU; an accelerator only takes what the
 //! float canvas does with their pixels. The painter's pixels are a
 //! [`Surface`]: on the CPU or in the accelerator, wherever they were last
-//! changed. An operation runs in the accelerator when it has a kernel for
-//! it and one of its operands is already there (an effect with a kernel
-//! moves its layer's pixels there); any other operation brings its pixels
-//! back and runs on the CPU, so an effect without a kernel costs a copy each
-//! way and nothing else.
+//! changed. A painter handed an accelerator keeps its float canvas there
+//! from the start, and what the rasteriser drew goes there as its bytes, so
+//! laying, mixing, cutting and the effects with kernels run there one after
+//! another without a copy between them. A step without a kernel brings its
+//! pixels back and runs on the CPU, so an effect without one costs a copy
+//! each way and nothing else; the frame itself comes back once, at the end,
+//! as the bytes it is written in.
+//!
+//! An accelerator may record the work it is handed and run it later, so a
+//! frame whose pixels never come back before its end is one hand-over:
+//! nothing but reading pixels back waits for it.
 //!
 //! [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
 
@@ -160,6 +166,9 @@ pub struct Tally {
     pub uploads: (u64, u64),
     /// Pixel grids copied back to the CPU, and their bytes.
     pub downloads: (u64, u64),
+    /// Times the work recorded so far was handed to the accelerator to
+    /// run: once a frame when nothing comes back to the CPU before its end.
+    pub submissions: u64,
 }
 
 /// Something that does the float canvas's work in its own memory, such as
@@ -202,6 +211,17 @@ pub trait Accelerator: Send + Sync {
     /// # Errors
     /// When the copy fails.
     fn download(&self, pixels: &Resident) -> Result<Pixels>;
+
+    /// `pixels`, copied back to the CPU as a frame is written: straight
+    /// RGBA at 8 bits a channel, row by row, each channel rounded as the
+    /// CPU rounds a frame's. By default, [`Accelerator::download`] and the
+    /// CPU's rounding.
+    ///
+    /// # Errors
+    /// When the copy fails.
+    fn download_rgba8(&self, pixels: &Resident) -> Result<Vec<u8>> {
+        Ok(self.download(pixels)?.to_rgba8())
+    }
 
     /// Lays `source` on `canvas` by `mode`, each source pixel first scaled
     /// by `amount`, as [`Pixels::lay`] does.
@@ -422,7 +442,7 @@ impl Surface {
 }
 
 /// The accelerator that holds pixels the painter has in one.
-fn held_by(accel: Option<&dyn Accelerator>) -> &dyn Accelerator {
+pub(crate) fn held_by(accel: Option<&dyn Accelerator>) -> &dyn Accelerator {
     accel.expect("held pixels come with the accelerator that holds them")
 }
 

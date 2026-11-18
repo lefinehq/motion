@@ -42,6 +42,11 @@ pub(crate) const UNPACK: FamilySpec = FamilySpec {
     reads: 2,
     entries: &["unpack"],
 };
+pub(crate) const PACK: FamilySpec = FamilySpec {
+    source: include_str!("shaders/pack.wgsl"),
+    reads: 1,
+    entries: &["pack"],
+};
 pub(crate) const TRANSFORM: FamilySpec = FamilySpec {
     source: include_str!("shaders/transform.wgsl"),
     reads: 1,
@@ -72,6 +77,7 @@ pub(crate) struct Kernels {
     pub(crate) pixel: Family,
     pub(crate) amount: Family,
     pub(crate) unpack: Family,
+    pub(crate) pack: Family,
     pub(crate) transform: Family,
     pub(crate) box_pass: Family,
 }
@@ -105,6 +111,7 @@ impl Kernels {
             pixel: Family::new(device, &pixel_source, &PIXEL),
             amount: Family::new(device, AMOUNT.source, &AMOUNT),
             unpack: Family::new(device, UNPACK.source, &UNPACK),
+            pack: Family::new(device, PACK.source, &PACK),
             transform: Family::new(device, TRANSFORM.source, &TRANSFORM),
             box_pass: Family::new(device, BOX_PASS.source, &BOX_PASS),
         }

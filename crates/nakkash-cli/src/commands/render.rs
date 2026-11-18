@@ -138,7 +138,7 @@ fn report_gpu(session: &Session) {
     };
     let gib = |bytes: u64| bytes as f64 / f64::from(1u32 << 30);
     eprintln!(
-        "gpu: effects on the GPU {}; on the CPU, without a kernel {}; {} other operations; {} uploads ({:.2} GiB), {} downloads ({:.2} GiB)",
+        "gpu: effects on the GPU {}; on the CPU, without a kernel {}; {} other operations; {} uploads ({:.2} GiB), {} downloads ({:.2} GiB); {} submissions",
         list(&tally.accelerated),
         list(&tally.fell_back),
         tally.operations,
@@ -146,6 +146,7 @@ fn report_gpu(session: &Session) {
         gib(tally.uploads.1),
         tally.downloads.0,
         gib(tally.downloads.1),
+        tally.submissions,
     );
 }
 

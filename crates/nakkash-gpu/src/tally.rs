@@ -18,6 +18,7 @@ struct Inner {
     operations: u64,
     uploads: (u64, u64),
     downloads: (u64, u64),
+    submissions: u64,
 }
 
 impl Counts {
@@ -50,6 +51,11 @@ impl Counts {
         self.with(|i| i.downloads = (i.downloads.0 + 1, i.downloads.1 + bytes));
     }
 
+    /// Recorded work submitted to the GPU.
+    pub(crate) fn submission(&self) {
+        self.with(|i| i.submissions += 1);
+    }
+
     /// The counts so far.
     pub(crate) fn tally(&self) -> Tally {
         let inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
@@ -60,6 +66,7 @@ impl Counts {
             operations: inner.operations,
             uploads: inner.uploads,
             downloads: inner.downloads,
+            submissions: inner.submissions,
         }
     }
 }
