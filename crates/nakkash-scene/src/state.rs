@@ -11,6 +11,7 @@ use nakkash_format::{ImageContent, Path, Value, VideoContent};
 use crate::animate::GlyphState;
 use crate::shape::ShapeDraw;
 use crate::text::TextNode;
+use crate::track::Integral;
 
 /// One node's resolved values at a single frame.
 #[derive(Debug, Clone, PartialEq)]
@@ -109,6 +110,9 @@ pub struct ItemState {
     pub settings: Vec<usize>,
     /// A group's items; the first draws on top.
     pub items: Vec<ItemState>,
+    /// The running total of each row of the kind's registry that effects
+    /// read the integral of, in row order: the same at every frame.
+    pub integrals: Vec<Arc<Integral>>,
 }
 
 impl ItemState {

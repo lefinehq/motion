@@ -337,15 +337,26 @@ fn item_node(item: &Item, fps: f64, ear: Ear<'_>) -> ItemNode {
             ),
         })
         .collect();
+    let tracks: Vec<PropertyTrack> = item
+        .kind
+        .registry
+        .props()
+        .map(|prop| property_track(prop, item.rest(prop), &written, fps))
+        .collect();
+    let integrals = item
+        .kind
+        .registry
+        .rows
+        .iter()
+        .zip(&tracks)
+        .filter(|(row, _)| row.integral)
+        .map(|(row, track)| Arc::new(track.integral(fps, row.range)))
+        .collect();
     ItemNode {
         kind: item.kind,
         id: item.id.clone(),
-        tracks: item
-            .kind
-            .registry
-            .props()
-            .map(|prop| property_track(prop, item.rest(prop), &written, fps))
-            .collect(),
+        tracks,
+        integrals,
         settings: item.settings.clone(),
         items: item_nodes(&item.items, fps, ear),
         written: item

@@ -249,8 +249,16 @@ const fn number(
         range,
         broadcast: false,
         spatial: false,
+        integral: false,
         doc,
     }
+}
+
+/// `spec` with its running total read by effects as well as its value
+/// ([`PropertySpec::integral`]).
+const fn integrated(mut spec: PropertySpec) -> PropertySpec {
+    spec.integral = true;
+    spec
 }
 
 const fn opacity(doc: &'static str) -> PropertySpec {
@@ -266,6 +274,7 @@ const fn color(name: &'static str, rest: [f64; 4], doc: &'static str) -> Propert
         range: Some((0.0, 1.0)),
         broadcast: false,
         spatial: false,
+        integral: false,
         doc,
     }
 }
@@ -279,6 +288,7 @@ const fn size(doc: &'static str) -> PropertySpec {
         range: Some((0.0, f64::INFINITY)),
         broadcast: false,
         spatial: false,
+        integral: false,
         doc,
     }
 }
@@ -292,6 +302,7 @@ const fn centre(doc: &'static str) -> PropertySpec {
         range: None,
         broadcast: false,
         spatial: true,
+        integral: false,
         doc,
     }
 }
@@ -380,6 +391,7 @@ pub static PATH: Registry = Registry {
         range: None,
         broadcast: false,
         spatial: false,
+        integral: false,
         doc: "the outline, as SVG path data in px of its group; keys of one track \
               share their vertex count and closure",
     }],
@@ -447,12 +459,13 @@ pub static TINT: Registry = Registry {
 pub static PARTICLES: Registry = Registry {
     kind: "particles",
     rows: &[
-        number(
+        integrated(number(
             "rate",
             40.0,
             Some((0.0, 100_000.0)),
-            "how many particles are born a second",
-        ),
+            "how many particles are born a second; it acts on births only, so \
+             a rate keyed to 0 stops them and those alive live out their `longevity`",
+        )),
         number(
             "longevity",
             2.0,
@@ -1339,6 +1352,7 @@ pub static CURVES: Registry = Registry {
             range: None,
             broadcast: false,
             spatial: false,
+            integral: false,
             doc: "the curve of red, green and blue alike, after their own",
         },
         PropertySpec {
@@ -1349,6 +1363,7 @@ pub static CURVES: Registry = Registry {
             range: None,
             broadcast: false,
             spatial: false,
+            integral: false,
             doc: "the curve of red",
         },
         PropertySpec {
@@ -1359,6 +1374,7 @@ pub static CURVES: Registry = Registry {
             range: None,
             broadcast: false,
             spatial: false,
+            integral: false,
             doc: "the curve of green",
         },
         PropertySpec {
@@ -1369,6 +1385,7 @@ pub static CURVES: Registry = Registry {
             range: None,
             broadcast: false,
             spatial: false,
+            integral: false,
             doc: "the curve of blue",
         },
         PropertySpec {
@@ -1379,6 +1396,7 @@ pub static CURVES: Registry = Registry {
             range: None,
             broadcast: false,
             spatial: false,
+            integral: false,
             doc: "the curve of alpha",
         },
     ],
@@ -1457,6 +1475,7 @@ pub static REPEATER: Registry = Registry {
             range: None,
             broadcast: false,
             spatial: true,
+            integral: false,
             doc: "how far each copy moves from the one before, in px of the group",
         },
         PropertySpec {
@@ -1467,6 +1486,7 @@ pub static REPEATER: Registry = Registry {
             range: None,
             broadcast: false,
             spatial: true,
+            integral: false,
             doc: "the point each copy turns and scales about, in px of the group",
         },
         point(
@@ -2395,6 +2415,7 @@ const fn point(
         range: None,
         broadcast,
         spatial: false,
+        integral: false,
         doc,
     }
 }
@@ -2681,6 +2702,7 @@ pub static MASK: Registry = Registry {
             range: None,
             broadcast: false,
             spatial: false,
+            integral: false,
             doc: "the outline it cuts along, as SVG path data in px of the layer; \
                   an open outline closes; keys of one track share their vertex count",
         },
@@ -2692,6 +2714,7 @@ pub static MASK: Registry = Registry {
             range: Some((0.0, f64::INFINITY)),
             broadcast: true,
             spatial: false,
+            integral: false,
             doc: "how far its edge fades, in px, on each axis; one number fades both",
         },
         opacity("how much it covers, 0 to 1"),

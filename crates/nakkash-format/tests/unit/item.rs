@@ -86,6 +86,20 @@ fn every_registry_names_its_rows_once_and_rests_at_its_type() {
     }
 }
 
+/// Only a number row of an item kind has a running total, which the
+/// compile works out; particles' `rate` is the one row today.
+#[test]
+fn only_number_rows_have_a_running_total() {
+    let integral: Vec<String> = all_kinds()
+        .flat_map(|kind| kind.registry.rows.iter().map(move |row| (kind, row)))
+        .filter(|(_, row)| row.integral)
+        .inspect(|(kind, row)| assert_eq!(row.ty, ValueType::Number, "{}.{}", kind.name, row.name))
+        .map(|(kind, row)| format!("{}.{}", kind.name, row.name))
+        .collect();
+    assert_eq!(integral, ["particles.rate"]);
+    assert!(crate::property::PROPERTIES.iter().all(|row| !row.integral));
+}
+
 #[test]
 fn the_constants_name_the_rows_code_reads() {
     use props::*;

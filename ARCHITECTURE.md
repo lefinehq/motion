@@ -81,12 +81,12 @@ Every animatable value is a registered property with a keyframe track (see [D27]
 
 | What | Where |
 |---|---|
-| The property registry: name, type, resting value, components, range, meaning; and targets (a property or one component) | `crates/nakkash-format/src/property.rs` |
+| The property registry: name, type, resting value, components, range, meaning, whether effects read its running total (`integral`, as particles read `rate`); and targets (a property or one component) | `crates/nakkash-format/src/property.rs` |
 | Typed values and their string forms | `crates/nakkash-format/src/value.rs` |
 | Curves: the named table, `cubic(...)`, `speed(...)` and `hold` | `crates/nakkash-format/src/curve.rs` |
 | Presets, as data (a scene can add its own) | `crates/nakkash-format/src/presets.json`, read by `preset.rs` |
 | `anim` tracks and keyframes, as written | `crates/nakkash-format/src/anim.rs` |
-| Tracks: one property's keys, compiled and sampled; spatial spans (`PathSpan`, which the import's bake reads too) move along a bézier path by arc length | `crates/nakkash-scene/src/track.rs` |
+| Tracks: one property's keys, compiled and sampled; spatial spans (`PathSpan`, which the import's bake reads too) move along a bézier path by arc length; a number track's running total (`Integral`), which reaches the rasteriser as data (`Effect::with_total`) | `crates/nakkash-scene/src/track.rs` |
 | Easing in value space: the handles every curve compiles to | `crates/nakkash-scene/src/curve.rs` |
 | Transforms: anchor, scale, rotation, position, and the parent chain | `crates/nakkash-scene/src/evaluate.rs` |
 

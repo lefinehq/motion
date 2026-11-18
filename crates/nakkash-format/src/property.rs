@@ -62,6 +62,11 @@ pub struct PropertySpec {
     /// The value moves along a path in space: one curve times the whole move,
     /// and keys may bend the path with tangents.
     pub spatial: bool,
+    /// Effects read its running total over the layer's own time as well as
+    /// its value: the integral from time 0, in its units times seconds. Its
+    /// value then acts only from each moment on, as a `rate` sets how many
+    /// particles are born without touching those alive.
+    pub integral: bool,
     /// What the property means, for people and agents.
     pub doc: &'static str,
 }
@@ -160,6 +165,7 @@ macro_rules! transform {
                 range: None,
                 broadcast: false,
                 spatial: true,
+                integral: false,
                 doc: "where the anchor sits in the parent, in px",
             },
             PropertySpec {
@@ -170,6 +176,7 @@ macro_rules! transform {
                 range: None,
                 broadcast: false,
                 spatial: true,
+                integral: false,
                 doc: $anchor_doc,
             },
             PropertySpec {
@@ -180,6 +187,7 @@ macro_rules! transform {
                 range: None,
                 broadcast: true,
                 spatial: false,
+                integral: false,
                 doc: "size factor on each axis; one number scales both; negative values mirror",
             },
             PropertySpec {
@@ -190,6 +198,7 @@ macro_rules! transform {
                 range: None,
                 broadcast: false,
                 spatial: false,
+                integral: false,
                 doc: "rotation in degrees, clockwise",
             },
             PropertySpec {
@@ -200,6 +209,7 @@ macro_rules! transform {
                 range: Some((0.0, 1.0)),
                 broadcast: false,
                 spatial: false,
+                integral: false,
                 doc: "how opaque it is, 0 (invisible) to 1 (solid)",
             },
                 $($extra,)*
@@ -221,6 +231,7 @@ const fn number_row(
         range,
         broadcast: false,
         spatial: false,
+        integral: false,
         doc,
     }
 }
@@ -244,6 +255,7 @@ const LAYER_ROWS: [PropertySpec; 16] = transform!(
         range: Some((0.0, 4.0)),
         broadcast: false,
         spatial: false,
+        integral: false,
         doc: "the gain of the sound an audio or `comp` layer plays: 1 as recorded, 0 silent, \
               up to 4 (+12 dB)",
     },
@@ -255,6 +267,7 @@ const LAYER_ROWS: [PropertySpec; 16] = transform!(
         range: None,
         broadcast: false,
         spatial: false,
+        integral: false,
         doc: "the depth of `position` on a 3D layer or camera, in px, away from the viewer as \
               it grows; a camera rests at minus its zoom",
     },
@@ -290,6 +303,7 @@ const LAYER_ROWS: [PropertySpec; 16] = transform!(
         range: None,
         broadcast: false,
         spatial: false,
+        integral: false,
         doc: "how a 3D layer or camera is turned, three angles in degrees applied after its \
               rotations; its keys turn the shortest way between them",
     },
@@ -301,6 +315,7 @@ const LAYER_ROWS: [PropertySpec; 16] = transform!(
         range: Some((1.0, f64::INFINITY)),
         broadcast: false,
         spatial: false,
+        integral: false,
         doc: "a camera's distance in px at which a plane facing it shows at 100 %; by \
               default a 50 mm lens on 36 mm film, `width · 50/36`",
     },
@@ -312,6 +327,7 @@ const LAYER_ROWS: [PropertySpec; 16] = transform!(
         range: None,
         broadcast: false,
         spatial: true,
+        integral: false,
         doc: "the point a camera turns to look at, in its parent's px, when the camera sets \
               or animates it",
     },
@@ -329,6 +345,7 @@ const LAYER_ROWS: [PropertySpec; 16] = transform!(
         range: None,
         broadcast: false,
         spatial: false,
+        integral: false,
         doc: "the time a `comp` or video layer shows of its content, in seconds, at each moment \
               of its own time; without it, the layer shows its content at its own time",
     },

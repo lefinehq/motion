@@ -32,6 +32,7 @@ mod projected;
 mod render;
 mod sound;
 mod style;
+mod total;
 
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use effect::{
@@ -53,6 +54,7 @@ pub use style::{
     CAPS, Cap, Color, Dashes, DrawStyle, FILL_RULES, FillRule, Gradient, GradientShape, JOINS,
     Join, Paint, Stop, StrokeStyle,
 };
+pub use total::{Total, TotalPiece};
 /// The geometry and font types display lists are made of: vocabulary crates
 /// the rasteriser shares, named from themselves so it stays private ([D37]).
 ///

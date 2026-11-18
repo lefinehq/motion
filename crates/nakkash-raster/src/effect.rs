@@ -23,6 +23,7 @@ use vello_cpu::peniko::{BlendMode, Compose, Mix};
 use crate::list::Node;
 use crate::pixels::Pixels;
 use crate::style::Color;
+use crate::total::Total;
 use crate::{blur, colour, distort, generate, particles};
 
 /// The type of one effect parameter.
@@ -223,6 +224,19 @@ pub struct Space {
     /// The outline the effect follows, if it follows one: one of the
     /// layer's masks, in the layer's own coordinates.
     pub outline: Option<std::sync::Arc<BezPath>>,
+    /// The running totals of the parameters that have one, each by the
+    /// parameter's index ([`Effect::with_total`]).
+    pub totals: Vec<(usize, std::sync::Arc<Total>)>,
+}
+
+impl Space {
+    /// The running total of parameter `param`, if it has one.
+    pub fn total(&self, param: usize) -> Option<&Total> {
+        self.totals
+            .iter()
+            .find(|(i, _)| *i == param)
+            .map(|(_, total)| &**total)
+    }
 }
 
 /// The drawing of a layer an effect reads, in that layer's own
@@ -2116,6 +2130,7 @@ pub struct Effect {
     input: Option<Box<Node>>,
     sound: Option<std::sync::Arc<crate::sound::Heard>>,
     outline: Option<std::sync::Arc<BezPath>>,
+    totals: Vec<(usize, std::sync::Arc<Total>)>,
 }
 
 impl Effect {
@@ -2132,18 +2147,7 @@ impl Effect {
             .ok_or_else(|| Diagnostic::unknown("effect", name, EFFECTS.iter().map(|s| s.name)))?;
         let mut values: Vec<ParamValue> = spec.params.iter().map(|p| p.default).collect();
         for &(param, value) in params {
-            let i = spec
-                .params
-                .iter()
-                .position(|p| p.name == param)
-                .ok_or_else(|| {
-                    Diagnostic::unknown(
-                        "effect parameter",
-                        param,
-                        spec.params.iter().map(|p| p.name),
-                    )
-                    .at(param)
-                })?;
+            let i = index(spec, param)?;
             values[i] = checked(&spec.params[i], value).map_err(|e| e.at(param))?;
         }
         Ok(Effect {
@@ -2152,7 +2156,36 @@ impl Effect {
             input: None,
             sound: None,
             outline: None,
+            totals: Vec::new(),
         })
+    }
+
+    /// The effect reading `total` as the running total of its number
+    /// parameter `param` over the layer's own time, so a value that
+    /// changes acts only from then on: what particles have been born
+    /// stays born.
+    ///
+    /// # Errors
+    /// A diagnostic at `param` for an unknown parameter or one that is not
+    /// a number.
+    pub fn with_total(mut self, param: &str, total: Total) -> Result<Effect> {
+        let i = index(self.spec, param)?;
+        if self.spec.params[i].default.param_type() != ParamType::Number {
+            return Err(Diagnostic::new(
+                Kind::WrongType,
+                "only a number parameter has a running total",
+            )
+            .at(param)
+            .expected("a number parameter"));
+        }
+        self.totals.retain(|(j, _)| *j != i);
+        self.totals.push((i, std::sync::Arc::new(total)));
+        Ok(self)
+    }
+
+    /// The running totals it reads, each by its parameter's index.
+    pub fn totals(&self) -> &[(usize, std::sync::Arc<Total>)] {
+        &self.totals
     }
 
     /// The effect reading `node`'s drawing: a layer drawn in its own
@@ -2264,6 +2297,25 @@ impl Effect {
             Apply::Pixels { pixels: change, .. } => change(pixels, &self.values, space),
         }
     }
+}
+
+/// The index of `spec`'s parameter called `param`.
+///
+/// # Errors
+/// A diagnostic at `param` listing the parameters, when it has none of
+/// that name.
+fn index(spec: &EffectSpec, param: &str) -> Result<usize> {
+    spec.params
+        .iter()
+        .position(|p| p.name == param)
+        .ok_or_else(|| {
+            Diagnostic::unknown(
+                "effect parameter",
+                param,
+                spec.params.iter().map(|p| p.name),
+            )
+            .at(param)
+        })
 }
 
 /// `value` if it has the parameter's type and lies in its range.

@@ -1,8 +1,9 @@
 //! Particles: a system that sends out particles over time, drawn in place
 //! of what the layer drew. It is worked out afresh at every frame, so any
-//! frame draws alone: particle `i` is born at `i / rate` seconds, its
-//! random draws come from its index and the seed, and where it is at an
-//! age has a closed form.
+//! frame draws alone: particle `i` is born when the running total of
+//! `rate` from time 0 first passes `i` (at `i / rate` seconds for a rate
+//! that holds), its random draws come from its index and the seed, and
+//! where it is at an age has a closed form.
 //!
 //! Motion is in the layer's own px and seconds: a particle leaves the
 //! producer at its speed, is pulled down by gravity, and slowed by
@@ -13,6 +14,7 @@ use vello_cpu::kurbo::Point;
 use crate::colour::{choice, number, rgb};
 use crate::effect::{ParamValue, Space};
 use crate::pixels::Pixels;
+use crate::total::Total;
 
 /// The point in `values[i]`.
 fn point(values: &[ParamValue], i: usize) -> [f32; 2] {
@@ -53,7 +55,10 @@ fn flight(start: [f32; 2], speed: [f32; 2], gravity: f32, resistance: f32, age: 
 }
 
 /// `particles`: `rate` particles a second from an ellipse of `radius-x` by
-/// `radius-y` px around `position`, each living `longevity` seconds. They
+/// `radius-y` px around `position`, each living `longevity` seconds. The
+/// births follow the running total of `rate` the space gives, or `rate`
+/// held from time 0 without one, so a rate that drops leaves the
+/// particles already born to live out their time. They
 /// fly out at `velocity` px a second, every way (`explosive`) or towards
 /// `direction` (degrees clockwise from up, spread by `extra`), under
 /// `gravity` and `resistance`. Each grows from `birth-size` to `death-size`
@@ -83,15 +88,28 @@ pub(crate) fn particles(pixels: &mut Pixels, values: &[ParamValue], space: &Spac
     );
     let mut out = Pixels::transparent(pixels.width(), pixels.height());
     let now = space.time as f32;
-    if rate > 0.0 && longevity > 0.0 && now >= 0.0 {
-        let first = ((now - longevity) * rate).ceil().max(0.0) as u64;
-        let last = (now * rate).floor() as u64;
+    let held;
+    let births = match space.total(0) {
+        Some(total) => total,
+        None => {
+            held = Total::constant(rate);
+            &held
+        }
+    };
+    if longevity > 0.0 && now >= 0.0 {
+        // Those born before `now - longevity` have died.
+        let first = births.at(now - longevity).ceil().max(0.0) as u64;
+        let last = births.at(now).floor().max(0.0) as u64;
         // Past the cap, the oldest are left out.
         let first = first.max((last + 1).saturating_sub(MOST_PARTICLES as u64));
         let [a, b, c, d, ..] = space.transform.as_coeffs();
         let scale = ((a * d - b * c).abs().sqrt()) as f32;
         for i in first..=last {
-            let age = now - i as f32 / rate;
+            // The total never falls, so once one is never born, none after it is.
+            let Some(born) = births.passes(i as f32) else {
+                break;
+            };
+            let age = now - born;
             if !(0.0..longevity).contains(&age) {
                 continue;
             }
