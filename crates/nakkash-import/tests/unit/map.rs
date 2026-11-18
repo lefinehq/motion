@@ -843,6 +843,54 @@ mod effects {
     }
 
     #[test]
+    fn animated_curves_move_from_key_to_key_on_shared_inputs() {
+        use crate::model::{Interpolation, Keyframe};
+        let straight: &[[u16; 2]] = &[[0, 0], [255, 255]];
+        let key = |time: f64, rgb: &[[u16; 2]]| Keyframe {
+            time,
+            value: Value::Data(crate::map::curves::tests::data([
+                rgb, straight, straight, straight, straight,
+            ])),
+            in_interpolation: Interpolation::Linear,
+            out_interpolation: Interpolation::Linear,
+            in_ease: Vec::new(),
+            out_ease: Vec::new(),
+            spatial: None,
+            continuous: false,
+            auto_bezier: false,
+            roving: false,
+        };
+        let import = imported(vec![group(
+            "ADBE CurvesCustom",
+            vec![Child::Property(property(
+                "ADBE CurvesCustom-0001",
+                Stream::Animated(vec![
+                    key(0.0, &[[0, 0], [129, 67], [255, 255]]),
+                    key(0.5, &[[0, 0], [47, 33], [177, 184], [255, 255]]),
+                ]),
+            ))],
+        )])
+        .expect("imports");
+        let fx = &import.json["layers"][0]["fx"][0];
+        let keys = fx["anim"]["rgb"].as_array().expect("an rgb track");
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[0]["curve"], "linear");
+        // Both keys on the inputs of both: 0, 47, 129, 177 and 255.
+        let inputs =
+            |key: &serde_json::Value| key["v"].as_str().unwrap().matches(['M', 'L']).count();
+        assert_eq!((inputs(&keys[0]), inputs(&keys[1])), (5, 5));
+        // The kind's key holds the first key's curve; the other curves stay
+        // straight and are not written.
+        assert_eq!(fx["curves"], keys[0]["v"]);
+        assert!(fx.get("red").is_none());
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
+    #[test]
     fn levels_come_from_the_data_kept_for_them() {
         use crate::map::levels::IDENTITY;
         let rgb = [0.137_255, 1.0, 2.1, 0.0, 1.0];

@@ -5,11 +5,20 @@
 //! 0 to 255, then a big-endian `u32` count of the pairs used and an `i32`
 //! the panel's selected point. The tables are the points joined by a
 //! natural cubic spline, rounded, which the scene's curves reproduce.
+//!
+//! An animated curve keeps this data at each key, and the keys may have
+//! different points. Between two keys the original moves from one curve's
+//! levels to the other's, input by input. The scene moves a path key into
+//! the next vertex by vertex, which is the same when the keys share their
+//! inputs ([`Spline`] is linear in the levels on fixed inputs), so
+//! [`on_shared_inputs`] puts every key on the inputs of all of them.
+
+use nakkash_format::spline::Spline;
 
 /// The bytes before the points: the head and the five tables.
 const POINTS_AT: usize = 4 + 5 * 256;
 /// The bytes of one curve's points.
-const CURVE: usize = 16 * 4 + 4 + 4;
+const CURVE: usize = MOST_POINTS * 4 + 4 + 4;
 /// The scene's names for the five curves, in the data's order.
 pub(super) const NAMES: [&str; 5] = ["rgb", "red", "green", "blue", "alpha"];
 
@@ -22,7 +31,7 @@ pub(super) fn read(data: &[u8]) -> Option<[Points; 5]> {
     let curve = |i: usize| -> Option<Points> {
         let bytes = &curves[i * CURVE..(i + 1) * CURVE];
         let count = u32::from_be_bytes(bytes[64..68].try_into().ok()?);
-        let count = usize::try_from(count).ok().filter(|&n| n <= 16)?;
+        let count = usize::try_from(count).ok().filter(|&n| n <= MOST_POINTS)?;
         let level = |at: usize| f64::from(u16::from_be_bytes([bytes[at], bytes[at + 1]])) / 255.0;
         let points: Points = (0..count)
             .map(|p| [level(p * 4), level(p * 4 + 2)])
@@ -33,6 +42,61 @@ pub(super) fn read(data: &[u8]) -> Option<[Points; 5]> {
     };
     let [a, b, c, d, e] = [0, 1, 2, 3, 4].map(curve);
     Some([a?, b?, c?, d?, e?])
+}
+
+/// The most points a curve keeps, in the data and in the scene.
+pub(super) const MOST_POINTS: usize = 16;
+
+/// The largest stray, in levels from 0 to 1, within which a key's curve
+/// is kept: one 8-bit level. The project keeps each key as a table of
+/// whole levels, so the original is within half a level of the curve
+/// between keys, and the scene's own table rounds to the nearest level.
+const ONE_LEVEL: f64 = 1.0 / 255.0;
+
+/// The keys of one animated curve on one set of inputs.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum Shared {
+    /// Every key is the straight line.
+    Straight,
+    /// Each key's points, all on the same inputs.
+    Points(Vec<Points>),
+    /// The keys' inputs together are more than a curve keeps.
+    TooMany(usize),
+    /// A key starts or ends at an input where another does not, and the
+    /// spline through its points on the shared inputs strays from its own
+    /// by this much, in levels from 0 to 1, more than one level.
+    Strays(f64),
+}
+
+/// `keys` (each key's points) on the inputs of all of them, so the scene
+/// can move from key to key point by point.
+///
+/// Between a key's own ends, the spline through its levels at more inputs
+/// is the key's own spline exactly. Beyond them a key is flat, which a
+/// spline does not keep exactly; that stray is
+/// fitted and measured ([`Spline::on`]), and more than one level is
+/// [`Shared::Strays`].
+pub(super) fn on_shared_inputs(keys: &[Points]) -> Shared {
+    if keys.iter().all(|points| is_straight(points)) {
+        return Shared::Straight;
+    }
+    let splines: Vec<Spline> = keys.iter().map(|points| Spline::new(points)).collect();
+    let mut inputs: Vec<f64> = splines
+        .iter()
+        .flat_map(|spline| spline.points().iter().map(|p| p[0]))
+        .collect();
+    inputs.sort_by(f64::total_cmp);
+    inputs.dedup();
+    if inputs.len() > MOST_POINTS {
+        return Shared::TooMany(inputs.len());
+    }
+    let (points, strays): (Vec<Points>, Vec<f64>) =
+        splines.iter().map(|spline| spline.on(&inputs)).unzip();
+    let stray = strays.into_iter().fold(0.0, f64::max);
+    match stray > ONE_LEVEL {
+        true => Shared::Strays(stray),
+        false => Shared::Points(points),
+    }
 }
 
 /// Whether `points` is the straight line, which changes nothing: no

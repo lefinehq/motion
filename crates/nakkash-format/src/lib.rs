@@ -23,6 +23,7 @@ pub mod roles;
 mod scene;
 pub mod shorthand;
 pub mod slots;
+pub mod spline;
 pub mod spring;
 mod table;
 pub mod text;

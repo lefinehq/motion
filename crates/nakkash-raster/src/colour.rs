@@ -6,6 +6,8 @@
 //! project's effect has more than one reading, the one chosen is said at
 //! the function.
 
+use nakkash_format::spline::Spline;
+
 use crate::effect::{Curve, ParamValue, Space};
 use crate::pixels::Pixels;
 
@@ -239,7 +241,8 @@ impl Table {
         if points.is_empty() {
             return None;
         }
-        let spline = Spline::new(points);
+        let points: Vec<[f64; 2]> = points.iter().map(|p| p.map(f64::from)).collect();
+        let spline = Spline::new(&points);
         Some(Table(std::array::from_fn(|i| {
             (spline.at(i as f64 / 255.0) * 255.0)
                 .round()
@@ -254,62 +257,6 @@ impl Table {
         let i = (x.floor() as usize).min(254);
         let t = x - i as f32;
         self.0[i] + (self.0[i + 1] - self.0[i]) * t
-    }
-}
-
-/// A natural cubic spline through points in rising `x`: second
-/// derivatives 0 at both ends, flat beyond them.
-struct Spline {
-    points: Vec<[f64; 2]>,
-    second: Vec<f64>,
-}
-
-impl Spline {
-    fn new(points: &[[f32; 2]]) -> Spline {
-        let points: Vec<[f64; 2]> = points.iter().map(|p| p.map(f64::from)).collect();
-        let n = points.len();
-        let mut second = vec![0.0; n];
-        if n > 2 {
-            // The tridiagonal system for the inner second derivatives,
-            // solved forwards then backwards.
-            let mut upper = vec![0.0; n];
-            let mut rhs = vec![0.0; n];
-            for i in 1..n - 1 {
-                let (h0, h1) = (
-                    points[i][0] - points[i - 1][0],
-                    points[i + 1][0] - points[i][0],
-                );
-                let slope =
-                    (points[i + 1][1] - points[i][1]) / h1 - (points[i][1] - points[i - 1][1]) / h0;
-                let diagonal = 2.0 * (h0 + h1) - h0 * upper[i - 1];
-                upper[i] = h1 / diagonal;
-                rhs[i] = (6.0 * slope - h0 * rhs[i - 1]) / diagonal;
-            }
-            for i in (1..n - 1).rev() {
-                second[i] = rhs[i] - upper[i] * second[i + 1];
-            }
-        }
-        Spline { points, second }
-    }
-
-    /// The curve's level at `x`.
-    fn at(&self, x: f64) -> f64 {
-        let p = &self.points;
-        let (first, last) = (p[0], p[p.len() - 1]);
-        if p.len() == 1 || x <= first[0] {
-            return first[1];
-        }
-        if x >= last[0] {
-            return last[1];
-        }
-        let i = p.partition_point(|q| q[0] <= x) - 1;
-        let (a, b) = (p[i], p[i + 1]);
-        let h = b[0] - a[0];
-        let (t, u) = ((b[0] - x) / h, (x - a[0]) / h);
-        t * a[1]
-            + u * b[1]
-            + ((t * t * t - t) * self.second[i] + (u * u * u - u) * self.second[i + 1]) * h * h
-                / 6.0
     }
 }
 
