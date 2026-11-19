@@ -38,7 +38,9 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
-  # Line coverage must stay at or above 85%.
+  # Line coverage must stay at or above 85%. nakkash-gpu is left out of the
+  # report: its code runs only on a GPU, which this runner lacks, and its
+  # parity tests run against the CPU on a machine with one (D74).
   coverage:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -48,7 +50,7 @@ jobs:
         run: rustup toolchain install
       - run: rustup component add llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - run: cargo llvm-cov --workspace --locked --fail-under-lines 85
+      - run: cargo llvm-cov --workspace --locked --exclude-from-report nakkash-gpu --fail-under-lines 85
 
   # Formatting, the one part of `check` that is quick enough for pull requests.
   fmt:
