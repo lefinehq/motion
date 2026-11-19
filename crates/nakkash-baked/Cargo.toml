@@ -1,0 +1,22 @@
+[package]
+name = "nakkash-baked"
+description = "What a nakkash bake makes and a render reads: content-addressed matte and track assets, their manifests and the record of what made them. Links no inference runtime."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+nakkash-format = { path = "../nakkash-format" }
+png.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+rstest.workspace = true
+
+[lints]
+workspace = true

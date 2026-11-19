@@ -1803,6 +1803,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nakkash-baked"
+version = "0.0.0"
+dependencies = [
+ "nakkash-format",
+ "png",
+ "pretty_assertions",
+ "rstest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nakkash-cli"
 version = "0.0.0"
 dependencies = [
@@ -1902,7 +1914,6 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
- "sha2",
  "tracing",
  "ureq",
 ]
@@ -1922,6 +1933,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_path_to_error",
+ "sha2",
  "tracing",
  "winnow",
 ]

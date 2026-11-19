@@ -14,7 +14,6 @@
 //! [D39]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d39-fonts-are-resolved-before-a-render
 
 mod cache;
-mod hash;
 mod judge;
 mod lock;
 
@@ -22,6 +21,6 @@ mod lock;
 pub mod fetch;
 
 pub use cache::{CACHE_VARIABLE, Cache};
-pub use hash::Sha256;
 pub use judge::{FontFile, Judge, LINE_OFF_CAP, LinesScore, Score, TextScore};
 pub use lock::{LOCK_VERSION, Licence, Lock, LockedFont, Origin};
+pub use nakkash_format::Sha256;

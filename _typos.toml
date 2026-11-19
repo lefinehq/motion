@@ -15,6 +15,8 @@ trak = "trak"
 # also names it) and a deferred structure comment.
 atend = "atend"
 flate = "flate"
+# The PNG standard's predictor filter, named after Alan Paeth.
+paeth = "paeth"
 
 [default]
 # The curve fitting library `curve_fit_nd` (N-dimensional).
