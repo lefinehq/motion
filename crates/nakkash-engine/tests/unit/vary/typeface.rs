@@ -50,3 +50,38 @@ fn long_copy_keeps_the_masters_lines_and_breaks_more_before_the_floor() {
         .expect("a size");
     assert!(size >= 54.0 * SMALLEST - 0.01, "{size}: {note}");
 }
+
+#[test]
+fn a_text_keeps_how_thick_its_strokes_are_not_its_weights_number() {
+    let family = Family {
+        name: "Text".into(),
+        class: "sans".into(),
+        weights: vec![400, 600, 800],
+        strokes: vec![0.08, 0.11, 0.15],
+        source: None,
+    };
+    // A poster face's 400 draws strokes 0.15 em thick: the text face's 800.
+    assert_eq!(as_thick(&family, 400, Some(0.15)), 800);
+    assert_eq!(as_thick(&family, 900, Some(0.07)), 400);
+    // Halfway: the heavier.
+    assert_eq!(as_thick(&family, 400, Some(0.13)), 800);
+    // Unknown thickness, on either side: by number.
+    assert_eq!(as_thick(&family, 500, None), 600);
+    let unmeasured = Family {
+        strokes: Vec::new(),
+        ..family
+    };
+    assert_eq!(as_thick(&unmeasured, 400, Some(0.15)), 400);
+}
+
+#[test]
+fn a_faces_stroke_is_read_from_the_set() {
+    let set = FontSet::builtin();
+    let by_family: Font = "Inter Variable 40 900".parse().unwrap();
+    let by_name: Font = "InterVariable-Thin 40".parse().unwrap();
+    let black = stroke_of(&by_family, &set).expect("Inter's black is built in");
+    let thin = stroke_of(&by_name, &set).expect("Inter's thin is built in");
+    assert!(black > 3.0 * thin, "{thin} {black}");
+    let missing: Font = "Nowhere Sans 40".parse().unwrap();
+    assert_eq!(stroke_of(&missing, &set), None);
+}
