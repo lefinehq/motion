@@ -26,6 +26,7 @@ mod distort;
 mod effect;
 mod generate;
 mod homography;
+mod identity;
 mod image;
 mod lens;
 mod light;

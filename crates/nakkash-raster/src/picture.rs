@@ -68,6 +68,9 @@ struct Levels {
     /// Each half the size of the one before, down to one pixel a side,
     /// made the first time the picture is drawn at under half its size.
     halves: OnceLock<Vec<Arc<Pixmap>>>,
+    /// The hash of its pixels and size, made the first time a frame asks
+    /// what it draws ([`Picture::content_id`]).
+    id: OnceLock<crate::identity::Id>,
 }
 
 impl Picture {
@@ -112,7 +115,22 @@ impl Picture {
             levels: Arc::new(Levels {
                 full: Arc::new(pixels),
                 halves: OnceLock::new(),
+                id: OnceLock::new(),
             }),
+        })
+    }
+
+    /// What the picture draws, by a hash of its size and pixels: two
+    /// pictures of the same pixels have the same identity wherever they
+    /// came from, and it is worked out once per picture.
+    pub(crate) fn content_id(&self) -> crate::identity::Id {
+        *self.levels.id.get_or_init(|| {
+            let full = &self.levels.full;
+            let mut h = crate::identity::Hasher::new("picture");
+            h.u32(u32::from(full.width()));
+            h.u32(u32::from(full.height()));
+            h.bytes(full.data_as_u8_slice());
+            h.id()
         })
     }
 

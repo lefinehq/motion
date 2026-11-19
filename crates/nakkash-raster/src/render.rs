@@ -142,7 +142,9 @@ pub fn render_on(
     // A frame with nothing for the accelerator is drawn on the CPU, as
     // without one: its pixels would only be copied there and back.
     let accel = accel.filter(|accel| has_work(*accel, &frame.nodes));
-    let mut painter = Painter::new(w, h, options, Arc::new(Reads::of(&frame.nodes)), accel);
+    let floats = options.quality == Quality::Precise;
+    let reads = Arc::new(Reads::of(&frame.nodes, floats));
+    let mut painter = Painter::new(w, h, options, reads, accel);
     // The background is drawn as the bottom-most shape, not used to clear the
     // target: the rasteriser keeps a cleared target out of blending, and a
     // layer that multiplies must multiply with the background too.
@@ -263,6 +265,24 @@ fn children_make_pixels(layer: &Layer) -> bool {
         .children
         .iter()
         .any(|child| matches!(child, Node::Layer(layer) if makes_pixels(layer)))
+}
+
+/// Whether drawing `layer`'s content draws its children on a canvas of
+/// their own, as [`Painter::content`] does: it is isolated, and moves its
+/// content as pixels (effects that read them, masks that cut, motion blur
+/// of a drawing made once); with float colours (`floats`), also when its
+/// children make pixels. A pinned layer draws them on its plane instead.
+/// The frame's [`Reads`] counts these uses.
+pub(crate) fn draws_children_alone(layer: &Layer, floats: bool) -> bool {
+    if !layer.is_isolated() {
+        return false;
+    }
+    let steps = Steps::of(layer, floats && children_make_pixels(layer));
+    if steps.on_pixels.iter().any(Effect::pins) {
+        return false;
+    }
+    let cuts = layer.masks.iter().any(|m| m.mode != MaskMode::None);
+    !steps.on_pixels.is_empty() || cuts || !steps.motion.is_empty()
 }
 
 /// One side of the image, which the rasteriser holds in 16 bits.
@@ -444,11 +464,20 @@ impl<'a> Painter<'a> {
         Ok(Mask::from_parts(data, self.width, self.height))
     }
 
+    /// The drawing of `matte`'s source alone, in coordinates `parent` maps
+    /// to the frame, where the float canvas's work is done: drawn once a
+    /// frame for each identity and transform ([`Reads`]).
+    fn matte_drawn(&self, matte: &Matte, parent: Affine) -> Result<Surface> {
+        let source = std::slice::from_ref(&*matte.source);
+        let size = (self.width, self.height);
+        self.reads.drawn(source, parent, size, self.accel, || {
+            self.drawn_alone_surface(source, parent)
+        })
+    }
+
     /// How much of a layer `matte` lets show at each pixel, 0 to 1.
     fn matte_values(&self, matte: &Matte, parent: Affine) -> Result<Vec<f32>> {
-        let mut painter = self.alone();
-        painter.nodes(std::slice::from_ref(&*matte.source), parent)?;
-        let pixels = painter.finish()?.into_pixels(self.accel)?;
+        let pixels = self.matte_drawn(matte, parent)?.into_pixels(self.accel)?;
         Ok(matte_read(&pixels, matte.mode))
     }
 
@@ -456,9 +485,7 @@ impl<'a> Painter<'a> {
     /// CPU, or, when its source's pixels are in the accelerator, read
     /// there as the layer is laid.
     fn matte_share(&self, matte: &Matte, parent: Affine) -> Result<Matted> {
-        let mut painter = self.alone();
-        painter.nodes(std::slice::from_ref(&*matte.source), parent)?;
-        Ok(match painter.finish()?.into_working(self.accel)? {
+        Ok(match self.matte_drawn(matte, parent)? {
             Surface::Held(held) => Matted::Held(held, matte.mode),
             Surface::Cpu(pixels) => Matted::Values(matte_read(&pixels, matte.mode)),
         })
@@ -561,7 +588,7 @@ impl<'a> Painter<'a> {
                 let size = (self.width, self.height);
                 let drawn = match self.accel.filter(|accel| accel.runs(effect)) {
                     Some(accel) => {
-                        match self.reads.read(node, transform, size, Some(accel), || {
+                        match self.reads.drawn(nodes, transform, size, Some(accel), || {
                             self.drawn_alone_surface(nodes, transform)
                         })? {
                             Surface::Held(held) => Drawing::Held(Arc::new(held)),
@@ -570,7 +597,7 @@ impl<'a> Painter<'a> {
                     }
                     None => Drawing::Cpu(
                         self.reads
-                            .read(node, transform, size, self.accel, || {
+                            .drawn(nodes, transform, size, self.accel, || {
                                 self.drawn_alone(nodes, transform).map(Surface::Cpu)
                             })?
                             .into_pixels(self.accel)?,
@@ -1158,31 +1185,25 @@ impl<'a> Painter<'a> {
             return drawn;
         }
         let at = transform * moved;
-        let mut pixels = match &layer.shared {
-            // Layers with the same children draw them once at each
-            // transform, where the float canvas's work is done.
-            Some(shared) => {
-                self.reads
-                    .shared(shared, at, (self.width, self.height), self.accel, || {
-                        self.drawn_alone_surface(&layer.children, at)
-                    })?
-            }
-            None => {
-                // What the content drew goes to the accelerator as it was
-                // drawn when the first effect runs there, or when no effect
-                // or motion blur needs it on the CPU before it is laid.
-                let held = self.accel.filter(|accel| match steps.on_pixels.first() {
-                    Some(effect) => accel.runs(effect),
-                    None => steps.motion.is_empty(),
-                });
+        // Children that draw the same, in this layer or another, are drawn
+        // once at each transform ([`Reads`]). What they drew goes to the
+        // accelerator as drawn when the first effect runs there, or when no
+        // effect or motion blur needs it on the CPU before it is laid.
+        let held = self.accel.filter(|accel| match steps.on_pixels.first() {
+            Some(effect) => accel.runs(effect),
+            None => steps.motion.is_empty(),
+        });
+        let size = (self.width, self.height);
+        let mut pixels = self
+            .reads
+            .drawn(&layer.children, at, size, self.accel, || {
                 let mut painter = self.alone();
                 painter.nodes(&layer.children, at)?;
                 match held {
-                    Some(accel) => painter.finish()?.into_held(accel)?,
-                    None => painter.finish()?.into_surface(),
+                    Some(accel) => painter.finish()?.into_held(accel),
+                    None => Ok(painter.finish()?.into_surface()),
                 }
-            }
-        };
+            })?;
         // An effect that draws beyond the box grows the clip the layer
         // shows within, so the content is cut to its own clip first.
         let clipped = match (&layer.clip, steps.grows) {

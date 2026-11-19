@@ -11,7 +11,7 @@ use nakkash_format::{Diagnostic, Result};
 use vello_cpu::peniko::{self, Compose, Mix};
 
 /// How a layer combines with the layers below it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum BlendMode {
     /// The layer covers what is below.
     #[default]

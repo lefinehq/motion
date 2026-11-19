@@ -3,8 +3,6 @@
 //! whatever evaluates a scene at a time writes one of these, and
 //! [`render`](crate::render) draws it.
 
-use std::sync::Arc;
-
 use vello_cpu::kurbo::{Affine, BezPath, Rect, Shape};
 use vello_cpu::peniko::FontData;
 
@@ -29,7 +27,7 @@ pub struct Frame {
 ///
 /// [D21]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d21-linear-light-float-compositing
 /// [D34]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d34-a-layer-tree-renderer-on-vello_cpu
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum Blending {
     /// On gamma-encoded sRGB values, as projects that do not linearise blend.
     #[default]
@@ -105,34 +103,32 @@ pub struct Layer {
     ///
     /// [D58]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
     pub projection: Option<Projection>,
-    /// The mark of children other layers of the frame share: layers with
-    /// the same mark have children that draw the same, such as one
-    /// composition at one time shown by several layers, so the rasteriser
-    /// draws them once at each transform and keeps the drawing for the
-    /// others. `None` for children of its own.
+    /// The mark of children other layers of the frame share, such as one
+    /// composition at one time shown by several layers. The rasteriser no
+    /// longer needs it: it finds children that draw the same by their
+    /// identity, marked or not, and draws them once at each transform
+    /// ([D90]). `None` for children of its own.
+    ///
+    /// [D90]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d90-a-frame-is-drawn-from-a-plan-that-knows-what-each-drawing-is-under-one-memory-budget
     pub shared: Option<Shared>,
 }
 
 /// A mark a producer gives layers whose children draw the same
 /// ([`Layer::shared`]): a copy of a mark is the same mark. Marks say
 /// nothing of what is drawn, so any two compare equal, and two frames that
-/// draw the same compare equal whatever marks they carry.
+/// draw the same compare equal whatever marks they carry. Drawing does not
+/// read them; children are known by what they draw.
 #[derive(Debug, Clone)]
-pub struct Shared(Arc<()>);
+pub struct Shared(());
 
 impl Shared {
-    /// A new mark, equal to no other.
+    /// A new mark.
     #[expect(
         clippy::new_without_default,
         reason = "a default would read as a mark every layer shares"
     )]
     pub fn new() -> Shared {
-        Shared(Arc::new(()))
-    }
-
-    /// Its address, which no other mark has while it lives.
-    pub(crate) fn address(&self) -> usize {
-        Arc::as_ptr(&self.0) as usize
+        Shared(())
     }
 }
 
@@ -199,7 +195,7 @@ pub struct LayerMask {
 
 /// How a mask combines with the coverage of the masks before it, `a`,
 /// covering `m` itself.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MaskMode {
     /// Left out: it cuts nothing.
     None,
@@ -229,7 +225,7 @@ pub struct Matte {
 }
 
 /// How a matte's drawing is read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MatteMode {
     /// The layer shows as much as the matte is opaque.
     Alpha,

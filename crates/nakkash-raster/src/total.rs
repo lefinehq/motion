@@ -53,6 +53,24 @@ pub struct Total {
 }
 
 impl Total {
+    /// Writes the total's pieces into `h`, for an identity.
+    pub(crate) fn ident(&self, h: &mut crate::identity::Hasher) {
+        let Total { pieces } = self;
+        h.all(pieces, |h, piece| {
+            let TotalPiece {
+                start,
+                total,
+                rate,
+                slope,
+            } = *piece;
+            for v in [start, total, rate, slope] {
+                h.f32(v);
+            }
+        });
+    }
+}
+
+impl Total {
     /// The total made of `pieces`.
     ///
     /// # Panics
