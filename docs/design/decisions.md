@@ -1040,7 +1040,7 @@ Status: Draft · 2026-11-17
     - A quarter leaves the rest to the operating system, the programs open beside it and the encoder. 4 GiB holds the peak heap of every corpus sample's settled frame (median 141 MiB, largest 1.9 GiB) with room to keep drawings, and seven 2-core jobs at once on the 62 GiB render machine stay under half of it. On the 36 GiB workstation it is 4 GiB; on an 8 GiB machine, 2 GiB.
   - **Over the budget the render gets slower, never larger.** In this order:
     1. the pool lets its free grids go;
-    2. kept drawings are let go, the least soon needed first, and are drawn again if read again;
+    2. kept drawings are let go, the least soon needed first, and are drawn again if read again. They take at most half the budget: letting one go draws it again at the cost of more working grids than it holds, so working grids past the budget do not by themselves let kept drawings go; memory pressure, which lowers the budget, does;
     3. frames stop being drawn side by side: a thread waits before it starts a frame while the frames being drawn hold the budget, so one frame is drawn at a time, on every thread ([D75](#d75-a-frame-is-drawn-on-every-thread-of-its-render));
     4. once regions land, layers drawn alone are drawn in regions or tiles.
     A single frame whose own working grids exceed the budget is still drawn, since refusing it would give no frame; it is reported, and `--stats` says by how much. No step changes a pixel: each draws what it would have drawn, later.

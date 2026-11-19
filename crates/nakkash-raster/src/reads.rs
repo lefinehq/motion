@@ -162,7 +162,7 @@ impl Reads {
             if !drawn.contains_key(&key) {
                 // Kept only within the budget: what is let go, or not
                 // kept, is drawn again when it is read again.
-                match self.make_room(&mut drawn) {
+                match self.make_room(&mut drawn, pixels.bytes()) {
                     true => {
                         memory::keep(pixels.bytes(), true);
                         drawn.insert(key, (owner(), Arc::clone(&pixels)));
@@ -188,11 +188,11 @@ impl Reads {
 }
 
 impl Reads {
-    /// Lets kept drawings go, those with the fewest uses left first, while
-    /// the render holds more than its budget ([`memory::over`]). Whether
-    /// there is room to keep another.
-    fn make_room(&self, drawn: &mut HashMap<Key, (Owner, Arc<Surface>)>) -> bool {
-        while memory::over() {
+    /// Lets kept drawings go, those with the fewest uses left first, until
+    /// `bytes` more fit the share of the budget kept drawings may take
+    /// ([`memory::room_to_keep`]). Whether they fit.
+    fn make_room(&self, drawn: &mut HashMap<Key, (Owner, Arc<Surface>)>, bytes: u64) -> bool {
+        while !memory::room_to_keep(bytes) {
             let victim = {
                 let left = locked(&self.left);
                 drawn

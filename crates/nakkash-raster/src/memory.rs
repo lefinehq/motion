@@ -15,8 +15,9 @@
 //! drawing makes before it is handed out, so a read of stale memory shows.
 //!
 //! Over the budget the render gets slower, never larger, and never other:
-//! the pool lets its grids go, kept drawings are let go to be drawn again,
-//! and frames wait to start ([`over`]). None of it changes a pixel.
+//! the pool lets its grids go and frames wait to start ([`over`]). Kept
+//! drawings take at most half the budget ([`room_to_keep`]), and are let go
+//! to be drawn again beyond it. None of it changes a pixel.
 //!
 //! Memory pressure lowers the budget for a while ([`note_pressure`]): at a
 //! warning to three quarters of what is held, at a critical level to
@@ -468,6 +469,17 @@ pub(crate) fn release(grid: Vec<Pixel>) {
         .or_default()
         .push(grid);
     note_peak();
+}
+
+/// Whether `bytes` more of drawings kept for later uses fit their share of
+/// the budget in force: half of it. Kept drawings are what a frame would
+/// otherwise draw again, at the cost of more working grids than they hold,
+/// so they are bounded by their own share rather than let go whenever the
+/// working grids pass the budget; memory pressure lowers the budget, and
+/// so their share.
+pub(crate) fn room_to_keep(bytes: u64) -> bool {
+    probe();
+    LEDGER.kept.load(Relaxed) + bytes <= LEDGER.effective.load(Relaxed) / 2
 }
 
 /// Counts `bytes` of drawings as kept for later uses, or no longer.
