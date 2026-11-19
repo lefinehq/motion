@@ -86,3 +86,40 @@ fn a_group_that_enters_from_an_edge_may_still_leave_by_it() {
     // Its right end lands at 690 + 150 = 840, inside: nothing moves.
     assert_eq!(placed, before);
 }
+
+#[test]
+fn a_move_that_peaks_between_samples_stays_on_the_new_canvas() {
+    // 300 frames are sampled every third; the title darts right and back
+    // at frame 31 alone, which no sample sees.
+    let session: Session = r##"{"nakkash":1,"size":"1920x1080","fps":30,"dur":"10s","layers":[
+        {"id":"bg","rect":"1920x1080","fill":"#101820"},
+        {"id":"title","rect":"600x120","at":"center center","fill":"#FFFFFF",
+         "anim":{"x":[{"t":"30f","v":960},{"t":"31f","v":1500},{"t":"32f","v":960}]}}]}"##
+        .parse()
+        .expect("a scene");
+    let (layout, _) = layout(&session, 1080, 1920).expect("a layout");
+    let title = layout.shown[1..]
+        .iter()
+        .find(|s| !s.hide.iter().any(|h| h == "title"))
+        .expect("the title's group");
+    // Its right edge at the peak, 1800 in the master, lands inside.
+    let right = title.position[0] + (1800.0 - title.anchor[0]) * title.scale;
+    assert!(right <= 1080.0, "{title:?} reaches {right}");
+}
+
+#[test]
+fn a_cropped_background_is_not_cut_through_an_element() {
+    // A 600 px window centred at 960 would cut the dot at 640..700.
+    let dot = Rect::new(640.0, 500.0, 700.0, 560.0);
+    let [x, y] = uncut([960.0, 540.0], (600.0, 1080.0), &[dot], (1920.0, 1080.0));
+    let (x0, x1) = (x - 300.0, x + 300.0);
+    assert!(x0 <= dot.x0 || x0 >= dot.x1, "{x}");
+    assert!(x1 <= dot.x0 || x1 >= dot.x1, "{x}");
+    assert!((x - 960.0).abs() <= 150.0 + 1e-9, "{x}");
+    assert_eq!(y, 540.0);
+    // A centre that cuts nothing stays.
+    assert_eq!(
+        uncut([960.0, 540.0], (600.0, 1080.0), &[], (1920.0, 1080.0))[0],
+        960.0
+    );
+}

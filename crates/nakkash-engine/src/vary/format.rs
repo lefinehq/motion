@@ -103,6 +103,9 @@ struct Seen {
     boxes: Vec<(usize, Rect)>,
     /// The share of the canvas it covered, summed over those frames.
     coverage: f64,
+    /// The union of its boxes at every frame, clipped: where it travels,
+    /// with the frames between samples a quick move may peak at.
+    reach: Option<Rect>,
     /// Whether nothing may hide it: an adjusting or filter layer, a camera.
     kept: bool,
 }
@@ -129,7 +132,10 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
     let frames = session.frames()?;
     let step = (frames.len() / 90).max(1);
     let mut seen: BTreeMap<usize, Seen> = BTreeMap::new();
-    for (n, frame) in frames.clone().step_by(step).enumerate() {
+    // Every frame is walked for where each layer reaches; the samples
+    // alone are read for where it rests, what it covers and when it shows.
+    for (i, frame) in frames.clone().enumerate() {
+        let (n, sampled) = (i / step, i % step == 0);
         let state = session.frame(f64::from(frame))?;
         for visit in walk(graph, &state) {
             let entry = seen.entry(visit.index).or_insert_with(|| {
@@ -162,8 +168,11 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
             if inside.width() <= 0.0 || inside.height() <= 0.0 {
                 continue;
             }
-            entry.coverage += inside.area() / area;
-            entry.boxes.push((n, inside));
+            entry.reach = Some(entry.reach.map_or(inside, |r| r.union(inside)));
+            if sampled {
+                entry.coverage += inside.area() / area;
+                entry.boxes.push((n, inside));
+            }
         }
     }
     // Containers are opened; what lies inside a piece belongs to it.
@@ -199,6 +208,10 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
             ..Seen::default()
         });
         piece.boxes.extend(s.boxes.iter().copied());
+        piece.reach = match (piece.reach, s.reach) {
+            (Some(a), Some(b)) => Some(a.union(b)),
+            (a, b) => a.or(b),
+        };
         piece.coverage = piece.coverage.max(s.coverage);
         if head.len() == s.ids.len() {
             piece.coverage = s.coverage;
@@ -230,6 +243,26 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
     let mut note_bg = String::from("no background");
     if !backgrounds.is_empty() || groups.is_empty() {
         let centre = busiest(session, &all_content, cover, (nw, nh))?;
+        // What the backgrounds draw whole on the master's canvas, at every
+        // frame: the new frame's edges should not cut through it.
+        let whole: Vec<Rect> = seen
+            .values()
+            .filter(|s| {
+                s.kind != Piece::Comp
+                    && s.kind != Piece::Nothing
+                    && backgrounds
+                        .iter()
+                        .any(|b| s.ids.len() > b.ids.len() && s.ids.starts_with(&b.ids))
+            })
+            .filter_map(|s| s.reach)
+            .filter(|r| {
+                r.x0 > canvas.x0 + 0.5
+                    && r.y0 > canvas.y0 + 0.5
+                    && r.x1 < canvas.x1 - 0.5
+                    && r.y1 < canvas.y1 - 0.5
+            })
+            .collect();
+        let centre = uncut(centre, (nw / cover, nh / cover), &whole, (mw, mh));
         shown.push(Shown {
             hide: all_content.clone(),
             anchor: centre,
@@ -315,7 +348,7 @@ struct Group {
     members: BTreeSet<String>,
     /// The union of their boxes where they rest ([`resting`]).
     bounds: Rect,
-    /// The union of all their boxes: where they travel.
+    /// The union of all their boxes at every frame: where they travel.
     path: Rect,
     /// The sampled frames it shows at.
     frames: BTreeSet<usize>,
@@ -337,6 +370,7 @@ fn group(content: &[&Seen], gap: f64) -> Vec<Group> {
                 .boxes
                 .iter()
                 .map(|(_, b)| *b)
+                .chain(p.reach)
                 .reduce(|a, b| a.union(b))
                 .unwrap_or_default(),
             frames: p.boxes.iter().map(|(n, _)| *n).collect(),
@@ -627,6 +661,49 @@ fn busiest(
         if ww >= mw { mw / 2.0 } else { x },
         if wh >= mh { mh / 2.0 } else { y },
     ])
+}
+
+/// How far, as a share of the window, [`uncut`] may move it.
+const UNCUT_REACH: f64 = 0.25;
+
+/// `centre`, the middle of a `window` of the master's canvas (`side` its
+/// size) that the new frame shows of the backgrounds, moved as little as
+/// lets fewest of `whole`, what they draw whole on the master's canvas,
+/// cross the window's edges: an element the crop cuts hangs off the new
+/// frame. Moves no further than [`UNCUT_REACH`] of the window, axis by axis.
+fn uncut(centre: [f64; 2], window: (f64, f64), whole: &[Rect], side: (f64, f64)) -> [f64; 2] {
+    let axis = |c: f64, w: f64, side: f64, spans: &[(f64, f64)]| -> f64 {
+        if w >= side - 1.0 || spans.is_empty() {
+            return c;
+        }
+        let cuts = |c: f64| {
+            let edges = [c - w / 2.0, c + w / 2.0];
+            spans
+                .iter()
+                .filter(|(a, b)| b - a < w && edges.iter().any(|e| a + 0.5 < *e && *e < b - 0.5))
+                .count()
+        };
+        let reach = w * UNCUT_REACH;
+        let (lo, hi) = (
+            (c - reach).max(w / 2.0).floor() as i64,
+            (c + reach).min(side - w / 2.0).ceil() as i64,
+        );
+        let mut best = (cuts(c), 0.0, c);
+        for x in lo..=hi {
+            let x = x as f64;
+            let key = (cuts(x), (x - c).abs(), x);
+            if key.0 < best.0 || (key.0 == best.0 && key.1 < best.1) {
+                best = key;
+            }
+        }
+        best.2
+    };
+    let xs: Vec<(f64, f64)> = whole.iter().map(|r| (r.x0, r.x1)).collect();
+    let ys: Vec<(f64, f64)> = whole.iter().map(|r| (r.y0, r.y1)).collect();
+    [
+        axis(centre[0], window.0, side.0, &xs),
+        axis(centre[1], window.1, side.1, &ys),
+    ]
 }
 
 #[cfg(test)]
