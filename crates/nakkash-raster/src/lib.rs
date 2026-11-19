@@ -46,24 +46,46 @@ mod style;
 mod total;
 mod vector;
 
-pub use accel::{Accelerator, Amount, Resident, Share, Tally};
+pub use accel::{Accelerator, Amount, Resident, Share, Tally, Texels, project_on_cpu};
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use blur::Edges;
-pub use composite::{OPERATIONS, Operation, OperationSpec};
+pub use blur::{FindEdges, Sharpen};
+pub use channel::{LayerBox, Level, Reading, SetMatte, ShiftChannels};
+pub use colour::LUMA;
+pub use colour::{
+    BlackWhite, BoxTest, CurveTable, Curves, Exposure, Fill, HueSaturation, Invert, Levels, Tint,
+};
+pub use composite::{BoxCover, OPERATIONS, Operation, OperationSpec, SolidComposite};
+pub use cycle::ColorCycle;
+pub use distort::{
+    BezierWarp, DisplacementMap, Distortion, Lay, LensDistortion, LensField, MapLevel, Mirror,
+    MotionTile, Pinning, PolarCoordinates, RepeatTile, TURBULENCE_Y_SEED, Tiling, Turbulence,
+    TurbulentDisplace, WARP_PIECES, WarpMesh, Wrap, distortion_box,
+};
 pub use effect::{
-    Apply, Curve, EFFECTS, Effect, EffectContext, EffectSpec, Growth, Input, Move, ParamSpec,
-    ParamType, ParamValue, Reach, Space,
+    Apply, Curve, Drawing, EFFECTS, Effect, EffectContext, EffectSpec, Growth, Input, Move,
+    ParamSpec, ParamType, ParamValue, Reach, Space,
+};
+pub use generate::{
+    Beam, BeamStroke, FourColor, Fractal, FractalNoise, GridLines, IrisWipe, LinearWipe,
+    NOISE_CELL, NoiseKind, Overflow, Ramp, VenetianBlinds,
 };
 pub use homography::Homography;
 pub use image::Image;
+pub use lens::{IRIS_ROWS, Iris, LensBlur, LensMap, Level as LensLevel, Row as IrisRow};
+pub use light::Bevel;
 pub use list::{
     Blending, Clip, Frame, Glyph, GlyphDraw, ImageDraw, Layer, LayerMask, MaskMode, Matte,
     MatteMode, Node, PathDraw, Projection, Shared,
 };
-pub use mask::SIGMA_PER_FEATHER;
+pub use mask::{MaskCoverage, MaskStep, SIGMA_PER_FEATHER, combine_on_cpu};
 pub use picture::Picture;
 pub use pixels::{Pixel, Pixels};
 pub use plan::{Blur, Glow, GlowComposite, PLANS, Passes, Plan, PlanSpec, Shadow};
+pub use projected::Landing;
+pub use radial::{
+    Fade as RadialFade, RadialBlur, RadialKind, Rays, Ring, Rings, Stretch as RadialStretch,
+};
 pub use render::{Quality, RenderOptions, Simd, render, render_on, render_with};
 pub use sound::{Heard, level};
 pub use style::{
@@ -71,6 +93,7 @@ pub use style::{
     Join, Paint, Stop, StrokeStyle,
 };
 pub use total::{Total, TotalPiece};
+pub use vector::{Level as VectorLevel, Streak as VectorStreak, VectorBlur};
 /// The geometry and font types display lists are made of: vocabulary crates
 /// the rasteriser shares, named from themselves so it stays private ([D37]).
 ///

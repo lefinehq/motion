@@ -14,12 +14,14 @@
 //! [D34]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d34-a-layer-tree-renderer-on-vello_cpu
 
 use std::fmt;
+use std::sync::Arc;
 
 use nakkash_format::{Diagnostic, Kind, Result};
 use vello_cpu::RenderContext;
-use vello_cpu::kurbo::{Affine, BezPath, Point, Rect, Vec2};
+use vello_cpu::kurbo::{Affine, BezPath, Rect, Vec2};
 use vello_cpu::peniko::{BlendMode, Compose, Mix};
 
+use crate::accel::Resident;
 use crate::list::Node;
 use crate::pixels::Pixels;
 use crate::style::Color;
@@ -268,10 +270,55 @@ impl Space {
 /// `transform * p` of the grid, as the reading layer's own point `p` is.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Input {
-    /// What it drew.
-    pub pixels: Pixels,
+    /// What it drew: on the CPU, or in the accelerator the effect runs in.
+    pub drawn: Drawing,
     /// Its box in its own coordinates, when it has one.
     pub bounds: Option<Rect>,
+}
+
+impl Input {
+    /// A drawing on the CPU, with its box.
+    pub fn new(pixels: Pixels, bounds: Option<Rect>) -> Input {
+        Input {
+            drawn: Drawing::Cpu(pixels),
+            bounds,
+        }
+    }
+
+    /// What it drew, on the CPU.
+    ///
+    /// # Panics
+    /// When it is held in an accelerator: an effect runs on the CPU only
+    /// with what it reads on the CPU, and the painter brings a drawing it
+    /// left in the accelerator back before it runs one there.
+    pub fn pixels(&self) -> &Pixels {
+        match &self.drawn {
+            Drawing::Cpu(pixels) => pixels,
+            Drawing::Held(_) => panic!("an effect on the CPU reads its input on the CPU"),
+        }
+    }
+}
+
+/// What the layer an effect reads drew, where it was drawn.
+#[derive(Debug, Clone)]
+pub enum Drawing {
+    /// On the CPU.
+    Cpu(Pixels),
+    /// In the accelerator the effect runs in, for its kernel to read there:
+    /// a frame-sized grid, as [`Pixels`] would be.
+    Held(Arc<Resident>),
+}
+
+impl PartialEq for Drawing {
+    /// Drawings on the CPU by their pixels; held ones only when they are
+    /// the same grid, as what an accelerator holds cannot be compared.
+    fn eq(&self, other: &Drawing) -> bool {
+        match (self, other) {
+            (Drawing::Cpu(a), Drawing::Cpu(b)) => a == b,
+            (Drawing::Held(a), Drawing::Held(b)) => Arc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
 }
 
 /// How a moving effect moves the layer's content.
@@ -3472,19 +3519,15 @@ fn fill(ctx: &mut EffectContext<'_>, values: &[ParamValue]) {
 
 /// The `fill` effect on pixels: the colour, at its alpha times `opacity`,
 /// laid "source-atop" each pixel, or "xor" each pixel of the layer's box
-/// when inverted, as [`fill`] paints it.
+/// when inverted, as [`fill`] paints it; see [`Fill`](crate::colour::Fill).
 fn fill_pixels(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
-    let [
-        ParamValue::Color(color),
-        ParamValue::Number(opacity),
-        ParamValue::Choice(invert),
-    ] = values
-    else {
-        unreachable!("`Effect::new` checks the fill parameters");
-    };
-    let share = color.a * opacity;
-    let rgb = [color.r, color.g, color.b];
-    if *invert == 0 {
+    let crate::colour::Fill {
+        rgb,
+        share,
+        inverted,
+        inside,
+    } = crate::colour::fill_plan(values, space);
+    if !inverted {
         for pixel in pixels.data_mut() {
             let alpha = pixel[3];
             for c in 0..3 {
@@ -3493,10 +3536,9 @@ fn fill_pixels(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
         }
         return;
     }
-    let inside = box_test(space);
     let width = usize::from(pixels.width());
     for (i, pixel) in pixels.data_mut().iter_mut().enumerate() {
-        if !inside(i % width, i / width) {
+        if !inside.is_none_or(|inside| inside.contains(i % width, i / width)) {
             continue;
         }
         let clear = 1.0 - pixel[3];
@@ -3505,14 +3547,6 @@ fn fill_pixels(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
         }
         pixel[3] = share * clear + pixel[3] * (1.0 - share);
     }
-}
-
-/// Whether the centre of pixel `(x, y)` lies in the layer's box; every
-/// pixel does for a layer without one.
-fn box_test(space: &Space) -> impl Fn(usize, usize) -> bool {
-    let back = space.transform.inverse();
-    let bounds = space.bounds;
-    move |x, y| bounds.is_none_or(|b| b.contains(back * Point::new(x as f64 + 0.5, y as f64 + 0.5)))
 }
 
 /// The `transform` effect: the content's anchor goes to `position`, scaled

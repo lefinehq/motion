@@ -177,10 +177,7 @@ fn every_effect_gives_the_same_bits_on_one_thread_and_on_many() {
             * Affine::scale(0.5)
             * Affine::translate((-120.0, -80.0)),
         bounds: Some(Rect::new(0.0, 0.0, 240.0, 160.0)),
-        input: Some(Input {
-            pixels: textured(),
-            bounds: None,
-        }),
+        input: Some(Input::new(textured(), None)),
         time: 0.75,
         sound: None,
         outline: None,

@@ -12,14 +12,14 @@ use vello_cpu::{
     RenderSettings, Resources, TargetInit,
 };
 
-use crate::accel::{Accelerator, Amount, Share, Surface};
+use crate::accel::{Accelerator, Amount, Share, Surface, Texels, held_by};
 use crate::blend::BlendMode;
-use crate::effect::{Effect, EffectContext, Input, Move, Space};
+use crate::effect::{Drawing, Effect, EffectContext, Input, Move, Space};
 use crate::homography::Homography;
 use crate::image::Image;
 use crate::list::{
-    Blending, Clip, Frame, GlyphDraw, ImageDraw, Layer, LayerMask, Matte, MatteMode, Node,
-    PathDraw, Projection,
+    Blending, Clip, Frame, GlyphDraw, ImageDraw, Layer, LayerMask, MaskMode, Matte, MatteMode,
+    Node, PathDraw, Projection,
 };
 use crate::par;
 use crate::pixels::Pixels;
@@ -139,6 +139,9 @@ pub fn render_on(
         )
         .expected("gamma blending"));
     }
+    // A frame with nothing for the accelerator is drawn on the CPU, as
+    // without one: its pixels would only be copied there and back.
+    let accel = accel.filter(|accel| has_work(*accel, &frame.nodes));
     let mut painter = Painter::new(w, h, options, Arc::new(Reads::of(&frame.nodes)), accel);
     // The background is drawn as the bottom-most shape, not used to clear the
     // target: the rasteriser keeps a cleared target out of blending, and a
@@ -153,9 +156,33 @@ pub fn render_on(
     painter.nodes(&frame.nodes, Affine::IDENTITY)?;
     let rgba = match painter.finish()? {
         Drawn::Bytes(pixmap) => pixmap.take_rgba8(ImageAlphaType::Alpha),
-        Drawn::Floats(pixels) => pixels.into_pixels(accel)?.to_rgba8(),
+        Drawn::Floats(Surface::Held(held)) => held_by(accel).download_rgba8(&held)?,
+        Drawn::Floats(Surface::Cpu(pixels)) => pixels.to_rgba8(),
     };
     Image::new(width, height, rgba)
+}
+
+/// Whether `nodes` hold work `accel` does better than the CPU: an effect
+/// it has a kernel for, or a projected layer, anywhere in them, the layers
+/// effects read and mattes included.
+fn has_work(accel: &dyn Accelerator, nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| {
+        let Node::Layer(layer) = node else {
+            return false;
+        };
+        layer.projection.is_some()
+            || layer.effects.iter().any(|effect| {
+                accel.runs(effect)
+                    || effect
+                        .input()
+                        .is_some_and(|input| has_work(accel, std::slice::from_ref(&**input)))
+            })
+            || layer
+                .matte
+                .as_ref()
+                .is_some_and(|matte| has_work(accel, std::slice::from_ref(&*matte.source)))
+            || has_work(accel, &layer.children)
+    })
 }
 
 /// What a painter drew: the rasteriser's 8-bit target when nothing it drew
@@ -188,6 +215,18 @@ impl Drawn {
                 surface.held_mut(accel)?;
                 Ok(surface)
             }
+        }
+    }
+
+    /// Its pixels, as floats, where the float canvas's work is done: in
+    /// `accel` when there is one, so what is laid, mixed and changed after
+    /// stays there ([D74]), else on the CPU.
+    ///
+    /// [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
+    fn into_working(self, accel: Option<&dyn Accelerator>) -> Result<Surface> {
+        match accel {
+            Some(accel) => self.into_held(accel),
+            None => Ok(self.into_surface()),
         }
     }
 
@@ -369,12 +408,16 @@ impl<'a> Painter<'a> {
                     let drawn = rendered.into_surface();
                     canvas.lay(&drawn, BlendMode::Normal, &Amount::constant(1.0), accel)?;
                 }
-                (None, _) => self.canvas = Some(rendered.into_surface()),
+                (None, accel) => self.canvas = Some(rendered.into_working(accel)?),
             }
         }
-        Ok(self
-            .canvas
-            .get_or_insert_with(|| Surface::Cpu(Pixels::transparent(self.width, self.height))))
+        if self.canvas.is_none() {
+            self.canvas = Some(match self.accel {
+                Some(accel) => Surface::Held(accel.transparent(self.width, self.height)?),
+                None => Surface::Cpu(Pixels::transparent(self.width, self.height)),
+            });
+        }
+        Ok(self.canvas.as_mut().expect("made above"))
     }
 
     /// Lays `source` on the float canvas by `mode`, scaled by `amount`.
@@ -413,26 +456,55 @@ impl<'a> Painter<'a> {
     fn matte_share(&self, matte: &Matte, parent: Affine) -> Result<Matted> {
         let mut painter = self.alone();
         painter.nodes(std::slice::from_ref(&*matte.source), parent)?;
-        Ok(match painter.finish()?.into_surface() {
+        Ok(match painter.finish()?.into_working(self.accel)? {
             Surface::Held(held) => Matted::Held(held, matte.mode),
             Surface::Cpu(pixels) => Matted::Values(matte_read(&pixels, matte.mode)),
         })
     }
 
     /// How much of a layer its `masks` keep at each pixel, in coordinates
-    /// `transform` maps to the frame; `None` when they cut nothing.
-    fn cut(&self, masks: &[LayerMask], transform: Affine) -> Option<Vec<f32>> {
-        if masks.is_empty() {
-            return None;
-        }
-        crate::mask::coverage(masks, transform, self.width, self.height, |mask| {
+    /// `transform` maps to the frame; `None` when they cut nothing. Worked
+    /// out in the accelerator when `held` and it holds the frame, so it
+    /// cuts pixels held there without a copy back, else on the CPU.
+    fn cut(&self, masks: &[LayerMask], transform: Affine, held: bool) -> Result<Option<Kept>> {
+        let Some((start, steps)) = crate::mask::steps(masks, transform) else {
+            return Ok(None);
+        };
+        let draw = |mask: &LayerMask| {
             let mut painter = self.alone();
             painter.ctx.set_transform(transform);
             painter.ctx.set_paint(Color::WHITE.to_vello());
             painter.ctx.set_fill_rule(vello_cpu::peniko::Fill::NonZero);
             painter.ctx.fill_path(&mask.path);
-            par::map(painter.rendered().data(), |_, p| f32::from(p.a) / 255.0)
-        })
+            painter.rendered()
+        };
+        let (width, height) = (self.width, self.height);
+        match self.accel.filter(|a| held && a.holds(width, height)) {
+            Some(accel) => {
+                let mut kept = None;
+                for (mask, step) in steps {
+                    let drawn = draw(mask);
+                    let mask = crate::mask::MaskCoverage {
+                        drawn: bytes_of(&drawn),
+                        step,
+                    };
+                    kept = Some(accel.mask(kept, start, &mask, width, height)?);
+                }
+                Ok(kept.map(Kept::Held))
+            }
+            None => {
+                let mut kept = vec![start; usize::from(width) * usize::from(height)];
+                for (mask, step) in steps {
+                    let drawn = draw(mask);
+                    let mask = crate::mask::MaskCoverage {
+                        drawn: bytes_of(&drawn),
+                        step,
+                    };
+                    crate::mask::combine_on_cpu(&mut kept, &mask, width, height);
+                }
+                Ok(Some(Kept::Values(kept)))
+            }
+        }
     }
 
     /// How much of each pixel of the grid lies inside `clip`, drawn in
@@ -450,16 +522,17 @@ impl<'a> Painter<'a> {
     /// Draws `nodes` on a canvas of their own and returns its pixels, on
     /// the CPU.
     fn drawn_alone(&self, nodes: &[Node], transform: Affine) -> Result<Pixels> {
-        self.drawn_alone_surface(nodes, transform)?
-            .into_pixels(self.accel)
+        let mut painter = self.alone();
+        painter.nodes(nodes, transform)?;
+        painter.finish()?.into_pixels(self.accel)
     }
 
-    /// Draws `nodes` on a canvas of their own and returns its pixels,
-    /// wherever they ended.
+    /// Draws `nodes` on a canvas of their own and returns its pixels where
+    /// the float canvas's work is done.
     fn drawn_alone_surface(&self, nodes: &[Node], transform: Affine) -> Result<Surface> {
         let mut painter = self.alone();
         painter.nodes(nodes, transform)?;
-        Ok(painter.finish()?.into_surface())
+        painter.finish()?.into_working(self.accel)
     }
 
     /// Where `effect` runs on a layer whose own coordinates `transform`
@@ -479,12 +552,29 @@ impl<'a> Painter<'a> {
                     Node::Layer(layer) => layer.bounds,
                     _ => None,
                 };
-                // Drawn once a frame for each transform it is read at.
-                self.reads
-                    .read(node, transform, (self.width, self.height), || {
-                        self.drawn_alone(std::slice::from_ref(&**node), transform)
-                    })
-                    .map(|pixels| Input { pixels, bounds })
+                // Drawn once a frame for each transform it is read at:
+                // left in the accelerator for an effect that runs there,
+                // brought to the CPU for one that runs on the CPU.
+                let nodes = std::slice::from_ref(&**node);
+                let size = (self.width, self.height);
+                let drawn = match self.accel.filter(|accel| accel.runs(effect)) {
+                    Some(accel) => {
+                        match self.reads.read(node, transform, size, Some(accel), || {
+                            self.drawn_alone_surface(nodes, transform)
+                        })? {
+                            Surface::Held(held) => Drawing::Held(Arc::new(held)),
+                            Surface::Cpu(pixels) => Drawing::Cpu(pixels),
+                        }
+                    }
+                    None => Drawing::Cpu(
+                        self.reads
+                            .read(node, transform, size, self.accel, || {
+                                self.drawn_alone(nodes, transform).map(Surface::Cpu)
+                            })?
+                            .into_pixels(self.accel)?,
+                    ),
+                };
+                Ok(Input { drawn, bounds })
             })
             .transpose()?;
         Ok(Space {
@@ -578,7 +668,8 @@ impl<'a> Painter<'a> {
                     true => None,
                     false => Some(self.drawn_alone_surface(&filter.children, transform)?),
                 };
-                (transform, region, self.cut(&filter.masks, transform))
+                let cut = self.cut(&filter.masks, transform, drawn.is_held())?;
+                (transform, region, cut)
             }
             Some(projection) => {
                 let maps = [Homography::from(parent) * projection.matrix];
@@ -604,7 +695,7 @@ impl<'a> Painter<'a> {
                         }
                         false => sub.drawn_alone(&filter.children, plan.local)?,
                     };
-                    if let Some(cut) = sub.cut(&filter.masks, plan.local) {
+                    if let Some(Kept::Values(cut)) = sub.cut(&filter.masks, plan.local, false)? {
                         par::each_with(pixels.data_mut(), &cut, |_, pixel, &kept| {
                             *pixel = pixel.map(|c| c * kept);
                         });
@@ -614,7 +705,7 @@ impl<'a> Painter<'a> {
                 let transform = maps[0]
                     .tangent(plan.seen)
                     .unwrap_or(parent * filter.transform);
-                (transform, Some(Surface::Cpu(region)), None)
+                (transform, Some(region), None)
             }
         };
         let mut changed = drawn.duplicate(self.accel)?;
@@ -642,7 +733,7 @@ impl<'a> Painter<'a> {
             _ => None,
         };
         let amount = [
-            cut.as_deref().map(Share::Values),
+            cut.as_ref().map(Kept::share),
             matte.as_ref().map(Matted::share),
             region_share,
         ]
@@ -754,7 +845,7 @@ impl<'a> Painter<'a> {
         let transform = parent * layer.transform;
         let mut alone = self.alone();
         alone.content(layer, steps, transform, parent)?;
-        let drawn = alone.finish()?.into_surface();
+        let drawn = alone.finish()?.into_working(self.accel)?;
         let clip = layer
             .shown_clip()
             .map(|clip| self.coverage(&clip, transform));
@@ -818,7 +909,7 @@ impl<'a> Painter<'a> {
                 // to the clip there.
                 let mut alone = sub.alone();
                 alone.content(layer, steps, plan.local, Affine::IDENTITY)?;
-                let drawn = alone.finish()?.into_surface();
+                let drawn = alone.finish()?.into_working(sub.accel)?;
                 let clip = sub.coverage(&Clip::Path(path, rule), plan.local);
                 let amount = Amount::constant(1.0).and(Share::Values(&clip));
                 return sub.lay_on_canvas(&drawn, BlendMode::Normal, &amount);
@@ -844,7 +935,7 @@ impl<'a> Painter<'a> {
                 .map(Matted::share)
                 .into_iter()
                 .fold(Amount::constant(opacity), Amount::and);
-            return self.lay_on_canvas(&Surface::Cpu(laid), layer.blend, &amount);
+            return self.lay_on_canvas(&laid, layer.blend, &amount);
         }
         let mask = layer
             .matte
@@ -859,19 +950,20 @@ impl<'a> Painter<'a> {
             mask,
             None,
         );
-        let drawn = self.draw_pixels(Surface::Cpu(laid));
+        let drawn = self.draw_pixels(laid);
         self.ctx.pop_layer();
         drawn
     }
 
     /// What `draw` paints on a painter of `plan`'s buffer, laid onto this
-    /// painter's grid through each of `maps` and averaged.
+    /// painter's grid through each of `maps` and averaged: in the
+    /// accelerator when the float canvas's work is done there.
     fn laid(
         &self,
         plan: &Plan,
         maps: &[Homography],
         draw: impl FnOnce(&mut Painter<'a>) -> Result<()>,
-    ) -> Result<Pixels> {
+    ) -> Result<Surface> {
         let mut sub = Painter::new(
             plan.width,
             plan.height,
@@ -881,15 +973,36 @@ impl<'a> Painter<'a> {
         );
         draw(&mut sub)?;
         let (width, height) = (self.width, self.height);
-        Ok(match sub.finish()? {
-            Drawn::Bytes(pixmap) => {
-                projected::lay(Buffer::Bytes(&pixmap), plan, maps, width, height)
-            }
+        let landings = plan.landings(maps);
+        let share = 1.0 / maps.len() as f32;
+        let drawn = sub.finish()?;
+        if let (Some(accel), true) = (self.accel, self.floats()) {
+            let texels = match &drawn {
+                Drawn::Bytes(pixmap) => Texels::Bytes {
+                    rgba: bytes_of(pixmap),
+                    width: pixmap.width(),
+                    height: pixmap.height(),
+                },
+                Drawn::Floats(Surface::Held(held)) => Texels::Held(held),
+                Drawn::Floats(Surface::Cpu(pixels)) => Texels::Floats(pixels),
+            };
+            return accel
+                .project(texels, &landings, share, width, height)
+                .map(Surface::Held);
+        }
+        Ok(Surface::Cpu(match drawn {
+            Drawn::Bytes(pixmap) => projected::lay(
+                Buffer::Bytes(bytes_of(&pixmap), pixmap.width(), pixmap.height()),
+                &landings,
+                share,
+                width,
+                height,
+            ),
             Drawn::Floats(pixels) => {
                 let pixels = pixels.into_pixels(self.accel)?;
-                projected::lay(Buffer::Floats(&pixels), plan, maps, width, height)
+                projected::lay(Buffer::Floats(&pixels), &landings, share, width, height)
             }
-        })
+        }))
     }
 
     /// Draws a layer's content inside the buffer it was given, in
@@ -906,8 +1019,8 @@ impl<'a> Painter<'a> {
         parent: Affine,
     ) -> Result<()> {
         let moved = steps.moved.transform;
-        let cut = self.cut(&layer.masks, transform * moved);
-        if steps.on_pixels.is_empty() && cut.is_none() && layer.motion.is_empty() {
+        let cuts = layer.masks.iter().any(|m| m.mode != MaskMode::None);
+        if steps.on_pixels.is_empty() && !cuts && layer.motion.is_empty() {
             self.pending = true;
             let drawn = self.nodes(&layer.children, transform * moved);
             let mut effects = EffectContext {
@@ -924,20 +1037,21 @@ impl<'a> Painter<'a> {
         let at = transform * moved;
         let mut pixels = match &layer.shared {
             // Layers with the same children draw them once at each
-            // transform, on the CPU; an effect that runs in the accelerator
-            // takes them there from the shared drawing.
-            Some(shared) => Surface::Cpu(self.reads.shared(
-                shared,
-                at,
-                (self.width, self.height),
-                || self.drawn_alone(&layer.children, at),
-            )?),
+            // transform, where the float canvas's work is done.
+            Some(shared) => {
+                self.reads
+                    .shared(shared, at, (self.width, self.height), self.accel, || {
+                        self.drawn_alone_surface(&layer.children, at)
+                    })?
+            }
             None => {
-                // When the first effect runs in the accelerator, what the
-                // content drew goes there as it was drawn.
-                let held = self
-                    .accel
-                    .filter(|accel| steps.on_pixels.first().is_some_and(|e| accel.runs(e)));
+                // What the content drew goes to the accelerator as it was
+                // drawn when the first effect runs there, or when no effect
+                // or motion blur needs it on the CPU before it is laid.
+                let held = self.accel.filter(|accel| match steps.on_pixels.first() {
+                    Some(effect) => accel.runs(effect),
+                    None => layer.motion.is_empty(),
+                });
                 let mut painter = self.alone();
                 painter.nodes(&layer.children, at)?;
                 match held {
@@ -952,8 +1066,13 @@ impl<'a> Painter<'a> {
             (Some(clip), true) => Some(self.coverage(clip, transform)),
             _ => None,
         };
-        for cut in [&cut, &clipped].into_iter().flatten() {
-            pixels.cut(cut, self.accel)?;
+        match (self.cut(&layer.masks, at, pixels.is_held())?, self.accel) {
+            (Some(Kept::Held(kept)), Some(accel)) => pixels.cut_by(&kept, accel)?,
+            (Some(Kept::Values(kept)), _) => pixels.cut(&kept, self.accel)?,
+            _ => {}
+        }
+        if let Some(clipped) = &clipped {
+            pixels.cut(clipped, self.accel)?;
         }
         // Each effect sees the box the ones before it grew.
         let mut bounds = layer.bounds;
@@ -1066,6 +1185,23 @@ fn matte_read(pixels: &Pixels, mode: MatteMode) -> Vec<f32> {
             MatteMode::LumaInverted => 1.0 - luma(),
         }
     })
+}
+
+/// What a layer's masks keep of it at each pixel: worked out on the CPU,
+/// one value a pixel, or in the accelerator, in every channel of a pixel.
+enum Kept {
+    Values(Vec<f32>),
+    Held(crate::accel::Resident),
+}
+
+impl Kept {
+    /// What it scales an amount by.
+    fn share(&self) -> Share<'_> {
+        match self {
+            Kept::Values(values) => Share::Values(values),
+            Kept::Held(held) => Share::Alpha(held),
+        }
+    }
 }
 
 /// A matte, read: its values on the CPU, or its source's pixels in the

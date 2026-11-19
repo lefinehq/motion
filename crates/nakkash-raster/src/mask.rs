@@ -21,7 +21,9 @@ pub const SIGMA_PER_FEATHER: f32 = 0.3;
 /// How much of a layer each pixel of the frame keeps, 0 to 1, row by row:
 /// the masks combined in order. `None` when no mask cuts, because every
 /// one's mode is `none`. `fill` draws one outline, in coordinates
-/// `transform` maps to the frame, and gives its coverage.
+/// `transform` maps to the frame, and gives its coverage. The painter
+/// draws and combines them one at a time instead (`Painter::cut`).
+#[cfg(test)]
 pub(crate) fn coverage(
     masks: &[LayerMask],
     transform: Affine,
@@ -29,32 +31,106 @@ pub(crate) fn coverage(
     height: u16,
     fill: impl Fn(&LayerMask) -> Vec<f32>,
 ) -> Option<Vec<f32>> {
+    let (start, steps) = steps(masks, transform)?;
+    let mut kept = vec![start; usize::from(width) * usize::from(height)];
+    for (mask, step) in steps {
+        let own = fill(mask);
+        apply(&mut kept, own, &step, width, height);
+    }
+    Some(kept)
+}
+
+/// One mask's step in combining a layer's masks, its outline's coverage
+/// aside: how far it grows, how it is feathered, and how it combines with
+/// the masks before it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MaskStep {
+    /// How many px its coverage grows by, or shrinks by when negative: a
+    /// whole number, 0 for neither.
+    pub grow: f32,
+    /// The standard deviation, in px along x and y, of the Gaussian it is
+    /// feathered by; 0 for none.
+    pub sigma: [f32; 2],
+    /// Whether it keeps what is outside its outline.
+    pub inverted: bool,
+    /// What its coverage is multiplied by.
+    pub opacity: f32,
+    /// How it combines with the masks before it.
+    pub mode: MaskMode,
+}
+
+/// A mask whose outline the rasteriser drew, for an accelerator to
+/// combine ([`Accelerator::mask`](crate::Accelerator::mask)).
+#[derive(Debug, Clone, Copy)]
+pub struct MaskCoverage<'a> {
+    /// The outline filled in white, as the rasteriser drew it on a canvas
+    /// of the frame: premultiplied RGBA, 8 bits a channel, row by row.
+    pub drawn: &'a [u8],
+    /// What is done with it.
+    pub step: MaskStep,
+}
+
+/// The coverage the masks start from, and each cutting mask with its step;
+/// `None` when no mask cuts.
+pub(crate) fn steps(
+    masks: &[LayerMask],
+    transform: Affine,
+) -> Option<(f32, Vec<(&LayerMask, MaskStep)>)> {
     let first = masks.iter().find(|m| m.mode != MaskMode::None)?;
     let start = match first.mode {
         MaskMode::Add | MaskMode::Lighten | MaskMode::Difference => 0.0,
         MaskMode::Subtract | MaskMode::Intersect | MaskMode::Darken | MaskMode::None => 1.0,
     };
     let [sx, sy] = scales(transform);
-    let mut kept = vec![start; usize::from(width) * usize::from(height)];
-    for mask in masks.iter().filter(|m| m.mode != MaskMode::None) {
-        let mut own = fill(mask);
-        let grow = mask.expand * (sx * sy).sqrt();
-        if grow.abs() >= 0.5 {
-            spread(&mut own, width, height, grow.round());
-        }
-        let sigma = [mask.feather[0] * sx, mask.feather[1] * sy].map(|f| f * SIGMA_PER_FEATHER);
-        if sigma.iter().any(|s| *s > 0.0) {
-            own = feathered(own, width, height, sigma);
-        }
-        par::each_with(&mut kept, &own, |_, a, &m| {
-            let m = match mask.inverted {
-                true => 1.0 - m,
-                false => m,
-            } * mask.opacity;
-            *a = combine(*a, m, mask.mode);
-        });
+    let steps = masks
+        .iter()
+        .filter(|m| m.mode != MaskMode::None)
+        .map(|mask| {
+            let grow = mask.expand * (sx * sy).sqrt();
+            let step = MaskStep {
+                grow: match grow.abs() >= 0.5 {
+                    true => grow.round(),
+                    false => 0.0,
+                },
+                sigma: [mask.feather[0] * sx, mask.feather[1] * sy].map(|f| f * SIGMA_PER_FEATHER),
+                inverted: mask.inverted,
+                opacity: mask.opacity,
+                mode: mask.mode,
+            };
+            (mask, step)
+        })
+        .collect();
+    Some((start, steps))
+}
+
+/// `kept`, the masks' coverage so far, combined on the CPU with one more
+/// mask the rasteriser drew: the reference an accelerator's
+/// ([`Accelerator::mask`](crate::Accelerator::mask)) is held to.
+pub fn combine_on_cpu(kept: &mut [f32], mask: &MaskCoverage<'_>, width: u16, height: u16) {
+    let own = mask
+        .drawn
+        .chunks_exact(4)
+        .map(|p| f32::from(p[3]) / 255.0)
+        .collect();
+    apply(kept, own, &mask.step, width, height);
+}
+
+/// `kept`, the coverage so far, combined with one mask's own coverage
+/// `own` by its step.
+fn apply(kept: &mut [f32], mut own: Vec<f32>, step: &MaskStep, width: u16, height: u16) {
+    if step.grow != 0.0 {
+        spread(&mut own, width, height, step.grow);
     }
-    Some(kept)
+    if step.sigma.iter().any(|s| *s > 0.0) {
+        own = feathered(own, width, height, step.sigma);
+    }
+    par::each_with(kept, &own, |_, a, &m| {
+        let m = match step.inverted {
+            true => 1.0 - m,
+            false => m,
+        } * step.opacity;
+        *a = combine(*a, m, step.mode);
+    });
 }
 
 /// What the coverage so far, `a`, becomes with a mask covering `m`.

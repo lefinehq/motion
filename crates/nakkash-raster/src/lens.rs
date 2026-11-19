@@ -16,27 +16,29 @@
 
 use std::f64::consts::{PI, TAU};
 
-use vello_cpu::kurbo::{Point, Rect, Shape};
+use vello_cpu::kurbo::{Affine, Point, Rect, Shape};
 
 use crate::colour::{choice, number};
 use crate::effect::{ParamValue, Space};
 use crate::pixels::{Pixel, Pixels};
 
 /// How many heights across the iris its edges are kept at.
-const ROWS: usize = 1024;
+pub const IRIS_ROWS: usize = 1024;
+const ROWS: usize = IRIS_ROWS;
 
 /// How many points round its outline the iris is drawn through.
 const OUTLINE: usize = 720;
 
 /// The shape of a lens's iris, at a radius of 1.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Iris {
-    /// The lowest and highest of it, `y` down.
-    top: f64,
-    bottom: f64,
-    /// Its left and right edges at `ROWS` heights evenly from `top` to
-    /// `bottom`.
-    edges: Vec<[f64; 2]>,
+pub struct Iris {
+    /// The highest of it, `y` down.
+    pub top: f64,
+    /// The lowest of it.
+    pub bottom: f64,
+    /// Its left and right edges at [`IRIS_ROWS`] heights evenly from `top`
+    /// to `bottom`.
+    pub edges: Vec<[f64; 2]>,
 }
 
 impl Iris {
@@ -90,7 +92,7 @@ impl Iris {
     /// a turn: the point `(x, y)` of what it reads is `(-x, -y)` of the
     /// iris. For an iris of an odd number of sides that turns it upside
     /// down, so that what spreads is the iris as it stands.
-    fn rows(&self, radius: f64, rows: &mut Vec<Row>) {
+    pub fn rows(&self, radius: f64, rows: &mut Vec<Row>) {
         rows.clear();
         let (top, bottom) = (-self.bottom * radius, -self.top * radius);
         let (first, last) = ((top - 0.5).round() as i64, (bottom + 0.5).round() as i64);
@@ -138,15 +140,15 @@ fn across(outline: &[Point], y: f64) -> [f64; 2] {
 
 /// One row of an iris in pixels.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Row {
+pub struct Row {
     /// Its offset from the middle row.
-    dy: i64,
+    pub dy: i64,
     /// The share of the row's height the iris covers, 0 to 1.
-    share: f64,
+    pub share: f64,
     /// Its left edge, in px right of the middle.
-    left: f64,
+    pub left: f64,
     /// Its right edge, in px right of the middle.
-    right: f64,
+    pub right: f64,
 }
 
 /// The running sums of every row of a grid: what `sum` reads.
@@ -272,11 +274,16 @@ pub(crate) fn spread(
 
 /// A level a blur map gives, 0 to 1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Level {
+pub enum Level {
+    /// Rec. 601's luma of the straight colour.
     Luminance,
+    /// The straight red.
     Red,
+    /// The straight green.
     Green,
+    /// The straight blue.
     Blue,
+    /// The alpha.
     Alpha,
 }
 
@@ -307,15 +314,86 @@ fn sides(choice: usize) -> usize {
     [6, 3, 4, 5, 7, 8, 9, 10][choice]
 }
 
-/// `lens-blur`: the layer spread over a lens's iris `radius` px about each
-/// pixel, `iris` the polygon, `roundness` of the way to a circle,
-/// `aspect` times as wide as high and turned `rotation` degrees clockwise.
-/// With a `map` layer, each pixel's radius is `radius` times how far its
-/// level of the map (`map-level`, `inverted` or not) is from
-/// `focal-distance`; the map's box lies centred on the layer's, or
-/// stretched over it. With `edges` `repeat`, the edge pixels lie beyond
-/// the frame's edges.
-pub(crate) fn lens_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+/// `lens-blur`'s plan: the layer spread over `iris` `radius` px of the
+/// grid about each pixel, or, with a map, `radius` times how far each
+/// pixel's level of the map is from the level in focus. With `repeat`, the
+/// edge pixels lie beyond the frame's edges.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LensBlur {
+    /// The iris's radius, in px of the grid.
+    pub radius: f64,
+    /// The iris's shape.
+    pub iris: Iris,
+    /// Whether the edge pixels lie beyond the edges, else nothing does.
+    pub repeat: bool,
+    /// The blur map, when the effect reads one.
+    pub map: Option<LensMap>,
+}
+
+/// How a lens blur reads its map: where the map lies on the layer, and
+/// how its level gives each pixel's radius.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LensMap {
+    /// From the layer's own coordinates to px of the grid, which the map's
+    /// coordinates are laid on too.
+    pub transform: Affine,
+    /// The layer's box, when it has one.
+    pub bounds: Option<Rect>,
+    /// The map's box, when it has one; the layer's otherwise.
+    pub map_bounds: Option<Rect>,
+    /// Whether the map's box is stretched over the layer's, else centred
+    /// on it.
+    pub stretch: bool,
+    /// Which level of the map sets a pixel's radius.
+    pub level: Level,
+    /// Whether the level is taken from 1.
+    pub inverted: bool,
+    /// The level that stays sharp.
+    pub focal: f64,
+}
+
+impl LensMap {
+    /// The layer's box in its own coordinates on a `width` by `height`
+    /// grid: its own, or the frame's.
+    pub fn target(&self, width: u16, height: u16) -> Rect {
+        self.bounds.unwrap_or_else(|| {
+            let frame = Rect::new(0.0, 0.0, f64::from(width), f64::from(height));
+            (self.transform.inverse() * frame.to_path(0.1)).bounding_box()
+        })
+    }
+
+    /// Where on the map, in the layer's coordinates, the layer's point
+    /// `at` reads, the layer's box being `target`.
+    pub fn on_map(&self, at: Point, target: Rect) -> Point {
+        let map_box = self.map_bounds.unwrap_or(target);
+        match self.stretch {
+            true => Point::new(
+                map_box.x0 + (at.x - target.x0) / target.width().max(1e-6) * map_box.width(),
+                map_box.y0 + (at.y - target.y0) / target.height().max(1e-6) * map_box.height(),
+            ),
+            false => (at - target.center() + map_box.center().to_vec2()).to_point(),
+        }
+    }
+
+    /// The map's level of `pixel`, taken from 1 when inverted: how far
+    /// from `focal` it is gives the radius.
+    pub fn level_of(&self, pixel: Pixel) -> f64 {
+        let l = self.level.of(pixel);
+        match self.inverted {
+            true => 1.0 - l,
+            false => l,
+        }
+    }
+}
+
+/// [`LensBlur`] from `lens-blur`'s values in `space`: `iris` the polygon,
+/// `roundness` of the way to a circle, `aspect` times as wide as high and
+/// turned `rotation` degrees clockwise. With a `map` layer, each pixel's
+/// radius is `radius` times how far its level of the map (`map-level`,
+/// `inverted` or not) is from `focal-distance`; the map's box lies centred
+/// on the layer's, or stretched over it. With `edges` `repeat`, the edge
+/// pixels lie beyond the frame's edges.
+pub(crate) fn lens_blur_plan(values: &[ParamValue], space: &Space) -> LensBlur {
     let radius = f64::from(number(values, 0));
     let roundness = f64::from(number(values, 1));
     let aspect = f64::from(number(values, 2)).max(1e-3);
@@ -331,48 +409,46 @@ pub(crate) fn lens_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Spac
         let [a, b, c, d, ..] = space.transform.as_coeffs();
         (a * d - b * c).abs().sqrt()
     };
-    let radius = radius * scale;
-    let Some(input) = &space.input else {
+    LensBlur {
+        radius: radius * scale,
+        iris,
+        repeat,
+        map: space.input.as_ref().map(|input| LensMap {
+            transform: space.transform,
+            bounds: space.bounds,
+            map_bounds: input.bounds,
+            stretch,
+            level,
+            inverted,
+            focal,
+        }),
+    }
+}
+
+/// `lens-blur`, see [`lens_blur_plan`].
+pub(crate) fn lens_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let LensBlur {
+        radius,
+        iris,
+        repeat,
+        map,
+    } = lens_blur_plan(values, space);
+    let (Some(map), Some(input)) = (map, &space.input) else {
         return spread(pixels, &iris, repeat, |_| radius);
     };
     let width = usize::from(pixels.width());
-    let target = layer_box(pixels, space);
-    let map_box = input.bounds.unwrap_or(target);
-    let to = space.transform;
+    let target = map.target(pixels.width(), pixels.height());
+    let to = map.transform;
     let back = to.inverse();
-    let map = &input.pixels;
+    let source = input.pixels();
     let radii: Vec<f64> = (0..pixels.data().len())
         .map(|i| {
             let at = back * Point::new((i % width) as f64 + 0.5, (i / width) as f64 + 0.5);
-            let on_map = match stretch {
-                true => Point::new(
-                    map_box.x0 + (at.x - target.x0) / target.width().max(1e-6) * map_box.width(),
-                    map_box.y0 + (at.y - target.y0) / target.height().max(1e-6) * map_box.height(),
-                ),
-                false => (at - target.center() + map_box.center().to_vec2()).to_point(),
-            };
-            let there = to * on_map;
-            let mut l = level.of(map.sample(there.x, there.y));
-            if inverted {
-                l = 1.0 - l;
-            }
-            radius * (l - focal).abs()
+            let there = to * map.on_map(at, target);
+            radius * (map.level_of(source.sample(there.x, there.y)) - map.focal).abs()
         })
         .collect();
     spread(pixels, &iris, repeat, |i| radii[i]);
-}
-
-/// The layer's box in its own coordinates: its own, or the frame's.
-fn layer_box(pixels: &Pixels, space: &Space) -> Rect {
-    space.bounds.unwrap_or_else(|| {
-        let frame = Rect::new(
-            0.0,
-            0.0,
-            f64::from(pixels.width()),
-            f64::from(pixels.height()),
-        );
-        (space.transform.inverse() * frame.to_path(0.1)).bounding_box()
-    })
 }
 
 #[cfg(test)]

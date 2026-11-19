@@ -9,11 +9,17 @@
 //! drawn by the rasteriser on the CPU; an accelerator only takes what the
 //! float canvas does with their pixels. The painter's pixels are a
 //! [`Surface`]: on the CPU or in the accelerator, wherever they were last
-//! changed. An operation runs in the accelerator when it has a kernel for
-//! it and one of its operands is already there (an effect with a kernel
-//! moves its layer's pixels there); any other operation brings its pixels
-//! back and runs on the CPU, so an effect without a kernel costs a copy each
-//! way and nothing else.
+//! changed. A painter handed an accelerator keeps its float canvas there
+//! from the start, and what the rasteriser drew goes there as its bytes, so
+//! laying, mixing, cutting and the effects with kernels run there one after
+//! another without a copy between them. A step without a kernel brings its
+//! pixels back and runs on the CPU, so an effect without one costs a copy
+//! each way and nothing else; the frame itself comes back once, at the end,
+//! as the bytes it is written in.
+//!
+//! An accelerator may record the work it is handed and run it later, so a
+//! frame whose pixels never come back before its end is one hand-over:
+//! nothing but reading pixels back waits for it.
 //!
 //! [D74]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d74-an-opt-in-gpu-path-approximates-the-cpu-reference
 
@@ -24,10 +30,12 @@ use nakkash_format::Result;
 use vello_cpu::kurbo::Affine;
 
 use crate::blend::BlendMode;
-use crate::effect::{Effect, Space};
+use crate::effect::{Drawing, Effect, Input, Space};
 use crate::list::MatteMode;
+use crate::mask::{MaskCoverage, combine_on_cpu};
 use crate::par;
 use crate::pixels::Pixels;
+use crate::projected::{self, Buffer, Landing};
 
 /// A frame-sized grid of premultiplied RGBA float pixels held in an
 /// accelerator's memory. What it holds is the accelerator's own type; the
@@ -144,6 +152,26 @@ impl<'a> Amount<'a> {
     }
 }
 
+/// A projected layer's buffer, as it was drawn, for
+/// [`Accelerator::project`] to lay.
+#[derive(Debug, Clone, Copy)]
+pub enum Texels<'a> {
+    /// As the rasteriser drew it: premultiplied RGBA at 8 bits a channel,
+    /// row by row, `width` by `height` px.
+    Bytes {
+        /// The bytes.
+        rgba: &'a [u8],
+        /// Its width in px.
+        width: u16,
+        /// Its height in px.
+        height: u16,
+    },
+    /// Float pixels on the CPU.
+    Floats(&'a Pixels),
+    /// Float pixels held in the accelerator.
+    Held(&'a Resident),
+}
+
 /// What an accelerator did over a render, for the caller to report.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Tally {
@@ -160,6 +188,9 @@ pub struct Tally {
     pub uploads: (u64, u64),
     /// Pixel grids copied back to the CPU, and their bytes.
     pub downloads: (u64, u64),
+    /// Times the work recorded so far was handed to the accelerator to
+    /// run: once a frame when nothing comes back to the CPU before its end.
+    pub submissions: u64,
 }
 
 /// Something that does the float canvas's work in its own memory, such as
@@ -203,6 +234,17 @@ pub trait Accelerator: Send + Sync {
     /// When the copy fails.
     fn download(&self, pixels: &Resident) -> Result<Pixels>;
 
+    /// `pixels`, copied back to the CPU as a frame is written: straight
+    /// RGBA at 8 bits a channel, row by row, each channel rounded as the
+    /// CPU rounds a frame's. By default, [`Accelerator::download`] and the
+    /// CPU's rounding.
+    ///
+    /// # Errors
+    /// When the copy fails.
+    fn download_rgba8(&self, pixels: &Resident) -> Result<Vec<u8>> {
+        Ok(self.download(pixels)?.to_rgba8())
+    }
+
     /// Lays `source` on `canvas` by `mode`, each source pixel first scaled
     /// by `amount`, as [`Pixels::lay`] does.
     ///
@@ -230,12 +272,71 @@ pub trait Accelerator: Send + Sync {
     /// When the work fails.
     fn cut(&self, pixels: &mut Resident, kept: &[f32]) -> Result<()>;
 
+    /// Multiplies every channel of each pixel of `pixels` by the alpha of
+    /// `kept`'s: masks' coverage the accelerator worked out
+    /// ([`Accelerator::mask`]). By default, the coverage copied back and
+    /// [`Accelerator::cut`].
+    ///
+    /// # Errors
+    /// When the work fails.
+    fn cut_by(&self, pixels: &mut Resident, kept: &Resident) -> Result<()> {
+        let kept: Vec<f32> = self.download(kept)?.data().iter().map(|p| p[3]).collect();
+        self.cut(pixels, &kept)
+    }
+
+    /// A layer's masks' coverage, `width` by `height`, after one more mask
+    /// the rasteriser drew: `kept`, the coverage so far, or `start`
+    /// everywhere when it is the first, combined with `mask` as
+    /// [`combine_on_cpu`] does. Every channel of a pixel holds its
+    /// coverage. By default, on the CPU, copied in.
+    ///
+    /// # Errors
+    /// When the work fails.
+    fn mask(
+        &self,
+        kept: Option<Resident>,
+        start: f32,
+        mask: &MaskCoverage<'_>,
+        width: u16,
+        height: u16,
+    ) -> Result<Resident> {
+        let mut values = match kept {
+            Some(kept) => self.download(&kept)?.data().iter().map(|p| p[3]).collect(),
+            None => vec![start; usize::from(width) * usize::from(height)],
+        };
+        combine_on_cpu(&mut values, mask, width, height);
+        let mut pixels = Pixels::transparent(width, height);
+        par::each_with(pixels.data_mut(), &values, |_, p, &k| *p = [k; 4]);
+        self.upload(&pixels)
+    }
+
     /// `pixels` moved by `transform`, in pixels of the grid, as
     /// [`Pixels::transformed`] gives.
     ///
     /// # Errors
     /// When the work fails.
     fn transformed(&self, pixels: &Resident, transform: Affine) -> Result<Resident>;
+
+    /// A `width` by `height` grid of what a projected layer's `buffer`
+    /// lays on it ([D58]): each px of the grid seen through each of
+    /// `landings` onto the buffer, sampled by its footprint from the
+    /// buffer's halved copies, adding `share` of it. By default, on the
+    /// CPU, copied in.
+    ///
+    /// # Errors
+    /// When the work fails.
+    ///
+    /// [D58]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+    fn project(
+        &self,
+        buffer: Texels<'_>,
+        landings: &[Landing],
+        share: f32,
+        width: u16,
+        height: u16,
+    ) -> Result<Resident> {
+        project_on_cpu(self, buffer, landings, share, width, height)
+    }
 
     /// Whether it has a kernel for `effect` with its values. An effect
     /// without one runs on the CPU.
@@ -259,6 +360,36 @@ impl fmt::Debug for dyn Accelerator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Accelerator")
     }
+}
+
+/// What [`Accelerator::project`] gives, worked out on the CPU and copied
+/// into `accel`: the reference, and what an accelerator does for a buffer
+/// it cannot hold.
+///
+/// # Errors
+/// When a copy fails.
+pub fn project_on_cpu(
+    accel: &(impl Accelerator + ?Sized),
+    buffer: Texels<'_>,
+    landings: &[Landing],
+    share: f32,
+    width: u16,
+    height: u16,
+) -> Result<Resident> {
+    let downloaded;
+    let buffer = match buffer {
+        Texels::Bytes {
+            rgba,
+            width,
+            height,
+        } => Buffer::Bytes(rgba, width, height),
+        Texels::Floats(pixels) => Buffer::Floats(pixels),
+        Texels::Held(held) => {
+            downloaded = accel.download(held)?;
+            Buffer::Floats(&downloaded)
+        }
+    };
+    accel.upload(&projected::lay(buffer, landings, share, width, height))
 }
 
 /// A layer's or a canvas's pixels while the painter works on them: on the
@@ -382,6 +513,18 @@ impl Surface {
         }
     }
 
+    /// Multiplies each pixel by the alpha of `kept`, masks' coverage the
+    /// accelerator holds.
+    pub(crate) fn cut_by(&mut self, kept: &Resident, accel: &dyn Accelerator) -> Result<()> {
+        match self {
+            Surface::Held(held) => accel.cut_by(held, kept),
+            Surface::Cpu(_) => {
+                let kept: Vec<f32> = accel.download(kept)?.data().iter().map(|p| p[3]).collect();
+                self.cut(&kept, Some(accel))
+            }
+        }
+    }
+
     /// Multiplies each pixel by `kept`, where the pixels are.
     pub(crate) fn cut(&mut self, kept: &[f32], accel: Option<&dyn Accelerator>) -> Result<()> {
         match (self, accel) {
@@ -416,13 +559,28 @@ impl Surface {
             return accel.effect(self.held_mut(accel)?, effect, space);
         }
         accel.fell_back(effect);
+        // What it reads comes back to the CPU with it.
+        let brought;
+        let space = match &space.input {
+            Some(Input {
+                drawn: Drawing::Held(held),
+                bounds,
+            }) => {
+                brought = Space {
+                    input: Some(Input::new(accel.download(held)?, *bounds)),
+                    ..space.clone()
+                };
+                &brought
+            }
+            _ => space,
+        };
         effect.apply(self.pixels_mut(Some(accel))?, space);
         Ok(())
     }
 }
 
 /// The accelerator that holds pixels the painter has in one.
-fn held_by(accel: Option<&dyn Accelerator>) -> &dyn Accelerator {
+pub(crate) fn held_by(accel: Option<&dyn Accelerator>) -> &dyn Accelerator {
     accel.expect("held pixels come with the accelerator that holds them")
 }
 

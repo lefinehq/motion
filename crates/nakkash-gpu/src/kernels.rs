@@ -16,6 +16,18 @@ pub(crate) const LINE_GROUP: u32 = 64;
 /// The most workgroups one dimension of a dispatch may have.
 const MAX_GROUPS: u32 = 65535;
 
+/// The blend modes' functions, written in front of every family that lays
+/// a pixel by a mode.
+pub(crate) const BLEND: &str = include_str!("shaders/blend.wgsl");
+
+/// The operations inside effects, written in front of every family that
+/// combines an effect's result with a layer by one, after [`BLEND`].
+pub(crate) const OPERATION: &str = include_str!("shaders/operation.wgsl");
+
+/// Drawing in a layer's own coordinates, written in front of every family
+/// of generators, after [`OPERATION`].
+pub(crate) const LAYER: &str = include_str!("shaders/layer.wgsl");
+
 /// The families, and the entry points of each.
 pub(crate) const PIXEL: FamilySpec = FamilySpec {
     source: include_str!("shaders/pixel.wgsl"),
@@ -26,8 +38,6 @@ pub(crate) const PIXEL: FamilySpec = FamilySpec {
         "cut",
         "scale",
         "glow_threshold",
-        "glow_add",
-        "glow_alone",
         "shadow_colour",
         "shadow_under",
     ],
@@ -42,15 +52,134 @@ pub(crate) const UNPACK: FamilySpec = FamilySpec {
     reads: 2,
     entries: &["unpack"],
 };
+pub(crate) const OPERATE: FamilySpec = FamilySpec {
+    source: include_str!("shaders/operate.wgsl"),
+    reads: 1,
+    entries: &["operate", "light", "solid_composite"],
+};
+pub(crate) const HALVE: FamilySpec = FamilySpec {
+    source: include_str!("shaders/halve.wgsl"),
+    reads: 0,
+    entries: &["halve"],
+};
+pub(crate) const PROJECT: FamilySpec = FamilySpec {
+    source: include_str!("shaders/project.wgsl"),
+    reads: 3,
+    entries: &["project"],
+};
+pub(crate) const PACK: FamilySpec = FamilySpec {
+    source: include_str!("shaders/pack.wgsl"),
+    reads: 1,
+    entries: &["pack"],
+};
 pub(crate) const TRANSFORM: FamilySpec = FamilySpec {
     source: include_str!("shaders/transform.wgsl"),
     reads: 1,
     entries: &["transformed"],
 };
+pub(crate) const MASK: FamilySpec = FamilySpec {
+    source: include_str!("shaders/mask.wgsl"),
+    reads: 1,
+    entries: &["spread", "combine"],
+};
+pub(crate) const DISTORT: FamilySpec = FamilySpec {
+    source: include_str!("shaders/distort.wgsl"),
+    reads: 4,
+    entries: &[
+        "motion_tile",
+        "wrap",
+        "mirror",
+        "polar_coordinates",
+        "lens_distortion",
+        "repeat_tile",
+        "turbulent_displace",
+        "displacement_map",
+        "bezier_warp",
+    ],
+};
+pub(crate) const COVER: FamilySpec = FamilySpec {
+    source: include_str!("shaders/cover.wgsl"),
+    reads: 0,
+    entries: &["warp_cover"],
+};
+pub(crate) const NOISE: FamilySpec = FamilySpec {
+    source: include_str!("shaders/noise.wgsl"),
+    reads: 1,
+    entries: &["fractal_noise"],
+};
+pub(crate) const GENERATE: FamilySpec = FamilySpec {
+    source: include_str!("shaders/generate.wgsl"),
+    reads: 1,
+    entries: &[
+        "ramp",
+        "four_color",
+        "grid",
+        "venetian_blinds",
+        "linear_wipe",
+        "iris_wipe",
+        "beam",
+    ],
+};
 pub(crate) const BOX_PASS: FamilySpec = FamilySpec {
     source: include_str!("shaders/boxpass.wgsl"),
     reads: 1,
     entries: &["box_pass"],
+};
+pub(crate) const COLOUR: FamilySpec = FamilySpec {
+    source: include_str!("shaders/colour.wgsl"),
+    reads: 1,
+    entries: &[
+        "curves",
+        "tint",
+        "hue_saturation",
+        "exposure",
+        "levels",
+        "invert",
+        "black_white",
+        "fill",
+    ],
+};
+pub(crate) const CHANNEL: FamilySpec = FamilySpec {
+    source: include_str!("shaders/channel.wgsl"),
+    reads: 2,
+    entries: &["set_matte", "shift_channels", "color_cycle"],
+};
+pub(crate) const NEIGHBOURS: FamilySpec = FamilySpec {
+    source: include_str!("shaders/neighbours.wgsl"),
+    reads: 1,
+    entries: &["sharpen", "find_edges"],
+};
+
+pub(crate) const RADIAL: FamilySpec = FamilySpec {
+    source: include_str!("shaders/radial.wgsl"),
+    reads: 5,
+    entries: &[
+        "read_lines",
+        "sums",
+        "prefix",
+        "zoom_keys",
+        "zoom_pixels",
+        "spin_keys",
+        "spin_pixels",
+    ],
+};
+
+pub(crate) const VECTOR: FamilySpec = FamilySpec {
+    source: include_str!("shaders/vector.wgsl"),
+    reads: 3,
+    entries: &["slopes", "steepest", "most_of", "smear"],
+};
+
+pub(crate) const LENS: FamilySpec = FamilySpec {
+    source: include_str!("shaders/lens.wgsl"),
+    reads: 5,
+    entries: &["row_chunks", "row_scan", "row_sums", "spread"],
+};
+
+pub(crate) const BEVEL: FamilySpec = FamilySpec {
+    source: include_str!("shaders/bevel.wgsl"),
+    reads: 2,
+    entries: &["columns", "rows", "light"],
 };
 
 /// A WGSL source, how many buffers its kernels read, and its entry points.
@@ -72,8 +201,24 @@ pub(crate) struct Kernels {
     pub(crate) pixel: Family,
     pub(crate) amount: Family,
     pub(crate) unpack: Family,
+    pub(crate) pack: Family,
+    pub(crate) operate: Family,
+    pub(crate) halve: Family,
+    pub(crate) project: Family,
     pub(crate) transform: Family,
     pub(crate) box_pass: Family,
+    pub(crate) mask: Family,
+    pub(crate) colour: Family,
+    pub(crate) channel: Family,
+    pub(crate) neighbours: Family,
+    pub(crate) distort: Family,
+    pub(crate) cover: Family,
+    pub(crate) noise: Family,
+    pub(crate) generate: Family,
+    pub(crate) radial: Family,
+    pub(crate) vector: Family,
+    pub(crate) lens: Family,
+    pub(crate) bevel: Family,
 }
 
 /// The constants the per-pixel kernels name blend modes by, one per row of
@@ -88,6 +233,22 @@ pub(crate) fn mode_constants() -> String {
     constants
 }
 
+/// `source` with the blend modes' constants and functions in front.
+pub(crate) fn with_blend_modes(source: &str) -> String {
+    format!("{}\n{BLEND}\n{source}", mode_constants())
+}
+
+/// `source` with the blend modes and the operations in front.
+pub(crate) fn with_operations(source: &str) -> String {
+    with_blend_modes(&format!("{OPERATION}\n{source}"))
+}
+
+/// `source` with the blend modes, the operations and the layer's points
+/// in front.
+pub(crate) fn with_layer(source: &str) -> String {
+    with_operations(&format!("{LAYER}\n{source}"))
+}
+
 /// The row of `mode` in the rasteriser's table of blend modes.
 pub(crate) fn mode_row(mode: nakkash_raster::BlendMode) -> u32 {
     let row = BLEND_MODES
@@ -100,13 +261,29 @@ pub(crate) fn mode_row(mode: nakkash_raster::BlendMode) -> u32 {
 impl Kernels {
     /// Compiles every family on `device`.
     pub(crate) fn new(device: &wgpu::Device) -> Kernels {
-        let pixel_source = format!("{}\n{}", mode_constants(), PIXEL.source);
+        let pixel_source = with_blend_modes(PIXEL.source);
         Kernels {
             pixel: Family::new(device, &pixel_source, &PIXEL),
             amount: Family::new(device, AMOUNT.source, &AMOUNT),
             unpack: Family::new(device, UNPACK.source, &UNPACK),
+            pack: Family::new(device, PACK.source, &PACK),
+            operate: Family::new(device, &with_operations(OPERATE.source), &OPERATE),
+            halve: Family::new(device, HALVE.source, &HALVE),
+            project: Family::new(device, PROJECT.source, &PROJECT),
             transform: Family::new(device, TRANSFORM.source, &TRANSFORM),
             box_pass: Family::new(device, BOX_PASS.source, &BOX_PASS),
+            mask: Family::new(device, MASK.source, &MASK),
+            colour: Family::new(device, COLOUR.source, &COLOUR),
+            channel: Family::new(device, CHANNEL.source, &CHANNEL),
+            neighbours: Family::new(device, NEIGHBOURS.source, &NEIGHBOURS),
+            distort: Family::new(device, DISTORT.source, &DISTORT),
+            cover: Family::new(device, COVER.source, &COVER),
+            noise: Family::new(device, &with_layer(NOISE.source), &NOISE),
+            generate: Family::new(device, &with_layer(GENERATE.source), &GENERATE),
+            radial: Family::new(device, RADIAL.source, &RADIAL),
+            vector: Family::new(device, VECTOR.source, &VECTOR),
+            lens: Family::new(device, LENS.source, &LENS),
+            bevel: Family::new(device, BEVEL.source, &BEVEL),
         }
     }
 }
@@ -234,7 +411,7 @@ pub(crate) fn pixel_groups(count: u32) -> ((u32, u32), u32) {
 }
 
 /// The bytes of every uniform block: more than the largest kernel's.
-const PARAMS_BYTES: usize = 64;
+const PARAMS_BYTES: usize = 256;
 
 /// A kernel's uniform block, written field by field as WGSL lays out a
 /// struct of 32-bit scalars and `vec4<f32>`s.
@@ -284,3 +461,107 @@ impl Params {
 #[cfg(test)]
 #[path = "../tests/unit/kernels.rs"]
 mod tests;
+
+/// The uniform block of the operate family (`operate.wgsl`), field by
+/// field.
+#[derive(Debug, Clone)]
+pub(crate) struct OperateParams {
+    count: u32,
+    row: u32,
+    width: u32,
+    op: u32,
+    mode: u32,
+    boxed: u32,
+    k: f32,
+    source: f32,
+    colour: [f32; 4],
+    back: [f32; 4],
+    back_shift: [f32; 4],
+    bounds: [f32; 4],
+    step: [f32; 4],
+    opacity: f32,
+}
+
+impl OperateParams {
+    /// The block over `count` pixels of a grid `width` wide, `row`
+    /// invocations a row of workgroups.
+    pub(crate) fn new(count: u32, row: u32, width: u32) -> OperateParams {
+        OperateParams {
+            count,
+            row,
+            width,
+            op: 0,
+            mode: 0,
+            boxed: 0,
+            k: 1.0,
+            source: 1.0,
+            colour: [0.0; 4],
+            back: [0.0; 4],
+            back_shift: [0.0; 4],
+            bounds: [0.0; 4],
+            step: [1.0; 4],
+            opacity: 1.0,
+        }
+    }
+
+    /// The operation combining the two sides.
+    pub(crate) fn operation(mut self, operation: nakkash_raster::Operation) -> OperateParams {
+        (self.op, self.mode) = crate::effects::operation_row(operation);
+        self
+    }
+
+    /// What a kernel multiplies by: the glow's intensity.
+    pub(crate) fn k(mut self, k: f32) -> OperateParams {
+        self.k = k;
+        self
+    }
+
+    /// What the layer's pixels are multiplied by first.
+    pub(crate) fn source(mut self, source: f32) -> OperateParams {
+        self.source = source;
+        self
+    }
+
+    /// A solid's straight colour and opacity.
+    pub(crate) fn solid(mut self, [r, g, b]: [f32; 3], opacity: f32) -> OperateParams {
+        self.colour = [r, g, b, 0.0];
+        self.opacity = opacity;
+        self
+    }
+
+    /// Where a solid is: a layer's box, or everywhere for `None`.
+    pub(crate) fn cover(mut self, cover: Option<&nakkash_raster::BoxCover>) -> OperateParams {
+        let Some(cover) = cover else {
+            self.boxed = 0;
+            return self;
+        };
+        let [a, b, c, d, ..] = cover.back.as_coeffs();
+        let shift = cover.back * nakkash_raster::kurbo::Point::new(0.5, 0.5);
+        let r = cover.bounds;
+        self.boxed = 1;
+        self.back = [a, b, c, d].map(|v| v as f32);
+        self.back_shift = [shift.x as f32, shift.y as f32, 0.0, 0.0];
+        self.bounds = [r.x0, r.y0, r.x1, r.y1].map(|v| v as f32);
+        self.step = [cover.step[0] as f32, cover.step[1] as f32, 1.0, 1.0];
+        self
+    }
+
+    /// The block's bytes.
+    pub(crate) fn params(&self) -> Params {
+        Params::new()
+            .u32(self.count)
+            .u32(self.row)
+            .u32(self.width)
+            .u32(self.op)
+            .u32(self.mode)
+            .u32(self.boxed)
+            .f32(self.k)
+            .f32(self.source)
+            .vec4(self.colour)
+            .vec4(self.back)
+            .vec4(self.back_shift)
+            .vec4(self.bounds)
+            .vec4(self.step)
+            .f32(self.opacity)
+    }
+}

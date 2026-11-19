@@ -13,12 +13,27 @@
 
 use vello_cpu::kurbo::Vec2;
 
-use crate::blur::{self, Edges, gaussian_radius};
-use crate::composite::Operation;
+use crate::blur::{self, Edges, FindEdges, Sharpen, gaussian_radius};
+use crate::channel::{self, SetMatte, ShiftChannels};
+use crate::colour::{
+    self, BlackWhite, Curves, Exposure, Fill, HueSaturation, Invert, Levels, Tint,
+};
+use crate::composite::{self, Operation, SolidComposite};
+use crate::cycle::{self, ColorCycle};
+use crate::distort::{self, Distortion};
 use crate::effect::{Effect, ParamValue, Space};
+use crate::generate::{
+    self, Beam, FourColor, FractalNoise, GridLines, IrisWipe, LinearWipe, Ramp, VenetianBlinds,
+};
+use crate::lens::{self, LensBlur};
+use crate::light::{self, Bevel};
+use crate::radial::{self, RadialBlur};
+use crate::vector::{self, VectorBlur};
 
-/// The steps an effect runs on its layer's pixels.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// The steps an effect runs on its layer's pixels. More variants come as
+/// more effects gain plans, so a match on one needs a catch-all arm.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Plan {
     /// A blur: box passes along rows, then along columns.
     Blur(Blur),
@@ -26,6 +41,61 @@ pub enum Plan {
     Glow(Glow),
     /// The layer's alpha, coloured, moved and blurred, behind the layer.
     Shadow(Shadow),
+    /// The layer laid by an operation over a solid in its box.
+    SolidComposite(SolidComposite),
+    /// Each colour level through a curve's table.
+    Curves(Box<Curves>),
+    /// The layer's alpha from a level of a matte.
+    SetMatte(SetMatte),
+    /// Each colour channel's slope across its 3×3 pixels.
+    FindEdges(FindEdges),
+    /// Each colour's luma mapped between two colours.
+    Tint(Tint),
+    /// The content recoloured with one colour, or the rest of its box.
+    Fill(Fill),
+    /// Each channel a level of the colour as it was.
+    ShiftChannels(ShiftChannels),
+    /// Each pixel moved away from the mean of its neighbours.
+    Sharpen(Sharpen),
+    /// Channels turned into 1 minus themselves.
+    Invert(Invert),
+    /// Levels mapped between two ranges through a gamma.
+    Levels(Levels),
+    /// Hues turned, saturation and lightness moved, or colourised.
+    HueSaturation(HueSaturation),
+    /// Light scaled, offset and raised to a gamma.
+    Exposure(Exposure),
+    /// Colours turned grey by their hues' shares, and tinted.
+    BlackWhite(BlackWhite),
+    /// A phase read off each pixel sent round a cycle of colours.
+    ColorCycle(Box<ColorCycle>),
+    /// Every pixel redrawn from a point of the layer the distortion moves
+    /// it to.
+    Distort(Distortion),
+    /// A gradient between two colours.
+    Ramp(Ramp),
+    /// Four colours at four points, blended.
+    FourColor(FourColor),
+    /// A grid of lines, or its cells.
+    Grid(GridLines),
+    /// The layer hidden in stripes.
+    VenetianBlinds(VenetianBlinds),
+    /// The layer hidden behind a straight edge.
+    LinearWipe(LinearWipe),
+    /// A polygon hole in the layer.
+    IrisWipe(IrisWipe),
+    /// Fractal value noise.
+    FractalNoise(FractalNoise),
+    /// A straight beam along a line.
+    Beam(Beam),
+    /// The layer streaked along rays out from a point or rings round it.
+    Radial(RadialBlur),
+    /// The layer smeared along the slope of a map's level.
+    Vector(VectorBlur),
+    /// The layer spread over the shape of a lens's iris.
+    Lens(LensBlur),
+    /// The layer's alpha raised into a surface and lit from one side.
+    Bevel(Bevel),
 }
 
 /// Passes of one extended box along one way of the grid: each averages
@@ -156,6 +226,162 @@ pub const PLANS: &[PlanSpec] = &[
     PlanSpec {
         name: "drop-shadow",
         plan: |values, space| Plan::Shadow(blur::drop_shadow_plan(values, space)),
+    },
+    PlanSpec {
+        name: "solid-composite",
+        plan: |values, space| Plan::SolidComposite(composite::solid_composite_plan(values, space)),
+    },
+    PlanSpec {
+        name: "curves",
+        plan: |values, space| Plan::Curves(Box::new(colour::curves_plan(values, space))),
+    },
+    PlanSpec {
+        name: "set-matte",
+        plan: |values, space| Plan::SetMatte(channel::set_matte_plan(values, space)),
+    },
+    PlanSpec {
+        name: "find-edges",
+        plan: |values, space| Plan::FindEdges(blur::find_edges_plan(values, space)),
+    },
+    PlanSpec {
+        name: "tint",
+        plan: |values, space| Plan::Tint(colour::tint_plan(values, space)),
+    },
+    PlanSpec {
+        name: "fill",
+        plan: |values, space| Plan::Fill(colour::fill_plan(values, space)),
+    },
+    PlanSpec {
+        name: "shift-channels",
+        plan: |values, space| Plan::ShiftChannels(channel::shift_channels_plan(values, space)),
+    },
+    PlanSpec {
+        name: "sharpen",
+        plan: |values, space| Plan::Sharpen(blur::sharpen_plan(values, space)),
+    },
+    PlanSpec {
+        name: "invert",
+        plan: |values, space| Plan::Invert(colour::invert_plan(values, space)),
+    },
+    PlanSpec {
+        name: "levels",
+        plan: |values, space| Plan::Levels(colour::levels_plan(values, space)),
+    },
+    PlanSpec {
+        name: "hue-saturation",
+        plan: |values, space| Plan::HueSaturation(colour::hue_saturation_plan(values, space)),
+    },
+    PlanSpec {
+        name: "exposure",
+        plan: |values, space| Plan::Exposure(colour::exposure_plan(values, space)),
+    },
+    PlanSpec {
+        name: "black-white",
+        plan: |values, space| Plan::BlackWhite(colour::black_white_plan(values, space)),
+    },
+    PlanSpec {
+        name: "color-cycle",
+        plan: |values, space| Plan::ColorCycle(Box::new(cycle::color_cycle_plan(values, space))),
+    },
+    PlanSpec {
+        name: "displacement-map",
+        plan: |values, _| {
+            Plan::Distort(Distortion::DisplacementMap(distort::displacement_map_plan(
+                values,
+            )))
+        },
+    },
+    PlanSpec {
+        name: "turbulent-displace",
+        plan: |values, _| {
+            Plan::Distort(Distortion::TurbulentDisplace(
+                distort::turbulent_displace_plan(values),
+            ))
+        },
+    },
+    PlanSpec {
+        name: "polar-coordinates",
+        plan: |values, _| {
+            Plan::Distort(Distortion::PolarCoordinates(
+                distort::polar_coordinates_plan(values),
+            ))
+        },
+    },
+    PlanSpec {
+        name: "lens-distortion",
+        plan: |values, _| {
+            Plan::Distort(Distortion::LensDistortion(distort::lens_distortion_plan(
+                values,
+            )))
+        },
+    },
+    PlanSpec {
+        name: "repeat-tile",
+        plan: |values, _| Plan::Distort(Distortion::RepeatTile(distort::repeat_tile_plan(values))),
+    },
+    PlanSpec {
+        name: "motion-tile",
+        plan: |values, _| Plan::Distort(Distortion::MotionTile(distort::motion_tile_plan(values))),
+    },
+    PlanSpec {
+        name: "wrap",
+        plan: |values, _| Plan::Distort(Distortion::Wrap(distort::wrap_plan(values))),
+    },
+    PlanSpec {
+        name: "mirror",
+        plan: |values, _| Plan::Distort(Distortion::Mirror(distort::mirror_plan(values))),
+    },
+    PlanSpec {
+        name: "bezier-warp",
+        plan: |values, _| Plan::Distort(Distortion::BezierWarp(distort::bezier_warp_plan(values))),
+    },
+    PlanSpec {
+        name: "ramp",
+        plan: |values, space| Plan::Ramp(generate::ramp_plan(values, space)),
+    },
+    PlanSpec {
+        name: "four-color",
+        plan: |values, space| Plan::FourColor(generate::four_color_plan(values, space)),
+    },
+    PlanSpec {
+        name: "grid",
+        plan: |values, space| Plan::Grid(generate::grid_plan(values, space)),
+    },
+    PlanSpec {
+        name: "venetian-blinds",
+        plan: |values, space| Plan::VenetianBlinds(generate::venetian_blinds_plan(values, space)),
+    },
+    PlanSpec {
+        name: "linear-wipe",
+        plan: |values, space| Plan::LinearWipe(generate::linear_wipe_plan(values, space)),
+    },
+    PlanSpec {
+        name: "iris-wipe",
+        plan: |values, space| Plan::IrisWipe(generate::iris_wipe_plan(values, space)),
+    },
+    PlanSpec {
+        name: "fractal-noise",
+        plan: |values, space| Plan::FractalNoise(generate::fractal_noise_plan(values, space)),
+    },
+    PlanSpec {
+        name: "beam",
+        plan: |values, space| Plan::Beam(generate::beam_plan(values, space)),
+    },
+    PlanSpec {
+        name: "radial-blur",
+        plan: |values, space| Plan::Radial(radial::radial_blur_plan(values, space)),
+    },
+    PlanSpec {
+        name: "vector-blur",
+        plan: |values, space| Plan::Vector(vector::vector_blur_plan(values, space)),
+    },
+    PlanSpec {
+        name: "lens-blur",
+        plan: |values, space| Plan::Lens(lens::lens_blur_plan(values, space)),
+    },
+    PlanSpec {
+        name: "bevel",
+        plan: |values, space| Plan::Bevel(light::bevel_plan(values, space)),
     },
 ];
 

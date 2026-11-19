@@ -24,9 +24,7 @@ use std::sync::OnceLock;
 
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::{FontRef, GlyphId, MetadataProvider};
-use vello_cpu::Pixmap;
 use vello_cpu::kurbo::{Affine, Point, Rect, Shape};
-use vello_cpu::peniko::color::PremulRgba8;
 
 use crate::effect::{Effect, Reach};
 use crate::homography::Homography;
@@ -570,29 +568,22 @@ pub(crate) trait Texel: Copy + Sync + Send + 'static {
     fn mean(four: [Self; 4]) -> Self;
 }
 
-impl Texel for PremulRgba8 {
-    const CLEAR: PremulRgba8 = PremulRgba8 {
-        r: 0,
-        g: 0,
-        b: 0,
-        a: 0,
-    };
+/// A px as the rasteriser draws it: premultiplied red, green, blue and
+/// alpha, 8 bits each.
+impl Texel for [u8; 4] {
+    const CLEAR: [u8; 4] = [0; 4];
     const UNIT: f32 = 1.0 / 255.0;
 
     #[inline(always)]
     fn channels(self) -> [f32; 4] {
-        [self.r, self.g, self.b, self.a].map(f32::from)
+        self.map(f32::from)
     }
 
     #[inline(always)]
-    fn mean(four: [PremulRgba8; 4]) -> PremulRgba8 {
+    fn mean(four: [[u8; 4]; 4]) -> [u8; 4] {
         // All four in 16-bit lanes: at most 4·255 each.
-        let sum: u64 = four
-            .iter()
-            .map(|p| spread(u32::from_le_bytes([p.r, p.g, p.b, p.a])))
-            .sum();
-        let [r, g, b, a] = std::array::from_fn(|c| ((((sum >> (16 * c)) & 0xffff) + 2) / 4) as u8);
-        PremulRgba8 { r, g, b, a }
+        let sum: u64 = four.iter().map(|p| spread(u32::from_le_bytes(*p))).sum();
+        std::array::from_fn(|c| ((((sum >> (16 * c)) & 0xffff) + 2) / 4) as u8)
     }
 }
 
@@ -790,55 +781,81 @@ fn log2(x: f64) -> f64 {
 /// A buffer drawn as a [`Plan`] says, to lay: as the rasteriser drew it,
 /// or on the float canvas.
 pub(crate) enum Buffer<'a> {
-    /// 8 bits a channel.
-    Bytes(&'a Pixmap),
+    /// 8 bits a channel: premultiplied RGBA, row by row, `width` by
+    /// `height` px.
+    Bytes(&'a [u8], u16, u16),
     /// Floats.
     Floats(&'a Pixels),
 }
 
-/// `buffer`, drawn as `plan` says, laid onto a `width` by `height` canvas
-/// through each of `maps` and averaged.
+/// `buffer`, drawn as a [`Plan`] says, laid onto a `width` by `height`
+/// canvas through each of `landings`, each adding `share` of it.
 pub(crate) fn lay(
     buffer: Buffer<'_>,
-    plan: &Plan,
-    maps: &[Homography],
+    landings: &[Landing],
+    share: f32,
     width: u16,
     height: u16,
 ) -> Pixels {
     match buffer {
-        Buffer::Bytes(pixmap) => lay_chain(
-            &Chain::new(pixmap.data(), pixmap.width(), pixmap.height()),
-            plan,
-            maps,
+        Buffer::Bytes(rgba, w, h) => lay_chain(
+            &Chain::new(rgba.as_chunks::<4>().0, w, h),
+            landings,
+            share,
             width,
             height,
         ),
         Buffer::Floats(pixels) => lay_chain(
             &Chain::new(pixels.data(), pixels.width(), pixels.height()),
-            plan,
-            maps,
+            landings,
+            share,
             width,
             height,
         ),
     }
 }
 
+/// Where a projected layer's buffer lands on a canvas through one of its
+/// maps: what [`Accelerator::project`](crate::Accelerator::project) lays it
+/// by.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Landing {
+    /// From px of the canvas to px of the buffer.
+    pub to_buffer: Homography,
+    /// The px of the canvas the buffer lands on, as `[x0, y0, x1, y1)`.
+    pub landed: [usize; 4],
+}
+
+impl Plan {
+    /// Where the buffer lands through each of `maps`, the maps it was
+    /// planned for, leaving out those it lands nowhere through.
+    pub(crate) fn landings(&self, maps: &[Homography]) -> Vec<Landing> {
+        maps.iter()
+            .zip(&self.landed)
+            .filter_map(|(map, landed)| {
+                let (Some(landed), Some(back)) = (landed, map.inverse()) else {
+                    return None;
+                };
+                Some(Landing {
+                    to_buffer: Homography::from(self.local) * back,
+                    landed: *landed,
+                })
+            })
+            .collect()
+    }
+}
+
 /// [`lay`] from the chain of the buffer.
 fn lay_chain<T: Texel>(
     chain: &Chain<'_, T>,
-    plan: &Plan,
-    maps: &[Homography],
+    landings: &[Landing],
+    share: f32,
     width: u16,
     height: u16,
 ) -> Pixels {
     let mut out = Pixels::transparent(width, height);
-    let share = 1.0 / maps.len() as f32;
-    for (map, landed) in maps.iter().zip(&plan.landed) {
-        let (Some(landed), Some(back)) = (landed, map.inverse()) else {
-            continue;
-        };
-        let to_buffer = Homography::from(plan.local) * back;
-        lay_one(chain, &to_buffer, *landed, share, &mut out);
+    for landing in landings {
+        lay_one(chain, &landing.to_buffer, landing.landed, share, &mut out);
     }
     out
 }

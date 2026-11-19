@@ -4,15 +4,27 @@ use nakkash_raster::BlendMode;
 /// Every family's source as the device compiles it, by name.
 fn sources() -> Vec<(&'static str, String, &'static FamilySpec)> {
     vec![
-        (
-            "pixel",
-            format!("{}\n{}", mode_constants(), PIXEL.source),
-            &PIXEL,
-        ),
+        ("pixel", with_blend_modes(PIXEL.source), &PIXEL),
+        ("operate", with_operations(OPERATE.source), &OPERATE),
         ("amount", AMOUNT.source.to_owned(), &AMOUNT),
         ("unpack", UNPACK.source.to_owned(), &UNPACK),
+        ("pack", PACK.source.to_owned(), &PACK),
+        ("halve", HALVE.source.to_owned(), &HALVE),
+        ("project", PROJECT.source.to_owned(), &PROJECT),
         ("transform", TRANSFORM.source.to_owned(), &TRANSFORM),
         ("box_pass", BOX_PASS.source.to_owned(), &BOX_PASS),
+        ("mask", MASK.source.to_owned(), &MASK),
+        ("colour", COLOUR.source.to_owned(), &COLOUR),
+        ("channel", CHANNEL.source.to_owned(), &CHANNEL),
+        ("neighbours", NEIGHBOURS.source.to_owned(), &NEIGHBOURS),
+        ("distort", DISTORT.source.to_owned(), &DISTORT),
+        ("cover", COVER.source.to_owned(), &COVER),
+        ("noise", with_layer(NOISE.source), &NOISE),
+        ("generate", with_layer(GENERATE.source), &GENERATE),
+        ("radial", RADIAL.source.to_owned(), &RADIAL),
+        ("vector", VECTOR.source.to_owned(), &VECTOR),
+        ("lens", LENS.source.to_owned(), &LENS),
+        ("bevel", BEVEL.source.to_owned(), &BEVEL),
     ]
 }
 
@@ -43,12 +55,19 @@ fn every_kernel_parses_and_validates() {
 
 #[test]
 fn every_blend_mode_has_a_constant_the_kernel_names() {
-    let source = PIXEL.source;
+    let source = BLEND;
     for spec in BLEND_MODES {
         let name = format!("MODE_{}", spec.name.to_uppercase().replace('-', "_"));
         assert!(source.contains(&name), "the lay kernel names {name}");
     }
     assert_eq!(mode_row(BlendMode::Normal), 0);
+}
+
+#[test]
+fn the_operations_read_luma_by_the_rasteriser_s_weights() {
+    let [r, g, b] = nakkash_raster::LUMA;
+    let weights = format!("p.r * {r:?} + p.g * {g:?} + p.b * {b:?}");
+    assert!(OPERATION.contains(&weights), "{weights}");
 }
 
 #[test]

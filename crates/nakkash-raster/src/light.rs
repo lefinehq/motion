@@ -80,23 +80,56 @@ fn depth(pixels: &Pixels) -> Vec<f64> {
         .collect()
 }
 
-/// `bevel`: the layer's alpha raised into a surface that rises from its
-/// outline over `thickness` px of the layer, flat beyond, lit by light of
-/// `color` coming from `angle` degrees clockwise from straight up. A
-/// slope facing the light goes towards the light's colour, one facing
-/// away towards black, each by `intensity` times how squarely it faces
-/// it; flat parts keep their colour, and alpha stays.
-pub(crate) fn bevel(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+/// `bevel`'s plan: the layer's alpha raised into a surface that rises
+/// from its outline over `thickness` px of the grid, flat beyond, lit by
+/// light of `light`'s colour coming from `toward` on the grid. A slope
+/// facing the light goes towards the light's colour, one facing away
+/// towards black, each by `intensity` times how squarely it faces it;
+/// flat parts keep their colour, and alpha stays.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Bevel {
+    /// How far the surface rises from the outline, in px of the grid.
+    pub thickness: f64,
+    /// How strongly the light and its shade colour the slopes.
+    pub intensity: f32,
+    /// Towards the light, on the grid: y grows downwards.
+    pub toward: [f64; 2],
+    /// The light's straight colour.
+    pub light: [f32; 3],
+}
+
+impl Bevel {
+    /// Whether it changes nothing: no thickness or no intensity.
+    pub fn none(&self) -> bool {
+        self.thickness <= 0.0 || self.intensity <= 0.0
+    }
+}
+
+/// [`Bevel`] from `bevel`'s values in `space`: `thickness` px of the
+/// layer, the light from `angle` degrees clockwise from straight up.
+pub(crate) fn bevel_plan(values: &[ParamValue], space: &Space) -> Bevel {
     let scale = space.transform.determinant().abs().sqrt();
-    let thickness = f64::from(number(values, 0)) * scale;
-    let intensity = number(values, 3);
-    if thickness <= 0.0 || intensity <= 0.0 {
+    let (sin, cos) = f64::from(number(values, 1)).to_radians().sin_cos();
+    Bevel {
+        thickness: f64::from(number(values, 0)) * scale,
+        intensity: number(values, 3),
+        toward: [sin, -cos],
+        light: rgb(values, 2),
+    }
+}
+
+/// `bevel`, see [`Bevel`].
+pub(crate) fn bevel(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let plan = bevel_plan(values, space);
+    if plan.none() {
         return;
     }
-    let (sin, cos) = f64::from(number(values, 1)).to_radians().sin_cos();
-    // Towards the light, on the grid: y grows downwards.
-    let toward = [sin, -cos];
-    let light = rgb(values, 2);
+    let Bevel {
+        thickness,
+        intensity,
+        toward,
+        light,
+    } = plan;
     let (width, height) = (usize::from(pixels.width()), usize::from(pixels.height()));
     let depth = depth(pixels);
     let rise = |x: usize, y: usize| (depth[y * width + x] / thickness).min(1.0);

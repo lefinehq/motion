@@ -35,10 +35,7 @@ fn matte(space: &mut Space, bounds: Rect) {
         [0.25, 0.25, 0.25, 1.0],
         [0.0; 4],
     ]);
-    space.input = Some(Input {
-        pixels,
-        bounds: Some(bounds),
-    });
+    space.input = Some(Input::new(pixels, Some(bounds)));
 }
 
 /// The settings in the order of the row, each by its name: channel,
@@ -110,10 +107,7 @@ fn a_smaller_matte_stretches_over_the_layer_or_sits_in_its_middle() {
     let (mut stretched, mut space) = white();
     let mut half = Pixels::transparent(8, 1);
     half.data_mut()[..2].copy_from_slice(&[[1.0; 4], [0.0, 0.0, 0.0, 1.0]]);
-    space.input = Some(Input {
-        pixels: half,
-        bounds: Some(Rect::new(0.0, 0.0, 2.0, 1.0)),
-    });
+    space.input = Some(Input::new(half, Some(Rect::new(0.0, 0.0, 2.0, 1.0))));
     let mut centred = stretched.clone();
     set_matte(
         &mut stretched,
@@ -141,10 +135,7 @@ fn without_composite_the_matte_replaces_the_alpha_inside_the_box() {
     pixels.data_mut()[3] = [0.0; 4];
     let mut full = Pixels::transparent(8, 1);
     full.data_mut().fill([1.0; 4]);
-    space.input = Some(Input {
-        pixels: full,
-        bounds: Some(Rect::new(0.0, 0.0, 4.0, 1.0)),
-    });
+    space.input = Some(Input::new(full, Some(Rect::new(0.0, 0.0, 4.0, 1.0))));
     set_matte(
         &mut pixels,
         &settings(["alpha", "off", "stretch", "off", "on"]),

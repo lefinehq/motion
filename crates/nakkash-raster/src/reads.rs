@@ -21,8 +21,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use nakkash_format::Result;
 use vello_cpu::kurbo::Affine;
 
+use crate::accel::{Accelerator, Surface};
 use crate::list::{Node, Shared};
-use crate::pixels::Pixels;
 
 /// A drawing's key: the address of the read node or the shared mark, the
 /// size of the canvas it is drawn on, and the bits of the transform it is
@@ -36,8 +36,9 @@ pub(crate) struct Reads {
     /// How many reads of each node are still to come, by its address.
     left: Mutex<HashMap<usize, usize>>,
     /// The drawings kept, each with its node or mark held so that nothing
-    /// else takes its address while the drawing is kept.
-    drawn: Mutex<HashMap<Key, (Owner, Arc<Pixels>)>>,
+    /// else takes its address while the drawing is kept: on the CPU, or in
+    /// the accelerator the frame's float canvas is in.
+    drawn: Mutex<HashMap<Key, (Owner, Arc<Surface>)>>,
 }
 
 /// What a kept drawing is of, held while it is kept.
@@ -67,45 +68,51 @@ impl Reads {
     }
 
     /// The drawing of `node` at `transform` on a canvas of `size`: the one
-    /// kept, or `draw`'s, kept while more reads of `node` are to come.
+    /// kept, or `draw`'s, kept while more reads of `node` are to come. A
+    /// drawing `draw` leaves in `accel` is kept there and copied there.
     ///
     /// # Errors
-    /// The one `draw` returns.
+    /// The one `draw` returns, or a failed copy.
     pub(crate) fn read(
         &self,
         node: &Arc<Node>,
         transform: Affine,
         size: (u16, u16),
-        draw: impl FnOnce() -> Result<Pixels>,
-    ) -> Result<Pixels> {
+        accel: Option<&dyn Accelerator>,
+        draw: impl FnOnce() -> Result<Surface>,
+    ) -> Result<Surface> {
         let address = Arc::as_ptr(node) as usize;
         self.kept(
             address,
             || Owner::Read(Arc::clone(node)),
             transform,
             size,
+            accel,
             draw,
         )
     }
 
     /// The drawing of the children marked `shared` at `transform` on a
     /// canvas of `size`: the one kept, or `draw`'s, kept while more layers
-    /// with the mark are to be drawn.
+    /// with the mark are to be drawn. A drawing `draw` leaves in `accel` is
+    /// kept there and copied there.
     ///
     /// # Errors
-    /// The one `draw` returns.
+    /// The one `draw` returns, or a failed copy.
     pub(crate) fn shared(
         &self,
         shared: &Shared,
         transform: Affine,
         size: (u16, u16),
-        draw: impl FnOnce() -> Result<Pixels>,
-    ) -> Result<Pixels> {
+        accel: Option<&dyn Accelerator>,
+        draw: impl FnOnce() -> Result<Surface>,
+    ) -> Result<Surface> {
         self.kept(
             shared.address(),
             || Owner::Shared(shared.clone()),
             transform,
             size,
+            accel,
             draw,
         )
     }
@@ -118,8 +125,9 @@ impl Reads {
         owner: impl FnOnce() -> Owner,
         transform: Affine,
         size: (u16, u16),
-        draw: impl FnOnce() -> Result<Pixels>,
-    ) -> Result<Pixels> {
+        accel: Option<&dyn Accelerator>,
+        draw: impl FnOnce() -> Result<Surface>,
+    ) -> Result<Surface> {
         let more = {
             let mut left = locked(&self.left);
             match left.get_mut(&address) {
@@ -157,7 +165,10 @@ impl Reads {
             drawn.retain(|&(at, _, _), _| at != address);
         }
         drop(drawn);
-        Ok(Arc::try_unwrap(pixels).unwrap_or_else(|shared| (*shared).clone()))
+        match Arc::try_unwrap(pixels) {
+            Ok(pixels) => Ok(pixels),
+            Err(shared) => shared.duplicate(accel),
+        }
     }
 }
 

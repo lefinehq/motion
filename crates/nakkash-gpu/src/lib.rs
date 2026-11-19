@@ -9,6 +9,12 @@
 //! effect runs on the CPU, with a copy each way. Paths, glyphs and pictures
 //! are always drawn on the CPU.
 //!
+//! Work is recorded, not run, as it is handed over: every thread drawing
+//! records into one command encoder, which is submitted when pixels must
+//! come back to the CPU or when enough is recorded. A frame
+//! whose pixels stay on the GPU is one submission, when it is read back at
+//! the end as the 8-bit bytes it is written in.
+//!
 //! Frames it draws approximate the CPU's, which stays the reference: the
 //! kernels port the CPU's own arithmetic in 32-bit floats, and the
 //! tolerances they meet are measured and set in D74. It never opens a
@@ -19,25 +25,30 @@
 
 mod block;
 mod device;
+mod effects;
 mod grid;
 mod kernels;
+mod mask;
 mod pool;
+mod project;
+mod record;
 mod tally;
 
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex, mpsc};
 
 use nakkash_format::{Diagnostic, Kind, Result};
 use nakkash_raster::kurbo::Affine;
 use nakkash_raster::{
-    Accelerator, Amount, BlendMode, Blur, Edges, Effect, Glow, GlowComposite, MatteMode, Move,
-    Operation, Pixel, Pixels, Plan, Resident, Shadow, Share, Space, Tally,
+    Accelerator, Amount, BlendMode, Effect, Landing, MaskCoverage, MatteMode, Move, Pixel, Pixels,
+    Resident, Share, Space, Tally, Texels,
 };
 
 pub use device::{Adapter, Refusal};
 
 use grid::{Grid, grid, grid_mut};
-use kernels::{Kernels, LINE_GROUP, Params, mode_row, pixel_groups};
+use kernels::{Kernels, Params, mode_row, pixel_groups};
 use pool::{Kind as BufferKind, Pool, Pooled};
+use record::{Batch, Recorder};
 use tally::Counts;
 
 /// Bytes in one float pixel.
@@ -45,17 +56,19 @@ const PIXEL_BYTES: u64 = 16;
 
 /// A GPU the float canvas's work is handed to.
 pub struct Gpu {
-    device: wgpu::Device,
+    pub(crate) device: wgpu::Device,
     queue: wgpu::Queue,
     adapter: Adapter,
-    max_binding: u64,
+    pub(crate) max_binding: u64,
     pool: Arc<Pool>,
-    kernels: Kernels,
-    counts: Counts,
+    pub(crate) kernels: Kernels,
+    pub(crate) counts: Counts,
+    /// The work recorded and not yet submitted.
+    recorder: Mutex<Recorder>,
     /// `c / 255` for every byte `c`, as the CPU works it out.
-    table: wgpu::Buffer,
+    pub(crate) table: wgpu::Buffer,
     /// Bound where a kernel reads nothing.
-    empty: wgpu::Buffer,
+    pub(crate) empty: wgpu::Buffer,
 }
 
 impl Gpu {
@@ -84,6 +97,7 @@ impl Gpu {
             mapped_at_creation: false,
         });
         Ok(Gpu {
+            recorder: Mutex::new(Recorder::new(&device)),
             device,
             queue: opened.queue,
             adapter: opened.adapter,
@@ -102,7 +116,7 @@ impl Gpu {
     }
 
     /// A grid of `width` by `height` pixels whose contents are not set.
-    fn grid(&self, width: u16, height: u16) -> Grid {
+    pub(crate) fn grid(&self, width: u16, height: u16) -> Grid {
         Grid {
             pixels: self.buffer(grid_bytes(width, height), BufferKind::Storage),
             width,
@@ -111,33 +125,27 @@ impl Gpu {
     }
 
     /// A pooled buffer of `bytes`, at least one pixel's.
-    fn buffer(&self, bytes: u64, kind: BufferKind) -> Pooled {
+    pub(crate) fn buffer(&self, bytes: u64, kind: BufferKind) -> Pooled {
         Pooled::new(&self.pool, &self.device, bytes.max(PIXEL_BYTES), kind)
     }
 
-    /// A buffer holding `values`.
-    fn values(&self, values: &[f32]) -> Pooled {
+    /// A buffer holding `values`, copied into it in `batch`.
+    pub(crate) fn values(&self, batch: &mut Batch<'_>, values: &[f32]) -> Pooled {
         let buffer = self.buffer(4 * values.len() as u64, BufferKind::Storage);
-        self.queue
-            .write_buffer(buffer.buffer(), 0, f32_bytes(values));
+        batch.stage(buffer.buffer(), f32_bytes(values));
         buffer
     }
 
-    /// Work recorded to submit at once.
-    fn batch(&self) -> Batch {
-        Batch {
-            encoder: self
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default()),
-            kept: Vec::new(),
-        }
+    /// The recorder, locked to record one operation.
+    pub(crate) fn batch(&self) -> Batch<'_> {
+        Batch::lock(&self.recorder)
     }
 
     /// Records a per-pixel kernel of the pixel family over `count` pixels.
     #[allow(clippy::too_many_arguments)]
-    fn pixel_kernel(
+    pub(crate) fn pixel_kernel(
         &self,
-        batch: &mut Batch,
+        batch: &mut Batch<'_>,
         entry: &str,
         count: u32,
         params: impl FnOnce(Params) -> Params,
@@ -149,7 +157,7 @@ impl Gpu {
         let params = params(Params::new().u32(count).u32(row));
         self.kernels.pixel.dispatch(
             &self.device,
-            &mut batch.encoder,
+            batch.encoder(),
             entry,
             &params,
             written,
@@ -160,7 +168,12 @@ impl Gpu {
 
     /// Records the per-pixel amount `amount` gives over `count` pixels, if
     /// it changes from pixel to pixel.
-    fn amount(&self, batch: &mut Batch, amount: &Amount<'_>, count: u32) -> Option<Pooled> {
+    pub(crate) fn amount(
+        &self,
+        batch: &mut Batch<'_>,
+        amount: &Amount<'_>,
+        count: u32,
+    ) -> Option<Pooled> {
         if amount.shares.is_empty() {
             return None;
         }
@@ -168,7 +181,9 @@ impl Gpu {
         let (groups, row) = pixel_groups(count);
         for (n, share) in amount.shares.iter().enumerate() {
             let (entry, mode, values, pixels) = match share {
-                Share::Values(values) => ("share_values", 0, Some(self.values(values)), None),
+                Share::Values(values) => {
+                    ("share_values", 0, Some(self.values(batch, values)), None)
+                }
                 Share::Alpha(held) => ("share_alpha", 0, None, Some(grid(held).buffer())),
                 Share::Matte(held, mode) => (
                     "share_matte",
@@ -185,7 +200,7 @@ impl Gpu {
                 .f32(amount.opacity);
             self.kernels.amount.dispatch(
                 &self.device,
-                &mut batch.encoder,
+                batch.encoder(),
                 entry,
                 &params,
                 out.buffer(),
@@ -195,13 +210,17 @@ impl Gpu {
                 ],
                 groups,
             );
-            batch.keep(values);
         }
         Some(out)
     }
 
     /// Records `grid` moved by `transform`, into a new grid.
-    fn transform_into(&self, batch: &mut Batch, grid: &Grid, transform: Affine) -> Grid {
+    pub(crate) fn transform_into(
+        &self,
+        batch: &mut Batch<'_>,
+        grid: &Grid,
+        transform: Affine,
+    ) -> Grid {
         let out = self.grid(grid.width, grid.height);
         let [a, b, c, d, e, f] = transform.inverse().as_coeffs().map(|v| v as f32);
         let count = grid.count();
@@ -219,7 +238,7 @@ impl Gpu {
             .f32(f);
         self.kernels.transform.dispatch(
             &self.device,
-            &mut batch.encoder,
+            batch.encoder(),
             "transformed",
             &params,
             out.buffer(),
@@ -229,151 +248,72 @@ impl Gpu {
         out
     }
 
-    /// Records `blur`'s passes on `grid`, each into a new buffer.
-    fn blur(&self, batch: &mut Batch, grid: &mut Grid, blur: &Blur) {
-        let (width, height) = (u32::from(grid.width), u32::from(grid.height));
-        // Rows: lines of `width` pixels, one after another; columns: lines
-        // of `height` pixels a row apart.
-        let ways = [
-            (blur.rows, width, height, 1, width),
-            (blur.columns, height, width, width, 1),
-        ];
-        for (passes, n, lines, along, across) in ways {
-            if !passes.any() {
-                continue;
-            }
-            let radius = passes.radius.max(0.0);
-            let (whole, part) = (radius.floor() as u32, radius.fract());
-            let window = 2 * whole + 1;
-            // Enough invocations to fill the GPU, each sliding over at
-            // least 32 pixels and, once the window is long, about as many
-            // as the window holds, so summing its first window costs no
-            // more than sliding it.
-            let target = u32::try_from((u64::from(n) * u64::from(lines)).div_ceil(65536))
-                .unwrap_or(u32::MAX);
-            let chunk = target.clamp(32, window.max(32));
-            let params = Params::new()
-                .u32(n)
-                .u32(lines)
-                .u32(along)
-                .u32(across)
-                .u32(chunk)
-                .u32(whole)
-                .f32(part)
-                .f32(window as f32 + 2.0 * part)
-                .u32(u32::from(blur.edges == Edges::Repeat));
-            for _ in 0..passes.count {
-                let out = self.buffer(grid_bytes(grid.width, grid.height), BufferKind::Storage);
-                self.kernels.box_pass.dispatch(
-                    &self.device,
-                    &mut batch.encoder,
-                    "box_pass",
-                    &params,
-                    out.buffer(),
-                    &[grid.buffer()],
-                    (lines.div_ceil(LINE_GROUP), n.div_ceil(chunk)),
-                );
-                batch.keep(Some(std::mem::replace(&mut grid.pixels, out)));
-            }
-        }
-    }
-
     /// Records a copy of `grid`.
-    fn duplicate_grid(&self, batch: &mut Batch, grid: &Grid) -> Grid {
+    pub(crate) fn duplicate_grid(&self, batch: &mut Batch<'_>, grid: &Grid) -> Grid {
         let out = self.grid(grid.width, grid.height);
         batch
-            .encoder
+            .encoder()
             .copy_buffer_to_buffer(grid.buffer(), 0, out.buffer(), 0, None);
         out
     }
 
-    /// Records `glow` on `grid`.
-    fn glow(&self, batch: &mut Batch, grid: &mut Grid, glow: &Glow) {
-        let count = grid.count();
-        let mut light = self.duplicate_grid(batch, grid);
-        let [r, g, b] = glow.luma;
-        self.pixel_kernel(
-            batch,
-            "glow_threshold",
-            count,
-            |p| {
-                p.u32(0)
-                    .u32(0)
-                    .f32(0.0)
-                    .f32(glow.threshold)
-                    .f32(0.0)
-                    .f32(0.0)
-                    .vec4([r, g, b, 0.0])
-            },
-            light.buffer(),
-            None,
-            None,
-        );
-        self.blur(batch, &mut light, &glow.blur);
-        // Added light is the same either way round, so behind the layer
-        // too ([`glow_on_kernels`]).
-        let entry = match glow.composite {
-            GlowComposite::GlowOnly => "glow_alone",
-            GlowComposite::WithOriginal | GlowComposite::BehindOriginal => "glow_add",
-        };
-        self.pixel_kernel(
-            batch,
-            entry,
-            count,
-            |p| p.u32(0).u32(0).f32(0.0).f32(0.0).f32(glow.intensity),
-            grid.buffer(),
-            Some(light.buffer()),
-            None,
-        );
-        batch.keep(Some(light.pixels));
-    }
-
-    /// Records `shadow` on `grid`.
-    fn shadow(&self, batch: &mut Batch, grid: &mut Grid, shadow: &Shadow) {
-        let count = grid.count();
-        let mut cast = self.transform_into(batch, grid, Affine::translate(shadow.offset));
-        let [r, g, b] = shadow.color;
-        self.pixel_kernel(
-            batch,
-            "shadow_colour",
-            count,
-            |p| {
-                p.u32(0)
-                    .u32(0)
-                    .f32(0.0)
-                    .f32(0.0)
-                    .f32(0.0)
-                    .f32(shadow.opacity)
-                    .vec4([r, g, b, 0.0])
-            },
-            cast.buffer(),
-            None,
-            None,
-        );
-        self.blur(batch, &mut cast, &shadow.blur);
-        if shadow.alone {
-            batch.keep(Some(std::mem::replace(&mut grid.pixels, cast.pixels)));
-            return;
+    /// Ends one operation's recording, submitting what is recorded when
+    /// it is enough.
+    pub(crate) fn finish(&self, mut batch: Batch<'_>) {
+        if batch.done() {
+            self.flush(batch);
         }
-        self.pixel_kernel(
-            batch,
-            "shadow_under",
-            count,
-            |p| p,
-            grid.buffer(),
-            Some(cast.buffer()),
-            None,
-        );
-        batch.keep(Some(cast.pixels));
     }
 
-    /// Submits `batch`, then lets go of what it kept: the GPU runs the
-    /// work in the order the queue got it, so a buffer given back now is
-    /// written again only after this work is done.
-    fn submit(&self, batch: Batch) -> wgpu::SubmissionIndex {
-        let index = self.queue.submit([batch.encoder.finish()]);
-        drop(batch.kept);
-        index
+    /// Records what `record` copies into a readback buffer of `bytes`,
+    /// submits everything recorded, waits for it, and reads the copy with
+    /// `read`.
+    fn read_back<T>(
+        &self,
+        bytes: u64,
+        record: impl FnOnce(&mut Batch<'_>, &wgpu::Buffer),
+        read: impl FnOnce(&[u8]) -> T,
+    ) -> Result<T> {
+        let readback = self.buffer(bytes, BufferKind::Readback);
+        let mut batch = self.batch();
+        record(&mut batch, readback.buffer());
+        let index = self.flush(batch).expect("the copy back was recorded");
+        let (sender, receiver) = mpsc::channel();
+        readback
+            .buffer()
+            .map_async(wgpu::MapMode::Read, ..bytes, move |mapped| {
+                // The receiver waits below, so the send is always heard.
+                let _ = sender.send(mapped);
+            });
+        self.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: Some(index),
+                timeout: None,
+            })
+            .map_err(|e| failed("finish its work", e))?;
+        receiver
+            .recv()
+            .map_err(|e| failed("map its pixels", e))?
+            .map_err(|e| failed("map its pixels", e))?;
+        let out = {
+            let mapped = readback
+                .buffer()
+                .get_mapped_range(..bytes)
+                .map_err(|e| failed("read its pixels", e))?;
+            read(&mapped)
+        };
+        readback.buffer().unmap();
+        self.counts.download(bytes);
+        Ok(out)
+    }
+
+    /// Submits everything recorded, `None` when nothing is.
+    pub(crate) fn flush(&self, batch: Batch<'_>) -> Option<wgpu::SubmissionIndex> {
+        let index = batch.submit(&self.queue)?;
+        self.counts.submission();
+        // Lets the staging belt take back what finished submissions read.
+        let _ = self.device.poll(wgpu::PollType::Poll);
+        Some(index)
     }
 
     /// Records and submits `lay` or `mix` of `source` on `target`.
@@ -401,34 +341,20 @@ impl Gpu {
             Some(grid(source).buffer()),
             shared.as_ref().map(Pooled::buffer),
         );
-        batch.keep(shared);
-        self.submit(batch);
+        drop(shared);
+        self.finish(batch);
         self.counts.operation();
         Ok(())
     }
 }
 
-/// Work recorded for one submission, and the pooled buffers it uses that
-/// nothing else holds.
-struct Batch {
-    encoder: wgpu::CommandEncoder,
-    kept: Vec<Pooled>,
-}
-
-impl Batch {
-    /// Keeps `buffer` until the work is submitted.
-    fn keep(&mut self, buffer: Option<Pooled>) {
-        self.kept.extend(buffer);
-    }
-}
-
 /// The bytes of a `width` by `height` grid of float pixels.
-fn grid_bytes(width: u16, height: u16) -> u64 {
+pub(crate) fn grid_bytes(width: u16, height: u16) -> u64 {
     u64::from(width) * u64::from(height) * PIXEL_BYTES
 }
 
 /// Floats as the bytes that hold them, as the GPU reads them.
-fn f32_bytes(values: &[f32]) -> &[u8] {
+pub(crate) fn f32_bytes(values: &[f32]) -> &[u8] {
     bytemuck::cast_slice(values)
 }
 
@@ -443,7 +369,7 @@ fn matte_row(mode: MatteMode) -> u32 {
 }
 
 /// A failure of the GPU, as a diagnostic.
-fn failed(what: &str, error: impl std::fmt::Display) -> Diagnostic {
+pub(crate) fn failed(what: &str, error: impl std::fmt::Display) -> Diagnostic {
     Diagnostic::new(Kind::Invalid, format!("the GPU failed to {what}: {error}"))
         .expected("a render on the CPU, without `--gpu`")
 }
@@ -456,7 +382,9 @@ impl Accelerator for Gpu {
     fn upload(&self, pixels: &Pixels) -> Result<Resident> {
         let grid = self.grid(pixels.width(), pixels.height());
         let bytes: &[u8] = bytemuck::cast_slice(pixels.data());
-        self.queue.write_buffer(grid.buffer(), 0, bytes);
+        let mut batch = self.batch();
+        batch.stage(grid.buffer(), bytes);
+        self.finish(batch);
         self.counts.upload(bytes.len() as u64);
         Ok(grid.into_resident())
     }
@@ -464,85 +392,89 @@ impl Accelerator for Gpu {
     fn upload_bytes(&self, rgba: &[u8], width: u16, height: u16) -> Result<Resident> {
         let grid = self.grid(width, height);
         let bytes = self.buffer(rgba.len() as u64, BufferKind::Storage);
-        self.queue.write_buffer(bytes.buffer(), 0, rgba);
-        self.counts.upload(rgba.len() as u64);
         let mut batch = self.batch();
+        batch.stage(bytes.buffer(), rgba);
         let count = grid.count();
         let (groups, row) = pixel_groups(count);
         self.kernels.unpack.dispatch(
             &self.device,
-            &mut batch.encoder,
+            batch.encoder(),
             "unpack",
             &Params::new().u32(count).u32(row),
             grid.buffer(),
             &[bytes.buffer(), &self.table],
             groups,
         );
-        batch.keep(Some(bytes));
-        self.submit(batch);
+        self.finish(batch);
+        self.counts.upload(rgba.len() as u64);
         Ok(grid.into_resident())
     }
 
     fn transparent(&self, width: u16, height: u16) -> Result<Resident> {
         let grid = self.grid(width, height);
         let mut batch = self.batch();
-        batch.encoder.clear_buffer(grid.buffer(), 0, None);
-        self.submit(batch);
+        batch.encoder().clear_buffer(grid.buffer(), 0, None);
+        self.finish(batch);
         Ok(grid.into_resident())
     }
 
     fn duplicate(&self, pixels: &Resident) -> Result<Resident> {
         let mut batch = self.batch();
         let copy = self.duplicate_grid(&mut batch, grid(pixels));
-        self.submit(batch);
+        self.finish(batch);
         Ok(copy.into_resident())
     }
 
     fn download(&self, pixels: &Resident) -> Result<Pixels> {
         let grid = grid(pixels);
         let bytes = grid_bytes(grid.width, grid.height);
-        let readback = self.buffer(bytes, BufferKind::Readback);
-        let mut batch = self.batch();
-        batch
-            .encoder
-            .copy_buffer_to_buffer(grid.buffer(), 0, readback.buffer(), 0, Some(bytes));
-        let index = self.submit(batch);
-        let (sender, receiver) = mpsc::channel();
-        readback
-            .buffer()
-            .map_async(wgpu::MapMode::Read, ..bytes, move |mapped| {
-                // The receiver waits below, so the send is always heard.
-                let _ = sender.send(mapped);
-            });
-        self.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: Some(index),
-                timeout: None,
-            })
-            .map_err(|e| failed("finish its work", e))?;
-        receiver
-            .recv()
-            .map_err(|e| failed("map its pixels", e))?
-            .map_err(|e| failed("map its pixels", e))?;
-        let data: Vec<Pixel> = {
-            let mapped = readback
-                .buffer()
-                .get_mapped_range(..bytes)
-                .map_err(|e| failed("read its pixels", e))?;
-            // A mapping is aligned for floats in practice; if not, the
-            // bytes are copied into place instead of read in place.
-            match bytemuck::try_cast_slice::<u8, Pixel>(&mapped) {
-                Ok(pixels) => pixels.to_vec(),
-                Err(_) => {
-                    let mut data = vec![[0.0; 4]; grid.count() as usize];
-                    bytemuck::cast_slice_mut::<Pixel, u8>(&mut data).copy_from_slice(&mapped);
-                    data
+        let data = self.read_back(
+            bytes,
+            |batch, readback| {
+                batch
+                    .encoder()
+                    .copy_buffer_to_buffer(grid.buffer(), 0, readback, 0, Some(bytes));
+            },
+            |mapped| {
+                // A mapping is aligned for floats in practice; if not, the
+                // bytes are copied into place instead of read in place.
+                match bytemuck::try_cast_slice::<u8, Pixel>(mapped) {
+                    Ok(pixels) => pixels.to_vec(),
+                    Err(_) => {
+                        let mut data = vec![[0.0; 4]; grid.count() as usize];
+                        bytemuck::cast_slice_mut::<Pixel, u8>(&mut data).copy_from_slice(mapped);
+                        data
+                    }
                 }
-            }
-        };
-        readback.buffer().unmap();
-        self.counts.download(bytes);
+            },
+        )?;
         Ok(Pixels::from_data(grid.width, grid.height, data))
+    }
+
+    fn download_rgba8(&self, pixels: &Resident) -> Result<Vec<u8>> {
+        let grid = grid(pixels);
+        let count = grid.count();
+        let bytes = 4 * u64::from(count);
+        let packed = self.buffer(bytes, BufferKind::Storage);
+        self.read_back(
+            bytes,
+            |batch, readback| {
+                let (groups, row) = pixel_groups(count);
+                self.kernels.pack.dispatch(
+                    &self.device,
+                    batch.encoder(),
+                    "pack",
+                    &Params::new().u32(count).u32(row),
+                    packed.buffer(),
+                    &[grid.buffer()],
+                    groups,
+                );
+                batch
+                    .encoder()
+                    .copy_buffer_to_buffer(packed.buffer(), 0, readback, 0, Some(bytes));
+            },
+            <[u8]>::to_vec,
+        )
     }
 
     fn lay(
@@ -561,7 +493,7 @@ impl Accelerator for Gpu {
 
     fn cut(&self, pixels: &mut Resident, kept: &[f32]) -> Result<()> {
         let mut batch = self.batch();
-        let kept = self.values(kept);
+        let kept = self.values(&mut batch, kept);
         let grid = grid(pixels);
         self.pixel_kernel(
             &mut batch,
@@ -572,30 +504,77 @@ impl Accelerator for Gpu {
             None,
             Some(kept.buffer()),
         );
-        batch.keep(Some(kept));
-        self.submit(batch);
+        self.finish(batch);
         self.counts.operation();
         Ok(())
+    }
+
+    fn cut_by(&self, pixels: &mut Resident, kept: &Resident) -> Result<()> {
+        let mut batch = self.batch();
+        let count = grid(pixels).count();
+        let amount = self
+            .amount(
+                &mut batch,
+                &Amount::constant(1.0).and(Share::Alpha(kept)),
+                count,
+            )
+            .expect("an amount with a share");
+        self.pixel_kernel(
+            &mut batch,
+            "cut",
+            count,
+            |p| p,
+            grid(pixels).buffer(),
+            None,
+            Some(amount.buffer()),
+        );
+        self.finish(batch);
+        self.counts.operation();
+        Ok(())
+    }
+
+    fn mask(
+        &self,
+        kept: Option<Resident>,
+        start: f32,
+        mask: &MaskCoverage<'_>,
+        width: u16,
+        height: u16,
+    ) -> Result<Resident> {
+        Ok(self.combine_mask(kept, start, mask, width, height))
     }
 
     fn transformed(&self, pixels: &Resident, transform: Affine) -> Result<Resident> {
         let mut batch = self.batch();
         let out = self.transform_into(&mut batch, grid(pixels), transform);
-        self.submit(batch);
+        self.finish(batch);
         self.counts.operation();
         Ok(out.into_resident())
     }
 
+    fn project(
+        &self,
+        buffer: Texels<'_>,
+        landings: &[Landing],
+        share: f32,
+        width: u16,
+        height: u16,
+    ) -> Result<Resident> {
+        match self.projected(buffer, landings, share, width, height) {
+            Some(grid) => Ok(grid.into_resident()),
+            None => project::on_cpu(self, buffer, landings, share, width, height),
+        }
+    }
+
     fn runs(&self, effect: &Effect) -> bool {
-        effect.input().is_none()
-            && (effect.movement().is_some()
-                // A glow's composite and operation come from its values
-                // alone, so any space shows whether its kernels draw it.
-                || match effect.plan(&Space::default()) {
-                    Some(Plan::Glow(glow)) => glow_on_kernels(&glow),
-                    Some(Plan::Blur(_) | Plan::Shadow(_)) => true,
-                    None => false,
-                })
+        if effect.movement().is_some() {
+            return effect.input().is_none();
+        }
+        // What a plan does comes from the effect's values alone, so any
+        // space shows whether the kernels run it.
+        effect.plan(&Space::default()).is_some_and(|plan| {
+            effects::runs(&plan) && (effect.input().is_none() || effects::reads_input(&plan))
+        })
     }
 
     fn effect(&self, pixels: &mut Resident, effect: &Effect, space: &Space) -> Result<()> {
@@ -607,7 +586,7 @@ impl Accelerator for Gpu {
                 let inside = space.transform * transform * space.transform.inverse();
                 if inside != Affine::IDENTITY {
                     let moved = self.transform_into(&mut batch, grid, inside);
-                    batch.keep(Some(std::mem::replace(&mut grid.pixels, moved.pixels)));
+                    grid.pixels = moved.pixels;
                 }
                 if opacity < 1.0 {
                     self.pixel_kernel(
@@ -621,9 +600,7 @@ impl Accelerator for Gpu {
                     );
                 }
             }
-            (None, Some(Plan::Blur(blur))) => self.blur(&mut batch, grid, &blur),
-            (None, Some(Plan::Glow(glow))) => self.glow(&mut batch, grid, &glow),
-            (None, Some(Plan::Shadow(shadow))) => self.shadow(&mut batch, grid, &shadow),
+            (None, Some(plan)) => effects::run(self, &mut batch, grid, &plan, space)?,
             (None, None) => {
                 return Err(Diagnostic::new(
                     Kind::Invalid,
@@ -632,7 +609,7 @@ impl Accelerator for Gpu {
                 .expected("an effect the GPU runs"));
             }
         }
-        self.submit(batch);
+        self.finish(batch);
         self.counts.accelerated(effect.spec().name);
         Ok(())
     }
@@ -644,13 +621,6 @@ impl Accelerator for Gpu {
     fn tally(&self) -> Tally {
         self.counts.tally()
     }
-}
-
-/// Whether the glow kernels draw `glow`: its light alone, or added to the
-/// layer, which is the same with the layer behind it. Its other operations
-/// combine the light with the layer on the CPU.
-fn glow_on_kernels(glow: &Glow) -> bool {
-    glow.composite == GlowComposite::GlowOnly || glow.operation == Operation::Blend(BlendMode::Add)
 }
 
 #[cfg(test)]

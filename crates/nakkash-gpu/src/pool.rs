@@ -1,11 +1,12 @@
 //! Buffers kept for reuse: a frame makes and drops many frame-sized grids,
-//! and making a buffer costs more than reusing one.
+//! and making a buffer costs more than reusing one (the GPU clears a new
+//! buffer before it is first read).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, PoisonError};
 
-/// The most bytes of idle buffers kept; past it, a returned buffer is
-/// dropped. Two 4K grids of float pixels per processor thread fit.
+/// The most bytes of idle buffers kept; past it, the buffers idle longest
+/// are dropped. Two 4K grids of float pixels per processor thread fit.
 const IDLE_BYTES: u64 = 4 << 30;
 
 /// Idle buffers by their size and use.
@@ -16,7 +17,12 @@ pub(crate) struct Pool {
 
 #[derive(Default)]
 struct Idle {
+    /// The idle buffers of each size and use, the one given back last at
+    /// the end.
     buffers: HashMap<(u64, Kind), Vec<wgpu::Buffer>>,
+    /// The size and use of every idle buffer, in the order they were given
+    /// back: the first has been idle longest.
+    order: VecDeque<(u64, Kind)>,
     bytes: u64,
 }
 
@@ -30,13 +36,17 @@ pub(crate) enum Kind {
 }
 
 impl Pool {
-    /// A buffer of `bytes` for `kind`: an idle one, or a new one.
+    /// A buffer of `bytes` for `kind`: the idle one given back last, or a
+    /// new one.
     pub(crate) fn take(&self, device: &wgpu::Device, bytes: u64, kind: Kind) -> wgpu::Buffer {
         let reused = {
             let mut idle = self.idle.lock().unwrap_or_else(PoisonError::into_inner);
             let found = idle.buffers.get_mut(&(bytes, kind)).and_then(Vec::pop);
             if found.is_some() {
                 idle.bytes -= bytes;
+                if let Some(at) = idle.order.iter().rposition(|&k| k == (bytes, kind)) {
+                    idle.order.remove(at);
+                }
             }
             found
         };
@@ -57,14 +67,35 @@ impl Pool {
         })
     }
 
-    /// Keeps `buffer` for reuse, unless the idle ones already hold enough.
+    /// Keeps `buffer` for reuse, dropping those idle longest while the
+    /// idle ones hold more than [`IDLE_BYTES`]: the sizes a frame uses now
+    /// are the ones it will ask for next.
     pub(crate) fn give(&self, buffer: wgpu::Buffer, kind: Kind) {
         let bytes = buffer.size();
-        let mut idle = self.idle.lock().unwrap_or_else(PoisonError::into_inner);
-        if idle.bytes + bytes <= IDLE_BYTES {
+        let mut dropped = Vec::new();
+        {
+            let mut idle = self.idle.lock().unwrap_or_else(PoisonError::into_inner);
             idle.bytes += bytes;
             idle.buffers.entry((bytes, kind)).or_default().push(buffer);
+            idle.order.push_back((bytes, kind));
+            while idle.bytes > IDLE_BYTES {
+                let Some(key) = idle.order.pop_front() else {
+                    break;
+                };
+                let Some(list) = idle.buffers.get_mut(&key) else {
+                    continue;
+                };
+                if list.is_empty() {
+                    continue;
+                }
+                // The one of that size idle longest.
+                dropped.push(list.remove(0));
+                idle.bytes -= key.0;
+            }
         }
+        // Dropped outside the lock: a buffer's destruction may wait on the
+        // device.
+        drop(dropped);
     }
 }
 

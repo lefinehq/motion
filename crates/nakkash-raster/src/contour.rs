@@ -452,7 +452,7 @@ fn centred(input: &Input, pixels: &Pixels, space: &Space) -> Pixels {
         None => Vec2::ZERO,
     };
     let moved = space.transform * Affine::translate(shift) * space.transform.inverse();
-    input.pixels.transformed(moved)
+    input.pixels().transformed(moved)
 }
 
 #[cfg(test)]

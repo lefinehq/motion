@@ -23,10 +23,7 @@ fn reading(map: Pixels) -> Space {
     Space {
         transform: Affine::IDENTITY,
         bounds: Some(bounds),
-        input: Some(Input {
-            pixels: map,
-            bounds: Some(bounds),
-        }),
+        input: Some(Input::new(map, Some(bounds))),
         time: 0.0,
         sound: None,
         outline: None,
