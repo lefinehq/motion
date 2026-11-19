@@ -807,3 +807,17 @@ fn a_layer_without_a_corner_pin_runs_no_pin_rule() {
         one(r#"{"id":"a","rect":"100x100","at":"center center","fx":[{"corner-pin":[0,0]}]}"#);
     assert_eq!(with.passed, without.passed + 1);
 }
+
+#[test]
+fn a_text_wider_than_the_canvas_is_offscreen_though_a_shape_that_wide_is_bleed() {
+    let report = one(
+        r#"{"id":"t","text":"WIDER THAN THE FRAME","font":"Inter Variable 300 800","at":"center center"}"#,
+    );
+    let off: Vec<&Violation> = report
+        .violations
+        .iter()
+        .filter(|v| v.code == Code::Offscreen)
+        .collect();
+    assert_eq!(off.len(), 1, "{report}");
+    assert_eq!(off[0].address.to_string(), "t");
+}
