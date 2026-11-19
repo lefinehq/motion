@@ -3255,6 +3255,13 @@ pub struct Effect {
     moments: Vec<Vec<ParamValue>>,
 }
 
+/// The effects that read their layer's own time ([`Space::time`]): only
+/// these make a layer's time part of what it draws, so a layer otherwise
+/// still draws the same at every time and its frames are known to repeat.
+/// A test runs every effect at two times and fails for one that changes
+/// without being here.
+pub(crate) const READS_TIME: &[&str] = &["particles"];
+
 impl Effect {
     /// Writes what the effect is into `h`, for its layer's identity: its
     /// name, values and everything it was given, with `input` the identity
@@ -3290,6 +3297,11 @@ impl Effect {
         });
         h.option(rest.as_ref(), |h, r| h.rect(*r));
         h.all(moments, |h, values| h.all(values, |h, v| v.ident(h)));
+    }
+
+    /// Whether it reads its layer's own time ([`READS_TIME`]).
+    pub(crate) fn reads_time(&self) -> bool {
+        READS_TIME.contains(&self.spec.name)
     }
 }
 

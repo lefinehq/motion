@@ -115,7 +115,6 @@ fn a_change_to_any_field_changes_the_identity() {
         ),
         ("adjust", Box::new(|l| l.adjust = true)),
         ("bounds", Box::new(|l| l.bounds = None)),
-        ("time", Box::new(|l| l.time = 1.5000001)),
         ("motion", Box::new(|l| l.motion.push(Affine::scale(2.0)))),
         ("projection", Box::new(|l| l.projection = None)),
     ];
@@ -170,4 +169,16 @@ fn kinds_of_nodes_with_the_same_numbers_differ() {
     let mut ids = Identities::default();
     assert_ne!(ids.list(std::slice::from_ref(&path)), id(&path));
     assert_ne!(ids.list(&[]), ids.list(std::slice::from_ref(&path)));
+}
+
+#[test]
+fn a_layers_time_counts_only_where_an_effect_reads_it() {
+    let at = |time: f64, effect: &str| {
+        let mut layer = Layer::new(vec![square(Color::WHITE)]);
+        layer.effects = vec![Effect::new(effect, &[]).expect("known")];
+        layer.time = time;
+        id(&Node::Layer(layer))
+    };
+    assert_eq!(at(0.5, "gaussian-blur"), at(1.5, "gaussian-blur"));
+    assert_ne!(at(0.5, "particles"), at(1.5, "particles"));
 }

@@ -12,7 +12,9 @@
 //!   frames are pictures;
 //! - fonts by their data's id, which no other font data ever has, and the
 //!   face's index;
-//! - children, effect inputs and matte sources by their own identities.
+//! - children, effect inputs and matte sources by their own identities;
+//! - a layer's own time only when one of its effects reads it, since
+//!   nothing else draws it.
 //!
 //! The marks of shared children ([`Shared`](crate::Shared)) are left out:
 //! they say nothing of what is drawn. Nothing is keyed by where a node sits
@@ -417,7 +419,14 @@ impl Identities {
         });
         h.bool(*adjust);
         h.option(bounds.as_ref(), |h, b| h.rect(*b));
-        h.f64(*time);
+        // Its own time draws only through effects that read it.
+        h.option(
+            effects
+                .iter()
+                .any(crate::effect::Effect::reads_time)
+                .then_some(time),
+            |h, t| h.f64(*t),
+        );
         h.all(motion, |h, m| h.affine(*m));
         h.option(projection.as_ref(), |h, projection| {
             let Projection { matrix, samples } = projection;
