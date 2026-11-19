@@ -2,7 +2,7 @@
 //! it with the JSON it was read from.
 
 use crate::address::Id;
-use crate::{Address, Result};
+use crate::{Address, Cutout, Result, TrackRequest};
 use serde_json::Value as Json;
 
 use crate::anim::AnimTrack;
@@ -336,6 +336,15 @@ pub struct VideoContent {
     pub frame: kurbo::Rect,
     /// How each frame fills the box.
     pub fit: MediaFit,
+    /// The object cut out of the clip, from its bake, if the layer asks for
+    /// one: each frame's alpha is multiplied by the baked alpha of the same
+    /// clip frame ([D85]).
+    ///
+    /// [D85]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d85-baked-results-enter-the-scene-as-requests-on-video-layers
+    pub cutout: Option<Cutout>,
+    /// The tracks of objects in the clip the layer asks for. A render never
+    /// reads them; `nakkash ml track` writes them as keys.
+    pub tracks: Vec<TrackRequest>,
 }
 
 /// How an image or video layer's picture fills its box, the layer's `fit`.

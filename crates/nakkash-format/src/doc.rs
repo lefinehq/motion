@@ -91,6 +91,11 @@ pub(crate) struct LayerDoc {
     /// Kept as written: each content kind that takes a `fit` reads its own
     /// values from it in `crate::validate`.
     pub(crate) fit: Present<String>,
+    /// Kept as written: read into a [`Cutout`](crate::Cutout) by the video
+    /// layer's validation, which places its errors inside it.
+    pub(crate) cutout: Present<serde_json::Value>,
+    /// Kept as written, as `cutout` is.
+    pub(crate) tracks: Present<serde_json::Value>,
     pub(crate) animate: Present<List<ItemsDoc>>,
     pub(crate) at: Present<Shorthand<Position>>,
     #[serde(rename = "in")]
