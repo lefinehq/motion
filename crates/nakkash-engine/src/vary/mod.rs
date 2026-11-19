@@ -749,7 +749,7 @@ pub fn distance(master: &[crate::Image], variant: &[crate::Image]) -> Distance {
 
 /// How much of `twin`, [`colour_twin`]'s drawing of a look, no colour
 /// transform of `master`'s samples explains, against how much the binning
-/// leaves of the master itself: the [`unexplained`] colour of the twin over
+/// leaves of the master itself: the unexplained colour of the twin over
 /// the master's own (at least [`FILTER_GRAIN`]). Near 1 is a filter: any
 /// frame-wide map, curve or LUT, whatever it does, gives each master
 /// colour one colour, and leaves of it what the bins leave.

@@ -242,7 +242,7 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
 
 /// How far `made` lands from the master, whose frames are `master_samples`
 /// (`None` when nothing asked for them), with, for a look, the
-/// [`filter`](nakkash_engine::vary::filter) residual of its colour-only
+/// [`filter`] residual of its colour-only
 /// twin, which it saves beside the variant as `twin.json`.
 fn measured(
     master_samples: Option<&[nakkash_engine::Image]>,
