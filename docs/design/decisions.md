@@ -869,3 +869,100 @@ Status: Draft · 2026-11-17
   - An edit changes one layer, or a composition and its instances. Checking everything again costs as much as the first check; checking what changed costs what changed.
   - Finding what changed from the compiled scenes, not the edit line, means there is one place that knows what a node reads, next to the code that evaluates it. Rules that read the edit line would have to know every way a slot, a role or an override reaches a layer, and would drift from the compiler.
 - **Not now:** evaluating only the compositions that hold a changed layer (every frame of the scene is still evaluated); keeping checks across runs of the command, in a cache on disk; and the pixel gates, `contrast` and `flash`, which draw the scene and are kept for a later decision.
+
+### D80. Learned models run in a bake, never in a render
+
+- **Decision:** inference runs only in `nakkash ml preview` and `nakkash ml bake`. They write **baked assets**: files kept in a cache by the SHA-256 of their manifest, each with a record of what made it. `render`, `check`, `at`, `diff`, `fidelity`, `batch` and `export` read baked assets and never infer. A scene whose request has no bake, or whose bake was made for another request, is an error that names `nakkash ml bake`.
+  - **Boundaries.** Inference lives in two crates: `nakkash-ml` (the model lock, the store, the pipelines) and `nakkash-onnx` (the runtime binding). Only the CLI depends on them, behind its `ml` feature, off by default; what reads baked assets is `nakkash-baked`, which links neither. A boundary test holds this.
+  - **Recorded.** Every asset records the hashes of the model files and the runtime library that made it, where each graph ran (D81), the thread count, the platform, the nakkash version and the request. A bake on another machine or backend is a new asset, never a cache hit.
+- **Why:**
+  - Learned models give different bits on different machines, backends and even thread counts, which a render must not ([D12](#d12-what-repeatable-means)). Measured on our graphs ([evidence](../research/2026-11-19-learned-models.md#determinism)): the Mac's accelerated backend against its CPU differs by up to 2e-3 in logits; the Mac's CPU against the Linux box's CPU differs in every graph; the point tracker's features differ between 2 and 4 threads on one Mac (5e-7). None of it shows in an 8-bit matte, all of it breaks byte goldens. A render that reads the same baked bytes is the same on every machine.
+  - The cost is a bake's, not a frame's: 0.95 s a 1080p frame to segment an object on the Mac and 5 to 10 s to refine its edges; on the Linux box, 17 s and about 55 CPU-seconds ([evidence](../research/2026-11-19-learned-models.md#speed)).
+  - A frozen result is what a person wants from a matte: it does not change because a model was updated.
+- **Not now:** inference inside the GPU preview path ([D74](#d74-an-opt-in-gpu-path-approximates-the-cpu-reference)); inference inside a render by a deterministic pure-Rust kernel path, which none of the runtimes offers.
+
+### D81. One inference runtime, loaded at run time from a locked file
+
+- **Decision:** `nakkash-onnx` runs graphs through `ort`, pinned to `=2.0.0-rc.15` (ONNX Runtime 1.31), with only its `load-dynamic` linking: no build step downloads or links a runtime, so the default build and CI need neither the runtime nor any model.
+  - **The library is locked like a model** ([D82](#d82-a-model-lock-and-a-content-addressed-model-store)). It comes from one supplier for both machines: the vendor's own package of the runtime, `Microsoft.ML.OnnxRuntime` 1.31.0 on nuget.org, pinned by the package's SHA-512 (the registry's published hash), and on each platform by the SHA-256 of the library inside it: the macOS arm64 library, which carries the CoreML provider, and the Linux x64 one, which needs glibc 2.28. `nakkash ml models fetch` downloads it into the store; a bake checks its hash before it loads it.
+  - **Placement is per graph** and written in the lock. On macOS, a graph whose input shapes are fixed runs on CoreML (ML Program format, all compute units). Every other graph, and every graph elsewhere, runs on the CPU. A CPU session asks for the CPU explicitly, since the runtime otherwise moves it onto CoreML on macOS.
+  - **Sessions** take the thread count asked for (`--threads`, 4 by default), one thread between operators, sequential execution, every graph optimisation and deterministic compute.
+  - **CoreML's compiled models** are kept under the store, in a folder named by the graph's SHA-256, the provider's options and the runtime's version. The graph is opened from its place in the store, which is named by its hash and never moves, because the provider keys its own cache by path.
+- **Why:**
+  - It is the one runtime that runs every graph in scope without porting it, and the measured parity of our exports holds through it: the object segmenter's whole video loop matches the reference implementation with a mask IoU of 1.000 on 48 of 48 frames ([evidence](../research/2026-11-19-learned-models.md#parity)).
+  - One signed supplier, with a hash the registry publishes independently of us, for both the Mac and the Linux box. The alternatives fail on facts: the runtime's source repository answers 404 (checked 2026-11-18), so it cannot be built from source; the binding's own prebuilt Linux archive needs glibc 2.38 and GCC 13 and does not link on the box's Debian 12; and its static archives are fetched at build time from a CDN with one operator.
+  - Fixed-shape graphs gain 9× (segmenter image encoder), 6.5× (point features) and 5.8× (flow) on CoreML. Graphs with dynamic shapes do not compile there (build errors −7 and −14). The edge matting graph gains nothing (5.8 s against 5.4 s on a quiet CPU) for a 5 to 19 minute first compile and 7 GB of compiled cache, so it stays on the CPU ([evidence](../research/2026-11-19-learned-models.md#speed)).
+- **Not now:** GPU providers on Linux and Windows, none of which was measured; building the runtime from source while its repository is unavailable; a second runtime as a conformance oracle, whose coverage of the large backbones is unknown.
+
+### D82. A model lock and a content-addressed model store
+
+- **Decision:** `crates/nakkash-ml/models.lock`, built into nakkash, names every model by a key that says what it does (`segment.video`, `matte.edges`, `points.video`, `flow.dense`) and pins every file it needs by SHA-256 and size: graphs, constant tensors and the runtime library. A key groups the graphs of one model and says where each runs (D81). Each file says how it is obtained:
+  - `download`: a URL of the upstream's own release;
+  - `member`: a file inside a downloaded archive, the archive pinned by its own hash;
+  - `export`: a graph we exported from upstream weights, with the weights' URL and hash, the exporter's hash, the toolchain and the parity measured against the upstream implementation. Upstreams publish weights, not these graphs, so they are taken in with `nakkash ml models import <folder>`, which keeps only files whose hash the lock has.
+  Files are kept in the store, `ml/files/<sha256>` in the nakkash cache (`$NAKKASH_CACHE` or the platform's cache folder), written whole and read with their hash checked. `nakkash ml models fetch` is the only command of the set that reaches the network; `nakkash ml models verify` hashes the store again. Scenes never name a model, a file or a path.
+- **Why:**
+  - It is the font lock's design ([D39](#d39-fonts-are-resolved-before-a-render)): the hash is the identity, the name only a pointer, renders and bakes stay offline, and a mirror or a renamed upstream cannot swap the bytes.
+  - Pinning an export by its hash makes any exporter's output acceptable exactly when it is the same bytes. Our exports are byte-identical across toolchains where measured (the edge model's normalised graph from two ONNX versions).
+- **Not now:** hosting our exported graphs, which is the maintainers' decision; signatures beyond the package registry's; compiling a model ahead of its first bake.
+
+### D83. Only models licensed for commercial use
+
+- **Decision:** every lock entry carries its licence as an SPDX id, the upstream page it was read from (never a mirror), and a class: `ok` (commercial use and changes allowed), `conditions` (allowed with attribution or use terms), `non-commercial` or `copyleft`. The lock is refused when an entry is `non-commercial` or `copyleft`; a `conditions` entry needs its notice in the lock, which `nakkash ml models list` prints. The lock lists the refused models with their reasons, so a later edit does not take one in by mistake.
+- **Why:** many of the strongest models are non-commercial or copyleft, and mirrors carry wrong licence tags. Checked upstream on 2026-11-18: the four models in the lock are Apache-2.0, MIT and BSD-3-Clause, weights included; the best video matting and inpainting models and the leading point tracker are non-commercial or GPL ([evidence](../research/2026-11-19-learned-models.md#licences)).
+- **Not now:** clearing the terms of the datasets the permissive weights were trained on; tracked, not blocking.
+
+### D84. Models are untrusted input
+
+- **Decision:** nakkash takes ONNX graphs and raw constant tensors only, never a pickled checkpoint. Before a file enters the store, nakkash reads the graph's protobuf itself, with size caps, and refuses one that uses an operator domain other than the standard one (no custom operators), stores data outside the file, or is larger than the format allows (2 GiB). Exports from pickled weights are made outside nakkash, offline, in eval mode, with parity checked against the upstream module; only their ONNX output is imported, by hash. A Rust dependency added for inference is vendored and scanned before it is added.
+- **Why:** pickle runs code when loaded; ONNX external data has had path-traversal and link vulnerabilities; custom operator libraries load native code into the session. Reading the graph ourselves before the runtime sees it closes all three, and costs one pass over the file when it enters the store.
+- **Not now:** sandboxing the bake process beyond an ordinary user process; model scanners as a gate.
+
+### D85. Baked results enter the scene as requests on video layers
+
+- **Decision:** a video layer asks for what a bake makes, and keeps the digest of what it made.
+  - **`cutout`** asks for the layer's own object, cut out of its clip ([D87](#d87-an-objects-matte-is-its-segmentation-refined-at-its-edge)). It holds prompts on frames of the clip (a box, points to include, points to exclude), its settings, and, once baked, `baked`: the digest of the matte. The render multiplies each frame's alpha by the baked alpha of the same clip frame, so the matte follows the clip through `offset`, `stretch` and `remap`.
+  - **`tracks`** asks for motion tracks of objects in the clip ([D88](#d88-a-track-is-baked-once-and-applied-as-keys-on-pivots)), each with an `id`, prompts, optional corners, correction anchors and, once baked, `baked`. `nakkash ml track` writes a baked track as keys on pivots; nothing reads tracks at render time.
+  - **Assets.** A matte is one 16-bit greyscale PNG per clip frame at the clip's size plus a manifest; a track is a manifest of per-frame values. A manifest names its request, each file's hash and the record of D80. An asset lives in `baked/<digest>/` in the cache, its digest the SHA-256 of its manifest. A render checks the manifest's hash and each frame file's, and that the manifest's request is the layer's request and its clip's hash; anything else is the error of D80.
+  - **Work cache.** Each stage of a bake (the segmentation, the edge refinement, the point tracks, the flow) keeps its result under a key over its model files, runtime, placement, threads, canonical settings, prompts and the clip's hash. A preview's segmentation is reused by the bake after it, and a track and a cutout with the same prompt share one segmentation.
+- **Why:**
+  - The request lives on the layer that plays the clip, so the matte's frames and the clip's frames are the same frames by index, whatever the layer's time does.
+  - A digest in the scene freezes the result: a later model, a new nakkash or another machine never changes a matte that was approved, and a changed prompt or clip is caught, not drawn with an old matte.
+  - Keeping requests and digests in the scene makes bakes scriptable by agents with the edit commands they already use.
+- **Not now:** mattes and tracks of layers other than video layers; matte assets as editable outlines; partial re-bakes from a changed prompt onwards, which need checkpoints of the segmenter's memory.
+
+### D86. Bakes are gated by measured quality on fixed shots
+
+- **Decision:** each baked task has gates on a fixed set of shots with exact ground truth: a synthetic product shot (rendered, with exact alpha, corners, surface points and visibility) and green-screen composites for hair and fur. Mattes are gated on IoU at 0.5, its minimum over frames, SAD per frame and the error of their change between frames (dtSSD), paired so a blurred matte cannot pass; tracks on the median and 90th percentile of their error after an anchor, and the mask centroid's mean error. The limits are the measured values of the pipeline the gates were set on, with a margin, in one table in the gate test. The gates need the models, so they are ignored tests that the bake machines run (`cargo test -p nakkash-ml --test gates -- --ignored`, with the shot folder in `NAKKASH_ML_SHOTS`).
+  - **Tolerances across machines:** 8-bit alpha within one level on at most 0.01 % of pixels, track positions within 0.05 px, between any two platforms and backends. Bit-exact only for one platform, backend and thread count, which a double bake on one machine checks.
+- **Why:** single temporal measures are gameable: flow smoothing lowered the label-free flicker measure by 20 to 37 % while its error against ground truth rose 7 to 25 %, and on hair it fell below the ground truth's own, which is lag, not stability ([evidence](../research/2026-11-19-learned-models.md#mattes)). Exact synthetic ground truth catches what composites cannot.
+- **Not now:** a longer synthetic shot and a real hair shot with a measured matte; tuning the edge band and agreement threshold on a held-out set.
+
+### D87. An object's matte is its segmentation refined at its edge
+
+- **Decision:** a `cutout` is baked in three stages.
+  1. **Segment.** The video segmenter (`segment.video`) finds the object from the prompts and propagates it through the clip. Its memory of past frames is kept in Rust, as the reference implementation keeps it: the prompted frames first, then up to six frames before, then up to sixteen object pointers, each memory rounded to bfloat16 when stored. Every prompted frame conditions the whole clip; propagation runs forward from the first prompted frame to the end, then backward from it to the start, both reading one memory. Masks are the 256² logits, upsampled to the clip's size.
+  2. **Refine the edge.** The edge matting model (`matte.edges`) runs on a crop around the object (its box over two frames either side, with a fifth of its size and 16 px around it), at 1024². Only the band of 12 px either side of the segmentation's edge takes its alpha, and only on frames where its mask, gated by the segmentation, agrees with the segmentation at an IoU of at least 0.9. Elsewhere the segmentation's probability stays. Band and agreement are settings (`band`, `agree`).
+  3. **Smooth**, only when asked (`smooth`): the flow model (`flow.dense`) carries the previous frame's matte onto the current one where the flow is consistent both ways, and blends the two by a weight that falls with their difference.
+  `edges` picks `refine` (the three stages, the default), `hard` (the segmentation's mask) or `soft` (its probability).
+- **Why:**
+  - A salient-object matte run on the whole frame takes whatever stands out: a passing skateboarder instead of the product (IoU 0.11), the hands with the phone, the laptop around its screen. The segmenter never lost the object (worst-frame IoU 0.95 to 0.99 on three shots) but its edges are soft.
+  - Refining only the band where the two agree cut hair SAD by 26 % and its dtSSD by 45 %, tied on fur, and costs a little on a hard-edged product (SAD 7.7 against 6.2). When the refiner disagrees, the matte is the segmentation, so it is never worse than the segmentation by more than the band ([evidence](../research/2026-11-19-learned-models.md#mattes)).
+  - Cropping raises the refiner's resolution; it does not fix its choice, which is why the band and the agreement test stay.
+  - Smoothing by flow lowered flicker only by lagging (above), so it is never the default.
+  - Treating every prompt as an initial conditioning frame makes the result a function of the scene, not of the order a person clicked in.
+- **Not now:** several objects in one cutout; prompts from text; checkpoints of the memory for partial re-bakes.
+
+### D88. A track is baked once and applied as keys on pivots
+
+- **Decision:** a track request is baked into one asset and written as ordinary keys by `nakkash ml track <scene> <layer>/<track> --to <pivot>`.
+  - **What is baked:** the segmentation of D87 for the track's prompts, and from it, per clip frame, the mask's centroid, its area's scale against the prompted frame and its principal angle; up to 64 points chosen inside the mask on the prompted frame (corners by the smallest eigenvalue of the structure tensor, at least 12 px apart at 512²) and followed through the clip by the point tracker (`points.video`) with their visibility; per frame, a similarity fitted to the visible points (least squares on the inliers of a RANSAC homography) and that homography, guarded: it is used only with at least 8 inliers and when no corner lies further than half the scaled diagonal from where the similarity puts it, else the similarity's corners are, and the frame is marked.
+  - **Corners** are given on the prompted frame for a screen or a label, or found as the mask's extreme points along its diagonals.
+  - **Anchors** correct drift. An anchor gives the corners on a later frame where the object is visible. Points are chosen and tracked again from it, and between two anchors each frame blends the fits from both by its distance to each, so the track meets every anchor exactly.
+  - **Keys:** on the pivot, parented to the video layer and given its `offset` and `stretch`, one linear key per clip frame, at the time the layer shows it: `position` and `scale` from the mask (robust under occlusion), `rotate` from the points, and with `--corners`, four corner pivots (`<pivot>-tl`, `-tr`, `-br`, `-bl`) from the guarded homography. A video layer with `remap` is refused, since its frames do not map to one time each.
+- **Why:**
+  - Measured on the synthetic product shot: the mask centroid stays within 1.4 px on average (5.4 px at worst) through a half occlusion; points hold at 1 to 3 px until the object is half covered, then drift to 20 to 37 px; one correction on a visible frame cuts the drift after it from 31 to 2.4 px; unguarded homographies explode (1,291 px), guarded ones hold 4.8 px over the first half ([evidence](../research/2026-11-19-learned-models.md#tracks)).
+  - Reducing keys removes almost nothing (32 to 48 of 48 position keys kept at a quarter pixel), so every frame keeps its key and reduction stays a hand edit.
+  - Keys on a pivot are the scene's own vocabulary: anything parented to it follows, and the render never reads a track.
+  - Parenting the pivot to the video layer puts the keys in the clip's own coordinates, so any move of the video layer carries the track with it.
+- **Not now:** automatic anchors, chosen from mask stability and point visibility; a corner-pin distortion that reads the corner pivots; tracks of clips longer than the point tracker's window in one pass (longer clips are tracked in overlapping windows).
