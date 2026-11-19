@@ -286,3 +286,25 @@ fn a_text_set_in_the_colour_behind_it_still_reads_1_to_1() {
     let r = ratio(&glyphs, &behind, &whole, &card).unwrap();
     assert!(r < 1.1, "{r}");
 }
+
+#[test]
+fn a_corner_pinned_text_is_read_where_its_pin_lays_it() {
+    // The glyphs are drawn without the text's effects but its pins: a pin
+    // lays the layer's plane in the frame, and without its effect the pin
+    // had nothing to resolve.
+    let report = check(
+        &Session::from_str(
+            r##"{"nakkash":1,"size":"1080p","dur":"1s","bg":"#000000","layers":[
+            {"id":"screen-tl","pivot":true,"position":[700,300]},
+            {"id":"screen-tr","pivot":true,"position":[1200,320]},
+            {"id":"screen-br","pivot":true,"position":[1180,760]},
+            {"id":"screen-bl","pivot":true,"position":[720,740]},
+            {"id":"title","text":"Launch Week","font":"Inter Variable 96 700","fill":"#FFFFFF","at":"center center",
+             "fx":[{"corner-pin":[0,0],"pivots":"screen"}]}]}"##,
+        )
+        .expect("scene"),
+        false,
+    )
+    .expect("contrast");
+    assert_eq!(report.to_string(), "OK 1");
+}

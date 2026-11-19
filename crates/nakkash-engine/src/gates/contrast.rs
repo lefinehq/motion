@@ -457,12 +457,18 @@ fn reached(shape: &Image, drawn: &Image) -> Result<Image> {
     Image::new(shape.width(), shape.height(), px)
 }
 
-/// `state` with no node's effects: what is drawn is the nodes' shapes, a
-/// text's glyphs where they fall in the frame.
+/// `state` with no node's effects but its corner pins: what is drawn is
+/// the nodes' shapes, a text's glyphs where they fall in the frame, and a
+/// pin is what lays a layer's plane in the frame.
 fn shape(state: &FrameState) -> FrameState {
     fn strip(state: &mut FrameState) {
         for node in &mut state.nodes {
-            node.fx.clear();
+            let fx = std::mem::take(&mut node.fx);
+            for pin in &mut node.pins {
+                let item = fx[pin.fx].clone();
+                pin.fx = node.fx.len();
+                node.fx.push(item);
+            }
             if let ContentState::Comp(_, Some(comp)) = &mut node.content {
                 strip(comp);
             }
