@@ -97,6 +97,26 @@ fn a_failed_edit_leaves_the_session_and_file_as_they_were() {
 }
 
 #[test]
+fn a_replaced_scene_is_taken_once_it_validates() {
+    let path = scratch_copy("replace");
+    let mut session = Session::open(&path).expect("open");
+    let scene = session.scene().clone();
+    // A tool's change that does not validate leaves the session as it was.
+    let mut broken = session.document().raw().clone();
+    broken["dur"] = serde_json::json!("soon");
+    assert!(session.replace(broken).is_err());
+    assert_eq!(session.scene(), &scene);
+    // One that does is taken, and saved as an edit is.
+    let mut raw = session.document().raw().clone();
+    raw["dur"] = serde_json::json!("7s");
+    session.replace(raw).expect("replace");
+    assert_ne!(session.scene(), &scene);
+    session.save().expect("save");
+    let text = fs::read_to_string(&path).expect("read back");
+    assert_eq!(text, write_document(session.doc.raw()));
+}
+
+#[test]
 fn an_edit_drops_the_compiled_graph() {
     let mut session = Session::open(LAUNCH).expect("open");
     let width = |s: &Session| s.graph().expect("graph").root.nodes[1].bounds.width();
