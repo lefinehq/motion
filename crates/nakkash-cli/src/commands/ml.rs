@@ -1,6 +1,7 @@
 //! `nakkash ml`: learned models ([D80]). `models` fetches, imports, lists
 //! and verifies the files the model lock pins ([D82]); the only commands of
-//! the set that reach the network are `models fetch`.
+//! the set that reach the network are `models fetch`. `preview`, `bake`
+//! and `track` run a scene's requests ([`scene`]).
 //!
 //! [D80]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d80-learned-models-run-in-a-bake-never-in-a-render
 //! [D82]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d82-a-model-lock-and-a-content-addressed-model-store
@@ -12,9 +13,12 @@ use std::process::ExitCode;
 use clap::Subcommand;
 use nakkash_engine::Result;
 use nakkash_fonts::Cache;
+use nakkash_format::Address;
 use nakkash_ml::fetch::{Fetched, Fetcher};
 use nakkash_ml::lock::LicenceClass;
 use nakkash_ml::{IMPORT_COMMAND, Imported, ModelLock, ModelStore};
+
+mod scene;
 
 /// Threads a graph runs on when `--threads` is not given.
 pub const DEFAULT_THREADS: usize = 4;
@@ -26,6 +30,53 @@ pub enum MlCommand {
     Models {
         #[command(subcommand)]
         command: ModelsCommand,
+    },
+    /// Segment the objects the scene's video layers ask for, follow a
+    /// track's points, and draw a contact sheet of each, to check the
+    /// prompts before a long bake.
+    Preview {
+        /// The scene file.
+        scene: PathBuf,
+        /// Where the sheet goes; with several requests, one sheet each,
+        /// named after the layer and the request.
+        #[arg(long, default_value = "sheet.png")]
+        out: PathBuf,
+        /// Only the video layer at this address.
+        #[arg(long)]
+        layer: Option<Address>,
+        /// Frames on a sheet, spread over the clip; the prompted ones are
+        /// always among them.
+        #[arg(long, default_value_t = 12)]
+        count: usize,
+        /// A frame's width on the sheet, in pixels.
+        #[arg(long, default_value_t = 480)]
+        tile: usize,
+    },
+    /// Bake every cutout and track the scene's video layers ask for whose
+    /// bake is missing or stale, and write their digests into the scene.
+    Bake {
+        /// The scene file.
+        scene: PathBuf,
+        /// Only the video layer at this address.
+        #[arg(long)]
+        layer: Option<Address>,
+        /// Bake again even what is baked already.
+        #[arg(long)]
+        again: bool,
+    },
+    /// Write a baked track as keys on a pivot parented to its video layer.
+    Track {
+        /// The scene file.
+        scene: PathBuf,
+        /// The track, as `<layer>.tracks[<id>]`.
+        track: Address,
+        /// The pivot's id, made when there is none.
+        #[arg(long = "to", value_name = "PIVOT")]
+        pivot: String,
+        /// Also write the four corner pivots `<PIVOT>-tl`, `-tr`, `-br`
+        /// and `-bl`.
+        #[arg(long)]
+        corners: bool,
     },
 }
 
@@ -61,16 +112,43 @@ impl MlCommand {
                 command: ModelsCommand::Import { folder },
             } => folder,
             MlCommand::Models { .. } => Path::new(""),
+            MlCommand::Preview { scene, .. }
+            | MlCommand::Bake { scene, .. }
+            | MlCommand::Track { scene, .. } => scene,
         }
     }
 
     /// Runs it, graphs on `threads` threads when it runs any.
     pub fn run(self, threads: Option<NonZero<usize>>) -> Result<ExitCode> {
-        let _threads = threads.map_or(DEFAULT_THREADS, NonZero::get);
+        let threads = threads.map_or(DEFAULT_THREADS, NonZero::get);
         let store = store()?;
         let lock = ModelLock::builtin();
         match self {
             MlCommand::Models { command } => models(command, &store, &lock),
+            MlCommand::Preview {
+                scene,
+                out,
+                layer,
+                count,
+                tile,
+            } => {
+                let models = scene::Models::load(store, lock, threads)?;
+                scene::preview(&models, &scene, layer.as_ref(), &out, count, tile)
+            }
+            MlCommand::Bake {
+                scene,
+                layer,
+                again,
+            } => {
+                let models = scene::Models::load(store, lock, threads)?;
+                scene::bake(&models, &scene, layer.as_ref(), again)
+            }
+            MlCommand::Track {
+                scene,
+                track,
+                pivot,
+                corners,
+            } => scene::apply(&scene, &track, &pivot, corners),
         }
     }
 }

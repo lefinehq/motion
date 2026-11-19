@@ -16,13 +16,14 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use nakkash_baked::{Alpha, Made, MatteWriter, Store};
+use nakkash_baked::{Alpha, Made, Manifest, MatteWriter, Store};
 use nakkash_format::{Diagnostic, Kind, Result, Sha256};
 
 use crate::flow::{self, Flow};
 use crate::image::Plane;
 use crate::matte::{self, EdgeMatter, Edges, Mask};
 use crate::segment::{self, Frames, Prompt, Segmenter};
+use crate::track::{self, PointTracker, TrackClip, TrackSpec};
 use crate::{Backend, ModelLock, ModelStore};
 
 /// What a cutout asks for, as a bake reads it.
@@ -54,6 +55,33 @@ pub struct Baked {
     /// Whether the segmentation came from the work cache.
     pub segmentation_kept: bool,
     /// Seconds a frame took, segmentation and refinement together.
+    pub seconds_per_frame: f64,
+}
+
+/// What a track asks for, as a bake reads it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrackBake {
+    /// The prompts of its segmentation.
+    pub prompts: Vec<Prompt>,
+    /// Its corners and anchors.
+    pub spec: TrackSpec,
+    /// The request as the scene writes it, which the asset answers.
+    pub request: Value,
+}
+
+/// What a bake of a track did.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BakedTrack {
+    /// The track's digest.
+    pub digest: Sha256,
+    /// Frames where the guard refused the homography, whose corners
+    /// follow the similarity.
+    pub refused: usize,
+    /// Frames in the clip.
+    pub frames: usize,
+    /// Whether the segmentation came from the work cache.
+    pub segmentation_kept: bool,
+    /// Seconds a frame took, segmentation and points together.
     pub seconds_per_frame: f64,
 }
 
@@ -295,6 +323,67 @@ impl<'a> Baker<'a> {
         Ok(Baked {
             digest,
             refined,
+            frames: n,
+            segmentation_kept,
+            seconds_per_frame: start.elapsed().as_secs_f64() / n.max(1) as f64,
+        })
+    }
+}
+
+impl Baker<'_> {
+    /// Bakes the track `bake` asks for of the clip `frames`, hashing to
+    /// `clip`, each frame starting to show at `times`; the point tracker
+    /// reads the clip through `points`, a second reader of it.
+    ///
+    /// # Errors
+    /// The stages' diagnostics, and the store's when the track cannot be
+    /// written.
+    pub fn track<'f>(
+        &self,
+        frames: &mut dyn Frames,
+        points: Box<dyn Frames + 'f>,
+        times: &[f64],
+        bake: &TrackBake,
+        clip: &Sha256,
+    ) -> Result<BakedTrack> {
+        let start = Instant::now();
+        let mut made = self.made();
+        let (logits, segmentation_kept) =
+            self.segmentation(frames, &bake.prompts, clip, &mut made)?;
+        let size = frames.size();
+        let n = frames.len();
+        let mut tracker =
+            PointTracker::open(self.backend, self.store, self.lock, self.threads, points)?;
+        for run in tracker.runs() {
+            made.ran(run.clone());
+        }
+        (self.progress)(&format!("following points through {n} frames"));
+        let mut frame = |f: usize| frames.frame(f);
+        let baked = track::bake(
+            &bake.spec,
+            TrackClip {
+                size,
+                times,
+                logits: &logits,
+                frame: &mut frame,
+            },
+            &mut tracker,
+        )?;
+        let refused = baked
+            .frames
+            .iter()
+            .filter(|f| f.fit.is_some_and(|fit| fit.guarded))
+            .count();
+        let manifest = Manifest::new(
+            bake.request.clone(),
+            *clip,
+            [dim(size.0)?, dim(size.1)?],
+            made,
+            baked,
+        );
+        Ok(BakedTrack {
+            digest: manifest.put(self.baked)?,
+            refused,
             frames: n,
             segmentation_kept,
             seconds_per_frame: start.elapsed().as_secs_f64() / n.max(1) as f64,

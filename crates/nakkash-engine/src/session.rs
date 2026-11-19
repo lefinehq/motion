@@ -658,6 +658,27 @@ impl Session {
     /// As [`Session::edit`]; the session is then left as it was.
     pub(crate) fn apply(&mut self, line: &str) -> Result<()> {
         let doc = stage("edit", || nakkash_edit::edit_line(&self.doc, line))?;
+        self.swap(doc);
+        Ok(())
+    }
+
+    /// Replaces the scene with `raw`, its JSON, once it validates (step
+    /// `edit`), as an edit does: for tools that change the JSON themselves,
+    /// such as the bake writing its digests. Nothing is written until
+    /// [`save`](Session::save).
+    ///
+    /// # Errors
+    /// The first problem in `raw`; the session is then left as it was.
+    pub fn replace(&mut self, raw: serde_json::Value) -> Result<()> {
+        let doc = stage("edit", || Document::from_value(raw))?;
+        self.swap(doc);
+        Ok(())
+    }
+
+    /// Takes `doc` as the scene, keeping the version before it when it was
+    /// checked, so the next check starts from it, and dropping what was
+    /// read for the one before.
+    fn swap(&mut self, doc: Document) {
         let doc = std::mem::replace(&mut self.doc, doc);
         let graph = std::mem::take(&mut self.graph).into_inner();
         let checked = std::mem::take(&mut self.checked).into_inner();
@@ -672,7 +693,6 @@ impl Session {
         self.pictures = Pictures::default();
         self.clips = Clips::default();
         self.sounds = Sounds::default();
-        Ok(())
     }
 
     /// Applies one edit line of a variant ([D52]), as [`Session::edit`]
