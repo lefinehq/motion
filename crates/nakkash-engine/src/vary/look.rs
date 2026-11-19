@@ -238,9 +238,9 @@ struct Preset {
 ///   clean white capital title, widely spaced, its glitch off; a calm pace.
 /// - `riso`: a warm charcoal ground; the master's blocky noise in the cool
 ///   inks, blue, green and teal, flat (no glow) and barely streaked, its
-///   cells tall and thin; wide rings; a yellow capital title whose split
-///   copies misregister in the warm inks, pink and yellow, like a print;
-///   grain; a snappy pace.
+///   cells tall and thin; wide rings; a paper-white capital title whose
+///   split copies misregister in the warm inks, pink and yellow, like a
+///   print; grain; a snappy pace.
 /// - `ember`: a dark warm ground; a smeared noise in orange and a
 ///   raspberry red, with teal sparks against them, its cells long and low;
 ///   rings echoed; a cream title in small letters, extruded, glitch off.
@@ -275,7 +275,7 @@ const PRESETS: [Preset; 3] = [
         ground: ["#2A2118", "#0E0B08"],
         field: &["#0078BF", "#00A95C", "#00838A"],
         split: ["#FF48B0", "#FFE800", "#F4EEDC"],
-        text: "#FFE800",
+        text: "#F4EEDC",
         noise: None,
         fractal: None,
         contrast: 1.08,
