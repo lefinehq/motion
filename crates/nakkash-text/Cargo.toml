@@ -15,6 +15,7 @@ linebender_resource_handle.workspace = true
 parlance.workspace = true
 parley.workspace = true
 skrifa.workspace = true
+strum.workspace = true
 
 [dev-dependencies]
 insta.workspace = true

@@ -123,9 +123,9 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Make generated variants of a scene along palette and content, and
-    /// improve it by the check's repairs: each is checked against the
-    /// scene and rendered with a sheet of its frames.
+    /// Make generated variants of a scene along palette, type, content,
+    /// timing and format, and improve it by the check's repairs: each is
+    /// checked against the scene and rendered with a sheet of its frames.
     Vary {
         /// Path to the master scene.
         scene: PathBuf,
@@ -140,7 +140,9 @@ enum Command {
         #[arg(long, short = 'n')]
         count: Option<usize>,
         /// An axis, repeatable: `palette[=rotate|analogous|complementary|invert]`,
-        /// `brand=#0F62FE`, `rows=<file>`.
+        /// `brand=#0F62FE`, `type[=contrast|same]`, `copy=long`, `fonts=<dir>`,
+        /// `format=9:16`, `timing=15s`, `bpm=120`, `music=<file>`,
+        /// `pace=snappy|calm`, `rows=<file>`.
         #[arg(long = "axis", value_name = "AXIS")]
         axes: Vec<String>,
         /// Apply the check's repairs after the axes, keeping each only when

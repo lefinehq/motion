@@ -24,6 +24,7 @@
 //! [D33]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d33-text-is-shaped-from-font-assets
 
 mod caps;
+mod class;
 mod fallback;
 mod fit;
 mod font;
@@ -36,6 +37,7 @@ mod typeset;
 #[path = "../tests/unit/support.rs"]
 mod test_support;
 
+pub use class::{Class, Metrics};
 pub use font::{Face, Slant};
 pub use layout::{Glyph, GlyphRun, Line, TextLayout};
 pub use set::{FontQuery, FontSet};

@@ -1,5 +1,5 @@
-//! `nakkash vary`: generated variants of one master (D78), along palette
-//! and content, and improved by the check's repairs.
+//! `nakkash vary`: generated variants of one master (D78), along palette,
+//! type, content, timing and format, and improved by the check's repairs.
 //! Each is measured against the master and, unless `--dry-run`, rendered
 //! with a sheet of its frames.
 
@@ -9,7 +9,8 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use nakkash_engine::vary::{
-    ContentSpec, Made, PaletteSpec, Recipe, Sheet, Spec, gate, make, plan, repair, sheet,
+    ContentSpec, FormatSpec, Made, Pace, PaletteSpec, Recipe, Sheet, Spec, TimingSpec, TypeSpec,
+    gate, make, plan, repair, sheet,
 };
 use nakkash_engine::{
     Code, Diagnostic, Kind, Quality, RenderOptions, Report, Result, Session, Severity,
@@ -27,8 +28,9 @@ pub struct Asked {
     pub seed: Option<u64>,
     /// How many variants, over the spec's.
     pub count: Option<usize>,
-    /// `--axis` values: `palette`, `palette=invert`, `brand=#0F62FE`,
-    /// `rows=rows.csv`.
+    /// `--axis` values: `palette`, `palette=invert`, `type`,
+    /// `type=contrast`, `copy=long`, `format=9:16`, `timing=15s`,
+    /// `bpm=120`, `music=track.wav`, `pace=snappy`, `rows=rows.csv`.
     pub axes: Vec<String>,
     /// `--improve`.
     pub improve: bool,
@@ -57,7 +59,7 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
                     Kind::Invalid,
                     format!("`{}` is not a vary spec: {e}", path.display()),
                 )
-                .expected(r#"{"seed":7,"count":4,"palette":{}}"#)
+                .expected(r#"{"seed":7,"count":4,"palette":{},"format":{"sizes":["9:16"]}}"#)
             })?;
             (spec, path.parent().unwrap_or(Path::new("")).to_path_buf())
         }
@@ -74,10 +76,15 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
     }
     spec.improve |= asked.improve;
     spec.apart |= asked.apart;
-    let nothing = spec.palette.is_none() && spec.content.is_none() && !spec.improve;
+    let nothing = spec.palette.is_none()
+        && spec.typeface.is_none()
+        && spec.content.is_none()
+        && spec.timing.is_none()
+        && spec.format.is_none()
+        && !spec.improve;
     if nothing {
         return Err(Diagnostic::new(Kind::Missing, "no axis to vary along")
-            .expected("`--axis palette`, `--axis rows=rows.csv`, `--improve` or a spec file"));
+            .expected("`--axis palette`, `--axis format=9:16`, `--improve` or a spec file"));
     }
     let master = Session::open(scene)?;
     let started = Instant::now();
@@ -251,7 +258,7 @@ fn add_axis(spec: &mut Spec, axis: &str) -> Result<()> {
     };
     let bad = || {
         Diagnostic::new(Kind::Invalid, format!("`{axis}` is not an axis"))
-            .expected("palette[=scheme], brand=#hex, rows=<file>")
+            .expected("palette[=scheme], brand=#hex, type[=contrast|same], copy=long|<text>, format=9:16, timing=15s, bpm=120, music=<file>, pace=snappy|calm, rows=<file>")
     };
     match name {
         "palette" => {
@@ -266,6 +273,42 @@ fn add_axis(spec: &mut Spec, axis: &str) -> Result<()> {
                     .flat_map(|v| v.split(',').map(str::to_owned).collect::<Vec<_>>()),
             );
             p.schemes.push("brand".into());
+        }
+        "type" => {
+            let t = spec.typeface.get_or_insert_with(TypeSpec::default);
+            t.pairs = value;
+        }
+        "copy" => {
+            let t = spec.typeface.get_or_insert_with(TypeSpec::default);
+            t.copy = value;
+        }
+        "fonts" => {
+            let t = spec.typeface.get_or_insert_with(TypeSpec::default);
+            t.fonts.extend(value.map(PathBuf::from));
+        }
+        "format" => {
+            let f = spec.format.get_or_insert_with(FormatSpec::default);
+            f.sizes.extend(value);
+        }
+        "timing" => {
+            let t = spec.timing.get_or_insert_with(TimingSpec::default);
+            t.durations.extend(value);
+        }
+        "bpm" => {
+            let t = spec.timing.get_or_insert_with(TimingSpec::default);
+            t.bpm = Some(value.ok_or_else(bad)?.parse().map_err(|_| bad())?);
+        }
+        "music" => {
+            let t = spec.timing.get_or_insert_with(TimingSpec::default);
+            t.music = value.map(PathBuf::from);
+        }
+        "pace" => {
+            let t = spec.timing.get_or_insert_with(TimingSpec::default);
+            t.pace = Some(match value.as_deref() {
+                Some("snappy") => Pace::Snappy,
+                Some("calm") => Pace::Calm,
+                _ => return Err(bad()),
+            });
         }
         "rows" => {
             let c = spec.content.get_or_insert_with(ContentSpec::default);

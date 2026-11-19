@@ -271,6 +271,7 @@ fn relit(made: &Made, repairs: &[(&Place, &Repair)]) -> Option<(Made, Report)> {
     let variant = Made {
         session,
         notes: Vec::new(),
+        wrapped: made.wrapped.clone(),
     };
     Some((variant, report))
 }

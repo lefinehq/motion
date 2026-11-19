@@ -27,11 +27,14 @@ fn the_same_spec_plans_the_same_recipes() {
         seed: 3,
         count: Some(3),
         palette: Some(PaletteSpec::default()),
+        format: Some(FormatSpec {
+            sizes: vec!["9:16".into(), "1:1".into()],
+        }),
         ..Spec::default()
     };
     let a = plan(&master, &spec, Path::new("")).expect("a plan");
     let b = plan(&master, &spec, Path::new("")).expect("a plan");
     assert_eq!(a, b);
     assert_eq!(a.len(), 3);
-    assert!(matches!(a[0].steps[0], Step::Palette { .. }));
+    assert!(matches!(a[0].steps[1], Step::Format { width: 1080, .. }));
 }

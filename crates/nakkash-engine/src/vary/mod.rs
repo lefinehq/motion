@@ -1,5 +1,5 @@
-//! Generated variants ([D78]): a master walked along palette and
-//! content, and improved by the check's own repairs.
+//! Generated variants ([D78]): a master walked along palette, type,
+//! content, timing and format, and improved by the check's own repairs.
 //!
 //! A run is planned first: [`plan`] draws every variant's [`Recipe`] from
 //! the [`Spec`] and the seed, so the recipes say exactly what each variant
@@ -11,11 +11,15 @@
 
 mod colour;
 mod content;
+mod format;
 mod improve;
 mod palette;
 mod places;
 mod rng;
 mod sheet;
+mod timing;
+mod typeface;
+mod wrap;
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -30,6 +34,9 @@ use crate::session::Session;
 
 pub use palette::{SCHEMES, Scheme};
 pub use sheet::{Sheet, sheet};
+pub use timing::Pace;
+pub use timing::{Beats, TimingStep};
+pub use typeface::{Family, TypeStep};
 
 use places::Held;
 use rng::Rng;
@@ -44,8 +51,15 @@ pub struct Spec {
     pub count: Option<usize>,
     /// The palette axis.
     pub palette: Option<PaletteSpec>,
+    /// The type axis.
+    #[serde(rename = "type")]
+    pub typeface: Option<TypeSpec>,
     /// The content axis.
     pub content: Option<ContentSpec>,
+    /// The timing axis.
+    pub timing: Option<TimingSpec>,
+    /// The format axis.
+    pub format: Option<FormatSpec>,
     /// Whether the check's repairs run after the axes.
     pub improve: bool,
     /// Each variant takes one axis alone, the axes in turn, instead of one
@@ -63,6 +77,22 @@ pub struct PaletteSpec {
     pub brand: Vec<String>,
 }
 
+/// The type axis of a spec.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct TypeSpec {
+    /// `contrast` pairs a family of another class with the headline's,
+    /// `same` one of its own class; either when unset.
+    pub pairs: Option<String>,
+    /// Families to draw from instead of every one the scene can load.
+    pub families: Vec<String>,
+    /// New copy for every text: `long` makes each about twice as long, from
+    /// its own words; any other string replaces the text.
+    pub copy: Option<String>,
+    /// Folders of fonts to draw from besides the scene's.
+    pub fonts: Vec<PathBuf>,
+}
+
 /// The content axis of a spec.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
@@ -70,6 +100,31 @@ pub struct ContentSpec {
     /// A CSV or JSON file of rows, relative to the spec; each row is a
     /// variant, each column a `$slot`, an `@role` or an `address.key`.
     pub rows: Option<PathBuf>,
+}
+
+/// The timing axis of a spec.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct TimingSpec {
+    /// New lengths to draw from, such as `15s`, `450f`, or `67%` of the
+    /// master's.
+    pub durations: Vec<String>,
+    /// A tempo in beats a minute, for a beat grid.
+    pub bpm: Option<f64>,
+    /// Where the first beat falls, such as `0.12s`.
+    pub offset: Option<String>,
+    /// A music track: its beats are found, and it plays at the root.
+    pub music: Option<PathBuf>,
+    /// `snappy` or `calm`.
+    pub pace: Option<Pace>,
+}
+
+/// The format axis of a spec.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct FormatSpec {
+    /// Sizes to draw from: `9:16`, `1:1`, `4:5`, `16:9` or `1080x1350`.
+    pub sizes: Vec<String>,
 }
 
 /// One variant as planned: its id and the step of each axis it takes.
@@ -94,11 +149,22 @@ pub enum Step {
         /// Each column's target and value.
         values: BTreeMap<String, String>,
     },
+    /// New faces, and new copy fitted into the master's boxes.
+    Type(typeface::TypeStep),
     /// The palette moved by a scheme.
     Palette {
         /// The scheme.
         #[serde(flatten)]
         scheme: Scheme,
+    },
+    /// The master retimed through a time map.
+    Timing(timing::TimingStep),
+    /// The master placed on a canvas of another size.
+    Format {
+        /// The new canvas's width, in px.
+        width: u32,
+        /// The new canvas's height, in px.
+        height: u32,
     },
     /// The check's repairs.
     Improve,
@@ -108,7 +174,10 @@ impl fmt::Display for Step {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Step::Content { row, .. } => write!(f, "content row {row}"),
+            Step::Type(step) => write!(f, "{step}"),
             Step::Palette { scheme } => write!(f, "palette {scheme}"),
+            Step::Timing(step) => write!(f, "{step}"),
+            Step::Format { width, height } => write!(f, "format {width}x{height}"),
             Step::Improve => write!(f, "improve"),
         }
     }
@@ -138,8 +207,18 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
         0 => 4,
         n => n,
     });
+    let faces = match &spec.typeface {
+        Some(t) => typeface::candidates(master, t, base)?,
+        None => Vec::new(),
+    };
     let mut recipes = Vec::with_capacity(count);
-    let axes = [!rows.is_empty(), spec.palette.is_some()];
+    let axes = [
+        !rows.is_empty(),
+        spec.typeface.is_some(),
+        spec.palette.is_some(),
+        spec.timing.is_some(),
+        spec.format.is_some(),
+    ];
     let named: Vec<usize> = (0..axes.len()).filter(|&i| axes[i]).collect();
     for index in 0..count {
         // Apart, variant i takes the i-th axis named, in turn.
@@ -154,7 +233,17 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
                 values: rows[row].clone(),
             });
         }
-        if let Some(p) = spec.palette.as_ref().filter(|_| takes(1)) {
+        if let Some(t) = spec.typeface.as_ref().filter(|_| takes(1)) {
+            let mut rng = Rng::new(spec.seed, index, "type");
+            steps.push(Step::Type(typeface::draw(
+                master,
+                t,
+                &faces,
+                held.typefaces,
+                &mut rng,
+            )?));
+        }
+        if let Some(p) = spec.palette.as_ref().filter(|_| takes(2)) {
             for colour in &p.brand {
                 nakkash_format::color(&Json::String(colour.clone())).ok_or_else(|| {
                     Diagnostic::new(Kind::Invalid, format!("`{colour}` is not a colour"))
@@ -165,6 +254,15 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
             steps.push(Step::Palette {
                 scheme: palette::draw(&p.schemes, &p.brand, held.palette, &mut rng),
             });
+        }
+        if let Some(t) = spec.timing.as_ref().filter(|_| takes(3)) {
+            let mut rng = Rng::new(spec.seed, index, "timing");
+            steps.push(Step::Timing(timing::draw(master, t, base, &mut rng)?));
+        }
+        if let Some(f) = spec.format.as_ref().filter(|_| takes(4)) {
+            let mut rng = Rng::new(spec.seed, index, "format");
+            let (width, height) = format::draw(master, &f.sizes, &mut rng)?;
+            steps.push(Step::Format { width, height });
         }
         if spec.improve {
             steps.push(Step::Improve);
@@ -178,7 +276,8 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
     Ok(recipes)
 }
 
-/// A variant as made: its scene and what each step did.
+/// A variant as made: its scene, what each step did, and how its layers'
+/// addresses read back to the master's.
 #[derive(Debug)]
 pub struct Made {
     /// The variant, ready to check and render; its file is the master's,
@@ -186,15 +285,19 @@ pub struct Made {
     pub session: Session,
     /// One line per step on what it changed.
     pub notes: Vec<String>,
+    /// How the variant wraps the master, when timing or format did.
+    wrapped: Option<wrap::Wrap>,
 }
 
 impl Made {
     /// The master's address of the layer at `address` in the variant, and
     /// how much larger it is drawn here; `None` for a layer the variant
-    /// adds. The axes so far rewrite the master in place, so every address
-    /// is its own, at the master's size.
+    /// adds.
     pub fn read_back(&self, address: &Address) -> Option<(Address, f64)> {
-        Some((address.clone(), 1.0))
+        match &self.wrapped {
+            None => Some((address.clone(), 1.0)),
+            Some(wrapped) => wrapped.read_back(address),
+        }
     }
 }
 
@@ -230,8 +333,55 @@ pub fn make(master: &Session, recipe: &Recipe, base: &Path) -> Result<Made> {
             _ => {}
         }
     }
-    let session = master.with_raw(raw)?;
-    let mut made = Made { session, notes };
+    let mut session = master.with_raw(raw.clone())?;
+    // Type fits new faces and copy by measuring them, so it runs on the
+    // scene with the values above.
+    for step in &recipe.steps {
+        if let Step::Type(t) = step {
+            let (fitted, note) = typeface::apply(&session, &held, t)?;
+            notes.push(note);
+            session = master.with_raw(fitted)?;
+        }
+    }
+    // Then time and size, which wrap the master instead of rewriting it.
+    let timing = recipe.steps.iter().find_map(|s| match s {
+        Step::Timing(t) => Some(t),
+        _ => None,
+    });
+    let size = recipe.steps.iter().find_map(|s| match s {
+        Step::Format { width, height } => Some((*width, *height)),
+        _ => None,
+    });
+    let mut wrapped = None;
+    if timing.is_some() || size.is_some() {
+        let map = match timing {
+            Some(t) => {
+                let (map, note) = timing::time_map(&session, t)?;
+                notes.push(note);
+                Some(map)
+            }
+            None => None,
+        };
+        let groups = match size {
+            Some((width, height)) => {
+                let (groups, note) = format::layout(&session, width, height)?;
+                notes.push(note);
+                Some(groups)
+            }
+            None => None,
+        };
+        let music = timing.and_then(|t| t.music.clone());
+        let size = &master.scene().root.size;
+        let canvas = (f64::from(size.width), f64::from(size.height));
+        let w = wrap::Wrap::new(canvas, map, groups, music);
+        session = master.with_raw(w.apply(session.document().raw()))?;
+        wrapped = Some(w);
+    }
+    let mut made = Made {
+        session,
+        notes,
+        wrapped,
+    };
     if recipe.steps.contains(&Step::Improve) {
         let note = improve::improve(&mut made, master)?;
         made.notes.push(note);
