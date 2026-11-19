@@ -1869,6 +1869,7 @@ dependencies = [
  "glam",
  "insta",
  "nakkash-audio",
+ "nakkash-baked",
  "nakkash-edit",
  "nakkash-fonts",
  "nakkash-format",

@@ -28,7 +28,7 @@ mod text;
 use nakkash_format::key::{AUDIO, BLEND, IMAGE, VIDEO};
 use nakkash_format::property::Prop;
 use nakkash_format::shorthand::{MatteMode, RectShape};
-use nakkash_format::{ImageContent, Place, Result, VideoContent};
+use nakkash_format::{Cutout, ImageContent, Place, Result, VideoContent};
 use nakkash_format::{Input, Reads, Value};
 use nakkash_raster::kurbo::{Affine, Rect, RoundedRect, Shape};
 use nakkash_raster::{
@@ -61,7 +61,7 @@ pub(crate) type Sounds<'a> = dyn Fn(&str) -> Result<std::sync::Arc<nakkash_audio
 
 /// Finds the frame a video layer's `video` shows at a time in seconds, or
 /// `None` outside the clip.
-pub(crate) type Clips<'a> = dyn Fn(&str, f64) -> Result<Option<Picture>> + 'a;
+pub(crate) type Clips<'a> = dyn Fn(&str, Option<&Cutout>, f64) -> Result<Option<Picture>> + 'a;
 
 /// What drawing one frame reads besides the frame's state: the compiled
 /// scene, and the pictures and clips its image and video layers name.
@@ -929,13 +929,19 @@ fn image(content: &ImageContent, pictures: &Pictures<'_>) -> Result<Option<Node>
 
 /// A video node: the frame its clip shows `seconds` into the layer's own
 /// time, fitted to its box as its `fit` says; `None` for a layer with no
-/// file yet, and before or after its clip. The clip's errors are placed
-/// at `video`, and name the file.
+/// file yet, and before or after its clip. With a `cutout`, the frame's
+/// alpha is the baked matte's times its own. The clip's errors are placed
+/// at `video`, and name the file; the matte's at `cutout`.
 fn video(content: &VideoContent, seconds: f64, clips: &Clips<'_>) -> Result<Option<Node>> {
     let Some(path) = &content.path else {
         return Ok(None);
     };
-    let Some(picture) = clips(path, seconds).map_err(|e| e.at(VIDEO))? else {
+    let placed_at_video = |e: nakkash_format::Diagnostic| match e.path {
+        Some(_) => e,
+        None => e.at(VIDEO),
+    };
+    let Some(picture) = clips(path, content.cutout.as_ref(), seconds).map_err(placed_at_video)?
+    else {
         return Ok(None);
     };
     let whole = whole(&picture);

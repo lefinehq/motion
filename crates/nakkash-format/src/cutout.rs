@@ -351,7 +351,8 @@ pub(crate) fn tracks(value: &Value) -> Result<Vec<TrackRequest>> {
 /// One track.
 fn track(doc: TrackDoc) -> Result<TrackRequest> {
     let id = doc.id.ok_or_else(|| {
-        Diagnostic::new(Kind::Missing, "a track needs an `id`").expected(r#"an id for the track, e.g. "id":"screen""#)
+        Diagnostic::new(Kind::Missing, "a track needs an `id`")
+            .expected(r#"an id for the track, e.g. "id":"screen""#)
     })?;
     id.parse::<Id>().map_err(|e| e.at("id"))?;
     let prompts = prompts(doc.prompts)?;

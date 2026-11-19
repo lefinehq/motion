@@ -16,6 +16,7 @@ gpu = ["dep:nakkash-gpu"]
 
 [dependencies]
 glam.workspace = true
+nakkash-baked = { path = "../nakkash-baked" }
 nakkash-format = { path = "../nakkash-format" }
 nakkash-fonts = { path = "../nakkash-fonts" }
 nakkash-scene = { path = "../nakkash-scene" }
