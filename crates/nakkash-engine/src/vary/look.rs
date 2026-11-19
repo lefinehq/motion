@@ -99,6 +99,10 @@ pub struct LookStep {
     /// The text's new face, fitted into its boxes, when the scene can load
     /// one the look asks for.
     pub face: Option<TypeStep>,
+    /// The master's ground ([`Lit::ground`]): what its texts keep their
+    /// contrast against through the map.
+    #[serde(default)]
+    pub ground: f64,
 }
 
 impl fmt::Display for LookStep {
@@ -297,6 +301,8 @@ pub(crate) struct Lit {
     pub hues: [f64; 6],
     /// The grey levels of the lit pixels, sorted.
     pub levels: Vec<f64>,
+    /// The master's ground: the median grey of all its pixels.
+    pub ground: f64,
 }
 
 /// The grey each hue turns into before the map: warm hues as light as
@@ -312,17 +318,22 @@ const HUES: [f64; 6] = [1.0, 1.0, 0.6, 0.4, 0.15, 1.0];
 /// gradient map with stops at fixed levels would leave its upper colours
 /// unused, so the stops are placed by these levels ([`placed`]).
 pub(crate) fn lit(frames: &[crate::Image]) -> Lit {
-    let mut levels: Vec<f64> = frames
+    let mut all: Vec<f64> = frames
         .iter()
         .flat_map(|image| image.pixels().chunks_exact(4))
         .map(|p| {
             let a = f64::from(p[3]) / 255.0;
             grey(&HUES, [0, 1, 2].map(|c| f64::from(p[c]) / 255.0 * a))
         })
-        .filter(|v| *v > LIT)
         .collect();
-    levels.sort_by(f64::total_cmp);
-    Lit { hues: HUES, levels }
+    all.sort_by(f64::total_cmp);
+    let ground = all.get(all.len() / 2).copied().unwrap_or(0.0);
+    let levels = all.into_iter().filter(|v| *v > LIT).collect();
+    Lit {
+        hues: HUES,
+        levels,
+        ground,
+    }
 }
 
 /// The hue each channel is the primary of, red, green and blue.
@@ -392,8 +403,9 @@ pub(crate) fn draw(
     let key = |s: &str| s.to_lowercase().replace([' ', '-', '_'], "");
     // The look's families in its order; the first whose heaviest weight
     // draws strokes about as thick as the master's heaviest text, else the
-    // heaviest of them: a template that splits or outlines a poster face
-    // needs strokes as thick to stay readable.
+    // first of the folders' other families that does (no mono, no
+    // script), else the heaviest of all: a template that splits or
+    // outlines a poster face needs strokes as thick to stay readable.
     let wanted: Vec<&Family> = preset
         .faces
         .iter()
@@ -405,19 +417,30 @@ pub(crate) fn draw(
         })
         .collect();
     let heaviest = |f: &Family| f.strokes.iter().copied().fold(0.0, f64::max);
-    let chosen = match faces.stroke {
-        Some(stroke) => wanted
-            .iter()
-            .find(|f| heaviest(f) >= stroke * THICK_ENOUGH)
-            .or_else(|| {
-                wanted
-                    .iter()
-                    .max_by(|a, b| heaviest(a).total_cmp(&heaviest(b)))
-            }),
-        None => wanted.first(),
+    let chosen: Option<&Family> = match faces.stroke {
+        Some(stroke) => {
+            let enough = |f: &&Family| heaviest(f) >= stroke * THICK_ENOUGH;
+            let others = faces
+                .families
+                .iter()
+                .filter(|f| !matches!(f.class.as_str(), "mono" | "script"));
+            wanted
+                .iter()
+                .copied()
+                .find(enough)
+                .or_else(|| others.clone().find(enough))
+                .or_else(|| {
+                    wanted
+                        .iter()
+                        .copied()
+                        .chain(others)
+                        .max_by(|a, b| heaviest(a).total_cmp(&heaviest(b)))
+                })
+        }
+        None => wanted.first().copied(),
     };
     let face = (!typefaces_locked)
-        .then_some(chosen.copied())
+        .then_some(chosen)
         .flatten()
         .map(|family| {
             let weight = nearest(&family.weights, 900);
@@ -443,6 +466,7 @@ pub(crate) fn draw(
         grain: preset.grain,
         text: preset.text,
         face,
+        ground: lit.ground,
     }
 }
 
@@ -479,6 +503,8 @@ fn placed(stops: &[(f64, &str)], lit: &[f64]) -> Vec<(f64, String)> {
 pub(crate) fn apply(raw: &mut Json, held: &Held, step: &LookStep) -> String {
     let mut moved = 0usize;
     let mut texts = 0usize;
+    let mut lifted = 0usize;
+    let curve = smooth(&step.stops);
     places::each_mut(raw, |visit| {
         let Visit::Layer { place, layer } = visit else {
             return;
@@ -491,14 +517,15 @@ pub(crate) fn apply(raw: &mut Json, held: &Held, step: &LookStep) -> String {
                 moved += move_effect(item, step);
             }
         }
-        if layer.contains_key("text") && treat(layer, step.text) {
-            texts += 1;
+        if layer.contains_key("text") {
+            lifted += usize::from(keep_contrast(layer, &curve, step));
+            texts += usize::from(treat(layer, step.text));
         }
     });
     let rings = rings(raw, held, step.rings);
     format!(
-        "{step}: {moved} effect settings moved, {texts} texts treated, {rings} rings changed, \
-         graded through {} stops",
+        "{step}: {moved} effect settings moved, {texts} texts treated, {lifted} texts lifted \
+         clear of their ground, {rings} rings changed, graded through {} stops",
         step.stops.len()
     )
 }
@@ -518,6 +545,72 @@ pub(crate) struct Faces<'a> {
 /// How near the master's heaviest stroke a look's family must reach to be
 /// taken in its order: a tenth thinner at most.
 const THICK_ENOUGH: f64 = 0.9;
+
+/// The most contrast a text is lifted to keep: WCAG's for body text.
+const KEPT_CONTRAST: f64 = 4.5;
+
+/// Sets `layer`'s plain fill, when it has one, to the grey whose colour
+/// through the map stands as far from the map's colour of the master's
+/// ground as the fill stood from the ground in the master (up to
+/// [`KEPT_CONTRAST`]); whether it changed it. A map that crowds a range of
+/// levels into dark browns would otherwise sink a mid-grey line of copy
+/// into a black ground. The text moves away from the ground only, so it
+/// stays on the side it was.
+fn keep_contrast(
+    layer: &mut Map<String, Json>,
+    curve: &[(f64, [f64; 3])],
+    step: &LookStep,
+) -> bool {
+    let Some(fill) = layer
+        .get("fill")
+        .filter(|f| !f.as_str().is_some_and(|s| s.starts_with('$')))
+    else {
+        return false;
+    };
+    let Some([r, g, b, a]) = nakkash_format::color(fill) else {
+        return false;
+    };
+    let level = grey(&step.hues, [r, g, b]);
+    let ground = step.ground;
+    let lum = |rgb: [f64; 3]| super::colour::luminance([rgb[0], rgb[1], rgb[2], 1.0]);
+    let ratio = |x: f64, y: f64| (x.max(y) + 0.05) / (x.min(y) + 0.05);
+    let wanted = ratio(lum([r, g, b]), lum([ground; 3])).min(KEPT_CONTRAST);
+    let back = lum(mapped(curve, ground));
+    let reaches = |t: f64| ratio(lum(mapped(curve, t)), back) >= wanted;
+    if reaches(level) {
+        return false;
+    }
+    let toward = if level >= ground { 1.0 } else { 0.0 };
+    let steps = 100;
+    let lifted = (1..=steps)
+        .map(|i| level + (toward - level) * f64::from(i) / f64::from(steps))
+        .find(|t| reaches(*t))
+        .unwrap_or(toward);
+    layer.insert(
+        "fill".into(),
+        json!([round(lifted), round(lifted), round(lifted), round(a)]),
+    );
+    true
+}
+
+/// The colour `curve` (as [`smooth`] gives it) maps level `t` to, straight
+/// between its points as the map draws it.
+fn mapped(curve: &[(f64, [f64; 3])], t: f64) -> [f64; 3] {
+    let Some(first) = curve.first() else {
+        return [t; 3];
+    };
+    if t <= first.0 {
+        return first.1;
+    }
+    for w in curve.windows(2) {
+        let ((x0, c0), (x1, c1)) = (w[0], w[1]);
+        if t <= x1 {
+            let k = if x1 > x0 { (t - x0) / (x1 - x0) } else { 1.0 };
+            return std::array::from_fn(|i| c0[i] + (c1[i] - c0[i]) * k);
+        }
+    }
+    curve.last().map_or([t; 3], |l| l.1)
+}
 
 /// How much smaller each echo of a ring is than the one around it.
 const ECHO_SCALE: f64 = 0.62;

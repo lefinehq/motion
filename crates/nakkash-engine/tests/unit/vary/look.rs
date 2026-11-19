@@ -242,3 +242,58 @@ fn a_look_takes_a_family_heavy_enough_for_the_masters_strokes() {
     // None heavy enough: the heaviest.
     assert_eq!(pick(Some(0.30)).as_deref(), Some("Kumbh Sans"));
 }
+
+#[test]
+fn a_look_reaches_past_its_own_families_for_one_heavy_enough() {
+    let faces = [
+        family("Source Serif Pro", &[400, 700], &[0.07, 0.10]),
+        family("Kumbh Sans", &[400, 700], &[0.08, 0.12]),
+        family("Raleway", &[400, 900], &[0.07, 0.19]),
+    ];
+    let step = draw(
+        &["amber".into()],
+        0,
+        &Lit::default(),
+        &Faces {
+            families: &faces,
+            fonts: &[],
+            stroke: Some(0.18),
+        },
+        false,
+        &mut Rng::new(1, 0, "look"),
+    );
+    assert_eq!(step.face.and_then(|t| t.body).as_deref(), Some("Raleway"));
+}
+
+#[test]
+fn a_mid_grey_line_keeps_its_contrast_on_a_dark_ground() {
+    let mut step = draw(
+        &["amber".into()],
+        0,
+        &Lit::default(),
+        &Faces::default(),
+        false,
+        &mut Rng::new(1, 0, "look"),
+    );
+    step.ground = 0.0;
+    let curve = smooth(&step.stops);
+    let lum = |rgb: [f64; 3]| super::super::colour::luminance([rgb[0], rgb[1], rgb[2], 1.0]);
+    let ratio = |x: f64, y: f64| (x.max(y) + 0.05) / (x.min(y) + 0.05);
+    let back = lum(mapped(&curve, 0.0));
+    // A grey url line on black: about 4.6:1 in the master.
+    let mut layer = json!({"text": "example.com", "fill": "#8A8A8A"});
+    let layer = layer.as_object_mut().unwrap();
+    let before = ratio(lum(mapped(&curve, 0.54)), back);
+    assert!(before < 3.0, "{before}");
+    assert!(keep_contrast(layer, &curve, &step));
+    let [g, _, _, a] = nakkash_format::color(&layer["fill"]).unwrap();
+    assert_eq!(a, 1.0);
+    let after = ratio(lum(mapped(&curve, g)), back);
+    assert!(after >= 4.5 - 1e-9 || (g - 1.0).abs() < 1e-9, "{g} {after}");
+    // White already stands out: left alone.
+    let mut white = json!({"text": "x", "fill": [1, 1, 1, 1]});
+    assert!(!keep_contrast(white.as_object_mut().unwrap(), &curve, &step));
+    // A slot is the brand's, not the look's.
+    let mut slot = json!({"text": "x", "fill": "$ink"});
+    assert!(!keep_contrast(slot.as_object_mut().unwrap(), &curve, &step));
+}
