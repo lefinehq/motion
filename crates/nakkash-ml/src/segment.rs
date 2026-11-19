@@ -551,4 +551,4 @@ pub(crate) fn bfloat16(values: &mut [f32]) {
 
 #[cfg(test)]
 #[path = "../tests/unit/segment.rs"]
-mod tests;
+pub(crate) mod tests;

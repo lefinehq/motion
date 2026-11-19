@@ -10,7 +10,7 @@ pub(crate) const ONNX: [u8; 10] = [0x08, 0x08, 0x42, 0x04, 0x0a, 0x00, 0x10, 0x1
 /// An `.npy` file of the floats 1 and 2.
 pub(crate) fn npy() -> Vec<u8> {
     let mut header = "{'descr': '<f4', 'fortran_order': False, 'shape': (2,), }".to_owned();
-    while (10 + header.len() + 1) % 64 != 0 {
+    while !(10 + header.len() + 1).is_multiple_of(64) {
         header.push(' ');
     }
     header.push('\n');

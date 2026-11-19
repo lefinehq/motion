@@ -76,17 +76,20 @@ fn memories_round_to_bfloat16_as_stored() {
 
 /// What the fake graphs saw.
 #[derive(Default)]
-struct Seen {
+pub(crate) struct Seen {
     /// Per memory attention run: the frame of each spatial memory.
-    attended: Vec<Vec<f32>>,
+    pub(crate) attended: Vec<Vec<f32>>,
     /// Per decode: the multimask decoder or not, and the point count.
-    decoded: Vec<(bool, usize)>,
+    pub(crate) decoded: Vec<(bool, usize)>,
 }
 
+/// What a fake graph computes from its inputs.
+pub(crate) type Compute = Box<dyn FnMut(Vec<(String, Tensor)>) -> Outputs + Send>;
+
 /// A graph computing `f` from its inputs.
-struct Fake {
-    inputs: &'static [&'static str],
-    f: Box<dyn FnMut(Vec<(String, Tensor)>) -> Outputs + Send>,
+pub(crate) struct Fake {
+    pub(crate) inputs: &'static [&'static str],
+    pub(crate) f: Compute,
 }
 
 impl Graph for Fake {
@@ -112,7 +115,7 @@ fn first(t: &Tensor) -> f32 {
 /// Five fake graphs in which a frame's identity, its pixel value, flows
 /// through features, memories and pointers, so the test can see what each
 /// frame read.
-fn fakes(seen: Arc<Mutex<Seen>>) -> [Box<dyn Graph>; 5] {
+pub(crate) fn fakes(seen: Arc<Mutex<Seen>>) -> [Box<dyn Graph>; 5] {
     let filled =
         |shape: &[usize], v: f32| Tensor::f32(shape.to_vec(), vec![v; shape.iter().product()]);
     let encoder = Fake {
@@ -195,7 +198,7 @@ fn fakes(seen: Arc<Mutex<Seen>>) -> [Box<dyn Graph>; 5] {
 
 /// Frames filled with grey levels 10, 20, 30, …, so each is known by its
 /// normalised red value.
-struct Greys(usize);
+pub(crate) struct Greys(pub(crate) usize);
 
 impl Frames for Greys {
     fn len(&self) -> usize {
