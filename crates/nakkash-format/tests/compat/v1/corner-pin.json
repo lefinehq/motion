@@ -1,0 +1,15 @@
+{"nakkash":1,"size":"480x320","fps":24,"dur":"1s","bg":"#F4F1EA",
+"layers":[
+{"id":"card","rect":"160x100 r8","fill":"#2F6FED","at":"120 110",
+ "fx":[{"corner-pin":[10,6],"top-right":[-12,0],"bottom-left":[8,-4],
+  "anim":{"bottom-right":"0,0 -> -18,10 @0-1s in-out-sine"}}]},
+{"id":"board","rect":"200x160","position":[250,60],"anchor":[0,0],"rotate":4},
+{"id":"board-tl","pivot":true,"parent":"board","position":[20,16]},
+{"id":"board-tr","pivot":true,"parent":"board","position":[184,26]},
+{"id":"board-br","pivot":true,"parent":"board","position":[176,146]},
+{"id":"board-bl","pivot":true,"parent":"board","position":[14,132]},
+{"id":"label","rect":"120x80","fill":"#E4572E","at":"360 140",
+ "fx":[{"corner-pin":[0,0],"pivots":"board"}]},
+{"id":"ordered","rect":"60x40","fill":"#101010","at":"80 260",
+ "fx":[{"corner-pin":[4,4],"pivots":["board-tl","board-tr","board-br","board-bl"]}]}
+]}
