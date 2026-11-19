@@ -260,7 +260,8 @@ fn measure(
     }
     let behind = shrunk(session, session.list_of(&without(state, &all))?)?;
     let whole = shrunk(session, session.list_of(state)?)?;
-    let Some(ratio) = ratio(&glyphs?, &behind, &whole) else {
+    let over = draw(&above(state, &all))?;
+    let Some(ratio) = ratio(&glyphs?, &behind, &whole, &over) else {
         return Ok(Vec::new());
     };
     Ok(members
@@ -304,22 +305,33 @@ fn readable(visit: &Visit<'_>) -> Option<f64> {
 /// what is behind at the glyph's cover, and that cover is taken off again,
 /// so the edge reads as the core does; where that gives the glyph's own
 /// colour, within the frame's rounding, the text is drawn as set and its
-/// colour is read exactly.
-fn ratio(glyphs: &Image, behind: &Image, whole: &Image) -> Option<f64> {
+/// colour is read exactly. Px where something drawn over the text covers
+/// it are left out.
+fn ratio(glyphs: &Image, behind: &Image, whole: &Image, over: &Image) -> Option<f64> {
     let mut seen: Vec<(f64, f64)> = Vec::new();
     let mut total = 0.0;
     let all = glyphs
         .pixels()
         .chunks_exact(4)
         .zip(behind.pixels().chunks_exact(4))
-        .zip(whole.pixels().chunks_exact(4));
-    for ((glyph, behind), whole) in all {
+        .zip(whole.pixels().chunks_exact(4))
+        .zip(over.pixels().chunks_exact(4));
+    for (((glyph, behind), whole), over) in all {
         let a = f64::from(glyph[3]) / 255.0;
         if a <= 0.0 {
             continue;
         }
         let back = over_black(behind);
         let drawn = over_black(whole);
+        // Where what is drawn over the text is opaque and the frame is
+        // what is behind, within its rounding, though the glyph's own
+        // colour would stand out there, the text is covered: those px are
+        // not shown, and a text covered whole is not read at all.
+        let unchanged = (0..3).all(|c| drawn[c].abs_diff(back[c]) <= 1);
+        let own = [glyph[0], glyph[1], glyph[2]];
+        if over[3] >= OPAQUE && unchanged && contrast(own, back) >= COVERED {
+            continue;
+        }
         let unmixed: [f64; 3] =
             std::array::from_fn(|c| (f64::from(drawn[c]) - (1.0 - a) * f64::from(back[c])) / a);
         // Within the frame's rounding of the glyph's own colour, the text
@@ -330,8 +342,7 @@ fn ratio(glyphs: &Image, behind: &Image, whole: &Image) -> Option<f64> {
             true => [glyph[0], glyph[1], glyph[2]],
             false => unmixed.map(|v| v.round().clamp(0.0, 255.0) as u8),
         };
-        let (t, b) = (luminance(text), luminance(back));
-        let ratio = (t.max(b) + 0.05) / (t.min(b) + 0.05);
+        let ratio = contrast(text, back);
         seen.push((ratio, a));
         total += a;
     }
@@ -345,6 +356,20 @@ fn ratio(glyphs: &Image, behind: &Image, whole: &Image) -> Option<f64> {
         (under >= (1.0 - MOST_OF) * total).then_some(ratio)
     })
 }
+
+/// The WCAG contrast of two colours.
+fn contrast(a: [u8; 3], b: [u8; 3]) -> f64 {
+    let (a, b) = (luminance(a), luminance(b));
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
+/// How far a glyph's own colour must stand out from what is behind it for
+/// a frame that does not change there to mean the glyph is covered rather
+/// than drawn in the colour behind it.
+const COVERED: f64 = 1.5;
+
+/// How opaque what is drawn over a glyph must be to cover it.
+const OPAQUE: u8 = 242;
 
 /// How many px the glyphs in `glyphs` cover, adding up their coverage in
 /// px order.
@@ -374,6 +399,39 @@ fn alone(state: &FrameState, all: &[Vec<&str>]) -> FrameState {
     let mut state = state.clone();
     let all: Vec<&[&str]> = all.iter().map(Vec::as_slice).collect();
     keep(&mut state, &all);
+    state
+}
+
+/// `state` with only what is drawn over the nodes at each of `all`: at
+/// each level of the compositions they lie in, the nodes painted after
+/// the last of them. Track mattes and adjustments drawn there count, as
+/// the renderer draws them.
+fn above(state: &FrameState, all: &[Vec<&str>]) -> FrameState {
+    fn mark(state: &mut FrameState, all: &[&[&str]]) {
+        let on = |node: &NodeState| all.iter().any(|ids| ids.first() == Some(&node.id.as_str()));
+        let Some(last) = state.nodes.iter().rposition(on) else {
+            return;
+        };
+        for (i, node) in state.nodes.iter_mut().enumerate() {
+            if i > last {
+                continue;
+            }
+            let inner: Vec<&[&str]> = all
+                .iter()
+                .filter_map(|ids| ids.split_first())
+                .filter(|(id, _)| **id == node.id)
+                .map(|(_, inner)| inner)
+                .filter(|inner| !inner.is_empty())
+                .collect();
+            match (&mut node.content, inner.is_empty()) {
+                (ContentState::Comp(_, Some(comp)), false) => mark(comp, &inner),
+                _ => node.hidden = true,
+            }
+        }
+    }
+    let mut state = state.clone();
+    let all: Vec<&[&str]> = all.iter().map(Vec::as_slice).collect();
+    mark(&mut state, &all);
     state
 }
 

@@ -9,6 +9,12 @@ fn row(px: &[[u8; 4]]) -> Image {
     Image::new(px.len() as u32, 1, px.concat()).expect("image")
 }
 
+/// Nothing drawn over, the size of `like`.
+fn clear(like: &Image) -> Image {
+    let n = (like.width() * like.height()) as usize;
+    Image::new(like.width(), like.height(), vec![0; n * 4]).expect("image")
+}
+
 /// [`ratio`] of `glyphs` laid over `behind`, as a text blended normally.
 fn read(glyphs: &Image, behind: &Image) -> Option<f64> {
     let whole: Vec<u8> = glyphs
@@ -22,7 +28,7 @@ fn read(glyphs: &Image, behind: &Image) -> Option<f64> {
         })
         .collect();
     let whole = Image::new(glyphs.width(), glyphs.height(), whole).expect("image");
-    ratio(glyphs, behind, &whole)
+    ratio(glyphs, behind, &whole, &clear(glyphs))
 }
 
 #[test]
@@ -37,7 +43,7 @@ fn a_text_reads_as_the_frame_shows_it() {
         [150, 150, 150, 255],
         [128, 128, 128, 255],
     ]);
-    let ratio = ratio(&glyphs, &behind, &whole).unwrap();
+    let ratio = ratio(&glyphs, &behind, &whole, &clear(&glyphs)).unwrap();
     assert!(ratio < 1.6, "{ratio}");
 }
 
@@ -209,4 +215,50 @@ fn a_glyph_counts_only_where_the_text_is_drawn() {
     let drawn = row(&[[255, 0, 0, 255], [0, 0, 0, 0]]);
     let glyphs = reached(&shape, &drawn).unwrap();
     assert_eq!(glyphs.pixels(), &[255, 255, 255, 255, 255, 255, 255, 0]);
+}
+
+#[test]
+fn a_text_something_covers_is_not_read_where_it_is_covered() {
+    // Dark glyphs on white: a grey card drawn over the first two px leaves
+    // the frame as it is behind there; the third shows.
+    let glyphs = row(&[[0, 0, 0, 255]; 3]);
+    let behind = row(&[
+        [220, 220, 220, 255],
+        [220, 220, 220, 255],
+        [255, 255, 255, 255],
+    ]);
+    let card = row(&[[220, 220, 220, 255], [220, 220, 220, 255], [0, 0, 0, 0]]);
+    let whole = row(&[[220, 220, 220, 255], [220, 220, 220, 255], [0, 0, 0, 255]]);
+    assert_eq!(ratio(&glyphs, &behind, &whole, &card), Some(21.0));
+    // Covered whole, it is not read.
+    let whole = row(&[
+        [220, 220, 220, 255],
+        [220, 220, 220, 255],
+        [255, 255, 255, 255],
+    ]);
+    let card = row(&[[220, 220, 220, 255]; 3]);
+    assert_eq!(ratio(&glyphs, &behind, &whole, &card), None);
+}
+
+#[test]
+fn a_text_nothing_covers_reads_1_to_1_where_the_frame_does_not_show_it() {
+    // White glyphs whose compositions draw nothing where they are (moved
+    // away, matted out by a blend): the frame is what is behind, and with
+    // nothing over them they read 1:1, as they show.
+    let glyphs = row(&[[255, 255, 255, 255]; 2]);
+    let behind = row(&[[0, 0, 0, 255]; 2]);
+    let whole = row(&[[0, 0, 0, 255]; 2]);
+    assert_eq!(ratio(&glyphs, &behind, &whole, &clear(&glyphs)), Some(1.0));
+}
+
+#[test]
+fn a_text_set_in_the_colour_behind_it_still_reads_1_to_1() {
+    // The frame does not change, and the glyphs would not stand out there
+    // either: a faint text, read even under a card.
+    let glyphs = row(&[[250, 250, 250, 255]; 2]);
+    let behind = row(&[[255, 255, 255, 255]; 2]);
+    let whole = row(&[[255, 255, 255, 255]; 2]);
+    let card = row(&[[255, 255, 255, 255]; 2]);
+    let r = ratio(&glyphs, &behind, &whole, &card).unwrap();
+    assert!(r < 1.1, "{r}");
 }
