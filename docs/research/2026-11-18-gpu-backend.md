@@ -85,6 +85,8 @@ A profile of the GPU run puts the time in projected layers (`projected::lay` and
 
 ## What falls back, and what to port next
 
+This was the state when D74 first landed; [the resident frame](#the-resident-frame-measured) below is what came of it.
+
 In that frame, by runs on the CPU: fractal-noise 892, curves 872, displacement-map 675, solid-composite 428, set-matte 338, fill 224, vector-blur 168, tint 144, find-edges 120, lens-distortion 23, polar-coordinates 16, linear-wipe 13, invert 12, shift-channels 12, radial-blur 9, iris-wipe 8, lens-blur 4, repeat-tile 1. Each costs a copy each way when the effects around it ran on the GPU.
 
 What would gain most, in order:
@@ -93,3 +95,84 @@ What would gain most, in order:
 2. **The per-pixel colour effects** (`curves`, `tint`, `fill`, `set-matte`, `invert`, `shift-channels`, `solid-composite`): cheap kernels, and each one keeps a chain on the GPU, saving two copies.
 3. **`fractal-noise` and `displacement-map`**: heavy on the CPU, and per-pixel.
 4. **The radial, vector and lens blurs**, once their pull requests land.
+
+## The resident frame, measured
+
+After D74 first landed, the work went in this order: the frame was kept on the GPU (one submission per frame), then kernels were added group by group in the order the profile gave (effect operations, projected layers, colour and channel effects, distortions, generators, the radial, vector and lens blurs and the bevel, masks), and then inputs were kept where they were drawn.
+
+These numbers are *measured* on an M4 Max through Metal, release builds, `render --threads 4`, fastest of two runs, on a quiet machine (load average about 5). "Before" is the `--gpu` of D74's first version; "after" is the end of this work. The commercial template's frames are its two heaviest scenes at 1080p.
+
+| Frame | CPU | `--gpu` before | `--gpu` after | After against the CPU |
+|---|---|---|---|---|
+| Commercial template, scene 1, frame 30 | 11,683 ms | 11,789 ms | 1,611 ms | 7.3× |
+| Commercial template, scene 2, frame 20 | 25,431 ms | 25,056 ms | 4,004 ms | 6.4× |
+| `advanced/camera-depth`, frame 60 | 71.1 ms | 73.5 ms | 40.3 ms | 1.76× |
+| `showcase/product-launch` | 147.3 ms | 147.8 ms | 113.6 ms | 1.30× |
+| `advanced/ui-reveal` | 160.1 ms | 158.6 ms | 133.6 ms | 1.20× |
+| `showcase/brand-system` | 298.9 ms | 302.1 ms | 273.8 ms | 1.09× |
+| `title-card` | 72.1 ms | 73.9 ms | 69.7 ms | 1.03× |
+| `social-916` | 18.6 ms | 19.3 ms | 18.0 ms | 1.00× |
+| `showcase/data-story` | 54.3 ms | 55.0 ms | 61.3 ms | 0.89× |
+
+With the GPU, the heavy scene 1 frame is the CPU's in 99.35% of its 8.3 million channels: 46,187 differ by 1 level, 5,186 by 2, and 2,282 by 3 to 18, where the loose kernels' differences (straight map readings, softened vector maps) run on through 389 effects. The eight examples differ by at most 1 level, in at most 66 channels.
+
+The CPU path is unchanged by this work: the same frames take the same time (scene 1: 11.50 to 11.65 s after, 11.66 to 12.26 s before, over three alternating runs), and both heavy frames are the same PNG bytes before and after.
+
+`data-story` is the one frame drawn slower: its small projected planes are laid on the GPU, which for planes this light costs more than the CPU did. `social-916` has nothing for the GPU, so it is drawn on the CPU and the GPU is not touched.
+
+What the GPU did in the heavy frames, from the tally after the render:
+
+| | Scene 1 before | Scene 1 after | Scene 2 before | Scene 2 after |
+|---|---|---|---|---|
+| Effects on the GPU | 13 | 389 | 13 | 505 |
+| Effects on the CPU for want of a kernel | 378 | 2 | 494 | 2 |
+| Grids copied up | 19 (0.88 GiB) | 159 (1.61 GiB) | 19 (0.88 GiB) | 195 (3.41 GiB) |
+| Grids copied down | 13 (0.60 GiB) | 1 (the frame, 8 MiB) | 13 (0.60 GiB) | 1 (the frame) |
+| Submissions | one per operation | 6 | one per operation | 10 |
+
+Before, a glow combined by any operation other than adding, and every effect of the other families, ran on the CPU, so the GPU's grids kept coming back. After, the two effects left on the CPU in each frame are swirly block noise. The uploads that remain are what the rasteriser drew, as 8-bit bytes.
+
+Four changes besides the kernels mattered:
+
+- A buffer pool that keeps the sizes a frame uses (least recently used, 4 GiB idle at most): scene 2 went from 1,271 buffers made (88 GB) to 223 (9.4 GB), and from 14.3 to 10.8 s, before the blurs were ported.
+- Exact box sums: a 96-bit integer window sum in place of a running f32 sum, at the same speed. See D74's why.
+- Masks on the GPU: scene 2's 59 masks took 1.58 s of the CPU's spreading, feathering and combining.
+- Inputs kept where they were drawn: in scene 1 this took the copies from 232 up and 40 down (6.8 GiB) to 179 up and 21 down (3.5 GiB), and the submissions from 41 to 22, before the blurs were ported.
+
+### Where the time goes now
+
+Spans timed inside one render of each heavy frame with `--gpu`, exclusive time, the frame's own thread (local profiling build, not committed):
+
+| Span | Scene 1 (1,862 ms) | Scene 2 (4,493 ms) |
+|---|---|---|
+| The rasteriser drawing paths, glyphs and pictures (`vello_cpu`), 284 and 324 drawings | 907 ms (48.7%) | 1,473 ms (32.8%) |
+| Waiting for the GPU at the end, and the frame's copy down | 247 ms (13.3%) | 1,724 ms (38.4%) |
+| Laying layers on the GPU (recording) | 222 ms (11.9%) | 260 ms (5.8%) |
+| Copying what the rasteriser drew up, as bytes | 190 ms (10.2%) | 354 ms (7.9%) |
+| Clips' coverage and the mask outlines' setup | 108 ms (5.8%) | 330 ms (7.3%) |
+| Swirly block noise on the CPU | 65 ms (3.5%) | 66 ms (1.5%) |
+| Everything else | 6.6% | 6.3% |
+
+The kernels themselves barely show, since the CPU only records them. Scene 2's wait at the end is the GPU still running its glows on the largest grids (5048×2844) after the CPU has finished: that frame is bound by the GPU for its last 1.7 s. Scene 1 is bound by the CPU, and half of it is the rasteriser.
+
+### What still runs on the CPU
+
+- Effects without a plan: `particles`, `contour-strokes`, `audio-spectrum`, `audio-waveform`.
+- Values the kernels don't cover: `set-matte` read off a colour without its alpha, or off hue or saturation; swirly block noise; a `radial-blur` centred more than 2^24 px (zoom) or 2^15 px (spin) from the layer's origin.
+- Motion blur of a drawing (`moved_average`), and a clip's coverage, which is exact 8-bit coverage.
+- Grids, or a plane's halved copies, larger than the adapter's largest storage binding.
+- Drawing paths, glyphs and pictures.
+
+## Drawing paths on the GPU: an opt-in raster path (proposal, not built)
+
+With everything else on the GPU, drawing is the largest share of a heavy frame: 48.7% of scene 1 and 32.8% of scene 2. A further 10.2% and 7.9% is copying those drawings up, which a GPU rasteriser would not need. So drawing on the GPU could take scene 1 from 1.6 s toward 0.6 to 0.7 s, if it cost nothing; that is an upper bound, not a measurement. Scene 2 would gain less, since its last 1.7 s are the GPU's own.
+
+**Behind D2's interface.** D2 chose `vello_cpu` behind a small interface; today the painter calls `vello_cpu::RenderContext` directly. The first step is to carve that interface out of `render.rs`: begin a drawing of a size; set the transform, paint, fill rule and stroke; push and pop blend and clip layers; fill and stroke paths; draw glyph runs and images; finish to bytes, or to a grid in the accelerator. `vello_cpu` stays its reference implementation, bit for bit. A GPU implementation would live in `nakkash-gpu` beside the kernels, so it draws on the same device and its result is a grid the float canvas lays without a copy. Like the rest of D74 it would be opt-in and approximate, with its own parity harness against `vello_cpu`.
+
+**Which crate.**
+
+- **`vello` 0.12** (the GPU compute rasteriser) depends on `wgpu` ^30, `peniko` ^0.6.1 and `skrifa` ^0.49. Those are the versions we use (`wgpu` 30.0.2, `peniko` 0.6.1, `skrifa` 0.49.0), so it can take our `Device` and `Queue` and draw into a texture. A copy from that texture into a buffer, and the existing unpack kernel, would make it a grid. Its anti-aliasing is its own, so edges would differ from `vello_cpu`'s by more than a level, and whole frames could not be held to D74's one level: the limit would have to be measured, edges apart from interiors.
+- **`vello_hybrid` 0.2** draws sparse strips on the CPU and fills them on the GPU. It shares `vello_common` with `vello_cpu`, so its coverage comes from the same strip generation and should land much closer to the reference. But 0.2.0 depends on `vello_common` ^0.2 and `wgpu` ^29, while we use `vello_cpu`/`vello_common` 0.4 and `wgpu` 30. It cannot share our device, nor our paint types, until it catches up. When it does, it is the better fit. Its strips are still made on the CPU, so it would take the fine rasterisation and the copies off the CPU, but not all of the drawing.
+
+**Unknowns to measure first.** What one drawing costs on the GPU: a frame makes about 300, each now a full-frame pixmap. How much of `vello_cpu`'s 907 ms is strip generation (which `vello_hybrid` would keep on the CPU) and how much is filling. And how far `vello`'s edges land from `vello_cpu`'s on text, which most frames hold. A new dependency is scanned with `wormward` before it is added.
+

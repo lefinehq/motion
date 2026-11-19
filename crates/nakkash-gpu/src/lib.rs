@@ -3,11 +3,13 @@
 //!
 //! [`Gpu`] is an [`Accelerator`] the rasteriser hands work to when a caller
 //! asks for it (`nakkash render --gpu`). It lays layers by every blend mode
-//! with their opacity, clips, masks and mattes, mixes filter layers, moves
-//! pixels, and runs the effects that have a plan ([`nakkash_raster::PLANS`]):
-//! the box and Gaussian blurs, the glow and the drop shadow. Every other
-//! effect runs on the CPU, with a copy each way. Paths, glyphs and pictures
-//! are always drawn on the CPU.
+//! with their opacity, clips, masks and mattes, combines layer masks, mixes
+//! filter layers, moves pixels, lays projected layers, and runs every effect
+//! with a plan ([`nakkash_raster::PLANS`]) whose values its kernels cover:
+//! the blurs, glows, shadows and bevels, the colour and channel effects,
+//! the distortions and the generators. Any other effect runs on the CPU,
+//! with a copy each way. Paths, glyphs and pictures are always drawn on the
+//! CPU.
 //!
 //! Work is recorded, not run, as it is handed over: every thread drawing
 //! records into one command encoder, which is submitted when pixels must
