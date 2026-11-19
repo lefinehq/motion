@@ -1,0 +1,32 @@
+[package]
+name = "nakkash-ml"
+description = "Learned models for nakkash bakes: the model lock and store, the checks a model passes before it is kept, and the pipelines that make object mattes and tracks. Runs graphs through a backend it is given; a render never links it."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# Downloading the runtime and the models a lock names. Only the CLI turns
+# it on (D82).
+fetch = ["dep:ureq", "dep:zip"]
+
+[dependencies]
+nakkash-baked = { path = "../nakkash-baked" }
+nakkash-format = { path = "../nakkash-format" }
+png.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+ureq = { workspace = true, optional = true }
+zip = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+proptest.workspace = true
+rstest.workspace = true
+
+[lints]
+workspace = true
