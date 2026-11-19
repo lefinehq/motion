@@ -13,7 +13,7 @@
 //!
 //! [D81]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d81-one-inference-runtime-loaded-at-run-time-from-a-locked-file
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use nakkash_baked::Runtime;
 use nakkash_format::{Diagnostic, Kind, Result};
@@ -29,6 +29,11 @@ use ort::value::{DynValue, TensorElementType, ValueType};
 /// The CoreML options every placed graph is compiled with, as the folder
 /// name of its compiled form says them.
 const COREML_OPTIONS: &str = "mlprogram-all";
+
+/// The runtime this process loaded, by its library's hash: the runtime
+/// allows one environment per process, so a second [`Onnx::load`] shares
+/// it.
+static LOADED: Mutex<Option<(nakkash_format::Sha256, Environment)>> = Mutex::new(None);
 
 /// ONNX Runtime, loaded.
 pub struct Onnx {
@@ -55,14 +60,38 @@ fn failed(what: &str, e: impl std::fmt::Display) -> Diagnostic {
 
 impl Onnx {
     /// Loads the runtime library `lock` pins for this platform from
-    /// `store`, once its hash is checked. A process loads one runtime.
+    /// `store`, once its hash is checked. A process loads one runtime:
+    /// loading it again shares the first, and loading another library is
+    /// refused.
     ///
     /// # Errors
     /// The store's diagnostic when the library is missing or has changed,
-    /// and a [`Kind::Invalid`] one when it does not load.
+    /// and a [`Kind::Invalid`] one when it does not load or another
+    /// library was loaded first.
     pub fn load(store: &ModelStore, lock: &ModelLock) -> Result<Self> {
-        let library = store.runtime_library(lock)?;
         let sha256 = lock.library_here()?.sha256;
+        let runtime = Runtime {
+            version: lock.runtime.version.clone(),
+            sha256,
+        };
+        let mut loaded = LOADED
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((first, environment)) = loaded.as_ref() {
+            if *first != sha256 {
+                return Err(Diagnostic::new(
+                    Kind::Invalid,
+                    format!("the inference runtime {sha256} after {first}, in one process"),
+                )
+                .expected("one runtime library per process"));
+            }
+            return Ok(Self {
+                environment: environment.clone(),
+                runtime,
+                store: store.clone(),
+            });
+        }
+        let library = store.runtime_library(lock)?;
         let environment = ort::init_from(&library)
             .map_err(|e| failed("load its library", e))?
             .with_name("nakkash")
@@ -79,12 +108,10 @@ impl Onnx {
             .build()
             .map_err(|e| failed("start", e))?;
         tracing::info!(library = %library.display(), version = %lock.runtime.version, "inference runtime loaded");
+        *loaded = Some((sha256, environment.clone()));
         Ok(Self {
             environment,
-            runtime: Runtime {
-                version: lock.runtime.version.clone(),
-                sha256,
-            },
+            runtime,
             store: store.clone(),
         })
     }

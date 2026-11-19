@@ -95,13 +95,15 @@ fn boxed(area: [f32; 4]) -> Vec<Prompt> {
     }]
 }
 
-/// The segmentation's hard masks of `shot` at its size, and the seconds a
-/// frame took.
-fn segment(shot: &Path, prompts: &[Prompt]) -> (Vec<Plane>, Vec<Plane>, f64) {
+/// The segmentation's hard masks of `shot` at its size, the seconds a
+/// frame took and the seconds opening the graphs took.
+fn segment(shot: &Path, prompts: &[Prompt]) -> (Vec<Plane>, Vec<Plane>, f64, f64) {
     let lock = ModelLock::builtin();
     let store = store();
     let backend = Onnx::load(&store, &lock).unwrap();
+    let opening = Instant::now();
     let mut segmenter = Segmenter::open(&backend, &store, &lock, threads()).unwrap();
+    let open = opening.elapsed().as_secs_f64();
     let mut frames = PngFolder::open(&shot.join("full")).unwrap();
     let (width, height) = frames.size();
     let start = Instant::now();
@@ -130,7 +132,7 @@ fn segment(shot: &Path, prompts: &[Prompt]) -> (Vec<Plane>, Vec<Plane>, f64) {
                 .collect(),
         })
         .collect();
-    (logits, hard, per_frame)
+    (logits, hard, per_frame, open)
 }
 
 /// IoU (mean and least), SAD and dtSSD of `alphas` against `truth`.
@@ -160,11 +162,11 @@ fn measure(alphas: &[Plane], truth: &[Plane]) -> (f64, f64, f64, f64) {
 fn segmentation_follows_the_product_through_the_occlusion() {
     let shot = shots().join("product_synth");
     let truth = truth(&shot);
-    let (_, hard, per_frame) = segment(&shot, &boxed(first_box(&shot)));
+    let (_, hard, per_frame, open) = segment(&shot, &boxed(first_box(&shot)));
     let (iou, least, sad, dtssd) = measure(&hard, &truth);
     println!(
         "{}",
-        serde_json::json!({"gate": "segment", "shot": "product_synth", "iou": iou, "iou_min": least, "sad": sad, "dtssd": dtssd, "s_per_frame": per_frame, "threads": threads()})
+        serde_json::json!({"gate": "segment", "shot": "product_synth", "iou": iou, "iou_min": least, "sad": sad, "dtssd": dtssd, "s_per_frame": per_frame, "open_s": open, "threads": threads()})
     );
     assert!(iou >= 0.98 && least >= 0.94, "IoU {iou} (least {least})");
     assert!(sad <= 7.0, "SAD {sad}");
