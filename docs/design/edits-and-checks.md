@@ -79,10 +79,10 @@ An edit that touches what the scene's `locks` hold is refused, and the scene is 
   {"id":"fr-sale","edits":["@headline text=\"Fin de l'été\""],"render":{"codec":"hevc"}}]}
 ```
 
-Each variant starts from the master. Its edits are applied in order, through the locks, then the scene is checked. A refused edit or a check error is reported and the variant is not rendered; the others render, one at a time, to `out/<id>.mp4` (`.mov` for a codec that keeps alpha), with the variant's scene beside it as `out/<id>.json`. A variant cannot edit `roles` or `locks`. The report is one line per variant and a count; `--json` gives each variant's outcome as data, and `--check` applies and checks without writing anything. The command exits 1 when any variant is refused or fails its check.
+Each variant starts from the master. Its edits are applied in order, through the locks, then the scene is checked, rules and pixel gates, against the master's own report, which is computed once ([D78](decisions.md#d78-generated-variants-move-along-measured-axes-and-pass-when-they-add-no-error)): what the master already has, measured as bad or worse, is counted as `KNOWN`, not held against the variant, as `check --baseline` does. A refused edit or an error the master does not have is reported and the variant is not rendered; the others render, one at a time, to `out/<id>.mp4` (`.mov` for a codec that keeps alpha), with the variant's scene beside it as `out/<id>.json`. A variant cannot edit `roles` or `locks`. The report is one line per variant and a count; `--json` gives each variant's outcome as data, and `--check` applies and checks without writing anything. The command exits 1 when any variant is refused or fails its check.
 
 ```text
-de-sale   2 edits  check OK  out/de-sale.mp4  2.1 s
+de-sale   2 edits  check OK  KNOWN 1  out/de-sale.mp4  2.1 s
 fr-sale    1 edit  refused: `#00FF00` is not one of the scene's colours, which are locked by `palette` (edit 1)
 1 rendered, 1 refused, 0 failed their check
 ```

@@ -295,6 +295,38 @@ fn a_batch_renders_the_variants_that_pass_and_names_why_the_others_do_not() {
 }
 
 #[test]
+fn a_batch_measures_each_variant_against_its_master() {
+    let dir = scratch("batch_baseline");
+    // The master already has an error: its card rests past the bottom.
+    fs::copy(OFFSCREEN, dir.join("master.json")).expect("copy the master");
+    let manifest = dir.join("variants.json");
+    let variants = serde_json::json!({"master":"master.json","out":"out","variants":[
+        {"id":"wider","edits":["card rect=\"320x400\""]},
+        {"id":"lower","edits":["card at=\"center 1100\""]},
+        {"id":"fixed","edits":["card at=\"center 826\""]}]});
+    fs::write(&manifest, variants.to_string()).expect("write the manifest");
+    let manifest = manifest.to_string_lossy().into_owned();
+    let out = nakkash(&["batch", &manifest, "--check"]);
+    assert_eq!(out.status.code(), Some(1));
+    let text = stdout(&out);
+    // The master's error is known, so a variant that keeps it passes.
+    assert!(
+        text.contains("wider    1 edit  check OK  KNOWN 1\n"),
+        "{text}"
+    );
+    // One that makes it worse fails, naming what it added.
+    assert!(
+        text.contains("lower    1 edit  check failed: E offscreen card 0-149f +220px"),
+        "{text}"
+    );
+    assert!(text.contains("fixed    1 edit  check OK\n"), "{text}");
+    assert!(
+        text.ends_with("2 checked, 0 refused, 1 failed their check\n"),
+        "{text}"
+    );
+}
+
+#[test]
 fn edit_takes_nested_keys_and_json_values() {
     let path = copy_to("edit_nested_json", LAUNCH);
     let out = nakkash(&[

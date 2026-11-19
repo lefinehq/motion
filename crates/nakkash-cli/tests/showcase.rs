@@ -87,26 +87,35 @@ fn brand_system_json_string(text: &str) -> String {
     format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// The brand-system film (32 s, 3D planes and motion blur) passes `motion
-/// check`. A debug build checks its rules through `nakkash batch --check`,
-/// which also proves the film works as a master.
+/// The brand-system film (32 s, 3D planes and motion blur) passes `nakkash
+/// check`. A debug build checks that its rules find no error, as a batch
+/// of it would (three titles sit 2 px past the safe area, a warning); a
+/// release build runs its gates too, and `nakkash batch --check` on it,
+/// which proves the film works as a master: a batch gates each variant by
+/// the full report, gates included, which a debug build would take most of
+/// an hour over.
 #[test]
 fn brand_system_passes_check() {
     if cfg!(debug_assertions) {
-        let batch = brand_system_batch();
-        let out = nakkash(&["batch", &batch.to_string_lossy(), "--check"]);
-        let text = String::from_utf8_lossy(&out.stdout);
-        let _ = fs::remove_dir_all(batch.parent().expect("batch dir"));
-        assert!(
-            text.lines()
-                .any(|l| l.starts_with("brand-system") && l.ends_with("check OK"))
-                && text.contains("1 checked, 0 refused, 0 failed their check"),
-            "{text}"
-        );
-        assert_eq!(out.status.code(), Some(0));
-    } else {
-        check_passes("brand-system.json");
+        let report = Session::open(showcase("brand-system.json"))
+            .and_then(|s| s.check())
+            .expect("check brand-system.json");
+        assert!(!report.has_errors(), "brand-system.json:\n{report}");
+        assert!(report.passed > 0, "the rules ran on nothing");
+        return;
     }
+    check_passes("brand-system.json");
+    let batch = brand_system_batch();
+    let out = nakkash(&["batch", &batch.to_string_lossy(), "--check"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    let _ = fs::remove_dir_all(batch.parent().expect("batch dir"));
+    assert!(
+        text.lines()
+            .any(|l| l.starts_with("brand-system") && l.ends_with("check OK"))
+            && text.contains("1 checked, 0 refused, 0 failed their check"),
+        "{text}"
+    );
+    assert_eq!(out.status.code(), Some(0));
 }
 
 /// The data story (1146 frames) passes `nakkash check`.

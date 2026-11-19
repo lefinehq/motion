@@ -1,7 +1,8 @@
 //! `nakkash batch`: every variant of one master (D52). Each variant is the
 //! master with its edits applied in order, through the locks, then
-//! checked; those that pass are rendered, one at a time, beside their
-//! scene.
+//! checked against the master (D78): it passes when its report, rules and
+//! pixel gates, has no error the master's lacks. Those that pass are
+//! rendered, one at a time, beside their scene.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -9,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
-use nakkash_engine::{Diagnostic, Id, Kind, Quality, RenderOptions, Result, Session};
+use nakkash_engine::{Diagnostic, Id, Kind, Quality, RenderOptions, Report, Result, Session};
 use serde::Deserialize;
 use serde_json::{Value as Json, json};
 
@@ -53,17 +54,19 @@ struct Render {
 
 /// What became of a variant.
 enum Outcome {
-    /// Its edits were made and it rendered.
+    /// Its edits were made and it rendered; `known` counts the findings
+    /// its master already has.
     Rendered {
         written: Written,
         scene: PathBuf,
         seconds: f64,
+        known: usize,
     },
     /// Its edits were made and its check passed; it was not rendered.
-    Checked,
+    Checked { known: usize },
     /// An edit was refused: which, and why.
     Refused { edit: usize, why: Diagnostic },
-    /// Its check has an error.
+    /// Its check has an error its master's does not.
     Failed { why: String },
 }
 
@@ -93,16 +96,19 @@ pub fn run(path: &Path, check: bool, json: bool) -> Result<ExitCode> {
         }
     }
     let master = Session::open(base.join(&manifest.master))?;
+    // What the master already has is no variant's doing: a variant is
+    // measured against it, once for all of them.
+    let baseline = master.full_check()?;
     let out = base.join(&manifest.out);
     let mut outcomes = Vec::with_capacity(manifest.variants.len());
     for variant in &manifest.variants {
-        let outcome = make(&master, variant, &out, check)?;
+        let outcome = make(&master, &baseline, variant, &out, check)?;
         if !json {
             println!("{}", line(variant, &outcome, &ids));
         }
         outcomes.push(outcome);
     }
-    let made = |o: &Outcome| matches!(o, Outcome::Rendered { .. } | Outcome::Checked);
+    let made = |o: &Outcome| matches!(o, Outcome::Rendered { .. } | Outcome::Checked { .. });
     let good = outcomes.iter().filter(|o| made(o)).count();
     if json {
         let data: Vec<Json> = manifest
@@ -133,15 +139,22 @@ pub fn run(path: &Path, check: bool, json: bool) -> Result<ExitCode> {
     })
 }
 
-/// Makes one variant of `master` into `out`.
-fn make(master: &Session, variant: &Variant, out: &Path, check: bool) -> Result<Outcome> {
+/// Makes one variant of `master`, whose report is `baseline`, into `out`.
+fn make(
+    master: &Session,
+    baseline: &Report,
+    variant: &Variant,
+    out: &Path,
+    check: bool,
+) -> Result<Outcome> {
     let mut session = master.variant();
     for (i, edit) in variant.edits.iter().enumerate() {
         if let Err(why) = session.edit_variant(edit) {
             return Ok(Outcome::Refused { edit: i + 1, why });
         }
     }
-    let report = session.check()?;
+    let mut report = session.full_check()?;
+    let known = report.since(baseline);
     if report.has_errors() {
         let text = report.to_string();
         let first = text
@@ -153,7 +166,7 @@ fn make(master: &Session, variant: &Variant, out: &Path, check: bool) -> Result<
         });
     }
     if check {
-        return Ok(Outcome::Checked);
+        return Ok(Outcome::Checked { known });
     }
     let encoding = Encoding::named(
         variant.render.codec.as_deref(),
@@ -185,6 +198,7 @@ fn make(master: &Session, variant: &Variant, out: &Path, check: bool) -> Result<
         written,
         scene,
         seconds: (started.elapsed().as_secs_f64() * 10.0).round() / 10.0,
+        known,
     })
 }
 
@@ -196,13 +210,20 @@ fn line(variant: &Variant, outcome: &Outcome, ids: &BTreeSet<&str>) -> String {
         1 => "1 edit".to_owned(),
         n => format!("{n} edits"),
     };
+    let ok = |known: usize| match known {
+        0 => "check OK".to_owned(),
+        n => format!("check OK  KNOWN {n}"),
+    };
     let what = match outcome {
         Outcome::Rendered {
-            written, seconds, ..
+            written,
+            seconds,
+            known,
+            ..
         } => {
-            format!("check OK  {}  {seconds} s", written.out.display())
+            format!("{}  {}  {seconds} s", ok(*known), written.out.display())
         }
-        Outcome::Checked => "check OK".to_owned(),
+        Outcome::Checked { known } => ok(*known),
         Outcome::Refused { edit, why } => format!("refused: {} (edit {edit})", why.message),
         Outcome::Failed { why } => format!("check failed: {why}"),
     };
@@ -216,14 +237,16 @@ fn data(variant: &Variant, outcome: &Outcome) -> Json {
             written,
             scene,
             seconds,
+            known,
         } => json!({
             "outcome": "rendered",
             "video": written.out.display().to_string(),
             "scene": scene.display().to_string(),
             "frames": written.frames,
             "seconds": seconds,
+            "known": known,
         }),
-        Outcome::Checked => json!({"outcome": "checked"}),
+        Outcome::Checked { known } => json!({"outcome": "checked", "known": known}),
         Outcome::Refused { edit, why } => {
             json!({"outcome": "refused", "edit": edit, "why": why.to_string()})
         }

@@ -19,8 +19,5 @@ pub fn run(path: &Path, baseline: Option<&Path>) -> Result<ExitCode> {
 
 /// The scene's rules, then its pixel gates.
 fn full(path: &Path) -> Result<Report> {
-    let session = Session::open(path)?;
-    let mut report = session.check()?;
-    report.join(session.gates()?);
-    Ok(report)
+    Session::open(path)?.full_check()
 }
