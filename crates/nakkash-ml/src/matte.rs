@@ -176,7 +176,7 @@ impl Mask {
 
 /// The crop around the object on frame `index` of the segmentation
 /// `logits`, for a clip of `width` by `height`: the union of its boxes
-/// over [`CROP_REACH`] frames either side, grown by a fifth of its larger
+/// over `CROP_REACH` (two) frames either side, grown by a fifth of its larger
 /// side and 16 px, in the clip; the whole frame when no frame near has the
 /// object.
 pub fn crop(logits: &[Plane], index: usize, width: usize, height: usize) -> [usize; 4] {
