@@ -17,6 +17,8 @@
 //! [D87]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d87-an-objects-matte-is-its-segmentation-refined-at-its-edge
 //! [D88]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d88-a-track-is-baked-once-and-applied-as-keys-on-pivots
 
+#[cfg(feature = "fetch")]
+pub mod fetch;
 mod graph;
 pub mod image;
 pub mod lock;

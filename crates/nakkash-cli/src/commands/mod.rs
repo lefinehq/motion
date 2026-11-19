@@ -12,6 +12,8 @@ pub mod fidelity;
 pub mod fonts;
 pub mod import;
 pub mod inspect;
+#[cfg(feature = "ml")]
+pub mod ml;
 pub mod render;
 pub mod roles;
 pub mod slots;
