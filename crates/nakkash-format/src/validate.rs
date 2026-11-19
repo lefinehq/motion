@@ -216,6 +216,7 @@ fn layers(docs: &LayersDoc, context: &Context) -> Result<Vec<Layer>> {
     )?;
     inputs(&layers)?;
     outlines(&layers)?;
+    pivots(&layers)?;
     sounds(&layers)?;
     listens(&layers)?;
     for (layer, Object(doc)) in layers.iter().zip(docs) {
@@ -950,6 +951,49 @@ fn listens(layers: &[Layer]) -> Result<()> {
                     )
                     .expected("an `audio` layer, or a `comp` layer for its composition's sound"),
                 ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Every layer a corner pin's corners rest on ([D89]) is another layer of
+/// the same list.
+///
+/// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+fn pivots(layers: &[Layer]) -> Result<()> {
+    for layer in layers {
+        for (i, item) in layer.fx.iter().enumerate() {
+            let (Some(pivots), Some(key)) = (&item.pivots, item.kind.pivots) else {
+                continue;
+            };
+            let place = |d: Diagnostic| {
+                d.at(key)
+                    .under(format!("fx[{i}]"))
+                    .under(Place::of_layer(&layer.id))
+            };
+            for id in pivots.ids() {
+                if id == layer.id {
+                    return Err(place(
+                        Diagnostic::new(
+                            Kind::Conflict,
+                            format!("`{id}` is the layer the corner pin is on"),
+                        )
+                        .expected("other layers of the same list, such as pivots"),
+                    ));
+                }
+                if !layers.iter().any(|l| l.id == id) {
+                    let unknown =
+                        Diagnostic::unknown("layer id", &id, layers.iter().map(|l| l.id.as_str()));
+                    return Err(place(match pivots {
+                        crate::item::Pivots::Corners(base) => unknown.expected(format!(
+                            "the corner pivots `{base}-tl`, `{base}-tr`, `{base}-br` and \
+                             `{base}-bl` in the same list, as `nakkash ml track … --to {base} \
+                             --corners` writes them"
+                        )),
+                        crate::item::Pivots::Each(_) => unknown,
+                    }));
+                }
             }
         }
     }

@@ -1305,7 +1305,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 61] = [
+pub(super) static KINDS: [Kind; 62] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -3253,6 +3253,50 @@ pub(super) static KINDS: [Kind; 61] = [
                 ),
                 Number,
                 Absent,
+            ),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    // Corner pin ([D89]): each corner a point of the layer's effect space,
+    // taken as the px it moves from where it rests; the project lists the
+    // lower left before the lower right.
+    //
+    // [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+    Kind {
+        match_name: "ADBE Corner Pin",
+        item: "corner-pin",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Corner Pin-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Corner Pin-0001",
+                To::Prop("top-left"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE Corner Pin-0002",
+                To::Prop("top-right"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE Corner Pin-0003",
+                To::Prop("bottom-left"),
+                FromRest,
+                Parameter,
+            ),
+            row(
+                "ADBE Corner Pin-0004",
+                To::Prop("bottom-right"),
+                FromRest,
+                Parameter,
             ),
         ],
         parts: &[],

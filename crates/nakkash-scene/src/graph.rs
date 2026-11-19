@@ -240,6 +240,11 @@ pub struct Node {
     /// For each of `fx`, the index in `mask` of the mask whose outline it
     /// follows, if it names one that is shown.
     pub outlines: Vec<Option<usize>>,
+    /// For each of `fx`, the nodes of its own list a corner pin's corners
+    /// rest on, top left first and clockwise, if it names them ([D89]).
+    ///
+    /// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+    pub pivots: Vec<Option<[usize; 4]>>,
 }
 
 #[cfg(test)]

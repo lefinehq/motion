@@ -11,7 +11,7 @@
 
 use std::ops::Mul;
 
-use vello_cpu::kurbo::{Affine, Point};
+use vello_cpu::kurbo::{Affine, Point, Rect};
 
 /// A projective map of the plane, a 3×3 matrix acting on `(x, y, 1)`.
 ///
@@ -36,6 +36,51 @@ impl Homography {
     /// Its rows, as [`Homography::new`] takes them.
     pub const fn rows(&self) -> [[f64; 3]; 3] {
         self.rows
+    }
+
+    /// The map that takes the corners of `from` to `to`, top left first
+    /// and clockwise, as a corner pin lays its layer's box ([D89]):
+    /// `None` when `from` has no area or `to` no quad a box can be laid
+    /// onto, its corners crossed, bent inwards or three on one line.
+    ///
+    /// Every point of `from` maps in front (`w > 0`), so its inside lands
+    /// inside the quad, whichever way the quad turns.
+    ///
+    /// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+    pub fn from_quad(from: Rect, to: [Point; 4]) -> Option<Homography> {
+        // Written so a NaN side has no area.
+        let area = from.width().abs() > 0.0 && from.height().abs() > 0.0;
+        if !(area && convex(to)) {
+            return None;
+        }
+        // The unit square onto the quad (Heckbert's square-to-quad), after
+        // the box onto the unit square.
+        let [p0, p1, p2, p3] = to;
+        let s = p0.to_vec2() - p1.to_vec2() + p2.to_vec2() - p3.to_vec2();
+        let (d1, d2) = (p1 - p2, p3 - p2);
+        let den = d1.cross(d2);
+        let (g, h) = (s.cross(d2) / den, d1.cross(s) / den);
+        let square = Homography::new([
+            [p1.x - p0.x + g * p1.x, p3.x - p0.x + h * p3.x, p0.x],
+            [p1.y - p0.y + g * p1.y, p3.y - p0.y + h * p3.y, p0.y],
+            [g, h, 1.0],
+        ]);
+        let unit = Affine::scale_non_uniform(1.0 / from.width(), 1.0 / from.height())
+            * Affine::translate((-from.x0, -from.y0));
+        let map = square * Homography::from(unit);
+        // Normalised so the box maps in front: `w` is positive throughout
+        // for a convex quad once it is positive at one corner.
+        let w = map.map(Point::new(from.x0, from.y0))[2];
+        let k = match w.is_finite() && w != 0.0 {
+            true => 1.0 / w,
+            false => return None,
+        };
+        let map = Homography::new(map.rows.map(|r| r.map(|v| v * k)));
+        map.rows
+            .iter()
+            .flatten()
+            .all(|v| v.is_finite())
+            .then_some(map)
     }
 
     /// The image of `p` before the division: `(x', y', w)`.
@@ -121,6 +166,22 @@ impl Homography {
     pub(crate) fn magnification(&self, p: Point) -> f64 {
         self.jacobian(p).map_or(0.0, |j| singular_values(j)[0])
     }
+}
+
+/// Whether the quad `q`, in order round it, is strictly convex, turning
+/// either way: every corner turns the same way, by more than a sliver.
+fn convex(q: [Point; 4]) -> bool {
+    let side = |k: usize| q[(k + 1) % 4] - q[k];
+    let turns: [f64; 4] = std::array::from_fn(|k| {
+        let (into, out) = (side((k + 3) % 4), side(k));
+        let cross = into.cross(out);
+        let lengths = into.hypot() * out.hypot();
+        match lengths.is_finite() && cross.abs() > 1e-4 * lengths {
+            true => cross,
+            false => 0.0,
+        }
+    });
+    turns.iter().all(|t| *t > 0.0) || turns.iter().all(|t| *t < 0.0)
 }
 
 /// The singular values of the 2×2 matrix `[a, b, c, d]` (rows), largest

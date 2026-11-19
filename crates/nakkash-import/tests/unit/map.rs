@@ -1173,6 +1173,56 @@ mod effects {
         );
     }
 
+    /// A corner pin's corners are fractions of the layer's effect space;
+    /// each becomes the px it moves from where it rests, the lower left and
+    /// lower right in the scene's clockwise order.
+    #[test]
+    fn a_corner_pin_takes_each_corner_as_its_move_from_rest() {
+        let point = |match_name: &str, default: [f64; 2]| {
+            parameter(
+                match_name,
+                Control::Point {
+                    default: default.to_vec(),
+                },
+            )
+        };
+        let definition = EffectDefinition {
+            name: "Corner Pin".into(),
+            parameters: vec![
+                parameter("ADBE Corner Pin-0000", Control::Layer),
+                point("ADBE Corner Pin-0001", [0.0, 0.0]),
+                point("ADBE Corner Pin-0002", [1.0, 0.0]),
+                point("ADBE Corner Pin-0003", [0.0, 1.0]),
+                point("ADBE Corner Pin-0004", [1.0, 1.0]),
+            ],
+        };
+        let vector = |match_name: &str, at: [f64; 2]| {
+            Child::Property(property(match_name, Stream::Static(Value::Vector2(at))))
+        };
+        let import = defined(
+            vec![group(
+                "ADBE Corner Pin",
+                vec![
+                    vector("ADBE Corner Pin-0001", [0.1, 0.05]),
+                    vector("ADBE Corner Pin-0002", [0.9, 0.0]),
+                    vector("ADBE Corner Pin-0003", [0.0, 1.0]),
+                    vector("ADBE Corner Pin-0004", [1.05, 0.9]),
+                ],
+            )],
+            vec![("ADBE Corner Pin", definition)],
+        )
+        .expect("imports");
+        assert_eq!(
+            import.json["layers"][0]["fx"],
+            json!([{"corner-pin":[20,5],"top-right":[-20,0],"bottom-left":[0,0],"bottom-right":[10,-10]}])
+        );
+        assert!(
+            import.mapping.unsupported.is_empty(),
+            "{:?}",
+            import.mapping.unsupported
+        );
+    }
+
     /// Find edges takes its inversion as which lines it draws, light on
     /// dark when on, and its blend as it is.
     #[test]

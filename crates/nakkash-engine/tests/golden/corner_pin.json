@@ -1,0 +1,21 @@
+{"nakkash":1,"size":"480x320","fps":24,"dur":"1s","bg":"#E8E4DC","shutter":"180 -90 16",
+"comps":{
+ "app":{"size":"180x360","fps":24,"dur":"1s","bg":"#FFFFFF","layers":[
+  {"id":"bar","rect":"180x56","fill":"#7C3AED","at":"90 28"},
+  {"id":"title","text":"Inbox","font":"Inter Variable 22 700","fill":"#FFFFFF","at":"90 36"},
+  {"id":"row1","text":"Your order is on its way","font":"Inter Variable 11 500","fill":"#111827","at":"90 92"},
+  {"id":"row2","text":"Tickets for Friday are ready","font":"Inter Variable 11 500","fill":"#111827","at":"90 122"},
+  {"id":"row3","text":"Weekly report: 12 new","font":"Inter Variable 11 500","fill":"#111827","at":"90 152"},
+  {"id":"card","rect":"148x120 r10","fill":"#F3F0FF","at":"90 250"},
+  {"id":"cta","text":"Open","font":"Inter Variable 16 700","fill":"#7C3AED","at":"90 250"}]}},
+"layers":[
+{"id":"device","rect":"240x300 r24","fill":"#1F2937","position":[90,10],"anchor":[0,0],"rotate":-6},
+{"id":"screen-tl","pivot":true,"parent":"device","position":[26,30]},
+{"id":"screen-tr","pivot":true,"parent":"device","position":[214,22]},
+{"id":"screen-br","pivot":true,"parent":"device","position":[208,282]},
+{"id":"screen-bl","pivot":true,"parent":"device","position":[30,268]},
+{"id":"ui","comp":"app","at":"240 160","fx":[{"corner-pin":[0,0],"pivots":"screen"}]},
+{"id":"tilted","comp":"app","position":[350,40],"anchor":[0,0],"scale":0.5,
+ "fx":[{"corner-pin":[10,30],"top-right":[-14,0],"bottom-right":[-4,-20],"bottom-left":[18,-6]},{"drop-shadow":8,"softness":10,"opacity":0.4}],
+ "mblur":true,"anim":{"x":"350 -> 380 @0-12f"}}
+]}

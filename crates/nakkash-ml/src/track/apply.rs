@@ -10,8 +10,10 @@ use serde_json::{Map, Value, json};
 /// The key a video layer's time remapping is written under.
 const REMAP: &str = "remap";
 /// The suffixes of the four corner pivots, in the order of a track's
-/// corners.
-const CORNERS: [&str; 4] = ["tl", "tr", "br", "bl"];
+/// corners: the ones a corner pin's `pivots` reads ([D89]).
+///
+/// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+const CORNERS: [&str; 4] = nakkash_format::item::CORNER_SUFFIXES;
 
 /// Where a track goes.
 #[derive(Debug, Clone, PartialEq, Eq)]

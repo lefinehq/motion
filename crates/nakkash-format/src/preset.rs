@@ -236,6 +236,7 @@ pub fn parts_animator(
         hidden: false,
         input: None,
         outline: None,
+        pivots: None,
     };
     Some(Item {
         kind: &ANIMATORS[0],
@@ -253,6 +254,7 @@ pub fn parts_animator(
         hidden: false,
         input: None,
         outline: None,
+        pivots: None,
     })
 }
 

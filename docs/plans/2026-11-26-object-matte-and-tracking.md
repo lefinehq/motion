@@ -33,5 +33,5 @@ nakkash render scene.json --out out.mov # reads the baked matte; never infers
 ## Open
 
 - Hosting our exported graphs, so that `fetch` can take them too, is the maintainers' call (D82).
-- A corner-pin distortion that reads the corner pivots of D88.
+- A corner-pin distortion that reads the corner pivots of D88: built as D89.
 - GPU providers on Linux.

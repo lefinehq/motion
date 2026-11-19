@@ -112,3 +112,106 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn a_quad_map_takes_the_box_corners_to_the_quad() {
+    let from = Rect::new(-20.0, 10.0, 180.0, 410.0);
+    let to = [
+        Point::new(300.0, 120.0),
+        Point::new(520.0, 170.0),
+        Point::new(500.0, 430.0),
+        Point::new(290.0, 400.0),
+    ];
+    let map = Homography::from_quad(from, to).expect("a convex quad");
+    let corners = [
+        Point::new(from.x0, from.y0),
+        Point::new(from.x1, from.y0),
+        Point::new(from.x1, from.y1),
+        Point::new(from.x0, from.y1),
+    ];
+    for (corner, target) in corners.into_iter().zip(to) {
+        let seen = map.project(corner).expect("in front");
+        assert!(close(seen, target, 1e-9), "{seen:?} for {target:?}");
+    }
+}
+
+#[test]
+fn a_quad_map_of_the_box_onto_itself_moves_nothing() {
+    let from = Rect::new(0.0, 0.0, 300.0, 200.0);
+    let to = [
+        Point::new(0.0, 0.0),
+        Point::new(300.0, 0.0),
+        Point::new(300.0, 200.0),
+        Point::new(0.0, 200.0),
+    ];
+    let map = Homography::from_quad(from, to).unwrap();
+    for (row, want) in map.rows().iter().zip(Homography::IDENTITY.rows()) {
+        for (v, w) in row.iter().zip(want) {
+            assert!((v - w).abs() < 1e-12, "{:?}", map.rows());
+        }
+    }
+}
+
+#[test]
+fn a_mirrored_quad_is_laid_in_front() {
+    let from = Rect::new(0.0, 0.0, 10.0, 10.0);
+    let to = [
+        Point::new(10.0, 0.0),
+        Point::new(0.0, 0.0),
+        Point::new(0.0, 10.0),
+        Point::new(10.0, 10.0),
+    ];
+    let map = Homography::from_quad(from, to).unwrap();
+    assert!(map.map(Point::new(5.0, 5.0))[2] > 0.0);
+    assert!(close(
+        map.project(Point::new(2.0, 3.0)).unwrap(),
+        Point::new(8.0, 3.0),
+        1e-12
+    ));
+}
+
+#[test]
+fn crossed_bent_flat_and_sizeless_quads_have_no_map() {
+    let from = Rect::new(0.0, 0.0, 10.0, 10.0);
+    let quad = |q: [[f64; 2]; 4]| q.map(|[x, y]| Point::new(x, y));
+    for to in [
+        quad([[0.0, 0.0], [10.0, 0.0], [0.0, 10.0], [10.0, 10.0]]),
+        quad([[0.0, 0.0], [10.0, 0.0], [3.0, 3.0], [0.0, 10.0]]),
+        quad([[0.0, 0.0], [5.0, 0.0], [10.0, 0.0], [0.0, 10.0]]),
+    ] {
+        assert_eq!(Homography::from_quad(from, to), None, "{to:?}");
+    }
+    let square = quad([[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]);
+    assert_eq!(
+        Homography::from_quad(Rect::new(0.0, 0.0, 0.0, 10.0), square),
+        None
+    );
+}
+
+proptest! {
+    /// Any convex quad near a box takes the box's corners there, and the
+    /// box's middle inside it, in front.
+    #[test]
+    fn convex_quads_map_their_corners(
+        jitter in prop::array::uniform8(-40.0f64..40.0),
+        scale in 0.2f64..4.0,
+    ) {
+        let from = Rect::new(0.0, 0.0, 400.0, 300.0);
+        let base = [(0.0, 0.0), (400.0, 0.0), (400.0, 300.0), (0.0, 300.0)];
+        let to: [Point; 4] = std::array::from_fn(|k| {
+            Point::new(
+                100.0 + base[k].0 * scale + jitter[2 * k],
+                50.0 + base[k].1 * scale + jitter[2 * k + 1],
+            )
+        });
+        let Some(map) = Homography::from_quad(from, to) else {
+            return Ok(());
+        };
+        let corners = [(0.0, 0.0), (400.0, 0.0), (400.0, 300.0), (0.0, 300.0)];
+        for ((x, y), target) in corners.into_iter().zip(to) {
+            let seen = map.project(Point::new(x, y)).unwrap();
+            prop_assert!(close(seen, target, 1e-6));
+        }
+        prop_assert!(map.map(Point::new(200.0, 150.0))[2] > 0.0);
+    }
+}

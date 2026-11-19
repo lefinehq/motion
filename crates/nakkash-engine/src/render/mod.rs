@@ -455,13 +455,7 @@ fn matted(
 /// content without a box of its own, `around`, the canvas it sits in, with
 /// its middle on the node's origin.
 fn effect_box(sources: Sources<'_>, node: &NodeState, around: Rect) -> Rect {
-    match &node.content {
-        ContentState::Rect(shape) => Rect::new(0.0, 0.0, shape.width, shape.height),
-        ContentState::Image(content) => content.frame,
-        ContentState::Video { video, .. } => video.frame,
-        ContentState::Comp(index, _) => canvas(&sources.graph.comps[*index]),
-        _ => around - around.center().to_vec2(),
-    }
+    nakkash_scene::pin::effect_box(sources.graph, node, around)
 }
 
 /// From the coordinates of a layer an effect reads, whose effect box is
@@ -638,11 +632,31 @@ fn blurred(sources: Sources<'_>, at: Canvas, state: &FrameState, i: usize) -> Re
             })));
         }
         let back = frame_node.transform.inverse();
-        let motion = shutter
-            .moments(state.frame, n)
-            .map(|frame| moment(frame).nodes[i].transform * back)
+        let frames: Vec<f64> = shutter.moments(state.frame, n).collect();
+        let motion = frames
+            .iter()
+            .map(|&frame| moment(frame).nodes[i].transform * back)
             .collect();
-        return Ok(Some(Node::Layer(Layer { motion, ..drawn })));
+        // A corner pin is laid through its corners at each moment too,
+        // paired with the layer's move then ([D89]).
+        //
+        // [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+        let moments: Vec<Rc<FrameState>> = match frame_node.pins.is_empty() {
+            true => Vec::new(),
+            false => frames.iter().map(|&frame| moment(frame)).collect(),
+        };
+        let effects = effect::with_moments(
+            drawn.effects,
+            frame_node,
+            |k| &moments[k].nodes[i],
+            moments.len(),
+        )
+        .map_err(|e| e.under(Place::of_layer(&frame_node.id)))?;
+        return Ok(Some(Node::Layer(Layer {
+            motion,
+            effects,
+            ..drawn
+        })));
     }
     let mut samples = Vec::with_capacity(n as usize);
     for frame in shutter.moments(state.frame, n) {
@@ -692,11 +706,33 @@ fn travel(from: &NodeState, to: &NodeState) -> f64 {
             }
         })
     };
+    // A corner pin's corners as they land, so a pin whose pivots move fast
+    // takes as many samples as a layer that does.
+    let pinned = |node: &NodeState| -> Vec<nakkash_raster::kurbo::Point> {
+        node.pins
+            .iter()
+            .flat_map(|pin| pin.to)
+            .map(|p| match node.plane {
+                None => node.transform * p,
+                Some(plane) => space::project(plane, p).unwrap_or(
+                    nakkash_raster::kurbo::Point::new(f64::INFINITY, f64::INFINITY),
+                ),
+            })
+            .collect()
+    };
+    let pins = match from.pins.len() == to.pins.len() {
+        true => pinned(from)
+            .into_iter()
+            .zip(pinned(to))
+            .map(|(a, b)| a.distance(b))
+            .fold(0.0, f64::max),
+        false => f64::INFINITY,
+    };
     corners(from)
         .into_iter()
         .zip(corners(to))
         .map(|(a, b)| a.distance(b))
-        .fold(0.0, f64::max)
+        .fold(pins, f64::max)
 }
 
 /// The layer of one node, compiled as `compiled`, without its matte, or
@@ -758,8 +794,11 @@ fn drawing(
             if children.is_empty() {
                 return Ok(None);
             }
-            let effects = effect::effects(node, &compiled.outlines)
-                .map_err(|e| e.under(Place::of_layer(&node.id)))?;
+            let Some(effects) = effect::pinned(effect::effects(node, &compiled.outlines), node)
+                .map_err(|e| e.under(Place::of_layer(&node.id)))?
+            else {
+                return Ok(None);
+            };
             // Its own blend modes reach what is below unless its effects
             // need its drawing on its own, or an adjusting layer inside
             // needs only its composition below it.
@@ -800,8 +839,11 @@ fn drawing(
         | ContentState::Pivot
         | ContentState::Camera => Vec::new(),
         ContentState::Filter => {
-            let effects = effect::effects(node, &compiled.outlines)
-                .map_err(|e| e.under(Place::of_layer(&node.id)))?;
+            let Some(effects) = effect::pinned(effect::effects(node, &compiled.outlines), node)
+                .map_err(|e| e.under(Place::of_layer(&node.id)))?
+            else {
+                return Ok(None);
+            };
             return Ok(Some(Node::Layer(Layer {
                 transform: node.transform,
                 projection: projection(node),
@@ -819,8 +861,11 @@ fn drawing(
         // nothing for them to change.
         return Ok(None);
     }
-    let effects = effect::effects(node, &compiled.outlines)
-        .map_err(|e| e.under(Place::of_layer(&node.id)))?;
+    let Some(effects) = effect::pinned(effect::effects(node, &compiled.outlines), node)
+        .map_err(|e| e.under(Place::of_layer(&node.id)))?
+    else {
+        return Ok(None);
+    };
     Ok(Some(Node::Layer(Layer {
         transform: node.transform,
         projection: projection(node),

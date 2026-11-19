@@ -721,3 +721,53 @@ fn an_overlap_prints_both_layers_and_how_deep() {
     assert!(line.starts_with("W overlap title 0-29f +"), "{line}");
     assert!(line.ends_with("px over sub"), "{line}");
 }
+
+/// A one-second scene at 30 fps whose `ui` rect is pinned by its corner
+/// pivots; `br` animates the bottom-right pivot.
+fn pinned(br: &str) -> Report {
+    check_json(&format!(
+        r#"{{"nakkash":1,"dur":"1s","fps":30,"layers":[
+        {{"id":"screen-tl","pivot":true,"position":[700,300]}},
+        {{"id":"screen-tr","pivot":true,"position":[1200,320]}},
+        {{"id":"screen-br","pivot":true,"position":[1180,760]{br}}},
+        {{"id":"screen-bl","pivot":true,"position":[720,740]}},
+        {{"id":"ui","rect":"300x600","at":"center center","fx":[{{"corner-pin":[0,0],"pivots":"screen"}}]}}]}}"#
+    ))
+}
+
+#[test]
+fn a_corner_pin_onto_a_quad_passes() {
+    let report = pinned("");
+    assert!(
+        report.violations.iter().all(|v| v.code != Code::Pin),
+        "{report}"
+    );
+}
+
+#[test]
+fn a_pivot_that_crosses_its_neighbours_is_a_pin_error_for_the_frames_it_does() {
+    // The bottom-right pivot swings past the bottom-left one from frame 10
+    // to 20, crossing the quad's sides, and back.
+    let report = pinned(
+        r#","anim":{"x":[{"t":"10f","v":1180},{"t":"11f","v":400},{"t":"20f","v":400},{"t":"21f","v":1180}]}"#,
+    );
+    let pins: Vec<String> = report
+        .violations
+        .iter()
+        .filter(|v| v.code == Code::Pin)
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(
+        pins,
+        ["E pin ui 11-20f crossed: top-right–bottom-right meets bottom-left–top-left"]
+    );
+    assert!(report.has_errors());
+}
+
+#[test]
+fn a_layer_without_a_corner_pin_runs_no_pin_rule() {
+    let without = one(r#"{"id":"a","rect":"100x100","at":"center center"}"#);
+    let with =
+        one(r#"{"id":"a","rect":"100x100","at":"center center","fx":[{"corner-pin":[0,0]}]}"#);
+    assert_eq!(with.passed, without.passed + 1);
+}

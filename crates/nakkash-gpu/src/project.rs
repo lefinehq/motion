@@ -6,7 +6,7 @@
 
 use nakkash_format::Result;
 use nakkash_raster::kurbo::Point;
-use nakkash_raster::{Landing, Resident, Texels};
+use nakkash_raster::{Filter, Landing, Resident, Texels};
 
 use crate::grid::{Grid, grid};
 use crate::kernels::{Params, pixel_groups};
@@ -164,9 +164,14 @@ impl Gpu {
 }
 
 /// A landing as the project kernel reads it: the map back at the centre of
-/// its first px, worked out here in 64-bit floats, and its steps one px
-/// right and one px down, each `(x, y, w)`, then the px it lands on.
+/// its first px, worked out here in 64-bit floats, with its filter (0 a
+/// footprint, 1 a box) after it, and its steps one px right and one px
+/// down, each `(x, y, w)`, then the px it lands on.
 fn landing_words(landing: &Landing) -> [u32; 16] {
+    let filter = match landing.filter {
+        Filter::Footprint => 0.0f32,
+        Filter::Box => 1.0,
+    };
     let [g0, g1, g2] = landing.to_buffer.rows();
     let [x0, y0, x1, y1] = landing.landed;
     let p = Point::new(x0 as f64 + 0.5, y0 as f64 + 0.5);
@@ -176,7 +181,7 @@ fn landing_words(landing: &Landing) -> [u32; 16] {
         float(dot(g0)),
         float(dot(g1)),
         float(dot(g2)),
-        0,
+        filter.to_bits(),
         float(g0[0]),
         float(g1[0]),
         float(g2[0]),

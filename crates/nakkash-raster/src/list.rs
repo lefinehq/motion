@@ -300,8 +300,14 @@ impl Layer {
     ///
     /// [`Reach::Grows`]: crate::Reach::Grows
     pub fn shown_clip(&self) -> Option<Clip> {
+        self.clip_after(&self.effects)
+    }
+
+    /// The region it shows within once `effects`, the first of its own,
+    /// have run: as [`Layer::shown_clip`] for those effects alone.
+    pub(crate) fn clip_after(&self, effects: &[Effect]) -> Option<Clip> {
         let clip = self.clip.as_ref()?;
-        if !self.effects_grow() {
+        if !grow(effects) {
             return Some(clip.clone());
         }
         let outline = match clip {
@@ -309,17 +315,29 @@ impl Layer {
             Clip::Path(path, _) => path.bounding_box(),
         };
         Some(Clip::Rect(
-            self.effects
-                .iter()
-                .fold(outline, |b, effect| effect.grown(b)),
+            effects.iter().fold(outline, |b, effect| effect.grown(b)),
         ))
     }
 
     /// Whether an effect of it draws beyond its box.
     pub(crate) fn effects_grow(&self) -> bool {
-        self.effects
-            .iter()
-            .any(|effect| matches!(effect.reach(), crate::Reach::Grows(_)))
+        grow(&self.effects)
+    }
+}
+
+/// Whether one of `effects` draws beyond the box.
+pub(crate) fn grow(effects: &[Effect]) -> bool {
+    effects
+        .iter()
+        .any(|effect| matches!(effect.reach(), crate::Reach::Grows(_)))
+}
+
+impl Layer {
+    /// Whether one of its effects pins it onto four corners ([D89]).
+    ///
+    /// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+    pub(crate) fn pinned(&self) -> bool {
+        self.effects.iter().any(Effect::pins)
     }
 }
 

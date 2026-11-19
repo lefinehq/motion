@@ -8,6 +8,7 @@
 
 use nakkash_format::{Diagnostic, Kind, Result, Value};
 use nakkash_raster::{Curve, Effect, ParamValue, Total, TotalPiece};
+use nakkash_scene::pin::{CORNER_PIN, Corner, Pin};
 use nakkash_scene::{Integral, ItemState, NodeState};
 
 use super::color;
@@ -31,6 +32,74 @@ pub(super) fn effects(node: &NodeState, outlines: &[Option<usize>]) -> Result<Ve
             })
         })
         .collect()
+}
+
+/// `effects`, the rasteriser's effects for `node`'s `fx`, with each corner
+/// pin's corners as evaluation resolved them ([D89]): moved from the box
+/// they rest on, which each pin is given. `None` when a pin's corners make
+/// no quad at this frame, so the layer draws nothing; `check` reports it.
+///
+/// # Errors
+/// The error `effects` holds.
+///
+/// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+pub(super) fn pinned(
+    effects: Result<Vec<Effect>>,
+    node: &NodeState,
+) -> Result<Option<Vec<Effect>>> {
+    let mut effects = effects?;
+    for pin in &node.pins {
+        if pin.fault.is_some() {
+            return Ok(None);
+        }
+        effects[pin.fx] = pin_effect(pin).map_err(|e| e.under(format!("fx[{}]", pin.fx)))?;
+    }
+    Ok(Some(effects))
+}
+
+/// The rasteriser's corner pin for `pin`: its offsets from its box, which
+/// it rests on.
+fn pin_effect(pin: &Pin) -> Result<Effect> {
+    let offsets = pin.offsets();
+    let params: Vec<(&str, ParamValue)> = Corner::ALL
+        .iter()
+        .zip(offsets)
+        .map(|(corner, d)| (corner.name(), ParamValue::Point([d.x as f32, d.y as f32])))
+        .collect();
+    Ok(Effect::new(CORNER_PIN, &params)?.with_rest(pin.from))
+}
+
+/// `effects` with each corner pin of `node` given its corners at each of
+/// `count` moments of a shutter, `at(k)` the node's state at moment `k`:
+/// a moment whose corners make no quad keeps the pin's own at the frame.
+///
+/// # Errors
+/// A corner pin the rasteriser refuses.
+pub(super) fn with_moments<'a>(
+    mut effects: Vec<Effect>,
+    node: &NodeState,
+    at: impl Fn(usize) -> &'a NodeState,
+    count: usize,
+) -> Result<Vec<Effect>> {
+    if count == 0 {
+        return Ok(effects);
+    }
+    for (p, pin) in node.pins.iter().enumerate() {
+        let moments = (0..count)
+            .map(|k| {
+                let moment = at(k)
+                    .pins
+                    .get(p)
+                    .filter(|m| m.fault.is_none() && m.fx == pin.fx);
+                pin_effect(moment.unwrap_or(pin))
+            })
+            .collect::<Result<Vec<Effect>>>()?;
+        let effect = std::mem::replace(&mut effects[pin.fx], Effect::new(CORNER_PIN, &[])?);
+        effects[pin.fx] = effect
+            .with_moments(moments)
+            .map_err(|e| e.under(format!("fx[{}]", pin.fx)))?;
+    }
+    Ok(effects)
 }
 
 /// One effect, every parameter set from the row of the same name, then

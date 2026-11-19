@@ -60,6 +60,10 @@ use rstest::rstest;
 // shutter is open, and a nested composition with a whole-frame shutter of
 // its own.
 #[case::motion_blur("motion_blur", 6)]
+// Corner pins: a composition of app text pinned by its corner pivots onto a
+// turned device, and a smaller one pinned by hand, with a shadow after the
+// pin, moving under motion blur.
+#[case::corner_pin("corner_pin", 6)]
 fn golden(#[case] scene: &str, #[case] frame: u32) {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden");
     let session = Session::open(dir.join(format!("{scene}.json"))).unwrap();

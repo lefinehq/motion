@@ -42,9 +42,10 @@ fn scenes(dir: &Path, found: &mut Vec<PathBuf>) {
 }
 
 /// The scenes, relative to `examples/advanced/`.
-const SCENES: [&str; 5] = [
+const SCENES: [&str; 6] = [
     "camera-depth.json",
     "kinetic-type.json",
+    "screen-pin.json",
     "shape-mark.json",
     "ui-reveal.json",
     "variants/master.json",
@@ -68,9 +69,10 @@ fn the_list_holds_every_scene_of_the_folder() {
 #[rstest]
 #[case::camera_depth(SCENES[0])]
 #[case::kinetic_type(SCENES[1])]
-#[case::shape_mark(SCENES[2])]
-#[case::ui_reveal(SCENES[3])]
-#[case::variants_master(SCENES[4])]
+#[case::screen_pin(SCENES[2])]
+#[case::shape_mark(SCENES[3])]
+#[case::ui_reveal(SCENES[4])]
+#[case::variants_master(SCENES[5])]
 fn an_advanced_example_passes_check_with_nothing_found(#[case] scene: &str) {
     let out = nakkash(&["check", &format!("{ADVANCED}/{scene}")]);
     let text = stdout(&out);

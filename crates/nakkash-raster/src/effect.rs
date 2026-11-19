@@ -18,10 +18,11 @@ use std::sync::Arc;
 
 use nakkash_format::{Diagnostic, Kind, Result};
 use vello_cpu::RenderContext;
-use vello_cpu::kurbo::{Affine, BezPath, Rect, Vec2};
+use vello_cpu::kurbo::{Affine, BezPath, Point, Rect, Vec2};
 use vello_cpu::peniko::{BlendMode, Compose, Mix};
 
 use crate::accel::Resident;
+use crate::homography::Homography;
 use crate::list::Node;
 use crate::pixels::Pixels;
 use crate::style::Color;
@@ -220,6 +221,17 @@ pub enum Apply {
     /// coordinates and an opacity. Before any effect that reads pixels, it
     /// applies as the content is drawn; after one, it moves the pixels.
     Move(fn(&[ParamValue]) -> Move),
+    /// Lays the layer's content onto four corners through a projective
+    /// map in its own coordinates, given the box its corners rest on: a
+    /// corner pin ([D89]). `None` when the corners make no quad, so it
+    /// draws nothing. Its content, masks and the effects before it are
+    /// drawn as a plane at the size they land at and laid through the map
+    /// ([D58]); on pixels already drawn, as on an adjusting layer, it lays
+    /// them through the map on their grid.
+    ///
+    /// [D58]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+    /// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+    Pin(fn(&[ParamValue], Rect) -> Option<Homography>),
     /// Changes the pixels the layer drew.
     Pixels {
         /// The same change painted over the content without reading it,
@@ -1811,6 +1823,42 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "corner-pin",
+        params: &[
+            ParamSpec {
+                name: "top-left",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the top-left corner moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "top-right",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the top-right corner moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "bottom-right",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the bottom-right corner moves from where it rests, in px of the layer",
+            },
+            ParamSpec {
+                name: "bottom-left",
+                default: ParamValue::Point([0.0, 0.0]),
+                range: None,
+                choices: &[],
+                doc: "how far the bottom-left corner moves from where it rests, in px of the layer",
+            },
+        ],
+        doc: "lays the layer's box onto four corners through the perspective that takes it there",
+        reach: pin_reach,
+        apply: Apply::Pin(pin_map),
+    },
+    EffectSpec {
         name: "repeat-tile",
         params: &[
             ParamSpec {
@@ -3203,6 +3251,8 @@ pub struct Effect {
     sound: Option<std::sync::Arc<crate::sound::Heard>>,
     outline: Option<std::sync::Arc<BezPath>>,
     totals: Vec<(usize, std::sync::Arc<Total>)>,
+    rest: Option<Rect>,
+    moments: Vec<Vec<ParamValue>>,
 }
 
 impl Effect {
@@ -3229,7 +3279,97 @@ impl Effect {
             sound: None,
             outline: None,
             totals: Vec::new(),
+            rest: None,
+            moments: Vec::new(),
         })
+    }
+
+    /// The effect pinning the box `rest` ([`Apply::Pin`]): the box its
+    /// corners rest on, in the layer's own coordinates, in place of the
+    /// layer's own box. A producer gives it for content without a box of
+    /// its own, such as shapes or text, so the pin does not depend on
+    /// where the layer is drawn.
+    pub fn with_rest(mut self, rest: Rect) -> Effect {
+        self.rest = Some(rest);
+        self
+    }
+
+    /// The box it pins, if a producer gave one ([`Effect::with_rest`]).
+    pub fn rest(&self) -> Option<Rect> {
+        self.rest
+    }
+
+    /// The effect with its values at each moment of a shutter, for motion
+    /// blur of what it moves ([D57]): each moment an effect of the same
+    /// row, in the order of the layer's moves. Only a pin reads them; it
+    /// lays its drawing through its map at each moment.
+    ///
+    /// # Errors
+    /// A [`Kind::Conflict`] diagnostic when a moment is another effect.
+    ///
+    /// [D57]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d57-motion-blur-samples-a-layers-motion-over-the-shutter
+    pub fn with_moments(mut self, moments: impl IntoIterator<Item = Effect>) -> Result<Effect> {
+        let mut values = Vec::new();
+        for moment in moments {
+            if moment.spec != self.spec {
+                return Err(Diagnostic::new(
+                    Kind::Conflict,
+                    format!(
+                        "a moment of `{}` is a `{}`",
+                        self.spec.name, moment.spec.name
+                    ),
+                )
+                .expected(format!("every moment a `{}`", self.spec.name)));
+            }
+            values.push(moment.values);
+        }
+        self.moments = values;
+        Ok(self)
+    }
+
+    /// Whether it pins its layer onto four corners ([`Apply::Pin`]).
+    pub fn pins(&self) -> bool {
+        matches!(self.spec.apply, Apply::Pin(_))
+    }
+
+    /// The box a pin lays, given the layer's own: the one it was given
+    /// ([`Effect::with_rest`]), else the layer's. `None` for an effect that
+    /// does not pin.
+    pub fn pin_box(&self, bounds: Option<Rect>) -> Option<Rect> {
+        self.pins().then_some(self.rest.or(bounds)).flatten()
+    }
+
+    /// The map a pin lays `from` through at the frame; `None` when its
+    /// corners make no quad, or it does not pin.
+    pub fn pin_map(&self, from: Rect) -> Option<Homography> {
+        match self.spec.apply {
+            Apply::Pin(map) => map(&self.values, from),
+            _ => None,
+        }
+    }
+
+    /// A pin's map on the `width` by `height` grid its layer's pixels are
+    /// drawn on in `space`, from px of the grid to px of the grid, pinning
+    /// its box, the layer's or, for a layer without one, the frame's seen
+    /// from the layer; `None` when its corners make no quad, or it does
+    /// not pin.
+    pub fn pin_on_grid(&self, space: &Space, width: u16, height: u16) -> Option<Homography> {
+        let from = self
+            .pin_box(space.bounds)
+            .unwrap_or_else(|| crate::distort::distortion_box(space, width, height));
+        let map = self.pin_map(from)?;
+        let grid = Homography::from(space.transform);
+        Some(grid * map * Homography::from(space.transform.inverse()))
+    }
+
+    /// The maps a pin lays `from` through at each moment of a shutter
+    /// ([`Effect::with_moments`]), empty when it has none; each `None`
+    /// where the corners make no quad then.
+    pub fn pin_moments(&self, from: Rect) -> Vec<Option<Homography>> {
+        match self.spec.apply {
+            Apply::Pin(map) => self.moments.iter().map(|v| map(v, from)).collect(),
+            _ => Vec::new(),
+        }
     }
 
     /// The effect reading `total` as the running total of its number
@@ -3348,7 +3488,7 @@ impl Effect {
     pub fn movement(&self) -> Option<Move> {
         match self.spec.apply {
             Apply::Move(movement) => Some(movement(&self.values)),
-            Apply::Pixels { .. } => None,
+            Apply::Pin(_) | Apply::Pixels { .. } => None,
         }
     }
 
@@ -3386,6 +3526,13 @@ impl Effect {
                         *pixel = pixel.map(|c| c * opacity);
                     }
                 }
+            }
+            Apply::Pin(_) => {
+                let (width, height) = (pixels.width(), pixels.height());
+                *pixels = match self.pin_on_grid(space, width, height) {
+                    Some(map) => crate::projected::warp(pixels, &[map], 1.0),
+                    None => Pixels::transparent(width, height),
+                };
             }
             Apply::Pixels { pixels: change, .. } => change(pixels, &self.values, space),
         }
@@ -3675,6 +3822,47 @@ fn warp_reach(values: &[ParamValue]) -> Reach {
         right + 1.0,
         bottom + 1.0,
     ]))
+}
+
+/// `corner-pin` grows the box by as far as any corner moves past it: its
+/// quad lies within the box of its corners, and each corner within the box
+/// grown by the most any corner moves out each way.
+fn pin_reach(values: &[ParamValue]) -> Reach {
+    let [mut left, mut top, mut right, mut bottom] = [0.0f32; 4];
+    for value in &values[..4] {
+        let ParamValue::Point([dx, dy]) = *value else {
+            unreachable!("`Effect::new` checks the parameter types");
+        };
+        left = left.max(-dx);
+        right = right.max(dx);
+        top = top.max(-dy);
+        bottom = bottom.max(dy);
+    }
+    // A px more for the edge its sampling reaches past the quad.
+    Reach::Grows(Growth::By([
+        left + 1.0,
+        top + 1.0,
+        right + 1.0,
+        bottom + 1.0,
+    ]))
+}
+
+/// The map a `corner-pin` lays the box `from` through: each of its corners
+/// moved by its value, top left first and clockwise.
+fn pin_map(values: &[ParamValue], from: Rect) -> Option<Homography> {
+    let rest = [
+        (from.x0, from.y0),
+        (from.x1, from.y0),
+        (from.x1, from.y1),
+        (from.x0, from.y1),
+    ];
+    let to = std::array::from_fn(|k| {
+        let ParamValue::Point([dx, dy]) = values[k] else {
+            unreachable!("`Effect::new` checks the parameter types");
+        };
+        Point::new(rest[k].0 + f64::from(dx), rest[k].1 + f64::from(dy))
+    });
+    Homography::from_quad(from, to)
 }
 
 /// `repeat-tile` grows the box by how far its tiles reach each way.

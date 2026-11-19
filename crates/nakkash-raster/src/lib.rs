@@ -82,7 +82,7 @@ pub use mask::{MaskCoverage, MaskStep, SIGMA_PER_FEATHER, combine_on_cpu};
 pub use picture::Picture;
 pub use pixels::{Pixel, Pixels};
 pub use plan::{Blur, Glow, GlowComposite, PLANS, Passes, Plan, PlanSpec, Shadow};
-pub use projected::Landing;
+pub use projected::{Filter, Landing};
 pub use radial::{
     Fade as RadialFade, RadialBlur, RadialKind, Rays, Ring, Rings, Stretch as RadialStretch,
 };

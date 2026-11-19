@@ -735,3 +735,604 @@ fn a_layer_with_moves_for_motion_blur_is_never_drawn_whole() {
     };
     assert_eq!(whole_scale(&layer, Affine::scale(0.5)), None);
 }
+
+// Corner pins ([D89]): a layer whose `corner-pin` lays its box onto four
+// corners is drawn as the plane a projected layer is.
+
+/// A `corner-pin` taking `from`'s corners to `to`, top left first and
+/// clockwise.
+fn pin(from: Rect, to: [Point; 4]) -> Effect {
+    let rest = [
+        Point::new(from.x0, from.y0),
+        Point::new(from.x1, from.y0),
+        Point::new(from.x1, from.y1),
+        Point::new(from.x0, from.y1),
+    ];
+    let names = ["top-left", "top-right", "bottom-right", "bottom-left"];
+    let params: Vec<(&str, ParamValue)> = (0..4)
+        .map(|k| {
+            let d = to[k] - rest[k];
+            (names[k], ParamValue::Point([d.x as f32, d.y as f32]))
+        })
+        .collect();
+    Effect::new("corner-pin", &params).unwrap()
+}
+
+/// A tilted quad inside a 200 by 160 canvas.
+fn quad() -> [Point; 4] {
+    [
+        Point::new(30.0, 20.0),
+        Point::new(170.0, 40.0),
+        Point::new(150.0, 140.0),
+        Point::new(40.0, 120.0),
+    ]
+}
+
+/// The map a pin of `from` onto [`quad`] lays through, the corners rounded
+/// to the effect's `f32` as the pin rounds them.
+fn quad_map(from: Rect) -> Homography {
+    let effect = pin(from, quad());
+    effect.pin_map(from).unwrap()
+}
+
+/// Squares on whole px of a `w` by `h` box, so drawing them at any whole
+/// multiple of their size and averaging back gives the same px.
+fn blocks(w: f64, h: f64) -> Layer {
+    let mut children = vec![fill(Rect::new(0.0, 0.0, w, h).to_path(0.1), Color::WHITE)];
+    for (i, colour) in [Color::BLACK, Color::rgba(1.0, 0.0, 0.0, 1.0)]
+        .into_iter()
+        .enumerate()
+    {
+        let x = 10.0 + 40.0 * i as f64;
+        children.push(fill(
+            Rect::new(x, 10.0, x + 30.0, h - 10.0).to_path(0.1),
+            colour,
+        ));
+    }
+    Layer {
+        bounds: Some(Rect::new(0.0, 0.0, w, h)),
+        ..Layer::new(children)
+    }
+}
+
+/// The mean difference of `image`'s alpha from that of `layer` laid
+/// through `map` by hand: each px the mean of 8 by 8 points mapped back
+/// onto the layer drawn flat at 4 times its size.
+fn alpha_error(image: &Image, layer: &Layer, map: Homography, w: f64, h: f64) -> f64 {
+    let k = 4.0;
+    let flat = draw(
+        vec![Node::Layer(Layer {
+            transform: Affine::scale(k),
+            ..layer.clone()
+        })],
+        (w * k) as u32,
+        (h * k) as u32,
+    );
+    let back = map.inverse().unwrap();
+    let (mut sum, mut count) = (0.0, 0);
+    for y in 0..image.height() {
+        for x in 0..image.width() {
+            let mut alpha = 0.0;
+            for i in 0..8 {
+                for j in 0..8 {
+                    let p = Point::new(
+                        f64::from(x) + (f64::from(i) + 0.5) / 8.0,
+                        f64::from(y) + (f64::from(j) + 0.5) / 8.0,
+                    );
+                    let Some(u) = back.project(p) else { continue };
+                    let (fx, fy) = (u.x * k, u.y * k);
+                    if fx >= 0.0 && fy >= 0.0 && fx < w * k && fy < h * k {
+                        let px = flat.pixel(fx as u32, fy as u32).unwrap();
+                        alpha += f64::from(px[3]) / 255.0 / 64.0;
+                    }
+                }
+            }
+            let drawn = f64::from(image.pixel(x, y).unwrap()[3]) / 255.0;
+            sum += (drawn - alpha).abs();
+            count += 1;
+        }
+    }
+    sum / f64::from(count)
+}
+
+#[test]
+fn a_pinned_layer_lands_on_its_quad() {
+    let from = Rect::new(0.0, 0.0, 120.0, 80.0);
+    let pinned = draw(
+        vec![Node::Layer(Layer {
+            effects: vec![pin(from, quad())],
+            ..card(120.0, 80.0)
+        })],
+        200,
+        160,
+    );
+    let error = alpha_error(&pinned, &card(120.0, 80.0), quad_map(from), 120.0, 80.0);
+    assert!(error < 0.002, "mean alpha error {error:.4}");
+    // Its corners land where they were asked to.
+    assert!(pinned.pixel(32, 22).unwrap()[3] > 0);
+    assert_eq!(pinned.pixel(25, 15).unwrap()[3], 0);
+}
+
+#[test]
+fn a_pin_that_moves_nothing_draws_as_the_flat_layer() {
+    let flat = draw(vec![Node::Layer(blocks(120.0, 80.0))], 200, 160);
+    let pinned = draw(
+        vec![Node::Layer(Layer {
+            effects: vec![Effect::new("corner-pin", &[]).unwrap()],
+            ..blocks(120.0, 80.0)
+        })],
+        200,
+        160,
+    );
+    let (worst, mean) = difference(&flat, &pinned);
+    assert!(worst <= 1 && mean < 0.01, "worst {worst}, mean {mean:.4}");
+}
+
+#[test]
+fn a_pin_lays_through_the_layers_own_transform_too() {
+    let from = Rect::new(0.0, 0.0, 120.0, 80.0);
+    let at = Affine::translate((-20.0, 10.0)) * Affine::rotate(0.1);
+    let to = quad().map(|p| at.inverse() * p);
+    let moved = draw(
+        vec![Node::Layer(Layer {
+            transform: at,
+            effects: vec![pin(from, to)],
+            ..card(120.0, 80.0)
+        })],
+        200,
+        160,
+    );
+    let still = draw(
+        vec![Node::Layer(Layer {
+            effects: vec![pin(from, quad())],
+            ..card(120.0, 80.0)
+        })],
+        200,
+        160,
+    );
+    let (worst, mean) = difference(&moved, &still);
+    assert!(worst <= 2 && mean < 0.02, "worst {worst}, mean {mean:.4}");
+}
+
+#[test]
+fn effects_before_a_pin_run_on_its_plane_and_after_it_on_what_it_laid() {
+    let from = Rect::new(0.0, 0.0, 120.0, 80.0);
+    let blur = || Effect::new("gaussian-blur", &[("blurriness", ParamValue::Number(6.0))]).unwrap();
+    let invert = || Effect::new("invert", &[]).unwrap();
+    // Before: the blur spreads in the layer's own px, as the same blur on
+    // a layer inside the pinned one.
+    let before = draw(
+        vec![Node::Layer(Layer {
+            effects: vec![blur(), pin(from, quad())],
+            ..card(120.0, 80.0)
+        })],
+        200,
+        160,
+    );
+    // The outer layer has no box of its own, so its extent holds the
+    // blur's spill; the pin is given the box it rests on.
+    let inside = draw(
+        vec![Node::Layer(Layer {
+            effects: vec![pin(from, quad()).with_rest(from)],
+            ..Layer::new(vec![Node::Layer(Layer {
+                effects: vec![blur()],
+                ..card(120.0, 80.0)
+            })])
+        })],
+        200,
+        160,
+    );
+    let (worst, mean) = difference(&before, &inside);
+    assert!(worst <= 1 && mean < 0.01, "worst {worst}, mean {mean:.4}");
+    // After: the inversion runs on the pinned quad, as on a layer around it.
+    let after = draw(
+        vec![Node::Layer(Layer {
+            effects: vec![pin(from, quad()), invert()],
+            ..card(120.0, 80.0)
+        })],
+        200,
+        160,
+    );
+    let around = draw(
+        vec![Node::Layer(Layer {
+            effects: vec![invert()],
+            ..Layer::new(vec![Node::Layer(Layer {
+                effects: vec![pin(from, quad())],
+                ..card(120.0, 80.0)
+            })])
+        })],
+        200,
+        160,
+    );
+    let (worst, mean) = difference(&after, &around);
+    assert!(worst <= 1 && mean < 0.01, "worst {worst}, mean {mean:.4}");
+}
+
+#[test]
+fn a_pin_onto_no_quad_draws_nothing() {
+    let from = Rect::new(0.0, 0.0, 120.0, 80.0);
+    let mut crossed = quad();
+    crossed.swap(2, 3);
+    let image = draw(
+        vec![Node::Layer(Layer {
+            effects: vec![pin(from, crossed)],
+            ..card(120.0, 80.0)
+        })],
+        200,
+        160,
+    );
+    assert!(image.pixels().chunks(4).all(|p| p[3] == 0));
+}
+
+#[test]
+fn a_box_mostly_off_the_canvas_is_pinned_whole() {
+    // A box far larger than the canvas, at its own size mostly off it,
+    // pinned into view: all of it shows, as a plane draws what it sees.
+    let from = Rect::new(0.0, 0.0, 1200.0, 800.0);
+    let pinned = draw(
+        vec![Node::Layer(Layer {
+            effects: vec![pin(from, quad())],
+            ..card(1200.0, 800.0)
+        })],
+        200,
+        160,
+    );
+    let error = alpha_error(&pinned, &card(1200.0, 800.0), quad_map(from), 1200.0, 800.0);
+    assert!(error < 0.002, "mean alpha error {error:.4}");
+    // The red bar, 60 to 70 % across the box, is in view.
+    let bar = quad_map(from).project(Point::new(780.0, 400.0)).unwrap();
+    let px = pinned.pixel(bar.x as u32, bar.y as u32).unwrap();
+    assert!(px[0] > 200 && px[1] < 60, "{px:?}");
+}
+
+#[test]
+fn a_pin_on_a_filter_lays_what_is_below_through_its_map() {
+    let from = Rect::new(0.0, 0.0, 200.0, 160.0);
+    let below = || Layer {
+        isolate: true,
+        bounds: Some(from),
+        ..Layer::new(vec![
+            fill(from.to_path(0.1), Color::WHITE),
+            fill(Circle::new((70.0, 80.0), 40.0).to_path(0.1), Color::BLACK),
+        ])
+    };
+    let filter = Layer {
+        adjust: true,
+        effects: vec![pin(from, quad())],
+        ..Layer::new(Vec::new())
+    };
+    let warped = draw(vec![Node::Layer(below()), Node::Layer(filter)], 200, 160);
+    let pinned = draw(
+        vec![Node::Layer(Layer {
+            effects: vec![pin(from, quad())],
+            ..below()
+        })],
+        200,
+        160,
+    );
+    // What is below is laid from its own grid, the layer from a plane drawn
+    // finer, so only their edges differ.
+    let (_, mean) = difference(&warped, &pinned);
+    assert!(mean < 1.0, "mean {mean:.4}");
+    let map = quad_map(from);
+    for p in [Point::new(70.0, 80.0), Point::new(150.0, 80.0)] {
+        let at = map.project(p).unwrap();
+        let (x, y) = (at.x as u32, at.y as u32);
+        assert_eq!(warped.pixel(x, y), pinned.pixel(x, y), "at {p:?}");
+    }
+    assert_eq!(warped.pixel(5, 5).unwrap()[3], 0);
+}
+
+#[test]
+fn a_pins_moments_blur_as_its_moments_drawn_alone_and_averaged() {
+    let from = Rect::new(0.0, 0.0, 120.0, 80.0);
+    let shifted = |dx: f64| quad().map(|p| p + vello_cpu::kurbo::Vec2::new(dx, 0.0));
+    let moments = [shifted(-8.0), shifted(8.0)];
+    let moves = [
+        Affine::translate((0.0, -4.0)),
+        Affine::translate((0.0, 4.0)),
+    ];
+    let effect = pin(from, quad())
+        .with_moments(moments.iter().map(|q| pin(from, *q)))
+        .unwrap();
+    let blurred = draw(
+        vec![Node::Layer(Layer {
+            effects: vec![effect],
+            motion: moves.to_vec(),
+            ..card(120.0, 80.0)
+        })],
+        200,
+        160,
+    );
+    let alone = moves
+        .iter()
+        .zip(&moments)
+        .map(|(m, q)| {
+            Node::Layer(Layer {
+                transform: *m,
+                opacity: 0.5,
+                blend: crate::blend::BlendMode::Add,
+                effects: vec![pin(from, *q)],
+                ..card(120.0, 80.0)
+            })
+        })
+        .collect();
+    let averaged = draw(
+        vec![Node::Layer(Layer {
+            isolate: true,
+            ..Layer::new(alone)
+        })],
+        200,
+        160,
+    );
+    let (worst, mean) = difference(&blurred, &averaged);
+    assert!(worst <= 3 && mean < 0.05, "worst {worst}, mean {mean:.4}");
+    // Where one moment alone covers, half shows.
+    let left = shifted(-8.0)[3] + vello_cpu::kurbo::Vec2::new(1.5, -4.0 - 3.0);
+    let alpha = blurred.pixel(left.x as u32, left.y as u32).unwrap()[3];
+    assert!(alpha.abs_diff(128) <= 8, "{alpha}");
+}
+
+#[test]
+fn a_pin_with_moments_other_than_its_layers_moves_is_a_conflict() {
+    let from = Rect::new(0.0, 0.0, 120.0, 80.0);
+    let effect = pin(from, quad()).with_moments([pin(from, quad())]).unwrap();
+    let frame = Frame {
+        nodes: vec![Node::Layer(Layer {
+            effects: vec![effect],
+            motion: vec![Affine::IDENTITY, Affine::IDENTITY],
+            ..card(120.0, 80.0)
+        })],
+        ..Frame::default()
+    };
+    let e = render_with(&frame, 32, 32, RenderOptions::GOLDEN).unwrap_err();
+    assert_eq!(e.kind, Kind::Conflict);
+}
+
+#[test]
+fn a_moment_of_another_effect_is_refused() {
+    let e = Effect::new("corner-pin", &[])
+        .unwrap()
+        .with_moments([Effect::new("invert", &[]).unwrap()])
+        .unwrap_err();
+    assert_eq!(e.kind, Kind::Conflict);
+}
+
+#[test]
+fn a_pinned_layers_extent_is_its_quads_box() {
+    let from = Rect::new(0.0, 0.0, 120.0, 80.0);
+    let layer = Layer {
+        effects: vec![pin(from, quad())],
+        ..card(120.0, 80.0)
+    };
+    let Extent::Box(b) = extent(&layer) else {
+        panic!("a box")
+    };
+    let want = Rect::new(30.0, 20.0, 170.0, 140.0);
+    for (got, want) in [
+        (b.x0, want.x0),
+        (b.y0, want.y0),
+        (b.x1, want.x1),
+        (b.y1, want.y1),
+    ] {
+        assert!((got - want).abs() < 1e-3, "{b:?}");
+    }
+}
+
+/// A UI card: a white `w` by `h` panel with lines of black glyphs `size`
+/// px tall, as an app's screen holds text.
+fn ui(w: f64, h: f64, size: f32) -> Layer {
+    let font = FontData::new(Blob::new(Arc::new(FONT)), 0);
+    let mut children = vec![fill(Rect::new(0.0, 0.0, w, h).to_path(0.1), Color::WHITE)];
+    let advance = size * 0.62;
+    let lines = ((h as f32 - size) / (size * 1.5)) as usize;
+    for line in 0..lines {
+        let count = ((w as f32 - 2.0 * size) / advance) as u16;
+        children.push(Node::Glyphs(GlyphDraw {
+            font: font.clone(),
+            size,
+            glyphs: (0..count)
+                .map(|i| crate::list::Glyph {
+                    id: 9 + u32::from((i * 7 + line as u16 * 3) % 40),
+                    x: size + f32::from(i) * advance,
+                    y: size * 1.4 + line as f32 * size * 1.5,
+                })
+                .collect(),
+            glyph_transform: None,
+            coords: Vec::new(),
+            paint: Paint::Solid(Color::BLACK),
+            style: DrawStyle::Fill(FillRule::NonZero),
+        }));
+    }
+    Layer {
+        bounds: Some(Rect::new(0.0, 0.0, w, h)),
+        ..Layer::new(children)
+    }
+}
+
+/// The luma of each px of `image` inside `inside` (canvas px), 0 to 1, as
+/// it shows over black.
+fn lumas(image: &Image, inside: &dyn Fn(Point) -> bool) -> Vec<Option<f64>> {
+    let (w, h) = (image.width(), image.height());
+    (0..h)
+        .flat_map(|y| (0..w).map(move |x| (x, y)))
+        .map(|(x, y)| {
+            let centre = Point::new(f64::from(x) + 0.5, f64::from(y) + 0.5);
+            inside(centre).then(|| {
+                let p = image.pixel(x, y).unwrap();
+                let a = f64::from(p[3]) / 255.0;
+                (0.2126 * f64::from(p[0]) + 0.7152 * f64::from(p[1]) + 0.0722 * f64::from(p[2]))
+                    / 255.0
+                    * a
+            })
+        })
+        .collect()
+}
+
+/// The mean absolute difference of `a` from `reference` where both are
+/// measured, and the ratio of their gradient energies there (1 when as
+/// sharp as the reference, below when blurred, above when aliased).
+fn against(a: &[Option<f64>], reference: &[Option<f64>], width: usize) -> (f64, f64) {
+    let (mut error, mut count) = (0.0, 0);
+    let (mut ga, mut gr) = (0.0, 0.0);
+    for i in 0..a.len() {
+        let (Some(x), Some(r)) = (a[i], reference[i]) else {
+            continue;
+        };
+        error += (x - r).abs();
+        count += 1;
+        for j in [i + 1, i + width] {
+            if let (Some(Some(xn)), Some(Some(rn))) = (a.get(j), reference.get(j)) {
+                ga += (xn - x).powi(2);
+                gr += (rn - r).powi(2);
+            }
+        }
+    }
+    (error / f64::from(count), (ga / gr).sqrt())
+}
+
+/// `image`'s straight 8-bit px as premultiplied floats.
+fn premultiplied(image: &Image) -> Pixels {
+    let data = image
+        .pixels()
+        .chunks(4)
+        .map(|p| {
+            let a = f32::from(p[3]) / 255.0;
+            [
+                f32::from(p[0]) / 255.0 * a,
+                f32::from(p[1]) / 255.0 * a,
+                f32::from(p[2]) / 255.0 * a,
+                a,
+            ]
+        })
+        .collect();
+    Pixels::from_data(image.width() as u16, image.height() as u16, data)
+}
+
+/// Pinned text against a supersampled reference, for a UI `w` by `h`
+/// with glyphs `size` px tall pinned onto `to` on a `cw` by `ch` canvas:
+/// the pin, and the same pin made by moving pixels (the layer drawn at its
+/// own size, each px of the canvas read bilinearly through the map, as
+/// the distortions read). Each as `(mean error, gradient ratio)`.
+fn pinned_text(
+    (w, h, size): (f64, f64, f32),
+    to: [Point; 4],
+    (cw, ch): (u32, u32),
+) -> ((f64, f64), (f64, f64)) {
+    let from = Rect::new(0.0, 0.0, w, h);
+    let map = pin(from, to).pin_map(from).unwrap();
+    let back = map.inverse().unwrap();
+    let pinned = draw(
+        vec![Node::Layer(Layer {
+            effects: vec![pin(from, to)],
+            ..ui(w, h, size)
+        })],
+        cw,
+        ch,
+    );
+    // The reference: the UI drawn flat at 4 times its size, each px of the
+    // canvas the mean of 8 by 8 points mapped back onto it.
+    let k = 4.0;
+    let fine = draw(
+        vec![Node::Layer(Layer {
+            transform: Affine::scale(k),
+            ..ui(w, h, size)
+        })],
+        (w * k) as u32,
+        (h * k) as u32,
+    );
+    let fine = premultiplied(&fine);
+    let flat = draw(vec![Node::Layer(ui(w, h, size))], w as u32, h as u32);
+    let flat = premultiplied(&flat);
+    let mut reference = vec![0u8; (cw * ch * 4) as usize];
+    let mut moved = vec![0u8; (cw * ch * 4) as usize];
+    for y in 0..ch {
+        for x in 0..cw {
+            let mut sum = [0.0f32; 4];
+            for i in 0..8 {
+                for j in 0..8 {
+                    let p = Point::new(
+                        f64::from(x) + (f64::from(i) + 0.5) / 8.0,
+                        f64::from(y) + (f64::from(j) + 0.5) / 8.0,
+                    );
+                    let Some(u) = back.project(p) else { continue };
+                    let s = fine.sample(u.x * k, u.y * k);
+                    for c in 0..4 {
+                        sum[c] += s[c] / 64.0;
+                    }
+                }
+            }
+            let at = (((y * cw) + x) * 4) as usize;
+            let straight = |px: [f32; 4]| -> [u8; 4] {
+                let a = px[3];
+                let un = |c: f32| match a > 0.0 {
+                    true => ((c / a).clamp(0.0, 1.0) * 255.0).round() as u8,
+                    false => 0,
+                };
+                [
+                    un(px[0]),
+                    un(px[1]),
+                    un(px[2]),
+                    (a.clamp(0.0, 1.0) * 255.0).round() as u8,
+                ]
+            };
+            reference[at..at + 4].copy_from_slice(&straight(sum));
+            let centre = Point::new(f64::from(x) + 0.5, f64::from(y) + 0.5);
+            if let Some(u) = back.project(centre) {
+                moved[at..at + 4].copy_from_slice(&straight(flat.sample(u.x, u.y)));
+            }
+        }
+    }
+    let reference = Image::new(cw, ch, reference).unwrap();
+    let moved = Image::new(cw, ch, moved).unwrap();
+    // Measured inside the quad, a px in from its edges.
+    let inside = |p: Point| {
+        back.project(p)
+            .is_some_and(|u| u.x > 1.0 && u.y > 1.0 && u.x < w - 1.0 && u.y < h - 1.0)
+    };
+    let (r, a, b) = (
+        lumas(&reference, &inside),
+        lumas(&pinned, &inside),
+        lumas(&moved, &inside),
+    );
+    (against(&a, &r, cw as usize), against(&b, &r, cw as usize))
+}
+
+#[test]
+fn pinned_text_shrunk_into_perspective_stays_sharp_without_aliasing() {
+    // A phone UI 360 by 720 with 14 px text, pinned onto a screen about a
+    // quarter its size, leaning away.
+    let to = [
+        Point::new(70.0, 40.0),
+        Point::new(150.0, 52.0),
+        Point::new(160.0, 230.0),
+        Point::new(62.0, 240.0),
+    ];
+    let (pin, moved) = pinned_text((360.0, 720.0, 14.0), to, (220, 280));
+    eprintln!(
+        "shrunk: pin error {:.4} sharpness {:.3}; moved pixels error {:.4} sharpness {:.3}",
+        pin.0, pin.1, moved.0, moved.1
+    );
+    assert!(pin.0 < 0.6 * moved.0, "pin {pin:?}, moved {moved:?}");
+    assert!((0.85..1.15).contains(&pin.1), "pin {pin:?}");
+}
+
+#[test]
+fn pinned_text_enlarged_into_perspective_stays_sharp() {
+    // A small UI with 7 px text pinned onto a quad about three times its
+    // size.
+    let to = [
+        Point::new(20.0, 30.0),
+        Point::new(330.0, 10.0),
+        Point::new(340.0, 300.0),
+        Point::new(10.0, 260.0),
+    ];
+    let (pin, moved) = pinned_text((110.0, 100.0, 7.0), to, (360, 320));
+    eprintln!(
+        "enlarged: pin error {:.4} sharpness {:.3}; moved pixels error {:.4} sharpness {:.3}",
+        pin.0, pin.1, moved.0, moved.1
+    );
+    assert!(pin.0 < 0.6 * moved.0, "pin {pin:?}, moved {moved:?}");
+    assert!(pin.1 > moved.1, "pin {pin:?}, moved {moved:?}");
+    assert!((0.85..1.15).contains(&pin.1), "pin {pin:?}");
+}
