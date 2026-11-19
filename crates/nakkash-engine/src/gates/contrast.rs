@@ -272,7 +272,32 @@ fn measure(
     let behind = shrunk(session, session.list_of(&without(state, &all))?)?;
     let whole = shrunk(session, session.list_of(state)?)?;
     let over = draw(&above(state, &all))?;
-    let Some(ratio) = ratio(&glyphs?, &behind, &whole, &over) else {
+    let glyphs = glyphs?;
+    if let Ok(dir) = std::env::var("NK_DUMP")
+        && members.len() > 20
+    {
+        let f = members[0].frame;
+        for (n, im) in [
+            ("glyphs", &glyphs),
+            ("behind", &behind),
+            ("whole", &whole),
+            ("over", &over),
+        ] {
+            let _ = std::fs::write(
+                format!("{dir}/{f:03}-{n}.png"),
+                im.to_png().unwrap_or_default(),
+            );
+        }
+        let _ = std::fs::write(
+            format!("{dir}/{f:03}-members.txt"),
+            members
+                .iter()
+                .map(|m| m.ids.join("/"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+    }
+    let Some(ratio) = ratio(&glyphs, &behind, &whole, &over) else {
         return Ok(Vec::new());
     };
     Ok(members

@@ -368,8 +368,18 @@ fn a_title_read_by_its_channels_keeps_them_and_colours_each_piece() {
     // look's text colour at its light end and black at its dark end, so as
     // a matte it is never lighter than the master's.
     let set = &raw["comps"]["set"]["layers"];
-    assert_eq!(set[1]["fx"][1]["fill"], json!(step.palette.split[0]));
-    assert_eq!(set[2]["fx"][1]["fill"], json!(step.palette.split[2]));
+    // Each piece is about as light as the master's white, in its split
+    // colour's hue.
+    for (layer, split) in [(1, 0), (2, 2)] {
+        let fill = rgb(&set[layer]["fx"][1]["fill"]).unwrap();
+        let piece = Oklch::from_srgb(fill);
+        let hue = Oklch::from_srgb(rgb(&json!(step.palette.split[split])).unwrap());
+        assert!(piece.l >= PIECE_LIGHT - 0.01, "{piece:?}");
+        assert!(
+            piece.c < 0.02 || (piece.h - hue.h).abs() < 3.0,
+            "{piece:?} {hue:?}"
+        );
+    }
     assert_eq!(set[0]["fx"][0]["white"], json!(step.palette.text));
     assert!(set[0]["fx"][0].get("black").is_none());
 }

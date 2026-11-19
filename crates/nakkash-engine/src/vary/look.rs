@@ -31,6 +31,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 use nakkash_format::item::EFFECTS;
+use nakkash_format::oklch::Oklch;
 use nakkash_format::property::Registry;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json, json};
@@ -258,7 +259,7 @@ const PRESETS: [Preset; 3] = [
         field_glow: 1.1,
         blur: 1.3,
         rings: Rings::Off,
-        title_glow: 0.2,
+        title_glow: 1.0,
         glitch: false,
         displace: 1.0,
         treatment: Treatment::Fill,
@@ -283,7 +284,7 @@ const PRESETS: [Preset; 3] = [
         field_glow: 0.0,
         blur: 0.4,
         rings: Rings::Width(6.0),
-        title_glow: 0.3,
+        title_glow: 1.0,
         glitch: true,
         displace: 0.4,
         treatment: Treatment::Fill,
@@ -308,7 +309,7 @@ const PRESETS: [Preset; 3] = [
         field_glow: 1.0,
         blur: 1.0,
         rings: Rings::Echo(2),
-        title_glow: 0.5,
+        title_glow: 1.0,
         glitch: false,
         displace: 1.0,
         treatment: Treatment::Extrude(0.03),
@@ -667,6 +668,32 @@ pub(crate) fn apply(raw: &mut Json, held: &Held, step: &LookStep) -> String {
         counts.ground,
         if grain { ", grain laid over" } else { "" },
     )
+}
+
+/// How light a channel piece of the title stays, as a share of the
+/// master's fill's OKLab lightness ([`recolour`]): the pieces light the
+/// letters (a white piece blurred wide is their glow), so a look changes
+/// their hue and keeps them about as light.
+const PIECE_LIGHT: f64 = 0.9;
+
+/// `rgb` at OKLab lightness `light` at least, with as much of its chroma
+/// as sRGB holds there.
+fn lifted(rgb: [f64; 3], light: f64) -> [f64; 3] {
+    let mut c = Oklch::from_srgb(rgb);
+    if c.l >= light {
+        return rgb;
+    }
+    c.l = light;
+    // Less chroma until the colour is in sRGB, which clipping would move.
+    for _ in 0..40 {
+        let out = c.to_srgb();
+        let back = Oklch::from_srgb(out);
+        if (back.l - c.l).abs() < 2e-3 && (back.c - c.c).abs() < 2e-3 {
+            return out;
+        }
+        c.c *= 0.9;
+    }
+    c.to_srgb()
 }
 
 /// A text at least this share of the largest text's size is a headline,
@@ -1038,8 +1065,11 @@ fn recolour(
             && key == "fill"
             && let Some(c) = channel
             && was.iter().all(|v| *v > 0.8)
+            && let Some(split) = rgb(&json!(step.palette.split[c]))
         {
-            item.insert(key.into(), json!(step.palette.split[c]));
+            let light = Oklch::from_srgb(was).l * PIECE_LIGHT;
+            let [r, g, b] = lifted(split, light).map(round);
+            item.insert(key.into(), json!([r, g, b, 1]));
             return true;
         }
         return false;
