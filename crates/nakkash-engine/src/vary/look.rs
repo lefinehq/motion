@@ -914,8 +914,13 @@ fn recolour(
     if role == Role::Other {
         return false;
     }
-    // A full tint draws the title grey: on the title it runs to the
-    // look's text colour instead, keeping the dark it maps black to.
+    // A full tint draws the title grey from the luminance of its channel
+    // copies: on the title its light end takes the look's text colour. Its
+    // dark end stays the master's, so the pass is no lighter than the
+    // master's where the copies are dim: another layer may read it as a
+    // luminance matte (a shadow drawn where the pass is light), and a
+    // lighter dark end would lay that shadow over the whole of each letter.
+    // A tint to black (the shadow itself) stays.
     if role == Role::Title && item.contains_key("tint") {
         let white = item.get("white").and_then(rgb).unwrap_or([1.0; 3]);
         if chroma(white) < 0.25 && white.iter().all(|c| *c > 0.5) {

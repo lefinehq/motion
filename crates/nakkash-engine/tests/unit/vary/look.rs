@@ -365,11 +365,13 @@ fn a_title_read_by_its_channels_keeps_them_and_colours_each_piece() {
         json!([0, 0.02, 1, 1])
     );
     // Each piece takes the split colour of its channel, the grey pass the
-    // look's text colour.
+    // look's text colour at its light end and black at its dark end, so as
+    // a matte it is never lighter than the master's.
     let set = &raw["comps"]["set"]["layers"];
     assert_eq!(set[1]["fx"][1]["fill"], json!(step.palette.split[0]));
     assert_eq!(set[2]["fx"][1]["fill"], json!(step.palette.split[2]));
     assert_eq!(set[0]["fx"][0]["white"], json!(step.palette.text));
+    assert!(set[0]["fx"][0].get("black").is_none());
 }
 
 #[test]
