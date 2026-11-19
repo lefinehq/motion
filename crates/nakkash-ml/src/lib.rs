@@ -32,6 +32,7 @@ pub mod preview;
 pub mod quality;
 pub mod segment;
 mod tensor;
+pub mod track;
 
 pub use graph::{Backend, Graph, OpenGraph, Placement};
 pub use lock::ModelLock;

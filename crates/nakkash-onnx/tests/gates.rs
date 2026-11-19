@@ -281,3 +281,202 @@ fn the_cats_matte_keeps_its_fur() {
         },
     );
 }
+
+/// One frame of the product's exact ground truth: its face's corners,
+/// its surface points and which of them are seen.
+#[derive(serde::Deserialize)]
+struct TruthFrame {
+    corners: [[f64; 2]; 4],
+    points: Vec<[f64; 2]>,
+    visible: Vec<bool>,
+}
+
+/// The product's ground truth, frame by frame.
+fn track_truth(shot: &Path) -> Vec<TruthFrame> {
+    #[derive(serde::Deserialize)]
+    struct Truth {
+        gt: Vec<TruthFrame>,
+    }
+    let truth: Truth =
+        serde_json::from_slice(&std::fs::read(shot.join("gt.json")).unwrap()).unwrap();
+    truth.gt
+}
+
+/// The alpha-weighted centroid of `alpha`, pixel centres at whole numbers.
+fn centroid(alpha: &Plane) -> [f64; 2] {
+    let (mut sx, mut sy, mut s) = (0.0, 0.0, 0.0);
+    for (i, &a) in alpha.data.iter().enumerate() {
+        let a = f64::from(a);
+        sx += a * (i % alpha.width) as f64;
+        sy += a * (i / alpha.width) as f64;
+        s += a;
+    }
+    [sx / s, sy / s]
+}
+
+fn distance(a: [f64; 2], b: [f64; 2]) -> f64 {
+    (a[0] - b[0]).hypot(a[1] - b[1])
+}
+
+fn median(mut v: Vec<f64>) -> f64 {
+    v.sort_by(f64::total_cmp);
+    match v.len() {
+        0 => f64::NAN,
+        n if n % 2 == 1 => v[n / 2],
+        n => (v[n / 2 - 1] + v[n / 2]) / 2.0,
+    }
+}
+
+/// The mean corner error of `track` against `truth` over `frames`, and its
+/// median.
+fn corner_error(
+    track: &nakkash_baked::Track,
+    truth: &[TruthFrame],
+    frames: std::ops::Range<usize>,
+) -> (f64, f64) {
+    let errors: Vec<f64> = frames
+        .flat_map(|f| {
+            let fit = track.frames[f].fit.expect("a fit on every frame");
+            (0..4).map(move |c| distance(fit.corners[c], truth[f].corners[c]))
+        })
+        .collect();
+    (
+        errors.iter().sum::<f64>() / errors.len() as f64,
+        median(errors),
+    )
+}
+
+/// Tracks of the synthetic product: its mask's centroid through the
+/// occlusion (measured in the first phase at mean 1.4 px, max 5.4), the
+/// surface points followed from frame 0 (median error per frame 0.8 to 2.5
+/// px up to frame 21), its guarded corners (mean 4.8 px up to frame 21),
+/// and the drift after frame 36 corrected by an anchor there (2.4 px
+/// median).
+#[test]
+#[ignore = "needs the models and the shots"]
+fn the_products_track_holds_through_the_occlusion() {
+    use nakkash_ml::track::{self, FollowPoints, PointTracker, TrackClip, TrackSpec};
+
+    let name = "product_synth";
+    let shot = shots().join(name);
+    let alphas = truth(&shot);
+    let truth = track_truth(&shot);
+    let lock = ModelLock::builtin();
+    let store = store();
+    let backend = Onnx::load(&store, &lock).unwrap();
+    let scratch = std::env::temp_dir().join(format!("nakkash-gate-track-{}", std::process::id()));
+    let baked = Store::new(scratch.clone());
+    let baker = Baker::new(&backend, &store, &lock, &baked, threads(), |m| {
+        eprintln!("{m}")
+    });
+    let clip = Sha256::of(name.as_bytes());
+    let mut frames = PngFolder::open(&shot.join("full")).unwrap();
+    let size = frames.size();
+    let n = frames.len();
+    let mut made = baker.made();
+    let (logits, _) = baker
+        .segmentation(&mut frames, &boxed(first_box(&shot)), &clip, &mut made)
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&scratch);
+    let times: Vec<f64> = (0..n).map(|f| f as f64 / 24.0).collect();
+    let open = || {
+        PointTracker::open(
+            &backend,
+            &store,
+            &lock,
+            threads(),
+            Box::new(PngFolder::open(&shot.join("full")).unwrap()),
+        )
+        .unwrap()
+    };
+
+    // The points the ground truth sees on frame 0, followed.
+    let start = Instant::now();
+    let mut tracker = open();
+    let seen0: Vec<usize> = (0..truth[0].points.len())
+        .filter(|&p| truth[0].visible[p])
+        .collect();
+    let queries: Vec<[f64; 2]> = seen0.iter().map(|&p| truth[0].points[p]).collect();
+    let followed = track::follow_all(&mut tracker, 0, &queries).unwrap();
+    let follow_seconds = start.elapsed().as_secs_f64();
+    let per_frame: Vec<f64> = (0..n)
+        .map(|f| {
+            median(
+                seen0
+                    .iter()
+                    .zip(&followed)
+                    .filter(|(p, _)| truth[f].visible[**p])
+                    .map(|(&p, t)| distance(t.at[f], truth[f].points[p]))
+                    .collect(),
+            )
+        })
+        .collect();
+    let points_early = per_frame[..=21].iter().copied().fold(0.0, f64::max);
+    drop(tracker);
+
+    let bake = |anchors: Vec<track::Anchor>| {
+        let mut tracker = open();
+        assert_eq!(tracker.frames(), n);
+        let mut pictures = PngFolder::open(&shot.join("full")).unwrap();
+        let mut frame = |f: usize| pictures.frame(f);
+        let spec = TrackSpec {
+            prompt_frame: 0,
+            corners: Some(truth[0].corners),
+            anchors,
+        };
+        track::bake(
+            &spec,
+            TrackClip {
+                size,
+                times: &times,
+                logits: &logits,
+                frame: &mut frame,
+            },
+            &mut tracker,
+        )
+        .unwrap()
+    };
+    let start = Instant::now();
+    let plain = bake(vec![]);
+    let track_seconds = start.elapsed().as_secs_f64();
+    let anchored = bake(vec![track::Anchor {
+        frame: 36,
+        corners: truth[36].corners,
+    }]);
+
+    let centroids: Vec<f64> = (0..n)
+        .map(|f| {
+            distance(
+                plain.frames[f]
+                    .mask
+                    .expect("the object on every frame")
+                    .centroid,
+                centroid(&alphas[f]),
+            )
+        })
+        .collect();
+    let centroid_mean = centroids.iter().sum::<f64>() / n as f64;
+    let centroid_max = centroids.iter().copied().fold(0.0, f64::max);
+    let (corners_early, _) = corner_error(&plain, &truth, 0..22);
+    let (corners_all, corners_all_median) = corner_error(&plain, &truth, 0..n);
+    let (_, drift_plain) = corner_error(&plain, &truth, 37..n);
+    let (_, drift_anchored) = corner_error(&anchored, &truth, 37..n);
+    println!(
+        "{}",
+        json!({"gate": "track", "shot": name, "centroid_mean": centroid_mean, "centroid_max": centroid_max,
+               "points_median_max_to_21": points_early, "points_median": per_frame,
+               "corners_mean_to_21": corners_early, "corners_mean": corners_all, "corners_median": corners_all_median,
+               "drift_after_36_median": drift_plain, "drift_after_36_anchored_median": drift_anchored,
+               "follow_s": follow_seconds, "track_s": track_seconds, "threads": threads()})
+    );
+    assert!(
+        centroid_mean <= 2.0 && centroid_max <= 7.0,
+        "centroid {centroid_mean} (max {centroid_max})"
+    );
+    assert!(points_early <= 3.0, "points {points_early}");
+    assert!(corners_early <= 6.0, "corners {corners_early}");
+    assert!(
+        drift_anchored <= 4.0 && drift_anchored < drift_plain,
+        "drift {drift_anchored} against {drift_plain}"
+    );
+}
