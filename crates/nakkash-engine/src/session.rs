@@ -528,8 +528,17 @@ impl Session {
                 scene.end
             )));
         }
+        // A frame whose list was drawn before in this render is copied
+        // (D90).
+        let (width, height) = self.canvas()?;
+        let bytes = u64::from(width) * u64::from(height) * 4;
+        let held = crate::held::Held::new(bytes, workers(frames.len()) as usize);
         self.on_threads(frames, |frame| {
-            each(frame, self.render_with(f64::from(frame), options))
+            let drawn = self.display_list(f64::from(frame)).and_then(|list| {
+                let id = nakkash_raster::frame_identity(&list, width, height, options);
+                held.image(id, || self.draw(&list, options))
+            });
+            each(frame, drawn)
         })
     }
 

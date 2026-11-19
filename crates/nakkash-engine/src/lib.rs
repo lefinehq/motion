@@ -22,6 +22,7 @@ mod gates;
 mod geometry;
 #[cfg(feature = "gpu")]
 pub mod gpu;
+mod held;
 mod import;
 mod level;
 mod mix;
@@ -51,8 +52,10 @@ pub use fonts::{
 pub use geometry::{
     LineCheck, LineGeometry, TEXT_TOLERANCE, TextCheck, TextGeometry, check_text, written_text_size,
 };
+pub use held::frames_copied;
 pub use import::{import, import_scene, is_template, measure_layouts, substitute_fonts};
 pub use nakkash_import::export::{Change as ExportChange, Plan as ExportPlan};
+pub use nakkash_raster::drawings_reused;
 pub use nakkash_raster::memory::{MemoryStats, stats as memory_stats};
 pub use session::{BAKED_FOLDER, Session, limit_memory, limit_threads};
 

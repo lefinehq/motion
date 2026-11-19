@@ -269,6 +269,78 @@ impl Hasher {
     }
 }
 
+/// The identity of `frame` drawn on a `width` by `height` canvas with
+/// `options` ([D90]): two frames with the same identity draw the same
+/// image, bit for bit, so a render draws one and copies it for the other.
+/// It covers the background, the blending, every node, the size and the
+/// options.
+///
+/// [D90]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d90-a-frame-is-drawn-from-a-plan-that-knows-what-each-drawing-is-under-one-memory-budget
+pub fn frame_identity(
+    frame: &crate::list::Frame,
+    width: u32,
+    height: u32,
+    options: crate::render::RenderOptions,
+) -> u128 {
+    let crate::list::Frame {
+        background,
+        blending,
+        nodes,
+    } = frame;
+    let crate::render::RenderOptions { quality, simd } = options;
+    let nodes = Identities::default().list(nodes);
+    let mut h = Hasher::new("frame");
+    h.option(background.as_ref(), |h, c| h.color(*c));
+    h.plain(blending);
+    h.id_of(nodes);
+    h.u32(width);
+    h.u32(height);
+    h.u8(match quality {
+        crate::render::Quality::Precise => 0,
+        crate::render::Quality::Fast => 1,
+    });
+    h.u8(match simd {
+        crate::render::Simd::Native => 0,
+        crate::render::Simd::Portable => 1,
+    });
+    h.id().0
+}
+
+/// Uses of a drawing served from one kept by identity, over the process.
+static REUSED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Notes a use served from a kept drawing.
+pub(crate) fn note_reused() {
+    REUSED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// How many uses of drawings were served from ones kept by identity, over
+/// the process: drawings not made again.
+pub fn reused() -> u64 {
+    REUSED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Whether this use of a kept drawing is checked by drawing it again
+/// ([D90]'s verify mode): with `NAKKASH_VERIFY_HITS=N`, one use in `N` of
+/// a drawing or frame kept by identity is drawn again and compared bit for
+/// bit, and a difference is an error naming the identity, since it means
+/// an identity left out something that is drawn. Off by default.
+///
+/// [D90]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d90-a-frame-is-drawn-from-a-plan-that-knows-what-each-drawing-is-under-one-memory-budget
+pub fn verify_hit() -> bool {
+    use std::sync::OnceLock;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static EVERY: OnceLock<u64> = OnceLock::new();
+    static HITS: AtomicU64 = AtomicU64::new(0);
+    let every = *EVERY.get_or_init(|| {
+        std::env::var("NAKKASH_VERIFY_HITS")
+            .ok()
+            .and_then(|n| n.trim().parse().ok())
+            .unwrap_or(0)
+    });
+    every > 0 && HITS.fetch_add(1, Ordering::Relaxed).is_multiple_of(every)
+}
+
 /// The identities of one frame's nodes, worked out once each.
 ///
 /// Within the frame every node is borrowed and alive, so a node's address

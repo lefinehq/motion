@@ -105,7 +105,26 @@ impl Reads {
         let key = (id, size, transform.as_coeffs().map(f64::to_bits));
         let kept = locked(&self.drawn).get(&key).map(Arc::clone);
         let pixels = match kept {
-            Some(pixels) => pixels,
+            // Verify mode: a kept drawing used is drawn again and compared.
+            Some(pixels) if crate::identity::verify_hit() => {
+                let again = draw()?.into_pixels(accel)?;
+                if again != pixels.duplicate(accel)?.into_pixels(accel)? {
+                    return Err(nakkash_format::Diagnostic::new(
+                        nakkash_format::Kind::Invalid,
+                        format!(
+                            "a drawing kept by its identity {:032x} differs from drawing it again",
+                            id.0
+                        ),
+                    )
+                    .expected("nodes of one identity that draw the same (D90)"));
+                }
+                crate::identity::note_reused();
+                pixels
+            }
+            Some(pixels) => {
+                crate::identity::note_reused();
+                pixels
+            }
             // Drawn without holding the lock: the drawing may draw nodes
             // alone in turn.
             None => Arc::new(draw()?),
