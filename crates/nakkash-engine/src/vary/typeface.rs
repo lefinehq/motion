@@ -409,9 +409,21 @@ fn boxes(session: &Session) -> Result<BTreeMap<Place, (f64, f64)>> {
 /// The scene `session` makes with `step` applied, fitted, and a line on
 /// what it did.
 pub(crate) fn apply(session: &Session, held: &Held, step: &TypeStep) -> Result<(Json, String)> {
+    apply_within(session, session, held, step)
+}
+
+/// As [`apply`], with the boxes of `room`'s texts as the room each is
+/// fitted into: a look that spaces or recases the texts of `session` has
+/// already widened them, and must fit them into the master's boxes.
+pub(crate) fn apply_within(
+    session: &Session,
+    room: &Session,
+    held: &Held,
+    step: &TypeStep,
+) -> Result<(Json, String)> {
     let set = session.fonts()?;
     let texts = texts(session);
-    let before = boxes(session)?;
+    let before = boxes(room)?;
     let mut raw = session.document().raw().clone();
     if !step.fonts.is_empty() {
         let fonts = raw

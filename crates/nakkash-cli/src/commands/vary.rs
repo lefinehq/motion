@@ -10,8 +10,8 @@ use std::time::Instant;
 
 use nakkash_engine::vary::{
     ContentSpec, Distance, FormatSpec, LOOKS, LookSpec, Made, Pace, PaletteSpec, Recipe, Sheet,
-    Spec, TimingSpec, TypeSpec, colour_twin, distance, filter, filter_failure, gate, make, plan,
-    repair, samples, sheet,
+    Spec, TimingSpec, TypeSpec, clipped, clipped_failure, colour_twin, distance, filter,
+    filter_failure, gate, make, plan, repair, samples, sheet,
 };
 use nakkash_engine::{
     Code, Diagnostic, Kind, Quality, RenderOptions, Report, Result, Session, Severity,
@@ -167,7 +167,11 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
                             &dir,
                         )?;
                         // A look that one colour transform explains is a filter.
-                        let filter = far.as_ref().and_then(|d| d.filter).and_then(filter_failure);
+                        let filter = far.as_ref().and_then(|d| {
+                            d.filter
+                                .and_then(filter_failure)
+                                .or_else(|| d.clipped.and_then(|[m, v]| clipped_failure(m, v)))
+                        });
                         let ok = gated.passed() && filter.is_none();
                         passed += usize::from(ok);
                         let mut film = None;
@@ -255,13 +259,14 @@ fn measured(
     let Some(m) = master_samples else {
         return Ok(None);
     };
-    let mut far = distance(
-        m,
-        &samples(&made.session, DISTANCE_FRAMES, DISTANCE_HEIGHT)?,
-    );
+    let drawn = samples(&made.session, DISTANCE_FRAMES, DISTANCE_HEIGHT)?;
+    let mut far = distance(m, &drawn);
+    if recipe.has_look() {
+        far.clipped = Some([clipped(master, m)?, clipped(&made.session, &drawn)?]);
+    }
     if let Some(twin) = colour_twin(master, recipe, base)? {
-        let drawn = samples(&twin.session, DISTANCE_FRAMES, DISTANCE_HEIGHT)?;
-        far.filter = Some(filter(m, &drawn));
+        let twin_drawn = samples(&twin.session, DISTANCE_FRAMES, DISTANCE_HEIGHT)?;
+        far.filter = Some(filter(m, &twin_drawn));
         twin.session.save_as(&dir.join("twin.json"))?;
     }
     Ok(Some(far))
@@ -323,7 +328,14 @@ fn line(row: &Json) -> String {
                     .as_f64()
                     .map(|r| format!(" filter {r:.2}x"))
                     .unwrap_or_default();
-                format!("  Δ palette {p:.3} frames {f:.3} structure {shape:.3}{filter}")
+                let clip = match (
+                    row["distance"]["clipped"][0].as_f64(),
+                    row["distance"]["clipped"][1].as_f64(),
+                ) {
+                    (Some(m), Some(v)) => format!(" clipped {v:.3} (master {m:.3})"),
+                    _ => String::new(),
+                };
+                format!("  Δ palette {p:.3} frames {f:.3} structure {shape:.3}{filter}{clip}")
             }
             None => format!("  Δ palette {p:.3}"),
         },

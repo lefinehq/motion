@@ -197,7 +197,8 @@ fn outlined_text_keeps_its_colour_in_the_stroke() {
     let mut text = json!({"id":"t","text":"GO","fill":"#FF0000"});
     assert!(treat(
         text.as_object_mut().unwrap(),
-        Treatment::Outline(4.0)
+        Treatment::Outline(4.0),
+        96.0
     ));
     assert_eq!(text["style"]["stroke"], json!("#FF0000"));
     assert_eq!(text["fill"], json!("#FFFFFF00"));
@@ -325,5 +326,81 @@ fn a_looks_ease_reaches_the_titles_moves_and_not_the_fields() {
     assert_eq!(
         raw["comps"]["rays"]["layers"][0]["anim"]["opacity"][0],
         json!([0, 0])
+    );
+}
+
+/// A split title as a template builds it: copies in pure channels inside
+/// `rgb`, read back by instances through their red and blue channels, one
+/// drawing the whole grey, under a headline and a small line.
+fn channelled() -> Json {
+    json!({
+        "nakkash": 1, "size": "400x200", "dur": "1s",
+        "comps": {
+            "word": {"size": "400x200", "dur": "1s", "layers": [
+                {"id": "big", "text": "NAKKASH", "font": "Anton 120", "fill": "#FFFFFF"},
+                {"id": "small", "text": "rust motion engine", "font": "Anton 40", "fill": "#FFFFFF"}]},
+            "rgb": {"size": "400x200", "dur": "1s", "layers": [
+                {"id": "r", "comp": "word", "fx": [{"fill": [1, 0, 0, 1]}]},
+                {"id": "b", "comp": "word", "fx": [{"fill": [0, 0.02, 1, 1]}]}]},
+            "set": {"size": "400x200", "dur": "1s", "layers": [
+                {"id": "grey", "comp": "rgb", "fx": [{"tint": 1}]},
+                {"id": "red", "comp": "rgb", "fx": [{"set-matte": "red"}, {"fill": [1, 1, 1, 1]}]},
+                {"id": "blue", "comp": "rgb", "fx": [{"set-matte": "blue"}, {"fill": [1, 1, 1, 1]}]}]}},
+        "layers": [{"id": "set", "comp": "set"}]
+    })
+}
+
+#[test]
+fn a_title_read_by_its_channels_keeps_them_and_colours_each_piece() {
+    let step = look("riso");
+    let mut raw = channelled();
+    apply(&mut raw, &Held::default(), &step);
+    // The copies carry the channels the instances read: they stay pure.
+    assert_eq!(
+        raw["comps"]["rgb"]["layers"][0]["fx"][0]["fill"],
+        json!([1, 0, 0, 1])
+    );
+    assert_eq!(
+        raw["comps"]["rgb"]["layers"][1]["fx"][0]["fill"],
+        json!([0, 0.02, 1, 1])
+    );
+    // Each piece takes the split colour of its channel, the grey pass the
+    // look's text colour.
+    let set = &raw["comps"]["set"]["layers"];
+    assert_eq!(set[1]["fx"][1]["fill"], json!(step.palette.split[0]));
+    assert_eq!(set[2]["fx"][1]["fill"], json!(step.palette.split[2]));
+    assert_eq!(set[0]["fx"][0]["white"], json!(step.palette.text));
+}
+
+#[test]
+fn only_the_headline_takes_the_treatment_at_a_depth_of_its_size() {
+    let step = look("ember");
+    let mut raw = channelled();
+    apply(&mut raw, &Held::default(), &step);
+    let word = &raw["comps"]["word"]["layers"];
+    let shadows = |l: &Json| {
+        l["fx"].as_array().map_or(0, |fx| {
+            fx.iter().filter(|e| e.get("drop-shadow").is_some()).count()
+        })
+    };
+    assert_eq!(shadows(&word[0]), 4);
+    assert_eq!(shadows(&word[1]), 0);
+    let Treatment::Extrude(share) = step.title.treatment else {
+        panic!("ember extrudes");
+    };
+    let deepest = word[0]["fx"].as_array().unwrap().last().unwrap()["drop-shadow"]
+        .as_f64()
+        .unwrap();
+    assert!((deepest - round(share * 120.0)).abs() < 1e-9, "{deepest}");
+}
+
+#[test]
+fn a_look_moves_the_titles_displacement_by_its_amount() {
+    let step = look("riso");
+    let mut item = json!({"displacement-map": 100, "map": "tex"});
+    move_effect(item.as_object_mut().unwrap(), Role::Title, &step);
+    assert_eq!(
+        item["displacement-map"],
+        json!(round(100.0 * step.title.displace))
     );
 }

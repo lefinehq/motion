@@ -419,12 +419,22 @@ pub fn make(master: &Session, recipe: &Recipe, base: &Path) -> Result<Made> {
             notes.push(note);
             session = master.with_raw(fitted)?;
         }
-        // A look's face is fitted the same way.
-        if let Step::Look(l) = step
-            && let Some(face) = &l.face
-        {
-            let (fitted, note) = typeface::apply(&session, &held, face)?;
-            notes.push(note);
+        // A look's texts are fitted the same way, into the master's boxes:
+        // its case and tracking have already widened them, its own face or
+        // not.
+        if let Step::Look(l) = step {
+            let keep = TypeStep {
+                headline: None,
+                body: None,
+                copy: None,
+                fonts: Vec::new(),
+                families: Vec::new(),
+            };
+            let face = l.face.as_ref().unwrap_or(&keep);
+            let (fitted, note) = typeface::apply_within(&session, master, &held, face)?;
+            if l.face.is_some() {
+                notes.push(note);
+            }
             session = master.with_raw(fitted)?;
         }
     }
@@ -608,6 +618,9 @@ pub struct Distance {
     /// explain ([`filter`]); `None` for other variants, or when not
     /// measured.
     pub filter: Option<f64>,
+    /// For a look, the share of its texts' boxes it shows clipped, and the
+    /// master's ([`clipped`]); `None` for other variants.
+    pub clipped: Option<[f64; 2]>,
 }
 
 /// The least [`filter`] a look must reach: below it, what the look does to
@@ -640,16 +653,96 @@ pub fn filter_failure(residual: f64) -> Option<String> {
 /// # Errors
 /// When a frame cannot be evaluated or drawn.
 pub fn samples(session: &Session, n: usize, height: f64) -> Result<Vec<crate::Image>> {
-    let frames: Vec<u32> = session.frames()?.collect();
     let (_, h) = session.canvas()?;
     let shrink = (height / f64::from(h)).min(1.0);
-    (0..n.max(1))
+    sample_frames(session, n)?
+        .into_iter()
+        .map(|at| crate::gates::small(session, f64::from(at), shrink))
+        .collect()
+}
+
+/// The `n` frames [`samples`] draws, evenly over the film.
+fn sample_frames(session: &Session, n: usize) -> Result<Vec<u32>> {
+    let frames: Vec<u32> = session.frames()?.collect();
+    Ok((0..n.max(1))
         .map(|i| {
             let pick = ((i as f64 + 0.5) / n.max(1) as f64 * frames.len() as f64) as usize;
-            let at = frames[pick.min(frames.len().saturating_sub(1))];
-            crate::gates::small(session, f64::from(at), shrink)
+            frames[pick.min(frames.len().saturating_sub(1))]
         })
-        .collect()
+        .collect())
+}
+
+/// The share of the px inside the boxes of `session`'s visible texts that
+/// `images`, its [`samples`], show clipped: every channel at
+/// [`CLIPPED_LEVEL`] or up, a highlight with no shape left in it. A text
+/// set in white shows its glyphs so; a look that blooms a title to a flat
+/// white slab shows its whole box so.
+///
+/// # Errors
+/// As evaluating the frames.
+pub fn clipped(session: &Session, images: &[crate::Image]) -> Result<f64> {
+    let graph = session.graph()?;
+    let frames = sample_frames(session, images.len())?;
+    let (_, h) = session.canvas()?;
+    let (mut lit, mut all) = (0usize, 0usize);
+    for (frame, image) in frames.iter().zip(images) {
+        let k = f64::from(image.height()) / f64::from(h);
+        let state = session.frame(f64::from(*frame))?;
+        let (w, ih) = (image.width() as usize, image.height() as usize);
+        let mut inside = vec![false; w * ih];
+        for visit in nakkash_scene::walk(graph, &state) {
+            if !visit.visible
+                || visit.opacity <= 0.1
+                || !matches!(visit.node.content, nakkash_scene::ContentState::Text { .. })
+            {
+                continue;
+            }
+            let Some(b) = visit.drawn() else { continue };
+            let x0 = (b.x0 * k).floor().max(0.0) as usize;
+            let y0 = (b.y0 * k).floor().max(0.0) as usize;
+            let x1 = ((b.x1 * k).ceil().max(0.0) as usize).min(w);
+            let y1 = ((b.y1 * k).ceil().max(0.0) as usize).min(ih);
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    inside[y * w + x] = true;
+                }
+            }
+        }
+        for (px, _) in image
+            .pixels()
+            .chunks_exact(4)
+            .zip(&inside)
+            .filter(|(_, i)| **i)
+        {
+            all += 1;
+            lit += usize::from(px[..3].iter().all(|c| *c >= CLIPPED_LEVEL));
+        }
+    }
+    Ok(match all {
+        0 => 0.0,
+        n => ((lit as f64 / n as f64) * 1e4).round() / 1e4,
+    })
+}
+
+/// The 8-bit level from which a channel counts as clipped for [`clipped`].
+pub const CLIPPED_LEVEL: u8 = 250;
+
+/// How much more of its texts' boxes a variant may show clipped than its
+/// master, as a share: a designed specular hit, not a bloom.
+pub const CLIPPED_MORE: f64 = 0.05;
+
+/// Why a variant whose texts' boxes show `variant` clipped, against the
+/// master's `master` ([`clipped`]), blows its highlights out; `None` when
+/// it keeps them.
+pub fn clipped_failure(master: f64, variant: f64) -> Option<String> {
+    (variant > master + CLIPPED_MORE).then(|| {
+        format!(
+            "E clipped the texts' boxes show {:.0} % clipped white, the master {:.0} % (+{:.0} % at most)",
+            variant * 100.0,
+            master * 100.0,
+            CLIPPED_MORE * 100.0
+        )
+    })
 }
 
 /// How far `variant`'s [`samples`] are from `master`'s.
@@ -744,6 +837,7 @@ pub fn distance(master: &[crate::Image], variant: &[crate::Image]) -> Distance {
         frames: frames.map(round),
         structure: structure.map(round),
         filter: None,
+        clipped: None,
     }
 }
 

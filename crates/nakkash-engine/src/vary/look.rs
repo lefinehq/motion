@@ -50,7 +50,8 @@ pub enum Treatment {
     Fill,
     /// Drawn as its outline only, this many px wide at the master's size.
     Outline(f64),
-    /// Filled, over a dark extrusion this many px deep.
+    /// Filled, over a dark extrusion as deep as this share of the text's
+    /// size.
     Extrude(f64),
 }
 
@@ -123,6 +124,10 @@ pub struct Title {
     pub glow: f64,
     /// Whether its displacements and channel shifts stay.
     pub glitch: bool,
+    /// How far its displacements move it, times the master's: below 1 the
+    /// letterforms come through a texture more whole.
+    #[serde(default = "one")]
+    pub displace: f64,
     /// Filled, outlined or extruded.
     pub treatment: Treatment,
     /// Its case.
@@ -213,6 +218,7 @@ struct Preset {
     rings: Rings,
     title_glow: f64,
     glitch: bool,
+    displace: f64,
     treatment: Treatment,
     case: Case,
     tracking: f64,
@@ -242,7 +248,7 @@ const PRESETS: [Preset; 3] = [
         ground: ["#1B1F5E", "#05060F"],
         field: &["#2DE2D0", "#FF6EC7", "#8FA2FF"],
         split: ["#FF6EC7", "#2DE2D0", "#8FA2FF"],
-        text: "#FFFFFF",
+        text: "#F2F4FF",
         noise: Some("spline"),
         fractal: None,
         contrast: 0.95,
@@ -253,6 +259,7 @@ const PRESETS: [Preset; 3] = [
         rings: Rings::Off,
         title_glow: 0.2,
         glitch: false,
+        displace: 1.0,
         treatment: Treatment::Fill,
         case: Case::Upper,
         tracking: 80.0,
@@ -277,6 +284,7 @@ const PRESETS: [Preset; 3] = [
         rings: Rings::Width(6.0),
         title_glow: 0.3,
         glitch: true,
+        displace: 0.4,
         treatment: Treatment::Fill,
         case: Case::Upper,
         tracking: 20.0,
@@ -301,7 +309,8 @@ const PRESETS: [Preset; 3] = [
         rings: Rings::Echo(2),
         title_glow: 0.5,
         glitch: false,
-        treatment: Treatment::Extrude(10.0),
+        displace: 1.0,
+        treatment: Treatment::Extrude(0.03),
         case: Case::Lower,
         tracking: -10.0,
         ease: Some("out-back"),
@@ -360,6 +369,7 @@ pub(crate) fn draw(
     let title = Title {
         glow: jitter(preset.title_glow),
         glitch: preset.glitch,
+        displace: preset.displace,
         treatment: preset.treatment,
         case: preset.case,
         tracking: preset.tracking,
@@ -457,6 +467,7 @@ pub(crate) fn colour_only(step: &LookStep) -> LookStep {
             case: Case::AsIs,
             tracking: 0.0,
             ease: None,
+            displace: 1.0,
             ..step.title.clone()
         },
         grain: 0.0,
@@ -577,6 +588,8 @@ fn role(kinds: &Kinds, comp: Option<&str>, layer: &Map<String, Json>) -> Role {
 pub(crate) fn apply(raw: &mut Json, held: &Held, step: &LookStep) -> String {
     let kinds = kinds(raw);
     let sizes = canvases(raw);
+    let carriers = carriers(raw);
+    let largest = largest_text(raw);
     let mut counts = Counts::default();
     let mut field_turn = 0usize;
     places::each_mut(raw, |visit| {
@@ -595,13 +608,17 @@ pub(crate) fn apply(raw: &mut Json, held: &Held, step: &LookStep) -> String {
             _ => step.palette.text.clone(),
         };
         let mut coloured = false;
+        // A composition another layer reads by one of its channels carries
+        // data in its colours, not colour: they stay.
+        let data = place.comp.as_ref().is_some_and(|c| carriers.contains(c));
+        let channel = channel_of(layer);
         if let Some(Json::Array(fx)) = layer.get_mut("fx") {
             let before = fx.len();
             fx.retain(|item| keeps(item, role, step));
             counts.dropped += before - fx.len();
             for item in fx.iter_mut().filter_map(Json::as_object_mut) {
                 counts.moved += move_effect(item, role, step);
-                if recolour(item, role, &colour, step) {
+                if !data && recolour(item, role, &colour, step, channel) {
                     counts.recoloured += 1;
                     coloured = true;
                 }
@@ -617,7 +634,12 @@ pub(crate) fn apply(raw: &mut Json, held: &Held, step: &LookStep) -> String {
         }
         if layer.contains_key("text") {
             counts.texts += usize::from(set_text(layer, step));
-            counts.texts += usize::from(treat(layer, step.title.treatment));
+            // A treatment is for the headline: a smaller line outlined or
+            // extruded at its size stops reading.
+            let size = font_size(layer).unwrap_or(0.0);
+            if size >= largest * HEADLINE {
+                counts.texts += usize::from(treat(layer, step.title.treatment, size));
+            }
         }
         let canvas = sizes.get(&place.comp).copied();
         if canvas.is_some_and(|c| is_ground(layer, c)) {
@@ -639,6 +661,103 @@ pub(crate) fn apply(raw: &mut Json, held: &Held, step: &LookStep) -> String {
         counts.ground,
         if grain { ", grain laid over" } else { "" },
     )
+}
+
+/// A text at least this share of the largest text's size is a headline,
+/// and takes the look's treatment.
+const HEADLINE: f64 = 0.6;
+
+/// The size a text layer's `font` is set at: its last number.
+fn font_size(layer: &Map<String, Json>) -> Option<f64> {
+    let font = layer.get("font")?.as_str()?;
+    font.split_whitespace()
+        .rev()
+        .find_map(|w| w.parse::<f64>().ok())
+}
+
+/// The largest size any text of the scene is set at.
+fn largest_text(raw: &Json) -> f64 {
+    let mut most: f64 = 0.0;
+    let mut walk = |layers: Option<&Json>| {
+        for l in layers.and_then(Json::as_array).into_iter().flatten() {
+            if let Some(l) = l.as_object()
+                && l.contains_key("text")
+            {
+                most = most.max(font_size(l).unwrap_or(0.0));
+            }
+        }
+    };
+    walk(raw.get("layers"));
+    if let Some(Json::Object(comps)) = raw.get("comps") {
+        for c in comps.values() {
+            walk(c.get("layers"));
+        }
+    }
+    most
+}
+
+/// The channel a layer reads itself or another by (`set-matte` red, green
+/// or blue), as 0, 1 or 2.
+fn channel_of(layer: &Map<String, Json>) -> Option<usize> {
+    layer.get("fx")?.as_array()?.iter().find_map(|item| {
+        if item.get("hidden").and_then(Json::as_bool) == Some(true) {
+            return None;
+        }
+        match item.get("set-matte")?.as_str()? {
+            "red" => Some(0),
+            "green" => Some(1),
+            "blue" => Some(2),
+            _ => None,
+        }
+    })
+}
+
+/// The compositions some layer reads by one of their colour channels: the
+/// composition it draws, when it reads itself, or the one the layer it
+/// names as its matte draws. Their colours are data.
+fn carriers(raw: &Json) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let mut lists: Vec<&Vec<Json>> = Vec::new();
+    if let Some(Json::Array(l)) = raw.get("layers") {
+        lists.push(l);
+    }
+    if let Some(Json::Object(comps)) = raw.get("comps") {
+        for c in comps.values() {
+            if let Some(Json::Array(l)) = c.get("layers") {
+                lists.push(l);
+            }
+        }
+    }
+    for list in lists {
+        let comp_of = |id: &str| {
+            list.iter()
+                .filter_map(Json::as_object)
+                .find(|l| l.get("id").and_then(Json::as_str) == Some(id))
+                .and_then(|l| l.get("comp"))
+                .and_then(Json::as_str)
+                .map(str::to_owned)
+        };
+        for layer in list.iter().filter_map(Json::as_object) {
+            let Some(Json::Array(fx)) = layer.get("fx") else {
+                continue;
+            };
+            for item in fx {
+                let channel = item
+                    .get("set-matte")
+                    .and_then(Json::as_str)
+                    .is_some_and(|c| matches!(c, "red" | "green" | "blue"));
+                if !channel {
+                    continue;
+                }
+                let read = match item.get("matte").and_then(Json::as_str) {
+                    Some(other) => comp_of(other),
+                    None => layer.get("comp").and_then(Json::as_str).map(str::to_owned),
+                };
+                out.extend(read);
+            }
+        }
+    }
+    out
 }
 
 /// What [`apply`] did, counted.
@@ -717,6 +836,10 @@ fn move_effect(item: &mut Map<String, Json>, role: Role, step: &LookStep) -> usi
         ],
         (Role::Field, "glow") => vec![("intensity", Change::Times(field.glow))],
         (Role::Title, "glow") => vec![("intensity", Change::Times(step.title.glow))],
+        (Role::Title, "displacement-map") => vec![
+            ("horizontal", Change::Times(step.title.displace)),
+            ("vertical", Change::Times(step.title.displace)),
+        ],
         (Role::Field, "radial-blur" | "vector-blur") => {
             vec![("amount", Change::Times(field.blur))]
         }
@@ -781,8 +904,24 @@ fn chroma(c: [f64; 3]) -> f64 {
 /// light of it; chromatic fills and composites take `colour`, or on the
 /// title the split colour for the primary they were nearest. Neutral fills,
 /// curves that only shape levels and other layers stay.
-fn recolour(item: &mut Map<String, Json>, role: Role, colour: &str, step: &LookStep) -> bool {
+fn recolour(
+    item: &mut Map<String, Json>,
+    role: Role,
+    colour: &str,
+    step: &LookStep,
+    channel: Option<usize>,
+) -> bool {
     if role == Role::Other {
+        return false;
+    }
+    // A full tint draws the title grey: on the title it runs to the
+    // look's text colour instead, keeping the dark it maps black to.
+    if role == Role::Title && item.contains_key("tint") {
+        let white = item.get("white").and_then(rgb).unwrap_or([1.0; 3]);
+        if chroma(white) < 0.25 && white.iter().all(|c| *c > 0.5) {
+            item.insert("white".into(), json!(colour));
+            return true;
+        }
         return false;
     }
     if item.contains_key("curves") {
@@ -825,6 +964,16 @@ fn recolour(item: &mut Map<String, Json>, role: Role, colour: &str, step: &LookS
         return false;
     };
     if chroma(was) < 0.25 {
+        // A light fill on a layer that reads one channel of the title
+        // draws that channel's piece: it takes the split colour for it.
+        if role == Role::Title
+            && key == "fill"
+            && let Some(c) = channel
+            && was.iter().all(|v| *v > 0.8)
+        {
+            item.insert(key.into(), json!(step.palette.split[c]));
+            return true;
+        }
         return false;
     }
     let new = match role {
@@ -1267,7 +1416,7 @@ fn change_value(value: &mut Json, change: Change, range: Option<(f64, f64)>) -> 
 }
 
 /// Treats one text layer; whether it changed.
-fn treat(layer: &mut Map<String, Json>, treatment: Treatment) -> bool {
+fn treat(layer: &mut Map<String, Json>, treatment: Treatment, size: f64) -> bool {
     match treatment {
         Treatment::Fill => false,
         Treatment::Outline(width) => {
@@ -1287,7 +1436,8 @@ fn treat(layer: &mut Map<String, Json>, treatment: Treatment) -> bool {
             layer.insert("fill".into(), json!("#FFFFFF00"));
             true
         }
-        Treatment::Extrude(depth) => {
+        Treatment::Extrude(share) => {
+            let depth = (share * size).max(1.0);
             let fx = layer.entry("fx").or_insert_with(|| json!([]));
             if let Json::Array(fx) = fx {
                 // Steps a few px apart, darkest furthest: a solid depth.
@@ -1306,6 +1456,11 @@ fn treat(layer: &mut Map<String, Json>, treatment: Treatment) -> bool {
             true
         }
     }
+}
+
+/// 1, a default for serde.
+fn one() -> f64 {
+    1.0
 }
 
 /// `v` to four decimals.

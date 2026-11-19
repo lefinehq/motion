@@ -106,3 +106,26 @@ fn a_recipe_without_a_look_has_no_colour_twin() {
     let twin = colour_twin(&master, &recipe, Path::new("")).expect("made");
     assert!(twin.is_none());
 }
+
+#[test]
+fn a_text_bloomed_to_a_white_slab_shows_its_box_clipped() {
+    let scene = |over: &str| -> Session {
+        format!(
+            r##"{{"nakkash":1,"size":"640x360","dur":"1s","bg":"#101020","layers":[
+            {{"id":"t","text":"HELLO","font":"Inter Variable 96 800","fill":"#E8ECFF","at":"center center"}}{over}]}}"##
+        )
+        .parse()
+        .expect("a scene")
+    };
+    let crisp = scene("");
+    let images = samples(&crisp, 2, 180.0).expect("samples");
+    let kept = clipped(&crisp, &images).expect("clipped");
+    assert!(kept < 0.01, "{kept}");
+    // A white slab over the whole title: every px of its box is clipped.
+    let slab = scene(r##",{"id":"slab","rect":"640x360","fill":"#FFFFFF"}"##);
+    let images = samples(&slab, 2, 180.0).expect("samples");
+    let blown = clipped(&slab, &images).expect("clipped");
+    assert!(blown > 0.99, "{blown}");
+    assert!(clipped_failure(kept, blown).is_some());
+    assert!(clipped_failure(kept, kept + CLIPPED_MORE / 2.0).is_none());
+}
