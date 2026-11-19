@@ -149,6 +149,7 @@ expression: "report.join(\"\\n\\n\")"
 `"cutout":{"prompts":[{"box":[0,0,1,1]}]}` → clip.cutout.prompts[0]: a prompt needs the `frame` it is on; expected a prompt, e.g. {"frame":0,"box":[690,470,1210,735]} or {"frame":0,"include":[[900,600]]}
 `"cutout":{"prompts":[{"frame":0}]}` → clip.cutout.prompts[0]: a prompt needs a `box` or a point to `include`; expected a prompt, e.g. {"frame":0,"box":[690,470,1210,735]} or {"frame":0,"include":[[900,600]]}
 `"cutout":{"prompts":[{"frame":0,"box":[5,0,1,1]}]}` → clip.cutout.prompts[0].box: a box whose first corner is not above and left of its second; expected `[x0, y0, x1, y1]` with x0 < x1 and y0 < y1, e.g. [690,470,1210,735]
+`"cutout":{"prompts":[{"frame":0,"box":[-1,0,1,1]}]}` → clip.cutout.prompts[0].box: -1 is left of or above the clip; expected coordinates in the clip's pixels, from 0 at its top-left corner
 `"cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]},{"frame":0,"box":[0,0,1,1]}]}` → clip.cutout.prompts[1].frame: two prompts on frame 0; expected one prompt a frame, with every box and point of that frame
 `"cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"edges":"crisp"}` → clip.cutout.edges: unknown edges `crisp`; expected one of `refine`, `hard`, `soft`
 `"cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"band":0}` → clip.cutout.band: `0` is out of range; expected a width above 0 px, e.g. 12

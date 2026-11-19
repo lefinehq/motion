@@ -387,9 +387,11 @@ fn track(doc: TrackDoc) -> Result<TrackRequest> {
                     .at(format!("{at}.frame"))
                     .expected("one anchor a frame"));
             }
+            in_clip(corners.iter().flatten().copied(), &format!("{at}.corners"))?;
             Ok(Anchor { frame, corners })
         })
         .collect::<Result<Vec<_>>>()?;
+    in_clip(doc.corners.iter().flatten().flatten().copied(), "corners")?;
     Ok(TrackRequest {
         id,
         prompts,
@@ -440,6 +442,15 @@ fn prompts(docs: Option<List<Vec<Object<PromptDoc>>>>) -> Result<Vec<Prompt>> {
                 .at(format!("{at}.box"))
                 .expected("`[x0, y0, x1, y1]` with x0 < x1 and y0 < y1, e.g. [690,470,1210,735]"));
             }
+            in_clip(doc.bbox.iter().flatten().copied(), &format!("{at}.box"))?;
+            in_clip(
+                doc.include.iter().flatten().copied(),
+                &format!("{at}.include"),
+            )?;
+            in_clip(
+                doc.exclude.iter().flatten().copied(),
+                &format!("{at}.exclude"),
+            )?;
             if !frames.insert(frame) {
                 return Err(Diagnostic::new(
                     Kind::Conflict,
@@ -456,6 +467,20 @@ fn prompts(docs: Option<List<Vec<Object<PromptDoc>>>>) -> Result<Vec<Prompt>> {
             })
         })
         .collect()
+}
+
+/// Checks that every coordinate of `values`, at `at`, lies in the clip's
+/// pixels, which start at 0. JSON numbers are always finite.
+fn in_clip(mut values: impl Iterator<Item = f64>, at: &str) -> Result<()> {
+    match values.find(|v| *v < 0.0) {
+        None => Ok(()),
+        Some(v) => Err(Diagnostic::new(
+            Kind::OutOfRange,
+            format!("{} is left of or above the clip", crate::fmt_num(v)),
+        )
+        .at(at)
+        .expected("coordinates in the clip's pixels, from 0 at its top-left corner")),
+    }
 }
 
 /// A `baked` digest, when written.

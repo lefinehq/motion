@@ -259,6 +259,7 @@ fn every_error_message() {
                 r#""cutout":{"prompts":[{"box":[0,0,1,1]}]}"#,
                 r#""cutout":{"prompts":[{"frame":0}]}"#,
                 r#""cutout":{"prompts":[{"frame":0,"box":[5,0,1,1]}]}"#,
+                r#""cutout":{"prompts":[{"frame":0,"box":[-1,0,1,1]}]}"#,
                 r#""cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]},{"frame":0,"box":[0,0,1,1]}]}"#,
                 r#""cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"edges":"crisp"}"#,
                 r#""cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"band":0}"#,
