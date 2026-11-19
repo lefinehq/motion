@@ -20,5 +20,10 @@ ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "
 [target.'cfg(target_os = "macos")'.dependencies]
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-22", "coreml"] }
 
+[dev-dependencies]
+nakkash-fonts = { path = "../nakkash-fonts" }
+png.workspace = true
+serde_json.workspace = true
+
 [lints]
 workspace = true

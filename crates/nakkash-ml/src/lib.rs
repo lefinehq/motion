@@ -19,11 +19,16 @@
 
 #[cfg(feature = "fetch")]
 pub mod fetch;
+pub mod flow;
+pub mod frames;
 mod graph;
 pub mod image;
 pub mod lock;
+pub mod matte;
 mod models;
 pub mod onnx;
+pub mod quality;
+pub mod segment;
 mod tensor;
 
 pub use graph::{Backend, Graph, OpenGraph, Placement};

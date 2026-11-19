@@ -2022,9 +2022,12 @@ name = "nakkash-onnx"
 version = "0.0.0"
 dependencies = [
  "nakkash-baked",
+ "nakkash-fonts",
  "nakkash-format",
  "nakkash-ml",
  "ort",
+ "png",
+ "serde_json",
  "tracing",
 ]
 
