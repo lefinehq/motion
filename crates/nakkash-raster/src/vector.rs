@@ -10,6 +10,8 @@
 //! rather than flips. Each pixel then reads the layer along its own
 //! streak, a sample a px.
 
+use std::borrow::Cow;
+
 use vello_cpu::kurbo::Vec2;
 
 use crate::blur::{Edges, SIGMA_PER_BLURRINESS, gaussian};
@@ -277,12 +279,13 @@ pub(crate) fn vector_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Sp
     if width == 0 || height == 0 || amount == 0.0 {
         return;
     }
+    // The map is read where it is, and copied only to be softened.
     let mut map = match &space.input {
-        Some(input) => input.pixels().clone(),
-        None => pixels.clone(),
+        Some(input) => Cow::Borrowed(input.pixels()),
+        None => Cow::Borrowed(&*pixels),
     };
     if softness > 0.0 {
-        gaussian(&mut map, [softness * scale; 2], Edges::Repeat);
+        gaussian(map.to_mut(), [softness * scale; 2], Edges::Repeat);
     }
     let levels: Vec<f32> = map.data().iter().map(|p| level.of(*p)).collect();
     let field = slopes(&levels, width, height, ridge * scale);

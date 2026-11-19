@@ -301,22 +301,41 @@ pub struct BezierWarp {
 }
 
 /// Redraws every pixel from the point of the layer `from` gives for the
-/// layer point at its centre, or transparent where it gives none.
-fn remap(pixels: &mut Pixels, space: &Space, from: impl Fn([f32; 2]) -> Option<[f32; 2]> + Sync) {
-    let source = pixels.clone();
+/// layer point at its centre, or transparent where it gives none. The
+/// pixels are drawn into a grid of their own and take the place of the
+/// ones they were read from, which are handed back: no copy is made to
+/// read from.
+fn remap(
+    pixels: &mut Pixels,
+    space: &Space,
+    from: impl Fn([f32; 2]) -> Option<[f32; 2]> + Sync,
+) -> Pixels {
+    remap_reading(pixels, space, |p, _| from(p))
+}
+
+/// [`remap`], with `from` also given the pixels as they were, which a
+/// distortion that reads its own layer reads.
+fn remap_reading(
+    pixels: &mut Pixels,
+    space: &Space,
+    from: impl Fn([f32; 2], &Pixels) -> Option<[f32; 2]> + Sync,
+) -> Pixels {
+    let source = &*pixels;
     let to: Affine = space.transform;
     let back = to.inverse();
-    let width = usize::from(pixels.width());
-    par::each(pixels.data_mut(), |i, pixel| {
+    let width = usize::from(source.width());
+    let data = par::map(source.data(), |i, _| {
         let at = back * Point::new((i % width) as f64 + 0.5, (i / width) as f64 + 0.5);
-        *pixel = match from([at.x as f32, at.y as f32]) {
+        match from([at.x as f32, at.y as f32], source) {
             Some([x, y]) => {
                 let there = to * Point::new(f64::from(x), f64::from(y));
                 source.sample(there.x, there.y)
             }
             None => [0.0; 4],
-        };
+        }
     });
+    let drawn = Pixels::from_data(source.width(), source.height(), data);
+    std::mem::replace(pixels, drawn)
 }
 
 /// [`MotionTile`] from `motion-tile`'s values.
@@ -393,12 +412,11 @@ pub(crate) fn wrap(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
         [bounds.x0 as f32, bounds.y0 as f32],
         [bounds.width() as f32, bounds.height() as f32],
     );
-    let original = pixels.clone();
     let shift = [
         to[0] - origin[0] - size[0] / 2.0,
         to[1] - origin[1] - size[1] / 2.0,
     ];
-    remap(pixels, space, |[x, y]| {
+    let original = remap(pixels, space, |[x, y]| {
         let at = [x - shift[0], y - shift[1]];
         Some(std::array::from_fn(|i| match size[i] > 0.0 {
             true => origin[i] + (at[i] - origin[i]).rem_euclid(size[i]),
@@ -1245,15 +1263,17 @@ pub(crate) fn displacement_map(pixels: &mut Pixels, values: &[ParamValue], space
         wrap,
     } = displacement_map_plan(values);
     let target = layer_box(pixels, space);
-    let (map, map_box) = match &space.input {
-        Some(input) => (input.pixels().clone(), input.bounds.unwrap_or(target)),
-        None => (pixels.clone(), target),
+    // The map is read where it is: the layer it names, or the layer's own
+    // pixels as they were before the move.
+    let (input, map_box) = match &space.input {
+        Some(input) => (Some(input.pixels()), input.bounds.unwrap_or(target)),
+        None => (None, target),
     };
     let to = space.transform;
-    remap(pixels, space, |p| {
+    remap_reading(pixels, space, |p, own| {
         let [mx, my] = lay.point(target, map_box, p.map(f64::from));
         let there = to * Point::new(mx, my);
-        let level = map.sample(there.x, there.y);
+        let level = input.unwrap_or(own).sample(there.x, there.y);
         let d = [
             (from[0].level(level) - 0.5) * 2.0 * most_x,
             (from[1].level(level) - 0.5) * 2.0 * most_y,
