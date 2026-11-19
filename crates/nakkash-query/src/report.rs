@@ -38,6 +38,11 @@ pub enum Code {
     Flash,
     /// Two readable text layers' glyphs run into each other.
     Overlap,
+    /// A corner pin's corners make no quad its layer's box can be laid
+    /// onto, so the layer draws nothing ([D89]).
+    ///
+    /// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+    Pin,
 }
 
 /// What a finding measured, as the report prints it after the frames.
@@ -54,6 +59,9 @@ pub enum Measure {
         /// What both are counted in.
         unit: Unit,
     },
+    /// Why a corner pin's corners make no quad, at the run's first frame:
+    /// `crossed: top-right–bottom-right meets bottom-left–top-left`.
+    Pin(nakkash_scene::pin::Fault),
     /// A value below the least a rule allows: `0.4s <1.3`.
     Below {
         /// The worst value measured.
@@ -95,6 +103,7 @@ impl fmt::Display for Measure {
             Measure::Below { value, limit, unit } => {
                 write!(f, "{}{unit} <{}", fmt_num(value), fmt_num(limit))
             }
+            Measure::Pin(fault) => write!(f, "{fault}"),
         }
     }
 }
@@ -155,6 +164,8 @@ impl Measure {
             (Measure::Overshoot(now), Measure::Overshoot(then)) => now <= then,
             (Measure::Above { value: now, .. }, Measure::Above { value: then, .. }) => now <= then,
             (Measure::Below { value: now, .. }, Measure::Below { value: then, .. }) => now >= then,
+            // A pin that made no quad then is as bad as one that makes none now.
+            (Measure::Pin(_), Measure::Pin(_)) => true,
             _ => false,
         }
     }
@@ -170,6 +181,8 @@ struct Worst {
     above: Option<f64>,
     /// The lowest value below a limit.
     below: Option<f64>,
+    /// A corner pin that made no quad, if one did.
+    pin: Option<nakkash_scene::pin::Fault>,
 }
 
 impl Worst {
@@ -189,6 +202,7 @@ impl Worst {
             Measure::Overshoot(v) => keep(&mut self.overshoot, v, |a, b| a > b),
             Measure::Above { value, .. } => keep(&mut self.above, value, |a, b| a > b),
             Measure::Below { value, .. } => keep(&mut self.below, value, |a, b| a < b),
+            Measure::Pin(fault) => self.pin = self.pin.or(Some(fault)),
         }
     }
 
@@ -205,6 +219,7 @@ impl Worst {
                 self.below
                     .map(|value| Measure::Below { value, limit, unit })
             }
+            Measure::Pin(_) => self.pin.map(Measure::Pin),
         };
         base.is_some_and(|base| measure.no_worse_than(base))
     }

@@ -28,6 +28,7 @@ These are the limits the check holds every scene to. They are measured, and an a
 | `overlap` | two read texts' glyphs do not run into each other | Leave room between lines in separate layers, descenders included. |
 | `contrast` (error) | 4.5:1 against what is behind, 3:1 at 24 px and up (on 1080 tall) | Light text on dark ground or the reverse; check text over pictures. |
 | `flash` (error) | a quarter of the frame flashing at most 3 times a second | No strobing cuts or flicker. |
+| `pin` (error) | a `corner-pin`'s corners make a quad: not crossed, bent in, flat, or out of the layer's sight | Name corner pivots in order, top left then clockwise; `"pivots":"screen"` reads `screen-tl`, `-tr`, `-br`, `-bl`. |
 
 ## Moves
 
@@ -43,6 +44,7 @@ A move is one key on the layer. Presets are in [Scene format](../design/scene-fo
 | A plate that wipes open from an edge | `scale-x` from 0 under `anim`, with `anchor` on that edge |
 | A slow drift that keeps the frame alive | `"anim":{"scale":"1 -> 1.15 @0-9s in-out-sine"}` |
 | A layer that enters before the film starts | a negative `offset`, `"offset":"-6f"`, so frame 0 shows it landed |
+| A screen or label pinned onto tracked footage | `nakkash ml track scene.json phone.tracks[screen] --to screen --corners`, then on the layer to pin `"fx":[{"corner-pin":[0,0],"pivots":"screen"}]`; nudge a corner in px of the layer with `"top-left":[4,4]` |
 
 ## Pitfalls
 

@@ -51,6 +51,45 @@ const MARGIN: f64 = 2.0;
 /// The most probes along a footprint's long axis.
 pub(crate) const MAX_ANISOTROPY: usize = 16;
 
+/// How many times denser than the most its map magnifies it a corner pin's
+/// plane is drawn ([D89]): its [`Filter::Box`] then reads each px's
+/// footprint from probes finer than the px, so pinned text keeps its edges.
+///
+/// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+pub(crate) const PIN_OVERSAMPLE: f64 = 2.0;
+
+/// The most probes along each side of a footprint read by [`Filter::Box`].
+pub(crate) const MAX_BOX_PROBES: f64 = 16.0;
+
+/// How far past a whole number of copy px, or a power of two, a footprint
+/// may reach before [`Filter::Box`] takes another probe or another copy:
+/// 1/64. A footprint the size of a whole px, or two, or of half the next
+/// copy's, is the common case (a pin that keeps the size it draws at, the
+/// small moves of a shutter), and its length worked out in `f32` on the
+/// GPU falls either side of the whole number it is in `f64`; one probe
+/// more moves every probe and changes an edge by levels. Past the slack,
+/// the choice turns where footprints are no likelier than anywhere else.
+pub(crate) const BOX_SLACK: f64 = 1.0 / 64.0;
+
+/// How a px of the canvas reads the buffer over its footprint there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Filter {
+    /// Trilinearly from the halved copies, with up to 16 probes along its
+    /// long axis, as a projected layer is laid ([D58]).
+    ///
+    /// [D58]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d58-25d-layers-are-planes-projected-through-a-camera
+    #[default]
+    Footprint,
+    /// The mean over the parallelogram the px's square covers, read by a
+    /// grid of bilinear probes on the copy whose px are at most half the
+    /// footprint's short side (coarser only to keep within 16
+    /// a side): a box filter, as a corner pin is laid
+    /// ([D89]).
+    ///
+    /// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+    Box,
+}
+
 /// Where the seen part of a plane that draws everywhere ends towards the
 /// horizon: where a unit of it covers less than this much of the canvas,
 /// in px². Beyond, 64 by 64 units fall within one px.
@@ -126,12 +165,21 @@ impl Extent {
 /// grown and moved by its effects in order and cut to its clip, as its
 /// effects grow it.
 pub(crate) fn extent(layer: &Layer) -> Extent {
+    extent_of(layer, &layer.effects)
+}
+
+/// Where `layer` draws in its own coordinates once `effects`, the first of
+/// its own, have run: as [`extent`] for those effects alone, as the plane
+/// a corner pin lays is drawn ([D89]).
+///
+/// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+pub(crate) fn extent_of(layer: &Layer, effects: &[Effect]) -> Extent {
     let content = match layer.bounds {
         Some(bounds) => Extent::Box(bounds),
         None => nodes_extent(&layer.children),
     };
-    let drawn = after_effects(content, &layer.effects, layer.bounds);
-    match layer.shown_clip() {
+    let drawn = after_effects(content, effects, layer.bounds);
+    match layer.clip_after(effects) {
         Some(clip) => drawn.within(clip_box(&clip)),
         None => drawn,
     }
@@ -139,13 +187,25 @@ pub(crate) fn extent(layer: &Layer) -> Extent {
 
 /// Where `extent` draws once `effects` have run on it, for a layer whose
 /// box is `bounds`; an effect that grows the box leaves the grown box to
-/// the effects after it.
+/// the effects after it, and a corner pin lays what came before through
+/// its map, at the frame and at each moment it has.
 fn after_effects(extent: Extent, effects: &[Effect], bounds: Option<Rect>) -> Extent {
+    let own = bounds;
     let (drawn, _) = effects
         .iter()
         .fold((extent, bounds), |(drawn, bounds), effect| {
             if let Some(movement) = effect.movement() {
                 return (drawn.moved(movement.transform), bounds);
+            }
+            if effect.pins() {
+                let Some(from) = effect.pin_box(own) else {
+                    return (Extent::Everywhere, bounds);
+                };
+                let maps = std::iter::once(effect.pin_map(from)).chain(effect.pin_moments(from));
+                let laid = maps
+                    .flatten()
+                    .fold(Extent::Nothing, |all, map| all.union(drawn.projected(&map)));
+                return (laid, bounds.map(|b| effect.grown(b)));
             }
             let grown = bounds.map(|b| effect.grown(b));
             let drawn = match effect.reach() {
@@ -252,6 +312,42 @@ fn glyphs_extent(draw: &GlyphDraw) -> Extent {
     })
 }
 
+/// How far the effects of `layer` after its last corner pin read from
+/// each point they show, in its own units: `None` when one reads anywhere
+/// in its box; as [`read_reach`] for a layer without a pin. What the pin
+/// lays is drawn on a plane of its own, which holds everything the canvas
+/// sees of it ([D89]), so only the effects after it read the layer's grid.
+///
+/// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+pub(crate) fn grid_reach(layer: &Layer) -> Option<f64> {
+    let Some(last) = layer.effects.iter().rposition(Effect::pins) else {
+        return read_reach(layer);
+    };
+    layer.effects[last + 1..]
+        .iter()
+        .try_fold(0.0, |sum, effect| match effect.reach() {
+            Reach::Within(by) if effect.movement().is_none() && !effect.pins() => {
+                Some(sum + f64::from(by))
+            }
+            _ => None,
+        })
+}
+
+/// How far the drawing of `layer` reads from each point it shows, in its
+/// own units, as its masks and `effects`, the first of its own, run on its
+/// buffer: `None` when one reads anywhere in its box.
+pub(crate) fn reach_of(layer: &Layer, effects: &[Effect]) -> Option<f64> {
+    let masks = mask_reach(&layer.masks);
+    let mut on_pixels = effects.iter().skip_while(|e| e.movement().is_some());
+    on_pixels.try_fold(masks, |sum, effect| match effect.movement() {
+        Some(_) => None,
+        None => match effect.reach() {
+            Reach::Within(by) => Some(sum + f64::from(by)),
+            Reach::Bounds | Reach::Grows(_) | Reach::Anywhere => None,
+        },
+    })
+}
+
 /// How far the drawing of `layer` reads from each point it shows, in its
 /// own units, as its masks and effects run on its buffer: `None` when
 /// some effect reads anywhere in its box.
@@ -337,6 +433,8 @@ pub(crate) struct Plan {
     /// A point of the layer's region the canvas sees under the first map,
     /// the middle of what it sees.
     pub(crate) seen: Point,
+    /// How the canvas reads the buffer.
+    pub(crate) filter: Filter,
 }
 
 impl Plan {
@@ -365,6 +463,45 @@ impl Plan {
         height: u16,
         least: f64,
     ) -> Option<Plan> {
+        Plan::made(
+            extent,
+            reach,
+            maps,
+            (width, height),
+            least,
+            Filter::Footprint,
+        )
+    }
+
+    /// The buffer of a corner pin's plane ([D89]), as [`Plan::new`] plans
+    /// one, drawn [`PIN_OVERSAMPLE`] times denser and read by
+    /// [`Filter::Box`].
+    ///
+    /// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+    pub(crate) fn pinned(
+        extent: Extent,
+        reach: Option<f64>,
+        maps: &[Homography],
+        width: u16,
+        height: u16,
+    ) -> Option<Plan> {
+        Plan::made(extent, reach, maps, (width, height), 0.0, Filter::Box)
+    }
+
+    /// The plan for `filter`: [`Filter::Box`] draws the buffer
+    /// [`PIN_OVERSAMPLE`] times denser than its maps magnify it.
+    fn made(
+        extent: Extent,
+        reach: Option<f64>,
+        maps: &[Homography],
+        (width, height): (u16, u16),
+        least: f64,
+        filter: Filter,
+    ) -> Option<Plan> {
+        let over = match filter {
+            Filter::Footprint => 1.0,
+            Filter::Box => PIN_OVERSAMPLE,
+        };
         let start = match extent {
             Extent::Nothing => return None,
             Extent::Box(b) => b,
@@ -407,7 +544,7 @@ impl Plan {
             .flat_map(|(map, polygon)| probes(polygon).map(|p| map.magnification(p)))
             .fold(0.0, f64::max);
         let room = MAX_SIDE - 2.0 * BORDER - 1.0;
-        let scale = most
+        let scale = (most * over)
             .max(least)
             .min(MAX_SCALE)
             .min(room / region.width())
@@ -444,6 +581,7 @@ impl Plan {
             region,
             landed,
             seen: Point::new(middle.x / first.len() as f64, middle.y / first.len() as f64),
+            filter,
         })
     }
 }
@@ -815,6 +953,63 @@ pub(crate) fn lay(
     }
 }
 
+/// `pixels` laid on a grid of their own size through each of `maps`, from
+/// px of the grid to px of the grid, each adding `share`: a drawing moved
+/// projectively where it was drawn, sampled by its footprint from its
+/// halved copies, as a plane is laid. A corner pin on pixels already drawn
+/// lays them this way ([D89]).
+///
+/// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+pub(crate) fn warp(pixels: &Pixels, maps: &[Homography], share: f32) -> Pixels {
+    let (width, height) = (pixels.width(), pixels.height());
+    let drawn = crate::render::drawn_box(pixels);
+    let landings = warp_landings(drawn, maps, width, height);
+    lay(Buffer::Floats(pixels), &landings, share, width, height)
+}
+
+/// Where a `width` by `height` grid lands on itself through each of
+/// `maps` ([`warp`]), when what it holds lies within `drawn` (the whole
+/// grid when `None`), leaving out maps with no inverse and those it lands
+/// nowhere through.
+pub(crate) fn warp_landings(
+    drawn: Option<Rect>,
+    maps: &[Homography],
+    width: u16,
+    height: u16,
+) -> Vec<Landing> {
+    let whole = Rect::new(0.0, 0.0, f64::from(width), f64::from(height));
+    let drawn = drawn.unwrap_or(whole);
+    let corners = [
+        Point::new(drawn.x0, drawn.y0),
+        Point::new(drawn.x1, drawn.y0),
+        Point::new(drawn.x1, drawn.y1),
+        Point::new(drawn.x0, drawn.y1),
+    ];
+    maps.iter()
+        .filter_map(|map| {
+            let to_buffer = map.inverse()?;
+            let seen: Option<Vec<Point>> = corners.iter().map(|&c| map.project(c)).collect();
+            // A drawing some of whose corners pass the horizon lands
+            // anywhere: each px tells for itself.
+            let landed = match seen {
+                Some(seen) => polygon_box(&seen).inflate(1.0, 1.0).intersect(whole),
+                None => whole,
+            };
+            let px = [
+                landed.x0.floor().max(0.0) as usize,
+                landed.y0.floor().max(0.0) as usize,
+                (landed.x1.ceil().min(f64::from(width))).max(0.0) as usize,
+                (landed.y1.ceil().min(f64::from(height))).max(0.0) as usize,
+            ];
+            (px[0] < px[2] && px[1] < px[3]).then_some(Landing {
+                to_buffer,
+                landed: px,
+                filter: Filter::Box,
+            })
+        })
+        .collect()
+}
+
 /// Where a projected layer's buffer lands on a canvas through one of its
 /// maps: what [`Accelerator::project`](crate::Accelerator::project) lays it
 /// by.
@@ -824,6 +1019,8 @@ pub struct Landing {
     pub to_buffer: Homography,
     /// The px of the canvas the buffer lands on, as `[x0, y0, x1, y1)`.
     pub landed: [usize; 4],
+    /// How each px reads the buffer over its footprint.
+    pub filter: Filter,
 }
 
 impl Plan {
@@ -839,6 +1036,7 @@ impl Plan {
                 Some(Landing {
                     to_buffer: Homography::from(self.local) * back,
                     landed: *landed,
+                    filter: self.filter,
                 })
             })
             .collect()
@@ -855,20 +1053,15 @@ fn lay_chain<T: Texel>(
 ) -> Pixels {
     let mut out = Pixels::transparent(width, height);
     for landing in landings {
-        lay_one(chain, &landing.to_buffer, landing.landed, share, &mut out);
+        lay_one(chain, landing, share, &mut out);
     }
     out
 }
 
 /// Adds `share` of the buffer seen through `to_buffer`, from px of the
 /// canvas to px of the buffer, to the px of `out` within `landed`.
-fn lay_one<T: Texel>(
-    chain: &Chain<'_, T>,
-    to_buffer: &Homography,
-    [x0, y0, x1, y1]: [usize; 4],
-    share: f32,
-    out: &mut Pixels,
-) {
+fn lay_one<T: Texel>(chain: &Chain<'_, T>, landing: &Landing, share: f32, out: &mut Pixels) {
+    let [x0, y0, x1, y1] = landing.landed;
     let width = usize::from(out.width());
     if x0 >= x1 || y0 >= y1 {
         return;
@@ -883,7 +1076,7 @@ fn lay_one<T: Texel>(
         for tx in (x0..x1).step_by(TILE) {
             lay_tile(
                 chain,
-                to_buffer,
+                landing,
                 [tx, ty, (tx + TILE).min(x1), y1],
                 share,
                 width,
@@ -902,14 +1095,14 @@ const TILE: usize = 32;
 #[allow(clippy::too_many_arguments)]
 fn lay_tile<T: Texel>(
     chain: &Chain<'_, T>,
-    to_buffer: &Homography,
+    landing: &Landing,
     [x0, y0, x1, y1]: [usize; 4],
     share: f32,
     width: usize,
     first: usize,
     data: &mut [Pixel],
 ) {
-    let [g0, g1, g2] = to_buffer.rows();
+    let [g0, g1, g2] = landing.to_buffer.rows();
     let (bw, bh) = (chain.base.width as f64, chain.base.height as f64);
     for y in y0..y1 {
         let fy = y as f64 + 0.5;
@@ -944,7 +1137,10 @@ fn lay_tile<T: Texel>(
                     continue;
                 }
             }
-            let pixel = foot.sample(chain, b);
+            let pixel = match landing.filter {
+                Filter::Footprint => foot.sample(chain, b),
+                Filter::Box => foot.boxed(chain, b),
+            };
             let total = &mut data[(y - first) * width + x];
             for c in 0..4 {
                 total[c] += pixel[c] * share;
@@ -1018,6 +1214,75 @@ impl Footprint {
             }
         }
         sum.map(|c| c / probes as f32)
+    }
+}
+
+impl Footprint {
+    /// The mean colour over the parallelogram the px's square covers at
+    /// buffer point `b` ([`Filter::Box`]): the columns of the Jacobian are
+    /// where the px's steps right and down go on the buffer, and a grid of
+    /// probes spaced at most a px of the copy they read covers it. The
+    /// copy's px are at most half the footprint's short side, so the
+    /// bilinear read of each probe blurs less than the footprint is wide.
+    fn boxed<T: Texel>(&self, chain: &Chain<'_, T>, b: Point) -> Pixel {
+        use vello_cpu::kurbo::Vec2;
+        let [a, bb, c, d] = self.jacobian;
+        let (right, down) = (Vec2::new(a, c), Vec2::new(bb, d));
+        let (lx, ly) = (right.hypot(), down.hypot());
+        let level = box_level(self.short2.sqrt(), lx.max(ly)).min(chain.halves.len());
+        let px = (1u64 << level) as f64;
+        let probes = |length: f64| {
+            (length / px - BOX_SLACK)
+                .ceil()
+                .clamp(1.0, MAX_BOX_PROBES + 1.0) as usize
+        };
+        let (nx, ny) = (probes(lx), probes(ly));
+        let texture = chain.level(level);
+        let k = 1.0 / px;
+        let mut sum = [0.0f32; 4];
+        for i in 0..nx {
+            let u = (i as f64 + 0.5) / nx as f64 - 0.5;
+            for j in 0..ny {
+                let v = (j as f64 + 0.5) / ny as f64 - 0.5;
+                let p = b + right * u + down * v;
+                let read = texture.bilinear(p.x * k, p.y * k);
+                for c in 0..4 {
+                    sum[c] += read[c];
+                }
+            }
+        }
+        let n = (nx * ny) as f32;
+        sum.map(|c| c / n)
+    }
+}
+
+/// The copy [`Filter::Box`] reads for a footprint whose short side is
+/// `short` buffer px and longest column `long`: the coarsest whose px are
+/// at most half `short`, and at least `long` over [`MAX_BOX_PROBES`] so the
+/// probes stay within it a side, each give or take [`BOX_SLACK`]. Whole
+/// powers of two are worked out from the floats' exponents, and the slack
+/// keeps the footprints that are whole powers away from where the choice
+/// turns, so the GPU makes the same choice.
+pub(crate) fn box_level(short: f64, long: f64) -> usize {
+    let finest = floor_log2(short / 2.0 * (1.0 + BOX_SLACK));
+    let fewest = ceil_log2(long / MAX_BOX_PROBES / (1.0 + BOX_SLACK));
+    finest.max(fewest)
+}
+
+/// `floor(log2(x))` for `x` of at least 1, else 0, from the exponent.
+fn floor_log2(x: f64) -> usize {
+    match x >= 1.0 && x.is_finite() {
+        true => (((x.to_bits() >> 52) & 0x7ff) - 1023) as usize,
+        false => 0,
+    }
+}
+
+/// `ceil(log2(x))` for `x` above 1, else 0.
+fn ceil_log2(x: f64) -> usize {
+    let below = floor_log2(x);
+    match x > (1u64 << below) as f64 {
+        true => below + 1,
+        false => below,
     }
 }
 

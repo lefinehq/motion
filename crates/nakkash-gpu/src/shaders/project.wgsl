@@ -2,12 +2,17 @@
 // and `Footprint::sample`): each px of the grid seen back through each
 // landing onto the buffer, its footprint there from the map's Jacobian,
 // sampled trilinearly from the buffer's halved copies (`halve.wgsl`) with
-// up to `MAX_ANISOTROPY` probes along its long axis, and a share of it
-// added. The CPU works in 64-bit floats, this in 32: each landing's map is
+// up to `MAX_ANISOTROPY` probes along its long axis, or averaged over it by
+// a grid of bilinear probes (`Footprint::boxed`, a corner pin's filter),
+// and a share of it added. The CPU works in 64-bit floats, this in 32: each landing's map is
 // given from its first px, worked out on the CPU, so only the steps from
 // there are summed here.
 
 const MAX_ANISOTROPY: f32 = 16.0;
+const MAX_BOX_PROBES: f32 = 16.0;
+// `BOX_SLACK`: how far past a whole number of px, or a power of two, a
+// footprint reaches before the box filter takes another probe or copy.
+const BOX_SLACK: f32 = 0.015625;
 const MIN_POSITIVE: f32 = 1.17549435e-38;
 
 struct Params {
@@ -29,7 +34,8 @@ struct Params {
 }
 
 // One landing: the map back at its first px's centre, how it changes one
-// px right and one px down, as `(x, y, w)`, and the px it lands on.
+// px right and one px down, as `(x, y, w)`, and the px it lands on. The
+// origin's fourth component is its filter: 0 a footprint, 1 a box.
 struct Landing {
     origin: vec4<f32>,
     right: vec4<f32>,
@@ -155,6 +161,50 @@ fn sample(j: vec4<f32>, long2: f32, short2: f32, b: vec2<f32>) -> vec4<f32> {
     return sum / probes;
 }
 
+// `floor_log2`: `floor(log2(x))` for `x` of at least 1, else 0, from the
+// exponent.
+fn floor_log2(x: f32) -> u32 {
+    if !(x >= 1.0) {
+        return 0u;
+    }
+    return ((bitcast<u32>(x) >> 23u) & 0xffu) - 127u;
+}
+
+// `ceil_log2`: `ceil(log2(x))` for `x` above 1, else 0.
+fn ceil_log2(x: f32) -> u32 {
+    let below = floor_log2(x);
+    if x > exp2(f32(below)) {
+        return below + 1u;
+    }
+    return below;
+}
+
+// `Footprint::boxed`: the mean over the parallelogram the px's square covers
+// at buffer point `b`, from a grid of bilinear probes on the copy whose px
+// are at most half its short side, at most `MAX_BOX_PROBES` a side.
+fn boxed(j: vec4<f32>, short2: f32, b: vec2<f32>) -> vec4<f32> {
+    let right = vec2(j.x, j.z);
+    let down = vec2(j.y, j.w);
+    let lx = length(right);
+    let ly = length(down);
+    let finest = floor_log2(sqrt(short2) / 2.0 * (1.0 + BOX_SLACK));
+    let fewest = ceil_log2(max(lx, ly) / MAX_BOX_PROBES / (1.0 + BOX_SLACK));
+    let level = min(max(finest, fewest), params.halves);
+    let px = exp2(f32(level));
+    let nx = u32(clamp(ceil(lx / px - BOX_SLACK), 1.0, MAX_BOX_PROBES + 1.0));
+    let ny = u32(clamp(ceil(ly / px - BOX_SLACK), 1.0, MAX_BOX_PROBES + 1.0));
+    let k = 1.0 / px;
+    var sum = vec4(0.0);
+    for (var i = 0u; i < nx; i++) {
+        let u = (f32(i) + 0.5) / f32(nx) - 0.5;
+        for (var m = 0u; m < ny; m++) {
+            let v = (f32(m) + 0.5) / f32(ny) - 0.5;
+            sum += bilinear(level, (b + right * u + down * v) * k);
+        }
+    }
+    return sum / f32(nx * ny);
+}
+
 @compute @workgroup_size(256)
 fn project(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.y * params.row + gid.x;
@@ -203,7 +253,11 @@ fn project(@builtin(global_invocation_id) gid: vec3<u32>) {
                 continue;
             }
         }
-        total += sample(j, long2, short2, b) * params.share;
+        if landing.origin.w > 0.5 {
+            total += boxed(j, short2, b) * params.share;
+        } else {
+            total += sample(j, long2, short2, b) * params.share;
+        }
         any = true;
     }
     if any {

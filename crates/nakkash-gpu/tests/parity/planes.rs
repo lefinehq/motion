@@ -2,10 +2,13 @@
 //! floats, laid onto a grid through its landings by the GPU and by the CPU
 //! reference ([`project_on_cpu`]), seen at its own size, shrunk, in steep
 //! perspective, turned, through several maps at once and crossing the
-//! camera.
+//! camera; by footprint, as a projected layer is, and by box, as a corner
+//! pin is ([D89]).
+//!
+//! [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
 
 use nakkash_raster::kurbo::Affine;
-use nakkash_raster::{Accelerator, Homography, Landing, Pixels, Texels, project_on_cpu};
+use nakkash_raster::{Accelerator, Filter, Homography, Landing, Pixels, Texels, project_on_cpu};
 
 use super::{Random, check, gpu, pattern};
 
@@ -19,6 +22,7 @@ fn landing(map: Homography) -> Landing {
     Landing {
         to_buffer: map.inverse().expect("an invertible map"),
         landed: [0, 0, usize::from(WIDTH), usize::from(HEIGHT)],
+        filter: Filter::Footprint,
     }
 }
 
@@ -38,6 +42,18 @@ fn cases() -> Vec<(&'static str, Vec<Landing>)> {
     vec![
         ("whole px", vec![shifted]),
         ("shrunk", vec![landing(map(0.23, 0.0, 0.0, (40.0, 30.0)))]),
+        // Footprints a hair off a whole px and off two, where the box
+        // filter's probes and copies would turn on the last bit but for
+        // its slack: a pin keeping its size, and a pin of a plane drawn at
+        // twice its size.
+        (
+            "near a whole px",
+            vec![landing(map(1.0 + 3e-7, 2e-7, 1e-8, (7.3, -3.1)))],
+        ),
+        (
+            "near two px",
+            vec![landing(map(0.5 + 2e-7, -3e-7, 1e-8, (20.6, 11.2)))],
+        ),
         (
             "enlarged",
             vec![landing(map(2.7, 0.2, 0.0, (-60.0, -20.0)))],
@@ -85,7 +101,16 @@ fn planes_lay_as_on_the_cpu() {
     }
     let rgba = bytes(&speckled);
     let held = gpu.upload(&speckled).expect("uploaded");
-    for (name, landings) in cases() {
+    let filtered = |filter: Filter| {
+        cases().into_iter().map(move |(name, landings)| {
+            let landings: Vec<Landing> = landings
+                .into_iter()
+                .map(|l| Landing { filter, ..l })
+                .collect();
+            (name, filter, landings)
+        })
+    };
+    for (name, filter, landings) in filtered(Filter::Footprint).chain(filtered(Filter::Box)) {
         let share = 1.0 / landings.len() as f32;
         let buffers = [
             (
@@ -107,7 +132,11 @@ fn planes_lay_as_on_the_cpu() {
                 .project(buffer, &landings, share, WIDTH, HEIGHT)
                 .and_then(|r| gpu.download(&r))
                 .expect("laid on the GPU");
-            check("plane", &format!("{name} {kind}"), &cpu, &on_gpu);
+            let what = match filter {
+                Filter::Footprint => "plane",
+                Filter::Box => "pin",
+            };
+            check(what, &format!("{name} {kind}"), &cpu, &on_gpu);
         }
     }
 }
@@ -124,16 +153,19 @@ fn a_plane_far_from_the_origin_of_a_4k_grid_lays_as_on_the_cpu() {
         [-0.04, 0.85, 1930.0],
         [0.0, 0.0002, 1.0],
     ]);
-    let landings = [Landing {
-        to_buffer: map.inverse().expect("an invertible map"),
-        landed: [3400, 1850, 3840, 2160],
-    }];
-    let cpu = project_on_cpu(gpu, Texels::Floats(&buffer), &landings, 1.0, width, height)
-        .and_then(|r| gpu.download(&r))
-        .expect("laid on the CPU");
-    let on_gpu = gpu
-        .project(Texels::Floats(&buffer), &landings, 1.0, width, height)
-        .and_then(|r| gpu.download(&r))
-        .expect("laid on the GPU");
-    check("plane", "far corner of 4K", &cpu, &on_gpu);
+    for (what, filter) in [("plane", Filter::Footprint), ("pin", Filter::Box)] {
+        let landings = [Landing {
+            to_buffer: map.inverse().expect("an invertible map"),
+            landed: [3400, 1850, 3840, 2160],
+            filter,
+        }];
+        let cpu = project_on_cpu(gpu, Texels::Floats(&buffer), &landings, 1.0, width, height)
+            .and_then(|r| gpu.download(&r))
+            .expect("laid on the CPU");
+        let on_gpu = gpu
+            .project(Texels::Floats(&buffer), &landings, 1.0, width, height)
+            .and_then(|r| gpu.download(&r))
+            .expect("laid on the GPU");
+        check(what, "far corner of 4K", &cpu, &on_gpu);
+    }
 }

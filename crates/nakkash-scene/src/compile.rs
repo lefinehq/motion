@@ -202,6 +202,28 @@ impl Build<'_> {
                     .collect()
             })
             .collect();
+        // Validation has checked that each pivot names another layer of
+        // this list.
+        let pivots: Vec<Vec<Option<[usize; 4]>>> = layers
+            .iter()
+            .map(|layer| {
+                layer
+                    .fx
+                    .iter()
+                    .filter(|item| !item.hidden)
+                    .map(|item| {
+                        let ids = item.pivots.as_ref()?.ids();
+                        let index = |id: &String| layers.iter().position(|l| &l.id == id);
+                        Some([
+                            index(&ids[0])?,
+                            index(&ids[1])?,
+                            index(&ids[2])?,
+                            index(&ids[3])?,
+                        ])
+                    })
+                    .collect()
+            })
+            .collect();
         // A pivot draws nothing, so its motion blur blurs every layer it
         // carries, at any depth ([D57]).
         //
@@ -226,6 +248,7 @@ impl Build<'_> {
                     matte: mattes[i],
                     inputs: inputs[i].clone(),
                     outlines: outlines[i].clone(),
+                    pivots: pivots[i].clone(),
                     ..node(
                         layer,
                         self.scene,
@@ -462,6 +485,7 @@ fn node(
         three_d: layer.three_d,
         inputs: Vec::new(),
         outlines: Vec::new(),
+        pivots: Vec::new(),
     }
 }
 

@@ -1,6 +1,6 @@
 # Advanced examples
 
-Five scenes written from scratch that use what nakkash can do: text animators, shape operations, a 2.5D camera, nested compositions with effects, and one master that `nakkash batch` turns into several formats. Each scene uses the built-in `Inter Variable` and needs no media files.
+Six scenes written from scratch that use what nakkash can do: text animators, shape operations, a 2.5D camera, nested compositions with effects, an app pinned onto a moving phone, and one master that `nakkash batch` turns into several formats. Each scene uses the built-in `Inter Variable` and needs no media files.
 
 Each scene has one small motion system, and every move in it uses the same few curves and durations:
 
@@ -75,6 +75,18 @@ nakkash render examples/advanced/<scene>.json --out <scene>.mp4
 - **Blend modes and mattes:** the sheen is `add`-blended and matted to a hidden copy of the card's shape; a soft blurred orb is blended with `screen`.
 - **A `pivot`** carries the card, its sheen and the call-outs, and floats them as one.
 - **`in` behaviours** on words and whole layers (`fade-up word … stagger 2f`, `pop`), and `mblur` on the moves that would otherwise judder.
+
+## App on a tracked phone
+
+[`screen-pin.json`](screen-pin.json), 6 s. A phone drifts in the hand, turning a little in perspective, and the app on its screen follows it exactly while its rows come in, beside a headline.
+
+- **`corner-pin` on tracked corners:** `phone-tl`, `-tr`, `-br` and `-bl` are corner pivots with a linear key every third frame, parented to a `footage` layer, as `nakkash ml track scene.json footage.tracks[phone] --to phone --corners` writes them from a clip; here they stand in for a tracked phone, so the scene needs no media. `{"corner-pin":[0,0],"pivots":"phone"}` lays each comp's box onto them, the phone's body and the app alike, so the screen's bezel, drawn inside the app's box, stays where the body has it in every frame. With footage, only the app would be pinned.
+- **Sharp pinned text:** the 13–18 px text of the app is drawn at twice the size it lands and laid with the pin's box filter, so it neither aliases nor blurs as the phone turns.
+- **Effects after the pin:** the body's `drop-shadow` follows the corner pin, so it falls from the pinned outline.
+- **Motion blur** (`mblur`) lays each pin through its corners at each moment of the shutter.
+- **Inside the app:** each message is a `row` composition whose slots (`$who`, `$what`, `$when`, `$tone`) its instance sets through `overrides`; the rows `fade-up` 4 frames apart and the button pops, at the app's own labels (`rows`, `cta`), so they play in the pinned app's time.
+
+To pin onto real footage instead, give the video layer a `tracks` entry with the phone's `corners` on its first frame, run `nakkash ml bake` and `nakkash ml track scene.json <video>.tracks[phone] --to phone --corners`, and keep only the `ui` layer.
 
 ## Programmable variants
 

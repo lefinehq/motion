@@ -24,6 +24,7 @@ mod effects;
 mod frames;
 mod generate;
 mod masks;
+mod pins;
 mod planes;
 
 use nakkash_gpu::Gpu;
@@ -48,6 +49,10 @@ const TOLERANCES: &[(&str, f32)] = &[
     ("drop-shadow", 1e-4),
     ("chain", 5e-5),
     ("plane", 1e-4),
+    // A corner pin's box filter: a probe's count and its copy are whole
+    // numbers chosen from a float, so a px on the edge of a choice reads
+    // a neighbouring grid of probes.
+    ("pin", 1e-4),
     ("mask", 1e-5),
     // The colour effects divide by alpha as the CPU rounds it, so most
     // differ by a last bit or two of their result.

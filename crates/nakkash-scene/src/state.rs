@@ -55,6 +55,11 @@ pub struct NodeState {
     /// Its own time at this frame, in seconds, which effects that run
     /// over time, such as particles, read.
     pub seconds: f64,
+    /// Its corner pins at this frame, one for each `corner-pin` among its
+    /// `fx`, in order ([D89]).
+    ///
+    /// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+    pub pins: Vec<crate::pin::Pin>,
 }
 
 /// What a node draws at one frame.
@@ -191,6 +196,7 @@ impl NodeState {
             mask: Vec::new(),
             fx: Vec::new(),
             seconds: 0.0,
+            pins: Vec::new(),
         }
     }
 

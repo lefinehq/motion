@@ -31,6 +31,7 @@ use vello_cpu::kurbo::Affine;
 
 use crate::blend::BlendMode;
 use crate::effect::{Drawing, Effect, Input, Space};
+use crate::homography::Homography;
 use crate::list::MatteMode;
 use crate::mask::{MaskCoverage, combine_on_cpu};
 use crate::par;
@@ -542,15 +543,52 @@ impl Surface {
         }
     }
 
+    /// These pixels laid on their own grid through each of `maps`, from
+    /// px of the grid to px of the grid, each adding an equal share:
+    /// sampled by footprint from their halved copies, in the accelerator
+    /// when they are held there ([`Accelerator::project`]), else on the
+    /// CPU. No maps lay nothing.
+    pub(crate) fn warped(
+        &self,
+        maps: &[Homography],
+        accel: Option<&dyn Accelerator>,
+    ) -> Result<Surface> {
+        let share = 1.0 / maps.len().max(1) as f32;
+        match self {
+            Surface::Held(held) => {
+                let accel = held_by(accel);
+                let (width, height) = (held.width(), held.height());
+                let landings = projected::warp_landings(None, maps, width, height);
+                accel
+                    .project(Texels::Held(held), &landings, share, width, height)
+                    .map(Surface::Held)
+            }
+            Surface::Cpu(pixels) => Ok(Surface::Cpu(projected::warp(pixels, maps, share))),
+        }
+    }
+
     /// Runs `effect` on these pixels in `space`: with the accelerator's
     /// kernel when it has one, moving the pixels there, or else on the
-    /// CPU, bringing them back.
+    /// CPU, bringing them back. A corner pin lays them through its map on
+    /// their grid where they are ([`Surface::warped`]).
     pub(crate) fn effect(
         &mut self,
         effect: &Effect,
         space: &Space,
         accel: Option<&dyn Accelerator>,
     ) -> Result<()> {
+        if effect.pins() {
+            let (width, height) = match self {
+                Surface::Held(held) => (held.width(), held.height()),
+                Surface::Cpu(pixels) => (pixels.width(), pixels.height()),
+            };
+            let maps: Vec<Homography> = effect
+                .pin_on_grid(space, width, height)
+                .into_iter()
+                .collect();
+            *self = self.warped(&maps, accel)?;
+            return Ok(());
+        }
         let Some(accel) = accel else {
             effect.apply(self.pixels_mut(None)?, space);
             return Ok(());

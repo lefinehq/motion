@@ -101,6 +101,9 @@ pub struct ItemKind {
     /// outline it follows, if it may follow one: the path a spectrum's
     /// bands stand along.
     pub outline: Option<&'static str>,
+    /// The key that names the layers its corners rest on, if it pins
+    /// corners to layers: a corner pin's `pivots` ([`Pivots`]).
+    pub pivots: Option<&'static str>,
     /// Whether what it draws changes with its layer's time on its own,
     /// with no property animated: particles fly on as time passes. A layer
     /// with such an effect is drawn afresh at each moment of its motion
@@ -221,6 +224,38 @@ pub struct Item {
     pub input: Option<String>,
     /// The id of the mask its kind's outline key names, among its layer's.
     pub outline: Option<String>,
+    /// The layers its kind's pivots key names, in the same list.
+    pub pivots: Option<Pivots>,
+}
+
+/// The suffixes of the four corner pivots `nakkash ml track … --corners`
+/// writes after a pivot's id, in corner order: top left, then clockwise
+/// ([D88]).
+///
+/// [D88]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d88-a-track-is-baked-once-and-applied-as-keys-on-pivots
+pub const CORNER_SUFFIXES: [&str; 4] = ["tl", "tr", "br", "bl"];
+
+/// The four layers a corner pin's corners rest on, as a scene names them
+/// ([D89]): each corner rests where its layer's anchor lands.
+///
+/// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pivots {
+    /// The corner pivots of the pivot with this id: `<id>-tl`, `<id>-tr`,
+    /// `<id>-br` and `<id>-bl` ([`CORNER_SUFFIXES`]).
+    Corners(String),
+    /// Four layers by id: top left, top right, bottom right, bottom left.
+    Each([String; 4]),
+}
+
+impl Pivots {
+    /// The ids of the four layers, top left first and clockwise.
+    pub fn ids(&self) -> [String; 4] {
+        match self {
+            Pivots::Corners(id) => CORNER_SUFFIXES.map(|suffix| format!("{id}-{suffix}")),
+            Pivots::Each(ids) => ids.clone(),
+        }
+    }
 }
 
 impl Item {
@@ -985,6 +1020,44 @@ pub static BEZIER_WARP: Registry = Registry {
             &[],
             false,
             "how far the left side's handle nearer its top moves from where it rests, in px of the layer",
+        ),
+    ],
+};
+
+/// The properties of `corner-pin` ([D89]): its four corners, each in px
+/// it moves from where it rests, on the layer's box or on its pivot.
+///
+/// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+pub static CORNER_PIN: Registry = Registry {
+    kind: "corner-pin",
+    rows: &[
+        point(
+            "top-left",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the top-left corner moves from where it rests, in px of the layer",
+        ),
+        point(
+            "top-right",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the top-right corner moves from where it rests, in px of the layer",
+        ),
+        point(
+            "bottom-right",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the bottom-right corner moves from where it rests, in px of the layer",
+        ),
+        point(
+            "bottom-left",
+            [0.0, 0.0],
+            &[],
+            false,
+            "how far the bottom-left corner moves from where it rests, in px of the layer",
         ),
     ],
 };
@@ -2201,6 +2274,7 @@ pub static SHAPES: [ItemKind; 12] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "items under one transform and opacity; paints in it draw the outlines above them, \
               in it and in its groups",
@@ -2213,6 +2287,7 @@ pub static SHAPES: [ItemKind; 12] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "a rectangle centred on `position`, with rounded corners",
     },
@@ -2224,6 +2299,7 @@ pub static SHAPES: [ItemKind; 12] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "an ellipse centred on `position`",
     },
@@ -2249,6 +2325,7 @@ pub static SHAPES: [ItemKind; 12] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "a star or a regular polygon centred on `position`, its first point straight up",
     },
@@ -2260,6 +2337,7 @@ pub static SHAPES: [ItemKind; 12] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "a bézier outline, open or closed",
     },
@@ -2276,6 +2354,7 @@ pub static SHAPES: [ItemKind; 12] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "paints the inside of the outlines above it",
     },
@@ -2300,6 +2379,7 @@ pub static SHAPES: [ItemKind; 12] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "paints a line along the outlines above it",
     },
@@ -2317,6 +2397,7 @@ pub static SHAPES: [ItemKind; 12] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "cuts the outlines above it, and those in the groups above it, down to a stretch \
               of their length, for every paint that draws them",
@@ -2337,6 +2418,7 @@ pub static SHAPES: [ItemKind; 12] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "replaces the outlines above it, and those in the groups above it, by one outline \
               in its group; the paints above it no longer draw them",
@@ -2349,6 +2431,7 @@ pub static SHAPES: [ItemKind; 12] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "rounds the sharp corners of the outlines above it, and of those in the groups \
               above it, for every paint that draws them",
@@ -2367,6 +2450,7 @@ pub static SHAPES: [ItemKind; 12] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "draws everything above it in its group again as copies, outlines and paints \
               alike, each moved, turned, scaled and faded one step further",
@@ -2384,6 +2468,7 @@ pub static SHAPES: [ItemKind; 12] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "moves the outlines above it, and those in the groups above it, out by an amount, \
               for every paint that draws them",
@@ -2391,7 +2476,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 44] = [
+pub static EFFECTS: [ItemKind; 45] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -2407,6 +2492,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "turns every drawn pixel of the layer one colour, keeping its coverage; inverted, \
               fills the rest of the layer's box",
@@ -2425,6 +2511,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "lays the layer, at `source-opacity`, over a solid of `color` at `opacity` that \
               fills the layer's box",
@@ -2437,6 +2524,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "moves, scales, turns and fades everything the layer draws, inside the layer: \
               `anchor` sits at `position`, both at the origin by default, so a scale or turn \
@@ -2450,6 +2538,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "maps each colour's luminance from `black` to `white`",
     },
@@ -2467,6 +2556,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "turns hues and changes saturation and lightness",
     },
@@ -2537,6 +2627,7 @@ pub static EFFECTS: [ItemKind; 44] = [
             reads: Reads::Drawing,
         }),
         outline: None,
+        pivots: None,
         timed: false,
         doc: "sends a phase read off each pixel, plus one read off the `add` layer, round a cycle \
               of colours that replace the pixel's",
@@ -2555,6 +2646,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "changes exposure in stops, as a camera does",
     },
@@ -2571,6 +2663,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "maps the levels from `input-black`–`input-white` to `output-black`–`output-white` \
               through `gamma`, clipped to 0 to 1",
@@ -2614,6 +2707,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: true,
         doc: "draws particles a producer sends out over time, in place of the layer",
     },
@@ -2677,6 +2771,7 @@ pub static EFFECTS: [ItemKind; 44] = [
             reads: Reads::Drawing,
         }),
         outline: None,
+        pivots: None,
         timed: false,
         doc: "moves each pixel by the levels of another layer, the map",
     },
@@ -2727,6 +2822,7 @@ pub static EFFECTS: [ItemKind; 44] = [
             reads: Reads::Laid,
         }),
         outline: None,
+        pivots: None,
         timed: false,
         doc: "takes the layer's alpha from a level of another layer, the matte, or of its own \
               drawing before its effects when it names none",
@@ -2764,6 +2860,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "rebuilds each channel from a level of the layer's straight colour: a channel, \
               luminance, hue, lightness, saturation, or fixed `full` or `off`",
@@ -2819,6 +2916,7 @@ pub static EFFECTS: [ItemKind; 44] = [
             reads: Reads::Sound,
         }),
         outline: Some("along"),
+        pivots: None,
         timed: false,
         doc: "draws the spectrum of another layer's sound at the layer's time: one band a \
               frequency from `from` to `to`, as tall as that frequency is loud; `along` names \
@@ -2862,6 +2960,7 @@ pub static EFFECTS: [ItemKind; 44] = [
             reads: Reads::Sound,
         }),
         outline: Some("along"),
+        pivots: None,
         timed: false,
         doc: "draws the wave of another layer's sound at the layer's time, `samples` points \
               along the line from `start` to `end`, or along the outline of the layer's mask \
@@ -2888,6 +2987,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "repeats the layer in tiles around a point",
     },
@@ -2899,6 +2999,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "moves the layer's content within its box, wrapping around",
     },
@@ -2933,6 +3034,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "moves each pixel by a smooth noise",
     },
@@ -2944,6 +3046,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "reflects one side of a line through the layer onto the other",
     },
@@ -2961,6 +3064,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "turns the layer between rows and columns and rings about its middle",
     },
@@ -2994,6 +3098,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "bends the layer about `center` as a lens with a wide field of view draws it, \
               or undoes that bend",
@@ -3006,9 +3111,24 @@ pub static EFFECTS: [ItemKind; 44] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "lays the layer's box on a patch whose four sides are cubic curves through its \
               corners and handles, each moved from where it rests on the box",
+    },
+    ItemKind {
+        name: "corner-pin",
+        role: Role::Effect,
+        registry: &CORNER_PIN,
+        primary: Primary::Property("top-left"),
+        settings: &[],
+        input: None,
+        outline: None,
+        pivots: Some("pivots"),
+        timed: false,
+        doc: "lays the layer's box onto four corners through the perspective that takes it \
+              there, each corner moved from where it rests: the box's corner, or where the \
+              layer `pivots` names for it lands",
     },
     ItemKind {
         name: "repeat-tile",
@@ -3025,6 +3145,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "repeats the layer's box around it, growing the box",
     },
@@ -3041,6 +3162,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "fills the layer with a gradient between two colours",
     },
@@ -3059,6 +3181,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "fills the layer with four colours at four points, blended",
     },
@@ -3075,6 +3198,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "draws a beam `length` of the line from `start` to `end` long, travelling along \
               it with `time`, its thickness running from `start-thickness` to \
@@ -3138,6 +3262,7 @@ pub static EFFECTS: [ItemKind; 44] = [
             reads: Reads::Drawing,
         }),
         outline: Some("along"),
+        pivots: None,
         timed: false,
         doc: "draws strokes along the contours where a level of the layer's drawing, or of the \
               layer `layer` names, crosses `threshold`, or along the outline of its mask `along` \
@@ -3172,6 +3297,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "draws a grid of lines",
     },
@@ -3183,6 +3309,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "hides the layer in stripes, from one side of each",
     },
@@ -3194,6 +3321,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "hides the layer behind a straight edge that crosses its box, from 0 (all shown) \
               to 1 (all hidden)",
@@ -3211,6 +3339,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "cuts a hole in the layer, a polygon or star around `center`",
     },
@@ -3262,6 +3391,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "fills the layer with grey noise in octaves",
     },
@@ -3286,6 +3416,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "blurs the layer with a Gaussian",
     },
@@ -3310,6 +3441,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "blurs the layer with boxes run one after another",
     },
@@ -3343,6 +3475,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "streaks the layer along rays out from a point, or rings round it",
     },
@@ -3387,6 +3520,7 @@ pub static EFFECTS: [ItemKind; 44] = [
             reads: Reads::Drawing,
         }),
         outline: None,
+        pivots: None,
         timed: false,
         doc: "smears the layer along the slope of a map's level, its own without one",
     },
@@ -3435,6 +3569,7 @@ pub static EFFECTS: [ItemKind; 44] = [
             reads: Reads::Drawing,
         }),
         outline: None,
+        pivots: None,
         timed: false,
         doc: "spreads each pixel over the shape of a lens's iris, by a map's levels or evenly",
     },
@@ -3451,6 +3586,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "draws the layer's shape as a soft shadow behind it",
     },
@@ -3462,6 +3598,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "lights the layer as if its alpha rose from its outline over `thickness` px, \
               from `angle`",
@@ -3501,6 +3638,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "adds the blurred light of the layer's bright colours to it",
     },
@@ -3512,6 +3650,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "sharpens edges by moving pixels away from their neighbours",
     },
@@ -3528,6 +3667,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "draws where the colours change as lines, by each channel's slope across the \
               pixels around",
@@ -3540,6 +3680,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "turns colours to grey, each hue as light as its share says",
     },
@@ -3551,6 +3692,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         settings: &[],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "maps each channel's levels through a curve: first the channel's own, then `rgb`",
     },
@@ -3567,6 +3709,7 @@ pub static EFFECTS: [ItemKind; 44] = [
         }],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "turns each level of a channel into its opposite",
     },
@@ -3755,6 +3898,7 @@ pub static ANIMATORS: [ItemKind; 1] = [ItemKind {
     ],
     input: None,
     outline: None,
+    pivots: None,
     timed: false,
     doc: "applies its properties to the parts of the text its selectors choose, each part in \
           its turn when it staggers",
@@ -3790,6 +3934,7 @@ pub static PART_KINDS: [ItemKind; 1] = [ItemKind {
     settings: &[],
     input: None,
     outline: None,
+    pivots: None,
     timed: false,
     doc: "how strongly one part is chosen, in the order the selector counts them",
 }];
@@ -3836,6 +3981,7 @@ pub static SELECTORS: [ItemKind; 2] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "chooses the parts between `start` and `end`, moved by `offset`",
     },
@@ -3860,6 +4006,7 @@ pub static SELECTORS: [ItemKind; 2] = [
         ],
         input: None,
         outline: None,
+        pivots: None,
         timed: false,
         doc: "chooses each part by its own `part` item, the first part by the first item; a part \
           past the last item is not chosen",
@@ -3933,6 +4080,7 @@ pub static MASKS: [ItemKind; 1] = [ItemKind {
     ],
     input: None,
     outline: None,
+    pivots: None,
     timed: false,
     doc: "cuts what the layer draws to an outline, before its effects",
 }];

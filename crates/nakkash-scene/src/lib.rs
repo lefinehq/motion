@@ -13,6 +13,7 @@ mod expand;
 mod graph;
 mod level;
 mod merge;
+pub mod pin;
 mod rect;
 mod repeater;
 mod round;

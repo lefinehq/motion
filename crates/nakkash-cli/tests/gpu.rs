@@ -28,6 +28,7 @@ fn example(path: &str) -> PathBuf {
 #[case::ui_reveal("advanced/ui-reveal.json")]
 #[case::camera_depth("advanced/camera-depth.json")]
 #[case::kinetic_type("advanced/kinetic-type.json")]
+#[case::screen_pin("advanced/screen-pin.json")]
 #[case::social("social-916.json")]
 #[case::title_card("title-card.json")]
 fn a_frame_drawn_with_the_gpu_matches_the_cpu(#[case] scene: &str) {

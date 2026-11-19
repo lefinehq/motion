@@ -135,9 +135,17 @@ fn evaluate_nodes(graph: &SceneGraph, comp: &CompGraph, frame: f64) -> FrameStat
                 mask: items_at(&node.mask, local),
                 fx: items_at(&node.fx, local),
                 seconds: local / fps,
+                pins: Vec::new(),
             }
         })
         .collect();
+    // Corner pins rest on where other nodes land, so they are resolved
+    // once every node is placed.
+    let mut nodes: Vec<NodeState> = nodes;
+    let pins = crate::pin::of_frame(graph, comp, &nodes);
+    for (node, pins) in nodes.iter_mut().zip(pins) {
+        node.pins = pins;
+    }
     FrameState {
         frame,
         fps,

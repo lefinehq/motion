@@ -171,6 +171,7 @@ fn has_work(accel: &dyn Accelerator, nodes: &[Node]) -> bool {
             return false;
         };
         layer.projection.is_some()
+            || layer.pinned()
             || layer.effects.iter().any(|effect| {
                 accel.runs(effect)
                     || effect
@@ -252,6 +253,7 @@ fn makes_pixels(layer: &Layer) -> bool {
         || !layer.masks.is_empty()
         || !layer.motion.is_empty()
         || layer.effects.iter().any(Effect::reads_pixels)
+        || layer.pinned()
         || children_make_pixels(layer)
 }
 
@@ -823,7 +825,7 @@ impl<'a> Painter<'a> {
     /// other layer, and for one with motion-blur moves, which a projected
     /// layer takes as samples of its projection instead.
     fn whole_box(&self, layer: &Layer, parent: Affine) -> Option<Projection> {
-        if !layer.motion.is_empty() || projected::read_reach(layer).is_some() {
+        if !layer.motion.is_empty() || projected::grid_reach(layer).is_some() {
             return None;
         }
         let landed = (parent * layer.transform).transform_rect_bbox(layer.bounds?);
@@ -897,32 +899,9 @@ impl<'a> Painter<'a> {
         else {
             return Ok(());
         };
+        let clip = layer.shown_clip();
         let laid = self.laid(&plan, &maps, |sub| {
-            // The buffer holds the layer alone, so only a clip needs a
-            // layer of its own in it: what effects paint over the content
-            // composes with the buffer's own px either way.
-            let Some((path, rule)) = layer.shown_clip().as_ref().map(Clip::outline) else {
-                return sub.content(layer, steps, plan.local, Affine::IDENTITY);
-            };
-            if sub.floats() && makes_pixels(layer) {
-                // Its content is laid on the buffer's float canvas, cut
-                // to the clip there.
-                let mut alone = sub.alone();
-                alone.content(layer, steps, plan.local, Affine::IDENTITY)?;
-                let drawn = alone.finish()?.into_working(sub.accel)?;
-                let clip = sub.coverage(&Clip::Path(path, rule), plan.local);
-                let amount = Amount::constant(1.0).and(Share::Values(&clip));
-                return sub.lay_on_canvas(&drawn, BlendMode::Normal, &amount);
-            }
-            sub.pending = true;
-            sub.ctx.set_transform(plan.local);
-            sub.ctx.set_fill_rule(rule.to_vello());
-            sub.ctx.push_layer(Some(&path), None, None, None, None);
-            sub.open += 1;
-            let drawn = sub.content(layer, steps, plan.local, Affine::IDENTITY);
-            sub.ctx.pop_layer();
-            sub.open -= 1;
-            drawn
+            sub.on_plane(layer, steps, clip.as_ref(), plan.local)
         })?;
         if self.floats() {
             let matte = layer
@@ -953,6 +932,147 @@ impl<'a> Painter<'a> {
         let drawn = self.draw_pixels(laid);
         self.ctx.pop_layer();
         drawn
+    }
+
+    /// Draws `layer`'s content with `steps` on this painter, the buffer of
+    /// a plane, in coordinates `local` maps to its px, cut to `clip`.
+    fn on_plane(
+        &mut self,
+        layer: &Layer,
+        steps: &Steps<'_>,
+        clip: Option<&Clip>,
+        local: Affine,
+    ) -> Result<()> {
+        // The buffer holds the layer alone, so only a clip needs a layer
+        // of its own in it: what effects paint over the content composes
+        // with the buffer's own px either way.
+        let Some((path, rule)) = clip.map(Clip::outline) else {
+            return self.content(layer, steps, local, Affine::IDENTITY);
+        };
+        if self.floats() && makes_pixels(layer) {
+            // Its content is laid on the buffer's float canvas, cut to the
+            // clip there.
+            let mut alone = self.alone();
+            alone.content(layer, steps, local, Affine::IDENTITY)?;
+            let drawn = alone.finish()?.into_working(self.accel)?;
+            let clip = self.coverage(&Clip::Path(path, rule), local);
+            let amount = Amount::constant(1.0).and(Share::Values(&clip));
+            return self.lay_on_canvas(&drawn, BlendMode::Normal, &amount);
+        }
+        self.pending = true;
+        self.ctx.set_transform(local);
+        self.ctx.set_fill_rule(rule.to_vello());
+        self.ctx.push_layer(Some(&path), None, None, None, None);
+        self.open += 1;
+        let drawn = self.content(layer, steps, local, Affine::IDENTITY);
+        self.ctx.pop_layer();
+        self.open -= 1;
+        drawn
+    }
+
+    /// Draws a layer's content whose effect `steps.on_pixels[at]` pins it
+    /// onto four corners ([D89]), in coordinates `transform` maps to this
+    /// painter's grid. Its content, masks and the effects before the pin
+    /// are drawn on a plane of their own, at the most the pin magnifies
+    /// them, and laid onto the grid through `transform` and the pin's map,
+    /// as a projected layer is. The effects after the pin then run on what
+    /// was laid, with the box the pin grew. With motion blur, the pin is
+    /// laid through each moment's map, paired with the layer's move then
+    /// when nothing follows it; when effects follow it, what they drew is
+    /// laid through each moment's map relative to the frame's.
+    ///
+    /// [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+    fn pinned(
+        &mut self,
+        layer: &Layer,
+        steps: &Steps<'_>,
+        at: usize,
+        transform: Affine,
+        parent: Affine,
+    ) -> Result<()> {
+        let pin = &steps.on_pixels[at];
+        let after = &steps.on_pixels[at + 1..];
+        let before_effects = &layer.effects[..steps.drawing.len() + at];
+        let before = Steps {
+            drawing: steps.drawing,
+            on_pixels: &steps.on_pixels[..at],
+            moved: steps.moved,
+            motion: &[],
+            grows: crate::list::grow(before_effects),
+        };
+        // The box it pins: its own, the layer's, or what the layer draws.
+        let from = pin.pin_box(layer.bounds).or_else(|| {
+            match projected::extent_of(layer, before_effects) {
+                Extent::Box(b) => Some(b),
+                Extent::Nothing | Extent::Everywhere => None,
+            }
+        });
+        let Some(from) = from else {
+            return Ok(());
+        };
+        let frame = pin.pin_map(from);
+        let moments = pin.pin_moments(from);
+        let moves = steps.motion;
+        if !moves.is_empty() && !moments.is_empty() && moves.len() != moments.len() {
+            return Err(Diagnostic::new(
+                Kind::Conflict,
+                format!(
+                    "a corner pin with {} moments on a layer with {} moves",
+                    moments.len(),
+                    moves.len()
+                ),
+            )
+            .expected("as many moments of the pin as motion-blur moves of its layer"));
+        }
+        let to_grid = Homography::from(transform);
+        let count = moves.len().max(moments.len());
+        // The layer's own coordinates to the grid at moment `k`.
+        let at_moment = |k: usize| -> Option<Homography> {
+            let pin_k = match moments.is_empty() {
+                true => frame,
+                false => moments[k],
+            }?;
+            let move_k = moves.get(k).map_or(Homography::IDENTITY, |m| {
+                Homography::from(parent * *m * parent.inverse())
+            });
+            Some(move_k * to_grid * pin_k)
+        };
+        let blurred = count > 0;
+        let maps: Vec<Homography> = match blurred && after.is_empty() {
+            true => (0..count).filter_map(at_moment).collect(),
+            false => frame.map(|map| to_grid * map).into_iter().collect(),
+        };
+        let extent = projected::extent_of(layer, before_effects);
+        let reach = projected::reach_of(layer, before_effects);
+        let clip = layer.clip_after(before_effects);
+        let mut pixels = match Plan::pinned(extent, reach, &maps, self.width, self.height) {
+            Some(plan) => self.laid(&plan, &maps, |sub| {
+                sub.on_plane(layer, &before, clip.as_ref(), plan.local)
+            })?,
+            None => match (self.accel, self.floats()) {
+                (Some(accel), true) => Surface::Held(accel.transparent(self.width, self.height)?),
+                _ => Surface::Cpu(Pixels::transparent(self.width, self.height)),
+            },
+        };
+        // Each effect after it sees the box it and those before it grew.
+        let mut bounds = layer.bounds.map(|b| {
+            layer.effects[..=steps.drawing.len() + at]
+                .iter()
+                .fold(b, |b, e| e.grown(b))
+        });
+        for effect in after {
+            let space = self.space(effect, transform, layer, bounds)?;
+            pixels.effect(effect, &space, self.accel)?;
+            bounds = bounds.map(|b| effect.grown(b));
+        }
+        if blurred && !after.is_empty() {
+            let back = frame.and_then(|map| (to_grid * map).inverse());
+            let on_grid: Vec<Homography> = (0..count)
+                .filter_map(|k| Some(at_moment(k)? * back?))
+                .collect();
+            pixels = pixels.warped(&on_grid, self.accel)?;
+        }
+        self.draw_pixels(pixels)
     }
 
     /// What `draw` paints on a painter of `plan`'s buffer, laid onto this
@@ -1018,9 +1138,12 @@ impl<'a> Painter<'a> {
         transform: Affine,
         parent: Affine,
     ) -> Result<()> {
+        if let Some(at) = steps.on_pixels.iter().position(Effect::pins) {
+            return self.pinned(layer, steps, at, transform, parent);
+        }
         let moved = steps.moved.transform;
         let cuts = layer.masks.iter().any(|m| m.mode != MaskMode::None);
-        if steps.on_pixels.is_empty() && !cuts && layer.motion.is_empty() {
+        if steps.on_pixels.is_empty() && !cuts && steps.motion.is_empty() {
             self.pending = true;
             let drawn = self.nodes(&layer.children, transform * moved);
             let mut effects = EffectContext {
@@ -1050,7 +1173,7 @@ impl<'a> Painter<'a> {
                 // or motion blur needs it on the CPU before it is laid.
                 let held = self.accel.filter(|accel| match steps.on_pixels.first() {
                     Some(effect) => accel.runs(effect),
-                    None => layer.motion.is_empty(),
+                    None => steps.motion.is_empty(),
                 });
                 let mut painter = self.alone();
                 painter.nodes(&layer.children, at)?;
@@ -1062,7 +1185,7 @@ impl<'a> Painter<'a> {
         };
         // An effect that draws beyond the box grows the clip the layer
         // shows within, so the content is cut to its own clip first.
-        let clipped = match (&layer.clip, layer.effects_grow()) {
+        let clipped = match (&layer.clip, steps.grows) {
             (Some(clip), true) => Some(self.coverage(clip, transform)),
             _ => None,
         };
@@ -1081,9 +1204,9 @@ impl<'a> Painter<'a> {
             pixels.effect(effect, &space, self.accel)?;
             bounds = bounds.map(|b| effect.grown(b));
         }
-        if !layer.motion.is_empty() {
+        if !steps.motion.is_empty() {
             let drawn = pixels.into_pixels(self.accel)?;
-            pixels = Surface::Cpu(moved_average(&drawn, &layer.motion, parent));
+            pixels = Surface::Cpu(moved_average(&drawn, steps.motion, parent));
         }
         self.draw_pixels(pixels)
     }
@@ -1233,6 +1356,12 @@ struct Steps<'a> {
     on_pixels: &'a [Effect],
     /// What the moves among `drawing` do together.
     moved: Move,
+    /// The layer's motion-blur moves of a drawing made once, in its
+    /// parent's coordinates; none for a drawing laid once.
+    motion: &'a [Affine],
+    /// Whether an effect among them draws beyond the layer's box, so its
+    /// content is cut to its clip before they run.
+    grows: bool,
 }
 
 impl Steps<'_> {
@@ -1244,10 +1373,12 @@ impl Steps<'_> {
     /// canvas ([`makes_pixels`]), which the context cannot paint over, so
     /// its effects run on its pixels too.
     fn of(layer: &Layer, floated_children: bool) -> Steps<'_> {
+        // A corner pin lays what came before it as a plane, which is made
+        // of pixels, as an effect that reads them is.
         let reads = layer
             .effects
             .iter()
-            .position(Effect::reads_pixels)
+            .position(|e| e.reads_pixels() || e.pins())
             .unwrap_or(layer.effects.len());
         let on_canvas = !layer.masks.is_empty() || !layer.motion.is_empty() || floated_children;
         let (drawing, on_pixels) = match reads < layer.effects.len() || on_canvas {
@@ -1276,6 +1407,8 @@ impl Steps<'_> {
             drawing,
             on_pixels,
             moved,
+            motion: &layer.motion,
+            grows: layer.effects_grow(),
         }
     }
 }
@@ -1325,7 +1458,7 @@ fn moved_average(pixels: &Pixels, moves: &[Affine], parent: Affine) -> Pixels {
 
 /// The box of the pixels of `pixels` that are not clear, in pixels of the
 /// grid, or `None` when every one is.
-fn drawn_box(pixels: &Pixels) -> Option<Rect> {
+pub(crate) fn drawn_box(pixels: &Pixels) -> Option<Rect> {
     let width = usize::from(pixels.width());
     let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
     for (i, pixel) in pixels.data().iter().enumerate() {

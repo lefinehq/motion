@@ -18,6 +18,7 @@ use nakkash_format::address::SCENE;
 use nakkash_format::key::AT;
 use nakkash_format::shorthand::{Coord, Position};
 use nakkash_format::{Address, Layer, Scene};
+use nakkash_scene::pin::Fault;
 use nakkash_scene::{
     CompGraph, ContentState, Node, SceneGraph, Visit, address_of, changed_paths, evaluate,
     local_transform, walk,
@@ -336,6 +337,9 @@ struct Look {
     /// the frame ([`text_hold::may_hold`]); whether it is read depends on
     /// the frame before.
     inks: Option<Vec<Rect>>,
+    /// Whether it has a corner pin, and why the first that makes no quad
+    /// at the frame does not, when it is visible then.
+    pin: Option<Option<Fault>>,
 }
 
 /// What every node flagged in `fresh` shows at one frame; `laid` keeps the
@@ -366,6 +370,14 @@ fn look_at(
                 overlap::sort_inks(&mut inks);
                 inks
             });
+            let pin = (!visit.node.pins.is_empty()).then(|| {
+                visit
+                    .node
+                    .pins
+                    .iter()
+                    .find_map(|pin| pin.fault)
+                    .filter(|_| visit.visible && visit.opacity > 0.0)
+            });
             Look {
                 index: visit.index,
                 drawn,
@@ -373,6 +385,7 @@ fn look_at(
                 parent,
                 sample,
                 inks,
+                pin,
             }
         })
         .collect()
@@ -635,6 +648,36 @@ struct LayerScan {
     previous: Option<Sample>,
     /// Each craft rule's reading of it, parallel to [`CRAFT`].
     craft: Vec<CraftScan>,
+    /// What the `pin` rule has seen of it.
+    pin: PinScan,
+}
+
+/// What the `pin` rule has seen of one layer: whether it has a corner pin,
+/// and the runs of frames at which one makes no quad, each with why at its
+/// first frame.
+#[derive(Default)]
+struct PinScan {
+    /// It has a corner pin at some frame, so the rule runs on it.
+    ran: bool,
+    /// The failing runs: first and last frame, and the fault.
+    runs: Vec<(u32, u32, Fault)>,
+}
+
+impl PinScan {
+    /// Reads the layer at `frame`, later than any seen so far.
+    fn observe(&mut self, frame: u32, pin: Option<Option<Fault>>) {
+        let Some(fault) = pin else {
+            return;
+        };
+        self.ran = true;
+        let Some(fault) = fault else {
+            return;
+        };
+        match self.runs.last_mut() {
+            Some((_, last, _)) if *last + 1 == frame => *last = frame,
+            _ => self.runs.push((frame, frame, fault)),
+        }
+    }
 }
 
 /// What one craft rule has seen of one layer.
@@ -814,6 +857,7 @@ impl LayerScan {
             frame: Frame::Unseen,
             previous: None,
             craft: CRAFT.iter().map(|_| CraftScan::default()).collect(),
+            pin: PinScan::default(),
         }
     }
 
@@ -822,6 +866,7 @@ impl LayerScan {
     /// text being read, where its glyphs draw.
     fn observe(&mut self, frame: u32, look: Look, graph: &SceneGraph) -> (bool, Option<Vec<Rect>>) {
         self.layout(frame, &look, graph);
+        self.pin.observe(frame, look.pin);
         let now = look.sample;
         let before = self.previous.take().filter(|b| b.frame + 1 == frame);
         for (scan, rule) in self.craft.iter_mut().zip(CRAFT) {
@@ -898,6 +943,27 @@ impl LayerScan {
                 .into_iter()
                 .map(|run| run.into_violation(rule, address, fix.clone()));
             report.violations.extend(violations);
+        }
+        // A corner pin that makes no quad leaves its layer undrawn ([D89]).
+        //
+        // [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+        if self.pin.ran {
+            rules_run += 1;
+            match self.pin.runs.is_empty() {
+                true => report.passed += 1,
+                false => report.violations.extend(self.pin.runs.into_iter().map(
+                    |(first, last, fault)| Violation {
+                        severity: Severity::Error,
+                        code: Code::Pin,
+                        address: address.clone(),
+                        first_frame: first,
+                        last_frame: last,
+                        measure: Measure::Pin(fault),
+                        fix: None,
+                        with: None,
+                    },
+                )),
+            }
         }
         for (rule, mut scan) in CRAFT.iter().zip(self.craft) {
             scan.end(rule, graph);

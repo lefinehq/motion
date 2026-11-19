@@ -135,9 +135,29 @@ fn changed_nodes(before: &CompGraph, after: &CompGraph) -> Vec<bool> {
             if changed[i] {
                 continue;
             }
-            let sources = node.parent.into_iter().chain(node.matte.map(|(m, _)| m));
+            // A corner pin rests on where its pivots land, so it moves
+            // with them too ([D89]).
+            //
+            // [D89]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d89-a-corner-pin-lays-its-layers-plane-through-a-homography
+            let pinned = |n: &'_ Node| {
+                n.pivots
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .copied()
+                    .collect::<Vec<_>>()
+            };
+            let sources = node
+                .parent
+                .into_iter()
+                .chain(node.matte.map(|(m, _)| m))
+                .chain(pinned(node));
             let old = &before.nodes[i];
-            let old_sources = old.parent.into_iter().chain(old.matte.map(|(m, _)| m));
+            let old_sources = old
+                .parent
+                .into_iter()
+                .chain(old.matte.map(|(m, _)| m))
+                .chain(pinned(old));
             if sources
                 .chain(old_sources)
                 .any(|s| changed.get(s).copied().unwrap_or(true))

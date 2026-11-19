@@ -7,7 +7,7 @@ use serde_json::Value as Json;
 
 use super::{anim, follows_id_rule, typed_value};
 use crate::doc::{ItemDoc, ItemsDoc, List, Object, ValueDoc};
-use crate::item::{Item, ItemKind, Primary};
+use crate::item::{Item, ItemKind, Pivots, Primary};
 use crate::parse::key::{ANIM, HIDDEN, ID};
 use crate::property::{Prop, Target};
 use crate::table;
@@ -30,6 +30,7 @@ fn item(doc: &ItemDoc, kinds: &'static [ItemKind], fps: f64) -> Result<Item> {
     let mut items = Vec::new();
     let mut input = None;
     let mut outline = None;
+    let mut pivots = None;
     for (key, written) in &doc.values {
         let place = |e: Diagnostic| e.under(key.as_str());
         if key == kind.name {
@@ -57,6 +58,8 @@ fn item(doc: &ItemDoc, kinds: &'static [ItemKind], fps: f64) -> Result<Item> {
         } else if kind.outline == Some(key.as_str()) {
             let id: String = crate::de::from_value(written).map_err(place)?;
             outline = Some(id);
+        } else if kind.pivots == Some(key.as_str()) {
+            pivots = Some(pivots_of(written).map_err(place)?);
         } else if let Some(at) = table::position(kind.settings, key) {
             settings[at] = choice(written, kind, at).map_err(place)?;
         } else if let Some(prop) = kind.registry.prop(key) {
@@ -81,7 +84,33 @@ fn item(doc: &ItemDoc, kinds: &'static [ItemKind], fps: f64) -> Result<Item> {
         hidden: doc.hidden.unwrap_or(false),
         input,
         outline,
+        pivots,
     })
+}
+
+/// The layers a corner pin's corners rest on: the id of a pivot, whose four
+/// corner pivots they are, or the ids of four layers, top left first and
+/// clockwise.
+fn pivots_of(written: &Json) -> Result<Pivots> {
+    let expected = "the id of a pivot whose corner pivots `nakkash ml track --corners` wrote \
+                    (`\"screen\"` for `screen-tl` … `screen-bl`), or the ids of four layers, \
+                    top left first and clockwise";
+    let named = match written {
+        Json::String(id) => return Ok(Pivots::Corners(id.clone())),
+        Json::Array(ids) => ids.iter().map(Json::as_str).collect::<Option<Vec<&str>>>(),
+        _ => None,
+    };
+    match named.as_deref() {
+        Some(&[a, b, c, d]) => Ok(Pivots::Each([a, b, c, d].map(str::to_owned))),
+        Some(ids) => Err(Diagnostic::new(
+            Kind::Invalid,
+            format!("{} layer ids where a corner pin takes four", ids.len()),
+        )
+        .expected(expected)),
+        None => Err(
+            Diagnostic::new(Kind::WrongType, "not a layer id or a list of four").expected(expected),
+        ),
+    }
 }
 
 /// The one key of `doc` that names a kind of `kinds`.
@@ -137,6 +166,7 @@ fn keys(kind: &'static ItemKind) -> impl Iterator<Item = &'static str> {
         .chain(kind.settings.iter().map(|s| s.name))
         .chain(kind.input.map(|input| input.key))
         .chain(kind.outline)
+        .chain(kind.pivots)
         .chain(kind.registry.names())
         .filter(move |n| Some(*n) != primary)
 }
