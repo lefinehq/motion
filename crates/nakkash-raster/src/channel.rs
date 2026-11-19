@@ -7,6 +7,8 @@
 //! measure of its colour such as luminance or hue, or a fixed level. The
 //! effects here and the displacement map read pixels through it.
 
+use std::borrow::Cow;
+
 use vello_cpu::kurbo::{Affine, Point, Rect, Shape};
 
 use crate::colour::{BoxTest, LUMA, choice};
@@ -217,9 +219,14 @@ pub(crate) fn set_matte(pixels: &mut Pixels, values: &[ParamValue], space: &Spac
     };
     let test = area.test(pixels.width(), pixels.height());
     let target = test.bounds;
+    // A matte layer is read where it is; the layer's own pixels are copied,
+    // as they are written while read.
     let (matte, matte_box) = match &space.input {
-        Some(input) => (input.pixels().clone(), matte_bounds.unwrap_or(target)),
-        None => (pixels.clone(), target),
+        Some(input) => (
+            Cow::Borrowed(input.pixels()),
+            matte_bounds.unwrap_or(target),
+        ),
+        None => (Cow::Owned(pixels.clone()), target),
     };
     let to: Affine = area.transform;
     let width = usize::from(pixels.width());

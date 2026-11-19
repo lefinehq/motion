@@ -315,17 +315,20 @@ pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
         composite,
         operation,
     } = glow_plan(values, space);
-    let mut light = pixels.clone();
-    par::each(light.data_mut(), |_, p| {
+    // The bright parts, made from the layer as they are read: the layer is
+    // not copied first.
+    let light = par::map(pixels.data(), |_, &p| {
         let a = p[3];
         let luma = match a > 0.0 {
             true => (p[0] * weights[0] + p[1] * weights[1] + p[2] * weights[2]) / a,
             false => 0.0,
         };
-        if luma < threshold {
-            *p = [0.0; 4];
+        match luma < threshold {
+            true => [0.0; 4],
+            false => p,
         }
     });
+    let mut light = Pixels::from_data(pixels.width(), pixels.height(), light);
     blur(&mut light, &spread);
     par::each(light.data_mut(), |_, p| {
         *p = p.map(|c| (c * intensity).min(1.0));
