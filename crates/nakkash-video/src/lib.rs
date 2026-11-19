@@ -271,30 +271,17 @@ impl Clip {
         self.track.seconds()
     }
 
-    /// The frame showing `seconds` into the clip, or `None` before it starts
-    /// and from its end on.
-    ///
-    /// # Errors
-    /// The decoder's diagnostic, naming the file, for a sample it cannot
-    /// decode, and an I/O one when the file cannot be read.
-    pub fn frame_at(&self, seconds: f64) -> Result<Option<Arc<Frame>>> {
-        let Some(sample) = self.showing(seconds) else {
-            return Ok(None);
-        };
-        let named = |d: Diagnostic| Diagnostic {
-            message: format!("`{}`: {}", self.path.display(), d.message),
-            ..d
-        };
-        let kept = {
-            let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
-            self.decode_to(&mut state, sample).map_err(named)?
-        };
-        kept.frame().map(Some).map_err(named)
+    /// How many frames it shows.
+    pub fn frames(&self) -> usize {
+        self.shown.len()
     }
 
-    /// The sample showing at `seconds`, by its index in decode order: the
-    /// last to start at or before it, while it lasts.
-    fn showing(&self, seconds: f64) -> Option<usize> {
+    /// The index, in the order frames show, of the frame showing `seconds`
+    /// into the clip, or `None` before it starts and from its end on. A
+    /// baked matte's frames go by this index ([D85]).
+    ///
+    /// [D85]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d85-baked-results-enter-the-scene-as-requests-on-video-layers
+    pub fn shown_at(&self, seconds: f64) -> Option<usize> {
         let ticks = seconds * f64::from(self.track.timescale) - self.track.shift as f64;
         let ticks = match (ticks - ticks.round()).abs() < SNAP {
             true => ticks.round(),
@@ -304,10 +291,60 @@ impl Clip {
         // The last sample to show at or before `ticks`, if it still shows.
         let at = self
             .shown
-            .partition_point(|&i| samples[i].show as f64 <= ticks);
-        let i = *self.shown.get(at.checked_sub(1)?)?;
-        let s = samples[i];
-        (ticks < (s.show + i64::from(s.duration)) as f64).then_some(i)
+            .partition_point(|&i| samples[i].show as f64 <= ticks)
+            .checked_sub(1)?;
+        let s = samples[self.shown[at]];
+        (ticks < (s.show + i64::from(s.duration)) as f64).then_some(at)
+    }
+
+    /// When frame `index`, in the order frames show, starts to show, in
+    /// seconds into the clip.
+    ///
+    /// # Panics
+    /// When `index` is not below [`Clip::frames`].
+    pub fn start(&self, index: usize) -> f64 {
+        let sample = self.track.samples[self.shown[index]];
+        (sample.show + self.track.shift) as f64 / f64::from(self.track.timescale)
+    }
+
+    /// The frame showing `seconds` into the clip, or `None` before it starts
+    /// and from its end on.
+    ///
+    /// # Errors
+    /// The decoder's diagnostic, naming the file, for a sample it cannot
+    /// decode, and an I/O one when the file cannot be read.
+    pub fn frame_at(&self, seconds: f64) -> Result<Option<Arc<Frame>>> {
+        match self.shown_at(seconds) {
+            None => Ok(None),
+            Some(index) => self.frame(index).map(Some),
+        }
+    }
+
+    /// Frame `index`, in the order frames show.
+    ///
+    /// # Errors
+    /// An out-of-range diagnostic for an index past the last frame, and as
+    /// [`Clip::frame_at`].
+    pub fn frame(&self, index: usize) -> Result<Arc<Frame>> {
+        let Some(&sample) = self.shown.get(index) else {
+            return Err(Diagnostic::new(
+                Kind::OutOfRange,
+                format!(
+                    "`{}` has {} frames, so no frame {index}",
+                    self.path.display(),
+                    self.shown.len()
+                ),
+            ));
+        };
+        let named = |d: Diagnostic| Diagnostic {
+            message: format!("`{}`: {}", self.path.display(), d.message),
+            ..d
+        };
+        let kept = {
+            let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+            self.decode_to(&mut state, sample).map_err(named)?
+        };
+        kept.frame().map_err(named)
     }
 
     /// Decodes up to sample `target` and returns its picture, starting

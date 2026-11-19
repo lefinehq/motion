@@ -383,3 +383,23 @@ fn timing() {
     let scattered: Vec<usize> = (0..frames.min(60)).map(|n| n * 7919 % frames).collect();
     run("scattered", &scattered);
 }
+
+#[test]
+fn frames_go_by_their_index_in_the_order_they_show() {
+    let c = clip("rgb.mov");
+    assert_eq!(c.frames(), 10);
+    for i in 0..10 {
+        let start = c.start(i);
+        assert!(
+            (start - i as f64 / 10.0).abs() < 1e-9,
+            "frame {i} starts at {start}"
+        );
+        assert_eq!(c.shown_at(start), Some(i));
+        assert_eq!(c.shown_at(start + 0.05), Some(i));
+        assert_eq!(c.frame(i).unwrap().pixels, reference("rgb", i));
+    }
+    assert_eq!(c.shown_at(-0.01), None);
+    assert_eq!(c.shown_at(1.0), None);
+    let error = c.frame(10).unwrap_err();
+    assert_eq!(error.kind, Kind::OutOfRange);
+}
