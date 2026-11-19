@@ -1,0 +1,82 @@
+---
+source: crates/nakkash-ml/src/track/../../tests/unit/track/apply.rs
+expression: "serde_json::to_string_pretty(&layers[2..4]).unwrap()"
+---
+[
+  {
+    "id": "screen",
+    "pivot": true,
+    "parent": "phone",
+    "offset": "1s",
+    "stretch": 2,
+    "anim": {
+      "position": [
+        {
+          "t": "0s",
+          "v": [
+            500.0,
+            250.25
+          ]
+        },
+        {
+          "t": "0.066667s",
+          "v": [
+            600.0,
+            250.25
+          ]
+        }
+      ],
+      "scale": [
+        {
+          "t": "0s",
+          "v": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "t": "0.066667s",
+          "v": [
+            1.2346,
+            1.2346
+          ]
+        }
+      ],
+      "rotate": [
+        {
+          "t": "0s",
+          "v": 170.0
+        },
+        {
+          "t": "0.033333s",
+          "v": 185.0
+        }
+      ]
+    }
+  },
+  {
+    "id": "screen-tl",
+    "pivot": true,
+    "parent": "phone",
+    "offset": "1s",
+    "stretch": 2,
+    "anim": {
+      "position": [
+        {
+          "t": "0s",
+          "v": [
+            475.0,
+            225.25
+          ]
+        },
+        {
+          "t": "0.033333s",
+          "v": [
+            525.0,
+            225.25
+          ]
+        }
+      ]
+    }
+  }
+]

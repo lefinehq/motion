@@ -2000,6 +2000,8 @@ name = "nakkash-ml"
 version = "0.0.0"
 dependencies = [
  "base64",
+ "insta",
+ "kurbo",
  "nakkash-baked",
  "nakkash-format",
  "png",
@@ -2024,6 +2026,7 @@ dependencies = [
  "nakkash-ml",
  "ort",
  "png",
+ "serde",
  "serde_json",
  "tracing",
 ]
