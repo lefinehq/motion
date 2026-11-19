@@ -15,10 +15,19 @@ nakkash-ml = { path = "../nakkash-ml" }
 tracing.workspace = true
 # Exact pin: release candidates break their API (D81). `load-dynamic` only:
 # no build step downloads or links a runtime; the library is a locked file.
-ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-22"] }
+ort = { version = "=2.0.0-rc.15", default-features = false, features = [
+  "std",
+  "load-dynamic",
+  "api-22",
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-22", "coreml"] }
+ort = { version = "=2.0.0-rc.15", default-features = false, features = [
+  "std",
+  "load-dynamic",
+  "api-22",
+  "coreml",
+] }
 
 [dev-dependencies]
 nakkash-fonts = { path = "../nakkash-fonts" }
