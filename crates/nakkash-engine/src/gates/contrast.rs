@@ -187,7 +187,9 @@ const SAME_PLACE: f64 = 0.6;
 
 /// `texts` gathered into the copies of one text, in the order they come:
 /// at one sample, the same words over most of the same box as the first of
-/// the gathering. Each gathering is measured once.
+/// the gathering, or the same text layer drawn by instances of the same
+/// compositions (paths as long, to the same layer), wherever a split or a
+/// glitch has moved each. Each gathering is measured once.
 fn copies(texts: &[Text]) -> Vec<Vec<usize>> {
     let mut groups: Vec<Vec<usize>> = Vec::new();
     for (i, text) in texts.iter().enumerate() {
@@ -195,7 +197,8 @@ fn copies(texts: &[Text]) -> Vec<Vec<usize>> {
             let first = &texts[group[0]];
             first.sample == text.sample
                 && first.words == text.words
-                && overlap(first.area, text.area) >= SAME_PLACE
+                && (overlap(first.area, text.area) >= SAME_PLACE
+                    || instances(&first.ids, &text.ids))
         });
         match found {
             Some(group) => group.push(i),
@@ -203,6 +206,14 @@ fn copies(texts: &[Text]) -> Vec<Vec<usize>> {
         }
     }
     groups
+}
+
+/// Whether `a` and `b` lead to one text layer through instances of the
+/// same compositions: as long and the same last id, however many of the
+/// instances on the way differ, as a split built of instances of instances
+/// draws one title.
+fn instances(a: &[String], b: &[String]) -> bool {
+    a.len() == b.len() && a.len() > 1 && a.last() == b.last() && a != b
 }
 
 /// The share of the smaller of boxes `a` and `b` the two share.

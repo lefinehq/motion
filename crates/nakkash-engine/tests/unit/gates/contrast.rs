@@ -161,6 +161,30 @@ fn copies_of_one_text_are_read_together_against_what_is_behind_them() {
     );
 }
 
+#[test]
+fn instances_of_one_composition_are_copies_wherever_they_are_moved() {
+    // Two instances of one title composition, the back one moved up by
+    // most of a line, as a split or a glitch moves it: one white title
+    // over black. Alone, the back one reads 1:1 where the front one
+    // covers it in its own colour.
+    let scene = r##"{"nakkash":1,"size":"1080p","dur":"1s","bg":"#000000",
+        "comps":{"word":{"size":"1920x1080","dur":"1s","layers":[
+            {"id":"t","text":"NAKKASH","font":"Inter Variable 120 800","fill":"#FFFFFF","at":"center center"}]}},
+        "layers":[
+            {"id":"c-1","comp":"word","position":[960,470]},
+            {"id":"c","comp":"word"}]}"##;
+    let report = check(&Session::from_str(scene).expect("scene"), false).expect("contrast");
+    assert_eq!(report.to_string(), "OK 2");
+    assert!(instances(
+        &["c-2".into(), "t".into()],
+        &["c".into(), "t".into()]
+    ));
+    assert!(!instances(
+        &["a".into(), "t".into()],
+        &["a".into(), "u".into()]
+    ));
+}
+
 /// A scene whose one layer is a composition with `bg`, holding a title in
 /// `fill`, over a scene `bg` of off-white.
 fn titled_in_comp(fill: &str, bg: &str) -> String {
