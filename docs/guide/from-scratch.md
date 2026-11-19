@@ -19,7 +19,7 @@ These are the limits the check holds every scene to. They are measured, and an a
 
 | Rule | Limit | What to write |
 |---|---|---|
-| `offscreen` (error) | a layer that draws stays inside the canvas | Keep what is read inside the frame. A layer may wait wholly off the canvas and push in or out; it may not rest across the edge. |
+| `offscreen` (error) | a layer that draws stays inside the canvas | Keep what is read inside the frame. A layer may wait wholly off the canvas and push in or out, or cross the edge in motion for up to 0.5 s; it may not rest across the edge. |
 | `unsafe` | inside the title-safe area, 5% in from each side | Keep text and logos inside it: on 1080x1920, x 54 to 1026 and y 96 to 1824. |
 | `judder` | 11 px a frame on a 1080-px-tall canvas (scaled by height), for 1/8 s | A fast move needs `"mblur":true`; the fix says so. |
 | `easing` | a move's peak speed at least 1.4 times its mean | Give moves a curve (`out-cubic`, `in-out-cubic`, `out-back`), not `linear`. |
