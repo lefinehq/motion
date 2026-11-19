@@ -1,0 +1,10 @@
+{"nakkash":1,"size":"160x90","fps":12,"dur":"1s","bg":"#F4F1EA",
+"layers":[
+{"id":"product","video":null,"box":[160,90],
+ "cutout":{"prompts":[{"frame":0,"box":[40,20,120,70]},{"frame":6,"include":[[80,45]],"exclude":[[10,10]]}],
+           "edges":"refine","band":8,"agree":0.85,"smooth":{"amount":0.5,"tolerance":0.1}},
+ "tracks":[{"id":"label","prompts":[{"frame":0,"box":[60,30,100,60]}],
+            "corners":[[60,30],[100,30],[100,60],[60,60]],
+            "anchors":[{"frame":9,"corners":[[62,31],[102,31],[102,61],[62,61]]}]}]},
+{"id":"mark","rect":"12x8","fill":"#1D4ED8","at":"140 65"}
+]}
