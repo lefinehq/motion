@@ -29,6 +29,9 @@ jobs:
         run: rustup toolchain install
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      # The learned-model commands are behind the CLI's `ml` feature (D80),
+      # which the workspace build leaves off.
+      - run: cargo clippy --locked -p nakkash-cli --features ml --all-targets -- -D warnings
       - uses: taiki-e/install-action@cargo-nextest
       - run: cargo nextest run --locked --workspace
       # nextest does not run doctests.
@@ -41,6 +44,9 @@ jobs:
   # Line coverage must stay at or above 85%. nakkash-gpu is left out of the
   # report: its code runs only on a GPU, which this runner lacks, and its
   # parity tests run against the CPU on a machine with one (D74).
+  # nakkash-onnx is left out too: its code runs only with the locked
+  # inference runtime and the models, and its gates run where they are
+  # (D81, D86).
   coverage:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -50,7 +56,7 @@ jobs:
         run: rustup toolchain install
       - run: rustup component add llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - run: cargo llvm-cov --workspace --locked --exclude-from-report nakkash-gpu --fail-under-lines 85
+      - run: cargo llvm-cov --workspace --locked --exclude-from-report nakkash-gpu --exclude-from-report nakkash-onnx --fail-under-lines 85
 
   # Formatting, the one part of `check` that is quick enough for pull requests.
   fmt:
