@@ -9,6 +9,7 @@ use std::process::{Command, Output};
 use nakkash_engine::{Diagnostic, Session};
 use pretty_assertions::assert_eq;
 use rstest::rstest;
+use sha2::Digest;
 
 const LAUNCH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/launch.json");
 const OFFSCREEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/offscreen.json");
@@ -619,6 +620,37 @@ fn render_writes_one_numbered_png_per_frame() {
         png,
         session.render(4.0).expect("render").to_png().expect("png")
     );
+}
+
+#[test]
+fn render_digest_prints_each_frames_pixels_hash_and_writes_nothing() {
+    // Run in an empty folder, which must stay empty.
+    let out = scratch("render-digest");
+    let run = run(
+        Command::new(env!("CARGO_BIN_EXE_nakkash"))
+            .env_remove("NAKKASH_LOG")
+            .current_dir(&out),
+        &["render", LAUNCH, "--frames", "3-4", "--digest"],
+    );
+    assert_eq!(run.status.code(), Some(0), "{}", stderr(&run));
+    let session = Session::open(LAUNCH).expect("open");
+    let expected: String = [3u32, 4]
+        .iter()
+        .map(|&frame| {
+            let image = session.render(f64::from(frame)).expect("render");
+            let hash = sha2::Sha256::digest(image.pixels());
+            let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+            format!(
+                "frame {frame} {}x{} sha256:{hex}\n",
+                image.width(),
+                image.height()
+            )
+        })
+        .collect();
+    assert_eq!(stdout(&run), expected);
+    assert_eq!(fs::read_dir(&out).expect("read the folder").count(), 0);
+    let both = nakkash(&["render", LAUNCH, "--frame", "1", "--digest", "--out", "x"]);
+    assert_eq!(both.status.code(), Some(2), "{}", stderr(&both));
 }
 
 /// A small scene in a scratch folder, so the encoder is quick in a debug

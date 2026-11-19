@@ -241,8 +241,13 @@ enum Command {
         frame: Option<u32>,
         /// A video file, whose extension picks the container (`.mp4`), or
         /// else the folder the PNG files are written to, created if missing.
-        #[arg(long, value_name = "FILE|DIR")]
-        out: PathBuf,
+        #[arg(long, value_name = "FILE|DIR", required_unless_present = "digest")]
+        out: Option<PathBuf>,
+        /// Write nothing: print each frame's SHA-256, of its RGBA bytes as
+        /// a PNG would hold them, one line a frame in frame order. For
+        /// comparing renders bit for bit without wearing a disk.
+        #[arg(long, conflicts_with_all = ["out", "codec", "video_quality"])]
+        digest: bool,
         /// How colours are computed: `precise` for delivered frames, `fast`
         /// for previews.
         #[arg(long, value_enum, default_value = "precise")]
@@ -521,12 +526,13 @@ fn main() -> ExitCode {
             codec,
             video_quality,
             gpu,
+            digest,
         } => commands::render::Encoding::named(codec.as_deref(), video_quality.as_deref())
             .and_then(|encoding| {
                 commands::render::run(
                     &scene,
                     frames.or(frame.map(commands::render::Frames::one)),
-                    &out,
+                    out.as_deref().filter(|_| !digest),
                     quality.into(),
                     encoding,
                     commands::render::Backend::from_flag(gpu),
