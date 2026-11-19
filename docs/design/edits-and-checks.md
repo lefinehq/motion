@@ -87,6 +87,24 @@ fr-sale    1 edit  refused: `#00FF00` is not one of the scene's colours, which a
 1 rendered, 1 refused, 0 failed their check
 ```
 
+### Generated variants
+
+`nakkash vary scene.json` makes variants of a master without a list of edits: it walks the master along axes and checks each variant against it ([D78](decisions.md#d78-generated-variants-move-along-measured-axes-and-pass-when-they-add-no-error), [plan](../plans/2026-11-25-vary.md)).
+
+```text
+$ nakkash vary launch.json --seed 7 -n 3 --axis palette --improve
+v1   palette complementary 78° · improve               check OK  KNOWN 3  vary/v1/film.mp4
+v2   palette invert · improve                          check OK  KNOWN 2  vary/v2/film.mp4
+v3   palette analogous 24° · improve                   new: E contrast end/cta 40-52f 3.9:1 <4.5
+2 passed, 1 failed  ·  12.4 s  ·  vary
+```
+
+- **Axes**, as `--axis` or in a spec file (`--spec vary.json`): `palette[=rotate|analogous|complementary|invert]` and `brand=#0F62FE`, which map every colour of the scene through its palette slots, keeping each pair's contrast; `rows=<file>`, a CSV or JSON file of rows whose columns name a `$slot`, an `@role` or an `address.key`. Each variant takes one value of every axis given, drawn from the seed, or with `--apart` one axis alone, in turn. `--improve` applies the check's repairs after the axes, each kept only when the report is no worse, and on its own improves the master.
+- **Gating.** A variant passes when its report, rules and pixel gates, has no error its master's lacks, measured as bad or worse, with the noise of measuring at other moments and sizes (1 px, 0.1 of a ratio) taken off in its favour. A contrast error the variant adds is repaired first: the text's fill moves to the lightest or darkest of its hue, or of the scene's own colours under a `palette` lock, whichever clears it and adds nothing.
+- **Output:** `<out>/master.check.txt`, `report.json` and `sheet.png` (the master and each variant, a row of frames each); for each variant `<id>/scene.json`, `recipe.json`, `check.txt` (the report, then what is new), `film.mp4` and `sheet.png`. `--dry-run` writes the scenes and reports only; `--json` prints the report.
+- **Determinism.** The same master, spec and seed give the same scenes.
+- **Held.** What a lock holds no axis moves. A slot `nakkash slots --verify --mark` found changes nothing drawn (`"seen": false`) is held the same way: the palette leaves its colour and a row's value for it is refused, since moving it would show nothing.
+
 ### Editing one copy in a repeat
 
 `card3 fill=red` does not split the five cards into five separate layers. It stores a small override on card 3, and the repeat stays one compact layer.

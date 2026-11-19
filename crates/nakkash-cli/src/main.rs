@@ -123,6 +123,43 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Make generated variants of a scene along palette and content, and
+    /// improve it by the check's repairs: each is checked against the
+    /// scene and rendered with a sheet of its frames.
+    Vary {
+        /// Path to the master scene.
+        scene: PathBuf,
+        /// A spec file: the seed, the count and each axis's settings.
+        #[arg(long)]
+        spec: Option<PathBuf>,
+        /// The seed every draw starts from; the same seed gives the same
+        /// variants.
+        #[arg(long)]
+        seed: Option<u64>,
+        /// How many variants.
+        #[arg(long, short = 'n')]
+        count: Option<usize>,
+        /// An axis, repeatable: `palette[=rotate|analogous|complementary|invert]`,
+        /// `brand=#0F62FE`, `rows=<file>`.
+        #[arg(long = "axis", value_name = "AXIS")]
+        axes: Vec<String>,
+        /// Apply the check's repairs after the axes, keeping each only when
+        /// the report is no worse; alone, it improves the scene itself.
+        #[arg(long)]
+        improve: bool,
+        /// Each variant takes one axis alone, the axes in turn.
+        #[arg(long)]
+        apart: bool,
+        /// Check every variant, and render none.
+        #[arg(long)]
+        dry_run: bool,
+        /// Print the report as JSON.
+        #[arg(long)]
+        json: bool,
+        /// The folder the variants are written to.
+        #[arg(long, default_value = "vary")]
+        out: PathBuf,
+    },
     /// Run an agent on every brief of a set and record what each run cost
     /// and what `check` finds in the scene it wrote; scores nothing.
     Bench {
@@ -376,7 +413,8 @@ impl Command {
             | Command::Edit { scene, .. }
             | Command::Render { scene, .. }
             | Command::Diff { scene, .. }
-            | Command::Export { scene, .. } => scene,
+            | Command::Export { scene, .. }
+            | Command::Vary { scene, .. } => scene,
             Command::Import { project, .. } | Command::Inspect { project, .. } => project,
             Command::Fidelity { manifest, .. } | Command::Batch { manifest, .. } => manifest,
             Command::Bench { briefs, .. } => briefs,
@@ -439,6 +477,31 @@ fn main() -> ExitCode {
             check,
             json,
         } => commands::batch::run(&manifest, check, json),
+        Command::Vary {
+            scene,
+            spec,
+            seed,
+            count,
+            axes,
+            improve,
+            apart,
+            dry_run,
+            json,
+            out,
+        } => commands::vary::run(
+            &scene,
+            &commands::vary::Asked {
+                spec,
+                seed,
+                count,
+                axes,
+                improve,
+                apart,
+                dry_run,
+                json,
+                out,
+            },
+        ),
         Command::Bench {
             briefs,
             agent,
