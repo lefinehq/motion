@@ -275,7 +275,7 @@ const PRESETS: [Preset; 3] = [
         field_glow: 0.0,
         blur: 0.4,
         rings: Rings::Width(6.0),
-        title_glow: 0.0,
+        title_glow: 0.3,
         glitch: true,
         treatment: Treatment::Fill,
         case: Case::Upper,
