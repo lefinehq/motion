@@ -16,11 +16,11 @@ path = "src/main.rs"
 # Learned models (D80): `nakkash ml`, which fetches models, previews and
 # bakes. Off by default, so the default build links no inference runtime.
 ml = [
-    "dep:nakkash-baked",
-    "dep:nakkash-format",
-    "dep:nakkash-ml",
-    "dep:nakkash-onnx",
-    "dep:nakkash-video",
+  "dep:nakkash-baked",
+  "dep:nakkash-format",
+  "dep:nakkash-ml",
+  "dep:nakkash-onnx",
+  "dep:nakkash-video",
 ]
 
 [dependencies]
