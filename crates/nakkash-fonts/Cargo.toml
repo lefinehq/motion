@@ -17,7 +17,6 @@ fetch = ["dep:base64", "dep:nakkash-text", "dep:ureq"]
 nakkash-format = { path = "../nakkash-format" }
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 tracing.workspace = true
 base64 = { workspace = true, optional = true }
 nakkash-text = { path = "../nakkash-text", optional = true }

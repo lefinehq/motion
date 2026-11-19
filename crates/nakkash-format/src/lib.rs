@@ -23,6 +23,7 @@ pub mod preset;
 pub mod property;
 pub mod roles;
 mod scene;
+mod sha256;
 pub mod shorthand;
 pub mod slots;
 pub mod spline;
@@ -49,6 +50,7 @@ pub use scene::{
     AudioContent, BLEND_MODES, CameraContent, Comp, CompContent, Content, Document, Fitted,
     ImageContent, Layer, MediaFit, Scene, VideoContent,
 };
+pub use sha256::{Sha256, Sha256Hasher};
 pub use slots::{Listed, Slot, SlotType};
 
 /// Whether `value` is a colour in any form the scene writes one: `#RGB`,
