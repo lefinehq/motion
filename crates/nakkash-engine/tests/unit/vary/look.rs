@@ -406,3 +406,35 @@ fn a_look_moves_the_titles_displacement_by_its_amount() {
         json!(round(100.0 * step.title.displace))
     );
 }
+
+#[test]
+fn a_noise_drawn_only_as_a_matte_or_a_map_stays_whole() {
+    // The title reads a hidden noise as its matte and another as its
+    // displacement map: restyled, they would cut and move the title.
+    let mut raw = template();
+    let noise = json!({"size": "200x100", "dur": "1s", "layers": [
+        {"id": "n", "rect": "200x100", "fill": [1, 1, 1, 1],
+         "fx": [{"fractal-noise": 0, "noise": "block", "scale": 3}]},
+        {"id": "black", "rect": "200x100", "fill": [0, 0, 0, 1]}]});
+    raw["comps"]["matte"] = noise.clone();
+    // The map draws its noise one composition in.
+    raw["comps"]["map"] = json!({"size": "200x100", "dur": "1s", "layers": [
+        {"id": "inner", "comp": "map-noise"}]});
+    raw["comps"]["map-noise"] = noise;
+    let layers = raw["layers"].as_array_mut().unwrap();
+    layers.push(json!({"id": "m", "comp": "matte", "hidden": true}));
+    layers.push(json!({"id": "d", "comp": "map", "hidden": true}));
+    layers[2]["fx"] = json!([{"set-matte": "luminance", "matte": "m"},
+                             {"displacement-map": 10, "map": "d"}]);
+    let before = raw.clone();
+    let step = look("riso");
+    apply(&mut raw, &Held::default(), &step);
+    for comp in ["matte", "map", "map-noise"] {
+        assert_eq!(raw["comps"][comp], before["comps"][comp], "{comp}");
+    }
+    // The field's own noise still takes the look's material.
+    assert_ne!(
+        raw["comps"]["rays"]["layers"][1]["fx"][0],
+        before["comps"]["rays"]["layers"][1]["fx"][0]
+    );
+}

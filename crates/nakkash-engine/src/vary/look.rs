@@ -589,6 +589,7 @@ pub(crate) fn apply(raw: &mut Json, held: &Held, step: &LookStep) -> String {
     let kinds = kinds(raw);
     let sizes = canvases(raw);
     let carriers = carriers(raw);
+    let sources = sources(raw);
     let largest = largest_text(raw);
     let mut counts = Counts::default();
     let mut field_turn = 0usize;
@@ -596,7 +597,8 @@ pub(crate) fn apply(raw: &mut Json, held: &Held, step: &LookStep) -> String {
         let Visit::Layer { place, layer } = visit else {
             return;
         };
-        if held.holds(place) {
+        // What is held, and what is drawn only to be read, stays.
+        if held.holds(place) || place.comp.as_ref().is_some_and(|c| sources.contains(c)) {
             return;
         }
         let role = role(&kinds, place.comp.as_deref(), layer);
@@ -754,6 +756,63 @@ fn carriers(raw: &Json) -> BTreeSet<String> {
                     None => layer.get("comp").and_then(Json::as_str).map(str::to_owned),
                 };
                 out.extend(read);
+            }
+        }
+    }
+    out
+}
+
+/// The compositions drawn only to be read: a hidden layer another layer
+/// names as its matte or its map (a displacement's) draws one, and so do
+/// the compositions inside it. What they draw is data (where a title shows,
+/// how far it moves), not picture, so a look leaves them whole: a noise
+/// restyled as rays would cut and shift the title it mattes.
+fn sources(raw: &Json) -> BTreeSet<String> {
+    let mut lists: Vec<&Vec<Json>> = Vec::new();
+    if let Some(Json::Array(l)) = raw.get("layers") {
+        lists.push(l);
+    }
+    let comps = raw.get("comps").and_then(Json::as_object);
+    for c in comps.into_iter().flat_map(|c| c.values()) {
+        if let Some(Json::Array(l)) = c.get("layers") {
+            lists.push(l);
+        }
+    }
+    let mut out = BTreeSet::new();
+    for list in lists {
+        for layer in list.iter().filter_map(Json::as_object) {
+            let Some(Json::Array(fx)) = layer.get("fx") else {
+                continue;
+            };
+            for name in fx
+                .iter()
+                .flat_map(|item| ["matte", "map"].map(|k| item.get(k)))
+                .filter_map(|v| v.and_then(Json::as_str))
+            {
+                let source = list
+                    .iter()
+                    .filter_map(Json::as_object)
+                    .find(|l| l.get("id").and_then(Json::as_str) == Some(name));
+                if let Some(source) = source.filter(|l| hidden(l))
+                    && let Some(comp) = source.get("comp").and_then(Json::as_str)
+                {
+                    out.insert(comp.to_owned());
+                }
+            }
+        }
+    }
+    // The compositions a source draws are read with it.
+    let mut todo: Vec<String> = out.iter().cloned().collect();
+    while let Some(comp) = todo.pop() {
+        let inner = comps
+            .and_then(|c| c.get(&comp))
+            .and_then(|c| c.get("layers"))
+            .and_then(Json::as_array);
+        for layer in inner.into_iter().flatten() {
+            if let Some(c) = layer.get("comp").and_then(Json::as_str)
+                && out.insert(c.to_owned())
+            {
+                todo.push(c.to_owned());
             }
         }
     }
