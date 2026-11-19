@@ -344,6 +344,11 @@ enum Command {
         /// for previews.
         #[arg(long, value_enum, default_value = "precise")]
         quality: QualityArg,
+        /// Round the float canvas to 8 bits through an ordered dither, so a
+        /// dim gradient shows no steps; off by default, as it moves every
+        /// such frame by up to a level.
+        #[arg(long)]
+        dither: bool,
         /// The codec of a video file; the first this build has of H.264 and
         /// AV1 when not given.
         #[arg(long, value_parser = PossibleValuesParser::new(<Codec as VariantNames>::VARIANTS))]
@@ -651,6 +656,7 @@ fn main() -> ExitCode {
             frame,
             out,
             quality,
+            dither,
             codec,
             video_quality,
             gpu,
@@ -662,6 +668,7 @@ fn main() -> ExitCode {
                     frames.or(frame.map(commands::render::Frames::one)),
                     out.as_deref().filter(|_| !digest),
                     quality.into(),
+                    dither,
                     encoding,
                     commands::render::Backend::from_flag(gpu),
                 )

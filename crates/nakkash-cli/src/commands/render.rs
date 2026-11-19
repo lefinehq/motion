@@ -164,6 +164,7 @@ pub fn run(
     frames: Option<Frames>,
     out: Option<&Path>,
     quality: Quality,
+    dither: bool,
     encoding: Encoding,
     backend: Backend,
 ) -> Result<ExitCode> {
@@ -226,6 +227,7 @@ pub fn run(
     };
     let options = RenderOptions {
         quality,
+        dither,
         ..RenderOptions::default()
     };
     let done = match is_video {

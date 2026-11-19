@@ -97,3 +97,25 @@ fn mixing_moves_each_pixel_by_its_own_share() {
     pixels.mix(&white, |i| [0.25, 2.0][i]);
     assert_eq!(pixels.data(), [[0.25; 4], [1.0; 4]]);
 }
+
+#[test]
+fn a_dithered_gradient_breaks_its_steps_and_keeps_its_level() {
+    // A flat level a third of the way between two bytes: plain rounding
+    // gives one byte everywhere, the dither a pattern of the two around it
+    // whose mean is the level.
+    let level = (100.0 + 1.0 / 3.0) / 255.0;
+    let mut pixels = Pixels::transparent(16, 16);
+    for p in pixels.data_mut() {
+        *p = [level, level, level, 1.0];
+    }
+    let plain = pixels.to_rgba8();
+    assert!(plain.chunks_exact(4).all(|p| p[0] == 100));
+    let dithered = pixels.to_rgba8_dithered();
+    let reds: Vec<u8> = dithered.chunks_exact(4).map(|p| p[0]).collect();
+    assert!(reds.iter().all(|r| (100..=101).contains(r)), "{reds:?}");
+    let mean = reds.iter().map(|r| f64::from(*r)).sum::<f64>() / reds.len() as f64;
+    assert!((mean - (100.0 + 1.0 / 3.0)).abs() < 0.1, "{mean}");
+    // The same pixels give the same bytes, and alpha is not dithered.
+    assert_eq!(dithered, pixels.to_rgba8_dithered());
+    assert!(dithered.chunks_exact(4).all(|p| p[3] == 255));
+}

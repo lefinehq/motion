@@ -67,6 +67,11 @@ pub struct RenderOptions {
     pub quality: Quality,
     /// Which instruction set is used.
     pub simd: Simd,
+    /// Whether the float canvas is rounded to 8 bits through an ordered
+    /// dither (a 4 by 4 Bayer matrix, half a level either way), which
+    /// breaks the steps a dim gradient bands into. Off by default: it
+    /// changes every frame drawn through the float canvas by up to a level.
+    pub dither: bool,
 }
 
 impl RenderOptions {
@@ -74,6 +79,7 @@ impl RenderOptions {
     pub const GOLDEN: RenderOptions = RenderOptions {
         quality: Quality::Precise,
         simd: Simd::Portable,
+        dither: false,
     };
 
     fn level(self) -> Level {
@@ -194,6 +200,7 @@ pub(crate) fn drawn_at(
     painter.nodes(&frame.nodes, Affine::IDENTITY)?;
     let rgba = match painter.finish()? {
         Drawn::Bytes(pixmap) => pixmap.take_rgba8(ImageAlphaType::Alpha),
+        Drawn::Floats(surface) if options.dither => surface.into_pixels(accel)?.to_rgba8_dithered(),
         Drawn::Floats(Surface::Held(held)) => held_by(accel).download_rgba8(&held)?,
         Drawn::Floats(Surface::Cpu(pixels)) => pixels.to_rgba8(),
     };
