@@ -570,12 +570,15 @@ fn role(kinds: &Kinds, comp: Option<&str>, layer: &Map<String, Json>) -> Role {
     if draws_noise(layer) {
         return Role::Field;
     }
+    // A composition drawing neither (a shine of plain fills over the field)
+    // takes the role of the one it sits in.
     if let Some(inner) = layer.get("comp").and_then(Json::as_str) {
-        return match (noise(inner), title(inner)) {
-            (true, false) => Role::Field,
-            (false, true) => Role::Title,
-            _ => Role::Other,
-        };
+        match (noise(inner), title(inner)) {
+            (true, false) => return Role::Field,
+            (false, true) => return Role::Title,
+            (true, true) => return Role::Other,
+            (false, false) => {}
+        }
     }
     match comp {
         Some(c) if noise(c) && !title(c) => Role::Field,

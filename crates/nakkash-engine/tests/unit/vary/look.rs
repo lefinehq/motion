@@ -438,3 +438,20 @@ fn a_noise_drawn_only_as_a_matte_or_a_map_stays_whole() {
         before["comps"]["rays"]["layers"][1]["fx"][0]
     );
 }
+
+#[test]
+fn a_plain_composition_over_the_field_is_coloured_as_the_field() {
+    // A shine of plain fills, coloured by its curves where the field
+    // places it, draws neither noise nor text: it is the field's.
+    let mut raw = template();
+    raw["comps"]["shine"] = json!({"size": "200x100", "dur": "1s", "layers": [
+        {"id": "s", "rect": "200x100", "fill": [1, 1, 1, 1]}]});
+    let colours = json!({"curves": "M 0,0 L 1,1", "red": "M 0,0 L 0.25,0.54 L 1,1",
+        "green": "M 0,0 L 0.74,0.24 L 1,1", "blue": "M 0,0 L 0.89,0 L 1,1"});
+    raw["comps"]["rays"]["layers"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"id": "shine", "comp": "shine", "blend": "screen", "fx": [colours.clone()]}));
+    apply(&mut raw, &Held::default(), &look("riso"));
+    assert_ne!(raw["comps"]["rays"]["layers"][2]["fx"][0], colours);
+}
