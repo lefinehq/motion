@@ -75,7 +75,7 @@ expression: "report.join(\"\\n\\n\")"
 `{"id":"a","rect":"1x1","in":"zoom"}` → a.in: unknown preset `zoom`; expected one of fade, fade-up, fade-down, fade-left, fade-right, pop, spin-in, rise, slam, push-up, push-down, push-left, push-right, swing-in
 `{"id":"a","rect":"1x1","anim":null}` → a.anim: invalid type: null; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
 `{"id":"a","rect":"1x1","anim":[]}` → a.anim: invalid type: sequence; expected an object of property tracks, e.g. {"opacity":"0 -> 1 @0-12f"}
-`{"id":"a","rect":"1x1","x":1}` → a.x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, overrides, image, video, audio, pivot, camera, font, fill, style, runs, paragraphs, box, crop, continuous, fit, animate, at, in, out, anim, parent, span, offset, stretch, mask, fx, adjust, collapse, hidden, matte, blend, mblur, 3d, position, anchor, scale, rotate, opacity, volume, z, anchor-z, scale-z, rotate-x, rotate-y, orient, zoom, target, target-z, remap
+`{"id":"a","rect":"1x1","x":1}` → a.x: unknown layer key `x`; expected one of id, text, rect, shapes, comp, overrides, image, video, audio, pivot, camera, font, fill, style, runs, paragraphs, box, crop, continuous, fit, cutout, tracks, animate, at, in, out, anim, parent, span, offset, stretch, mask, fx, adjust, collapse, hidden, matte, blend, mblur, 3d, position, anchor, scale, rotate, opacity, volume, z, anchor-z, scale-z, rotate-x, rotate-y, orient, zoom, target, target-z, remap
 `{"id":"a","rect":"1x1","z":10}` → a.z: `z` places a layer in depth, and `a` is flat; expected "3d":true on the layer
 `{"id":"a","rect":"1x1","anim":{"rotate-y":"0 -> 90 @0-5f"}}` → a.anim.rotate-y: `rotate-y` places a layer in depth, and `a` is flat; expected "3d":true on the layer
 `{"id":"a","rect":"1x1","3d":true,"zoom":900}` → a.zoom: `zoom` is a camera's, and `a` is not a camera; expected "camera":true on the layer
@@ -134,12 +134,36 @@ expression: "report.join(\"\\n\\n\")"
 `"overrides":{"title":{"rect":"1x1"}}` → card/title.rect: needs exactly one of `text`, `rect`, `shapes`, `comp`, `image`, `video`, `audio`, `pivot` or `camera`, or only `fx` for a filter layer; expected e.g. "text":"Hello", "rect":"300x100", "shapes":[…], "comp":"card", "image":"photo.jpg", "video":"clip.mov", "audio":"music.mp3" or "pivot":true
 `"overrides":{"title":{"fill":"red"}}` → card/title.fill: `red` is not a colour; expected a colour: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1
 `"overrides":{"title/x":{"text":"x"}}` → card/title.overrides: `overrides` only applies to `comp` layers; expected `overrides` only next to `comp`
-`"overrides":{"title":{"skew":1}}` → card/title.skew: unknown layer key `skew`; expected one of id, text, rect, shapes, comp, overrides, image, video, audio, pivot, camera, font, fill, style, runs, paragraphs, box, crop, continuous, fit, animate, at, in, out, anim, parent, span, offset, stretch, mask, fx, adjust, collapse, hidden, matte, blend, mblur, 3d, position, anchor, scale, rotate, opacity, volume, z, anchor-z, scale-z, rotate-x, rotate-y, orient, zoom, target, target-z, remap
+`"overrides":{"title":{"skew":1}}` → card/title.skew: unknown layer key `skew`; expected one of id, text, rect, shapes, comp, overrides, image, video, audio, pivot, camera, font, fill, style, runs, paragraphs, box, crop, continuous, fit, cutout, tracks, animate, at, in, out, anim, parent, span, offset, stretch, mask, fx, adjust, collapse, hidden, matte, blend, mblur, 3d, position, anchor, scale, rotate, opacity, volume, z, anchor-z, scale-z, rotate-x, rotate-y, orient, zoom, target, target-z, remap
 `"overrides":{"$ghost":"x"}` → card.overrides.$ghost: unknown slot `$ghost`; expected a slot of the composition, which declares none
 
 ## collapse
 `"collapse":1` → card.collapse: invalid type: integer `1`; expected a boolean
 `"collapse":true,"adjust":true,"fx":[{"fill":"#FFFFFF"}]` → card.collapse: `adjust` keeps the layer from drawing, so it has nothing to `collapse`; expected `adjust` or `collapse`, not both
+
+## cutouts and tracks
+`"rect":"1x1","cutout":{}` → clip.cutout: `cutout` only applies to `video` layers; expected `cutout` only next to `video`
+`"cutout":3` → clip.cutout: invalid type: integer `3`; expected an object of prompts and settings, e.g. {"prompts":[{"frame":0,"box":[690,470,1210,735]}]}
+`"cutout":{}` → clip.cutout.prompts: no prompt says where the object is; expected at least one prompt, e.g. "prompts":[{"frame":0,"box":[690,470,1210,735]}]
+`"cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"size":3}` → clip.cutout.size: unknown field `size`; expected one of prompts, edges, band, agree, smooth, baked
+`"cutout":{"prompts":[{"box":[0,0,1,1]}]}` → clip.cutout.prompts[0]: a prompt needs the `frame` it is on; expected a prompt, e.g. {"frame":0,"box":[690,470,1210,735]} or {"frame":0,"include":[[900,600]]}
+`"cutout":{"prompts":[{"frame":0}]}` → clip.cutout.prompts[0]: a prompt needs a `box` or a point to `include`; expected a prompt, e.g. {"frame":0,"box":[690,470,1210,735]} or {"frame":0,"include":[[900,600]]}
+`"cutout":{"prompts":[{"frame":0,"box":[5,0,1,1]}]}` → clip.cutout.prompts[0].box: a box whose first corner is not above and left of its second; expected `[x0, y0, x1, y1]` with x0 < x1 and y0 < y1, e.g. [690,470,1210,735]
+`"cutout":{"prompts":[{"frame":0,"box":[-1,0,1,1]}]}` → clip.cutout.prompts[0].box: -1 is left of or above the clip; expected coordinates in the clip's pixels, from 0 at its top-left corner
+`"cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]},{"frame":0,"box":[0,0,1,1]}]}` → clip.cutout.prompts[1].frame: two prompts on frame 0; expected one prompt a frame, with every box and point of that frame
+`"cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"edges":"crisp"}` → clip.cutout.edges: unknown edges `crisp`; expected one of `refine`, `hard`, `soft`
+`"cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"band":0}` → clip.cutout.band: `0` is out of range; expected a width above 0 px, e.g. 12
+`"cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"agree":2}` → clip.cutout.agree: `2` is out of range; expected an IoU from 0 to 1, e.g. 0.9
+`"cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"smooth":{"amount":2}}` → clip.cutout.smooth.amount: `2` is out of range; expected a share from 0 to 1, e.g. 0.6
+`"cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"smooth":{"tolerance":0}}` → clip.cutout.smooth.tolerance: `0` is out of range; expected an alpha difference above 0, e.g. 0.08
+`"cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"baked":"abc"}` → clip.cutout.baked: `abc` is not a SHA-256: it takes 64 hexadecimal digits; expected the 64 hexadecimal digits a bake writes; leave it out to bake again
+`"tracks":{}` → clip.tracks: invalid type: map; expected a list of tracks, e.g. "tracks":[{"id":"screen","prompts":[{"frame":0,"box":[700,480,1200,720]}]}]
+`"tracks":[{"prompts":[{"frame":0,"box":[0,0,1,1]}]}]` → clip.tracks[0]: a track needs an `id`; expected an id for the track, e.g. "id":"screen"
+`"tracks":[{"id":"a","prompts":[{"frame":0,"box":[0,0,1,1]}]},{"id":"a","prompts":[{"frame":0,"box":[0,0,1,1]}]}]` → clip.tracks[1].id: two tracks are called `a`; expected a different id for each track of the layer
+`"tracks":[{"id":"a","prompts":[{"frame":0,"box":[0,0,1,1]}],"anchors":[{"frame":0,"corners":[[0,0],[1,0],[1,1],[0,1]]}]}]` → clip.tracks[0].anchors[0].frame: an anchor on frame 0, the track's first prompted frame; expected an anchor on a later or earlier frame; the first prompted frame takes `corners`
+`"tracks":[{"id":"a","prompts":[{"frame":0,"box":[0,0,1,1]}],"anchors":[{"frame":3,"corners":[[0,0],[1,0],[1,1],[0,1]]},{"frame":3,"corners":[[0,0],[1,0],[1,1],[0,1]]}]}]` → clip.tracks[0].anchors[1].frame: two anchors on frame 3; expected one anchor a frame
+`"tracks":[{"id":"a","prompts":[{"frame":0,"box":[0,0,1,1]}],"anchors":[{"frame":3}]}]` → clip.tracks[0].anchors[0]: an anchor needs its `corners`; expected an anchor, e.g. {"frame":36,"corners":[[640,470],[1120,470],[1118,700],[642,702]]}
+`"tracks":[{"id":"a","prompts":[{"frame":0,"box":[0,0,1,1]}],"anchors":[{"corners":[[0,0],[1,0],[1,1],[0,1]]}]}]` → clip.tracks[0].anchors[0]: an anchor needs a `frame`; expected an anchor, e.g. {"frame":36,"corners":[[640,470],[1120,470],[1118,700],[642,702]]}
 
 ## overrides on a layer that draws no composition
 `"overrides":{"x":{}}` → a.overrides: `overrides` only applies to `comp` layers; expected `overrides` only next to `comp`

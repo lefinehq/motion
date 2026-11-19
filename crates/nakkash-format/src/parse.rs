@@ -86,6 +86,10 @@ pub mod key {
     /// layer, how its words are made to fit the size laid out for them
     /// (D77).
     pub const FIT: &str = "fit";
+    /// A video layer's own object, cut out of its clip by a bake (D85).
+    pub const CUTOUT: &str = "cutout";
+    /// A video layer's tracks of objects in its clip, made by a bake (D85).
+    pub const TRACKS: &str = "tracks";
     /// A text layer's animators.
     pub const ANIMATE: &str = "animate";
     /// A layer's position.
@@ -176,7 +180,7 @@ pub const COMP_KEYS: [&str; 8] = [
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 38] = [
+pub const LAYER_KEYS: [&str; 40] = [
     key::ID,
     key::TEXT,
     key::RECT,
@@ -197,6 +201,8 @@ pub const LAYER_KEYS: [&str; 38] = [
     key::CROP,
     key::CONTINUOUS,
     key::FIT,
+    key::CUTOUT,
+    key::TRACKS,
     key::ANIMATE,
     key::AT,
     key::IN,

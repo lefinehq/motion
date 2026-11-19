@@ -25,10 +25,10 @@ use crate::edit_word::NONE;
 use crate::item::{EFFECTS, MASKS, Reads, SHAPES};
 use crate::parse::key::{
     ADJUST, ANIM, ANIMATE, AT, AUDIO, BG, BLEND, BOX, CAMERA, COLLAPSE, COMP, COMPS, CONTINUOUS,
-    CROP, DUR, FILL, FIT, FONT, FPS, FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE, MOTION,
-    NAKKASH, OFFSET, OUT, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS,
-    SHAPES as SHAPES_KEY, SHUTTER, SIZE, SPAN, STRETCH, STYLE, TEXT, THREE_D, VIDEO, comp_path,
-    layer_path,
+    CROP, CUTOUT, DUR, FILL, FIT, FONT, FPS, FX, ID, IMAGE, IN, LABELS, LAYERS, MASK, MATTE,
+    MOTION, NAKKASH, OFFSET, OUT, OVERRIDES, PARAGRAPHS, PARENT, PIVOT, PRESETS, RECT, RUNS,
+    SHAPES as SHAPES_KEY, SHUTTER, SIZE, SPAN, STRETCH, STYLE, TEXT, THREE_D, TRACKS, VIDEO,
+    comp_path, layer_path,
 };
 use crate::parse::layer_keys;
 use crate::preset::{PresetSpec, Start, expand_as_anim, lookup, names};
@@ -1121,6 +1121,8 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
             only_on(doc.crop.is_some(), CROP, FX, &[IMAGE])?;
             only_on(doc.continuous.is_some(), CONTINUOUS, FX, &[IMAGE])?;
             only_on(doc.fit.is_some(), FIT, FX, &[TEXT, IMAGE, VIDEO])?;
+            only_on(doc.cutout.is_some(), CUTOUT, FX, &[VIDEO])?;
+            only_on(doc.tracks.is_some(), TRACKS, FX, &[VIDEO])?;
             return Ok(Content::Filter);
         }
         (None, _) => return Err(Diagnostic::new(Kind::Missing, one_of()).expected(EXAMPLE)),
@@ -1137,6 +1139,8 @@ fn content(doc: &LayerDoc, context: &Context) -> Result<Content> {
     only_on(doc.continuous.is_some(), CONTINUOUS, key, &[IMAGE])?;
     only_on(doc.fit.is_some(), FIT, key, &[TEXT, IMAGE, VIDEO])?;
     only_on(doc.frame.is_some(), BOX, key, &[TEXT, IMAGE, VIDEO])?;
+    only_on(doc.cutout.is_some(), CUTOUT, key, &[VIDEO])?;
+    only_on(doc.tracks.is_some(), TRACKS, key, &[VIDEO])?;
     let Object(style) = &doc.style;
     for (written, name) in [
         (doc.font.is_some(), FONT),
@@ -1373,10 +1377,21 @@ fn video(doc: &LayerDoc, path: Option<&str>) -> Result<Content> {
         Diagnostic::new(Kind::Missing, "missing `box`: a video layer fills its box")
             .expected(r#"the clip's size in px, e.g. "box":[1920,1080]"#)
     })?;
+    let cutout = doc
+        .cutout
+        .as_ref()
+        .map(|value| crate::cutout::cutout(value).map_err(|e| e.under(CUTOUT)))
+        .transpose()?;
+    let tracks = match doc.tracks.as_ref() {
+        None => Vec::new(),
+        Some(value) => crate::cutout::tracks(value).map_err(|e| e.under(TRACKS))?,
+    };
     Ok(Content::Video(VideoContent {
         path: path.map(str::to_owned),
         frame: text::frame(frame).map_err(|e| e.under(BOX))?,
         fit: media_fit(doc)?,
+        cutout,
+        tracks,
     }))
 }
 

@@ -6,6 +6,7 @@ pub mod address;
 pub mod anim;
 pub mod colors;
 mod curve;
+mod cutout;
 mod de;
 pub mod deprecated;
 mod diagnostic;
@@ -38,6 +39,7 @@ mod write;
 
 pub use address::{Address, Id, Step};
 pub use curve::{BACK_OVERSHOOT, Curve, ELASTIC, FAMILIES, Family, NAMED_CURVES, SHAPES, Shape};
+pub use cutout::{Anchor, Cutout, Edges, Prompt, Smooth, TrackRequest};
 pub use deprecated::Deprecation;
 pub use diagnostic::{Diagnostic, Kind, Place, Result};
 pub use item::{Input, Item, ItemKind, Reads, Role};

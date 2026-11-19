@@ -1,4 +1,4 @@
-//! D37, D38, D39, D46 and D48. Engines stay behind our own types. No crate's public API names an
+//! D37, D38, D39, D46, D48, D80 and D81. Engines stay behind our own types. No crate's public API names an
 //! engine (the shaper, the rasteriser, the parsers): a `pub` line in any
 //! crate's source that names one fails here, with where. Vocabulary crates
 //! (`kurbo`, `peniko`, `linebender_resource_handle`) are allowed.
@@ -165,6 +165,32 @@ fn nothing_that_renders_links_the_script_engine() {
     assert!(
         found.is_empty(),
         "only the CLI's import may run expressions (D38):\n{}",
+        found.join("\n")
+    );
+}
+
+/// D80: inference lives in `nakkash-ml` and `nakkash-onnx`, and only the
+/// CLI, behind its `ml` feature, links them; what reads, compiles or draws
+/// a scene reads baked assets through `nakkash-baked` and never infers.
+#[test]
+fn nothing_that_renders_links_inference() {
+    let inference = ["nakkash-ml", "nakkash-onnx"];
+    let found = linking(&inference, &["nakkash-cli", "nakkash-ml", "nakkash-onnx"]);
+    assert!(
+        found.is_empty(),
+        "only the CLI may link the inference crates (D80):\n{}",
+        found.join("\n")
+    );
+}
+
+/// D81: the inference runtime's binding is reached only through
+/// `nakkash-onnx`, which loads the locked runtime library.
+#[test]
+fn only_the_runtime_crate_links_the_runtime_binding() {
+    let found = linking(&["ort", "ort-sys"], &["nakkash-cli", "nakkash-onnx"]);
+    assert!(
+        found.is_empty(),
+        "only nakkash-onnx may link the runtime binding (D81):\n{}",
         found.join("\n")
     );
 }

@@ -12,9 +12,10 @@ use std::thread;
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
+use nakkash_baked::Store;
 use nakkash_fonts::{Cache, Lock};
 use nakkash_format::units::Time;
-use nakkash_format::{Address, Diagnostic, Kind, Result};
+use nakkash_format::{Address, Cutout, Diagnostic, Kind, Result};
 use nakkash_format::{Document, Scene, parse_document, write_document};
 use nakkash_query::{Checked, Report, at};
 use nakkash_raster::{Accelerator, Frame, Image, RenderOptions, Tally};
@@ -27,6 +28,11 @@ use crate::pictures::Pictures;
 use crate::render::{Instances, Moments, Sources, display_list};
 use crate::sounds::Sounds;
 use crate::stage::{stage, stage_ok};
+
+/// The folder of the cache that keeps baked assets ([D85]).
+///
+/// [D85]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d85-baked-results-enter-the-scene-as-requests-on-video-layers
+pub const BAKED_FOLDER: &str = "baked";
 
 /// One scene and the results of the steps run on it. Methods run their steps
 /// one after another, never nested, so each step is timed on its own.
@@ -190,7 +196,24 @@ impl Session {
         Ok(added)
     }
 
-    /// Loads locked fonts from `cache` instead of this user's cache.
+    /// The store of baked assets video layers' cutouts read ([D85]): the
+    /// `baked` folder of the cache fonts are loaded from.
+    ///
+    /// # Errors
+    /// A [`Kind::Missing`](nakkash_format::Kind::Missing) diagnostic when no
+    /// cache was given and the environment names no home.
+    ///
+    /// [D85]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d85-baked-results-enter-the-scene-as-requests-on-video-layers
+    pub fn baked_store(&self) -> Result<Store> {
+        let cache = match &self.font_cache {
+            Some(cache) => cache.clone(),
+            None => Cache::user()?,
+        };
+        Ok(Store::new(cache.root().join(BAKED_FOLDER)))
+    }
+
+    /// Loads locked fonts from `cache` instead of this user's cache, and
+    /// reads baked assets from its `baked` folder.
     pub fn set_font_cache(&mut self, cache: Cache) {
         self.font_cache = Some(cache);
         self.fonts = OnceLock::new();
@@ -274,7 +297,10 @@ impl Session {
     pub(crate) fn list_in(&self, graph: &SceneGraph, state: &FrameState) -> Result<Frame> {
         let base = self.base();
         let pictures = |path: &str| self.pictures.get(&base.join(path));
-        let clips = |path: &str, seconds: f64| self.clips.frame(&base.join(path), seconds);
+        let store = || self.baked_store();
+        let clips = |path: &str, cutout: Option<&Cutout>, seconds: f64| {
+            self.clips.frame(&base.join(path), seconds, cutout, &store)
+        };
         let sounds = |path: &str| self.sounds.get(&base.join(path));
         let moments = Moments::default();
         let instances = Instances::default();

@@ -332,6 +332,8 @@ fn an_image_or_video_layer_may_have_no_file_yet() {
             path: None,
             frame: kurbo::Rect::new(-8.0, -4.0, 8.0, 4.0),
             fit: MediaFit::Fill,
+            cutout: None,
+            tracks: Vec::new(),
         })
     );
     // With no file, it still needs its box, and is still one content.

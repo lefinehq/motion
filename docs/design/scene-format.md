@@ -416,6 +416,26 @@ A video layer plays a clip: `video` names an `.mov` or `.mp4` file, relative to 
 - **Time.** The clip plays in the layer's own time: at its own time `t`, the layer draws the frame showing `t` seconds into the clip. So `offset` starts it later and `stretch` slows it (`2`) or speeds it (`0.5`). Before the clip starts and from its end on, the layer draws nothing.
 - **Codecs.** QuickTime Animation (`rle `, RGB, or ARGB with its alpha) and Photo JPEG decode everywhere. H.264 decodes on macOS through the system's decoder ([D60](decisions.md#d60-h264-footage-decodes-through-the-systems-decoder)), in the matrix and range its tags give, or BT.709 limited range for an untagged HD clip; on other platforms it is an error that says so. A clip in any other codec is an error that names the file and the codec. The container is read by nakkash itself, with no system library.
 - **Files.** A render opens each clip once and decodes frames as they are shown, keeping the last ones, so a render going forward decodes each frame once. A file no frame shows is never read.
+- **`cutout`** cuts the layer's own object out of its clip, from a bake ([D85](decisions.md#d85-baked-results-enter-the-scene-as-requests-on-video-layers), [D87](decisions.md#d87-an-objects-matte-is-its-segmentation-refined-at-its-edge)). `nakkash ml bake` finds the object the prompts point at, follows it through the clip and writes the matte's digest into `baked`; the render multiplies each frame's alpha by the baked alpha of the same clip frame, so the matte follows the clip through `offset`, `stretch` and `remap`. It never infers.
+
+  ```json
+  {"id":"phone","video":"footage/phone.mov","box":[1920,1080],
+   "cutout":{"prompts":[{"frame":0,"box":[690,470,1210,735]}],"baked":"3f9a…"}}
+  ```
+
+  - **`prompts`** is a list of prompts, each on a `frame` of the clip (counted from 0 in the order frames show), with a `box` `[x0, y0, x1, y1]`, points to keep (`include`, `[[x, y], …]`) or points to leave out (`exclude`), all in the clip's pixels. A prompt takes a box or at least one point to keep, and no two share a frame. Every prompt conditions the whole clip.
+  - **`edges`**: `refine` (the default) refines the edge with an edge matting model where it agrees with the segmentation; `hard` keeps the segmentation's mask; `soft` its probability. `band` (px either side of the edge, 12 by default) and `agree` (the IoU from which the refinement is trusted, 0.9 by default) tune `refine`.
+  - **`smooth`**, `{"amount":0.6,"tolerance":0.08}`, carries the previous frame's matte along the optical flow and blends it in, by up to `amount` (0 to 1) where the two differ by little against `tolerance`. It is off unless written, since it lowers flicker by lagging.
+  - **`baked`** is the digest the bake wrote. A cutout without one is an error at `cutout` that names `nakkash ml bake`, as is a digest the cache lacks. A matte baked for other prompts or settings, or another clip, is an error too: edit a prompt and bake again. A digest keeps a matte frozen: another model or nakkash version never changes it.
+- **`tracks`** asks for motion tracks of objects in the clip ([D88](decisions.md#d88-a-track-is-baked-once-and-applied-as-keys-on-pivots)), each with an `id`, unique on the layer, `prompts` as a cutout's, optional `corners` of the object on the first prompted frame (`[[x, y], …]`, top left, top right, bottom right, bottom left, in clip pixels) and `anchors`, each a `frame` and the `corners` there, which correct drift. `nakkash ml bake` writes each track's `baked` digest, and `nakkash ml track` writes a baked track as keys on a pivot; a render never reads tracks.
+
+  ```json
+  "tracks":[{"id":"screen","prompts":[{"frame":0,"box":[700,480,1200,720]}],
+             "corners":[[712,488],[1190,492],[1186,716],[708,712]],
+             "anchors":[{"frame":36,"corners":[[640,470],[1120,470],[1118,700],[642,702]]}]}]
+  ```
+
+  An anchor's frame is not the first prompted frame, and no two anchors share one. `cutout` and `tracks` on any layer but a video layer are errors.
 - Like any layer, a video has a transform, parent, opacity, span and time, can be a matte, and can be matted. Its sound is not played yet: an `audio` layer of the same file plays it once AAC can be read.
 
 ## Audio

@@ -250,6 +250,40 @@ fn every_error_message() {
             },
         ),
         section(
+            "cutouts and tracks",
+            &[
+                r#""rect":"1x1","cutout":{}"#,
+                r#""cutout":3"#,
+                r#""cutout":{}"#,
+                r#""cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"size":3}"#,
+                r#""cutout":{"prompts":[{"box":[0,0,1,1]}]}"#,
+                r#""cutout":{"prompts":[{"frame":0}]}"#,
+                r#""cutout":{"prompts":[{"frame":0,"box":[5,0,1,1]}]}"#,
+                r#""cutout":{"prompts":[{"frame":0,"box":[-1,0,1,1]}]}"#,
+                r#""cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]},{"frame":0,"box":[0,0,1,1]}]}"#,
+                r#""cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"edges":"crisp"}"#,
+                r#""cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"band":0}"#,
+                r#""cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"agree":2}"#,
+                r#""cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"smooth":{"amount":2}}"#,
+                r#""cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"smooth":{"tolerance":0}}"#,
+                r#""cutout":{"prompts":[{"frame":0,"box":[0,0,1,1]}],"baked":"abc"}"#,
+                r#""tracks":{}"#,
+                r#""tracks":[{"prompts":[{"frame":0,"box":[0,0,1,1]}]}]"#,
+                r#""tracks":[{"id":"a","prompts":[{"frame":0,"box":[0,0,1,1]}]},{"id":"a","prompts":[{"frame":0,"box":[0,0,1,1]}]}]"#,
+                r#""tracks":[{"id":"a","prompts":[{"frame":0,"box":[0,0,1,1]}],"anchors":[{"frame":0,"corners":[[0,0],[1,0],[1,1],[0,1]]}]}]"#,
+                r#""tracks":[{"id":"a","prompts":[{"frame":0,"box":[0,0,1,1]}],"anchors":[{"frame":3,"corners":[[0,0],[1,0],[1,1],[0,1]]},{"frame":3,"corners":[[0,0],[1,0],[1,1],[0,1]]}]}]"#,
+                r#""tracks":[{"id":"a","prompts":[{"frame":0,"box":[0,0,1,1]}],"anchors":[{"frame":3}]}]"#,
+                r#""tracks":[{"id":"a","prompts":[{"frame":0,"box":[0,0,1,1]}],"anchors":[{"corners":[[0,0],[1,0],[1,1],[0,1]]}]}]"#,
+            ],
+            |kv| {
+                let content = match kv.starts_with(r#""rect""#) {
+                    true => "",
+                    false => r#""video":"clip.mov","box":[16,9],"#,
+                };
+                layers(&format!(r#"{{"id":"clip",{content}{kv}}}"#))
+            },
+        ),
+        section(
             "overrides on a layer that draws no composition",
             &[r#""overrides":{"x":{}}"#],
             |kv| {
