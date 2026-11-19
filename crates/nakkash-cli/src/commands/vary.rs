@@ -9,8 +9,9 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use nakkash_engine::vary::{
-    ContentSpec, FormatSpec, LOOKS, LookSpec, Made, Pace, PaletteSpec, Recipe, Sheet, Spec,
-    TimingSpec, TypeSpec, distance, gate, make, plan, repair, samples, sheet,
+    ContentSpec, Distance, FormatSpec, LOOKS, LookSpec, Made, Pace, PaletteSpec, Recipe, Sheet,
+    Spec, TimingSpec, TypeSpec, colour_twin, distance, filter, filter_failure, gate, make, plan,
+    repair, samples, sheet,
 };
 use nakkash_engine::{
     Code, Diagnostic, Kind, Quality, RenderOptions, Report, Result, Session, Severity,
@@ -112,7 +113,8 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
     let mut made_sessions = Vec::new();
     let mut passed = 0;
     // The master's frames for `--distance`, drawn once.
-    let master_samples = match asked.distance {
+    let any_look = recipes.iter().any(Recipe::has_look);
+    let master_samples = match asked.distance || any_look {
         true => Some(samples(&master, DISTANCE_FRAMES, DISTANCE_HEIGHT)?),
         false => None,
     };
@@ -124,13 +126,14 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
         let row = match make(&master, recipe, &base) {
             Ok(made) if asked.no_check => {
                 made.session.save_as(&dir.join("scene.json"))?;
-                let far = match &master_samples {
-                    Some(m) => Some(distance(
-                        m,
-                        &samples(&made.session, DISTANCE_FRAMES, DISTANCE_HEIGHT)?,
-                    )),
-                    None => None,
-                };
+                let far = measured(
+                    master_samples.as_deref(),
+                    &made,
+                    &master,
+                    recipe,
+                    &base,
+                    &dir,
+                )?;
                 json!({
                     "id": recipe.id,
                     "recipe": recipe.to_string(),
@@ -155,25 +158,30 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
                             ),
                         )?;
                         made.session.save_as(&dir.join("scene.json"))?;
-                        let ok = gated.passed();
+                        let far = measured(
+                            master_samples.as_deref(),
+                            &made,
+                            &master,
+                            recipe,
+                            &base,
+                            &dir,
+                        )?;
+                        // A look that one colour transform explains is a filter.
+                        let filter = far.as_ref().and_then(|d| d.filter).and_then(filter_failure);
+                        let ok = gated.passed() && filter.is_none();
                         passed += usize::from(ok);
                         let mut film = None;
                         if ok && !asked.dry_run {
                             film = Some(render(&made.session, &dir)?);
                         }
-                        let first_new =
-                            new.lines().find(|l| l.starts_with("E ")).map(str::to_owned);
+                        let first_new = filter.clone().or_else(|| {
+                            new.lines().find(|l| l.starts_with("E ")).map(str::to_owned)
+                        });
                         if !asked.dry_run {
                             let image = sheet(&[&made.session], Sheet::default())?;
                             write_png(&dir.join("sheet.png"), &image)?;
                         }
-                        let far = match &master_samples {
-                            Some(m) => Some(distance(
-                                m,
-                                &samples(&made.session, DISTANCE_FRAMES, DISTANCE_HEIGHT)?,
-                            )),
-                            None => None,
-                        };
+                        let far = far.filter(|_| asked.distance || filter.is_some());
                         let row = json!({
                             "id": recipe.id,
                             "recipe": recipe.to_string(),
@@ -232,6 +240,33 @@ pub fn run(scene: &Path, asked: &Asked) -> Result<ExitCode> {
     })
 }
 
+/// How far `made` lands from the master, whose frames are `master_samples`
+/// (`None` when nothing asked for them), with, for a look, the
+/// [`filter`](nakkash_engine::vary::filter) residual of its colour-only
+/// twin, which it saves beside the variant as `twin.json`.
+fn measured(
+    master_samples: Option<&[nakkash_engine::Image]>,
+    made: &Made,
+    master: &Session,
+    recipe: &Recipe,
+    base: &Path,
+    dir: &Path,
+) -> Result<Option<Distance>> {
+    let Some(m) = master_samples else {
+        return Ok(None);
+    };
+    let mut far = distance(
+        m,
+        &samples(&made.session, DISTANCE_FRAMES, DISTANCE_HEIGHT)?,
+    );
+    if let Some(twin) = colour_twin(master, recipe, base)? {
+        let drawn = samples(&twin.session, DISTANCE_FRAMES, DISTANCE_HEIGHT)?;
+        far.filter = Some(filter(m, &drawn));
+        twin.session.save_as(&dir.join("twin.json"))?;
+    }
+    Ok(Some(far))
+}
+
 /// `made`'s full report, after repairing the contrast errors it adds to
 /// `baseline`, its master's.
 fn checked(made: &mut Made, master: &Session, baseline: &Report) -> Result<Report> {
@@ -284,7 +319,11 @@ fn line(row: &Json) -> String {
         Some(p) => match row["distance"]["frames"].as_f64() {
             Some(f) => {
                 let shape = row["distance"]["structure"].as_f64().unwrap_or(0.0);
-                format!("  Δ palette {p:.3} frames {f:.3} structure {shape:.3}")
+                let filter = row["distance"]["filter"]
+                    .as_f64()
+                    .map(|r| format!(" filter {r:.2}x"))
+                    .unwrap_or_default();
+                format!("  Δ palette {p:.3} frames {f:.3} structure {shape:.3}{filter}")
             }
             None => format!("  Δ palette {p:.3}"),
         },

@@ -141,10 +141,6 @@ pub struct LookSpec {
     pub fonts: Vec<PathBuf>,
 }
 
-/// How many frames of the master place a look's stops, and how tall.
-const LIT_FRAMES: usize = 8;
-const LIT_HEIGHT: f64 = 120.0;
-
 /// One variant as planned: its id and the step of each axis it takes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Recipe {
@@ -232,11 +228,6 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
         Some(t) => typeface::candidates(master, t, base)?,
         None => Vec::new(),
     };
-    // A look's stops are placed by what the master lights ([`look::lit`]).
-    let look_lit = match &spec.look {
-        Some(_) => look::lit(&samples(master, LIT_FRAMES, LIT_HEIGHT)?),
-        None => look::Lit::default(),
-    };
     let look_stroke = match &spec.look {
         Some(_) => typeface::thickest(master)?,
         None => None,
@@ -319,7 +310,6 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
             let step = look::draw(
                 &l.looks,
                 turn,
-                &look_lit,
                 &look::Faces {
                     families: &look_faces,
                     fonts: &l.fonts,
@@ -438,14 +428,7 @@ pub fn make(master: &Session, recipe: &Recipe, base: &Path) -> Result<Made> {
             session = master.with_raw(fitted)?;
         }
     }
-    let grade = recipe
-        .steps
-        .iter()
-        .find_map(|s| match s {
-            Step::Look(l) => Some(look::grade(l)),
-            _ => None,
-        })
-        .unwrap_or_default();
+    let grade: Vec<Json> = Vec::new();
     // Then time and size, which wrap the master instead of rewriting it.
     let timing = recipe.steps.iter().find_map(|s| match s {
         Step::Timing(t) => Some(t),
@@ -621,6 +604,34 @@ pub struct Distance {
     /// lightness) at the same place and moment. 0 is the same drawing
     /// recoloured, or inverted; 1 shares no edge. `None` as for `frames`.
     pub structure: Option<f64>,
+    /// For a look, how much of what it does to colour a filter cannot
+    /// explain ([`filter`]); `None` for other variants, or when not
+    /// measured.
+    pub filter: Option<f64>,
+}
+
+/// The least [`filter`] a look must reach: below it, what the look does to
+/// colour is what one colour transform of the master would do, a filter,
+/// not a design. Measured on the two Speed Digital shots, the old looks'
+/// frame-wide gradient maps left 1.07 to 1.28 times what the bins leave of
+/// the master; the designed looks 2.8 to 10.
+pub const FILTER_FLOOR: f64 = 2.0;
+
+impl Recipe {
+    /// Whether one of its steps is a look.
+    pub fn has_look(&self) -> bool {
+        self.steps.iter().any(|s| matches!(s, Step::Look(_)))
+    }
+}
+
+/// Why a look measured `residual` by [`filter`] is a filter; `None` when
+/// it explains more than a filter could.
+pub fn filter_failure(residual: f64) -> Option<String> {
+    (residual < FILTER_FLOOR).then(|| {
+        format!(
+            "E filter a colour transform of the master explains the look: {residual:.2}x the master's own < {FILTER_FLOOR}x"
+        )
+    })
 }
 
 /// Frames of `session` for [`distance`]: `n` of them, evenly over its
@@ -732,7 +743,96 @@ pub fn distance(master: &[crate::Image], variant: &[crate::Image]) -> Distance {
         palette: round(palette),
         frames: frames.map(round),
         structure: structure.map(round),
+        filter: None,
     }
+}
+
+/// How much of `twin`, [`colour_twin`]'s drawing of a look, no colour
+/// transform of `master`'s samples explains, against how much the binning
+/// leaves of the master itself: the [`unexplained`] colour of the twin over
+/// the master's own (at least [`FILTER_GRAIN`]). Near 1 is a filter: any
+/// frame-wide map, curve or LUT, whatever it does, gives each master
+/// colour one colour, and leaves of it what the bins leave.
+pub fn filter(master: &[crate::Image], twin: &[crate::Image]) -> f64 {
+    let own = unexplained(master, master).max(FILTER_GRAIN);
+    (unexplained(master, twin) / own * 100.0).round() / 100.0
+}
+
+/// The least the binning is taken to leave of a master, so a master of a
+/// few flat colours does not make every look's [`filter`] huge.
+pub const FILTER_GRAIN: f64 = 0.005;
+
+/// The mean OKLab distance from each px of `twin` to the mean colour of all
+/// its px whose `master` colour falls in the same bin (16 levels a
+/// channel): what is left after the best table from master colour to twin
+/// colour, fitted over all the samples.
+fn unexplained(master: &[crate::Image], twin: &[crate::Image]) -> f64 {
+    let lab = |px: &[u8]| {
+        let a = f64::from(px[3]) / 255.0;
+        let c = |v: u8| f64::from(v) / 255.0 * a;
+        let lch = colour::to_lch([c(px[0]), c(px[1]), c(px[2]), 1.0]);
+        let h = lch.h.to_radians();
+        [lch.l, lch.c * h.cos(), lch.c * h.sin()]
+    };
+    let gap = |p: [f64; 3], q: [f64; 3]| {
+        ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt()
+    };
+    let variant = twin;
+    // A master px's bin: its colour over black, 16 levels a channel.
+    let bin = |p: &[u8]| {
+        let a = u32::from(p[3]);
+        let c = |v: u8| ((u32::from(v) * a / 255) >> 4) as usize;
+        (c(p[0]) << 8) | (c(p[1]) << 4) | c(p[2])
+    };
+    let pairs: Vec<(usize, [f64; 3])> = master
+        .iter()
+        .zip(variant)
+        .flat_map(|(m, v)| {
+            m.pixels()
+                .chunks_exact(4)
+                .zip(v.pixels().chunks_exact(4))
+                .map(|(p, q)| (bin(p), lab(q)))
+        })
+        .collect();
+    let mut table = vec![([0.0f64; 3], 0.0f64); 4096];
+    for (b, v) in &pairs {
+        let cell = &mut table[*b];
+        for (s, x) in cell.0.iter_mut().zip(v) {
+            *s += x;
+        }
+        cell.1 += 1.0;
+    }
+    let sum: f64 = pairs
+        .iter()
+        .map(|(b, v)| {
+            let (s, n) = table[*b];
+            gap(*v, s.map(|x| x / n))
+        })
+        .sum();
+    sum / f64::max(pairs.len() as f64, 1.0)
+}
+
+/// A look's variant drawn with its colour and effect decisions only: the
+/// look of `recipe` without its moves (cells, speed, noise, rings, type,
+/// pace, ease, grain) and without the recipe's other steps, so its pixels
+/// sit where the master's do and [`filter`] can compare them one to one.
+/// `None` when the recipe has no look.
+///
+/// # Errors
+/// As [`make`].
+pub fn colour_twin(master: &Session, recipe: &Recipe, base: &Path) -> Result<Option<Made>> {
+    let Some(look) = recipe.steps.iter().find_map(|s| match s {
+        Step::Look(l) => Some(l),
+        _ => None,
+    }) else {
+        return Ok(None);
+    };
+    let twin = Recipe {
+        id: recipe.id.clone(),
+        seed: recipe.seed,
+        steps: vec![Step::Look(Box::new(look::colour_only(look)))],
+    };
+    make(master, &twin, base).map(Some)
 }
 
 /// The gradient magnitude of `l`, a `w` by `h` plane, by Sobel's kernels;

@@ -1,12 +1,22 @@
 use super::*;
 
+/// Look `name`, drawn from seed 1 with no faces.
+fn look(name: &str) -> LookStep {
+    draw(
+        &[name.into()],
+        0,
+        &Faces::default(),
+        false,
+        &mut Rng::new(1, 0, "look"),
+    )
+}
+
 #[test]
 fn every_look_is_drawn_the_same_from_the_same_seed_and_differs_from_the_others() {
     let draw_one = |i| {
         draw(
             &[],
             i,
-            &Lit::default(),
             &Faces::default(),
             false,
             &mut Rng::new(7, i, "look"),
@@ -16,57 +26,169 @@ fn every_look_is_drawn_the_same_from_the_same_seed_and_differs_from_the_others()
     assert_eq!(all, (0..LOOKS.len()).map(draw_one).collect::<Vec<_>>());
     let names: Vec<&str> = all.iter().map(|l| l.name.as_str()).collect();
     assert_eq!(names, LOOKS);
+    // Decisions, not shades of one: each look draws its field and title
+    // its own way.
+    let ways: BTreeSet<String> = all
+        .iter()
+        .map(|l| {
+            format!(
+                "{:?} {:?} {} {:?}",
+                l.field.noise, l.field.fractal, l.title.glitch, l.title.case
+            )
+        })
+        .collect();
+    assert_eq!(ways.len(), LOOKS.len());
+}
+
+/// A template in the shape a look reads: a ground, a field of two noise
+/// layers coloured alike by curves, and a title of red, green and blue
+/// copies of a text, glowing and displaced.
+fn template() -> Json {
+    let colours = json!({"curves": "M 0,0 L 1,1", "red": "M 0,0 L 0.5,0.7 L 1,1",
+        "green": "M 0,0 L 0.6,0.3 L 1,1", "blue": "M 0,0 L 0.7,0.2 L 1,1"});
+    json!({
+        "nakkash": 1, "size": "200x100", "dur": "1s",
+        "comps": {
+            "rays": {"size": "200x100", "dur": "1s", "layers": [
+                {"id": "a", "rect": "200x100", "fill": [1, 1, 1, 1],
+                 "fx": [{"fractal-noise": 0, "noise": "block", "scale-width": 1, "scale-height": 10}, colours.clone(),
+                        {"glow": 20, "intensity": 0.5}]},
+                {"id": "b", "rect": "200x100", "fill": [1, 1, 1, 1],
+                 "fx": [{"fractal-noise": 0, "scale": 2}, colours]}]},
+            "word": {"size": "200x100", "dur": "1s", "layers": [
+                {"id": "t", "text": "Go fast", "font": "Inter 40", "fill": [1, 1, 1, 1]}]},
+            "title": {"size": "200x100", "dur": "1s", "layers": [
+                {"id": "r", "comp": "word", "fx": [{"fill": [1, 0, 0, 1]}]},
+                {"id": "g", "comp": "word", "fx": [{"fill": [0, 1, 0.19, 1]}]},
+                {"id": "bl", "comp": "word", "fx": [{"fill": [0, 0.02, 1, 1]}, {"glow": 10, "intensity": 0.4},
+                                                  {"displacement-map": 20}]}]}},
+        "layers": [
+            {"id": "bg", "rect": "200x100", "fill": [0, 0, 0, 1]},
+            {"id": "field", "comp": "rays", "blend": "screen"},
+            {"id": "head", "comp": "title", "blend": "screen"}]
+    })
 }
 
 #[test]
-fn the_grade_maps_intensity_through_the_looks_stops() {
-    let paper = draw(
-        &["paper".into()],
-        0,
-        &Lit::default(),
-        &Faces::default(),
-        false,
-        &mut Rng::new(1, 0, "look"),
+fn a_look_colours_each_field_layer_in_turn_and_leaves_no_map() {
+    let step = look("aurora");
+    let mut raw = template();
+    let note = apply(&mut raw, &Held::default(), &step);
+    assert!(note.contains("2 field layers coloured in turn"), "{note}");
+    let rays = &raw["comps"]["rays"]["layers"];
+    // The two layers the master coloured alike now part.
+    assert_ne!(rays[0]["fx"][1]["red"], rays[1]["fx"][1]["red"]);
+    let [r, g, b] = rgb(&json!(step.palette.field[0])).unwrap();
+    assert_eq!(
+        rays[0]["fx"][1]["red"],
+        json!(format!(
+            "M 0,0 L 0.35,{} L 0.7,{} L 1,{}",
+            round(r * 0.3),
+            round(r * 0.75),
+            round(r)
+        ))
     );
-    let fx = grade(&paper);
-    // Paper runs from a light ground to dark ink: red starts high, ends low.
-    let red = fx[1]["red"].as_str().unwrap();
-    assert!(red.starts_with("M 0,0.95"), "{red}");
-    let last: f64 = red.rsplit(',').next().unwrap().parse().unwrap();
-    assert!((last - 0.0549).abs() < 0.002, "{red}");
-    // A smooth curve through the stops, as many points as a curve holds.
-    assert_eq!(red.matches(" L ").count(), 15, "{red}");
-    // Hues go to grey before the map.
-    assert!(fx[0].get("black-white").is_some());
-    assert!(fx[1].get("color-cycle").is_some());
-    // Pure white stays on the last stop rather than wrapping to the first.
-    assert!(fx[1]["repetitions"].as_f64().unwrap() < 1.0);
-    // And it lays grain over the film.
-    assert!(fx.iter().any(|f| f.get("fractal-noise").is_some()));
+    let _ = (g, b);
+    // The levels curve stays the master's.
+    assert_eq!(rays[0]["fx"][1]["curves"], json!("M 0,0 L 1,1"));
+    // No colour effect over the whole film.
+    let text = raw.to_string();
+    assert!(!text.contains("color-cycle") && !text.contains("black-white"));
 }
 
 #[test]
-fn effect_settings_move_inside_their_range() {
-    let mut glow = json!({"glow": 30, "intensity": 2, "anim": {"intensity": "1 -> 3 @0-10f"}});
-    let mut step = draw(
-        &["amber".into()],
-        0,
-        &Lit::default(),
-        &Faces::default(),
-        false,
-        &mut Rng::new(1, 0, "look"),
+fn the_title_takes_split_colours_and_loses_its_glitch_when_the_look_has_none() {
+    let step = look("aurora");
+    assert!(!step.title.glitch);
+    let mut raw = template();
+    apply(&mut raw, &Held::default(), &step);
+    let title = &raw["comps"]["title"]["layers"];
+    assert_eq!(title[0]["fx"][0]["fill"], json!(step.palette.split[0]));
+    assert_eq!(title[1]["fx"][0]["fill"], json!(step.palette.split[1]));
+    assert_eq!(title[2]["fx"][0]["fill"], json!(step.palette.split[2]));
+    let kinds: Vec<String> = title[2]["fx"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e.as_object().unwrap().keys().next().unwrap().clone())
+        .collect();
+    assert_eq!(kinds, ["fill", "glow"]);
+    // The text: the look's colour, in capitals, spaced wider.
+    let t = &raw["comps"]["word"]["layers"][0];
+    assert_eq!(t["fill"], json!(step.palette.text));
+    assert_eq!(t["text"], json!("GO FAST"));
+    assert_eq!(t["style"]["tracking"], json!(step.title.tracking));
+}
+
+#[test]
+fn a_flat_look_drops_the_fields_glow_and_keeps_the_titles_glitch() {
+    let step = look("riso");
+    assert_eq!(step.field.glow, 0.0);
+    let mut raw = template();
+    apply(&mut raw, &Held::default(), &step);
+    let a = raw["comps"]["rays"]["layers"][0]["fx"].as_array().unwrap();
+    assert!(a.iter().all(|e| e.get("glow").is_none()));
+    let bl = raw["comps"]["title"]["layers"][2]["fx"].as_array().unwrap();
+    assert!(bl.iter().any(|e| e.get("displacement-map").is_some()));
+    let t = &raw["comps"]["word"]["layers"][0];
+    assert_eq!(t["fill"], json!(step.palette.text));
+    // Grain is a layer of its own, over the film.
+    let top = raw["layers"].as_array().unwrap().last().unwrap();
+    assert_eq!(top["id"], json!("look-grain"));
+    assert_eq!(top["blend"], json!("overlay"));
+}
+
+#[test]
+fn the_ground_becomes_the_looks_gradient_and_the_noise_its_material() {
+    let step = look("aurora");
+    let mut raw = template();
+    apply(&mut raw, &Held::default(), &step);
+    let bg = &raw["layers"][0];
+    assert_eq!(bg["fill"], json!(step.palette.ground[1]));
+    assert_eq!(bg["fx"][0]["shape"], json!("radial"));
+    assert_eq!(bg["fx"][0]["start-color"], json!(step.palette.ground[0]));
+    assert_eq!(bg["fx"][0]["start"], json!([100.0, 50.0]));
+    let noise = &raw["comps"]["rays"]["layers"][0]["fx"][0];
+    assert_eq!(noise["noise"], json!("spline"));
+    assert_eq!(noise["scale-width"], json!(round(step.field.cells[0])));
+    // A noise scaled alike both ways takes the cells on its scale.
+    let even = &raw["comps"]["rays"]["layers"][1]["fx"][0];
+    assert_eq!(
+        even["scale"],
+        json!(round(
+            2.0 * (step.field.cells[0] * step.field.cells[1]).sqrt()
+        ))
     );
-    step.glow = [2.0, 100.0];
-    let n = move_effect(glow.as_object_mut().unwrap(), &step);
-    assert_eq!(n, 3);
-    assert_eq!(glow["glow"], json!(60.0));
-    let top = range_of(&nakkash_format::item::GLOW, "intensity").map_or(f64::MAX, |r| r.1);
-    assert!(glow["intensity"].as_f64().unwrap() <= top);
-    assert!(
-        glow["anim"]["intensity"]
-            .as_str()
-            .unwrap()
-            .ends_with("@0-10f")
+}
+
+#[test]
+fn held_layers_and_slots_keep_their_colours() {
+    let step = look("ember");
+    let mut raw = template();
+    raw["comps"]["word"]["layers"][0]["fill"] = json!("$ink");
+    let held = Held::default();
+    apply(&mut raw, &held, &step);
+    assert_eq!(raw["comps"]["word"]["layers"][0]["fill"], json!("$ink"));
+    assert_eq!(raw["comps"]["word"]["layers"][0]["text"], json!("go fast"));
+}
+
+#[test]
+fn noise_travels_faster_by_its_keys() {
+    let mut noise = json!({"fractal-noise": 0, "scale-width": 0.06, "scale-height": 30,
+        "anim": {"offset": [{"t": "0s", "v": [2000, -1000]}, {"t": "1s", "v": [2000, 3000]}]}});
+    let mut step = look("riso");
+    step.field.cells = [2.0, 0.5];
+    step.field.speed = 1.5;
+    move_effect(noise.as_object_mut().unwrap(), Role::Field, &step);
+    assert_eq!(noise["scale-width"], json!(0.12));
+    assert_eq!(noise["scale-height"], json!(15.0));
+    // Half as far again from where it starts.
+    assert_eq!(noise["anim"]["offset"][1]["v"], json!([2000.0, 5000.0]));
+    // A title's noise is not the field's.
+    let mut other = json!({"fractal-noise": 0, "scale": 2});
+    assert_eq!(
+        move_effect(other.as_object_mut().unwrap(), Role::Title, &step),
+        0
     );
 }
 
@@ -79,26 +201,6 @@ fn outlined_text_keeps_its_colour_in_the_stroke() {
     ));
     assert_eq!(text["style"]["stroke"], json!("#FF0000"));
     assert_eq!(text["fill"], json!("#FFFFFF00"));
-}
-
-#[test]
-fn stops_land_at_the_masters_quantiles_in_order() {
-    let lit: Vec<f64> = (1..=100).map(|i| f64::from(i) / 400.0).collect();
-    let stops = placed(
-        &[
-            (0.0, "#000000"),
-            (0.5, "#FF0000"),
-            (0.9, "#00FF00"),
-            (1.0, "#FFFFFF"),
-        ],
-        &lit,
-    );
-    let at: Vec<f64> = stops.iter().map(|s| s.0).collect();
-    assert_eq!(at[0], 0.0);
-    // Halfway from where they are written to the quantiles.
-    assert!((at[1] - 0.31375).abs() < 1e-3, "{at:?}");
-    assert!((at[2] - 0.56375).abs() < 1e-3, "{at:?}");
-    assert_eq!(at[3], 1.0);
 }
 
 /// A scene with a ring (a disc with a smaller disc cut out) in `card`, and
@@ -146,62 +248,6 @@ fn rings_go_widen_or_echo_and_other_layers_stay() {
     assert_eq!(rings(&mut ringed(), &held, Rings::Keep), 0);
 }
 
-#[test]
-fn noise_cells_and_speed_move_its_shape_and_travel() {
-    let mut noise = json!({"fractal-noise": 0, "scale-width": 0.06, "scale-height": 30,
-        "anim": {"offset": [{"t": "0s", "v": [2000, -1000]}, {"t": "1s", "v": [2000, 3000]}]}});
-    let mut step = draw(
-        &["acid".into()],
-        0,
-        &Lit::default(),
-        &Faces::default(),
-        false,
-        &mut Rng::new(1, 0, "look"),
-    );
-    step.cells = [2.0, 0.5];
-    step.noise[3] = 1.5;
-    move_effect(noise.as_object_mut().unwrap(), &step);
-    assert_eq!(noise["scale-width"], json!(0.12));
-    assert_eq!(noise["scale-height"], json!(15.0));
-    assert!(noise.get("scale").is_none());
-    // Half as far again from where it starts.
-    assert_eq!(noise["anim"]["offset"][1]["v"], json!([2000.0, 5000.0]));
-    // A noise scaled alike both ways takes the cells on its scale.
-    let mut even = json!({"fractal-noise": 0, "scale": 2});
-    move_effect(even.as_object_mut().unwrap(), &step);
-    assert_eq!(even["scale"], json!(2.0));
-}
-
-#[test]
-fn a_red_title_reads_lighter_than_the_blue_field_it_sits_on() {
-    assert!(grey(&HUES, [0.9, 0.08, 0.12]) > grey(&HUES, [0.08, 0.16, 0.9]) + 0.5);
-    // Grey stays grey.
-    assert!((grey(&HUES, [0.5, 0.5, 0.5]) - 0.5).abs() < 1e-9);
-    let px = [
-        230u8, 20, 30, 255, 20, 40, 230, 255, 0, 0, 0, 255, 255, 255, 255, 255,
-    ];
-    let lit = lit(&[crate::Image::new(4, 1, px.to_vec()).unwrap()]);
-    assert_eq!(lit.hues, HUES);
-    assert_eq!(lit.levels.len(), 3);
-}
-
-#[test]
-fn the_map_never_overshoots_a_stop() {
-    let stops = vec![
-        (0.0, "#000000".to_owned()),
-        (0.1, "#3A0A6E".to_owned()),
-        (0.2, "#8A2BE2".to_owned()),
-        (1.0, "#FFFFFF".to_owned()),
-    ];
-    let curve = smooth(&stops);
-    assert_eq!(curve.len(), GRADE_POINTS);
-    let light = |rgb: [f64; 3]| nakkash_format::oklch::oklab(rgb)[0];
-    for pair in curve.windows(2) {
-        assert!(pair[0].0 < pair[1].0);
-        assert!(light(pair[1].1) >= light(pair[0].1) - 1e-6, "{curve:?}");
-    }
-}
-
 /// A family of `weights` whose strokes are `strokes` thick.
 fn family(name: &str, weights: &[u16], strokes: &[f64]) -> Family {
     Family {
@@ -215,7 +261,7 @@ fn family(name: &str, weights: &[u16], strokes: &[f64]) -> Family {
 
 #[test]
 fn a_look_takes_a_family_heavy_enough_for_the_masters_strokes() {
-    // Amber names a serif first, then a sans; the serif's heaviest is
+    // Ember names a serif first, then a sans; the serif's heaviest is
     // thinner than the master's poster face, the sans's is not.
     let faces = [
         family("Source Serif Pro", &[400, 700], &[0.07, 0.10]),
@@ -223,9 +269,8 @@ fn a_look_takes_a_family_heavy_enough_for_the_masters_strokes() {
     ];
     let pick = |stroke: Option<f64>| {
         let step = draw(
-            &["amber".into()],
+            &["ember".into()],
             0,
-            &Lit::default(),
             &Faces {
                 families: &faces,
                 fonts: &[],
@@ -251,9 +296,8 @@ fn a_look_reaches_past_its_own_families_for_one_heavy_enough() {
         family("Raleway", &[400, 900], &[0.07, 0.19]),
     ];
     let step = draw(
-        &["amber".into()],
+        &["ember".into()],
         0,
-        &Lit::default(),
         &Faces {
             families: &faces,
             fonts: &[],
@@ -266,34 +310,20 @@ fn a_look_reaches_past_its_own_families_for_one_heavy_enough() {
 }
 
 #[test]
-fn a_mid_grey_line_keeps_its_contrast_on_a_dark_ground() {
-    let mut step = draw(
-        &["amber".into()],
-        0,
-        &Lit::default(),
-        &Faces::default(),
-        false,
-        &mut Rng::new(1, 0, "look"),
+fn a_looks_ease_reaches_the_titles_moves_and_not_the_fields() {
+    let step = look("ember");
+    let mut raw = template();
+    raw["comps"]["title"]["layers"][0]["anim"] = json!({
+        "position": [{"t": "0s", "v": [0, 0], "curve": "linear"}, {"t": "1s", "v": [10, 0]}],
+        "scale": [[0, 1], ["1s", 1.2]]});
+    raw["comps"]["rays"]["layers"][0]["anim"] = json!({"opacity": [[0, 0], ["1s", 1]]});
+    apply(&mut raw, &Held::default(), &step);
+    let title = &raw["comps"]["title"]["layers"][0]["anim"];
+    assert_eq!(title["position"][0]["curve"], json!("out-back"));
+    assert!(title["position"][1].get("curve").is_none());
+    assert_eq!(title["scale"][0], json!([0, 1, "out-back"]));
+    assert_eq!(
+        raw["comps"]["rays"]["layers"][0]["anim"]["opacity"][0],
+        json!([0, 0])
     );
-    step.ground = 0.0;
-    let curve = smooth(&step.stops);
-    let lum = |rgb: [f64; 3]| super::super::colour::luminance([rgb[0], rgb[1], rgb[2], 1.0]);
-    let ratio = |x: f64, y: f64| (x.max(y) + 0.05) / (x.min(y) + 0.05);
-    let back = lum(mapped(&curve, 0.0));
-    // A grey url line on black: about 4.6:1 in the master.
-    let mut layer = json!({"text": "example.com", "fill": "#8A8A8A"});
-    let layer = layer.as_object_mut().unwrap();
-    let before = ratio(lum(mapped(&curve, 0.54)), back);
-    assert!(before < 3.0, "{before}");
-    assert!(keep_contrast(layer, &curve, &step));
-    let [g, _, _, a] = nakkash_format::color(&layer["fill"]).unwrap();
-    assert_eq!(a, 1.0);
-    let after = ratio(lum(mapped(&curve, g)), back);
-    assert!(after >= 4.5 - 1e-9 || (g - 1.0).abs() < 1e-9, "{g} {after}");
-    // White already stands out: left alone.
-    let mut white = json!({"text": "x", "fill": [1, 1, 1, 1]});
-    assert!(!keep_contrast(white.as_object_mut().unwrap(), &curve, &step));
-    // A slot is the brand's, not the look's.
-    let mut slot = json!({"text": "x", "fill": "$ink"});
-    assert!(!keep_contrast(slot.as_object_mut().unwrap(), &curve, &step));
 }

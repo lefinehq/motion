@@ -1,24 +1,32 @@
-//! The look axis ([D78]): the same template as another film. A look grades
-//! the whole master through a gradient map of its own colours, moves the
-//! settings of its effects (noise, glow, blur) inside ranges the format
-//! allows and the look names, treats its text (filled, outlined or
-//! extruded) and sets it in another face, fitted into its boxes as the
-//! type axis fits.
+//! The look axis ([D78]): the same template as another film, designed
+//! element by element rather than passed through one colour map.
 //!
-//! It moves the drawing too, not only its colours: the cells of the
-//! template's noise (wrapped into rays, how many and how long), how fast
-//! the noise travels, how heavy the glow is, the rings it cuts (kept,
-//! dropped, widened or echoed inside one another) and, through the timing
-//! axis, the pace of its moves.
+//! A look reads what each layer of the master draws: the **field** (its
+//! generated texture: a noise and what colours it), the **title** (text,
+//! a logo, and the copies and effects a template draws them with) and the
+//! **ground** under them. It then makes a decision for each:
 //!
-//! Every value a look writes is a scene's own: a `color-cycle` on the
-//! layers that draw the master, a `fractal-noise` for grain, a number on an
-//! effect clamped to its range. The gate judges a look as it judges any
-//! variant, and [`super::distance`] measures how far from the master it
-//! lands.
+//! - **Colour by role.** The ground becomes a designed gradient; each of
+//!   the field's colouring curves and fills takes one of the look's field
+//!   colours in turn, so layers the master coloured alike part; the
+//!   title's chromatic copies take the look's split colours; text takes
+//!   the look's text colour. Neutral fills, mattes and logos stay.
+//! - **Material.** The noise's kind and fractal, its cells and its speed;
+//!   the rings dropped, widened or echoed; grain as a layer of its own.
+//! - **Effects by element.** Glow and blur on the field, glow on the
+//!   title, and the title's glitch (its displacements and channel shifts)
+//!   kept or switched off.
+//! - **Type.** A face heavy enough for the master's strokes, its case and
+//!   its tracking, filled, outlined or extruded.
+//! - **Motion.** A pace through the timing axis.
+//!
+//! No look writes a frame-wide map: [`super::Distance::filter`] measures
+//! how much of a variant no colour transform of the master explains, and
+//! the gate fails a look that a filter could have made.
 //!
 //! [D78]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d78-generated-variants-move-along-measured-axes-and-pass-when-they-add-no-error
 
+use std::collections::BTreeSet;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -32,13 +40,13 @@ use super::rng::Rng;
 use super::typeface::{Family, TypeStep, nearest};
 
 /// The looks a spec may name, in the order a run without names takes them.
-pub const LOOKS: [&str; 6] = ["chrome", "acid", "amber", "paper", "duotone", "crimson"];
+pub const LOOKS: [&str; 3] = ["aurora", "riso", "ember"];
 
 /// How a look treats the text.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Treatment {
-    /// Filled, as the master sets it.
+    /// Filled.
     Fill,
     /// Drawn as its outline only, this many px wide at the master's size.
     Outline(f64),
@@ -61,48 +69,92 @@ pub enum Rings {
     Echo(u32),
 }
 
+/// The case a look sets text in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Case {
+    /// As the master writes it.
+    AsIs,
+    /// Capitals.
+    Upper,
+    /// Small letters.
+    Lower,
+}
+
+/// A look's colours, by the role they play.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Palette {
+    /// The ground: its middle, then its edges, a radial gradient.
+    pub ground: [String; 2],
+    /// The field's colours, given in turn to the layers that colour it.
+    pub field: Vec<String>,
+    /// The title's chromatic copies: what was red, green and blue.
+    pub split: [String; 3],
+    /// Text.
+    pub text: String,
+}
+
+/// What a look does to the field, the template's generated texture.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Field {
+    /// The noise's kind (`block`, `linear`, `soft-linear`, `spline`), or
+    /// the master's.
+    pub noise: Option<String>,
+    /// The noise's fractal (`basic`, `turbulent-smooth`, …), or the
+    /// master's.
+    pub fractal: Option<String>,
+    /// How much its contrast is multiplied by.
+    pub contrast: f64,
+    /// How much faster it travels and evolves.
+    pub speed: f64,
+    /// How much wider and taller its cells are.
+    pub cells: [f64; 2],
+    /// How much its glows' intensity is multiplied by; 0 drops them.
+    pub glow: f64,
+    /// How much its blurs are multiplied by.
+    pub blur: f64,
+}
+
+/// What a look does to the title: its text, logo and the copies and
+/// effects they are drawn with.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Title {
+    /// How much its glows' intensity is multiplied by; 0 drops them.
+    pub glow: f64,
+    /// Whether its displacements and channel shifts stay.
+    pub glitch: bool,
+    /// Filled, outlined or extruded.
+    pub treatment: Treatment,
+    /// Its case.
+    pub case: Case,
+    /// Tracking added, in thousandths of an em.
+    pub tracking: f64,
+    /// The curve its moves (position, scale, rotation, opacity) take
+    /// between keys, as a scene writes one (`out-expo`, `out-back`, …), or
+    /// the master's.
+    pub ease: Option<String>,
+}
+
 /// One look, every value drawn: what the recipe records.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LookStep {
     /// The look's name.
     pub name: String,
-    /// The gradient map: the colour each level of the master's intensity
-    /// takes, `(level, #RRGGBB)` in rising level.
-    pub stops: Vec<(f64, String)>,
-    /// How much of the master's own colour stays, 0 to 1.
-    pub blend: f64,
-    /// The grey each hue of the master turns into before the map, as the
-    /// `black-white` effect takes them (reds, yellows, greens, cyans,
-    /// blues, magentas), so its figures stay apart from its ground
-    /// (the `HUES` the look reads them with).
-    pub hues: [f64; 6],
-    /// Fractal noise: contrast and complexity as a share of the master's,
-    /// brightness added, and how much faster it evolves and travels.
-    pub noise: [f64; 4],
-    /// Fractal noise cells: width and height as a share of the master's.
-    /// Wrapped into rays, the width is how many rays there are and how
-    /// wide (smaller is more and finer), the height how long they run.
-    pub cells: [f64; 2],
-    /// The rings the template cuts.
+    /// Its colours by role.
+    pub palette: Palette,
+    /// The field.
+    pub field: Field,
+    /// The rings.
     pub rings: Rings,
-    /// The pace of the moves, through the timing axis, when the look
-    /// changes it.
-    pub pace: Option<super::Pace>,
-    /// Glow: radius and intensity as a share of the master's.
-    pub glow: [f64; 2],
-    /// Blurs and streaks: their amount as a share of the master's.
-    pub blur: f64,
-    /// Grain over the whole film: its opacity, 0 for none.
+    /// The title.
+    pub title: Title,
+    /// The opacity of a grain layer laid over the film; 0 lays none.
     pub grain: f64,
-    /// The text's treatment.
-    pub text: Treatment,
+    /// The pace of its moves, through the timing axis.
+    pub pace: Option<super::Pace>,
     /// The text's new face, fitted into its boxes, when the scene can load
     /// one the look asks for.
     pub face: Option<TypeStep>,
-    /// The master's ground ([`Lit::ground`]): what its texts keep their
-    /// contrast against through the map.
-    #[serde(default)]
-    pub ground: f64,
 }
 
 impl fmt::Display for LookStep {
@@ -111,14 +163,23 @@ impl fmt::Display for LookStep {
         if let Some((family, weight)) = self.face.as_ref().and_then(|t| t.headline.as_ref()) {
             write!(f, ", {family} {weight}")?;
         }
-        match self.text {
+        match self.title.treatment {
             Treatment::Fill => {}
             Treatment::Outline(_) => write!(f, ", outlined")?,
             Treatment::Extrude(_) => write!(f, ", extruded")?,
         }
-        let [w, h] = self.cells;
+        if let Some(noise) = &self.field.noise {
+            write!(f, ", {noise} noise")?;
+        }
+        let [w, h] = self.field.cells;
         if (w - 1.0).abs() > 0.05 || (h - 1.0).abs() > 0.05 {
             write!(f, ", cells ×{w:.2}/×{h:.2}")?;
+        }
+        if self.field.glow == 0.0 {
+            write!(f, ", flat")?;
+        }
+        if !self.title.glitch {
+            write!(f, ", no glitch")?;
         }
         match self.rings {
             Rings::Keep => Ok(()),
@@ -138,240 +199,141 @@ const NOISE_CONTRAST: (f64, f64) = (0.9, 1.1);
 /// A look as it is written down, before the seed moves it a little.
 struct Preset {
     name: &'static str,
-    stops: &'static [(f64, &'static str)],
-    blend: f64,
-    noise: [f64; 4],
+    ground: [&'static str; 2],
+    field: &'static [&'static str],
+    split: [&'static str; 3],
+    text: &'static str,
+    noise: Option<&'static str>,
+    fractal: Option<&'static str>,
+    contrast: f64,
+    speed: f64,
     cells: [f64; 2],
-    rings: Rings,
-    pace: Option<super::Pace>,
-    glow: [f64; 2],
+    field_glow: f64,
     blur: f64,
+    rings: Rings,
+    title_glow: f64,
+    glitch: bool,
+    treatment: Treatment,
+    case: Case,
+    tracking: f64,
+    ease: Option<&'static str>,
     grain: f64,
-    text: Treatment,
+    pace: Option<super::Pace>,
     /// Faces it prefers, in order, by family name without spaces or case.
     faces: &'static [&'static str],
 }
 
-/// The six looks. Each is a gradient map whose levels rise with the
-/// master's, so what is lighter in the master stays lighter (or, for
-/// `paper`, darker) and contrast keeps its sense; then the drawing: the
-/// noise's cells and speed, the glow, the rings and the pace, so that no
-/// two looks are the same film in other colours.
-const PRESETS: [Preset; 6] = [
-    // Mono chrome: greys with a cold steel middle; many fine long rays at
-    // speed, a heavy glow, rings echoed inside one another, snappy moves,
-    // text extruded in dark.
+/// The three looks, each a set of decisions, not a colour map:
+///
+/// - `aurora`: an indigo ground opening in the middle; a smooth silk
+///   noise in teal, pink and periwinkle layer by layer, as light as each
+///   other so they part by hue, glowing and streaked long; no rings; a
+///   clean white capital title, widely spaced, its glitch off; a calm pace.
+/// - `riso`: a warm charcoal ground; the master's blocky noise in two
+///   printing inks and a yellow, flat (no glow) and barely streaked, its
+///   cells tall and thin; wide rings; a yellow capital title whose split
+///   copies misregister like a print; grain; a snappy pace.
+/// - `ember`: a dark warm ground; a smeared noise in orange and a
+///   raspberry red, with teal sparks against them, its cells long and low;
+///   rings echoed; a cream title in small letters, extruded, glitch off.
+const PRESETS: [Preset; 3] = [
     Preset {
-        name: "chrome",
-        stops: &[
-            (0.0, "#000000"),
-            (0.3, "#1E2228"),
-            (0.62, "#8E96A3"),
-            (0.85, "#D9DEE6"),
-            (1.0, "#FFFFFF"),
-        ],
-        blend: 0.0,
-        noise: [1.05, 1.0, 0.0, 1.8],
-        cells: [0.4, 1.8],
-        rings: Rings::Echo(2),
-        pace: Some(super::Pace::Snappy),
-        glow: [1.3, 1.2],
-        blur: 1.0,
-        grain: 0.0,
-        text: Treatment::Extrude(10.0),
-        faces: &["kumbhsans", "raleway"],
-    },
-    // Acid: violet shadows, acid-green light; few wide rays broken into
-    // short blocks, a thin glow and no rings: a hard digital film.
-    Preset {
-        name: "acid",
-        stops: &[
-            (0.0, "#06010F"),
-            (0.28, "#3A0A6E"),
-            (0.55, "#8A2BE2"),
-            (0.78, "#7CFF3A"),
-            (1.0, "#F2FFE0"),
-        ],
-        blend: 0.0,
-        noise: [1.1, 1.0, 0.0, 1.5],
-        cells: [3.5, 0.3],
-        rings: Rings::Off,
-        pace: Some(super::Pace::Snappy),
-        glow: [1.0, 0.65],
-        blur: 1.2,
-        grain: 0.0,
-        text: Treatment::Fill,
-        faces: &["raleway", "kumbhsans"],
-    },
-    // Warm gold and amber on black, its light held below white so a
-    // glowing field never burns out: long slow streaks, a warm glow,
-    // thinner rings, a heavy serif.
-    Preset {
-        name: "amber",
-        stops: &[
-            (0.0, "#000000"),
-            (0.3, "#2A1200"),
-            (0.55, "#8A4200"),
-            (0.8, "#E08A1E"),
-            (1.0, "#FFD27A"),
-        ],
-        blend: 0.0,
-        noise: [0.95, 1.0, 0.0, 0.55],
-        cells: [1.0, 2.5],
-        rings: Rings::Width(-15.0),
-        pace: None,
-        glow: [1.2, 1.0],
+        name: "aurora",
+        ground: ["#1B1F5E", "#05060F"],
+        field: &["#2DE2D0", "#FF6EC7", "#8FA2FF"],
+        split: ["#FF6EC7", "#2DE2D0", "#8FA2FF"],
+        text: "#FFFFFF",
+        noise: Some("spline"),
+        fractal: None,
+        contrast: 0.95,
+        speed: 0.8,
+        cells: [1.6, 1.4],
+        field_glow: 1.1,
         blur: 1.3,
-        grain: 0.0,
-        text: Treatment::Fill,
-        faces: &["sourceserifpro", "kumbhsans"],
-    },
-    // A light ground: the map runs from paper to ink, so the dark field
-    // turns near-white and the bright rays turn dark; fewer rays, little
-    // glow, no rings, calm moves and a fine grain, like print.
-    Preset {
-        name: "paper",
-        stops: &[
-            (0.0, "#F4F0E6"),
-            (0.3, "#D9D1C2"),
-            (0.6, "#7A6E60"),
-            (0.85, "#2A2520"),
-            (1.0, "#0E0C0A"),
-        ],
-        blend: 0.0,
-        noise: [1.05, 1.0, 0.0, 0.8],
-        cells: [2.2, 1.0],
         rings: Rings::Off,
+        title_glow: 0.2,
+        glitch: false,
+        treatment: Treatment::Fill,
+        case: Case::Upper,
+        tracking: 80.0,
+        ease: Some("in-out-sine"),
+        grain: 0.0,
         pace: Some(super::Pace::Calm),
-        glow: [0.6, 0.3],
-        blur: 0.8,
-        grain: 0.06,
-        text: Treatment::Fill,
-        faces: &["sourceserifpro", "kumbhsans"],
+        faces: &["raleway", "kumbhsans"],
     },
-    // A cyan and magenta print over navy: fine short dashes, a ring
-    // echoed once, grain, outlined type.
     Preset {
-        name: "duotone",
-        stops: &[
-            (0.0, "#0A0E33"),
-            (0.4, "#0090C8"),
-            (0.7, "#FF2E93"),
-            (1.0, "#FFF2F8"),
-        ],
-        blend: 0.0,
-        noise: [1.1, 1.0, 0.0, 1.2],
-        cells: [0.6, 0.45],
-        rings: Rings::Echo(1),
-        pace: None,
-        glow: [0.8, 0.6],
-        blur: 1.0,
-        grain: 0.08,
-        text: Treatment::Outline(6.0),
+        name: "riso",
+        ground: ["#2A2118", "#0E0B08"],
+        field: &["#FF48B0", "#00A0E0", "#FFE800"],
+        split: ["#FF48B0", "#FFE800", "#0078BF"],
+        text: "#FFE800",
+        noise: None,
+        fractal: None,
+        contrast: 1.08,
+        speed: 1.2,
+        cells: [0.5, 2.2],
+        field_glow: 0.0,
+        blur: 0.4,
+        rings: Rings::Width(6.0),
+        title_glow: 0.0,
+        glitch: true,
+        treatment: Treatment::Fill,
+        case: Case::Upper,
+        tracking: 20.0,
+        ease: Some("out-expo"),
+        grain: 0.1,
+        pace: Some(super::Pace::Snappy),
         faces: &["kumbhsans", "raleway"],
     },
-    // Deep red on black, minimal: few rays, slow, thin rings.
     Preset {
-        name: "crimson",
-        stops: &[
-            (0.0, "#000000"),
-            (0.25, "#3A0008"),
-            (0.5, "#E0102E"),
-            (0.75, "#FF7A88"),
-            (1.0, "#FFF0F2"),
-        ],
-        blend: 0.0,
-        noise: [0.9, 1.0, 0.0, 0.5],
-        cells: [2.8, 1.6],
-        rings: Rings::Width(-25.0),
+        name: "ember",
+        ground: ["#3A1206", "#0A0302"],
+        field: &["#FF8A1F", "#FF3B5C", "#3EC7C2"],
+        split: ["#FF3B5C", "#FFD36B", "#3EC7C2"],
+        text: "#FFF1DC",
+        noise: None,
+        fractal: Some("smeary"),
+        contrast: 1.0,
+        speed: 0.6,
+        cells: [2.6, 0.7],
+        field_glow: 1.0,
+        blur: 1.0,
+        rings: Rings::Echo(2),
+        title_glow: 0.5,
+        glitch: false,
+        treatment: Treatment::Extrude(10.0),
+        case: Case::Lower,
+        tracking: -10.0,
+        ease: Some("out-back"),
+        grain: 0.05,
         pace: None,
-        glow: [0.9, 0.8],
-        blur: 0.8,
-        grain: 0.0,
-        text: Treatment::Fill,
-        faces: &["raleway", "kumbhsans"],
+        faces: &["sourceserifpro", "kumbhsans"],
     },
 ];
 
-/// What a look reads off the master before it is drawn: the grey each
-/// hue turns into, and the levels of its lit pixels in that grey.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Lit {
-    /// The grey each hue turns into, as [`LookStep::hues`].
-    pub hues: [f64; 6],
-    /// The grey levels of the lit pixels, sorted.
-    pub levels: Vec<f64>,
-    /// The master's ground: the median grey of all its pixels.
-    pub ground: f64,
+/// The families a look may set text in.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Faces<'a> {
+    /// Those the scene can load with the spec's folders.
+    pub families: &'a [Family],
+    /// Those folders.
+    pub fonts: &'a [PathBuf],
+    /// How thick the master's heaviest text is drawn, in ems
+    /// ([`super::typeface::thickest`]).
+    pub stroke: Option<f64>,
 }
 
-/// The grey each hue turns into before the map: warm hues as light as
-/// their brightest channel, greens and cyans darker, blues darkest. A
-/// gradient map read off plain intensity puts a red title and the blue
-/// field behind it on one level, so both take one colour of the look;
-/// read this way the title stays lighter than its field.
-const HUES: [f64; 6] = [1.0, 1.0, 0.6, 0.4, 0.15, 1.0];
-
-/// What `frames` of the master light ([`Lit`]): its pixels' greys as
-/// [`HUES`] turns them, those above [`LIT`]. A template is mostly dark,
-/// its figures and type a small share of its pixels at middling levels; a
-/// gradient map with stops at fixed levels would leave its upper colours
-/// unused, so the stops are placed by these levels ([`placed`]).
-pub(crate) fn lit(frames: &[crate::Image]) -> Lit {
-    let mut all: Vec<f64> = frames
-        .iter()
-        .flat_map(|image| image.pixels().chunks_exact(4))
-        .map(|p| {
-            let a = f64::from(p[3]) / 255.0;
-            grey(&HUES, [0, 1, 2].map(|c| f64::from(p[c]) / 255.0 * a))
-        })
-        .collect();
-    all.sort_by(f64::total_cmp);
-    let ground = all.get(all.len() / 2).copied().unwrap_or(0.0);
-    let levels = all.into_iter().filter(|v| *v > LIT).collect();
-    Lit {
-        hues: HUES,
-        levels,
-        ground,
-    }
-}
-
-/// The hue each channel is the primary of, red, green and blue.
-const PRIMARY: [usize; 3] = [0, 2, 4];
-
-/// The hue of channels `i` and `j` together: yellow, cyan or magenta.
-fn secondary(i: usize, j: usize) -> usize {
-    match (i.min(j), i.max(j)) {
-        (0, 1) => 1,
-        (1, 2) => 3,
-        _ => 5,
-    }
-}
-
-/// The channels of `rgb` from highest to lowest, and their levels.
-fn ranked(rgb: [f64; 3]) -> ([usize; 3], [f64; 3]) {
-    let mut order = [0, 1, 2];
-    order.sort_by(|&i, &j| rgb[j].total_cmp(&rgb[i]));
-    (order, order.map(|i| rgb[i]))
-}
-
-/// The grey of `rgb` under the hues' greys, as `black-white` draws it.
-fn grey(hues: &[f64; 6], rgb: [f64; 3]) -> f64 {
-    let ([high, middle, _], [h, m, l]) = ranked(rgb);
-    (l + (h - m) * hues[PRIMARY[high]] + (m - l) * hues[secondary(high, middle)]).clamp(0.0, 1.0)
-}
-
-/// A pixel brighter than this intensity is lit.
-const LIT: f64 = 0.03;
+/// How near the master's heaviest stroke a look's family must reach to be
+/// taken in its order: a tenth thinner at most.
+const THICK_ENOUGH: f64 = 0.9;
 
 /// Draws look `index` of a run: the spec's names in turn (every look when
-/// it names none), each setting moved by up to 8 % by the seed so two
-/// runs on two seeds are two films. `lit` places its stops ([`lit`]);
-/// `faces` are the families it may set text in ([`Faces`]).
+/// it names none), each number moved by up to 8 % by the seed so two runs
+/// on two seeds are two films. `faces` are the families it may set text in
+/// ([`Faces`]).
 pub(crate) fn draw(
     names: &[String],
     index: usize,
-    lit: &Lit,
     faces: &Faces<'_>,
     typefaces_locked: bool,
     rng: &mut Rng,
@@ -386,20 +348,23 @@ pub(crate) fn draw(
         .find(|p| p.name == name)
         .unwrap_or(&PRESETS[0]);
     let mut jitter = |v: f64| (v * rng.range(0.92, 1.08) * 1000.0).round() / 1000.0;
-    let noise = [
-        jitter(preset.noise[0]).clamp(NOISE_CONTRAST.0, NOISE_CONTRAST.1),
-        preset.noise[1],
-        preset.noise[2],
-        jitter(preset.noise[3]),
-    ];
-    let mut glow = [jitter(preset.glow[0]), jitter(preset.glow[1])];
-    // A heavy glow on a template that glows already burns its field out:
-    // the two together stay under a ceiling.
-    if glow[0] * glow[1] > GLOW_CEILING {
-        glow[1] = round(GLOW_CEILING / glow[0]);
-    }
-    let cells = [jitter(preset.cells[0]), jitter(preset.cells[1])];
-    let blur = jitter(preset.blur);
+    let field = Field {
+        noise: preset.noise.map(str::to_owned),
+        fractal: preset.fractal.map(str::to_owned),
+        contrast: jitter(preset.contrast).clamp(NOISE_CONTRAST.0, NOISE_CONTRAST.1),
+        speed: jitter(preset.speed),
+        cells: [jitter(preset.cells[0]), jitter(preset.cells[1])],
+        glow: jitter(preset.field_glow),
+        blur: jitter(preset.blur),
+    };
+    let title = Title {
+        glow: jitter(preset.title_glow),
+        glitch: preset.glitch,
+        treatment: preset.treatment,
+        case: preset.case,
+        tracking: preset.tracking,
+        ease: preset.ease.map(str::to_owned),
+    };
     let key = |s: &str| s.to_lowercase().replace([' ', '-', '_'], "");
     // The look's families in its order; the first whose heaviest weight
     // draws strokes about as thick as the master's heaviest text, else the
@@ -452,59 +417,168 @@ pub(crate) fn draw(
                 families: faces.families.to_vec(),
             }
         });
+    let owned = |s: &[&str]| s.iter().map(|c| (*c).to_owned()).collect::<Vec<_>>();
     LookStep {
         name: preset.name.to_owned(),
-        stops: placed(preset.stops, &lit.levels),
-        blend: preset.blend,
-        hues: lit.hues,
-        noise,
-        cells,
+        palette: Palette {
+            ground: preset.ground.map(str::to_owned),
+            field: owned(preset.field),
+            split: preset.split.map(str::to_owned),
+            text: preset.text.to_owned(),
+        },
+        field,
         rings: preset.rings,
-        pace: preset.pace,
-        glow,
-        blur,
+        title,
         grain: preset.grain,
-        text: preset.text,
+        pace: preset.pace,
         face,
-        ground: lit.ground,
     }
 }
 
-/// The most a look multiplies a template's glow radius and intensity
-/// together.
-const GLOW_CEILING: f64 = 1.6;
+/// `step` with its colour and effect decisions only: no moves of the
+/// noise or rings, no type, case, tracking, ease, pace or grain, so a look
+/// drawn this way keeps the master's drawing where it was
+/// ([`super::colour_twin`]).
+pub(crate) fn colour_only(step: &LookStep) -> LookStep {
+    LookStep {
+        name: step.name.clone(),
+        palette: step.palette.clone(),
+        field: Field {
+            noise: None,
+            fractal: None,
+            contrast: 1.0,
+            speed: 1.0,
+            cells: [1.0, 1.0],
+            ..step.field.clone()
+        },
+        rings: Rings::Keep,
+        title: Title {
+            treatment: Treatment::Fill,
+            case: Case::AsIs,
+            tracking: 0.0,
+            ease: None,
+            ..step.title.clone()
+        },
+        grain: 0.0,
+        pace: None,
+        face: None,
+    }
+}
 
-/// A preset's stops placed between where they are written and the
-/// master's quantiles: an interior stop at `t` lands halfway from `t` to
-/// the level `t` of the lit pixels lie below, the ends at 0 and 1, each at
-/// least a hundredth above the one before. All the way to the quantiles,
-/// a dark template's lower stops crowd into a sliver of levels, and the
-/// map turns its soft glows into steps.
-fn placed(stops: &[(f64, &str)], lit: &[f64]) -> Vec<(f64, String)> {
-    let mut out: Vec<(f64, String)> = Vec::with_capacity(stops.len());
-    for (i, &(t, c)) in stops.iter().enumerate() {
-        let interior = i > 0 && i + 1 < stops.len();
-        let at = match (interior, lit.is_empty()) {
-            (true, false) => {
-                let k = ((t * lit.len() as f64) as usize).min(lit.len() - 1);
-                (lit[k] + t) / 2.0
+/// What a layer draws, for a look: the part of the film it belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Role {
+    /// The generated texture: a noise, or what is drawn from one.
+    Field,
+    /// Text, a logo, and the copies and effects they are drawn with.
+    Title,
+    /// Both, or neither: a container, a matte, an adjustment.
+    Other,
+}
+
+/// The compositions that draw a noise, and those that draw text or a
+/// picture, each through any depth of compositions inside them. Hidden
+/// layers do not count: a noise a title is displaced by is not drawn.
+#[derive(Debug, Default)]
+struct Kinds {
+    noise: BTreeSet<String>,
+    title: BTreeSet<String>,
+}
+
+/// Reads [`Kinds`] off `raw`'s compositions.
+fn kinds(raw: &Json) -> Kinds {
+    let Some(Json::Object(comps)) = raw.get("comps") else {
+        return Kinds::default();
+    };
+    let layers = |id: &str| -> Vec<&Map<String, Json>> {
+        comps
+            .get(id)
+            .and_then(|c| c.get("layers"))
+            .and_then(Json::as_array)
+            .map(|l| l.iter().filter_map(Json::as_object).collect())
+            .unwrap_or_default()
+    };
+    let mut kinds = Kinds::default();
+    // Their own layers first, then whatever they hold, until nothing moves.
+    for id in comps.keys() {
+        for layer in layers(id).into_iter().filter(|l| !hidden(l)) {
+            if draws_noise(layer) {
+                kinds.noise.insert(id.clone());
             }
-            _ => t,
-        };
-        let floor = out.last().map_or(0.0, |(p, _)| p + 0.01);
-        let ceiling = 1.0 - 0.01 * (stops.len() - 1 - i) as f64;
-        out.push((round(at.max(floor).min(ceiling)), c.to_owned()));
+            if layer.contains_key("text") || layer.contains_key("image") {
+                kinds.title.insert(id.clone());
+            }
+        }
     }
-    out
+    loop {
+        let mut grew = false;
+        for id in comps.keys() {
+            for layer in layers(id).into_iter().filter(|l| !hidden(l)) {
+                let Some(inner) = layer.get("comp").and_then(Json::as_str) else {
+                    continue;
+                };
+                if kinds.noise.contains(inner) && !kinds.noise.contains(id) {
+                    kinds.noise.insert(id.clone());
+                    grew = true;
+                }
+                if kinds.title.contains(inner) && !kinds.title.contains(id) {
+                    kinds.title.insert(id.clone());
+                    grew = true;
+                }
+            }
+        }
+        if !grew {
+            break;
+        }
+    }
+    kinds
 }
 
-/// Moves the settings of every effect the locks leave free and treats
-/// every free text, in place; says what it changed.
+/// Whether `layer` is hidden: drawn only as another's map or matte.
+fn hidden(layer: &Map<String, Json>) -> bool {
+    layer.get("hidden").and_then(Json::as_bool) == Some(true)
+}
+
+/// Whether `layer` draws a noise of its own.
+fn draws_noise(layer: &Map<String, Json>) -> bool {
+    layer
+        .get("fx")
+        .and_then(Json::as_array)
+        .is_some_and(|fx| fx.iter().any(|e| e.get("fractal-noise").is_some()))
+}
+
+/// The role of `layer`, in composition `comp` (`None` for the scene's own
+/// layers).
+fn role(kinds: &Kinds, comp: Option<&str>, layer: &Map<String, Json>) -> Role {
+    let noise = |id: &str| kinds.noise.contains(id);
+    let title = |id: &str| kinds.title.contains(id);
+    if layer.contains_key("text") || layer.contains_key("image") {
+        return Role::Title;
+    }
+    if draws_noise(layer) {
+        return Role::Field;
+    }
+    if let Some(inner) = layer.get("comp").and_then(Json::as_str) {
+        return match (noise(inner), title(inner)) {
+            (true, false) => Role::Field,
+            (false, true) => Role::Title,
+            _ => Role::Other,
+        };
+    }
+    match comp {
+        Some(c) if noise(c) && !title(c) => Role::Field,
+        Some(c) if title(c) && !noise(c) => Role::Title,
+        _ => Role::Other,
+    }
+}
+
+/// Makes the look's decisions on every layer the locks leave free, in
+/// place; says what it did.
 pub(crate) fn apply(raw: &mut Json, held: &Held, step: &LookStep) -> String {
-    let mut moved = 0usize;
-    let mut texts = 0usize;
-    let mut lifted = 0usize;
-    let curve = smooth(&step.stops);
+    let kinds = kinds(raw);
+    let sizes = canvases(raw);
+    let mut counts = Counts::default();
+    let mut field_turn = 0usize;
     places::each_mut(raw, |visit| {
         let Visit::Layer { place, layer } = visit else {
             return;
@@ -512,104 +586,397 @@ pub(crate) fn apply(raw: &mut Json, held: &Held, step: &LookStep) -> String {
         if held.holds(place) {
             return;
         }
+        let role = role(&kinds, place.comp.as_deref(), layer);
+        let colour = match role {
+            Role::Field => {
+                let c = &step.palette.field[field_turn % step.palette.field.len().max(1)];
+                c.clone()
+            }
+            _ => step.palette.text.clone(),
+        };
+        let mut coloured = false;
         if let Some(Json::Array(fx)) = layer.get_mut("fx") {
+            let before = fx.len();
+            fx.retain(|item| keeps(item, role, step));
+            counts.dropped += before - fx.len();
             for item in fx.iter_mut().filter_map(Json::as_object_mut) {
-                moved += move_effect(item, step);
+                counts.moved += move_effect(item, role, step);
+                if recolour(item, role, &colour, step) {
+                    counts.recoloured += 1;
+                    coloured = true;
+                }
             }
         }
+        if coloured && role == Role::Field {
+            field_turn += 1;
+        }
+        if role == Role::Title
+            && let Some(ease) = &step.title.ease
+        {
+            counts.eased += eased(layer, ease);
+        }
         if layer.contains_key("text") {
-            lifted += usize::from(keep_contrast(layer, &curve, step));
-            texts += usize::from(treat(layer, step.text));
+            counts.texts += usize::from(set_text(layer, step));
+            counts.texts += usize::from(treat(layer, step.title.treatment));
+        }
+        let canvas = sizes.get(&place.comp).copied();
+        if canvas.is_some_and(|c| is_ground(layer, c)) {
+            counts.ground += usize::from(ground(layer, step));
         }
     });
     let rings = rings(raw, held, step.rings);
+    let grain = grain(raw, step);
     format!(
-        "{step}: {moved} effect settings moved, {texts} texts treated, {lifted} texts lifted \
-         clear of their ground, {rings} rings changed, graded through {} stops",
-        step.stops.len()
+        "{step}: {} field layers coloured in turn, {} colours set by role, {} effect settings \
+         moved, {} effects switched off, {} texts set, {} title keys eased, {} grounds, \
+         {rings} rings changed{}",
+        field_turn,
+        counts.recoloured,
+        counts.moved,
+        counts.dropped,
+        counts.texts,
+        counts.eased,
+        counts.ground,
+        if grain { ", grain laid over" } else { "" },
     )
 }
 
-/// The families a look may set text in.
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct Faces<'a> {
-    /// Those the scene can load with the spec's folders.
-    pub families: &'a [Family],
-    /// Those folders.
-    pub fonts: &'a [PathBuf],
-    /// How thick the master's heaviest text is drawn, in ems
-    /// ([`super::typeface::thickest`]).
-    pub stroke: Option<f64>,
+/// What [`apply`] did, counted.
+#[derive(Debug, Default)]
+struct Counts {
+    recoloured: usize,
+    moved: usize,
+    dropped: usize,
+    texts: usize,
+    ground: usize,
+    eased: usize,
 }
 
-/// How near the master's heaviest stroke a look's family must reach to be
-/// taken in its order: a tenth thinner at most.
-const THICK_ENOUGH: f64 = 0.9;
+/// Each canvas's size: the scene's (`None`) and every composition's.
+fn canvases(raw: &Json) -> std::collections::BTreeMap<Option<String>, (f64, f64)> {
+    let mut out = std::collections::BTreeMap::new();
+    if let Some(size) = raw.get("size").and_then(size_of) {
+        out.insert(None, size);
+    }
+    if let Some(Json::Object(comps)) = raw.get("comps") {
+        for (id, comp) in comps {
+            if let Some(size) = comp.get("size").and_then(size_of) {
+                out.insert(Some(id.clone()), size);
+            }
+        }
+    }
+    out
+}
 
-/// The most contrast a text is lifted to keep: WCAG's for body text.
-const KEPT_CONTRAST: f64 = 4.5;
+/// A size written `WxH` or `[w, h]`.
+fn size_of(value: &Json) -> Option<(f64, f64)> {
+    match value {
+        Json::String(s) => {
+            let (w, h) = s.split_once('x')?;
+            Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+        }
+        Json::Array(v) if v.len() == 2 => Some((v[0].as_f64()?, v[1].as_f64()?)),
+        _ => None,
+    }
+}
 
-/// Sets `layer`'s plain fill, when it has one, to the grey whose colour
-/// through the map stands as far from the map's colour of the master's
-/// ground as the fill stood from the ground in the master (up to
-/// [`KEPT_CONTRAST`]); whether it changed it. A map that crowds a range of
-/// levels into dark browns would otherwise sink a mid-grey line of copy
-/// into a black ground. The text moves away from the ground only, so it
-/// stays on the side it was.
-fn keep_contrast(
-    layer: &mut Map<String, Json>,
-    curve: &[(f64, [f64; 3])],
-    step: &LookStep,
-) -> bool {
-    let Some(fill) = layer
-        .get("fill")
-        .filter(|f| !f.as_str().is_some_and(|s| s.starts_with('$')))
-    else {
-        return false;
+/// The effects a look switches off on a layer of `role`: glows it sets to
+/// 0, and the title's glitch when it has none.
+fn keeps(item: &Json, role: Role, step: &LookStep) -> bool {
+    let is = |k: &str| item.get(k).is_some();
+    match role {
+        Role::Field => !(is("glow") && step.field.glow == 0.0),
+        Role::Title => {
+            let glitch = is("displacement-map") || is("turbulent-displace") || is("shift-channels");
+            let dark = is("glow") && step.title.glow == 0.0;
+            !dark && (!glitch || step.title.glitch)
+        }
+        Role::Other => true,
+    }
+}
+
+/// Moves the settings of one effect of a layer of `role`; how many it
+/// moved. The field's noise takes the look's material, cells and speed,
+/// its glows and blurs the look's; the title's glows the title's.
+fn move_effect(item: &mut Map<String, Json>, role: Role, step: &LookStep) -> usize {
+    let Some(kind) = EFFECTS.iter().find(|k| item.contains_key(k.name)) else {
+        return 0;
     };
-    let Some([r, g, b, a]) = nakkash_format::color(fill) else {
-        return false;
+    let primary = match kind.primary {
+        nakkash_format::item::Primary::Property(p) => Some(p),
+        _ => None,
     };
-    let level = grey(&step.hues, [r, g, b]);
-    let ground = step.ground;
-    let lum = |rgb: [f64; 3]| super::colour::luminance([rgb[0], rgb[1], rgb[2], 1.0]);
-    let ratio = |x: f64, y: f64| (x.max(y) + 0.05) / (x.min(y) + 0.05);
-    let wanted = ratio(lum([r, g, b]), lum([ground; 3])).min(KEPT_CONTRAST);
-    let back = lum(mapped(curve, ground));
-    let reaches = |t: f64| ratio(lum(mapped(curve, t)), back) >= wanted;
-    if reaches(level) {
+    let field = &step.field;
+    let shaped = item.contains_key("scale-width") || item.contains_key("scale-height");
+    let mut moves: Vec<(&str, Change)> = match (role, kind.name) {
+        (Role::Field, "fractal-noise") => vec![
+            ("contrast", Change::Times(field.contrast)),
+            ("evolution", Change::Times(field.speed)),
+            ("scale-width", Change::Times(field.cells[0])),
+            ("scale-height", Change::Times(field.cells[1])),
+        ],
+        (Role::Field, "glow") => vec![("intensity", Change::Times(field.glow))],
+        (Role::Title, "glow") => vec![("intensity", Change::Times(step.title.glow))],
+        (Role::Field, "radial-blur" | "vector-blur") => {
+            vec![("amount", Change::Times(field.blur))]
+        }
+        _ => Vec::new(),
+    };
+    let mut n = 0;
+    if role == Role::Field && kind.name == "fractal-noise" {
+        if !shaped {
+            moves.push((
+                "scale",
+                Change::Times((field.cells[0] * field.cells[1]).sqrt()),
+            ));
+        }
+        for (key, value) in [("noise", &field.noise), ("fractal", &field.fractal)] {
+            if let Some(v) = value
+                && item.get(key) != Some(&json!(v))
+            {
+                item.insert(key.into(), json!(v));
+                n += 1;
+            }
+        }
+        // The noise travels by its offset's keys: faster, they run further.
+        if let Some(Json::Object(anim)) = item.get_mut("anim")
+            && let Some(track) = anim.get_mut("offset")
+        {
+            n += usize::from(faster(track, field.speed));
+        }
+    }
+    for (name, change) in moves {
+        let range = range_of(kind.registry, name);
+        let key = if primary == Some(name) {
+            kind.name
+        } else {
+            name
+        };
+        if let Some(value) = item.get_mut(key) {
+            n += usize::from(change_value(value, change, range));
+        }
+        if let Some(Json::Object(anim)) = item.get_mut("anim")
+            && let Some(track) = anim.get_mut(name)
+        {
+            n += usize::from(change_value(track, change, range));
+        }
+    }
+    n
+}
+
+/// A colour as red, green and blue from 0 to 1, from `#RRGGBB` or the
+/// format's other ways of writing one.
+fn rgb(value: &Json) -> Option<[f64; 3]> {
+    nakkash_format::color(value).map(|c| [c[0], c[1], c[2]])
+}
+
+/// How far `c` is from grey: its highest channel less its lowest.
+fn chroma(c: [f64; 3]) -> f64 {
+    c.iter().copied().fold(0.0, f64::max) - c.iter().copied().fold(1.0, f64::min)
+}
+
+/// Gives one colouring effect of a layer of `role` the look's colour for
+/// it; whether it changed it. Curves that colour (their red, green and
+/// blue differ) are rewritten as a ramp from black through `colour` to a
+/// light of it; chromatic fills and composites take `colour`, or on the
+/// title the split colour for the primary they were nearest. Neutral fills,
+/// curves that only shape levels and other layers stay.
+fn recolour(item: &mut Map<String, Json>, role: Role, colour: &str, step: &LookStep) -> bool {
+    if role == Role::Other {
         return false;
     }
-    let toward = if level >= ground { 1.0 } else { 0.0 };
-    let steps = 100;
-    let lifted = (1..=steps)
-        .map(|i| level + (toward - level) * f64::from(i) / f64::from(steps))
-        .find(|t| reaches(*t))
-        .unwrap_or(toward);
+    if item.contains_key("curves") {
+        let channels: Vec<Option<&Json>> = ["red", "green", "blue"]
+            .iter()
+            .map(|k| item.get(*k))
+            .collect();
+        let colours =
+            channels.iter().any(Option::is_some) && channels.windows(2).any(|w| w[0] != w[1]);
+        if !colours {
+            return false;
+        }
+        let Some(c) = rgb(&json!(colour)) else {
+            return false;
+        };
+        for (i, key) in ["red", "green", "blue"].iter().enumerate() {
+            item.insert(
+                (*key).into(),
+                json!(format!(
+                    "M 0,0 L 0.35,{} L 0.7,{} L 1,{}",
+                    round(c[i] * 0.3),
+                    round(c[i] * 0.75),
+                    round(c[i])
+                )),
+            );
+            if let Some(Json::Object(anim)) = item.get_mut("anim") {
+                anim.remove(*key);
+            }
+        }
+        return true;
+    }
+    let key = if item.contains_key("fill") {
+        "fill"
+    } else if item.contains_key("solid-composite") {
+        "color"
+    } else {
+        return false;
+    };
+    let Some(was) = item.get(key).and_then(rgb) else {
+        return false;
+    };
+    if chroma(was) < 0.25 {
+        return false;
+    }
+    let new = match role {
+        Role::Title => {
+            let primary = (0..3)
+                .max_by(|&a, &b| was[a].total_cmp(&was[b]))
+                .unwrap_or(0);
+            step.palette.split[primary].clone()
+        }
+        _ => colour.to_owned(),
+    };
+    item.insert(key.into(), json!(new));
+    true
+}
+
+/// Sets a text layer's colour, case and tracking as the look says;
+/// whether it changed it. A colour or text a slot gives stays the slot's.
+fn set_text(layer: &mut Map<String, Json>, step: &LookStep) -> bool {
+    let mut changed = false;
+    let slot = |v: Option<&Json>| v.and_then(Json::as_str).is_some_and(|s| s.starts_with('$'));
+    if !slot(layer.get("fill")) {
+        changed |=
+            layer.insert("fill".into(), json!(step.palette.text)) != Some(json!(step.palette.text));
+    }
+    if !slot(layer.get("text"))
+        && let Some(Json::String(text)) = layer.get_mut("text")
+    {
+        let new = match step.title.case {
+            Case::AsIs => text.clone(),
+            Case::Upper => text.to_uppercase(),
+            Case::Lower => text.to_lowercase(),
+        };
+        changed |= *text != new;
+        *text = new;
+    }
+    if step.title.tracking != 0.0 {
+        let style = layer
+            .entry("style")
+            .or_insert_with(|| Json::Object(Map::new()));
+        if let Json::Object(style) = style {
+            let was = style.get("tracking").and_then(Json::as_f64).unwrap_or(0.0);
+            style.insert("tracking".into(), json!(round(was + step.title.tracking)));
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// The tracks of a layer's moves a look's ease applies to.
+const MOVES: [&str; 6] = ["position", "x", "y", "scale", "rotation", "opacity"];
+
+/// Gives every key of `layer`'s moves the curve `ease`; how many keys it
+/// changed. A key written `[t, v]` or `[t, v, curve]` takes it third, one
+/// written `{"t", "v"}` as its `curve`.
+fn eased(layer: &mut Map<String, Json>, ease: &str) -> usize {
+    let Some(Json::Object(anim)) = layer.get_mut("anim") else {
+        return 0;
+    };
+    let mut n = 0;
+    for name in MOVES {
+        let Some(Json::Array(keys)) = anim.get_mut(name) else {
+            continue;
+        };
+        let last = keys.len().saturating_sub(1);
+        for key in keys.iter_mut().take(last) {
+            let set = match key {
+                Json::Object(fields) => {
+                    fields.insert("curve".into(), json!(ease)) != Some(json!(ease))
+                }
+                Json::Array(parts) if parts.len() == 2 => {
+                    parts.push(json!(ease));
+                    true
+                }
+                Json::Array(parts) if parts.len() >= 3 => {
+                    let was = std::mem::replace(&mut parts[2], json!(ease));
+                    was != json!(ease)
+                }
+                _ => false,
+            };
+            n += usize::from(set);
+        }
+    }
+    n
+}
+
+/// Whether `layer` is a ground: a plain dark rect as large as the canvas
+/// it sits on, `canvas`, with no effects.
+fn is_ground(layer: &Map<String, Json>, canvas: (f64, f64)) -> bool {
+    let Some(size) = layer.get("rect").and_then(size_of) else {
+        return false;
+    };
+    let dark = layer
+        .get("fill")
+        .and_then(rgb)
+        .is_some_and(|c| c.iter().all(|v| *v < 0.08));
+    let bare = layer
+        .get("fx")
+        .and_then(Json::as_array)
+        .is_none_or(Vec::is_empty);
+    dark && bare && size.0 >= canvas.0 * 0.98 && size.1 >= canvas.1 * 0.98
+}
+
+/// Paints a ground as the look's: its edge colour, with a radial ramp from
+/// its middle colour at the centre to the edge colour at a corner.
+fn ground(layer: &mut Map<String, Json>, step: &LookStep) -> bool {
+    let Some((w, h)) = layer.get("rect").and_then(size_of) else {
+        return false;
+    };
+    let [middle, edge] = &step.palette.ground;
+    layer.insert("fill".into(), json!(edge));
     layer.insert(
-        "fill".into(),
-        json!([round(lifted), round(lifted), round(lifted), round(a)]),
+        "fx".into(),
+        json!([{
+            "ramp": 0,
+            "shape": "radial",
+            "start": [round(w / 2.0), round(h / 2.0)],
+            "start-color": middle,
+            "end": [0, 0],
+            "end-color": edge,
+        }]),
     );
     true
 }
 
-/// The colour `curve` (as [`smooth`] gives it) maps level `t` to, straight
-/// between its points as the map draws it.
-fn mapped(curve: &[(f64, [f64; 3])], t: f64) -> [f64; 3] {
-    let Some(first) = curve.first() else {
-        return [t; 3];
+/// Lays a grain over the film, a layer of fine noise blended `overlay` at
+/// the look's opacity; whether it laid one.
+fn grain(raw: &mut Json, step: &LookStep) -> bool {
+    if step.grain <= 0.0 {
+        return false;
+    }
+    let Some((w, h)) = raw.get("size").and_then(size_of) else {
+        return false;
     };
-    if t <= first.0 {
-        return first.1;
-    }
-    for w in curve.windows(2) {
-        let ((x0, c0), (x1, c1)) = (w[0], w[1]);
-        if t <= x1 {
-            let k = if x1 > x0 { (t - x0) / (x1 - x0) } else { 1.0 };
-            return std::array::from_fn(|i| c0[i] + (c1[i] - c0[i]) * k);
-        }
-    }
-    curve.last().map_or([t; 3], |l| l.1)
+    let Some(Json::Array(layers)) = raw.get_mut("layers") else {
+        return false;
+    };
+    layers.push(json!({
+        "id": "look-grain",
+        "rect": format!("{}x{}", w as u32, h as u32),
+        "position": [round(w / 2.0), round(h / 2.0)],
+        "fill": [0.5, 0.5, 0.5, 1],
+        "blend": "overlay",
+        "opacity": round(step.grain),
+        "fx": [{
+            "fractal-noise": 0,
+            "contrast": 3,
+            "scale": 0.03,
+            "complexity": 2,
+            "anim": {"evolution": [{"t": "0s", "v": 0}, {"t": "10s", "v": 36000}]},
+        }],
+    }));
+    true
 }
 
 /// How much smaller each echo of a ring is than the one around it.
@@ -812,196 +1179,6 @@ fn faster(track: &mut Json, speed: f64) -> bool {
         moved = true;
     }
     moved
-}
-
-/// How much of a turn the grade's phase spans; see [`grade`].
-const REPETITIONS: f64 = 0.998;
-
-/// The effects the layers that draw the master take: its hues to grey,
-/// the gradient map, then grain.
-///
-/// The map runs through the stops on a smooth curve in OKLab (monotone
-/// cubic, so it never overshoots a stop), drawn as [`GRADE_POINTS`] points
-/// a curve can hold: straight lines between the stops would bend at each,
-/// and a glow running through a bend shows it as a band.
-pub(crate) fn grade(step: &LookStep) -> Vec<Json> {
-    let curve = smooth(&step.stops);
-    let channel = |i: usize| {
-        let points: Vec<String> = curve
-            .iter()
-            .map(|(at, rgb)| format!("{},{}", round(*at), round(rgb[i])))
-            .collect();
-        format!("M {}", points.join(" L "))
-    };
-    let [reds, yellows, greens, cyans, blues, magentas] = step.hues;
-    let mut fx = vec![
-        json!({
-            "black-white": 0,
-            "reds": reds, "yellows": yellows, "greens": greens,
-            "cyans": cyans, "blues": blues, "magentas": magentas,
-        }),
-        json!({
-            "color-cycle": "intensity",
-            "red": channel(0),
-            "green": channel(1),
-            "blue": channel(2),
-            // The cycle wraps its phase into 0 to 1, so pure white (phase 1)
-            // would read as the first stop, black: a hair under one turn keeps
-            // the brightest pixels on the last stop.
-            "repetitions": REPETITIONS,
-            "blend": step.blend,
-        }),
-    ];
-    if step.grain > 0.0 {
-        fx.push(json!({
-            "fractal-noise": 0,
-            "fractal": "turbulent-basic",
-            "noise": "block",
-            "mode": "overlay",
-            "scale": 0.02,
-            "complexity": 1,
-            "contrast": 2,
-            "opacity": step.grain,
-            "anim": {"evolution": "0 -> 7200 @0-10s"},
-        }));
-    }
-    fx
-}
-
-/// The most points a curve of the format holds.
-const GRADE_POINTS: usize = 16;
-
-/// The colour the map gives at each of [`GRADE_POINTS`] levels: the stops
-/// themselves, and points between them where they lie widest apart, on a
-/// monotone cubic through the stops in OKLab, as sRGB.
-fn smooth(stops: &[(f64, String)]) -> Vec<(f64, [f64; 3])> {
-    let knots: Vec<(f64, [f64; 3])> = stops
-        .iter()
-        .map(|(at, c)| {
-            let rgb = nakkash_format::color(&json!(c)).unwrap_or([0.0, 0.0, 0.0, 1.0]);
-            (*at, nakkash_format::oklch::oklab([rgb[0], rgb[1], rgb[2]]))
-        })
-        .collect();
-    if knots.len() < 2 {
-        return knots
-            .into_iter()
-            .map(|(at, lab)| (at, nakkash_format::oklch::srgb(lab)))
-            .collect();
-    }
-    let mut at: Vec<f64> = knots.iter().map(|k| k.0).collect();
-    while at.len() < GRADE_POINTS {
-        let widest = (0..at.len() - 1)
-            .max_by(|&i, &j| (at[i + 1] - at[i]).total_cmp(&(at[j + 1] - at[j])))
-            .expect("two knots");
-        at.insert(widest + 1, (at[widest] + at[widest + 1]) / 2.0);
-    }
-    let xs: Vec<f64> = knots.iter().map(|k| k.0).collect();
-    at.into_iter()
-        .map(|x| {
-            let lab: [f64; 3] = std::array::from_fn(|c| {
-                let ys: Vec<f64> = knots.iter().map(|k| k.1[c]).collect();
-                monotone(&xs, &ys, x)
-            });
-            (x, nakkash_format::oklch::srgb(lab))
-        })
-        .collect()
-}
-
-/// The monotone cubic through `(xs, ys)` at `x` (Fritsch and Carlson's
-/// slopes): smooth, and between two knots never beyond either.
-fn monotone(xs: &[f64], ys: &[f64], x: f64) -> f64 {
-    let n = xs.len();
-    let d: Vec<f64> = (0..n - 1)
-        .map(|i| (ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]).max(1e-9))
-        .collect();
-    let slope = |i: usize| -> f64 {
-        if i == 0 {
-            return d[0];
-        }
-        if i == n - 1 {
-            return d[n - 2];
-        }
-        let (a, b) = (d[i - 1], d[i]);
-        match a * b <= 0.0 {
-            true => 0.0,
-            false => {
-                let (h0, h1) = (xs[i] - xs[i - 1], xs[i + 1] - xs[i]);
-                let (w0, w1) = (2.0 * h1 + h0, h1 + 2.0 * h0);
-                (w0 + w1) / (w0 / a + w1 / b)
-            }
-        }
-    };
-    let i = (0..n - 1).find(|&i| x <= xs[i + 1]).unwrap_or(n - 2);
-    let h = (xs[i + 1] - xs[i]).max(1e-9);
-    let t = ((x - xs[i]) / h).clamp(0.0, 1.0);
-    let (t2, t3) = (t * t, t * t * t);
-    (2.0 * t3 - 3.0 * t2 + 1.0) * ys[i]
-        + (t3 - 2.0 * t2 + t) * h * slope(i)
-        + (-2.0 * t3 + 3.0 * t2) * ys[i + 1]
-        + (t3 - t2) * h * slope(i + 1)
-}
-
-/// Moves one effect's settings by `step`; how many it moved.
-fn move_effect(item: &mut Map<String, Json>, step: &LookStep) -> usize {
-    let Some(kind) = EFFECTS.iter().find(|k| item.contains_key(k.name)) else {
-        return 0;
-    };
-    let primary = match kind.primary {
-        nakkash_format::item::Primary::Property(p) => Some(p),
-        _ => None,
-    };
-    // A noise with its own width and height takes the cells there; one
-    // scaled alike both ways takes them on its scale.
-    let shaped = item.contains_key("scale-width") || item.contains_key("scale-height");
-    let mut moves: Vec<(&str, Change)> = match kind.name {
-        "fractal-noise" => vec![
-            ("contrast", Change::Times(step.noise[0])),
-            ("complexity", Change::Times(step.noise[1])),
-            ("brightness", Change::Plus(step.noise[2])),
-            ("evolution", Change::Times(step.noise[3])),
-            ("scale-width", Change::Times(step.cells[0])),
-            ("scale-height", Change::Times(step.cells[1])),
-        ],
-        "glow" => vec![
-            ("radius", Change::Times(step.glow[0])),
-            ("intensity", Change::Times(step.glow[1])),
-        ],
-        "radial-blur" | "vector-blur" => vec![("amount", Change::Times(step.blur))],
-        "box-blur" | "lens-blur" => vec![("radius", Change::Times(step.blur))],
-        "gaussian-blur" => vec![("blurriness", Change::Times(step.blur))],
-        _ => Vec::new(),
-    };
-    if kind.name == "fractal-noise" && !shaped {
-        moves.push((
-            "scale",
-            Change::Times((step.cells[0] * step.cells[1]).sqrt()),
-        ));
-    }
-    let mut n = 0;
-    // The noise travels by its offset's keys: faster, they run further.
-    if kind.name == "fractal-noise"
-        && let Some(Json::Object(anim)) = item.get_mut("anim")
-        && let Some(track) = anim.get_mut("offset")
-    {
-        n += usize::from(faster(track, step.noise[3]));
-    }
-    for (name, change) in moves {
-        let range = range_of(kind.registry, name);
-        let key = if primary == Some(name) {
-            kind.name
-        } else {
-            name
-        };
-        if let Some(value) = item.get_mut(key) {
-            n += usize::from(change_value(value, change, range));
-        }
-        if let Some(Json::Object(anim)) = item.get_mut("anim")
-            && let Some(track) = anim.get_mut(name)
-        {
-            n += usize::from(change_value(track, change, range));
-        }
-    }
-    n
 }
 
 /// How a look moves a number.
