@@ -62,7 +62,10 @@ fn a_group_keeps_its_whole_move_on_the_new_canvas() {
     let (x0, _) = landed(path.x0, path.y0);
     let (x1, _) = landed(path.x1, path.y1);
     let margin = 1080.0 * ON_CANVAS;
-    assert!(x0 >= margin - 1e-9 && x1 <= 1080.0 - margin + 1e-9, "{x0} {x1} {scale}");
+    assert!(
+        x0 >= margin - 1e-9 && x1 <= 1080.0 - margin + 1e-9,
+        "{x0} {x1} {scale}"
+    );
     assert!(scale < 1.0, "{scale}");
 }
 

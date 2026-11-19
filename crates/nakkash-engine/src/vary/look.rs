@@ -356,14 +356,12 @@ const LIT: f64 = 0.03;
 /// Draws look `index` of a run: the spec's names in turn (every look when
 /// it names none), each setting moved by up to 8 % by the seed so two
 /// runs on two seeds are two films. `lit` places its stops ([`lit`]);
-/// `faces` are the families the scene can load with the spec's folders,
-/// `fonts` those folders.
+/// `faces` are the families it may set text in ([`Faces`]).
 pub(crate) fn draw(
     names: &[String],
     index: usize,
     lit: &Lit,
-    faces: &[Family],
-    fonts: &[PathBuf],
+    faces: &Faces<'_>,
     typefaces_locked: bool,
     rng: &mut Rng,
 ) -> LookStep {
@@ -392,13 +390,34 @@ pub(crate) fn draw(
     let cells = [jitter(preset.cells[0]), jitter(preset.cells[1])];
     let blur = jitter(preset.blur);
     let key = |s: &str| s.to_lowercase().replace([' ', '-', '_'], "");
-    let face = (!typefaces_locked)
-        .then(|| {
-            preset
-                .faces
+    // The look's families in its order; the first whose heaviest weight
+    // draws strokes about as thick as the master's heaviest text, else the
+    // heaviest of them: a template that splits or outlines a poster face
+    // needs strokes as thick to stay readable.
+    let wanted: Vec<&Family> = preset
+        .faces
+        .iter()
+        .filter_map(|want| {
+            faces
+                .families
                 .iter()
-                .find_map(|want| faces.iter().find(|f| key(&f.name).starts_with(want)))
+                .find(|f| key(&f.name).starts_with(want))
         })
+        .collect();
+    let heaviest = |f: &Family| f.strokes.iter().copied().fold(0.0, f64::max);
+    let chosen = match faces.stroke {
+        Some(stroke) => wanted
+            .iter()
+            .find(|f| heaviest(f) >= stroke * THICK_ENOUGH)
+            .or_else(|| {
+                wanted
+                    .iter()
+                    .max_by(|a, b| heaviest(a).total_cmp(&heaviest(b)))
+            }),
+        None => wanted.first(),
+    };
+    let face = (!typefaces_locked)
+        .then_some(chosen.copied())
         .flatten()
         .map(|family| {
             let weight = nearest(&family.weights, 900);
@@ -406,8 +425,8 @@ pub(crate) fn draw(
                 headline: Some((family.name.clone(), weight)),
                 body: Some(family.name.clone()),
                 copy: None,
-                fonts: fonts.to_vec(),
-                families: faces.to_vec(),
+                fonts: faces.fonts.to_vec(),
+                families: faces.families.to_vec(),
             }
         });
     LookStep {
@@ -483,6 +502,22 @@ pub(crate) fn apply(raw: &mut Json, held: &Held, step: &LookStep) -> String {
         step.stops.len()
     )
 }
+
+/// The families a look may set text in.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Faces<'a> {
+    /// Those the scene can load with the spec's folders.
+    pub families: &'a [Family],
+    /// Those folders.
+    pub fonts: &'a [PathBuf],
+    /// How thick the master's heaviest text is drawn, in ems
+    /// ([`super::typeface::thickest`]).
+    pub stroke: Option<f64>,
+}
+
+/// How near the master's heaviest stroke a look's family must reach to be
+/// taken in its order: a tenth thinner at most.
+const THICK_ENOUGH: f64 = 0.9;
 
 /// How much smaller each echo of a ring is than the one around it.
 const ECHO_SCALE: f64 = 0.62;

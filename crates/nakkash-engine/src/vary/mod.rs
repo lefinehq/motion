@@ -237,6 +237,10 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
         Some(_) => look::lit(&samples(master, LIT_FRAMES, LIT_HEIGHT)?),
         None => look::Lit::default(),
     };
+    let look_stroke = match &spec.look {
+        Some(_) => typeface::thickest(master)?,
+        None => None,
+    };
     let look_faces = match &spec.look {
         Some(l) => typeface::candidates(
             master,
@@ -316,8 +320,11 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
                 &l.looks,
                 turn,
                 &look_lit,
-                &look_faces,
-                &l.fonts,
+                &look::Faces {
+                    families: &look_faces,
+                    fonts: &l.fonts,
+                    stroke: look_stroke,
+                },
                 held.typefaces,
                 &mut rng,
             );

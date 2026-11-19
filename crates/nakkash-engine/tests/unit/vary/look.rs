@@ -7,8 +7,7 @@ fn every_look_is_drawn_the_same_from_the_same_seed_and_differs_from_the_others()
             &[],
             i,
             &Lit::default(),
-            &[],
-            &[],
+            &Faces::default(),
             false,
             &mut Rng::new(7, i, "look"),
         )
@@ -25,8 +24,7 @@ fn the_grade_maps_intensity_through_the_looks_stops() {
         &["paper".into()],
         0,
         &Lit::default(),
-        &[],
-        &[],
+        &Faces::default(),
         false,
         &mut Rng::new(1, 0, "look"),
     );
@@ -54,8 +52,7 @@ fn effect_settings_move_inside_their_range() {
         &["amber".into()],
         0,
         &Lit::default(),
-        &[],
-        &[],
+        &Faces::default(),
         false,
         &mut Rng::new(1, 0, "look"),
     );
@@ -157,8 +154,7 @@ fn noise_cells_and_speed_move_its_shape_and_travel() {
         &["acid".into()],
         0,
         &Lit::default(),
-        &[],
-        &[],
+        &Faces::default(),
         false,
         &mut Rng::new(1, 0, "look"),
     );
@@ -204,4 +200,45 @@ fn the_map_never_overshoots_a_stop() {
         assert!(pair[0].0 < pair[1].0);
         assert!(light(pair[1].1) >= light(pair[0].1) - 1e-6, "{curve:?}");
     }
+}
+
+/// A family of `weights` whose strokes are `strokes` thick.
+fn family(name: &str, weights: &[u16], strokes: &[f64]) -> Family {
+    Family {
+        name: name.into(),
+        class: "sans".into(),
+        weights: weights.to_vec(),
+        strokes: strokes.to_vec(),
+        source: None,
+    }
+}
+
+#[test]
+fn a_look_takes_a_family_heavy_enough_for_the_masters_strokes() {
+    // Amber names a serif first, then a sans; the serif's heaviest is
+    // thinner than the master's poster face, the sans's is not.
+    let faces = [
+        family("Source Serif Pro", &[400, 700], &[0.07, 0.10]),
+        family("Kumbh Sans", &[400, 900], &[0.08, 0.15]),
+    ];
+    let pick = |stroke: Option<f64>| {
+        let step = draw(
+            &["amber".into()],
+            0,
+            &Lit::default(),
+            &Faces {
+                families: &faces,
+                fonts: &[],
+                stroke,
+            },
+            false,
+            &mut Rng::new(1, 0, "look"),
+        );
+        step.face.and_then(|t| t.body)
+    };
+    assert_eq!(pick(None).as_deref(), Some("Source Serif Pro"));
+    assert_eq!(pick(Some(0.10)).as_deref(), Some("Source Serif Pro"));
+    assert_eq!(pick(Some(0.14)).as_deref(), Some("Kumbh Sans"));
+    // None heavy enough: the heaviest.
+    assert_eq!(pick(Some(0.30)).as_deref(), Some("Kumbh Sans"));
 }

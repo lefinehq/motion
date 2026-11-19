@@ -315,6 +315,16 @@ fn stroke_of(font: &Font, set: &FontSet) -> Option<f64> {
     Some(face.metrics().stroke).filter(|s| *s > 0.0)
 }
 
+/// How thick the strokes of the master's heaviest text are, in ems, of
+/// those whose faces the master loads.
+pub(crate) fn thickest(master: &Session) -> Result<Option<f64>> {
+    let set = master.fonts()?;
+    Ok(texts(master)
+        .iter()
+        .filter_map(|t| stroke_of(&t.1, set))
+        .max_by(f64::total_cmp))
+}
+
 /// The weight of `family` a text set at `weight`, with strokes `stroke`
 /// thick, keeps: the one whose strokes are nearest in thickness, the
 /// heavier on a tie; by number when either thickness is unknown. A
