@@ -1,0 +1,38 @@
+[package]
+name = "nakkash-onnx"
+description = "Runs nakkash-ml's graphs on ONNX Runtime, loaded at run time from the library the model lock pins, each graph where the lock places it. The one crate that links an inference runtime binding."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+nakkash-baked = { path = "../nakkash-baked" }
+nakkash-format = { path = "../nakkash-format" }
+nakkash-ml = { path = "../nakkash-ml" }
+tracing.workspace = true
+# Exact pin: release candidates break their API (D81). `load-dynamic` only:
+# no build step downloads or links a runtime; the library is a locked file.
+ort = { version = "=2.0.0-rc.15", default-features = false, features = [
+  "std",
+  "load-dynamic",
+  "api-22",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+ort = { version = "=2.0.0-rc.15", default-features = false, features = [
+  "std",
+  "load-dynamic",
+  "api-22",
+  "coreml",
+] }
+
+[dev-dependencies]
+nakkash-fonts = { path = "../nakkash-fonts" }
+png.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

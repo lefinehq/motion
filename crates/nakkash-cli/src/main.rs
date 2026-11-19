@@ -328,6 +328,13 @@ enum Command {
         #[command(subcommand)]
         command: FontsCommand,
     },
+    /// Learned models: fetch and check them, then preview and bake what a
+    /// scene asks of them (D80).
+    #[cfg(feature = "ml")]
+    Ml {
+        #[command(subcommand)]
+        command: commands::ml::MlCommand,
+    },
     /// Print an `.aep` project, or the one inside a `.mogrt` template: its
     /// items, layers and properties, then what the reader could not decode
     /// yet.
@@ -376,6 +383,8 @@ impl Command {
             Command::Fonts {
                 command: FontsCommand::Fetch { scene, .. },
             } => scene,
+            #[cfg(feature = "ml")]
+            Command::Ml { command } => command.file(),
         }
     }
 }
@@ -533,6 +542,8 @@ fn main() -> ExitCode {
                 },
         } => commands::fonts::fetch(&scene, update, release.as_deref()),
         Command::Inspect { project, json } => commands::inspect::run(&project, json),
+        #[cfg(feature = "ml")]
+        Command::Ml { command } => command.run(cli.threads),
     };
     let code = match result {
         Ok(code) => code,

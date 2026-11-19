@@ -12,11 +12,17 @@ publish.workspace = true
 name = "nakkash"
 path = "src/main.rs"
 
+[features]
+# Learned models (D80): `nakkash ml`, which fetches models, previews and
+# bakes. Off by default, so the default build links no inference runtime.
+ml = ["dep:nakkash-ml"]
+
 [dependencies]
 nakkash-audio = { path = "../nakkash-audio" }
 nakkash-encode = { path = "../nakkash-encode" }
 nakkash-engine = { path = "../nakkash-engine", features = ["bake", "gpu"] }
 nakkash-fonts = { path = "../nakkash-fonts", features = ["fetch"] }
+nakkash-ml = { path = "../nakkash-ml", features = ["fetch"], optional = true }
 clap = { workspace = true }
 serde.workspace = true
 serde_json.workspace = true
