@@ -11,7 +11,8 @@ use crate::{Outputs, Tensor};
 /// Where a graph runs ([D81]).
 ///
 /// [D81]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d81-one-inference-runtime-loaded-at-run-time-from-a-locked-file
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Placement {
     /// On the CPU.
     Cpu,

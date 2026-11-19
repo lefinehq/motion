@@ -1,0 +1,262 @@
+{
+ "lock": 1,
+ "runtime": {
+  "version": "1.31.0",
+  "licence": {
+   "spdx": "MIT",
+   "url": "https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/1.31.0/license",
+   "class": "ok"
+  },
+  "package": {
+   "url": "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/1.31.0/microsoft.ml.onnxruntime.1.31.0.nupkg",
+   "sha256": "7e35fdb4f5adb62f01e60798e2e5ed05108f5fbbe1cca03fbcc37903cf7c5e3b",
+   "sha512": "J7arTn+7nrWdZ+PF2Sl9aNW1/Ba5DCt1ywZ3r5l3LKqzj3w8oC7Cl/uagG3Xp1ivuYJYQAMSuew0ef/74f7XCw==",
+   "size": 159626085
+  },
+  "libraries": {
+   "macos-aarch64": {
+    "path": "runtimes/osx-arm64/native/libonnxruntime.dylib",
+    "sha256": "83973572676032b4ba9418afed0b51f45599d35bb4e4628ca8ae1954c8362e31",
+    "size": 44830288
+   },
+   "linux-x86_64": {
+    "path": "runtimes/linux-x64/native/libonnxruntime.so",
+    "sha256": "469849977cb60744ea160927e1a3a0643fd4c55c0aff743251c6d293402e334e",
+    "size": 29345384
+   }
+  }
+ },
+ "models": {
+  "segment.video": {
+   "does": "Finds an object from a box or points on one frame and follows its mask through a clip, with a memory of past frames kept by the host.",
+   "licence": {
+    "spdx": "Apache-2.0",
+    "url": "https://github.com/facebookresearch/sam2/blob/2b90b9f5ceec907a1c18123530e92e794ad901a4/LICENSE",
+    "class": "ok"
+   },
+   "graphs": {
+    "image-encoder": {
+     "sha256": "c44de631f76073c7c7fc0d4e47f9784f80c1d029d204fcd0bdb169f733ab6720",
+     "size": 852383847,
+     "placement": "coreml",
+     "obtain": {
+      "export": {
+       "weights": "https://huggingface.co/facebook/sam2.1-hiera-large/resolve/665f8e2ad61cf5f53d65644ff27c8ee525124610/sam2.1_hiera_large.pt",
+       "weights_sha256": "2647878d5dfa5098f2f8649825738a9345572bae2d4350a2468587ece47dd318",
+       "code": "https://github.com/facebookresearch/sam2/tree/2b90b9f5ceec907a1c18123530e92e794ad901a4",
+       "exporter": "export_sam2.py sha256 0fff2f99444efbf8126abab0382ebd600da981197834efe598455067e8ec3bf8",
+       "toolchain": "torch 2.15.0+cpu, TorchScript exporter, opset 17, offline, eval mode",
+       "parity_max_abs": 0.00031
+      }
+     }
+    },
+    "decoder-multi": {
+     "sha256": "274c56f334f30d90a779674699bf3e0163d025f3bbf3e50a702cddb576ab7de3",
+     "size": 17885930,
+     "placement": "cpu",
+     "obtain": {
+      "export": {
+       "weights": "https://huggingface.co/facebook/sam2.1-hiera-large/resolve/665f8e2ad61cf5f53d65644ff27c8ee525124610/sam2.1_hiera_large.pt",
+       "weights_sha256": "2647878d5dfa5098f2f8649825738a9345572bae2d4350a2468587ece47dd318",
+       "code": "https://github.com/facebookresearch/sam2/tree/2b90b9f5ceec907a1c18123530e92e794ad901a4",
+       "exporter": "export_sam2.py sha256 0fff2f99444efbf8126abab0382ebd600da981197834efe598455067e8ec3bf8",
+       "toolchain": "torch 2.15.0+cpu, TorchScript exporter, opset 17, offline, eval mode",
+       "parity_max_abs": 8.6e-06
+      }
+     }
+    },
+    "decoder-single": {
+     "sha256": "0a9e2843f6c4700222d58e1c5293fd3efc992de0ad885879869c7b2144a7b021",
+     "size": 17893462,
+     "placement": "cpu",
+     "obtain": {
+      "export": {
+       "weights": "https://huggingface.co/facebook/sam2.1-hiera-large/resolve/665f8e2ad61cf5f53d65644ff27c8ee525124610/sam2.1_hiera_large.pt",
+       "weights_sha256": "2647878d5dfa5098f2f8649825738a9345572bae2d4350a2468587ece47dd318",
+       "code": "https://github.com/facebookresearch/sam2/tree/2b90b9f5ceec907a1c18123530e92e794ad901a4",
+       "exporter": "export_sam2.py sha256 0fff2f99444efbf8126abab0382ebd600da981197834efe598455067e8ec3bf8",
+       "toolchain": "torch 2.15.0+cpu, TorchScript exporter, opset 17, offline, eval mode",
+       "parity_max_abs": 8.6e-06
+      }
+     }
+    },
+    "memory-encoder": {
+     "sha256": "1c54b04aad0984e0590b6a5bf73d2ff051893d44de5e1316fdd68259bccdd01b",
+     "size": 5590808,
+     "placement": "coreml",
+     "obtain": {
+      "export": {
+       "weights": "https://huggingface.co/facebook/sam2.1-hiera-large/resolve/665f8e2ad61cf5f53d65644ff27c8ee525124610/sam2.1_hiera_large.pt",
+       "weights_sha256": "2647878d5dfa5098f2f8649825738a9345572bae2d4350a2468587ece47dd318",
+       "code": "https://github.com/facebookresearch/sam2/tree/2b90b9f5ceec907a1c18123530e92e794ad901a4",
+       "exporter": "export_sam2.py sha256 0fff2f99444efbf8126abab0382ebd600da981197834efe598455067e8ec3bf8",
+       "toolchain": "torch 2.15.0+cpu, TorchScript exporter, opset 17, offline, eval mode",
+       "parity_max_abs": 3.1e-06
+      }
+     }
+    },
+    "memory-attention": {
+     "sha256": "62f34bef8cbe8da9fa7e98eff294c9217f22eb914895ec0b96a9d93a8cedfb61",
+     "size": 28106960,
+     "placement": "cpu",
+     "obtain": {
+      "export": {
+       "weights": "https://huggingface.co/facebook/sam2.1-hiera-large/resolve/665f8e2ad61cf5f53d65644ff27c8ee525124610/sam2.1_hiera_large.pt",
+       "weights_sha256": "2647878d5dfa5098f2f8649825738a9345572bae2d4350a2468587ece47dd318",
+       "code": "https://github.com/facebookresearch/sam2/tree/2b90b9f5ceec907a1c18123530e92e794ad901a4",
+       "exporter": "export_sam2.py sha256 0fff2f99444efbf8126abab0382ebd600da981197834efe598455067e8ec3bf8",
+       "toolchain": "torch 2.15.0+cpu, TorchScript exporter, opset 17, offline, eval mode",
+       "parity_max_abs": 1.8e-05
+      }
+     }
+    }
+   },
+   "constants": {
+    "no-memory-embedding": {
+     "sha256": "557a40e33adc93f24244591e52fe434ee2b8ffbc096ebd3380da0262bcbd3d4a",
+     "size": 1152,
+     "shape": [
+      256
+     ],
+     "obtain": {
+      "export": {
+       "weights": "https://huggingface.co/facebook/sam2.1-hiera-large/resolve/665f8e2ad61cf5f53d65644ff27c8ee525124610/sam2.1_hiera_large.pt",
+       "weights_sha256": "2647878d5dfa5098f2f8649825738a9345572bae2d4350a2468587ece47dd318",
+       "code": "https://github.com/facebookresearch/sam2/tree/2b90b9f5ceec907a1c18123530e92e794ad901a4",
+       "exporter": "export_sam2.py sha256 0fff2f99444efbf8126abab0382ebd600da981197834efe598455067e8ec3bf8",
+       "toolchain": "torch 2.15.0+cpu, TorchScript exporter, opset 17, offline, eval mode",
+       "parity_max_abs": 0
+      }
+     }
+    }
+   }
+  },
+  "matte.edges": {
+   "does": "Gives soft alpha at an object's edges: hair, fur, fine detail. Run on a crop around a segmented object, only at its edge.",
+   "licence": {
+    "spdx": "MIT",
+    "url": "https://github.com/ZhengPeng7/BiRefNet/blob/f7079632d681ecf12161fcea8905682934e59e51/LICENSE",
+    "class": "ok"
+   },
+   "graphs": {
+    "matte": {
+     "sha256": "6065d27c615ea27308f5b88598dd8db116eb07436c7a323ca40d13b2866c309e",
+     "size": 972667742,
+     "placement": "cpu",
+     "obtain": {
+      "download": {
+       "url": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-matting-epoch_100.onnx"
+      }
+     }
+    }
+   }
+  },
+  "matte.salient": {
+   "does": "Gives the alpha of whatever stands out most in a picture. Not a default: it picks the most salient thing, not the object asked for.",
+   "licence": {
+    "spdx": "MIT",
+    "url": "https://github.com/ZhengPeng7/BiRefNet/blob/f7079632d681ecf12161fcea8905682934e59e51/LICENSE",
+    "class": "ok"
+   },
+   "graphs": {
+    "matte": {
+     "sha256": "58f621f00f5d756097615970a88a791584600dcf7c45b18a0a6267535a1ebd3c",
+     "size": 972666916,
+     "placement": "cpu",
+     "obtain": {
+      "download": {
+       "url": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-epoch_244.onnx"
+      }
+     }
+    }
+   }
+  },
+  "points.video": {
+   "does": "Follows points through a whole clip from the frames they are chosen on, with whether each is seen.",
+   "licence": {
+    "spdx": "Apache-2.0",
+    "url": "https://github.com/google-deepmind/tapnet/blob/ceedd60bb9f6c9f7c74796e4445aff6c6ddf7c9b/README.md#license-and-disclaimer",
+    "class": "ok"
+   },
+   "graphs": {
+    "features": {
+     "sha256": "9e0f6676cd3955f3edd3def0087d26cdc0e3262b96bc071802e03ecfc0fb0d1a",
+     "size": 115407898,
+     "placement": "coreml",
+     "obtain": {
+      "export": {
+       "weights": "https://storage.googleapis.com/dm-tapnet/bootstap/bootstapir_checkpoint_v2.pt",
+       "weights_sha256": "8493c7a69e02c85b9382fbb3c7b8b539b36bc08ede744b9e99feb739a0129f4b",
+       "code": "https://github.com/google-deepmind/tapnet/tree/ceedd60bb9f6c9f7c74796e4445aff6c6ddf7c9b",
+       "exporter": "export_tapir.py sha256 cdf97fe5b9bc8e067aca690cc8804baeb8604d2469c832eb31bb2aea7cd5b2e6",
+       "toolchain": "torch 2.15.0+cpu, TorchScript exporter, opset 17, offline, eval mode",
+       "parity_max_abs": 1.4e-06
+      }
+     }
+    },
+    "tracker": {
+     "sha256": "82c3243f15e282c90a513ee5ec7cb1a3ff259d19c1aa894f933fbc75f6d2a801",
+     "size": 104571177,
+     "placement": "cpu",
+     "obtain": {
+      "export": {
+       "weights": "https://storage.googleapis.com/dm-tapnet/bootstap/bootstapir_checkpoint_v2.pt",
+       "weights_sha256": "8493c7a69e02c85b9382fbb3c7b8b539b36bc08ede744b9e99feb739a0129f4b",
+       "code": "https://github.com/google-deepmind/tapnet/tree/ceedd60bb9f6c9f7c74796e4445aff6c6ddf7c9b",
+       "exporter": "export_tapir.py sha256 cdf97fe5b9bc8e067aca690cc8804baeb8604d2469c832eb31bb2aea7cd5b2e6",
+       "toolchain": "torch 2.15.0+cpu, TorchScript exporter, opset 17, offline, eval mode",
+       "parity_max_abs": 0.096
+      }
+     }
+    }
+   }
+  },
+  "flow.dense": {
+   "does": "Gives the motion of every pixel between two 1920x1080 frames.",
+   "licence": {
+    "spdx": "BSD-3-Clause",
+    "url": "https://github.com/princeton-vl/SEA-RAFT/blob/9137517ba24e628442aec097d3afe71d03503b75/LICENSE",
+    "class": "ok"
+   },
+   "graphs": {
+    "flow": {
+     "sha256": "e09c09da6a0ee3c6401dcfae4a84d9c6cb06853596964dafafc8a1c184b2c2cf",
+     "size": 79060234,
+     "placement": "coreml",
+     "obtain": {
+      "export": {
+       "weights": "https://huggingface.co/MemorySlices/Tartan-C-T-TSKH-spring540x960-M/resolve/eb97ef34ba5d856c3fa2cdcd073150c057ac8b69/model.safetensors",
+       "weights_sha256": "cb8cfbf14c5e0f6734b64add383708b7ff68cc6089a0007c67165d4761346102",
+       "code": "https://github.com/princeton-vl/SEA-RAFT/tree/9137517ba24e628442aec097d3afe71d03503b75",
+       "exporter": "export_searaft.py sha256 5a100d8a3b7a5a055b71dbe561027648f695f9a0912558dd11059a180c6b2362",
+       "toolchain": "torch 2.15.0+cpu, TorchScript exporter, opset 17, input 1920x1080, offline, eval mode",
+       "parity_max_abs": 2.6e-05
+      }
+     }
+    },
+    "flow-fast": {
+     "sha256": "4194b01ee5eb88dcb19b8ba8bf6ea6c96f8d62bb3f99d5f67ad9dd64c32e36e0",
+     "size": 78814532,
+     "placement": "coreml",
+     "obtain": {
+      "export": {
+       "weights": "https://huggingface.co/MemorySlices/Tartan-C-T-TSKH-spring540x960-M/resolve/eb97ef34ba5d856c3fa2cdcd073150c057ac8b69/model.safetensors",
+       "weights_sha256": "cb8cfbf14c5e0f6734b64add383708b7ff68cc6089a0007c67165d4761346102",
+       "code": "https://github.com/princeton-vl/SEA-RAFT/tree/9137517ba24e628442aec097d3afe71d03503b75",
+       "exporter": "export_searaft.py sha256 5a100d8a3b7a5a055b71dbe561027648f695f9a0912558dd11059a180c6b2362",
+       "toolchain": "torch 2.15.0+cpu, TorchScript exporter, opset 17, input 1920x1080, offline, eval mode",
+       "parity_max_abs": 2.2e-05
+      }
+     }
+    }
+   }
+  }
+ },
+ "refused": {
+  "matte.recurrent-video": "GPL-3.0",
+  "matte.video-memory": "NTU S-Lab License 1.0, non-commercial",
+  "inpaint.video": "NTU S-Lab License 1.0, non-commercial",
+  "segment.fast": "NTU S-Lab License 1.0, non-commercial",
+  "points.cotracking": "CC-BY-NC-4.0, non-commercial"
+ }
+}

@@ -19,7 +19,12 @@
 
 mod graph;
 pub mod image;
+pub mod lock;
+mod models;
+pub mod onnx;
 mod tensor;
 
 pub use graph::{Backend, Graph, OpenGraph, Placement};
+pub use lock::ModelLock;
+pub use models::{FETCH_COMMAND, FileState, IMPORT_COMMAND, Imported, ModelStore};
 pub use tensor::{Data, Outputs, Tensor};
