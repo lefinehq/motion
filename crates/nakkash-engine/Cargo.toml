@@ -25,6 +25,8 @@ nakkash-query = { path = "../nakkash-query" }
 nakkash-edit = { path = "../nakkash-edit" }
 nakkash-import = { path = "../nakkash-import" }
 nakkash-raster = { path = "../nakkash-raster" }
+# The machine's memory, pressure and threads, for the render budget (D90).
+nakkash-machine = { path = "../nakkash-machine" }
 nakkash-gpu = { path = "../nakkash-gpu", optional = true }
 nakkash-audio = { path = "../nakkash-audio" }
 nakkash-video = { path = "../nakkash-video" }

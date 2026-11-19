@@ -1845,6 +1845,7 @@ dependencies = [
  "nakkash-engine",
  "nakkash-fonts",
  "nakkash-format",
+ "nakkash-machine",
  "nakkash-ml",
  "nakkash-onnx",
  "nakkash-video",
@@ -1899,6 +1900,7 @@ dependencies = [
  "nakkash-format",
  "nakkash-gpu",
  "nakkash-import",
+ "nakkash-machine",
  "nakkash-query",
  "nakkash-raster",
  "nakkash-scene",
@@ -1998,6 +2000,13 @@ dependencies = [
  "strum",
  "winnow",
  "zip",
+]
+
+[[package]]
+name = "nakkash-machine"
+version = "0.0.0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

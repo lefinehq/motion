@@ -317,7 +317,9 @@ pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
     } = glow_plan(values, space);
     // The bright parts, made from the layer as they are read: the layer is
     // not copied first.
-    let light = par::map(pixels.data(), |_, &p| {
+    let source = pixels.data();
+    let mut light = Pixels::made(pixels.width(), pixels.height(), |i| {
+        let p = source[i];
         let a = p[3];
         let luma = match a > 0.0 {
             true => (p[0] * weights[0] + p[1] * weights[1] + p[2] * weights[2]) / a,
@@ -328,7 +330,6 @@ pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
             false => p,
         }
     });
-    let mut light = Pixels::from_data(pixels.width(), pixels.height(), light);
     blur(&mut light, &spread);
     par::each(light.data_mut(), |_, p| {
         *p = p.map(|c| (c * intensity).min(1.0));

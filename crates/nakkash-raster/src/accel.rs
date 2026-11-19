@@ -404,6 +404,15 @@ pub(crate) enum Surface {
 }
 
 impl Surface {
+    /// The bytes its pixels take, on the CPU or in the accelerator.
+    pub(crate) fn bytes(&self) -> u64 {
+        let (width, height) = match self {
+            Surface::Cpu(pixels) => (pixels.width(), pixels.height()),
+            Surface::Held(held) => (held.width(), held.height()),
+        };
+        u64::from(width) * u64::from(height) * crate::memory::PIXEL_BYTES
+    }
+
     /// Whether the pixels are in the accelerator.
     pub(crate) fn is_held(&self) -> bool {
         matches!(self, Surface::Held(_))

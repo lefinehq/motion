@@ -3,6 +3,7 @@
 //! has an error line, or a failure's [`Kind::exit_code`](nakkash_engine::Kind::exit_code).
 
 mod commands;
+mod stats;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -42,12 +43,23 @@ struct Cli {
     /// Print each step's time to stderr at the end.
     #[arg(long, global = true)]
     timings: bool,
-    /// Draw on at most N threads, one per processor when not given: frames
-    /// and the rows of each frame share them, so one frame is drawn on all
-    /// of them. Each thread holds the frame it draws, so fewer take less
+    /// Draw on at most N threads: when not given, the performance cores on
+    /// macOS and the processors the process may use elsewhere. Frames and
+    /// the rows of each frame share them, so one frame is drawn on all of
+    /// them. Each thread holds the frame it draws, so fewer take less
     /// memory.
     #[arg(long, value_name = "N", global = true)]
     threads: Option<std::num::NonZero<usize>>,
+    /// Hold what a render keeps, pools and works to N MiB: over it, kept
+    /// drawings and pooled grids are let go and frames are drawn one at a
+    /// time, with the same pixels (D90). A quarter of the machine's
+    /// memory, at most 4096, when not given.
+    #[arg(long, value_name = "N", global = true)]
+    mem_mib: Option<u64>,
+    /// Print what the command cost to stderr at the end: time, peak
+    /// memory, the budget and how it was held, swap and bytes written.
+    #[arg(long, global = true)]
+    stats: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -436,8 +448,12 @@ impl Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let stats = cli.stats.then(stats::Start::now);
     if let Some(threads) = cli.threads {
         nakkash_engine::limit_threads(threads);
+    }
+    if let Some(mib) = cli.mem_mib {
+        nakkash_engine::limit_memory(mib.saturating_mul(1 << 20));
     }
     let format = cli.log_format.into();
     let telemetry = nakkash_engine::telemetry::init(Options {
@@ -628,6 +644,11 @@ fn main() -> ExitCode {
         match format {
             Format::Text => eprintln!("{}", timings.report()),
             Format::Json => log_timings(timings),
+        }
+    }
+    if let Some(start) = stats {
+        for line in start.report() {
+            eprintln!("{line}");
         }
     }
     code

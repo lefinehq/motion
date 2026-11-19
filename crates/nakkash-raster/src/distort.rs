@@ -12,7 +12,6 @@ use crate::channel::{Level, Reading};
 use crate::colour::{choice, number};
 use crate::effect::{ParamValue, Space};
 use crate::generate::value_noise;
-use crate::par;
 use crate::pixels::Pixels;
 
 /// The point in `values[i]`.
@@ -324,7 +323,7 @@ fn remap_reading(
     let to: Affine = space.transform;
     let back = to.inverse();
     let width = usize::from(source.width());
-    let data = par::map(source.data(), |i, _| {
+    let drawn = Pixels::made(source.width(), source.height(), |i| {
         let at = back * Point::new((i % width) as f64 + 0.5, (i / width) as f64 + 0.5);
         match from([at.x as f32, at.y as f32], source) {
             Some([x, y]) => {
@@ -334,7 +333,6 @@ fn remap_reading(
             None => [0.0; 4],
         }
     });
-    let drawn = Pixels::from_data(source.width(), source.height(), data);
     std::mem::replace(pixels, drawn)
 }
 

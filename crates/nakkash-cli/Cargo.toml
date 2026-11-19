@@ -28,6 +28,8 @@ nakkash-audio = { path = "../nakkash-audio" }
 nakkash-encode = { path = "../nakkash-encode" }
 nakkash-engine = { path = "../nakkash-engine", features = ["bake", "gpu"] }
 nakkash-fonts = { path = "../nakkash-fonts", features = ["fetch"] }
+# What a command cost, for `--stats` (D90).
+nakkash-machine = { path = "../nakkash-machine" }
 nakkash-baked = { path = "../nakkash-baked", optional = true }
 nakkash-format = { path = "../nakkash-format", optional = true }
 nakkash-ml = { path = "../nakkash-ml", features = ["fetch"], optional = true }
