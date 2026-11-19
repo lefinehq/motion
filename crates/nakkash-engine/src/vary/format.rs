@@ -106,6 +106,8 @@ struct Seen {
     /// The union of its boxes at every frame, clipped: where it travels,
     /// with the frames between samples a quick move may peak at.
     reach: Option<Rect>,
+    /// Its box at every frame, unclipped, each once while it holds.
+    every: Vec<Rect>,
     /// Whether nothing may hide it: an adjusting or filter layer, a camera.
     kept: bool,
 }
@@ -164,6 +166,9 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
                 continue;
             }
             let Some(drawn) = visit.drawn() else { continue };
+            if entry.every.last() != Some(&drawn) {
+                entry.every.push(drawn);
+            }
             let inside = drawn.intersect(canvas);
             if inside.width() <= 0.0 || inside.height() <= 0.0 {
                 continue;
@@ -245,7 +250,7 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
         let centre = busiest(session, &all_content, cover, (nw, nh))?;
         // What the backgrounds draw whole on the master's canvas, at every
         // frame: the new frame's edges should not cut through it.
-        let whole: Vec<Rect> = seen
+        let whole: Vec<Vec<Rect>> = seen
             .values()
             .filter(|s| {
                 s.kind != Piece::Comp
@@ -254,13 +259,15 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
                         .iter()
                         .any(|b| s.ids.len() > b.ids.len() && s.ids.starts_with(&b.ids))
             })
-            .filter_map(|s| s.reach)
-            .filter(|r| {
-                r.x0 > canvas.x0 + 0.5
-                    && r.y0 > canvas.y0 + 0.5
-                    && r.x1 < canvas.x1 - 0.5
-                    && r.y1 < canvas.y1 - 0.5
+            .filter(|s| {
+                s.every.iter().all(|r| {
+                    r.x0 > canvas.x0 + 0.5
+                        && r.y0 > canvas.y0 + 0.5
+                        && r.x1 < canvas.x1 - 0.5
+                        && r.y1 < canvas.y1 - 0.5
+                })
             })
+            .map(|s| s.every.clone())
             .collect();
         let centre = uncut(centre, (nw / cover, nh / cover), &whole, (mw, mh));
         shown.push(Shown {
@@ -668,38 +675,60 @@ const UNCUT_REACH: f64 = 0.25;
 
 /// `centre`, the middle of a `window` of the master's canvas (`side` its
 /// size) that the new frame shows of the backgrounds, moved as little as
-/// lets fewest of `whole`, what they draw whole on the master's canvas,
-/// cross the window's edges: an element the crop cuts hangs off the new
-/// frame. Moves no further than [`UNCUT_REACH`] of the window, axis by axis.
-fn uncut(centre: [f64; 2], window: (f64, f64), whole: &[Rect], side: (f64, f64)) -> [f64; 2] {
-    let axis = |c: f64, w: f64, side: f64, spans: &[(f64, f64)]| -> f64 {
+/// lets fewest of `whole` cross the window's edges at any frame: each is
+/// an element the backgrounds draw whole on the master's canvas, by its box
+/// at every frame, and one the crop cuts hangs off the new frame. Moves no
+/// further than [`UNCUT_REACH`] of the window, axis by axis.
+fn uncut(centre: [f64; 2], window: (f64, f64), whole: &[Vec<Rect>], side: (f64, f64)) -> [f64; 2] {
+    let axis = |c: f64, w: f64, side: f64, spans: &[Vec<(f64, f64)>]| -> f64 {
         if w >= side - 1.0 || spans.is_empty() {
             return c;
         }
-        let cuts = |c: f64| {
-            let edges = [c - w / 2.0, c + w / 2.0];
-            spans
-                .iter()
-                .filter(|(a, b)| b - a < w && edges.iter().any(|e| a + 0.5 < *e && *e < b - 0.5))
-                .count()
-        };
         let reach = w * UNCUT_REACH;
-        let (lo, hi) = (
-            (c - reach).max(w / 2.0).floor() as i64,
-            (c + reach).min(side - w / 2.0).ceil() as i64,
-        );
-        let mut best = (cuts(c), 0.0, c);
-        for x in lo..=hi {
-            let x = x as f64;
-            let key = (cuts(x), (x - c).abs(), x);
-            if key.0 < best.0 || (key.0 == best.0 && key.1 < best.1) {
-                best = key;
+        let lo = (c - reach).max(w / 2.0).floor() as i64;
+        let hi = (c + reach).min(side - w / 2.0).ceil() as i64;
+        if hi < lo {
+            return c;
+        }
+        // For each element, the centres whose window edge lies inside one
+        // of its boxes, as whole px from `lo`; counted once an element.
+        let n = (hi - lo + 1) as usize;
+        let mut cuts = vec![0usize; n];
+        let mut cut = vec![false; n];
+        for boxes in spans {
+            cut.iter_mut().for_each(|x| *x = false);
+            for &(a, b) in boxes.iter().filter(|(a, b)| b - a < w) {
+                for edge in [-w / 2.0, w / 2.0] {
+                    // `x + edge` strictly inside (a, b), half a px clear.
+                    let from = ((a + 0.5 - edge).floor() as i64 + 1).max(lo);
+                    let to = ((b - 0.5 - edge).ceil() as i64 - 1).min(hi);
+                    for x in from..=to {
+                        cut[(x - lo) as usize] = true;
+                    }
+                }
+            }
+            for (k, x) in cuts.iter_mut().zip(&cut) {
+                *k += usize::from(*x);
+            }
+        }
+        let at = |x: f64| ((x.round() as i64).clamp(lo, hi) - lo) as usize;
+        let mut best = (cuts[at(c)], 0.0, c);
+        for (i, k) in cuts.iter().enumerate() {
+            let x = (lo + i as i64) as f64;
+            if *k < best.0 || (*k == best.0 && (x - c).abs() < best.1) {
+                best = (*k, (x - c).abs(), x);
             }
         }
         best.2
     };
-    let xs: Vec<(f64, f64)> = whole.iter().map(|r| (r.x0, r.x1)).collect();
-    let ys: Vec<(f64, f64)> = whole.iter().map(|r| (r.y0, r.y1)).collect();
+    let xs: Vec<Vec<(f64, f64)>> = whole
+        .iter()
+        .map(|b| b.iter().map(|r| (r.x0, r.x1)).collect())
+        .collect();
+    let ys: Vec<Vec<(f64, f64)>> = whole
+        .iter()
+        .map(|b| b.iter().map(|r| (r.y0, r.y1)).collect())
+        .collect();
     [
         axis(centre[0], window.0, side.0, &xs),
         axis(centre[1], window.1, side.1, &ys),

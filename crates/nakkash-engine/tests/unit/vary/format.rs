@@ -111,12 +111,32 @@ fn a_move_that_peaks_between_samples_stays_on_the_new_canvas() {
 fn a_cropped_background_is_not_cut_through_an_element() {
     // A 600 px window centred at 960 would cut the dot at 640..700.
     let dot = Rect::new(640.0, 500.0, 700.0, 560.0);
-    let [x, y] = uncut([960.0, 540.0], (600.0, 1080.0), &[dot], (1920.0, 1080.0));
+    let [x, y] = uncut(
+        [960.0, 540.0],
+        (600.0, 1080.0),
+        &[vec![dot]],
+        (1920.0, 1080.0),
+    );
     let (x0, x1) = (x - 300.0, x + 300.0);
     assert!(x0 <= dot.x0 || x0 >= dot.x1, "{x}");
     assert!(x1 <= dot.x0 || x1 >= dot.x1, "{x}");
     assert!((x - 960.0).abs() <= 150.0 + 1e-9, "{x}");
     assert_eq!(y, 540.0);
+    // An element that grows across the edge over its frames is cut at the
+    // frames it crosses it, however wide its whole path.
+    let grows = vec![
+        Rect::new(640.0, 500.0, 700.0, 560.0),
+        Rect::new(560.0, 420.0, 780.0, 640.0),
+        Rect::new(200.0, 100.0, 1100.0, 1000.0),
+    ];
+    let [x, _] = uncut(
+        [960.0, 540.0],
+        (600.0, 1080.0),
+        std::slice::from_ref(&grows),
+        (1920.0, 1080.0),
+    );
+    let x0 = x - 300.0;
+    assert!(grows[..2].iter().all(|r| x0 <= r.x0 || x0 >= r.x1), "{x}");
     // A centre that cuts nothing stays.
     assert_eq!(
         uncut([960.0, 540.0], (600.0, 1080.0), &[], (1920.0, 1080.0))[0],
