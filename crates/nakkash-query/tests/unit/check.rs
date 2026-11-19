@@ -392,7 +392,9 @@ fn nested_with(card_x: u32, title_x: u32, kv: &str) -> Report {
 
 #[test]
 fn a_layer_inside_a_comp_is_checked_in_scene_space_by_its_address() {
-    // The card runs 650..1050, the title 1040..1050: both 50 px past the edge.
+    // The card runs 650..1050, the title 1040..1050: both 50 px past the
+    // edge. The card shows a composition, so what it draws is the title,
+    // which is found at its own address; the card's canvas is not measured.
     let r = nested(850, 395);
     let found: Vec<(String, Code, Measure, bool)> = r
         .violations
@@ -401,20 +403,12 @@ fn a_layer_inside_a_comp_is_checked_in_scene_space_by_its_address() {
         .collect();
     assert_eq!(
         found,
-        [
-            (
-                "card".into(),
-                Code::Offscreen,
-                Measure::Overshoot(50.0),
-                true
-            ),
-            (
-                "card/title".into(),
-                Code::Offscreen,
-                Measure::Overshoot(50.0),
-                true
-            ),
-        ]
+        [(
+            "card/title".into(),
+            Code::Offscreen,
+            Measure::Overshoot(50.0),
+            true
+        )]
     );
 }
 
