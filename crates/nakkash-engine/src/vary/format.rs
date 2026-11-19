@@ -266,6 +266,9 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
         ));
     }
     stack(&mut placed, &groups, safe);
+    for (p, g) in placed.iter_mut().zip(&groups) {
+        keep_on_canvas(p, g.path, canvas, Rect::new(0.0, 0.0, nw, nh));
+    }
     for (g, (r, _, scale, anchor)) in groups.iter().zip(&placed) {
         let mut hide: Vec<String> = all_backgrounds.clone();
         hide.extend(
@@ -310,8 +313,10 @@ fn share(s: &Seen) -> f64 {
 struct Group {
     /// The addresses of its pieces.
     members: BTreeSet<String>,
-    /// The union of their boxes.
+    /// The union of their boxes where they rest ([`resting`]).
     bounds: Rect,
+    /// The union of all their boxes: where they travel.
+    path: Rect,
     /// The sampled frames it shows at.
     frames: BTreeSet<usize>,
     /// Its first piece, in paint order.
@@ -328,6 +333,12 @@ fn group(content: &[&Seen], gap: f64) -> Vec<Group> {
         .map(|(i, p)| Group {
             members: BTreeSet::from([p.ids.join("/")]),
             bounds: resting(&p.boxes),
+            path: p
+                .boxes
+                .iter()
+                .map(|(_, b)| *b)
+                .reduce(|a, b| a.union(b))
+                .unwrap_or_default(),
             frames: p.boxes.iter().map(|(n, _)| *n).collect(),
             first: i,
         })
@@ -378,6 +389,7 @@ fn group(content: &[&Seen], gap: f64) -> Vec<Group> {
 fn join(into: &mut Group, other: Group) {
     into.members.extend(other.members);
     into.bounds = into.bounds.union(other.bounds);
+    into.path = into.path.union(other.path);
     into.frames.extend(other.frames);
     into.first = into.first.min(other.first);
 }
@@ -445,6 +457,79 @@ fn stack(placed: &mut [(Rect, BTreeSet<usize>, f64, [f64; 2])], groups: &[Group]
         p.0 = Rect::new(c.x - w / 2.0, y - h / 2.0, c.x + w / 2.0, y + h / 2.0);
         p.2 *= k;
     }
+}
+
+/// How far inside the new canvas a path the master keeps on its canvas
+/// is kept, as a share of the new canvas's short side: the samples a
+/// layout reads may miss a move's farthest frame by a little.
+const ON_CANVAS: f64 = 0.01;
+
+/// Keeps the whole of `path`, where a placed group travels in the master,
+/// on the new canvas on every side where the master keeps it on its own:
+/// a group placed by where it rests could otherwise swing or grow off the
+/// new canvas mid-move. A side the master's path touches is one it enters
+/// or leaves by, and stays open. Shrinks the group about where it is
+/// placed when the path is wider or taller than the room, then moves it.
+fn keep_on_canvas(
+    placed: &mut (Rect, BTreeSet<usize>, f64, [f64; 2]),
+    path: Rect,
+    master: Rect,
+    canvas: Rect,
+) {
+    let edge = 0.5;
+    let shut = [
+        path.x0 > master.x0 + edge,
+        path.y0 > master.y0 + edge,
+        path.x1 < master.x1 - edge,
+        path.y1 < master.y1 - edge,
+    ];
+    if !shut.contains(&true) {
+        return;
+    }
+    let margin = canvas.width().min(canvas.height()) * ON_CANVAS;
+    let room = canvas.inset(-margin);
+    let (rect, _, scale, anchor) = placed;
+    let mut centre = rect.center();
+    // Where the path lands with the group at `centre` and `scale`.
+    let landed = |centre: kurbo::Point, scale: f64| {
+        Rect::new(
+            centre.x + (path.x0 - anchor[0]) * scale,
+            centre.y + (path.y0 - anchor[1]) * scale,
+            centre.x + (path.x1 - anchor[0]) * scale,
+            centre.y + (path.y1 - anchor[1]) * scale,
+        )
+    };
+    let mut k: f64 = 1.0;
+    if shut[0] && shut[2] {
+        k = k.min(room.width() / (path.width() * *scale));
+    }
+    if shut[1] && shut[3] {
+        k = k.min(room.height() / (path.height() * *scale));
+    }
+    let k = k.min(1.0);
+    let new_scale = *scale * k;
+    let at = landed(centre, new_scale);
+    let mut dx: f64 = 0.0;
+    let mut dy: f64 = 0.0;
+    if shut[0] && at.x0 < room.x0 {
+        dx = room.x0 - at.x0;
+    } else if shut[2] && at.x1 > room.x1 {
+        dx = room.x1 - at.x1;
+    }
+    if shut[1] && at.y0 < room.y0 {
+        dy = room.y0 - at.y0;
+    } else if shut[3] && at.y1 > room.y1 {
+        dy = room.y1 - at.y1;
+    }
+    centre += kurbo::Vec2::new(dx, dy);
+    let (w, h) = (rect.width() * k, rect.height() * k);
+    *rect = Rect::new(
+        centre.x - w / 2.0,
+        centre.y - h / 2.0,
+        centre.x + w / 2.0,
+        centre.y + h / 2.0,
+    );
+    *scale = new_scale;
 }
 
 /// The point of the master's canvas to centre its backgrounds on: the

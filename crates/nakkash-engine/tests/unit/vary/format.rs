@@ -36,3 +36,50 @@ fn a_wide_title_and_a_corner_logo_are_placed_apart_inside_the_new_safe_area() {
     let cover = layout.shown[0].scale;
     assert!((cover - 1920.0 / 1080.0 * 1.004).abs() < 1e-6, "{cover}");
 }
+
+#[test]
+fn a_group_keeps_its_whole_move_on_the_new_canvas() {
+    let master = Rect::new(0.0, 0.0, 1920.0, 1080.0);
+    let canvas = Rect::new(0.0, 0.0, 1080.0, 1920.0);
+    // Rests at 800..1100 x 500..580, swings out to 300..1600 on its way:
+    // inside the master's canvas on every side.
+    let anchor = [950.0, 540.0];
+    let path = Rect::new(300.0, 460.0, 1600.0, 620.0);
+    let mut placed = (
+        Rect::new(390.0, 920.0, 690.0, 1000.0),
+        BTreeSet::new(),
+        1.0,
+        anchor,
+    );
+    keep_on_canvas(&mut placed, path, master, canvas);
+    let (rect, _, scale, _) = placed;
+    let landed = |x: f64, y: f64| {
+        (
+            rect.center().x + (x - anchor[0]) * scale,
+            rect.center().y + (y - anchor[1]) * scale,
+        )
+    };
+    let (x0, _) = landed(path.x0, path.y0);
+    let (x1, _) = landed(path.x1, path.y1);
+    let margin = 1080.0 * ON_CANVAS;
+    assert!(x0 >= margin - 1e-9 && x1 <= 1080.0 - margin + 1e-9, "{x0} {x1} {scale}");
+    assert!(scale < 1.0, "{scale}");
+}
+
+#[test]
+fn a_group_that_enters_from_an_edge_may_still_leave_by_it() {
+    let master = Rect::new(0.0, 0.0, 1920.0, 1080.0);
+    let canvas = Rect::new(0.0, 0.0, 1080.0, 1920.0);
+    // Slides in from the left edge: its path touches it.
+    let path = Rect::new(0.0, 500.0, 1100.0, 580.0);
+    let before = (
+        Rect::new(390.0, 920.0, 690.0, 1000.0),
+        BTreeSet::new(),
+        1.0,
+        [950.0, 540.0],
+    );
+    let mut placed = before.clone();
+    keep_on_canvas(&mut placed, path, master, canvas);
+    // Its right end lands at 690 + 150 = 840, inside: nothing moves.
+    assert_eq!(placed, before);
+}
