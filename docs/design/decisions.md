@@ -955,7 +955,7 @@ Status: Draft · 2026-11-17
 
 ### D88. A track is baked once and applied as keys on pivots
 
-- **Decision:** a track request is baked into one asset and written as ordinary keys by `nakkash ml track <scene> <layer>/<track> --to <pivot>`.
+- **Decision:** a track request is baked into one asset and written as ordinary keys by `nakkash ml track <scene> <layer>.tracks[<track>] --to <pivot>`, the track named by its address.
   - **What is baked:** the segmentation of D87 for the track's prompts, and from it, per clip frame, the mask's centroid, its area's scale against the prompted frame and its principal angle; up to 64 points chosen inside the mask on the prompted frame (corners by the smallest eigenvalue of the structure tensor, at least 12 px apart at 512²) and followed through the clip by the point tracker (`points.video`) with their visibility; per frame, a similarity fitted to the visible points (least squares on the inliers of a RANSAC homography) and that homography, guarded: it is used only with at least 8 inliers and when no corner lies further than half the scaled diagonal from where the similarity puts it, else the similarity's corners are, and the frame is marked.
   - **Corners** are given on the prompted frame for a screen or a label, or found as the mask's extreme points along its diagonals.
   - **Anchors** correct drift. An anchor gives the corners on a later frame where the object is visible. Points are chosen and tracked again from it, and between two anchors each frame blends the fits from both by its distance to each, so the track meets every anchor exactly.

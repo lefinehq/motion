@@ -17,7 +17,7 @@ nakkash ml models fetch                 # the runtime and the downloadable model
 nakkash ml models import ~/exports      # our exported graphs, kept only if the lock has their hash
 nakkash ml preview scene.json --out sheet.png   # segment and track, then a contact sheet
 nakkash ml bake scene.json              # refine the edges, write `baked` digests into the scene
-nakkash ml track scene.json phone/screen --to screen-pivot --corners
+nakkash ml track scene.json phone.tracks[screen] --to screen-pivot --corners
 nakkash render scene.json --out out.mov # reads the baked matte; never infers
 ```
 
