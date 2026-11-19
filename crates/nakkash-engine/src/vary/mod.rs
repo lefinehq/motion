@@ -537,6 +537,9 @@ pub fn gate(master: &Report, variant: Report, made: &Made) -> Gated {
         },
         known: 0,
     };
+    // Read once: a template drawn as many copies reports close to a
+    // million findings, and asking the whole report about each took hours.
+    let known = master.known();
     for v in variant.violations {
         let back = made.read_back(&v.address).map(|(address, scale)| {
             let mut read = v.clone();
@@ -550,7 +553,7 @@ pub fn gate(master: &Report, variant: Report, made: &Made) -> Gated {
             read
         });
         match back {
-            Some(read) if master.knows(&read) => gated.known += 1,
+            Some(read) if known.knows(&read) => gated.known += 1,
             _ => gated.new.violations.push(v),
         }
     }

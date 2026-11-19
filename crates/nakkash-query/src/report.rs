@@ -234,31 +234,20 @@ impl Report {
     /// problem in time without making it worse.
     ///
     /// It takes time in proportion to the two reports' lengths: `base` is
-    /// read once into the worst measure of each rule, layer and other layer,
-    /// which is all a violation is compared with.
+    /// read once into its [`Known`] index.
     pub fn since(&mut self, base: &Report) -> usize {
-        // Sized for every violation of `base`, so it is never hashed twice.
-        let mut worst: FxHashMap<(Code, &Address, Option<&Address>), Worst> =
-            FxHashMap::with_capacity_and_hasher(base.violations.len(), Default::default());
-        for b in &base.violations {
-            worst
-                .entry((b.code, &b.address, b.with.as_ref()))
-                .or_default()
-                .add(b.measure);
-        }
+        let known = base.known();
         let before = self.violations.len();
-        self.violations.retain(|v| {
-            !worst
-                .get(&(v.code, &v.address, v.with.as_ref()))
-                .is_some_and(|w| w.covers(v.measure))
-        });
+        self.violations.retain(|v| !known.knows(v));
         before - self.violations.len()
     }
 
     /// Whether this report, an earlier version's, already has `v`: one by
     /// the same rule on the same layer (and the same other layer, for a
     /// rule that measures two) measured as bad or worse, whatever its
-    /// frames. What [`Report::since`] leaves out.
+    /// frames. What [`Report::since`] leaves out. It reads the whole
+    /// report; to ask about many violations, read it once with
+    /// [`Report::known`].
     pub fn knows(&self, v: &Violation) -> bool {
         self.violations.iter().any(|b| {
             b.code == v.code
@@ -266,6 +255,22 @@ impl Report {
                 && b.with == v.with
                 && v.measure.no_worse_than(b.measure)
         })
+    }
+
+    /// This report read once into the worst measure of each rule, layer
+    /// and other layer, which is all a violation is compared with: what
+    /// [`Report::knows`] answers, in constant time a question.
+    pub fn known(&self) -> Known<'_> {
+        // Sized for every violation, so it is never hashed twice.
+        let mut worst: FxHashMap<(Code, &Address, Option<&Address>), Worst> =
+            FxHashMap::with_capacity_and_hasher(self.violations.len(), Default::default());
+        for b in &self.violations {
+            worst
+                .entry((b.code, &b.address, b.with.as_ref()))
+                .or_default()
+                .add(b.measure);
+        }
+        Known { worst }
     }
 
     /// Whether any violation is an error (warnings do not count).
@@ -279,6 +284,22 @@ impl Report {
     pub fn join(&mut self, other: Report) {
         self.violations.extend(other.violations);
         self.passed += other.passed;
+    }
+}
+
+/// A report's violations by rule, layer and other layer, each with its
+/// worst measure: [`Report::known`].
+pub struct Known<'a> {
+    /// The worst measures of each rule, layer and other layer.
+    worst: FxHashMap<(Code, &'a Address, Option<&'a Address>), Worst>,
+}
+
+impl Known<'_> {
+    /// Whether the report has `v`, as [`Report::knows`] says.
+    pub fn knows(&self, v: &Violation) -> bool {
+        self.worst
+            .get(&(v.code, &v.address, v.with.as_ref()))
+            .is_some_and(|w| w.covers(v.measure))
     }
 }
 
