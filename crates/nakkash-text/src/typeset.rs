@@ -5,7 +5,8 @@
 //! Parley shapes (HarfRust), breaks lines, indents the first line and aligns
 //! box text. Baselines are placed here: each line sits one leading below the
 //! previous baseline, so the result does not depend on how a line box splits
-//! its leading. Every face is registered under a family name of its own, so a
+//! its leading, and box text's first line sits the height of its faces' `d`
+//! below the box's top (`first.rs`). Every face is registered under a family name of its own, so a
 //! run gets exactly the face it asks for; a run that Parley had to fall back
 //! from, or a glyph the font lacks, is an error. A face of a font collection
 //! is registered as a collection of that face alone, since registering a
@@ -29,6 +30,7 @@ use parley::{
 };
 
 use crate::caps::{self, Cased};
+use crate::first;
 use crate::font::{Face, Slant};
 use crate::layout::{Glyph, GlyphRun, Line, TextLayout};
 use crate::set::FontSet;
@@ -114,6 +116,10 @@ pub struct Typesetter {
     /// The font data each face is registered with, parallel to the set's
     /// faces, once text first asks for it ([`Typesetter::register`]).
     registered: Vec<Option<FontData>>,
+    /// How far below a box's top each face puts the first baseline, in ems
+    /// ([`first::below_top`]), parallel to the set's faces, once box text
+    /// first asks for it.
+    below_top: Vec<Option<f64>>,
 }
 
 impl std::fmt::Debug for Typesetter {
@@ -146,6 +152,7 @@ impl Typesetter {
             .collect();
         Typesetter {
             registered: vec![None; fonts.faces().len()],
+            below_top: vec![None; fonts.faces().len()],
             fonts,
             font_cx: FontContext {
                 collection: Collection::new(CollectionOptions {
@@ -236,6 +243,10 @@ impl Typesetter {
             .collect::<Result<Vec<usize>>>()?;
         for &face in &faces {
             self.register(face);
+            if let TextFrame::Box { .. } = text.frame {
+                let measured = &mut self.below_top[face];
+                measured.get_or_insert_with(|| first::below_top(&self.fonts.faces()[face]));
+            }
         }
         let cased = caps::apply(text);
         let mut out = TextLayout::empty();
@@ -321,7 +332,9 @@ impl Typesetter {
             let ascent = f64::from(metrics.baseline - metrics.content_block_min_coord);
             let descent = f64::from(metrics.content_block_max_coord - metrics.baseline);
             let (ascent, descent) = stretched(text, &line, ascent, descent);
-            let baseline = cursor.next_baseline(metrics.line_height.into(), ascent);
+            let baseline = cursor.next_baseline(metrics.line_height.into(), || {
+                self.below_top(text, faces, paragraph, &line)
+            });
             // Where Parley starts the line's content, alignment and indent included.
             let content = f64::from(metrics.inline_min_coord + metrics.offset);
             let placed = reader.read(&line, out.lines.len(), baseline)?;
@@ -353,6 +366,33 @@ impl Typesetter {
         }
         cursor.end_paragraph(paragraph.style);
         Ok(())
+    }
+
+    /// How far below its box's top a box's first line puts its baseline:
+    /// the largest of its runs' [`first::below_top`], raised by faux bold's
+    /// thickening ([`first::faux_bold_rise`]), each at its run's size as
+    /// written, neither scale nor small capitals applied. A line
+    /// without glyphs, an empty paragraph's, takes the run its paragraph
+    /// starts in.
+    fn below_top(
+        &self,
+        text: &StyledText,
+        faces: &[usize],
+        paragraph: &Paragraph,
+        line: &parley::Line<'_, usize>,
+    ) -> f64 {
+        let at = |run: usize| {
+            let style = &text.runs[run].style;
+            let em = self.below_top[faces[run]].expect("box text's faces are measured");
+            (em + first::faux_bold_rise(style)) * style.size
+        };
+        line.items()
+            .filter_map(|item| match item {
+                PositionedLayoutItem::GlyphRun(glyph_run) => Some(at(glyph_run.style().brush)),
+                PositionedLayoutItem::InlineBox(_) => None,
+            })
+            .reduce(f64::max)
+            .unwrap_or_else(|| at(run_at(text, paragraph.source.start)))
     }
 
     /// Builds the Parley layout of one paragraph's set text. Each stretch
@@ -626,12 +666,14 @@ impl Cursor {
         self.pending += style.space_after;
     }
 
-    /// The baseline of a line whose leading is `leading` and whose ascent is `ascent`.
-    fn next_baseline(&mut self, leading: f64, ascent: f64) -> f64 {
+    /// The baseline of a line whose leading is `leading`: one leading below
+    /// the last, or at the origin for point text's first line, and
+    /// `below_top()` below the top for box text's.
+    fn next_baseline(&mut self, leading: f64, below_top: impl FnOnce() -> f64) -> f64 {
         let baseline = match (self.last, self.frame) {
             (Some(last), _) => last + self.pending + leading,
             (None, TextFrame::Point) => 0.0,
-            (None, TextFrame::Box { top, .. }) => top + ascent,
+            (None, TextFrame::Box { top, .. }) => top + below_top(),
         };
         self.pending = 0.0;
         self.last = Some(baseline);

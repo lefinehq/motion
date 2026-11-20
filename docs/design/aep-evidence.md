@@ -19,6 +19,7 @@ A text document stores the lines it was last laid out in (`/2` of the document's
 | B1. A line's origin (`/L /0`) sits on its baseline (`/L /10`) | equal within 0.001 px | 113 lines of 47 layouts |
 | B2. A segment's `/15 /0` counts UTF-16 code units, and every paragraph's end counts as one: a document's lines together count its text plus one | equal | 47 of 47 |
 | B3. In point text, a segment's origin (`/S /0`) is where its line starts: `0`, `-w/2` or `-w` for left, centred and right lines. Here `w` is the segment's glyph run width (`/G /1`) less the tracking after the last character | within 0.01 px | 83 lines |
+| B4. Box text's lines are stored from its box's top-left corner, not in the layer's coordinates: a line's origin and baseline are measured from the box's left and top | 41 of the 64 box texts whose first line we hold (22 samples) start that line within 0.25 px of where ours starts in the box; the others are centred or justified lines whose widths differ. Read in the layer's coordinates, every one was off by the box's corner, hundreds of pixels | 64 box texts, 2026-11-20 |
 
 Other fields we read by inference, without a check yet:
 - the glyph ids of a glyph run (`/G /5`), which the check does not use;
@@ -107,7 +108,7 @@ A character style's horizontal and vertical scale (`horizontal_scale` and `verti
 
 Other things we take without evidence:
 - **Vertical scale.** Two scored samples hold one, m562 (1.04) and m651 (0.98), on texts of one line. The glyphs are drawn taller from their baseline, and the line's ascent grows with them. No reference shows it apart from other changes.
-- **What else the line's other lines leave.** Lines that end in a space store a width that includes it, as for unscaled text (m619's `YOUR IMAGE `), and box text's first baseline is off by about 141 px in m620, scaled or not. Both are open, and neither comes from the scale.
+- **What else the line's other lines leave.** Lines that end in a space store a width that includes it, as for unscaled text (m619's `YOUR IMAGE `), which is open. Box text's first baseline, which looked about 141 px off in m620, was the check reading box text's stored lines in the layer's coordinates (B4) and our first line sitting a font ascent down ([box text's first baseline](#box-texts-first-baseline)); neither came from the scale.
 
 Before, the import reported `scaled characters` 47 times in 12 scored samples and set them unscaled. Over all frames:
 
@@ -122,6 +123,39 @@ Before, the import reported `scaled characters` 47 times in 12 scored samples an
 | m562, m738, m809 | unchanged | unchanged | unchanged |
 
 m639's six stacked `CREATION` titles are skewed in the reference, which the scene does not draw yet. Set at their right width, their unskewed letters cover less of the reference's slanted ones than the wider letters did. Its stored layouts come closer (worst line 100.55 → 51.33 px).
+
+## Box text's first baseline
+
+Box text's first line sits below the box's top by the height of its font's lowercase `d` ([scene format](scene-format.md#text), `crates/nakkash-text/src/first.rs`). Before, it sat a font ascent down, so every box text was drawn low: by 0.31 em in Open Sans, whose ascent is 1.069 em and whose `d` is 0.760, and by 0.24 em in Lato. EffectCraft measured the rule on reference renders (case 818, `crates/text/src/layout.rs` and its tests); we take it and re-check it on the corpus's stored layouts ([composed-line cache](#the-composed-line-cache), B4). The sweep does not check these beliefs yet.
+
+| Belief | Evidence | Held, 2026-11-20 |
+|---|---|---|
+| F1. The first baseline sits the top of the face's `d` outline, in whole thousandths of an em, times the size written, below the box's top. | EffectCraft, case 818: 69.50 px for Times New Roman at 100 px and 71.60 for Arial, half that at 50 px. Our stored layouts, set in the manifest's fonts: of the 37 box texts of one style whose font we measured, 30 store a first baseline within 0.25 px of `d` × size (in m557, m558, m618, m622, m627, m628, m629, m796, m803 and m804; Lato, Montserrat, Open Sans, Playfair Display and Roboto) and none within 0.25 px of ascent × size; the other 7 are faux bold (F2). m622's `NEW CURATED CONTENT` (Open Sans Bold 70) stores 53.20, `d` × size 53.20, the ascent 74.82. | 30 of 37 box texts |
+| F2. Faux bold lowers it by half the space it adds after each character, 13.5 thousandths of an em, added after the rounding. | Every faux bold box text off by more than 0.25 px under F1 is off by 0.0135 em: m624's and m808's `title` (Open Sans Bold 54) store 41.77 against `d` × size 41.04 and F2's 41.77, m813's and m624's Open Sans Regular 53 store 40.99 against F2's 41.00, m623's Open Sans Bold 31 23.98 against 23.98, m778's Roboto Black 143 109.18 against 109.18. | 7 faux bold box texts in 5 samples |
+| F3. Of a first line of several styles, the tallest sets it. | EffectCraft takes the largest of the line's styles. No local box text's first line mixes sizes in a way the stored layouts tell apart. | Taken from EffectCraft |
+| F4. A face whose `d` is missing, or shorter than 0.3 of its ascent, sits a font ascent down. | EffectCraft's guard for symbol and icon faces, whose `d` is not a lowercase ascender. No local box text is set in one. | Taken from EffectCraft |
+
+Other things we take without evidence:
+- **The size written.** The `d` is taken at the style's size, without its horizontal or vertical scale or small capitals, as EffectCraft takes it. m620's scaled Lato (horizontal scale 0.93) stores 31.21 at 42 px, `d` × size 31.21, so a horizontal scale does not move it; no box text is scaled upright.
+- **Superscript.** EffectCraft measured that superscript keeps the line where normal text puts it. The scene has no superscript yet (the import reports it), so nothing here needs it.
+- **Faux italic.** m557's and m558's Roboto at 20 px (faux italic) store 15.24 against `d` × size 15.00: within the check's 0.25 px, but 0.012 em more, which is open, perhaps the project's Roboto against the manifest's.
+- **Faux bold's thickening.** F2 says the original thickens a glyph by 0.0135 em on each side; the renderer's faux bold stroke grows it by 1/64 of the size from 36 px, 0.0156 em. Not changed here.
+
+Measured on the Linux render machine, before (development at d3c77df9) and after on the same machine, over all frames, on the 22 samples with box text. Four of them name system fonts by their paths on the reference machine and are not measured there: m557, m619, m791 and m809. Set in substituted fonts on that machine: m546, m558, m627, m629, m636 and m773.
+
+| Sample | Failing | Content error | Frames passing over the floor |
+|---|---|---|---|
+| m808 | 72.89 % → 62.88 % | 0.2940 → 0.2155 | 1 → 1 of 14 |
+| m813 | 72.01 % → 62.49 % | 0.2900 → 0.2574 | 1 → 1 of 14 |
+| m618 | 19.27 % → 18.01 % | 0.0931 → 0.0839 | 1 → 1 of 20 |
+| m620 | 32.97 % → 32.38 % | 0.1827 → 0.1770 | 6 → 6 of 20 |
+| m636 | 62.85 % → 62.34 % | 0.3947 → 0.3846 | 4 → 4 of 13 |
+| m803 | 97.28 % → 97.26 % | 0.1739 → 0.1672 | 0 → 0 of 20 |
+| m624 | 71.82 % → 73.83 % | 0.4299 → 0.4107 | 1 → 1 of 20 |
+| m622 | 77.01 % → 89.85 % | 0.3383 → 0.3623 | 1 → 1 of 20 |
+| m546, m558, m623, m627, m628, m629, m773, m778, m796, m804 | within 0.1 points | within 0.0009 | unchanged |
+
+Of the 92 texts in the 18 measured samples, 35 are now within 0.25 px of their stored layout, against 19 before; m622's, m623's, m624's, m778's, m796's, m803's and m808's box texts all are, and their worst lines go from hundreds of pixels to at most 1.01 px. m622 and m624 draw their titles in a solid colour the reference fills them with (the layer style `solidFill`, which the scene does not draw yet). Before, our white titles sat beside the reference's coloured ones; now they cover them, and every glyph still differs in colour. The measure's content shrinks to the glyphs, so its failing share rises while the layout is right: the error images show the doubled, offset titles of before as single ones. m624's content error falls.
 
 ## Ranges in parts
 

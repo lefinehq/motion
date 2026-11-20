@@ -14,8 +14,8 @@ use super::report::Fate;
 use super::slots::{Held, address};
 use crate::bake::{Sampled, Samples};
 use crate::model::{
-    BaselineOption, Caps, CharacterStyle, Child, Group, Justification, Kerning, Keyframe,
-    LeadingType, ParagraphStyle, Property, Stream, TextDocument, TextFrame, Value,
+    BaselineOption, Caps, CharacterStyle, Child, ComposedLine, Group, Justification, Kerning,
+    Keyframe, LeadingType, ParagraphStyle, Property, Stream, TextDocument, TextFrame, Value,
 };
 
 /// The match names of a text layer's document and its animators.
@@ -278,7 +278,23 @@ impl Walk<'_> {
     /// Writes `document` into `out`.
     fn write_document(&mut self, document: &TextDocument, out: &mut Out, place: &Place<'_>) {
         out.keys.insert("text".into(), json!(document.text));
-        out.lines = Some(document.lines.clone());
+        // Box text stores its lines from its box's top-left corner
+        // ([evidence B4](https://github.com/lefinehq/nakkash/blob/main/docs/design/aep-evidence.md#the-composed-line-cache)).
+        let (dx, dy) = match document.frame {
+            TextFrame::Box { left, top, .. } => (left, top),
+            TextFrame::Point => (0.0, 0.0),
+        };
+        out.lines = Some(
+            document
+                .lines
+                .iter()
+                .map(|line| ComposedLine {
+                    origin: [line.origin[0] + dx, line.origin[1] + dy],
+                    baseline: line.baseline + dy,
+                    segments: line.segments.clone(),
+                })
+                .collect(),
+        );
         let Some(base) = document.characters.first().map(|run| &run.style) else {
             return;
         };

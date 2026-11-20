@@ -128,7 +128,8 @@ pub struct CharacterStyle {
     pub line_join: LineJoin,
 }
 
-/// One line as the project last laid it out, in layer pixels.
+/// One line as the project last laid it out, in pixels: point text's in
+/// the layer's own coordinates, box text's from its box's top-left corner.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ComposedLine {
     /// Where the line starts.

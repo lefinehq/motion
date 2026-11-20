@@ -26,6 +26,7 @@
 mod caps;
 mod class;
 mod fallback;
+mod first;
 mod fit;
 mod font;
 mod layout;

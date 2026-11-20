@@ -202,9 +202,10 @@ fn box_text_shrinks_until_its_lines_fit_its_box() {
     assert!(fitted.scale < 1.0);
     let bounds = fitted.bounds();
     assert!(bounds.height() <= 120.0 && bounds.height() > 120.0 * 0.9);
-    // Still in its box: from the top, one ascent down, wrapping at its width.
+    // Still in its box: from the top, Inter's `d` (0.728 em) at the
+    // scaled size down, wrapping at its width.
     let first = &fitted.lines[0];
-    assert!(close(first.baseline, 20.0 + first.ascent));
+    assert!(close(first.baseline, 20.0 + 0.728 * 40.0 * fitted.scale));
     assert!(fitted.lines.iter().all(|l| l.x >= 10.0 && l.width <= 300.0));
 }
 
