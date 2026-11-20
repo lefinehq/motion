@@ -172,7 +172,7 @@ fn a_slant_leans_a_top_forward_and_a_shear_moves_a_right_side_down() {
         (10.0, -10.0),
     );
     close(slant(45.0, 0.0) * kurbo::Point::new(10.0, 0.0), (10.0, 0.0));
-    // Turned a quarter, the slant runs down the axis instead.
+    // Turned a quarter, the slant runs down: the right side moves down.
     close(
         slant(45.0, 90.0) * kurbo::Point::new(10.0, 0.0),
         (10.0, -10.0),
