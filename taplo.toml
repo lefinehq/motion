@@ -1,3 +1,6 @@
+# Crates owned as published keep their own formatting.
+exclude = ["vendor/**"]
+
 [formatting]
 align_comments = false
 array_auto_collapse = true

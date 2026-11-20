@@ -85,4 +85,5 @@ jobs:
         with:
           tool: taplo-cli,cargo-machete
       - run: taplo fmt --check
-      - run: cargo machete
+      # Our crates only: the owned rasteriser crate in vendor/ keeps its own manifest.
+      - run: cargo machete crates
