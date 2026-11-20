@@ -120,6 +120,8 @@ fn read_template(path: &Path) -> Result<Document> {
             "the template the instance's `template.path` names, relative to the instance's folder",
         )
     })?;
+    // A split template is read flat, so its hash is the one scene's (D91).
+    let text = crate::includes::flattened(path, text)?;
     let doc = parse_document(&text)?;
     if is_instance(doc.raw()) {
         return Err(Diagnostic::new(

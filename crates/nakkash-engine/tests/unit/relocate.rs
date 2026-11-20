@@ -38,3 +38,23 @@ fn a_path_is_relative_to_a_folder() {
         Some(".")
     );
 }
+
+#[test]
+fn a_reference_to_a_slot_names_no_file_and_slots_and_styles_name_theirs() {
+    let mut raw = json!({
+        "slots":{"logo":{"image":"brand/logo.png"},"screen":{"image":null}},
+        "styles":{"badge":{"image":"img/badge.png"}},
+        "layers":[{"id":"s","image":"$screen"},{"id":"l","image":"$logo"}]});
+    files(
+        &mut raw,
+        Path::new("/work/master"),
+        Path::new("/work/master/out"),
+    );
+    assert_eq!(
+        raw,
+        json!({
+            "slots":{"logo":{"image":"../brand/logo.png"},"screen":{"image":null}},
+            "styles":{"badge":{"image":"../img/badge.png"}},
+            "layers":[{"id":"s","image":"$screen"},{"id":"l","image":"$logo"}]})
+    );
+}

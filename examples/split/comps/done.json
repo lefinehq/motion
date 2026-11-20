@@ -1,0 +1,6 @@
+{"size":"1080x1920","dur":"2s",
+"layers":[
+{"id":"title","text":"Wake up to a full cup","font":"Inter Variable 72 700","fill":"#FFFFFF","style":{"align":"center"},"at":"center 420"},
+{"id":"cup","rect":"360x440 r40","fill":"#F4F1EA","at":"center 1100","offset":"12f","in":"rise 80px 12f out-cubic"},
+{"id":"coffee","rect":"300x260 r28","fill":"#6F4E37","at":"center 1180","offset":"18f","in":"fade-up 40px 12f out-cubic"}
+]}

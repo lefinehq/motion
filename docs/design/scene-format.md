@@ -856,6 +856,19 @@ A scene says a repeated set of layer keys, or a repeated curve, once ([D91](deci
 - **Defaults.** A property written at the fixed resting value the format's version gives it, and a setting written at its default choice, may be left out; the table of those values belongs to the format's version, so changing one bumps it, and its migration writes the old value back where a scene left it out ([D36](decisions.md#d36-the-format-only-changes-in-the-open)). A snapshot of the table (`crates/nakkash-format/tests/defaults.rs`) fails when one moves.
 - **`nakkash compact scene.json -o out.json`** writes the compact form: repeated effect stacks and animations as styles, repeated `speed(…)` and `cubic(…)` curves as eases named by their shape, values at their defaults left out. It reads the result back and writes it only when it is the same scene: a property the reader keeps as written even at its rest (a `rotate` of 0 on a layer, today) stays written, and the report names it; a part that would still change the scene is left out. Names are long and readable, since agents read them. A template's hash is of the scene as written, so compacting a template moves it: its instances warn `template.changed`, and keep working since every slot is still there, until `nakkash migrate` pins them again.
 
+## Compositions in files of their own
+
+A long scene can keep each composition in a file of its own, so an agent opens one section and nothing else ([D91](decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point)). An entry of `comps` is then `{"include":"comps/hook.json"}`, and that file holds the composition as it would stand in the scene:
+
+```text
+promo/scene.json         {"nakkash":1,…,"comps":{"hook":{"include":"comps/hook.json"},…},"layers":[…]}
+promo/comps/hook.json    {"size":"1080x1920","dur":"1.2s","layers":[…]}
+```
+
+- **Reading.** Opening the scene from its file reads every include first, relative to the scene file, and the scene is then the one file it would have been: it reads as the same `Scene` and draws the same bits. Every file an included composition names (an image, a clip) is relative to the scene file too, as for every composition, so a composition moves into its file and back unchanged. An included file holds one composition and no include of its own; the entry holds nothing beside its `include`. A file that is missing or not a composition is an error at `comps.<id>.include`, and the scene's JSON read without its files is an error that says to open it from its file.
+- **Writing.** `nakkash split scene.json -o promo/scene.json` writes the split form, each composition to `comps/<id>.json` beside the scene; `nakkash flatten promo/scene.json -o flat.json` writes one file again. A command that saves the scene it read (`edit`, `slots --mark`) refuses a split scene rather than write it back as one file: edit the composition's own file, or flatten first.
+- **Identity.** A template's hash is of the one scene it reads as, keys in the order written, so splitting it and flattening it back leave the hash, and the pins of its instances, as they were. Writing either form into another folder rewrites the files it names relative to that folder, which is a change of the scene as written and moves the hash.
+
 ## Validation
 
 - **JSON Schema.** A schema is generated from the engine's own types and published, so editors and agents can validate scenes.

@@ -1179,3 +1179,105 @@ fn vary_without_an_axis_says_what_to_ask_for() {
         stderr(&out)
     );
 }
+
+/// A scene split into a file per composition, and flattened back, reads and
+/// draws as the scene (D91); a split scene is never saved over as one file.
+#[test]
+fn a_split_scene_draws_as_the_scene_and_flattens_back() {
+    let scene = format!(
+        "{}/../../examples/social-916.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let dir = std::env::temp_dir().join(format!("nakkash-split-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let split = dir.join("scene.json");
+    let flat = dir.join("flat.json");
+    let split_path = split.to_str().unwrap();
+    let flat_path = flat.to_str().unwrap();
+    assert_eq!(
+        nakkash(&["split", &scene, "-o", split_path]).status.code(),
+        Some(0)
+    );
+    let top: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&split).unwrap()).unwrap();
+    assert_eq!(
+        top["comps"]["hook"],
+        serde_json::json!({"include":"comps/hook.json"})
+    );
+    assert!(dir.join("comps/end.json").exists());
+    assert_eq!(
+        nakkash(&["flatten", split_path, "-o", flat_path])
+            .status
+            .code(),
+        Some(0)
+    );
+    let digests = |path: &str| {
+        stdout(&nakkash(&[
+            "render", path, "--frames", "118-121", "--digest",
+        ]))
+    };
+    let want = digests(&scene);
+    assert!(!want.is_empty());
+    assert_eq!(digests(split_path), want);
+    assert_eq!(digests(flat_path), want);
+    let original: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&scene).unwrap()).unwrap();
+    let flattened: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&flat).unwrap()).unwrap();
+    // Key order too, which the scene reads and its hash covers.
+    assert_eq!(flattened.to_string(), original.to_string());
+    // The split example is that split, kept in step.
+    let example = format!(
+        "{}/../../examples/split/social-916.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let example_flat = dir.join("example-flat.json");
+    let example_flat = example_flat.to_str().unwrap();
+    assert_eq!(
+        nakkash(&["flatten", &example, "-o", example_flat])
+            .status
+            .code(),
+        Some(0)
+    );
+    let example_flat: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(example_flat).unwrap()).unwrap();
+    assert_eq!(example_flat.to_string(), original.to_string());
+    let edit = nakkash(&["edit", split_path, "hook hidden=true"]);
+    assert_ne!(edit.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&edit.stderr).contains("flatten"));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A template's hash is of the one scene it reads as, so splitting it
+/// leaves the pin of its instances as it was (D91).
+#[test]
+fn a_split_template_keeps_its_hash() {
+    let template = format!(
+        "{}/../../examples/instance/promo.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let dir = std::env::temp_dir().join(format!("nakkash-split-pin-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let split = dir.join("promo.json");
+    let split_path = split.to_str().unwrap();
+    assert_eq!(
+        nakkash(&["split", &template, "-o", split_path])
+            .status
+            .code(),
+        Some(0)
+    );
+    let pin = |path: &str| {
+        let out = nakkash(&["slots", path, "--as-instance"]);
+        let instance: serde_json::Value = serde_json::from_str(&stdout(&out)).expect("an instance");
+        instance["template"]["hash"].clone()
+    };
+    let hash = pin(&template);
+    assert!(
+        hash.as_str().is_some_and(|h| h.starts_with("sha256:")),
+        "{hash}"
+    );
+    assert_eq!(pin(split_path), hash);
+    let _ = fs::remove_dir_all(&dir);
+}
