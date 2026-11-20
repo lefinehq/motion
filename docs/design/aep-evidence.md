@@ -809,9 +809,9 @@ Measured on the Linux render machine (its fonts and footage differ from the refe
 |---|---|---|
 | m547 (excluded: footage the project lacks) | 0.3077 → 0.3005, 90.61 % → 90.47 % | 0.3583 → 0.3555, 88.17 % → 87.99 % |
 | m651 | 0.0788 → 0.0780, 70.80 % → 70.77 % | 0.0630 → 0.0619, 66.98 % → 66.94 % |
-M828_ROW
+| m828 | 0.1631 → 0.1476, 85.40 % → 84.82 % | 0.1771 → 0.1607, 90.00 % → 89.43 % |
 
-Frames passing the floor are unchanged (m547 0 of 14, m651 4 of 15). Only these three samples' scenes change; m547's four expressions that failed now bake (146 → 142 not baked over the corpus). Text samples that are not keyed draw the same: `render --digest`, frames 0–90, is bit-identical before and after for m613, m736 and m543.
+Frames passing the floor are unchanged (m547 0 of 14, m651 4 of 15, m828 0 of 20). Only these three samples' scenes change; m547's four expressions that failed now bake (146 → 142 not baked over the corpus). Text samples that are not keyed draw the same: `render --digest`, frames 0–90, is bit-identical before and after for m613, m736 and m543.
 
 Other things we take without evidence:
 - **Keys.** No local project keys its Source Text. A keyed Source Text is taken as the original's documentation gives it: each key holds its whole document until the next. The import keeps each key's words in the first key's style and reports a key that restyles.
