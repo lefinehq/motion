@@ -24,9 +24,13 @@ use std::alloc::{GlobalAlloc, Layout, System};
 /// mebibyte, the size of the smallest grid the memory budget pools.
 pub const BIG: usize = 1 << 20;
 
-/// The global allocator that gives big blocks back to the system when
-/// they are freed; see the [module](self). Installed with
+/// The global allocator that maps every block of at least [`BIG`] bytes
+/// from the system on its own and gives it back when it is freed, so what
+/// the process holds resident is what it uses; smaller blocks go to the
+/// system allocator ([D90]). Installed with
 /// `#[global_allocator] static ALLOCATOR: GivesBack = GivesBack;`.
+///
+/// [D90]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d90-a-frame-is-drawn-from-a-plan-that-knows-what-each-drawing-is-under-one-memory-budget
 #[derive(Debug, Clone, Copy, Default)]
 pub struct GivesBack;
 
