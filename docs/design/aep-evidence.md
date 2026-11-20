@@ -778,3 +778,18 @@ The three plain files reach what converting them to PDF outside nakkash and draw
 |---|---|---|
 | E1. Device CMYK is drawn by the language's own rule, each primary `1 − min(1, c + k)`, not through a press profile. | m772's button is `0 .993347 1 0` CMYK. The reference draws it (255, 3, 2), (254, 2, 1) and (255, 0, 0) at four points of frame 12. The rule gives (255, 2, 0); the system's generic CMYK profile gives (217, 37, 42). | 1 colour of 1 sample; m794's one CMYK colour is recoloured by a fill effect, so its reference cannot tell. |
 | E2. The footage's size is the whole-point `%%BoundingBox`, and the art sits in it one point a pixel from its top-left corner, not stretched to it from the precise `%%HiResBoundingBox`. | Every project gives its EPS footage the whole-point box's size: m772 258 × 64 (precise 257.9711 × 63.9789), m794 78 × 24 (precise 77.3357 × 23.0674), m788 384 × 384, m837 410 × 366, m838 511 × 491. Drawn over the whole-point box, m794's content error is 0.01919 against 0.01961 stretched from the precise box (41.18% against 41.21% failing); m772's differs by under 0.001 points. | 5 of 5 files |
+
+## Text methods in expressions
+
+The embedded expression engine leaves out the language's Annex B, which both of the original's engines have; it takes `String.prototype.substr` from it as its own native method, to ECMA-262 Annex B.2.2.1. The belief says what a legacy expression on source text may call by name. It was checked by hand on the one local sample that does it; the sweep does not check it.
+
+| Belief | Evidence | Held, 2026-11-20 |
+|---|---|---|
+| Q1. In the legacy engine, an expression on source text reaches the string methods of its property's value by name, as it reaches `value`: `substr(0, n)` is the first `n` characters of the text. | m547's four typing titles, in a legacy project, end with `substr(0, src) + pipe`, `src` a slider that counts up and `pipe` an underscore. Its reference shows each title typed out behind an underscore (`Awesome cre_`, `Your dail_`, `d_`), never whole with no underscore, which a failing expression would leave. | 4 expressions in 1 sample, all bare `substr` |
+
+The four expressions failed before with "substr is not defined" and kept the whole titles; they now bake. The scene's text cannot change over time yet, so each keeps its first frame's text, which is the underscore alone, and reports the change. On the render machine, over all frames, m547 (excluded: its reference lays the titles over stock footage the project lacks) errs 0.3161 → 0.3142, failing on 91.17 % → 91.60 % of its content; settled 0.3654 → 0.3680 (88.73 % → 89.09 %). No other local sample's scene changes.
+
+Other things we take without evidence:
+- **Which methods.** The names a legacy expression reaches are the string methods of the language's third edition, the one the legacy engine follows, and `substr`: `charAt`, `charCodeAt`, `concat`, `indexOf`, `lastIndexOf`, `localeCompare`, `match`, `replace`, `search`, `slice`, `split`, `substr`, `substring`, and the four case changes. A property of the string, such as `length`, is not reached; `length` stays the vector function. Only `substr` is seen in the corpus.
+- **Other values.** On a property whose value is not text, these names are not defined, as m547's failure said before. Whether the original reaches a number's methods by name in the same way is not known.
+- **The modern engine.** It is not given these names: no local modern project calls one bare, so nothing shows whether the modern engine reaches them. `value.substr(…)` works in both.

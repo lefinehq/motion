@@ -12,3 +12,17 @@ var loop_out = loopOut, loop_in = loopIn, loop_out_duration = loopOutDuration, l
 var seed_random = seedRandom, gauss_random = gaussRandom, ease_in = easeIn, ease_out = easeOut;
 var rgb_to_hsl = rgbToHsl, hsl_to_rgb = hslToRgb, degrees_to_radians = degreesToRadians, radians_to_degrees = radiansToDegrees;
 var frames_to_time = framesToTime, time_to_frames = timeToFrames, posterize_time = posterizeTime;
+// The legacy engine reaches the methods of the value of the property an
+// expression is on by name, as `value`'s own: on source text, the string
+// methods of the language's third edition and its Annex B, so
+// `substr(0, n)` is the first `n` characters of the text. On a property
+// whose value is not text they are not defined.
+["charAt", "charCodeAt", "concat", "indexOf", "lastIndexOf", "localeCompare", "match", "replace",
+ "search", "slice", "split", "substr", "substring", "toLowerCase", "toLocaleLowerCase",
+ "toUpperCase", "toLocaleUpperCase"].forEach(function (n) {
+  $global(n, function () {
+    var text = $v(value);
+    if (typeof text !== "string") throw new ReferenceError(n + " is not defined");
+    return function () { return String.prototype[n].apply(text, arguments); };
+  });
+});
