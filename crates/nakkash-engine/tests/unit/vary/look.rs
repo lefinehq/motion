@@ -465,3 +465,23 @@ fn a_plain_composition_over_the_field_is_coloured_as_the_field() {
     apply(&mut raw, &Held::default(), &look("riso"));
     assert_ne!(raw["comps"]["rays"]["layers"][2]["fx"][0], colours);
 }
+
+#[test]
+fn a_look_without_glitch_keeps_the_titles_way_in() {
+    // A displacement that pushes the title off and settles to nothing is
+    // its entrance; a look without glitch drops the texture, not the way in.
+    let mut raw = template();
+    raw["comps"]["title"]["layers"][2]["fx"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"displacement-map": 4000, "anim": {"horizontal": [
+            {"t": "0s", "v": 4000}, {"t": "0.1s", "v": 0}]}}));
+    apply(&mut raw, &Held::default(), &look("aurora"));
+    let fx = raw["comps"]["title"]["layers"][2]["fx"].as_array().unwrap();
+    let displacements: Vec<&Json> = fx
+        .iter()
+        .filter(|f| f.get("displacement-map").is_some())
+        .collect();
+    assert_eq!(displacements.len(), 1, "{fx:?}");
+    assert!(displacements[0].get("anim").is_some());
+}

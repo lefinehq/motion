@@ -244,22 +244,24 @@ struct Preset {
 /// - `aurora`: an indigo ground opening in the middle; a smooth silk
 ///   noise in teal, pink and periwinkle layer by layer, as light as each
 ///   other so they part by hue, glowing and streaked long; no rings; a
-///   clean white capital title, widely spaced, its glitch off; a calm pace.
-/// - `riso`: a warm charcoal ground; the master's blocky noise in green,
-///   orange and teal inks, flat (no glow) and barely streaked, its
+///   clean light-teal capital title, widely spaced, its glitch off; a calm
+///   pace.
+/// - `riso`: a warm charcoal ground; the master's blocky noise in blue,
+///   green and orange inks, flat (no glow) and barely streaked, its
 ///   cells tall and thin; wide rings; a paper-white capital title whose
 ///   split copies misregister in the warm inks, pink and yellow, like a
 ///   print; grain; a snappy pace.
 /// - `ember`: a dark warm ground; a smeared noise in orange and a
 ///   raspberry red, with teal sparks against them, its cells long and low;
-///   rings echoed; a cream title in small letters, extruded, glitch off.
+///   its glow at half; rings echoed; a gold title in small letters,
+///   extruded, glitch off.
 const PRESETS: [Preset; 3] = [
     Preset {
         name: "aurora",
         ground: ["#1B1F5E", "#05060F"],
         field: &["#2DE2D0", "#FF6EC7", "#8FA2FF"],
         split: ["#FF6EC7", "#2DE2D0", "#8FA2FF"],
-        text: "#F2F4FF",
+        text: "#7FF5EA",
         noise: Some("spline"),
         fractal: None,
         contrast: 0.95,
@@ -268,8 +270,8 @@ const PRESETS: [Preset; 3] = [
         field_glow: 1.1,
         blur: 1.3,
         rings: Rings::Off,
-        title_glow: 0.4,
-        title_top: 0.75,
+        title_glow: 1.0,
+        title_top: 1.0,
         glitch: false,
         displace: 1.0,
         treatment: Treatment::Fill,
@@ -283,12 +285,12 @@ const PRESETS: [Preset; 3] = [
     Preset {
         name: "riso",
         ground: ["#2A2118", "#0E0B08"],
-        field: &["#00A95C", "#FF6C2F", "#00838A"],
+        field: &["#0078BF", "#00A95C", "#FF6C2F"],
         split: ["#FF48B0", "#FFE800", "#F4EEDC"],
         text: "#F4EEDC",
         noise: None,
         fractal: None,
-        contrast: 1.08,
+        contrast: 1.0,
         speed: 1.2,
         cells: [0.5, 2.2],
         field_glow: 0.0,
@@ -302,7 +304,7 @@ const PRESETS: [Preset; 3] = [
         case: Case::Upper,
         tracking: 20.0,
         ease: Some("out-expo"),
-        grain: 0.1,
+        grain: 0.06,
         pace: Some(super::Pace::Snappy),
         faces: &["kumbhsans", "raleway"],
     },
@@ -311,17 +313,17 @@ const PRESETS: [Preset; 3] = [
         ground: ["#3A1206", "#0A0302"],
         field: &["#FF8A1F", "#FF3B5C", "#3EC7C2"],
         split: ["#FF3B5C", "#FFD36B", "#FFF1DC"],
-        text: "#FFF1DC",
+        text: "#FFD36B",
         noise: None,
         fractal: Some("smeary"),
         contrast: 1.0,
         speed: 0.6,
         cells: [2.6, 0.7],
-        field_glow: 1.0,
+        field_glow: 0.5,
         blur: 1.0,
         rings: Rings::Echo(2),
-        title_glow: 0.6,
-        title_top: 0.75,
+        title_glow: 1.0,
+        title_top: 1.0,
         glitch: false,
         displace: 1.0,
         treatment: Treatment::Extrude(0.03),
@@ -904,6 +906,21 @@ fn size_of(value: &Json) -> Option<(f64, f64)> {
 
 /// The effects a look switches off on a layer of `role`: glows it sets to
 /// 0, and the title's glitch when it has none.
+/// Whether `item` has an animated amount whose last key is 0: an effect
+/// that ends having done nothing.
+fn settles(item: &Json) -> bool {
+    item.get("anim")
+        .and_then(Json::as_object)
+        .is_some_and(|anim| {
+            anim.values().filter_map(Json::as_array).any(|keys| {
+                keys.last()
+                    .and_then(|k| k.get("v"))
+                    .and_then(Json::as_f64)
+                    .is_some_and(|v| v == 0.0)
+            })
+        })
+}
+
 fn keeps(item: &Json, role: Role, step: &LookStep) -> bool {
     let is = |k: &str| item.get(k).is_some();
     match role {
@@ -911,7 +928,9 @@ fn keeps(item: &Json, role: Role, step: &LookStep) -> bool {
         Role::Title => {
             let glitch = is("displacement-map") || is("turbulent-displace") || is("shift-channels");
             let dark = is("glow") && step.title.glow == 0.0;
-            !dark && (!glitch || step.title.glitch)
+            // A displacement that settles to nothing is the title's way in
+            // or out (pushed off, then home), not its texture: it stays.
+            !dark && (!glitch || step.title.glitch || settles(item))
         }
         Role::Other => true,
     }
