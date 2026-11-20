@@ -141,7 +141,21 @@ Other things we take without evidence:
 - **Faux italic.** m557's and m558's Roboto at 20 px (faux italic) store 15.24 against `d` × size 15.00: within the check's 0.25 px, but 0.012 em more, which is open, perhaps the project's Roboto against the manifest's.
 - **Faux bold's thickening.** F2 says the original thickens a glyph by 0.0135 em on each side; the renderer's faux bold stroke grows it by 1/64 of the size from 36 px, 0.0156 em. Not changed here.
 
-BB_MEASURED
+Measured on the Linux render machine, before (development at d3c77df9) and after on the same machine, over all frames, on the 22 samples with box text. Four of them name system fonts by their paths on the reference machine and are not measured there: m557, m619, m791 and m809. Set in substituted fonts on that machine: m546, m558, m627, m629, m636 and m773.
+
+| Sample | Failing | Content error | Frames passing over the floor |
+|---|---|---|---|
+| m808 | 72.89 % → 62.88 % | 0.2940 → 0.2155 | 1 → 1 of 14 |
+| m813 | 72.01 % → 62.49 % | 0.2900 → 0.2574 | 1 → 1 of 14 |
+| m618 | 19.27 % → 18.01 % | 0.0931 → 0.0839 | 1 → 1 of 20 |
+| m620 | 32.97 % → 32.38 % | 0.1827 → 0.1770 | 6 → 6 of 20 |
+| m636 | 62.85 % → 62.34 % | 0.3947 → 0.3846 | 4 → 4 of 13 |
+| m803 | 97.28 % → 97.26 % | 0.1739 → 0.1672 | 0 → 0 of 20 |
+| m624 | 71.82 % → 73.83 % | 0.4299 → 0.4107 | 1 → 1 of 20 |
+| m622 | 77.01 % → 89.85 % | 0.3383 → 0.3623 | 1 → 1 of 20 |
+| m546, m558, m623, m627, m628, m629, m773, m778, m796, m804 | within 0.1 points | within 0.0009 | unchanged |
+
+Of the 92 texts in the 18 measured samples, 35 are now within 0.25 px of their stored layout, against 19 before; m622's, m623's, m624's, m778's, m796's, m803's and m808's box texts all are, and their worst lines go from hundreds of pixels to at most 1.01 px. m622 and m624 draw their titles in a solid colour the reference fills them with (the layer style `solidFill`, which the scene does not draw yet). Before, our white titles sat beside the reference's coloured ones; now they cover them, and every glyph still differs in colour. The measure's content shrinks to the glyphs, so its failing share rises while the layout is right: the error images show the doubled, offset titles of before as single ones. m624's content error falls.
 
 ## Ranges in parts
 
