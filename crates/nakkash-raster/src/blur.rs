@@ -9,6 +9,8 @@
 //! al., "Theoretical foundations of Gaussian convolution by extended box
 //! filtering", 2011), in time that does not grow with the blur.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use vello_cpu::kurbo::{Affine, Vec2};
 
 use crate::colour::{choice, number, rgb};
@@ -143,6 +145,47 @@ fn box_pass(line: &mut [Pixel], whole: usize, part: f32, edges: Edges, padded: &
     }
 }
 
+/// [`glow`] as it was before it left light of nothing alone: its
+/// reference ([D90], rule 7), which tests hold it to bit for bit.
+///
+/// [D90]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d90-a-frame-is-drawn-from-a-plan-that-knows-what-each-drawing-is-under-one-memory-budget
+#[cfg(test)]
+pub(crate) fn glow_reference(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let Glow {
+        threshold,
+        luma: weights,
+        blur: spread,
+        intensity,
+        composite,
+        operation,
+    } = glow_plan(values, space);
+    let source = pixels.data();
+    let mut light = Pixels::made(pixels.width(), pixels.height(), |i| {
+        let p = source[i];
+        let a = p[3];
+        let luma = match a > 0.0 {
+            true => (p[0] * weights[0] + p[1] * weights[1] + p[2] * weights[2]) / a,
+            false => 0.0,
+        };
+        match luma < threshold {
+            true => [0.0; 4],
+            false => p,
+        }
+    });
+    blur(&mut light, &spread);
+    par::each(light.data_mut(), |_, p| {
+        *p = p.map(|c| (c * intensity).min(1.0));
+    });
+    match composite {
+        GlowComposite::GlowOnly => *pixels = light,
+        GlowComposite::BehindOriginal => {
+            operation.pixels(&mut light, pixels);
+            *pixels = light;
+        }
+        GlowComposite::WithOriginal => operation.pixels(pixels, &light),
+    }
+}
+
 /// [`box_pass`] as it was before it stepped over runs: its reference
 /// ([D90], rule 7), which tests hold it to bit for bit.
 ///
@@ -224,6 +267,9 @@ fn along(pixels: &mut Pixels, way: usize, radius: f32, passes: usize, edges: Edg
             //
             // [D93]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d93-glow-and-blurs-do-less-of-the-same-work
             let held = par::columns_holding(data, width, |p| p.iter().any(|c| c.to_bits() != 0));
+            if !held.contains(&true) {
+                return;
+            }
             let mut bands = memory::grid(width * height, Start::Written);
             par::columns_in(data, width, height, &mut bands, |x| held[x], Vec::new, line);
             memory::release(bands);
@@ -432,8 +478,10 @@ pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
         operation,
     } = glow_plan(values, space);
     // The bright parts, made from the layer as they are read: the layer is
-    // not copied first.
+    // not copied first. Whether any of them is other than `+0.0` is noted
+    // as they are made; it is an "or", the same at any split.
     let source = pixels.data();
+    let shines = AtomicBool::new(false);
     let mut light = Pixels::made(pixels.width(), pixels.height(), |i| {
         let p = source[i];
         let a = p[3];
@@ -441,15 +489,29 @@ pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
             true => (p[0] * weights[0] + p[1] * weights[1] + p[2] * weights[2]) / a,
             false => 0.0,
         };
-        match luma < threshold {
+        let lit = match luma < threshold {
             true => [0.0; 4],
             false => p,
+        };
+        if !shines.load(Ordering::Relaxed) && lit.iter().any(|c| c.to_bits() != 0) {
+            shines.store(true, Ordering::Relaxed);
         }
+        lit
     });
-    blur(&mut light, &spread);
-    par::each(light.data_mut(), |_, p| {
-        *p = p.map(|c| (c * intensity).min(1.0));
-    });
+    // Light of nothing but `+0.0` blurs to itself, every line of it left
+    // as it is (K3), and an intensity that is finite and not negative
+    // takes `+0.0` to `+0.0`, held to 1 or not: so where nothing passes
+    // the threshold neither is worked out, and the light laid with the
+    // layer is the `+0.0` it would have been ([D93]).
+    //
+    // [D93]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d93-glow-and-blurs-do-less-of-the-same-work
+    let keeps_nothing = intensity.is_finite() && intensity.is_sign_positive();
+    if shines.into_inner() || !keeps_nothing {
+        blur(&mut light, &spread);
+        par::each(light.data_mut(), |_, p| {
+            *p = p.map(|c| (c * intensity).min(1.0));
+        });
+    }
     match composite {
         GlowComposite::GlowOnly => *pixels = light,
         GlowComposite::BehindOriginal => {

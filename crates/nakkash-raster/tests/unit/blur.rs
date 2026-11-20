@@ -504,3 +504,82 @@ fn a_blur_over_runs_and_empty_columns_has_the_bits_of_its_reference() {
         }
     }
 }
+
+#[test]
+fn a_glow_without_light_has_the_bits_of_its_reference() {
+    use crate::oracle::{Noise, assert_same_bits, edge_floats, on_threads};
+    let (width, height) = (73u16, 47u16);
+    let w = usize::from(width);
+    let mut noise = Noise::new(93);
+    let edges = edge_floats();
+    // Layers whose every pixel is under a high threshold (dim, clear, or
+    // nothing at all), with specks of -0.0 and of NaN alpha that no luma
+    // passes; and a lit one, with one pixel past it.
+    let dim = |noise: &mut Noise| {
+        let mut pixels = Pixels::transparent(width, height);
+        for (i, p) in pixels.data_mut().iter_mut().enumerate() {
+            let (x, y) = (i % w, i / w);
+            *p = match (x / 9 + y / 5) % 5 {
+                0 => [0.0; 4],
+                1 => [-0.0, 0.0, -0.0, -0.0],
+                2 => [0.1 * noise.unit(), 0.05, 0.2 * noise.unit(), 1.0],
+                3 => [0.0, 0.0, 0.0, f32::NAN],
+                _ => {
+                    let e = edges[noise.bits() as usize % edges.len()];
+                    [e.min(0.0), 0.0, 0.0, 0.5]
+                }
+            };
+        }
+        pixels
+    };
+    let empty = Pixels::transparent(width, height);
+    let dim_layer = dim(&mut noise);
+    let mut lit = dim(&mut noise);
+    lit.data_mut()[20 * w + 30] = [1.0; 4];
+    let layers = [("empty", &empty), ("dim", &dim_layer), ("lit", &lit)];
+    let thresholds = [0.9f32, 2.0, f32::INFINITY, 0.0, -1.0, f32::NAN];
+    let intensities = [1.0f32, 0.0, -0.0, 3.5, -1.0, f32::INFINITY, f32::NAN, 1e30];
+    for (name, layer) in layers {
+        for threshold in thresholds {
+            for intensity in intensities {
+                for composite in 0..3u8 {
+                    for at in 0..GLOW_OPERATIONS.len() {
+                        let values = [
+                            ParamValue::Number(threshold),
+                            ParamValue::Number(25.0),
+                            ParamValue::Number(intensity),
+                            ParamValue::Choice(0),
+                            ParamValue::Choice(composite),
+                            ParamValue::Choice(u8::try_from(at).unwrap()),
+                        ];
+                        let mut want = layer.clone();
+                        glow_reference(&mut want, &values, &ONE);
+                        for (threads, split) in [(1, None), (4, Some(7)), (4, None)] {
+                            crate::memory::set_clobber(true);
+                            crate::par::split_in_tests(split);
+                            let mut got = layer.clone();
+                            on_threads(threads, || glow(&mut got, &values, &ONE));
+                            crate::par::split_in_tests(None);
+                            crate::memory::set_clobber(false);
+                            let what = format!(
+                                "{name}, threshold {threshold}, intensity {intensity}, \
+                                 composite {composite}, {}, {threads} threads, split {split:?}",
+                                GLOW_OPERATIONS[at]
+                            );
+                            assert_same_bits(&what, want.data(), got.data());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_blur_of_nothing_is_nothing_without_room_for_columns() {
+    // Every column empty: the column pass returns before taking room, and
+    // the grid keeps its +0.0.
+    let mut pixels = Pixels::transparent(64, 33);
+    blur(&mut pixels, &Blur::gaussian([12.0, 12.0], Edges::Repeat));
+    assert!(pixels.data().iter().flatten().all(|c| c.to_bits() == 0));
+}
