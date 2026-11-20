@@ -70,6 +70,9 @@ const TOLERANCES: &[(&str, f32)] = &[
     ("find-edges", 1e-6),
     // Powers are the GPU's own, less exact than the CPU's.
     ("exposure", 1e-5),
+    // The curves' powers too; the legacy threshold sends a level a bit
+    // off mid grey the other way.
+    ("brightness-contrast", 1e-5),
     ("shift-channels", 1e-6),
     // A hue jumps from 1 back to 0 at red, so a bit there would be a jump.
     ("shift-channels-hue", 1e-6),

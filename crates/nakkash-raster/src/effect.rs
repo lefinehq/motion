@@ -746,6 +746,38 @@ pub const EFFECTS: &[EffectSpec] = &[
         },
     },
     EffectSpec {
+        name: "brightness-contrast",
+        params: &[
+            ParamSpec {
+                name: "brightness",
+                default: ParamValue::Number(0.0),
+                range: Some((-1.5, 1.5)),
+                choices: &[],
+                doc: "how far the levels rise or fall",
+            },
+            ParamSpec {
+                name: "contrast",
+                default: ParamValue::Number(0.0),
+                range: Some((-1.0, 1.0)),
+                choices: &[],
+                doc: "how far the levels move from mid grey or towards it",
+            },
+            ParamSpec {
+                name: "legacy",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["off", "on"],
+                doc: "whether it bends the levels by curves or moves them along a line",
+            },
+        ],
+        doc: "brightens or darkens the levels and moves them from or towards mid grey",
+        reach: stays,
+        apply: Apply::Pixels {
+            over: None,
+            pixels: colour::brightness_contrast,
+        },
+    },
+    EffectSpec {
         name: "levels",
         params: &[
             ParamSpec {

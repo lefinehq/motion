@@ -17,7 +17,9 @@ struct Params {
     // alpha 16.
     channels: u32,
     // A choice: colorize for the hue and saturation, linear for the
-    // exposure, inverted for the fill.
+    // exposure, inverted for the fill; for the brightness and contrast,
+    // curves with no brightness 0, brightening 1, darkening 2, a legacy
+    // line 3 and a legacy threshold 4.
     choice: u32,
     // Whether an inverted fill is held to its box, a span of each row in
     // `table`.
@@ -26,12 +28,13 @@ struct Params {
     // - tint: amount;
     // - hue_saturation: the turn or hue, saturation, lightness;
     // - exposure: scale, offset, 1/gamma, 1/2.4;
+    // - brightness_contrast: contrast, power, shape; legacy: offset, slope;
     // - levels: input black, input white, output black, output white;
     // - invert: blend;
     // - black_white: the tint colour's hue and saturation, then tint;
     // - fill: share.
     numbers: vec4<f32>,
-    // levels: gamma and 1/gamma.
+    // levels: gamma and 1/gamma; brightness_contrast: 1/power, 1/shape.
     more: vec4<f32>,
     // tint: black; black_white: the first four shares; fill: the colour.
     first: vec4<f32>,
@@ -281,6 +284,40 @@ fn exposure(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     let s = straight_of(dst[i]);
     dst[i] = premultiplied(vec4(exposed(s.r), exposed(s.g), exposed(s.b), s.a));
+}
+
+// `BrightnessContrast::level`: what one straight level becomes.
+fn brightened(c: f32) -> f32 {
+    let n = params.numbers;
+    if params.choice >= 3u {
+        let from_grey = c + n.x - 0.5;
+        if params.choice == 4u {
+            return select(0.0, 1.0, from_grey >= 0.0);
+        }
+        return from_grey * n.y + 0.5;
+    }
+    var x = clamp(c, 0.0, 1.0);
+    x = clamp(x + n.x * x * (1.0 - x) * (2.0 * x - 1.0), 0.0, 1.0);
+    if params.choice == 1u {
+        return 1.0 - pow(max(1.0 - pow(x, n.z), 0.0), n.y);
+    }
+    if params.choice == 2u {
+        let m = params.more;
+        return pow(max(1.0 - pow(max(1.0 - x, 0.0), m.x), 0.0), m.y);
+    }
+    return x;
+}
+
+// `brightness-contrast`: every colour level bent by the curves or moved
+// along the legacy line.
+@compute @workgroup_size(256)
+fn brightness_contrast(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = index(gid);
+    if i >= params.count || dst[i].a <= 0.0 {
+        return;
+    }
+    let s = straight_of(dst[i]);
+    dst[i] = premultiplied(vec4(brightened(s.r), brightened(s.g), brightened(s.b), s.a));
 }
 
 // `levels`: one level mapped between the ranges through the gamma.

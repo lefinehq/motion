@@ -1305,7 +1305,7 @@ const VECTOR_TRANSFORM: [Row; 7] = [
 ];
 
 /// The groups that become scene items, by match name.
-pub(super) static KINDS: [Kind; 62] = [
+pub(super) static KINDS: [Kind; 63] = [
     // A mask: its path in the mask space, which the import scales to the
     // layer's px; its mode and side come from its `mkif`.
     Kind {
@@ -2191,6 +2191,45 @@ pub(super) static KINDS: [Kind; 62] = [
                 Parameter,
             ),
             row("APC Colorama-0036", To::Prop("blend"), Percent, Parameter),
+        ],
+        parts: &[],
+        switch: None,
+    },
+    Kind {
+        match_name: "ADBE Brightness & Contrast 2",
+        item: "brightness-contrast",
+        table: &EFFECTS,
+        rows: &[
+            row(
+                "ADBE Brightness & Contrast 2-0000",
+                To::Ignore("the layer the effect reads, its own"),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Brightness & Contrast 2-0001",
+                To::Prop("brightness"),
+                Percent,
+                Absent,
+            ),
+            row(
+                "ADBE Brightness & Contrast 2-0002",
+                To::Prop("contrast"),
+                Percent,
+                Absent,
+            ),
+            row(
+                "ADBE Brightness & Contrast 2-0003",
+                To::Setting("legacy", OFF_ON),
+                Number,
+                Absent,
+            ),
+            row(
+                "ADBE Force CPU GPU",
+                To::Ignore("where the original renders it"),
+                Number,
+                Absent,
+            ),
         ],
         parts: &[],
         switch: None,

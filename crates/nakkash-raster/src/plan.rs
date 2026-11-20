@@ -16,7 +16,8 @@ use vello_cpu::kurbo::Vec2;
 use crate::blur::{self, Edges, FindEdges, Sharpen, gaussian_radius};
 use crate::channel::{self, SetMatte, ShiftChannels};
 use crate::colour::{
-    self, BlackWhite, Curves, Exposure, Fill, HueSaturation, Invert, Levels, Tint,
+    self, BlackWhite, BrightnessContrast, Curves, Exposure, Fill, HueSaturation, Invert, Levels,
+    Tint,
 };
 use crate::composite::{self, Operation, SolidComposite};
 use crate::cycle::{self, ColorCycle};
@@ -65,6 +66,8 @@ pub enum Plan {
     HueSaturation(HueSaturation),
     /// Light scaled, offset and raised to a gamma.
     Exposure(Exposure),
+    /// Levels brightened or darkened and moved from or towards mid grey.
+    BrightnessContrast(BrightnessContrast),
     /// Colours turned grey by their hues' shares, and tinted.
     BlackWhite(BlackWhite),
     /// A phase read off each pixel sent round a cycle of colours.
@@ -275,6 +278,12 @@ pub const PLANS: &[PlanSpec] = &[
     PlanSpec {
         name: "exposure",
         plan: |values, space| Plan::Exposure(colour::exposure_plan(values, space)),
+    },
+    PlanSpec {
+        name: "brightness-contrast",
+        plan: |values, space| {
+            Plan::BrightnessContrast(colour::brightness_contrast_plan(values, space))
+        },
     },
     PlanSpec {
         name: "black-white",
