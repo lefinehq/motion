@@ -44,6 +44,13 @@ pub enum Quality {
     /// 8- and 16-bit integers, and every layer drawn at the size it lands
     /// at: faster, for previews.
     Fast,
+    /// [`Quality::Fast`], and blurs whose passes reach 16 px or more each
+    /// way worked out on a copy shrunk by 2 to 8 and sampled back up
+    /// ([D93]): approximate, the fastest preview. No other quality draws
+    /// an approximate blur.
+    ///
+    /// [D93]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d93-glow-and-blurs-do-less-of-the-same-work
+    Draft,
 }
 
 /// Which instruction set the rasteriser uses.
@@ -92,7 +99,7 @@ impl RenderOptions {
     fn mode(self) -> RenderMode {
         match self.quality {
             Quality::Precise => RenderMode::OptimizeQuality,
-            Quality::Fast => RenderMode::OptimizeSpeed,
+            Quality::Fast | Quality::Draft => RenderMode::OptimizeSpeed,
         }
     }
 }
@@ -144,6 +151,8 @@ pub fn render_on(
         )
         .expected("the processor's default float mode (D90)"));
     }
+    // Blurs are approximate only inside a draft frame.
+    let _approximate = crate::pyramid::approximate(options.quality == Quality::Draft);
     drawn_at(frame, width, height, options, options.level(), accel)
 }
 

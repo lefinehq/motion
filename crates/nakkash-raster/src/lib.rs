@@ -42,6 +42,7 @@ mod picture;
 mod pixels;
 mod plan;
 mod projected;
+mod pyramid;
 mod radial;
 mod reads;
 mod render;

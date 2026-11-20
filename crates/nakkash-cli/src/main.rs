@@ -90,6 +90,9 @@ enum QualityArg {
     Precise,
     /// 8- and 16-bit integer compositing: faster, for previews.
     Fast,
+    /// As fast, with large blurs worked out on a smaller copy: approximate,
+    /// the fastest preview (D93).
+    Draft,
 }
 
 impl From<QualityArg> for Quality {
@@ -97,6 +100,7 @@ impl From<QualityArg> for Quality {
         match quality {
             QualityArg::Precise => Quality::Precise,
             QualityArg::Fast => Quality::Fast,
+            QualityArg::Draft => Quality::Draft,
         }
     }
 }
@@ -342,7 +346,8 @@ enum Command {
         #[arg(long, conflicts_with_all = ["out", "codec", "video_quality"])]
         digest: bool,
         /// How colours are computed: `precise` for delivered frames, `fast`
-        /// for previews.
+        /// for previews, `draft` for faster previews with approximate large
+        /// blurs.
         #[arg(long, value_enum, default_value = "precise")]
         quality: QualityArg,
         /// Round the float canvas to 8 bits through an ordered dither, so a

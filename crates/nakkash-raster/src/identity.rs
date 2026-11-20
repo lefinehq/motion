@@ -302,6 +302,7 @@ pub fn frame_identity(
     h.u8(match quality {
         crate::render::Quality::Precise => 0,
         crate::render::Quality::Fast => 1,
+        crate::render::Quality::Draft => 2,
     });
     h.u8(match simd {
         crate::render::Simd::Native => 0,

@@ -193,7 +193,7 @@ fn box_pass_reference(
 }
 
 /// Runs `passes` box passes of `radius` along rows (`way` 0) or columns (1).
-fn along(pixels: &mut Pixels, way: usize, radius: f32, passes: usize, edges: Edges) {
+pub(crate) fn along(pixels: &mut Pixels, way: usize, radius: f32, passes: usize, edges: Edges) {
     let radius = radius.max(0.0);
     let (whole, part) = (radius.floor() as usize, radius.fract());
     if passes == 0 || (whole == 0 && part <= 0.0) {
@@ -251,6 +251,10 @@ pub(crate) fn gaussian(pixels: &mut Pixels, sigma: [f32; 2], edges: Edges) {
 
 /// Runs `blur`'s passes on `pixels`: along rows, then along columns.
 pub(crate) fn blur(pixels: &mut Pixels, blur: &Blur) {
+    // A draft frame's large blurs, approximately, on a smaller copy.
+    if crate::pyramid::approximating() && crate::pyramid::blur(pixels, blur) {
+        return;
+    }
     for (way, Passes { radius, count }) in [blur.rows, blur.columns].into_iter().enumerate() {
         along(pixels, way, radius, count, blur.edges);
     }
