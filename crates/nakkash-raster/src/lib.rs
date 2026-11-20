@@ -73,6 +73,7 @@ pub use generate::{
     NOISE_CELL, NoiseKind, Overflow, Ramp, VenetianBlinds,
 };
 pub use homography::Homography;
+pub use identity::{frame_identity, reused as drawings_reused, verify_hit};
 pub use image::Image;
 pub use lens::{IRIS_ROWS, Iris, LensBlur, LensMap, Level as LensLevel, Row as IrisRow};
 pub use light::Bevel;

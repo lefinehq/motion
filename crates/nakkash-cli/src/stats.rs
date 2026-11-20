@@ -60,6 +60,11 @@ impl Start {
                 memory.held_back,
                 memory.pressed,
             ),
+            format!(
+                "stats: plan: drawings reused {}; frames copied {}",
+                nakkash_engine::drawings_reused(),
+                nakkash_engine::frames_copied(),
+            ),
             format!("stats: swap: {} major faults; {swap}", usage.major_faults),
             format!("stats: storage: written {written}"),
         ]
