@@ -109,7 +109,8 @@ fn curves_are_named_by_their_shape() {
 fn a_curve_many_keys_write_becomes_an_ease_named_by_its_shape() {
     let layers: Vec<Json> = (0..6)
         .map(|i| {
-            let curve = "speed(0,0.95,0,0.97)";
+            // Long enough that a name saves bytes at each use.
+            let curve = "speed(0.000057,1,0.000057,0.0001)";
             json!({"id":format!("l{i}"),"rect":"10x10",
                    "anim":{"x":[{"t":"0s","v":i,"curve":curve},{"t":"1s","v":i + 50,"curve":curve},{"t":"2s","v":i}]}})
         })
@@ -130,12 +131,12 @@ fn a_curve_many_keys_write_becomes_an_ease_named_by_its_shape() {
         "{compacted}"
     );
     assert_eq!(
-        compacted["eases"]["still-to-stop-95-97"],
-        "speed(0,0.95,0,0.97)"
+        compacted["eases"]["moving-to-moving-100-0"],
+        "speed(0.000057,1,0.000057,0.0001)"
     );
     assert_eq!(
         compacted["layers"][0]["anim"]["x"][0]["curve"],
-        "still-to-stop-95-97"
+        "moving-to-moving-100-0"
     );
     same_scene(&raw, &compacted);
 }

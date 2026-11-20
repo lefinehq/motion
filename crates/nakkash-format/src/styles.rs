@@ -90,7 +90,8 @@ pub(crate) fn expand(raw: &Json) -> Result<Cow<'_, Json>> {
 /// key inside one a style gives.
 ///
 /// # Errors
-/// As [`expand`], for the scene `raw`.
+/// An invalid-value diagnostic at a style that does not read, or an
+/// unknown-name one at an `inherits` naming no style of `raw`.
 pub fn inherited(raw: &Json, layer: &Map<String, Json>) -> Result<Map<String, Json>> {
     if !layer.contains_key(INHERITS) {
         return Ok(layer.clone());
