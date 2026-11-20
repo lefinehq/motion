@@ -228,6 +228,8 @@ pub fn import(project: &Project, options: &Options) -> Result<Import> {
                 media: &walk.media,
                 layer_names: &walk.layer_names,
                 comp_names: &walk.comp_names,
+                comp_items: &walk.comp_items,
+                layer_items: &walk.layer_items,
                 texts: &walk.texts,
             },
         ),
@@ -450,6 +452,13 @@ struct Walk<'p> {
     layer_names: HashMap<(Option<String>, String), String>,
     /// The project's name of each scene composition, none for the scene.
     comp_names: HashMap<Option<String>, String>,
+    /// The project's item id of each scene composition, none for the scene.
+    comp_items: HashMap<Option<String>, u32>,
+    /// The project's id of each layer written, by the scene composition it
+    /// is in and its id: what slot uids are made of ([D91]).
+    ///
+    /// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+    layer_items: HashMap<(Option<String>, String), u32>,
     /// The footage each media layer draws, or would draw, by the number its
     /// mark holds ([`variable::MEDIA`]).
     media: Vec<variable::MediaFact>,
@@ -487,6 +496,8 @@ impl<'p> Walk<'p> {
             mask_ids: HashMap::new(),
             layer_names: HashMap::new(),
             comp_names: HashMap::new(),
+            comp_items: HashMap::new(),
+            layer_items: HashMap::new(),
             media: Vec::new(),
         }
     }
@@ -610,6 +621,7 @@ impl<'p> Walk<'p> {
     fn layers(&mut self, item: u32, composition: &'p Composition, name: &str) -> Vec<Json> {
         let mut ids = Ids::default();
         self.comp_names.insert(self.scope.clone(), name.to_owned());
+        self.comp_items.insert(self.scope.clone(), item);
         let given: HashMap<u32, String> = composition
             .layers
             .iter()
@@ -618,6 +630,8 @@ impl<'p> Walk<'p> {
                 let id = ids.give(named, "layer");
                 self.layer_names
                     .insert((self.scope.clone(), id.clone()), layer.name.clone());
+                self.layer_items
+                    .insert((self.scope.clone(), id.clone()), layer.id);
                 if let Some(role) = role {
                     self.named_roles
                         .push((role, self.scope.clone(), id.clone()));
