@@ -31,6 +31,7 @@ mod lens;
 mod light;
 mod list;
 mod mask;
+pub mod memory;
 mod par;
 mod particles;
 mod pen;

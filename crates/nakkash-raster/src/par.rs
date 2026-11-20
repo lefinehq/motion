@@ -63,15 +63,6 @@ pub(crate) fn each_with<T: Send, U: Sync>(
         });
 }
 
-/// A copy of `data`, made a run of items at a time on every thread.
-pub(crate) fn copied<T: Copy + Default + Send + Sync>(data: &[T]) -> Vec<T> {
-    let mut copy = vec![T::default(); data.len()];
-    copy.par_chunks_mut(TASK)
-        .zip(data.par_chunks(TASK))
-        .for_each(|(to, from)| to.copy_from_slice(from));
-    copy
-}
-
 /// What `make` gives for each item of `data`, with its index, in order.
 pub(crate) fn map<T: Sync, U: Copy + Default + Send>(
     data: &[T],

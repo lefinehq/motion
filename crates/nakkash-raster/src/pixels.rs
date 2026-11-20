@@ -7,6 +7,7 @@ use vello_cpu::peniko::ImageAlphaType;
 use vello_cpu::{PixelMetadata, Pixmap};
 
 use crate::blend::BlendMode;
+use crate::memory::{self, Start};
 use crate::par;
 
 /// One pixel: premultiplied red, green, blue and alpha, each 0 to 1.
@@ -23,13 +24,24 @@ pub struct Pixels {
 impl Clone for Pixels {
     /// A copy, made on every thread: effects copy whole frames to read
     /// while they write, and a copy made on one thread would be most of
-    /// the time of a fast effect on many.
+    /// the time of a fast effect on many. Its grid comes from the pool
+    /// when the pool has one of its size ([`memory`]).
     fn clone(&self) -> Pixels {
+        let mut data = memory::grid(self.data.len(), Start::Written);
+        par::each_with(&mut data, &self.data, |_, to, from| *to = *from);
         Pixels {
             width: self.width,
             height: self.height,
-            data: par::copied(&self.data),
+            data,
         }
+    }
+}
+
+impl Drop for Pixels {
+    /// Gives the grid back to the budget's pool, or to the system
+    /// ([`memory`]).
+    fn drop(&mut self) {
+        memory::release(std::mem::take(&mut self.data));
     }
 }
 
@@ -39,7 +51,20 @@ impl Pixels {
         Pixels {
             width,
             height,
-            data: vec![[0.0; 4]; usize::from(width) * usize::from(height)],
+            data: memory::grid(usize::from(width) * usize::from(height), Start::Clear),
+        }
+    }
+
+    /// `width` by `height` pixels, each the one `make` gives for its index,
+    /// row by row from the top, made on every thread: a grid made from
+    /// another is made into a grid of its own, not into a copy of it.
+    pub(crate) fn made(width: u16, height: u16, make: impl Fn(usize) -> Pixel + Sync) -> Pixels {
+        let mut data = memory::grid(usize::from(width) * usize::from(height), Start::Written);
+        par::each(&mut data, |i, pixel| *pixel = make(i));
+        Pixels {
+            width,
+            height,
+            data,
         }
     }
 
@@ -53,6 +78,7 @@ impl Pixels {
             usize::from(width) * usize::from(height),
             "pixels for every place of the grid"
         );
+        memory::made(data.len());
         Pixels {
             width,
             height,
@@ -62,14 +88,11 @@ impl Pixels {
 
     /// The pixels of a drawn pixmap.
     pub(crate) fn from_pixmap(pixmap: &Pixmap) -> Pixels {
-        let data = par::map(pixmap.data(), |_, p| {
+        let bytes = pixmap.data();
+        Pixels::made(pixmap.width(), pixmap.height(), |i| {
+            let p = bytes[i];
             [p.r, p.g, p.b, p.a].map(|c| f32::from(c) / 255.0)
-        });
-        Pixels {
-            width: pixmap.width(),
-            height: pixmap.height(),
-            data,
-        }
+        })
     }
 
     /// The pixels as a pixmap, each channel rounded to 8 bits and kept

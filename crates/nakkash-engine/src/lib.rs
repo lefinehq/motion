@@ -53,7 +53,8 @@ pub use geometry::{
 };
 pub use import::{import, import_scene, is_template, measure_layouts, substitute_fonts};
 pub use nakkash_import::export::{Change as ExportChange, Plan as ExportPlan};
-pub use session::{BAKED_FOLDER, Session, limit_threads};
+pub use nakkash_raster::memory::{MemoryStats, stats as memory_stats};
+pub use session::{BAKED_FOLDER, Session, limit_memory, limit_threads};
 
 pub use nakkash_format::Id;
 pub use nakkash_format::address::{json_at, key_text};

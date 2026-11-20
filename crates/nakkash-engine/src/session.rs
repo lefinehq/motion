@@ -6,9 +6,8 @@ use std::num::NonZero;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, PoisonError};
-use std::thread;
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
@@ -544,13 +543,68 @@ impl Session {
         let next = AtomicU32::new(frames.start);
         let stop = AtomicBool::new(false);
         let failure: Mutex<Option<(u32, Diagnostic)>> = Mutex::new(None);
+        // Frames being drawn, the signal a thread waiting to start one waits
+        // for, and what one frame's grids came to, once a frame was drawn
+        // alone.
+        let drawing = AtomicUsize::new(0);
+        let ended = (Mutex::new(()), Condvar::new());
+        let per_frame = AtomicU64::new(0);
+        // What the process held before any frame, and how much more than
+        // its grids a frame drawn alone took: the rasteriser's own buffers,
+        // pixmaps and masks.
+        let base = nakkash_machine::resident().unwrap_or(0);
+        let beyond_grids = AtomicU64::new(0);
+        let starts = AtomicU64::new(0);
         let worker = || {
+            let mut waited = false;
             while !stop.load(Ordering::Relaxed) {
+                // A frame starts beside others only while what they may
+                // hold fits the memory budget; else once they end, so
+                // frames go one at a time, each on every thread, with the
+                // same pixels (D90).
+                let beside = drawing.load(Ordering::Acquire);
+                if beside > 0 && !room_for(beside, base, per_frame.load(Ordering::Relaxed)) {
+                    if !waited {
+                        nakkash_raster::memory::note_held_back();
+                        waited = true;
+                    }
+                    // Work the rows of the frames being drawn meanwhile.
+                    if rayon::yield_now() != Some(rayon::Yield::Executed) {
+                        let guard = ended.0.lock().unwrap_or_else(PoisonError::into_inner);
+                        let _ = ended
+                            .1
+                            .wait_timeout(guard, std::time::Duration::from_millis(5));
+                    }
+                    continue;
+                }
+                waited = false;
                 let frame = next.fetch_add(1, Ordering::Relaxed);
                 if frame >= frames.end {
                     break;
                 }
-                if let Err((frame, mut d)) = work(frame) {
+                let first = drawing.fetch_add(1, Ordering::AcqRel) == 0;
+                let started = starts.fetch_add(1, Ordering::AcqRel);
+                nakkash_raster::memory::frame_start();
+                let done = work(frame);
+                // Alone: nothing was drawn beside it, from start to end.
+                let alone = first && starts.load(Ordering::Acquire) == started + 1;
+                drawing.fetch_sub(1, Ordering::AcqRel);
+                // A frame's cost: the most grids it held at once, and, as
+                // measured on a frame drawn alone, what it held beyond them
+                // (the peak above what the process held before, less its
+                // grids). The most of any frame stands for the next.
+                let grids = nakkash_raster::memory::frame_peak();
+                if alone {
+                    let peak = nakkash_machine::usage().peak_resident;
+                    beyond_grids.fetch_max(
+                        peak.saturating_sub(base).saturating_sub(grids),
+                        Ordering::Relaxed,
+                    );
+                }
+                let cost = grids + beyond_grids.load(Ordering::Relaxed);
+                per_frame.fetch_max(cost.max(1), Ordering::Relaxed);
+                ended.1.notify_all();
+                if let Err((frame, mut d)) = done {
                     stop.store(true, Ordering::Relaxed);
                     d.message = format!("frame {frame}: {}", d.message);
                     let mut first = failure.lock().unwrap_or_else(PoisonError::into_inner);
@@ -934,20 +988,84 @@ pub fn limit_threads(threads: NonZero<usize>) {
     THREADS.store(threads.get(), Ordering::Relaxed);
 }
 
-/// How many threads draw: one per processor, or the limit set.
-fn threads() -> usize {
-    let processors = thread::available_parallelism().map_or(1, NonZero::get);
+/// How many threads draw: the limit set, or the machine's default (its
+/// performance cores on macOS, the processors the process may use
+/// elsewhere, [`nakkash_machine::default_threads`]).
+pub(crate) fn threads() -> usize {
     match THREADS.load(Ordering::Relaxed) {
-        0 => processors,
+        0 => nakkash_machine::default_threads(),
         limit => limit,
+    }
+}
+
+/// Whether a frame may start beside `beside` frames being drawn: the
+/// budget is not held, and what the process held before the render, `base`,
+/// with `per_frame` bytes for each of them and the new one, fits it. Before
+/// a frame was drawn alone `per_frame` is 0, unknown, and frames start one
+/// at a time.
+fn room_for(beside: usize, base: u64, per_frame: u64) -> bool {
+    let budget = nakkash_raster::memory::stats().effective;
+    // A quarter more than measured: frames differ, and one measured is a
+    // floor for the next.
+    let per_frame = per_frame.saturating_add(per_frame / 4);
+    let planned = base.saturating_add(per_frame.saturating_mul(beside as u64 + 1));
+    // What is resident now holds the frames being drawn as far as they
+    // got, and the pool: the new frame must fit beside it too.
+    let now = nakkash_raster::memory::resident()
+        .unwrap_or(0)
+        .saturating_add(per_frame);
+    per_frame > 4 && planned.max(now) <= budget && !nakkash_raster::memory::over()
+}
+
+/// Whether [`limit_memory`] set the budget.
+static MEMORY_SET: AtomicBool = AtomicBool::new(false);
+
+/// Holds what renders keep, pool and work to `bytes` from now on, in this
+/// process ([D90]): over it, a render lets kept drawings and pooled grids
+/// go and draws frames one at a time, and draws the same pixels. Without
+/// it, the budget is a quarter of the machine's memory, at most 4 GiB
+/// ([`nakkash_machine::default_budget`]).
+///
+/// [D90]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d90-a-frame-is-drawn-from-a-plan-that-knows-what-each-drawing-is-under-one-memory-budget
+pub fn limit_memory(bytes: u64) {
+    MEMORY_SET.store(true, Ordering::Relaxed);
+    nakkash_raster::memory::set_budget(bytes);
+}
+
+/// The machine's memory budget, unless [`limit_memory`] set one, and the
+/// memory-pressure probe: set once, before the first frame is drawn.
+fn memory_ready() {
+    static READY: std::sync::Once = std::sync::Once::new();
+    READY.call_once(|| {
+        if !MEMORY_SET.load(Ordering::Relaxed) {
+            nakkash_raster::memory::set_budget(nakkash_machine::default_budget());
+        }
+        nakkash_raster::memory::set_probe(reading);
+    });
+}
+
+/// The machine's memory pressure and what this process holds resident, as
+/// the rasteriser's budget reads them.
+fn reading() -> nakkash_raster::memory::Reading {
+    use nakkash_raster::memory::Pressure;
+    nakkash_raster::memory::Reading {
+        pressure: match nakkash_machine::pressure() {
+            nakkash_machine::Pressure::Normal => Pressure::Normal,
+            nakkash_machine::Pressure::Warning => Pressure::Warning,
+            nakkash_machine::Pressure::Critical => Pressure::Critical,
+        },
+        resident: nakkash_machine::resident(),
     }
 }
 
 /// How many threads take frames of a render of `frames` frames: one per
 /// processor, or the limit set, no more than there are frames.
 fn workers(frames: usize) -> u32 {
-    let processors = thread::available_parallelism().map_or(1, NonZero::get);
-    threads_for(frames, processors, THREADS.load(Ordering::Relaxed))
+    threads_for(
+        frames,
+        nakkash_machine::default_threads(),
+        THREADS.load(Ordering::Relaxed),
+    )
 }
 
 /// The room on each thread's stack: a frame's layers are drawn by
@@ -961,6 +1079,7 @@ const STACK: usize = 8 << 20;
 /// then drawn on the thread that asks for it.
 fn pool() -> Option<Arc<ThreadPool>> {
     static POOL: Mutex<Option<(usize, Arc<ThreadPool>)>> = Mutex::new(None);
+    memory_ready();
     let threads = threads();
     let mut pool = POOL.lock().unwrap_or_else(PoisonError::into_inner);
     if let Some((made, pool)) = &*pool

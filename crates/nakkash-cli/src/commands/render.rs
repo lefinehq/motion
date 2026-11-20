@@ -153,7 +153,8 @@ fn report_gpu(session: &Session) {
 /// Draws `frames` of the scene (all of them when `None`) into `out`: a video
 /// file encoded as `encoding` asks when its extension names a container,
 /// else a folder of PNG files, created if missing, on `backend`. Prints what
-/// was written.
+/// was written. With no `out`, nothing is written: each frame's digest is
+/// printed instead ([`digests`]).
 ///
 /// # Errors
 /// As drawing and writing, or an invalid-value diagnostic when `encoding`
@@ -161,11 +162,30 @@ fn report_gpu(session: &Session) {
 pub fn run(
     path: &Path,
     frames: Option<Frames>,
-    out: &Path,
+    out: Option<&Path>,
     quality: Quality,
     encoding: Encoding,
     backend: Backend,
 ) -> Result<ExitCode> {
+    let Some(out) = out else {
+        let mut session = Session::open(path)?;
+        if backend == Backend::Gpu {
+            use_gpu(&mut session);
+        }
+        let frames = match frames {
+            Some(frames) => frames.range(),
+            None => session.frames()?,
+        };
+        let options = RenderOptions {
+            quality,
+            ..RenderOptions::default()
+        };
+        for line in digests(&session, frames, options)? {
+            println!("{line}");
+        }
+        report_gpu(&session);
+        return Ok(ExitCode::SUCCESS);
+    };
     if is_sound(out) {
         if encoding != Encoding::default() {
             return Err(Diagnostic::new(
@@ -311,6 +331,32 @@ fn pictures(
     let noun = if count == 1 { "frame" } else { "frames" };
     println!("{count} {noun} written to {}", out.display());
     Ok(ExitCode::SUCCESS)
+}
+
+/// One line per frame of `frames`, in frame order: its number and the
+/// SHA-256 of its RGBA bytes, the pixels a PNG of it holds. Nothing is
+/// written anywhere, so renders compare bit for bit without a disk.
+///
+/// # Errors
+/// As drawing.
+pub fn digests(
+    session: &Session,
+    frames: Range<u32>,
+    options: RenderOptions,
+) -> Result<Vec<String>> {
+    use sha2::{Digest, Sha256};
+    let mut lines = Vec::with_capacity(frames.len());
+    session.render_in_order(frames, options, |frame, image| {
+        let hash = Sha256::digest(image.pixels());
+        let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+        lines.push(format!(
+            "frame {frame} {}x{} sha256:{hex}",
+            image.width(),
+            image.height()
+        ));
+        Ok(())
+    })?;
+    Ok(lines)
 }
 
 /// Draws `frames` into the video file `out`, encoded as `encoding` asks.

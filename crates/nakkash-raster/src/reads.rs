@@ -23,6 +23,7 @@ use vello_cpu::kurbo::Affine;
 
 use crate::accel::{Accelerator, Surface};
 use crate::list::{Node, Shared};
+use crate::memory;
 
 /// A drawing's key: the address of the read node or the shared mark, the
 /// size of the canvas it is drawn on, and the bits of the transform it is
@@ -158,16 +159,65 @@ impl Reads {
         };
         let mut drawn = locked(&self.drawn);
         if more {
-            drawn
-                .entry(key)
-                .or_insert_with(|| (owner(), Arc::clone(&pixels)));
+            if !drawn.contains_key(&key) {
+                // Kept only within the budget: what is let go, or not
+                // kept, is drawn again when it is read again.
+                match self.make_room(&mut drawn, pixels.bytes()) {
+                    true => {
+                        memory::keep(pixels.bytes(), true);
+                        drawn.insert(key, (owner(), Arc::clone(&pixels)));
+                    }
+                    false => memory::note_eviction(),
+                }
+            }
         } else {
-            drawn.retain(|&(at, _, _), _| at != address);
+            drawn.retain(|&(at, _, _), (_, kept)| {
+                let stays = at != address;
+                if !stays {
+                    memory::keep(kept.bytes(), false);
+                }
+                stays
+            });
         }
         drop(drawn);
         match Arc::try_unwrap(pixels) {
             Ok(pixels) => Ok(pixels),
             Err(shared) => shared.duplicate(accel),
+        }
+    }
+}
+
+impl Reads {
+    /// Lets kept drawings go, those with the fewest uses left first, until
+    /// `bytes` more fit the share of the budget kept drawings may take
+    /// ([`memory::room_to_keep`]). Whether they fit.
+    fn make_room(&self, drawn: &mut HashMap<Key, (Owner, Arc<Surface>)>, bytes: u64) -> bool {
+        while !memory::room_to_keep(bytes) {
+            let victim = {
+                let left = locked(&self.left);
+                drawn
+                    .keys()
+                    .min_by_key(|(at, _, _)| left.get(at).copied().unwrap_or(0))
+                    .copied()
+            };
+            let Some(key) = victim else {
+                return false;
+            };
+            if let Some((_, kept)) = drawn.remove(&key) {
+                memory::keep(kept.bytes(), false);
+                memory::note_eviction();
+            }
+        }
+        true
+    }
+}
+
+impl Drop for Reads {
+    /// What is still kept stops counting as kept.
+    fn drop(&mut self) {
+        let drawn = self.drawn.get_mut().unwrap_or_else(PoisonError::into_inner);
+        for (_, kept) in drawn.values() {
+            memory::keep(kept.bytes(), false);
         }
     }
 }

@@ -303,7 +303,7 @@ fn no_barred_encoder_is_compiled_in() {
 }
 
 /// The crates that may hold unsafe code: platform bindings (D48).
-const UNSAFE_ALLOWED: &[&str] = &["nakkash-videotoolbox"];
+const UNSAFE_ALLOWED: &[&str] = &["nakkash-machine", "nakkash-videotoolbox"];
 
 /// D48: every other crate takes the workspace's lints, which forbid unsafe
 /// code, so the compiler holds the line.

@@ -292,7 +292,7 @@ impl Session {
     }
 
     /// Calls `each` on every frame drawn and read, on as many threads as the
-    /// processor has, and returns the results in frame order, or the first
+    /// processor has (or as `--threads` allows), and returns the results in frame order, or the first
     /// frame's error. `shown`, if any, is this scene with the ignored layers
     /// drawn, for [`Pair::shown`].
     fn each_pair<T: Send>(
@@ -302,7 +302,8 @@ impl Session {
         shown: Option<&Session>,
         each: &(dyn Fn(usize, &Pair) -> Result<T> + Sync),
     ) -> Result<Vec<T>> {
-        let threads = thread::available_parallelism().map_or(1, usize::from);
+        // As many threads as a render draws on (`--threads`, D90).
+        let threads = crate::session::threads();
         let indices: Vec<usize> = (0..times.len()).collect();
         let chunk = indices.len().div_ceil(threads).max(1);
         let results: Vec<Vec<(usize, Result<T>)>> = thread::scope(|scope| {
