@@ -108,6 +108,10 @@ struct Seen {
     reach: Option<Rect>,
     /// Its box at every frame, unclipped, each once while it holds.
     every: Vec<Rect>,
+    /// Its box between samples, clipped: the union of the frames after
+    /// each sample it showed at, under that sample's index. Read only for
+    /// a layer no sample saw, as a flash between them is.
+    between: Vec<(usize, Rect)>,
     /// Whether nothing may hide it: an adjusting or filter layer, a camera.
     kept: bool,
 }
@@ -177,8 +181,20 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
             if sampled {
                 entry.coverage += inside.area() / area;
                 entry.boxes.push((n, inside));
+            } else {
+                match entry.between.last_mut() {
+                    Some((at, union)) if *at == n => *union = union.union(inside),
+                    _ => entry.between.push((n, inside)),
+                }
             }
         }
+    }
+    // A layer that shows only between samples, a flash or a glitch's line,
+    // is placed by where it showed there. Unplaced, it would be in neither
+    // the backgrounds nor any group, and drawn in every copy at its scale.
+    for s in seen.values_mut().filter(|s| s.boxes.is_empty()) {
+        s.boxes = std::mem::take(&mut s.between);
+        s.coverage = s.boxes.iter().map(|(_, b)| b.area() / area).sum();
     }
     // Containers are opened; what lies inside a piece belongs to it.
     let opened: BTreeSet<Vec<String>> = seen
