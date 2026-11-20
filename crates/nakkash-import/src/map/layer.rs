@@ -582,7 +582,9 @@ impl<'p> Walk<'p> {
                 let (Some(first), Some(last)) = (keys.first(), keys.last()) else {
                     return;
                 };
-                let step = 1.0 / composition.frame_rate.max(1.0);
+                // Along the layer's own time, which runs from its last key
+                // to its first in the composition's on a reversed layer.
+                let step = (1.0 / composition.frame_rate.max(1.0)).copysign(last.time - first.time);
                 let count = ((last.time - first.time) / step).ceil().max(0.0) as usize;
                 let times = (0..count)
                     .map(|k| first.time + k as f64 * step)
@@ -744,12 +746,7 @@ impl<'p> Walk<'p> {
 
     /// When the layer shows, where its own time starts and how fast it runs.
     fn timing(&mut self, layer: &Layer, composition: &Composition, out: &mut Out) {
-        // A layer that runs backwards keeps its in point after its out
-        // point: it shows between the two all the same.
-        let (first, last) = match layer.in_point <= layer.out_point {
-            true => (layer.in_point, layer.out_point),
-            false => (layer.out_point, layer.in_point),
-        };
+        let (first, last) = layer.shown();
         let start = first.max(0.0);
         let end = last;
         if end <= start {

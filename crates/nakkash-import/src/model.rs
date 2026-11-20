@@ -301,6 +301,18 @@ pub struct Layer {
     pub properties: Group,
 }
 
+impl Layer {
+    /// When it starts and stops showing, in composition seconds. A layer
+    /// that runs backwards keeps its in point after its out point and shows
+    /// between the two all the same (`docs/design/aep-evidence.md`, W1).
+    pub fn shown(&self) -> (f64, f64) {
+        (
+            self.in_point.min(self.out_point),
+            self.in_point.max(self.out_point),
+        )
+    }
+}
+
 /// A property group, such as `ADBE Transform Group`, a mask or an effect.
 /// Match names are data: the tree has no type per property.
 #[derive(Debug, Clone, PartialEq, Serialize)]

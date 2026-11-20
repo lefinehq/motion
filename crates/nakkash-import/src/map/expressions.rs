@@ -16,7 +16,7 @@ use nakkash_format::property::Target;
 
 use super::Walk;
 use super::items::{Place, plural, range_text};
-use super::keys::{Convert, Written, every_frame, fitted};
+use super::keys::{Convert, Written, every_frame, fitted, on_layer_clock};
 use super::report::{ExpressionReport, Outcome};
 use crate::bake::{Bake, Sampled, Samples};
 use crate::model::{Property, Stream, TextDocument, Value};
@@ -126,6 +126,8 @@ impl<'p> Walk<'p> {
             );
         }
         let template = property.value.value_at(samples.times[0]);
+        // Keys are fitted in the layer's own time, which they are written in.
+        let (times, channels) = on_layer_clock(&samples.times, &channels, place.clock);
         let spatial = found.is_some_and(Target::moves_in_space);
         let mut tracks = Vec::new();
         let mut errors = Vec::new();
@@ -133,7 +135,7 @@ impl<'p> Walk<'p> {
         // The depth of a split vector fits on its own, as a number.
         let (channels, tolerances) = match depth {
             Some((name, target)) if channels.len() > 2 && tolerances.len() > 2 => {
-                let one = fit(&samples.times, &channels[2], tolerances[2]);
+                let one = fit(&times, &channels[2], tolerances[2]);
                 errors.push(one.max_error);
                 let fits = std::slice::from_ref(&one);
                 let written = match still(fits) {
@@ -142,7 +144,7 @@ impl<'p> Walk<'p> {
                     }
                     false => {
                         keys += one.keys.len();
-                        fitted(fits, &Value::Number(0.0), Convert::Depth, place.clock)?
+                        fitted(fits, &Value::Number(0.0), Convert::Depth)?
                     }
                 };
                 tracks.push(BakedTrack {
@@ -159,7 +161,7 @@ impl<'p> Walk<'p> {
             tracks.push(BakedTrack {
                 name: target.to_owned(),
                 component: None,
-                written: every_frame(&samples.times, channels, &template, convert, place.clock)?,
+                written: every_frame(&times, channels, &template, convert)?,
             });
         } else if spatial && let Some(found) = found {
             let names = found.prop.spec().components;
@@ -167,7 +169,7 @@ impl<'p> Walk<'p> {
                 let (Some(values), Some(&tolerance)) = (channels.get(i), tolerances.get(i)) else {
                     continue;
                 };
-                let one = fit(&samples.times, values, tolerance);
+                let one = fit(&times, values, tolerance);
                 errors.push(one.max_error);
                 let component = Target {
                     component: Some(i),
@@ -183,7 +185,7 @@ impl<'p> Walk<'p> {
                     ),
                     false => {
                         keys += one.keys.len();
-                        fitted(fits, &template, convert.component(i), place.clock)?
+                        fitted(fits, &template, convert.component(i))?
                     }
                 };
                 tracks.push(BakedTrack {
@@ -194,7 +196,7 @@ impl<'p> Walk<'p> {
             }
         } else {
             let views: Vec<&[f64]> = channels.iter().map(Vec::as_slice).collect();
-            let fits: Vec<Fitted> = fit_together(&samples.times, &views, tolerances);
+            let fits: Vec<Fitted> = fit_together(&times, &views, tolerances);
             errors = fits.iter().map(|f| f.max_error).collect();
             let written = match still(&fits) {
                 true => {
@@ -205,7 +207,7 @@ impl<'p> Walk<'p> {
                 }
                 false => {
                     keys = fits.first().map_or(0, |f| f.keys.len());
-                    fitted(&fits, &template, convert, place.clock)
+                    fitted(&fits, &template, convert)
                 }
             };
             let Some(written) = written else {

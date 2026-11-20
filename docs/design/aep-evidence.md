@@ -530,6 +530,34 @@ Before, the import took such a layer for one that never shows and wrote it hidde
 | m593, m631, m782, m784 | unchanged | unchanged | unchanged |
 
 m821's levels, which hide its colour, are read in another change; with both, its error falls further.
+
+### Expressions on a layer that runs backwards
+
+These beliefs say what an expression on such a layer, or in a composition shown through one, evaluates at and reads. The bake refused every such expression before; the first was measured by EffectCraft against the original, the second follows from W1.
+
+| Belief | Evidence | Held, 2026-11-20 |
+|---|---|---|
+| W2. A layer that runs backwards keeps its keys in its own time's order, so their composition times fall along it, and its properties read them along its own time: at stretch −100 % from a start of 5 s, Opacity keys at the layer's own 1 s (20 %) and 5 s (100 %) read 80 % at the composition's 1 s and 40 % at its 3 s. `value` and `valueAtTime` read a property this way, whoever's expression reads it. | EffectCraft's case 982 (`crates/aep/tests/it/import/timing.rs`, `a_reversed_layer_plays_backwards`), measured against the original; our `a_reversed_layer_reads_its_keys_backwards` restates it on our evaluation. Through the decoder's mapping, the keys sit at the composition's 3.9997 s and −0.0003 s, and read 79.99 % and 39.99 %. Before, the evaluation searched them as if their times rose. | No expression on one of the 28 local reversed layers reads that layer's own keys, so no sample checks it |
+| W3. An expression on a layer that runs backwards is evaluated at the composition's frames from the layer's out point to its in point, at the composition's time, as on any layer, and a composition shown through a layer that runs backwards is evaluated over the span of its own time that layer shows. | Follows from W1. The 22 expressions on reversed layers in m593 (1), m594 (15), m635 (4), m782 (1) and m784 (1) read controls on layers that run forwards, so their values do not depend on the layer's direction; they now bake, each to one still value, most of them as slots. | 28 layers in 12 samples |
+
+The bake writes the values it takes at those frames as keys in the layer's own time, rising, as the scene keys every layer: on a reversed layer the last frame of the composition is the first key. Its fits and every-frame keys are made in that time, so their slopes are per second of it. Selector parts, the keyed audio levels and the frames between the keys of a path that bends in depth follow the layer's own time the same way.
+
+Expressions not baked, over the samples that hold one on a reversed layer: m593 21 → 20, m594 17 → 2, m635 4 → 0, m782 21 → 20, m784 21 → 20 (those left fail for other reasons). 
+
+Measured on the Linux render machine (its fonts and footage differ from the reference machine's; before and after on the same machine), over all frames:
+
+| Sample | Failing | Content error | Frames passing over the floor |
+|---|---|---|---|
+| m635 | 69.43 % → 62.47 % | 0.2416 → 0.2025 (settled 0.2723 → 0.1863) | 3 → 3 of 11 |
+| m594 | 93.52 % → 93.52 % | 0.2909 → 0.2907 | 1 → 1 of 20 |
+| m593, m782, m784 | unchanged | unchanged | unchanged |
+
+m635's lower-third colours, read from its controller, now fill its lines and texts. The expression newly baked in m593, m782 and m784 sets the opacity of a layer of `.flv` footage, which the scene does not draw. m633, whose layers all run forwards, writes three of its fitted selector curves with other slopes, as keys are now fitted in the layer's own time, and scores the same to the fourth decimal.
+
+Other things we take without evidence:
+- **What an expression reads of the layer.** `inPoint`, `outPoint` and `startTime` give what the project stores: on a reversed layer `inPoint` after `outPoint`, as W1 says the file keeps them, and `stretch` the negative percentage. No local expression reads them on a reversed layer.
+- **Where a baked key sits.** A key the project stores keeps its own time, which the decoder places a 3000th of a second before the plain mapping on a reversed layer. A baked key sits where the scene's clock, `(t − start) / stretch`, draws the frame it was evaluated at, so the scene shows the value at that frame exactly; the two differ by that 3000th of a second, far below a frame.
+- **Key numbers.** `key(n)` and `numKeys` count a reversed layer's keys in its own time's order, their times the composition's.
 ## Effects that read a collapsed composition
 
 An effect parameter that names a layer (`pard` control 0) reads that layer's drawing in its own coordinates, without its transform ([scene format](scene-format.md#shapes-masks-effects-and-compositions)). This belief says what it reads of a precomposition layer whose transformations are collapsed. It was measured by hand on one sample; the sweep does not check it.
