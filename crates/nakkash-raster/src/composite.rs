@@ -9,9 +9,10 @@
 //! ([`crate::BLEND_MODES`]): the straight colours blended, then laid over
 //! the way the compositing specification of the web does it, so where only
 //! one side covers a pixel that side shows, and where both do the blend of
-//! the two; `add` is the plain sum of both premultiplied pixels. The other
-//! operations do not blend colours: they keep one side, cut one side by
-//! the other's alpha or luma, or add alphas.
+//! the two; `add` is the plain sum of both premultiplied pixels, and the
+//! stencils and silhouettes keep or cut what is under the result by its
+//! alpha or luma, as the layer modes of those names do. The other
+//! operations do not blend colours: they keep one side or add alphas.
 //!
 //! Effects run on pixels they already hold, on a canvas of their own
 //! ([D49]); this is how what they make meets those pixels.
@@ -23,7 +24,7 @@ use nakkash_format::{Diagnostic, Result};
 use vello_cpu::kurbo::{Affine, Point, Rect};
 
 use crate::blend::BlendMode;
-use crate::colour::{LUMA, choice, number, rgb};
+use crate::colour::{choice, number, rgb};
 use crate::effect::{ParamValue, Space};
 use crate::pixels::{Pixel, Pixels};
 
@@ -39,14 +40,6 @@ pub enum Operation {
     /// alpha, scattered by a fixed pattern; what is under it shows at the
     /// others.
     Dissolve,
-    /// What is under it, kept where the result has alpha.
-    StencilAlpha,
-    /// What is under it, kept as far as the result is bright.
-    StencilLuma,
-    /// What is under it, cut out where the result has alpha.
-    SilhouetteAlpha,
-    /// What is under it, cut out as far as the result is bright.
-    SilhouetteLuma,
     /// The result's premultiplied colours laid over as they are, without
     /// holding them to its alpha first, so light past its alpha adds.
     PremultipliedOver,
@@ -97,10 +90,14 @@ pub const OPERATIONS: &[OperationSpec] = &[
     blend("color", BlendMode::Color),
     blend("luminosity", BlendMode::Luminosity),
     op("dissolve", Operation::Dissolve),
-    op("stencil-alpha", Operation::StencilAlpha),
-    op("stencil-luma", Operation::StencilLuma),
-    op("silhouette-alpha", Operation::SilhouetteAlpha),
-    op("silhouette-luma", Operation::SilhouetteLuma),
+    blend("linear-light", BlendMode::LinearLight),
+    blend("subtract", BlendMode::Subtract),
+    // The stencils and silhouettes keep what is under the result by its
+    // alpha or its luma, or cut it out by them, as the layer modes do.
+    blend("stencil-alpha", BlendMode::StencilAlpha),
+    blend("stencil-luma", BlendMode::StencilLuma),
+    blend("silhouette-alpha", BlendMode::SilhouetteAlpha),
+    blend("silhouette-luma", BlendMode::SilhouetteLuma),
     op("premultiplied-over", Operation::PremultipliedOver),
     op("alpha-add", Operation::AlphaAdd),
 ];
@@ -150,10 +147,6 @@ impl Operation {
                 }
                 false => under,
             },
-            Operation::StencilAlpha => under.map(|c| c * a_s),
-            Operation::StencilLuma => under.map(|c| c * luma(over)),
-            Operation::SilhouetteAlpha => under.map(|c| c * (1.0 - a_s)),
-            Operation::SilhouetteLuma => under.map(|c| c * (1.0 - luma(over))),
             Operation::PremultipliedOver => {
                 let a = lit[3];
                 std::array::from_fn(|c| lit[c] + under[c] * (1.0 - a))
@@ -307,11 +300,6 @@ fn straight(p: Pixel) -> [f32; 3] {
         true => [p[0] / p[3], p[1] / p[3], p[2] / p[3]],
         false => [0.0; 3],
     }
-}
-
-/// The luma of a premultiplied pixel: its straight luma times its alpha.
-fn luma(p: Pixel) -> f32 {
-    p[0] * LUMA[0] + p[1] * LUMA[1] + p[2] * LUMA[2]
 }
 
 /// A share from 0 to 1 that looks random from pixel to pixel but is the

@@ -5,7 +5,17 @@
 //! The formulas are those of the W3C compositing and blending module, on
 //! colours from 0 to 1: a mode mixes the colour below `b` with the layer's
 //! `s`, unpremultiplied, and the mix is laid "source-over"; `add` is the
-//! clamped sum of both, alpha included.
+//! clamped sum of both, alpha included. `linear-light` and `subtract` mix
+//! by the formulas image editors share, `b + 2s - 1` and `b - s`, held to
+//! 0 to 1.
+//!
+//! The stencils and silhouettes do not lay the layer at all: they keep
+//! what is below by a share the layer gives at each pixel, its alpha or its
+//! luma, or cut it out by that share. They change every pixel below, also
+//! where the layer draws nothing, so a stencil clears what lies outside it.
+//!
+//! The render context draws the modes it has; the others
+//! ([`BlendMode::laid_in_floats`]) are only laid on the float canvas.
 
 use nakkash_format::{Diagnostic, Result};
 use vello_cpu::peniko::{self, Compose, Mix};
@@ -48,17 +58,30 @@ pub enum BlendMode {
     Luminosity,
     /// Adds the colours, clamped: a linear dodge.
     Add,
+    /// Burns or dodges by the layer's colour: `b + 2s - 1`, held to 0 to 1.
+    LinearLight,
+    /// Takes the layer's colour away from the colour below, down to 0.
+    Subtract,
+    /// Keeps what is below where the layer has alpha, and clears it where
+    /// the layer has none.
+    StencilAlpha,
+    /// Keeps what is below as far as the layer is bright.
+    StencilLuma,
+    /// Cuts what is below out where the layer has alpha.
+    SilhouetteAlpha,
+    /// Cuts what is below out as far as the layer is bright.
+    SilhouetteLuma,
 }
 
-/// One blend mode: its name, the vello mode that draws it, and how the
-/// float canvas lays it.
+/// One blend mode: its name, the vello mode that draws it, if vello has
+/// it, and how the float canvas lays it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BlendSpec {
     /// The name scenes use.
     pub name: &'static str,
     /// The mode.
     pub mode: BlendMode,
-    vello: peniko::BlendMode,
+    vello: Option<peniko::BlendMode>,
     laying: Laying,
 }
 
@@ -73,6 +96,10 @@ enum Laying {
     Over(fn(Rgb, Rgb) -> Rgb),
     /// The sum of both, clamped to 1.
     Plus,
+    /// What is below, every channel multiplied by the share the function
+    /// gives of the layer's premultiplied px, laid also where the layer
+    /// draws nothing.
+    Keep(fn([f32; 4]) -> f32),
 }
 
 impl PartialEq for Laying {
@@ -80,6 +107,7 @@ impl PartialEq for Laying {
         match (self, other) {
             (Laying::Over(a), Laying::Over(b)) => std::ptr::fn_addr_eq(*a, *b),
             (Laying::Plus, Laying::Plus) => true,
+            (Laying::Keep(a), Laying::Keep(b)) => std::ptr::fn_addr_eq(*a, *b),
             _ => false,
         }
     }
@@ -94,7 +122,17 @@ const fn spec(
     BlendSpec {
         name,
         mode,
-        vello: peniko::BlendMode { mix, compose },
+        vello: Some(peniko::BlendMode { mix, compose }),
+        laying,
+    }
+}
+
+/// A mode the render context does not draw: the float canvas lays it.
+const fn floats_only(name: &'static str, mode: BlendMode, laying: Laying) -> BlendSpec {
+    BlendSpec {
+        name,
+        mode,
+        vello: None,
         laying,
     }
 }
@@ -204,6 +242,28 @@ pub const BLEND_MODES: &[BlendSpec] = &[
         (Mix::Normal, Laying::Plus),
         Compose::Plus,
     ),
+    floats_only(
+        "linear-light",
+        BlendMode::LinearLight,
+        Laying::Over(linear_light),
+    ),
+    floats_only("subtract", BlendMode::Subtract, Laying::Over(subtract)),
+    floats_only(
+        "stencil-alpha",
+        BlendMode::StencilAlpha,
+        Laying::Keep(alpha),
+    ),
+    floats_only("stencil-luma", BlendMode::StencilLuma, Laying::Keep(luma)),
+    floats_only(
+        "silhouette-alpha",
+        BlendMode::SilhouetteAlpha,
+        Laying::Keep(no_alpha),
+    ),
+    floats_only(
+        "silhouette-luma",
+        BlendMode::SilhouetteLuma,
+        Laying::Keep(no_luma),
+    ),
 ];
 
 impl BlendMode {
@@ -234,8 +294,25 @@ impl BlendMode {
         self.spec().name
     }
 
+    /// Whether only the float canvas lays it: the render context has no
+    /// such mode, so a layer blending by it is drawn alone and laid in
+    /// floats, at either quality.
+    pub fn laid_in_floats(self) -> bool {
+        self.spec().vello.is_none()
+    }
+
+    /// Whether it changes what is below also where the layer draws
+    /// nothing: a stencil or a silhouette.
+    pub fn keeps_below(self) -> bool {
+        matches!(self.spec().laying, Laying::Keep(_))
+    }
+
+    /// The vello mode that draws it. Only a mode the context draws reaches
+    /// the context ([`BlendMode::laid_in_floats`]).
     pub(crate) fn to_vello(self) -> peniko::BlendMode {
-        self.spec().vello
+        self.spec()
+            .vello
+            .expect("a mode laid in floats is never drawn by the context")
     }
 
     /// `source`, premultiplied, laid on `below` by this mode, both from 0
@@ -245,6 +322,10 @@ impl BlendMode {
         let (source_alpha, below_alpha) = (source[3], below[3]);
         match self.spec().laying {
             Laying::Plus => std::array::from_fn(|c| (below[c] + source[c]).min(1.0)),
+            Laying::Keep(share) => {
+                let kept = share(source).clamp(0.0, 1.0);
+                below.map(|c| c * kept)
+            }
             // The common case, without dividing.
             Laying::Over(_) if self == BlendMode::Normal => {
                 std::array::from_fn(|c| source[c] + below[c] * (1.0 - source_alpha))
@@ -414,6 +495,38 @@ fn color(b: Rgb, s: Rgb) -> Rgb {
 
 fn luminosity(b: Rgb, s: Rgb) -> Rgb {
     set_lum(b, lum(s))
+}
+
+fn linear_light(b: Rgb, s: Rgb) -> Rgb {
+    each(b, s, |b, s| (b + 2.0 * s - 1.0).clamp(0.0, 1.0))
+}
+
+fn subtract(b: Rgb, s: Rgb) -> Rgb {
+    each(b, s, |b, s| (b - s).max(0.0))
+}
+
+/// The weights a stencil reads a layer's brightness by: those of the
+/// effects' luma ([`crate::colour::LUMA`]).
+const STENCIL_LUMA: [f32; 3] = crate::colour::LUMA;
+
+/// A premultiplied px's alpha: what a stencil keeps.
+fn alpha(p: [f32; 4]) -> f32 {
+    p[3]
+}
+
+/// What a silhouette keeps where a px has alpha.
+fn no_alpha(p: [f32; 4]) -> f32 {
+    1.0 - p[3]
+}
+
+/// A premultiplied px's luma, so a transparent px reads as black.
+fn luma(p: [f32; 4]) -> f32 {
+    p[0] * STENCIL_LUMA[0] + p[1] * STENCIL_LUMA[1] + p[2] * STENCIL_LUMA[2]
+}
+
+/// What a silhouette keeps where a px is bright.
+fn no_luma(p: [f32; 4]) -> f32 {
+    1.0 - luma(p)
 }
 
 #[cfg(test)]

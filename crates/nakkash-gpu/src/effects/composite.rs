@@ -15,10 +15,6 @@ pub(crate) fn operation_row(operation: Operation) -> (u32, u32) {
         Operation::Replace => (0, 0),
         Operation::Blend(mode) => (1, mode_row(mode)),
         Operation::Dissolve => (2, 0),
-        Operation::StencilAlpha => (3, 0),
-        Operation::StencilLuma => (4, 0),
-        Operation::SilhouetteAlpha => (5, 0),
-        Operation::SilhouetteLuma => (6, 0),
         Operation::PremultipliedOver => (7, 0),
         Operation::AlphaAdd => (8, 0),
     }

@@ -108,6 +108,159 @@ fn a_blend_mode_combines_with_what_is_below() {
     );
 }
 
+/// A square of `color` from `x0` to `x1` across an 8-pixel frame, full
+/// height.
+fn band(x0: f64, x1: f64, color: Color) -> Node {
+    Node::Path(PathDraw {
+        path: Rect::new(x0, 0.0, x1, 8.0).to_path(0.1),
+        paint: Paint::Solid(color),
+        style: DrawStyle::Fill(FillRule::NonZero),
+    })
+}
+
+/// A red backdrop under a layer blending by `mode` that draws `shape`, at
+/// `quality`: the frame, without a background, so cleared pixels read as
+/// clear.
+fn stencilled(mode: &str, shape: Node, opacity: f32, quality: Quality) -> Image {
+    let frame = Frame {
+        nodes: vec![
+            cover(8.0, Color::rgba(1.0, 0.0, 0.0, 1.0)),
+            Node::Layer(Layer {
+                blend: BlendMode::named(mode).unwrap(),
+                opacity,
+                ..Layer::new(vec![shape])
+            }),
+        ],
+        ..Frame::default()
+    };
+    let options = RenderOptions {
+        quality,
+        simd: Simd::Portable,
+        dither: false,
+    };
+    render_with(&frame, 8, 8, options).unwrap()
+}
+
+/// A stencil keeps what is below where it draws and clears it where it
+/// does not, its own colour never shown; a silhouette does the reverse.
+/// The luma forms read the layer's brightness, a clear pixel as black. Both
+/// qualities draw them, on the float canvas.
+#[rstest]
+fn stencils_keep_and_silhouettes_cut_everything_below(
+    #[values(Quality::Precise, Quality::Fast)] quality: Quality,
+) {
+    let left_white = band(0.0, 4.0, Color::WHITE);
+    let at = |image: &Image, x| image.pixel(x, 4).unwrap();
+    let stencil = stencilled("stencil-alpha", left_white.clone(), 1.0, quality);
+    assert_eq!(at(&stencil, 1), [255, 0, 0, 255], "{quality:?}");
+    assert_eq!(at(&stencil, 6), [0, 0, 0, 0], "{quality:?}");
+    let silhouette = stencilled("silhouette-alpha", left_white.clone(), 1.0, quality);
+    assert_eq!(at(&silhouette, 1), [0, 0, 0, 0], "{quality:?}");
+    assert_eq!(at(&silhouette, 6), [255, 0, 0, 255], "{quality:?}");
+    // Grey keeps what is below by its luma: about 50 % of it, read back
+    // as straight colour.
+    let grey = band(0.0, 4.0, Color::rgba(0.5, 0.5, 0.5, 1.0));
+    let luma = stencilled("stencil-luma", grey.clone(), 1.0, quality);
+    assert!(near(at(&luma, 1), [255, 0, 0, 128]), "{:?}", at(&luma, 1));
+    assert_eq!(at(&luma, 6), [0, 0, 0, 0], "{quality:?}");
+    let cut = stencilled("silhouette-luma", grey, 1.0, quality);
+    assert!(near(at(&cut, 1), [255, 0, 0, 127]), "{:?}", at(&cut, 1));
+    assert_eq!(at(&cut, 6), [255, 0, 0, 255], "{quality:?}");
+    // The layer's opacity scales the share it gives.
+    let half = stencilled("stencil-alpha", left_white, 0.5, quality);
+    assert!(near(at(&half, 1), [255, 0, 0, 128]), "{:?}", at(&half, 1));
+    assert_eq!(at(&half, 6), [0, 0, 0, 0], "{quality:?}");
+}
+
+/// A stencil that draws nothing, transparent or out of the frame, keeps
+/// nothing below; a silhouette that draws nothing keeps it all.
+#[rstest]
+fn a_stencil_drawing_nothing_clears_everything_below(
+    #[values(Quality::Precise, Quality::Fast)] quality: Quality,
+) {
+    let off = band(20.0, 24.0, Color::WHITE);
+    let at = |image: &Image| image.pixel(4, 4).unwrap();
+    assert_eq!(
+        at(&stencilled("stencil-alpha", off.clone(), 1.0, quality)),
+        [0; 4]
+    );
+    let on = band(0.0, 8.0, Color::WHITE);
+    assert_eq!(
+        at(&stencilled("stencil-luma", on.clone(), 0.0, quality)),
+        [0; 4]
+    );
+    assert_eq!(
+        at(&stencilled("silhouette-alpha", on, 0.0, quality)),
+        [255, 0, 0, 255]
+    );
+    assert_eq!(
+        at(&stencilled("silhouette-luma", off, 1.0, quality)),
+        [255, 0, 0, 255]
+    );
+}
+
+/// A stencil inside a composition cuts only what that composition draws
+/// below it: the composition is laid over the rest whole.
+#[rstest]
+fn a_stencil_cuts_only_its_own_composition(
+    #[values(Quality::Precise, Quality::Fast)] quality: Quality,
+) {
+    let inner = Layer {
+        isolate: true,
+        ..Layer::new(vec![
+            band(0.0, 8.0, Color::rgba(0.0, 0.0, 1.0, 1.0)),
+            Node::Layer(Layer {
+                blend: BlendMode::StencilAlpha,
+                ..Layer::new(vec![band(0.0, 4.0, Color::WHITE)])
+            }),
+        ])
+    };
+    let frame = Frame {
+        nodes: vec![
+            cover(8.0, Color::rgba(1.0, 0.0, 0.0, 1.0)),
+            Node::Layer(inner),
+        ],
+        ..Frame::default()
+    };
+    let options = RenderOptions {
+        quality,
+        simd: Simd::Portable,
+        dither: false,
+    };
+    let image = render_with(&frame, 8, 8, options).unwrap();
+    assert_eq!(image.pixel(1, 4), Some([0, 0, 255, 255]), "{quality:?}");
+    assert_eq!(image.pixel(6, 4), Some([255, 0, 0, 255]), "{quality:?}");
+}
+
+/// Linear light burns below a mid grey and dodges above it, by twice the
+/// layer's distance from it.
+#[rstest]
+fn linear_light_burns_and_dodges_by_twice_the_layer(
+    #[values(Quality::Precise, Quality::Fast)] quality: Quality,
+) {
+    let frame = Frame {
+        background: Some(Color::rgba(0.5, 0.5, 0.5, 1.0)),
+        nodes: vec![Node::Layer(Layer {
+            blend: BlendMode::LinearLight,
+            ..Layer::new(vec![
+                band(0.0, 4.0, Color::rgba(0.25, 0.5, 1.0, 1.0)),
+                band(4.0, 8.0, Color::rgba(0.75, 0.0, 0.6, 1.0)),
+            ])
+        })],
+        ..Frame::default()
+    };
+    let options = RenderOptions {
+        quality,
+        simd: Simd::Portable,
+        dither: false,
+    };
+    let image = render_with(&frame, 8, 8, options).unwrap();
+    let left = image.pixel(1, 4).unwrap();
+    assert!(near(left, [0, 128, 255, 255]), "{quality:?} {left:?}");
+    let right = image.pixel(6, 4).unwrap();
+    assert!(near(right, [255, 0, 179, 255]), "{quality:?} {right:?}");
+}
+
 #[test]
 fn the_fill_effect_mixes_towards_its_colour_and_keeps_alpha() {
     let fill = |opacity| {

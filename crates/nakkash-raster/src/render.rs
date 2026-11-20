@@ -290,10 +290,12 @@ fn bytes_of(pixmap: &Pixmap) -> &[u8] {
 /// Whether drawing `layer` lays pixels made by the rasteriser's own code
 /// rather than the vello context: it adjusts what is below, is a plane, has
 /// masks, motion blur of a drawing made once, or an effect that reads its
-/// pixels, or a layer under it does. On the float canvas such a layer is
-/// drawn alone and laid in floats, and so is every layer it sits in.
+/// pixels, or blends by a mode only the float canvas lays, or a layer under
+/// it does. On the float canvas such a layer is drawn alone and laid in
+/// floats, and so is every layer it sits in.
 fn makes_pixels(layer: &Layer) -> bool {
-    layer.adjust
+    layer.blend.laid_in_floats()
+        || layer.adjust
         || layer.projection.is_some()
         || !layer.masks.is_empty()
         || !layer.motion.is_empty()
@@ -310,17 +312,43 @@ fn children_make_pixels(layer: &Layer) -> bool {
         .any(|child| matches!(child, Node::Layer(layer) if makes_pixels(layer)))
 }
 
+/// Whether `layer`, or a layer under it, blends by a mode only the float
+/// canvas lays ([`BlendMode::laid_in_floats`]). At either quality, such a
+/// layer is drawn alone and laid in floats, and so is every layer it sits
+/// in, so that it is laid on a canvas that holds what is below it.
+fn laid_in_floats(layer: &Layer) -> bool {
+    layer.blend.laid_in_floats() || children_laid_in_floats(layer)
+}
+
+/// Whether a layer among `layer`'s children is laid in floats
+/// ([`laid_in_floats`]).
+fn children_laid_in_floats(layer: &Layer) -> bool {
+    layer
+        .children
+        .iter()
+        .any(|child| matches!(child, Node::Layer(layer) if laid_in_floats(layer)))
+}
+
+/// Whether `layer`'s children are laid on a float canvas of their own:
+/// with float colours (`floats`) when they make pixels
+/// ([`makes_pixels`]), and at either quality when one blends by a mode
+/// only the float canvas lays.
+fn children_floated(layer: &Layer, floats: bool) -> bool {
+    (floats && children_make_pixels(layer)) || children_laid_in_floats(layer)
+}
+
 /// Whether drawing `layer`'s content draws its children on a canvas of
 /// their own, as [`Painter::content`] does: it is isolated, and moves its
 /// content as pixels (effects that read them, masks that cut, motion blur
-/// of a drawing made once); with float colours (`floats`), also when its
-/// children make pixels. A pinned layer draws them on its plane instead.
+/// of a drawing made once); also when its children are laid on a float
+/// canvas ([`children_floated`]). A pinned layer draws them on its plane
+/// instead.
 /// The frame's [`Reads`] counts these uses.
 pub(crate) fn draws_children_alone(layer: &Layer, floats: bool) -> bool {
     if !layer.is_isolated() {
         return false;
     }
-    let steps = Steps::of(layer, floats && children_make_pixels(layer));
+    let steps = Steps::of(layer, children_floated(layer, floats));
     if steps.on_pixels.iter().any(Effect::pins) {
         return false;
     }
@@ -488,6 +516,16 @@ impl<'a> Painter<'a> {
             });
         }
         Ok(self.canvas.as_mut().expect("made above"))
+    }
+
+    /// What a layer that draws nothing does by `mode`: nothing, but for a
+    /// stencil, which keeps nothing of what is below either.
+    fn nothing_laid(&mut self, mode: BlendMode) -> Result<()> {
+        if !mode.keeps_below() || mode.lay([1.0; 4], [0.0; 4]) == [1.0; 4] {
+            return Ok(());
+        }
+        let clear = Surface::Cpu(Pixels::transparent(self.width, self.height));
+        self.lay_on_canvas(&clear, mode, &Amount::constant(1.0))
     }
 
     /// Lays `source` on the float canvas by `mode`, scaled by `amount`.
@@ -829,11 +867,11 @@ impl<'a> Painter<'a> {
     /// layer's buffer is in its own coordinates and laid through its
     /// projection.
     fn layer(&mut self, layer: &Layer, parent: Affine) -> Result<()> {
-        let steps = Steps::of(layer, self.floats() && children_make_pixels(layer));
+        let steps = Steps::of(layer, children_floated(layer, self.floats()));
         // A transparent layer draws nothing, effects included.
         let opacity = layer.opacity * steps.moved.opacity;
         if opacity <= 0.0 {
-            return Ok(());
+            return self.nothing_laid(layer.blend);
         }
         if let Some(projection) = &layer.projection {
             return self.projected(layer, projection, &steps, opacity, parent, 0.0);
@@ -857,10 +895,18 @@ impl<'a> Painter<'a> {
         // On the float canvas, a layer that makes pixels is laid in floats,
         // and so is one that blends otherwise than source-over with what
         // the canvas holds; one inside a layer open in the context blends
-        // with that layer's buffer, which the context holds.
+        // with that layer's buffer, which the context holds. A layer that
+        // blends by a mode only the canvas lays, or holds one, is laid in
+        // floats at either quality: every layer it sits in is too, so it
+        // is never inside a layer open in the context.
         let blends_with_canvas =
             self.canvas.is_some() && self.open == 0 && layer.blend != BlendMode::Normal;
-        if self.floats() && (makes_pixels(layer) || blends_with_canvas) {
+        let floated = laid_in_floats(layer);
+        debug_assert!(
+            !floated || self.open == 0,
+            "a layer laid in floats sits in no layer open in the context"
+        );
+        if (self.floats() && makes_pixels(layer)) || blends_with_canvas || floated {
             return self.floated(layer, &steps, opacity, parent);
         }
         self.pending = true;
@@ -972,13 +1018,13 @@ impl<'a> Painter<'a> {
         let reach = projected::read_reach(layer);
         let Some(plan) = Plan::at_least(extent, reach, &maps, self.width, self.height, least)
         else {
-            return Ok(());
+            return self.nothing_laid(layer.blend);
         };
         let clip = layer.shown_clip();
         let laid = self.laid(&plan, &maps, |sub| {
             sub.on_plane(layer, steps, clip.as_ref(), plan.local)
         })?;
-        if self.floats() {
+        if self.floats() || layer.blend.laid_in_floats() {
             let matte = layer
                 .matte
                 .as_ref()

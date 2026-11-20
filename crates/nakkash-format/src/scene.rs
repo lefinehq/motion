@@ -203,7 +203,7 @@ pub struct Layer {
 }
 
 /// The blend modes a layer takes, `normal` first, which is the default.
-pub const BLEND_MODES: [&str; 17] = [
+pub const BLEND_MODES: [&str; 23] = [
     "normal",
     "multiply",
     "screen",
@@ -221,6 +221,12 @@ pub const BLEND_MODES: [&str; 17] = [
     "color",
     "luminosity",
     "add",
+    "linear-light",
+    "subtract",
+    "stencil-alpha",
+    "stencil-luma",
+    "silhouette-alpha",
+    "silhouette-luma",
 ];
 
 impl Layer {

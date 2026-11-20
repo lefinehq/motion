@@ -816,3 +816,27 @@ Frames passing the floor are unchanged (m547 0 of 14, m651 4 of 15, m828 0 of 20
 Other things we take without evidence:
 - **Keys.** No local project keys its Source Text. A keyed Source Text is taken as the original's documentation gives it: each key holds its whole document until the next. The import keeps each key's words in the first key's style and reports a key that restyles.
 - **The layout's anchor.** A changing text is laid out about the same origin with the same alignment, as point text always is; the scene keeps the layer's own words for its box, which for imported layers only `check` reads, since an import writes the anchor and position.
+
+## Stencils, silhouettes, linear light and subtract
+
+The layer blend modes stored as codes 17 to 20 (stencil alpha, stencil luma, silhouette alpha, silhouette luma) and 31 (linear light) were reported, and so was 37 (subtract). EffectCraft identified codes 2 to 34 by rendering each over a test image (its `docs/aep-format.md`, case 907: every code matched exactly one of its modes); 37 is the layer table's own code for subtract, past that sweep, which no measured case checks. EffectCraft gives their formulas in `crates/color/src/blend.rs`. They become the layer blend modes `stencil-alpha`, `stencil-luma`, `silhouette-alpha`, `silhouette-luma`, `linear-light` and `subtract` ([scene format](scene-format.md#layers)), the same names an effect's compositing already took; the effects now read them from the one table of layer modes.
+
+| Belief | Evidence | Held, 2026-11-20 |
+|---|---|---|
+| BM1. A stencil keeps what lies below it in its composition by its own share and clears the rest: alpha keeps by the layer's alpha, luma by the Rec. 601 luma of its premultiplied colour. A silhouette cuts by the same shares, `1 − share`, and keeps what lies past it. Both act on everything drawn below them, not just under their pixels, so a stencil that draws nothing clears its composition. | EffectCraft's formulas and its compositor's clearing of a stencil's whole canvas (`crates/gpu/src/ops.rs`). m647, m738 and m769 lay silhouettes (alpha), m791 a stencil alpha and a stencil luma, m796 a stencil alpha; their numbers are below. | 5 samples |
+| BM2. Linear light is `clamp(b + 2s − 1)` and subtract `max(b − s, 0)`, on straight colours, laid as the separable modes are. | EffectCraft's formulas; case 907 matches its renders by code. m552 lays one linear light layer and m716 one subtract layer; neither moves (below), their layers sitting where the reference shows little of them. | 2 samples, unmeasured by them |
+
+
+Laid by these modes rather than as normal layers, over all frames (content failing share, content error, frames passing over the floor). m791 was measured on the Mac (its project names a system font); the others on the render box, each against a build of development without the change:
+
+| Sample | Failing, before → after | Mean error, before → after | Frames passing over the floor |
+|---|---|---|---|
+| m791 | 82.06 % → 55.44 % | 0.2039 → 0.0956 | 0 → 0 of 16 |
+| m647 | 31.81 % → 26.33 % | 0.1320 → 0.0742 | 0 → 1 of 20 |
+| m796 | 99.72 % → 94.55 % | 0.6708 → 0.6485 | 0 → 0 of 14 |
+| m769 | 77.64 % → 77.64 % | 0.1081 → 0.0660 | 0 → 0 of 20 |
+| m552, m716, m738 | unchanged | unchanged | unchanged |
+
+Other things we take without evidence:
+- **Opacity.** A stencil at partial opacity keeps by its share times its opacity, as its alpha would; no local sample fades a stencil.
+- **Quality.** Linear light, subtract and the luma stencils have no counterpart in the vector rasteriser, and a destructive mode there composes only inside its clip's box; layers in these modes are laid in floats at either quality, which the precise quality already does for every layer.

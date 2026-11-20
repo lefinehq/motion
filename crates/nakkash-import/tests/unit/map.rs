@@ -1939,6 +1939,27 @@ fn a_blend_mode_the_scene_has_is_written_and_another_reported() {
     };
     let screen = imported(BlendMode::Screen);
     assert_eq!(screen.json["layers"][0]["blend"], "screen");
+    // The stencils, silhouettes, linear light and subtract, codes 17 to 20,
+    // 31 and 37.
+    for (mode, name) in [
+        (BlendMode::Subtract, "subtract"),
+        (BlendMode::StencilAlpha, "stencil-alpha"),
+        (BlendMode::StencilLuma, "stencil-luma"),
+        (BlendMode::SilhouetteAlpha, "silhouette-alpha"),
+        (BlendMode::SilhouetteLuma, "silhouette-luma"),
+        (BlendMode::LinearLight, "linear-light"),
+    ] {
+        let laid = imported(mode);
+        assert_eq!(laid.json["layers"][0]["blend"], name);
+        assert!(
+            !laid
+                .mapping
+                .unsupported
+                .iter()
+                .any(|f| f.what.contains("blend mode")),
+            "{name}"
+        );
+    }
     let dissolve = imported(BlendMode::Dissolve);
     assert!(dissolve.json["layers"][0].get("blend").is_none());
     assert!(

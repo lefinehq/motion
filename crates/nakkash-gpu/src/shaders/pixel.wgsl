@@ -52,11 +52,9 @@ fn lay(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     let s = src[i];
     let a = clamp(s.a, 0.0, 1.0);
-    if a <= 0.0 {
-        return;
-    }
     let k = amount_at(i);
-    if k <= 0.0 {
+    // A stencil or silhouette changes every px, also where nothing is laid.
+    if (a <= 0.0 || k <= 0.0) && !keeps_below(params.mode) {
         return;
     }
     let within = vec4(clamp(s.rgb, vec3(0.0), vec3(a)) * k, a * k);

@@ -190,22 +190,23 @@ impl Pixels {
     /// its pixels first scaled by the share `amount` gives for it, from 0
     /// to 1: how the float canvas composites a layer. As when the pixels
     /// become an 8-bit picture, each source pixel is kept within 0 to 1 and
-    /// its colour within its alpha, but nothing is rounded.
+    /// its colour within its alpha, but nothing is rounded. A stencil or
+    /// silhouette ([`BlendMode::keeps_below`]) changes every pixel, also
+    /// where the source or the amount leaves nothing.
     pub fn lay(&mut self, source: &Pixels, mode: BlendMode, amount: impl Fn(usize) -> f32 + Sync) {
         debug_assert_eq!(
             (self.width, self.height),
             (source.width, source.height),
             "laid pixels are the canvas's size"
         );
+        let everywhere = mode.keeps_below();
         par::each_with(&mut self.data, &source.data, |i, below, &[r, g, b, a]| {
             // A level that is not a number covers nothing: such a pixel is
             // left out, never laid (and never a panic in the clamps below).
-            let a = a.clamp(0.0, 1.0);
-            if a.is_nan() || a <= 0.0 {
-                return;
-            }
+            let a = if a.is_nan() { 0.0 } else { a.clamp(0.0, 1.0) };
             let k = amount(i).clamp(0.0, 1.0);
-            if k.is_nan() || k <= 0.0 {
+            let k = if k.is_nan() { 0.0 } else { k };
+            if (a <= 0.0 || k <= 0.0) && !everywhere {
                 return;
             }
             let within = |c: f32| if c.is_nan() { 0.0 } else { c.clamp(0.0, a) * k };

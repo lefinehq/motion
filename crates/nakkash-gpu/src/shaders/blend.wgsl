@@ -57,6 +57,8 @@ fn separable(mode: u32, b: f32, s: f32) -> f32 {
         case MODE_SOFT_LIGHT: { return soft_light_one(b, s); }
         case MODE_DIFFERENCE: { return abs(b - s); }
         case MODE_EXCLUSION: { return b + s - 2.0 * b * s; }
+        case MODE_LINEAR_LIGHT: { return clamp(b + 2.0 * s - 1.0, 0.0, 1.0); }
+        case MODE_SUBTRACT: { return max(b - s, 0.0); }
         default: { return s; }
     }
 }
@@ -117,12 +119,35 @@ fn unmultiplied(p: vec4<f32>, a: f32) -> vec3<f32> {
     return vec3(0.0);
 }
 
+// Whether `mode` is a stencil or a silhouette: it keeps what is below by a
+// share of the source, also where the source is clear.
+fn keeps_below(mode: u32) -> bool {
+    return mode == MODE_STENCIL_ALPHA || mode == MODE_STENCIL_LUMA
+        || mode == MODE_SILHOUETTE_ALPHA || mode == MODE_SILHOUETTE_LUMA;
+}
+
+// The share of `below` a stencil or silhouette keeps for `source`,
+// premultiplied: its alpha or its luma, by the effects' weights (`LUMA`).
+fn kept_share(mode: u32, p: vec4<f32>) -> f32 {
+    let source = p;
+    let bright = p.r * 0.299 + p.g * 0.587 + p.b * 0.114;
+    switch mode {
+        case MODE_STENCIL_ALPHA: { return source.a; }
+        case MODE_STENCIL_LUMA: { return bright; }
+        case MODE_SILHOUETTE_ALPHA: { return 1.0 - source.a; }
+        default: { return 1.0 - bright; }
+    }
+}
+
 // `BlendMode::lay`: `source` laid on `below`, both premultiplied.
 fn lay_one(mode: u32, below: vec4<f32>, source: vec4<f32>) -> vec4<f32> {
     let source_alpha = source.a;
     let below_alpha = below.a;
     if mode == MODE_ADD {
         return min(below + source, vec4(1.0));
+    }
+    if keeps_below(mode) {
+        return below * clamp(kept_share(mode, source), 0.0, 1.0);
     }
     if mode == MODE_NORMAL {
         return source + below * (1.0 - source_alpha);
