@@ -106,6 +106,15 @@ fn along(pixels: &mut Pixels, way: usize, radius: f32, passes: usize, edges: Edg
     let (width, height) = (usize::from(pixels.width()), usize::from(pixels.height()));
     let data = pixels.data_mut();
     let line = |line: &mut [Pixel], padded: &mut Vec<Pixel>| {
+        // A line of nothing but `+0.0` stays as it is ([D90], K3): every
+        // sum stays `+0.0`, and `+0.0` over the width is `+0.0`, at any
+        // radius and with either edges. (A `-0.0` comes out `+0.0`, so a
+        // line holding one is passed as any other.)
+        //
+        // [D90]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d90-a-frame-is-drawn-from-a-plan-that-knows-what-each-drawing-is-under-one-memory-budget
+        if line.iter().all(|p| p.iter().all(|c| c.to_bits() == 0)) {
+            return;
+        }
         for _ in 0..passes {
             box_pass(line, whole, part, edges, padded);
         }
