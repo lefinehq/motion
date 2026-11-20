@@ -75,9 +75,14 @@ fn glyphs_covering_less_than_a_px_are_not_measured() {
 
 /// A scene of one title, `fill` on `bg`, at `size` px.
 fn titled(fill: &str, bg: &str, size: u32) -> String {
+    titled_on("1080p", fill, bg, size)
+}
+
+/// [`titled`] on a canvas of `canvas`.
+fn titled_on(canvas: &str, fill: &str, bg: &str, size: u32) -> String {
     let report = check(
         &Session::from_str(&format!(
-            r##"{{"nakkash":1,"size":"1080p","dur":"1s","bg":"{bg}","layers":[
+            r##"{{"nakkash":1,"size":"{canvas}","dur":"1s","bg":"{bg}","layers":[
                 {{"id":"title","text":"Launch Week","font":"Inter Variable {size} 700","fill":"{fill}","at":"center center"}}]}}"##
         ))
         .expect("scene"),
@@ -102,6 +107,19 @@ fn small_text_needs_more_contrast() {
     assert_eq!(titled("#FFFFFF", "#7F7F7F", 96), "OK 1");
     assert_eq!(
         titled("#FFFFFF", "#7F7F7F", 20),
+        "E contrast title 0-15f 4:1 <4.5\nOK 0"
+    );
+}
+
+#[test]
+fn text_is_large_by_the_canvas_short_side() {
+    // 30 px is large on a portrait canvas 1080 px wide, as on a landscape
+    // one 1080 px tall: a phone shows either at the same size.
+    assert_eq!(titled_on("1080x1920", "#FFFFFF", "#7F7F7F", 30), "OK 1");
+    assert_eq!(titled_on("1920x1080", "#FFFFFF", "#7F7F7F", 30), "OK 1");
+    // On a canvas twice as large, 30 px reads as 15: small.
+    assert_eq!(
+        titled_on("2160x3840", "#FFFFFF", "#7F7F7F", 30),
         "E contrast title 0-15f 4:1 <4.5\nOK 0"
     );
 }

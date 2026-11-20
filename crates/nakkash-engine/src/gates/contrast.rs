@@ -1,6 +1,6 @@
 //! `contrast`: a text layer's glyphs against what is drawn behind them, as
 //! WCAG 2's contrast ratio, at least 4.5:1, or 3:1 for text of 24 px and up
-//! on a 1080-px-tall canvas.
+//! on a canvas whose short side is 1080 px.
 //!
 //! The scene is drawn twice for each readable text layer at a sample of
 //! frames: once without the layer, for what is behind it (the `bg` of the
@@ -30,7 +30,9 @@ use crate::session::Session;
 const NORMAL: f64 = 4.5;
 /// The least ratio for text of [`LARGE_PX`] and up.
 const LARGE: f64 = 3.0;
-/// The size from which text is large, in px of a 1080-px-tall canvas.
+/// The size from which text is large, in px of a canvas whose short side
+/// is 1080 px: a screen shows a portrait canvas's width as it shows a
+/// landscape one's height.
 const LARGE_PX: f64 = 24.0;
 /// The share of a layer's glyph coverage that must reach the ratio: thin
 /// edges and the odd glyph over a busy patch may fall short.
@@ -303,7 +305,8 @@ fn measure(
     Ok(members
         .iter()
         .map(|text| {
-            let large = text.size * text.scale * 1080.0 / graph.root.height;
+            let short = graph.root.width.min(graph.root.height);
+            let large = text.size * text.scale * 1080.0 / short;
             Seen {
                 index: text.index,
                 frame: text.frame,
