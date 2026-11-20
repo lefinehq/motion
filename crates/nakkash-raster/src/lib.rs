@@ -53,6 +53,7 @@ mod vector;
 pub use accel::{Accelerator, Amount, Resident, Share, Tally, Texels, project_on_cpu};
 pub use blend::{BLEND_MODES, BlendMode, BlendSpec};
 pub use blur::Edges;
+pub use blur::GLOW_LUMA;
 pub use blur::{FindEdges, Sharpen};
 pub use channel::{LayerBox, Level, Reading, SetMatte, ShiftChannels};
 pub use colour::LUMA;

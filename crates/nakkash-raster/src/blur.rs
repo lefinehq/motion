@@ -11,7 +11,12 @@
 
 use vello_cpu::kurbo::{Affine, Vec2};
 
-use crate::colour::{LUMA, choice, number, rgb};
+use crate::colour::{choice, number, rgb};
+
+/// The weights of red, green and blue in the luma `glow` holds against
+/// its threshold: Rec. 709's, measured on the corpus against reference
+/// renders (belief G3 in the import's evidence).
+pub const GLOW_LUMA: [f32; 3] = [0.2126, 0.7152, 0.0722];
 use crate::composite::Operation;
 use crate::effect::{ParamValue, Space};
 use crate::par;
@@ -281,8 +286,9 @@ pub(crate) const GLOW_OPERATIONS: &[&str] = &[
     "alpha-add",
 ];
 
-/// `glow`'s steps: the colours brighter than `threshold`, blurred by
-/// `radius` as a blurriness, times `intensity`, held to 0 to 1. With
+/// `glow`'s steps: the colours whose Rec. 709 luma ([`GLOW_LUMA`]) is
+/// past `threshold`, blurred by `radius` as a blurriness, times
+/// `intensity`, held to 0 to 1. With
 /// `composite` `with-original` the light is laid over the layer by
 /// `operation`; with `behind-original` the layer is laid over the light by
 /// it; with `glow-only` the light is drawn alone.
@@ -300,7 +306,7 @@ pub(crate) fn glow_plan(values: &[ParamValue], space: &Space) -> Glow {
     let [sx, sy] = scales(space);
     Glow {
         threshold,
-        luma: LUMA,
+        luma: GLOW_LUMA,
         blur: Blur::gaussian(
             [
                 if x { sigma * sx } else { 0.0 },
