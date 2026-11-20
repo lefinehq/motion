@@ -112,6 +112,10 @@ enum Command {
         /// edits: print only what it does not already have.
         #[arg(long, value_name = "SCENE")]
         baseline: Option<PathBuf>,
+        /// For an instance: print its problems as JSON objects, with what
+        /// was measured, the limit and a hint, beside the check.
+        #[arg(long)]
+        json: bool,
     },
     /// Show where layers are at one moment.
     At {
@@ -230,14 +234,38 @@ enum Command {
         /// each that changes the render.
         #[arg(long, requires = "verify")]
         mark: bool,
+        /// Print an instance pinned to the scene, by its path and hash,
+        /// with no values; with `--all`, every current value.
+        #[arg(long, conflicts_with_all = ["verify", "coverage", "json"])]
+        as_instance: bool,
+        /// With `--as-instance`: every slot's current value.
+        #[arg(long, requires = "as_instance")]
+        all: bool,
+        /// With `--as-instance`: write the instance here, its pin relative
+        /// to this file's folder.
+        #[arg(long, value_name = "FILE", requires = "as_instance")]
+        out: Option<PathBuf>,
     },
     /// Apply an edit line such as `card fill=#FF0000`, save the scene and
     /// print what the edit added to its check; exits 1 when it added an error.
     Edit {
-        /// Path to the scene file.
+        /// Path to the scene file, or an instance of a template.
         scene: PathBuf,
-        /// A layer id (or `scene`) followed by `key=value` pairs.
-        line: String,
+        /// A layer id (or `scene`) followed by `key=value` pairs; several
+        /// are applied in order. For an instance: `$id=value`, `$id=none`,
+        /// `$id=$hide` or `look=<name>`, written only when none is refused.
+        #[arg(required = true)]
+        lines: Vec<String>,
+    },
+    /// Pin an instance to its template as it is now: relinked slots under
+    /// their new ids, values of slots the template lost kept under
+    /// `stale`, the hash pinned again.
+    Migrate {
+        /// Path to the instance.
+        instance: PathBuf,
+        /// Print what would change and write nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Draw frames of a scene into a video file, or into PNG files named
     /// `frame-00000.png`.
@@ -434,6 +462,7 @@ impl Command {
             | Command::Diff { scene, .. }
             | Command::Export { scene, .. }
             | Command::Vary { scene, .. } => scene,
+            Command::Migrate { instance, .. } => instance,
             Command::Import { project, .. } | Command::Inspect { project, .. } => project,
             Command::Fidelity { manifest, .. } | Command::Batch { manifest, .. } => manifest,
             Command::Bench { briefs, .. } => briefs,
@@ -474,7 +503,22 @@ fn main() -> ExitCode {
         "running"
     );
     let result = match cli.command {
-        Command::Check { scene, baseline } => commands::check::run(&scene, baseline.as_deref()),
+        Command::Check {
+            scene,
+            baseline,
+            json,
+        } => match commands::instance::is_instance(&scene) {
+            true => commands::instance::check(&scene, json),
+            false => commands::check::run(&scene, baseline.as_deref()),
+        },
+        Command::Migrate { instance, dry_run } => commands::instance::migrate(&instance, dry_run),
+        Command::Slots {
+            scene,
+            as_instance: true,
+            all,
+            out,
+            ..
+        } => commands::instance::as_instance(&scene, all, out.as_deref()),
         Command::Slots {
             scene,
             json,
@@ -483,6 +527,7 @@ fn main() -> ExitCode {
             picture,
             clip,
             mark,
+            ..
         } => commands::slots::run(
             &scene,
             &commands::slots::Args {
@@ -532,7 +577,10 @@ fn main() -> ExitCode {
             timeout,
         } => commands::bench::run(&briefs, &agent, &out, Duration::from_secs(timeout)),
         Command::At { scene, time, ids } => commands::at::run(&scene, &time, &ids),
-        Command::Edit { scene, line } => commands::edit::run(&scene, &line),
+        Command::Edit { scene, lines } => match commands::instance::is_instance(&scene) {
+            true => commands::instance::edit(&scene, &lines),
+            false => commands::edit::run(&scene, &lines),
+        },
         Command::Render {
             scene,
             frames,

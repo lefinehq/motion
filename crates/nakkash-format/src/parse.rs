@@ -40,6 +40,8 @@ pub mod key {
     pub const ROLES: &str = "roles";
     /// What a variant may not change (D51).
     pub const LOCKS: &str = "locks";
+    /// Named sets of slot values, one chosen by an instance (D91).
+    pub const LOOKS: &str = "looks";
     /// The layers.
     pub const LAYERS: &str = "layers";
     /// A layer's id.
@@ -150,7 +152,7 @@ pub mod key {
 }
 
 /// The keys allowed at the top level, in the order of `SceneDoc`'s fields.
-pub const SCENE_KEYS: [&str; 14] = [
+pub const SCENE_KEYS: [&str; 15] = [
     key::NAKKASH,
     key::SIZE,
     key::FPS,
@@ -163,6 +165,7 @@ pub const SCENE_KEYS: [&str; 14] = [
     key::SLOTS,
     key::ROLES,
     key::LOCKS,
+    key::LOOKS,
     key::COMPS,
     key::LAYERS,
 ];

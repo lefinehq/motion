@@ -364,6 +364,26 @@ A scene, and any composition in `comps`, may declare `slots`: named values that 
 ```
 
 - **Types.** The value fixes the slot's type: a colour is a `color`, as a string or as `[r, g, b, a]`, a number a `number`, `[x, y]` a `point`. Words are written `{"text":"…"}`, a picture or vector footage file `{"image":"logo.png"}` and a clip `{"video":"hero.mov"}`; a file slot may be `null`, for no file yet ([D77](decisions.md#d77-every-imported-template-names-what-a-designer-would-vary)). Any type may be written out, `{"color":"#E63946"}`, with an optional `label` for people and an optional `role`, an id that says what the slot is for: `{"text":"SPEED","label":"Title","role":"title"}`. `"seen": false` marks a slot that `nakkash slots --verify --mark` found changes nothing drawn; a variant leaves it as it is, and the mark goes when a later run sees it change the render.
+- **Choices.** `{"choice":"end-centred","values":["end-centred","end-left"]}` is a word from a closed list. Any string may follow it, a `comp` key included, so `"comp":"$ending"` lets an instance choose a section ([D91](decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point)). A value that is not one of `values` is an error naming them.
+- **What a declaration may bound** ([D91](decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point)). Beside its value, `label` and `role`, a written-out declaration may say what an instance may give it, and `check` and `nakkash brief` read it. Each key belongs to the types it names, and on any other type it is an error:
+
+  | Key | Types | Meaning |
+  |---|---|---|
+  | `uid` | any | What the slot was made from, which a later import of the same project gives again |
+  | `aliases` | any | Other ids an instance may name it by |
+  | `min`, `max` | number | Its least and greatest value |
+  | `values` | choice | Its words, in order |
+  | `overflow` | text | `shrink`, `wrap` or `reject`: what happens to a text longer than its `fit` |
+  | `min-size` | text | The smallest it may be set, in px |
+  | `max-lines` | text | The most lines it may break into |
+  | `pair` | color | The colour slot it is read against |
+  | `contrast` | color | The least contrast ratio with its pair, 1 to 21 |
+  | `kind` | image, video | `screen`, `logo`, `image`, `video` or `texture` |
+  | `accepts` | image, video | The file types it takes: `["image","video"]` lets a picture slot take a clip, which the layers following it play in the same box and fit |
+  | `min-px` | image, video | The least size of a file, `[width, height]` |
+  | `aspect` | image, video | The proportions it is shown at, `"16:10"` |
+
+  A slot's own value must keep inside its bounds.
 - **Changed colours.** A reference to a colour slot may change it, after a space, in OKLCH: `l±n` adds to its lightness (0 to 1), `c±n` to its chroma, `h±n` degrees to its hue, each at most once and in that order, and `/ a` sets its alpha (0 to 1): `"$accent l-0.021 c+0.004 h+1.6"`, `"$accent / 0.5"`. The result is clipped into sRGB, so a new value of the slot moves every changed use with it. Only a colour slot takes a change; text after an id that is no change, as in `"$title rocks"`, stays text.
 - **Canvas keys.** The scene's and each composition's `bg` and `dur` may follow slots too: `bg` a colour, written in hex whatever form the slot has, and `dur` a number slot, in seconds.
 - **Scope.** A reference names a slot of the composition it is written in, then one of the scene. A composition never sees another composition's slots.
@@ -394,6 +414,50 @@ A scene's `locks` list what a variant may not change ([D51](decisions.md#d51-loc
 - `palette`: an edit may only set colours the scene already has. `typefaces`: an edit may only set font families it already uses.
 
 A lock that names no role, layer or slot is an error at it, `locks[1]`. An edit that touches a lock is refused before it is made, naming the lock: `` `end/cta` is inside `end`, which is locked by `end` ``. `nakkash roles` marks the roles a lock holds.
+
+## Looks
+
+A scene's `looks` are named sets of slot values, `"looks":{"light":{"background":"#F5F7FA","text":"#0B0D12"}}`. Each value names a slot of the scene, `id`, or of a composition, `comp/id`, and must fit it. A look changes nothing by itself: an instance chooses one with `"look":"light"`, and its own values win over the look's ([D91](decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point)).
+
+## Instances
+
+An instance fills a template without copying it: a small file of slot values, pinned to the template by its path and hash, which every command that reads a scene (`render`, `check`, `vary`, `batch`, `export`, `at`, `slots`) reads as the scene it makes ([D91](decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point)). [`examples/instance/`](../../examples/instance/) has one.
+
+```json
+{"schema":"nakkash.Instance.1",
+ "template":{"path":"promo.json","hash":"sha256:9f3c…","uids":{"headline":"u-4f9a"}},
+ "look":"light",
+ "slots":{"headline":"Jeden Markt auf einmal erreichen","accent":"#0B6E4F",
+          "screen":{"video":"shots/app-de.mp4"},"ending":"end-left",
+          "feature":{"$unset":true},"cta":{"$hide":true}},
+ "sections":{"hook":{"role":"hook"},"product":{"role":"feature"},"end":{"role":"cta"}},
+ "raw":[{"at":"product/plate.opacity","expect":"number","value":0.25}]}
+```
+
+- **`template`.** `path` is the template's file, relative to the instance's folder. `hash` is the SHA-256 of the template's canonical form (`nakkash.Canon.1`: its JSON compact, every object's keys sorted), so writing the template pretty or compact leaves it and any other change moves it. `uids` holds the `uid` of each slot the instance writes, where the template declares one. `nakkash slots promo.json --as-instance --out de.json` writes a pinned instance; `--all` puts every current value in it.
+- **`slots`** is a patch keyed by slot id, `title`, or `comp/id` for a composition's slot, never by position. A value of the slot's type sets it: a string for words, a colour, a number, a choice's word, a file. A file slot also takes an object of one file, `{"image":"shots/app.png"}` or, when it `accepts` clips, `{"video":"…"}`. Files are relative to the instance's folder. `{"$unset":true}` keeps the template's value; `{"$hide":true}` hides every layer that draws what follows the slot. There is no `null`.
+- **`look`** chooses one of the template's `looks`; **`sections`** says what each `comp` layer of the template's root is for: `hook`, `problem`, `feature`, `proof`, `cta` or `unknown`.
+- **`raw`** is the one way to set a value no slot holds, each entry an address, the type it expects (`number`, `string`, `bool`, `color`, `point`, `json`) and a value. It never sets motion, timing, effects or drawn paths (`anim`, keys, `in`, `out`, `span`, `offset`, `dur`, `fx`, `shapes`, `mask` and the like), an address by list position, or anything a lock holds; `check` lists each entry it applies as a warning.
+- **Only what is declared is written.** A slot a lock holds ([Locks](#locks)), directly, through a role, or because a locked layer draws what follows it, is refused; under `palette`, a colour the template does not have is refused.
+- **Stages.** An instance is read in stages, each returning every problem it finds at once, and a stage with an error stops the stages after it: *parse* (the closed schema: an unknown field or schema is an error), *resolve* (the pin; ids, uids and aliases; the look; the sections), *type* (each value against its slot's type, bounds and locks; `raw`). Each problem is one object, `{"level","code","stage","slot","path","message","rule","measured","limit","hint"}`, which `nakkash check de.json --json` prints:
+
+  | Code | Level | When |
+  |---|---|---|
+  | `schema.unknown_field`, `schema.version_unsupported`, `schema.missing`, `schema.invalid` | error | The instance's own shape |
+  | `slot.unknown` | error | An id the template does not declare; the hint names the nearest |
+  | `template.changed` | warning | The hash differs, and every slot written is still there with its uid |
+  | `target.relinked` | warning | A slot found by its pinned uid, or an alias, under another id |
+  | `target.stale` | error | A slot pinned by a uid the template no longer has |
+  | `look.unknown`, `section.unknown` | error | A look or section the template does not have |
+  | `slot.locked` | error | A slot a lock holds |
+  | `type.mismatch`, `value.out_of_range`, `choice.unknown` | error | A value that does not fit its slot; `measured` and `limit` for a range |
+  | `raw.refused` | error | A `raw` entry that is not allowed or does not fit |
+  | `raw.applied` | warning | A `raw` entry set |
+  | `scene.invalid` | error | The scene the instance makes does not read |
+
+  An instance with an error renders nothing. `check` on an instance prints the problems, then what the scene it makes adds to its template's own check.
+- **`nakkash edit de.json '$headline="Jeden Markt"' 'look=light'`** sets slots and the look, and writes the instance only when no stage finds an error. Values equal to the template's are left out of what it writes; `$id=none` returns a slot to the template's value and `$id=$hide` hides it. The template is never written: a session on an instance refuses to save.
+- **`nakkash migrate de.json`** pins an instance to its template as it is now: relinked slots under their new ids, the value of a slot the template lost kept under `stale`, never dropped, and the hash pinned again.
 
 ## Images
 

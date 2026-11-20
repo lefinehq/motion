@@ -39,6 +39,11 @@ pub const BAKED_FOLDER: &str = "baked";
 pub struct Session {
     /// The file the scene was read from, and is saved to.
     path: Option<PathBuf>,
+    /// The instance the scene was merged from, if it was ([D91]): then
+    /// `path` is the template's, which the session never writes.
+    ///
+    /// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+    instance: Option<PathBuf>,
     /// The scene as read or last edited.
     doc: Document,
     /// The fonts the scene's text is set in: the built-in ones and those its
@@ -79,14 +84,64 @@ impl Session {
     /// # Errors
     /// A [`Kind::Io`] diagnostic when the file cannot be read, or the first
     /// problem in the scene.
+    ///
+    /// An instance ([D91]) opens as the scene it makes: its template with its
+    /// values in it, read from the template's folder, or a diagnostic
+    /// listing every error of the first stage that has any
+    /// ([`crate::instance::open`] gives them as problems).
+    ///
+    /// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
         let path = path.into();
         let text = stage("read", || {
             fs::read_to_string(&path).map_err(|e| Diagnostic::io("read", &path, &e))
         })?;
+        if text.contains("\"nakkash.Instance.")
+            && let Ok(json) = serde_json::from_str::<serde_json::Value>(&text)
+            && crate::instance::is_instance(&json)
+        {
+            let opened = crate::instance::open_json(&path, &json)?;
+            for problem in opened.problems.iter().filter(|p| p.level == crate::instance::Level::Warning) {
+                tracing::warn!(target: "nakkash::instance", "{problem}");
+            }
+            return match opened.session {
+                Some(session) if !crate::instance::has_errors(&opened.problems) => Ok(session),
+                _ => Err(crate::instance::diagnostic(&opened)),
+            };
+        }
         let mut session: Self = text.parse()?;
         session.path = Some(path);
         Ok(session)
+    }
+
+    /// A session on `raw`, the scene an instance at `instance` makes of the
+    /// template at `template` ([D91]).
+    ///
+    /// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+    ///
+    /// # Errors
+    /// The first problem in `raw` as a scene.
+    pub(crate) fn on_instance(template: &Path, instance: &Path, raw: serde_json::Value) -> Result<Self> {
+        let doc = stage("parse", || Document::from_value(raw))?;
+        Ok(Self {
+            path: Some(template.to_owned()),
+            instance: Some(instance.to_owned()),
+            doc,
+            fonts: OnceLock::new(),
+            graph: OnceLock::new(),
+            checked: OnceLock::new(),
+            before: None,
+            font_cache: None,
+            pictures: Pictures::default(),
+            clips: Clips::default(),
+            sounds: Sounds::default(),
+            accelerator: None,
+        })
+    }
+
+    /// The instance this session's scene was merged from, if any.
+    pub fn instance_path(&self) -> Option<&Path> {
+        self.instance.as_deref()
     }
 
     /// The file this session reads from and saves to, if any.
@@ -826,6 +881,7 @@ impl Session {
     pub fn variant(&self) -> Session {
         Session {
             path: self.path.clone(),
+            instance: self.instance.clone(),
             doc: self.doc.clone(),
             fonts: OnceLock::new(),
             graph: shared(&self.graph),
@@ -852,6 +908,7 @@ impl Session {
         let doc = stage("parse", || Document::from_value(raw))?;
         Ok(Session {
             path: self.path.clone(),
+            instance: self.instance.clone(),
             doc,
             fonts: OnceLock::new(),
             graph: OnceLock::new(),
@@ -898,10 +955,19 @@ impl Session {
     /// through a renamed temp file so a failed write never leaves half a scene.
     ///
     /// # Errors
-    /// A [`Kind::Io`] diagnostic when the file cannot be written, or a
-    /// [`Kind::Missing`] one when the session has no file.
+    /// A [`Kind::Io`] diagnostic when the file cannot be written, a
+    /// [`Kind::Missing`] one when the session has no file, or a
+    /// [`Kind::Conflict`] one when its scene was merged from an instance,
+    /// whose template is locked.
     pub fn save(&self) -> Result<()> {
         stage("save", || {
+            if let Some(instance) = &self.instance {
+                return Err(Diagnostic::new(
+                    Kind::Conflict,
+                    format!("the scene of the instance `{}` is its template, which is locked", instance.display()),
+                )
+                .expected("an edit of the instance: `nakkash edit <instance> '$id=value'`"));
+            }
             let path = self.path.as_deref().ok_or_else(|| {
                 Diagnostic::new(Kind::Missing, "the scene has no file to save to")
                     .expected("a session from `Session::open`")
@@ -929,6 +995,7 @@ impl FromStr for Session {
         }
         Ok(Self {
             path: None,
+            instance: None,
             doc,
             fonts: OnceLock::new(),
             graph: OnceLock::new(),

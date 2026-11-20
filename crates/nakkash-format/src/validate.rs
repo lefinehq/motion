@@ -184,6 +184,7 @@ pub(crate) fn scene(
     };
     scene.roles = crate::roles::read(doc.roles.as_ref(), &scene)?;
     scene.locks = crate::locks::read(doc.locks.as_ref(), &scene)?;
+    crate::slots::read_looks(doc.looks.as_ref(), declared)?;
     Ok(scene)
 }
 

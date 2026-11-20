@@ -12,6 +12,7 @@ pub mod fidelity;
 pub mod fonts;
 pub mod import;
 pub mod inspect;
+pub mod instance;
 #[cfg(feature = "ml")]
 pub mod ml;
 pub mod render;

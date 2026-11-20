@@ -1,0 +1,24 @@
+{
+  "schema": "nakkash.Instance.1",
+  "template": {
+    "path": "promo.json",
+    "hash": "sha256:dbcd2d92ba30c23228526629b2cd5572de43217919026aa782c1b601d0613868"
+  },
+  "slots": {
+    "headline": "Jeden Markt auf einmal erreichen",
+    "feature": "Ein Bildschirm, jede Sprache",
+    "cta": "Kostenlos starten",
+    "ending": "end-left"
+  },
+  "sections": {
+    "hook": {
+      "role": "hook"
+    },
+    "product": {
+      "role": "feature"
+    },
+    "end": {
+      "role": "cta"
+    }
+  }
+}

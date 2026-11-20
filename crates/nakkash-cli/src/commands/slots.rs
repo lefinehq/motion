@@ -764,7 +764,7 @@ fn together(session: &Session, edits: &[String], candidates: &[u32]) -> Option<S
 /// The value an edit gives `listed` to change it, written as an edit
 /// writes it: longer words, the colour's hue turned half round (a neutral
 /// made light or dark), a number moved (a share halved), a test picture, the
-/// clip given.
+/// clip given, a choice's next word.
 fn changed(listed: &Listed, picture: &Path, clip: Option<&Path>) -> Option<String> {
     let value = &listed.slot.value;
     let quoted = |text: &str| {
@@ -824,6 +824,13 @@ fn changed(listed: &Listed, picture: &Path, clip: Option<&Path>) -> Option<Strin
         }
         SlotType::Image => quoted(&picture.display().to_string()),
         SlotType::Video => quoted(&clip?.display().to_string()),
+        // The next of its words, the first after the last.
+        SlotType::Choice => {
+            let values = &listed.slot.contract.values;
+            let at = values.iter().position(|v| Some(v.as_str()) == value.as_str());
+            let next = values.get(at.map_or(0, |i| (i + 1) % values.len()))?;
+            quoted(next)
+        }
     })
 }
 

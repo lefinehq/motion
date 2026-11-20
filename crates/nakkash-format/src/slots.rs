@@ -13,6 +13,7 @@ use std::borrow::Cow;
 use std::fmt;
 
 use serde_json::Value as Json;
+use strum::VariantNames;
 
 use crate::oklch::Shift;
 use crate::parse::key::{BG, COMPS, DUR, ID, LAYERS, SLOTS, comp_path};
@@ -38,18 +39,30 @@ pub enum SlotType {
     ///
     /// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
     Video,
+    /// A word from a closed list, `values`, which any string of the scene
+    /// may follow, a `comp` key included, so a section can be chosen
+    /// ([D91]).
+    ///
+    /// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+    Choice,
 }
 
 impl SlotType {
     /// Every type, by the name a declaration writes.
-    pub const NAMES: [(&str, SlotType); 6] = [
+    pub const NAMES: [(&str, SlotType); 7] = [
         ("number", SlotType::Number),
         ("point", SlotType::Point),
         ("color", SlotType::Color),
         ("text", SlotType::Text),
         ("image", SlotType::Image),
         ("video", SlotType::Video),
+        ("choice", SlotType::Choice),
     ];
+
+    /// Whether it holds a file: a picture or a clip.
+    pub fn is_file(self) -> bool {
+        matches!(self, SlotType::Image | SlotType::Video)
+    }
 
     /// The type named `name`.
     pub fn named(name: &str) -> Option<SlotType> {
@@ -96,6 +109,232 @@ pub struct Slot {
     ///
     /// [D77]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d77-every-imported-template-names-what-a-designer-would-vary
     pub seen: bool,
+    /// What it was made from, which a later import of the same project
+    /// gives again, so an instance can find it under another id ([D91]).
+    ///
+    /// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+    pub uid: Option<String>,
+    /// What an instance may give it, and what `check` measures it against.
+    pub contract: Contract,
+}
+
+/// How a text that does not fit its `fit` is treated ([D91]).
+///
+/// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, strum::VariantNames)]
+#[strum(serialize_all = "lowercase")]
+pub enum Overflow {
+    /// Set smaller, down to `min-size`.
+    Shrink,
+    /// Broken into more lines, up to `max-lines`, then set smaller.
+    Wrap,
+    /// Refused: a text longer than the size it was laid out for is an error.
+    Reject,
+}
+
+/// What a file slot stands for ([D91]).
+///
+/// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, strum::VariantNames)]
+#[strum(serialize_all = "lowercase")]
+pub enum MediaKind {
+    /// A product's screen: an app, a page, a dashboard.
+    Screen,
+    /// A brand's mark.
+    Logo,
+    /// A picture.
+    Image,
+    /// A clip.
+    Video,
+    /// A grain, a leak, an overlay: drawn over or under the design.
+    Texture,
+}
+
+/// What a slot declares beyond its value: the bounds an instance's value
+/// is checked against, and what the brief says of it ([D91]). Every field
+/// is optional; each belongs to the types it names.
+///
+/// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Contract {
+    /// Other ids an instance may name it by, such as an id it had before.
+    pub aliases: Vec<String>,
+    /// A number's least value.
+    pub min: Option<f64>,
+    /// A number's greatest value.
+    pub max: Option<f64>,
+    /// A choice's words, in order; its value is one of them.
+    pub values: Vec<String>,
+    /// A text's treatment when it does not fit.
+    pub overflow: Option<Overflow>,
+    /// The smallest a text may be set, in px, when it shrinks.
+    pub min_size: Option<f64>,
+    /// The most lines a text may break into.
+    pub max_lines: Option<u32>,
+    /// The colour slot a colour is read against.
+    pub pair: Option<Id>,
+    /// The least contrast ratio between a colour and its pair, from 1 to 21.
+    pub contrast: Option<f64>,
+    /// What a file slot stands for.
+    pub kind: Option<MediaKind>,
+    /// What a file slot takes besides its own type: a picture slot that
+    /// accepts `video` plays a clip in the same box.
+    pub accepts: Vec<SlotType>,
+    /// The least size of a file, in px across and down.
+    pub min_px: Option<[f64; 2]>,
+    /// The proportions a file is shown at, `width:height`.
+    pub aspect: Option<String>,
+}
+
+/// The keys of a declaration that are not its type.
+const CONTRACT_KEYS: [&str; 17] = [
+    LABEL, ROLE, SEEN, UID, ALIASES, VALUES, MIN, MAX, OVERFLOW, MIN_SIZE, MAX_LINES, PAIR,
+    CONTRAST, KIND, ACCEPTS, MIN_PX, ASPECT,
+];
+const UID: &str = "uid";
+const ALIASES: &str = "aliases";
+const VALUES: &str = "values";
+const MIN: &str = "min";
+const MAX: &str = "max";
+const OVERFLOW: &str = "overflow";
+const MIN_SIZE: &str = "min-size";
+const MAX_LINES: &str = "max-lines";
+const PAIR: &str = "pair";
+const CONTRAST: &str = "contrast";
+const KIND: &str = "kind";
+const ACCEPTS: &str = "accepts";
+const MIN_PX: &str = "min-px";
+const ASPECT: &str = "aspect";
+
+impl Contract {
+    /// The contract of a declaration's `fields`, for a slot of type `ty`.
+    fn read(fields: &serde_json::Map<String, Json>, ty: SlotType) -> Result<Contract> {
+        let bad = |key: &str, form: &str| {
+            Diagnostic::new(Kind::Invalid, format!("`{}` for `{key}`", fields[key]))
+                .expected(form.to_owned())
+                .under(key.to_owned())
+        };
+        let only = |key: &str, types: &[SlotType]| -> Result<()> {
+            match fields.contains_key(key) && !types.contains(&ty) {
+                true => Err(Diagnostic::new(
+                    Kind::Invalid,
+                    format!("`{key}` on a {ty} slot"),
+                )
+                .expected(format!(
+                    "`{key}` on a {} slot",
+                    types.iter().map(|t| t.name()).collect::<Vec<_>>().join(" or ")
+                ))),
+                false => Ok(()),
+            }
+        };
+        let words = |key: &str| -> Result<Vec<String>> {
+            match fields.get(key) {
+                None => Ok(Vec::new()),
+                Some(Json::Array(items)) => items
+                    .iter()
+                    .map(|i| i.as_str().map(str::to_owned).ok_or_else(|| bad(key, "a list of words")))
+                    .collect(),
+                Some(_) => Err(bad(key, "a list of words")),
+            }
+        };
+        let number = |key: &str, least: f64| -> Result<Option<f64>> {
+            match fields.get(key) {
+                None => Ok(None),
+                Some(Json::Number(n)) => match n.as_f64() {
+                    Some(n) if n >= least && n.is_finite() => Ok(Some(n)),
+                    _ => Err(bad(key, &format!("a number of at least {least}"))),
+                },
+                Some(_) => Err(bad(key, "a number")),
+            }
+        };
+        let named = |key: &str, choices: &[&str]| -> Result<Option<String>> {
+            match fields.get(key) {
+                None => Ok(None),
+                Some(Json::String(word)) if choices.contains(&word.as_str()) => Ok(Some(word.clone())),
+                Some(_) => Err(bad(key, &format!("one of {}", choices.join(", ")))),
+            }
+        };
+        use SlotType::{Choice, Color, Image, Number, Text, Video};
+        only(MIN, &[Number])?;
+        only(MAX, &[Number])?;
+        only(VALUES, &[Choice])?;
+        only(OVERFLOW, &[Text])?;
+        only(MIN_SIZE, &[Text])?;
+        only(MAX_LINES, &[Text])?;
+        only(PAIR, &[Color])?;
+        only(CONTRAST, &[Color])?;
+        for key in [KIND, ACCEPTS, MIN_PX, ASPECT] {
+            only(key, &[Image, Video])?;
+        }
+        let min = number(MIN, f64::MIN)?;
+        let max = number(MAX, f64::MIN)?;
+        if let (Some(min), Some(max)) = (min, max)
+            && min > max
+        {
+            return Err(bad(MAX, &format!("a number of at least `min`, {min}")));
+        }
+        let values = words(VALUES)?;
+        if ty == Choice && values.is_empty() {
+            return Err(Diagnostic::new(Kind::Missing, "a choice with no `values`")
+                .expected(r#"{"choice":"centred","values":["centred","left"]}"#));
+        }
+        let max_lines = match number(MAX_LINES, 1.0)? {
+            Some(n) if n.fract() != 0.0 => return Err(bad(MAX_LINES, "a whole number of at least 1")),
+            n => n.map(|n| n as u32),
+        };
+        let pair = match fields.get(PAIR) {
+            None => None,
+            Some(Json::String(id)) => Some(id.parse::<Id>().map_err(|e| e.under(PAIR))?),
+            Some(_) => return Err(bad(PAIR, "the id of a colour slot")),
+        };
+        let contrast = number(CONTRAST, 1.0)?;
+        if contrast.is_some_and(|c| c > 21.0) {
+            return Err(bad(CONTRAST, "a contrast ratio from 1 to 21"));
+        }
+        let accepts = words(ACCEPTS)?
+            .iter()
+            .map(|name| match SlotType::named(name) {
+                Some(t) if t.is_file() => Ok(t),
+                _ => Err(bad(ACCEPTS, "a list of `image` and `video`")),
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let min_px = match fields.get(MIN_PX) {
+            None => None,
+            Some(Json::Array(xy))
+                if xy.len() == 2 && xy.iter().all(|n| n.as_f64().is_some_and(|n| n > 0.0)) =>
+            {
+                Some([xy[0].as_f64().unwrap_or(0.0), xy[1].as_f64().unwrap_or(0.0)])
+            }
+            Some(_) => return Err(bad(MIN_PX, "[width, height] in px, above zero")),
+        };
+        let aspect = match fields.get(ASPECT) {
+            None => None,
+            Some(Json::String(text)) if aspect_ratio(text).is_some() => Some(text.clone()),
+            Some(_) => return Err(bad(ASPECT, "`width:height`, such as `16:9`")),
+        };
+        Ok(Contract {
+            aliases: words(ALIASES)?,
+            min,
+            max,
+            values,
+            overflow: named(OVERFLOW, Overflow::VARIANTS)?.and_then(|w| w.parse().ok()),
+            min_size: number(MIN_SIZE, 0.0)?,
+            max_lines,
+            pair,
+            contrast,
+            kind: named(KIND, MediaKind::VARIANTS)?.and_then(|w| w.parse().ok()),
+            accepts,
+            min_px,
+            aspect,
+        })
+    }
+}
+
+/// The proportions `text` writes, `width:height`, as width over height.
+pub fn aspect_ratio(text: &str) -> Option<f64> {
+    let (w, h) = text.split_once(':')?;
+    let (w, h) = (w.trim().parse::<f64>().ok()?, h.trim().parse::<f64>().ok()?);
+    (w > 0.0 && h > 0.0 && w.is_finite() && h.is_finite()).then_some(w / h)
 }
 
 /// The slots of a scene: its own, and each composition's by id.
@@ -116,7 +355,7 @@ impl Declared {
 }
 
 /// The written form of a slot's declaration.
-const FORM: &str = r##"a colour, a number, [x, y], {"text":"…"}, {"image":"…"} or {"video":"…"}, optionally typed, labelled, given a role and marked unseen, e.g. {"color":"#E63946","label":"Accent","role":"accent"}"##;
+const FORM: &str = r##"a colour, a number, [x, y], {"text":"…"}, {"image":"…"}, {"video":"…"} or {"choice":"…","values":[…]}, optionally typed, labelled, given a role, bounds and a uid, and marked unseen, e.g. {"color":"#E63946","label":"Accent","role":"accent"}"##;
 
 /// The slots `raw`, a scene's JSON, declares on itself and on its
 /// compositions.
@@ -165,7 +404,7 @@ fn slots_of(owner: &Json) -> Result<Vec<Slot>> {
 /// One slot, `id` declared as `written`.
 fn slot(id: &str, written: &Json) -> Result<Slot> {
     let id: Id = id.parse()?;
-    let (ty, value, label, role, seen) = match written {
+    let (ty, value, label, role, seen, uid, contract) = match written {
         Json::Object(fields) => {
             let label = match fields.get(LABEL) {
                 None => None,
@@ -182,35 +421,88 @@ fn slot(id: &str, written: &Json) -> Result<Slot> {
                 Some(Json::Bool(seen)) => *seen,
                 Some(_) => return Err(invalid(written)),
             };
+            let uid = match fields.get(UID) {
+                None => None,
+                Some(Json::String(uid)) if !uid.is_empty() => Some(uid.clone()),
+                Some(_) => return Err(invalid(written)),
+            };
             let mut typed = fields
                 .iter()
-                .filter(|(name, _)| ![LABEL, ROLE, SEEN].contains(&name.as_str()));
+                .filter(|(name, _)| !CONTRACT_KEYS.contains(&name.as_str()));
             let (Some((name, value)), None) = (typed.next(), typed.next()) else {
                 return Err(invalid(written));
             };
             let ty = SlotType::named(name).ok_or_else(|| {
                 Diagnostic::unknown("slot type", name, SlotType::NAMES.map(|(n, _)| n))
             })?;
-            (ty, value.clone(), label, role, seen)
+            let contract = Contract::read(fields, ty)?;
+            (ty, value.clone(), label, role, seen, uid, contract)
         }
-        Json::Number(_) => (SlotType::Number, written.clone(), None, None, true),
+        Json::Number(_) => plain(SlotType::Number, written),
         // Two numbers are a point; three or four, a colour's channels.
-        Json::Array(items) if items.len() == 2 => {
-            (SlotType::Point, written.clone(), None, None, true)
-        }
-        Json::Array(_) => (SlotType::Color, written.clone(), None, None, true),
-        Json::String(_) => (SlotType::Color, written.clone(), None, None, true),
+        Json::Array(items) if items.len() == 2 => plain(SlotType::Point, written),
+        Json::Array(_) => plain(SlotType::Color, written),
+        Json::String(_) => plain(SlotType::Color, written),
         _ => return Err(invalid(written)),
     };
     check_fits(ty, &value).map_err(|d| d.expected(FORM))?;
-    Ok(Slot {
+    let slot = Slot {
         id,
         ty,
         value,
         label,
         role,
         seen,
-    })
+        uid,
+        contract,
+    };
+    slot.within_bounds(&slot.value)?;
+    Ok(slot)
+}
+
+/// A slot of type `ty` written as its bare value.
+type Read = (SlotType, Json, Option<String>, Option<Id>, bool, Option<String>, Contract);
+fn plain(ty: SlotType, written: &Json) -> Read {
+    (ty, written.clone(), None, None, true, None, Contract::default())
+}
+
+impl Slot {
+    /// `Ok` when `value` is a value of the slot's type, inside its bounds.
+    ///
+    /// # Errors
+    /// An invalid diagnostic for a value of another type, else as
+    /// [`Slot::within_bounds`].
+    pub fn fits(&self, value: &Json) -> Result<()> {
+        check_fits(self.ty, value).and_then(|()| self.within_bounds(value))
+    }
+
+    /// `Ok` when `value`, a value of the slot's type, keeps inside the
+    /// bounds the slot declares: a number between `min` and `max`, a choice
+    /// one of its `values`.
+    ///
+    /// # Errors
+    /// An out-of-range diagnostic naming the bound, or an unknown-name one
+    /// listing the choices.
+    pub fn within_bounds(&self, value: &Json) -> Result<()> {
+        let c = &self.contract;
+        if let Some(n) = value.as_f64() {
+            if let Some(min) = c.min.filter(|&min| n < min) {
+                return Err(Diagnostic::new(Kind::OutOfRange, format!("{n} is below {min}"))
+                    .expected(format!("a number from {min}")));
+            }
+            if let Some(max) = c.max.filter(|&max| n > max) {
+                return Err(Diagnostic::new(Kind::OutOfRange, format!("{n} is above {max}"))
+                    .expected(format!("a number up to {max}")));
+            }
+        }
+        if self.ty == SlotType::Choice
+            && let Some(word) = value.as_str()
+            && !c.values.iter().any(|v| v == word)
+        {
+            return Err(Diagnostic::unknown("choice", word, &c.values));
+        }
+        Ok(())
+    }
 }
 
 /// The key of a slot's label.
@@ -223,7 +515,8 @@ pub const SEEN: &str = "seen";
 /// `Ok` when `value` is a value of type `ty`.
 fn check_fits(ty: SlotType, value: &Json) -> Result<()> {
     let fits = match (ty, value) {
-        (SlotType::Number, Json::Number(_)) | (SlotType::Text, Json::String(_)) => true,
+        (SlotType::Number, Json::Number(_))
+        | (SlotType::Text | SlotType::Choice, Json::String(_)) => true,
         (SlotType::Point, Json::Array(xy)) => xy.len() == 2 && xy.iter().all(Json::is_number),
         (SlotType::Color, Json::String(_) | Json::Array(_)) => crate::text::color(value).is_ok(),
         (SlotType::Image | SlotType::Video, Json::String(path)) => !path.is_empty(),
@@ -237,6 +530,74 @@ fn check_fits(ty: SlotType, value: &Json) -> Result<()> {
             format!("`{value}` for a {ty} slot"),
         )),
     }
+}
+
+/// The slot `key` names among `declared`: `id` for one of the scene's, or
+/// `comp/id` for one a composition declares ([D91]).
+///
+/// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+pub(crate) fn named<'d>(declared: &'d Declared, key: &str) -> Option<(Option<&'d str>, &'d Slot)> {
+    match key.split_once('/') {
+        None => declared.scene.iter().find(|s| &*s.id == key).map(|s| (None, s)),
+        Some((comp, id)) => declared
+            .comps
+            .iter()
+            .find(|(c, _)| c == comp)
+            .and_then(|(c, slots)| slots.iter().find(|s| &*s.id == id).map(|s| (Some(c.as_str()), s))),
+    }
+}
+
+/// Checks a scene's `looks` ([D91]): named sets of slot values, each value
+/// naming a slot of the scene, `id`, or of a composition, `comp/id`, and
+/// fitting it.
+///
+/// # Errors
+/// An invalid diagnostic for looks that are not objects of objects, an
+/// unknown-name one for a look's name or slot that does not read, and the
+/// slot's own diagnostic for a value that does not fit it, each at
+/// `looks.<name>.<slot>`.
+///
+/// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+pub(crate) fn read_looks(written: Option<&Json>, declared: &Declared) -> Result<()> {
+    use crate::parse::key::LOOKS;
+    let Some(written) = written else {
+        return Ok(());
+    };
+    let form = r##"an object of looks by name, each an object of slot values, e.g. {"dark":{"background":"#0B0D12","text":"#FFFFFF"}}"##;
+    let place = |keys: Vec<Step>| Place::Scene(Address { layers: Vec::new(), keys });
+    let Some(looks) = written.as_object() else {
+        return Err(Diagnostic::new(Kind::Invalid, "looks that are not an object")
+            .expected(form)
+            .at(place(vec![Step::Key(LOOKS.into())])));
+    };
+    for (name, values) in looks {
+        let at = |more: &[&str]| {
+            let mut keys = vec![Step::Key(LOOKS.into()), Step::Key(name.clone())];
+            keys.extend(more.iter().map(|k| Step::Key((*k).to_owned())));
+            place(keys)
+        };
+        name.parse::<Id>().map_err(|d| d.at(at(&[])))?;
+        let Some(values) = values.as_object() else {
+            return Err(Diagnostic::new(Kind::Invalid, format!("the look `{name}` is not an object"))
+                .expected(form)
+                .at(at(&[])));
+        };
+        for (key, value) in values {
+            let Some((_, slot)) = named(declared, key) else {
+                let known = declared.scene.iter().map(|s| s.id.to_string()).chain(
+                    declared
+                        .comps
+                        .iter()
+                        .flat_map(|(c, slots)| slots.iter().map(move |s| format!("{c}/{}", s.id))),
+                );
+                return Err(Diagnostic::unknown("slot", key, known).at(at(&[key])));
+            };
+            check_fits(slot.ty, value)
+                .and_then(|()| slot.within_bounds(value))
+                .map_err(|d| d.expected(format!("a {}, like `{}`", slot.ty, slot.value)).at(at(&[key])))?;
+        }
+    }
+    Ok(())
 }
 
 /// The slots a composition `declared`, as one instance of it gives them:
@@ -266,10 +627,12 @@ pub(crate) fn given<'g>(
                 };
                 return Err(unknown.at(at));
             };
-            check_fits(slot.ty, value).map_err(|d| {
-                d.expected(format!("a {}, like `{}`", slot.ty, slot.value))
-                    .at(at)
-            })?;
+            check_fits(slot.ty, value)
+                .and_then(|()| slot.within_bounds(value))
+                .map_err(|d| {
+                    d.expected(format!("a {}, like `{}`", slot.ty, slot.value))
+                        .at(at)
+                })?;
             Ok(Slot {
                 value: value.clone(),
                 ..slot.clone()

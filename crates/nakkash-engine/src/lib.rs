@@ -24,6 +24,7 @@ mod geometry;
 pub mod gpu;
 mod held;
 mod import;
+pub mod instance;
 mod level;
 mod mix;
 mod pictures;
@@ -68,7 +69,8 @@ pub use nakkash_format::{
     Address, Content, Diagnostic, Document, Kind, Listed, Lock, Result, RoleTarget, Scene,
     write_document,
 };
-pub use nakkash_format::{SlotType, color, colors, oklch};
+pub use nakkash_edit::{EditValue, parse_edit};
+pub use nakkash_format::{SlotType, canon, color, colors, oklch};
 pub use nakkash_import::map::{Import, Mapping, Options as ImportOptions, StoredText};
 pub use nakkash_import::{Project, Report as ImportReport};
 pub use nakkash_query::{Code, Report, Severity};
