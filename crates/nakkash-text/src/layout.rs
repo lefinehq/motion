@@ -4,7 +4,9 @@
 //! first line's baseline starts, as project files store their layouts: the
 //! first baseline is at y = 0, and a centred line is centred on x = 0. For
 //! box text the coordinates are the box's own: its top-left corner is
-//! `(left, top)` and the first baseline sits one ascent below the top.
+//! `(left, top)` and the first baseline sits the height of its faces'
+//! lowercase `d` below the top, as the original sets it, so capitals and
+//! accents may rise above the box (`first.rs`).
 //! Every position is a glyph's origin on its baseline, ready for a renderer.
 
 use std::ops::Range;

@@ -542,7 +542,10 @@ fn measure_is_the_size_of_the_bounds() {
     );
     let layout = setter.layout(&text).unwrap();
     assert_eq!(setter.measure(&text).unwrap(), layout.size());
-    let height = layout.lines.last().unwrap().baseline + layout.lines[0].descent - 20.0;
+    // From the first line's ascent, which may rise above the box's top, to
+    // the last line's descent.
+    let (first, last) = (&layout.lines[0], layout.lines.last().unwrap());
+    let height = last.baseline + last.descent - (first.baseline - first.ascent);
     assert!(close(layout.size().height, height));
 }
 

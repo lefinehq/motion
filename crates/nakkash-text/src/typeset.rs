@@ -5,7 +5,8 @@
 //! Parley shapes (HarfRust), breaks lines, indents the first line and aligns
 //! box text. Baselines are placed here: each line sits one leading below the
 //! previous baseline, so the result does not depend on how a line box splits
-//! its leading. Every face is registered under a family name of its own, so a
+//! its leading, and box text's first line sits the height of its faces' `d`
+//! below the box's top (`first.rs`). Every face is registered under a family name of its own, so a
 //! run gets exactly the face it asks for; a run that Parley had to fall back
 //! from, or a glyph the font lacks, is an error. A face of a font collection
 //! is registered as a collection of that face alone, since registering a
