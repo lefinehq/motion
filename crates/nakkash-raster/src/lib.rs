@@ -45,6 +45,7 @@ mod projected;
 mod radial;
 mod reads;
 mod render;
+mod results;
 mod sound;
 mod style;
 mod total;
@@ -94,6 +95,7 @@ pub use radial::{
     Fade as RadialFade, RadialBlur, RadialKind, Rays, Ring, Rings, Stretch as RadialStretch,
 };
 pub use render::{Quality, RenderOptions, Simd, render, render_on, render_with};
+pub use results::effects_reused;
 pub use sound::{Heard, level};
 pub use style::{
     CAPS, Cap, Color, Dashes, DrawStyle, FILL_RULES, FillRule, Gradient, GradientShape, JOINS,

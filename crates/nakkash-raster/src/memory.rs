@@ -505,6 +505,13 @@ pub(crate) fn room_to_keep(bytes: u64) -> bool {
     LEDGER.kept.load(Relaxed) + bytes <= LEDGER.effective.load(Relaxed) / 2
 }
 
+/// The budget in force, in bytes: the one set, or less under memory
+/// pressure.
+pub(crate) fn effective() -> u64 {
+    probe();
+    LEDGER.effective.load(Relaxed)
+}
+
 /// Counts `bytes` of drawings as kept for later uses, or no longer.
 pub(crate) fn keep(bytes: u64, kept: bool) {
     match kept {

@@ -3346,7 +3346,7 @@ impl Effect {
 
 impl ParamValue {
     /// Writes the value into `h`, numbers by their bits.
-    fn ident(&self, h: &mut crate::identity::Hasher) {
+    pub(crate) fn ident(&self, h: &mut crate::identity::Hasher) {
         match *self {
             ParamValue::Number(n) => {
                 h.u8(0);
@@ -3657,6 +3657,17 @@ impl Effect {
                     Some(map) => crate::projected::warp(pixels, &[map], 1.0),
                     None => Pixels::transparent(width, height),
                 };
+            }
+            // A blur, glow or shadow made before from the same pixels,
+            // values and transform is copied ([D93]).
+            //
+            // [D93]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d93-glow-and-blurs-do-less-of-the-same-work
+            Apply::Pixels { pixels: change, .. }
+                if crate::results::KEPT.contains(&self.spec.name) =>
+            {
+                crate::results::run(self.spec.name, &self.values, space.transform, pixels, |p| {
+                    change(p, &self.values, space);
+                });
             }
             Apply::Pixels { pixels: change, .. } => change(pixels, &self.values, space),
         }

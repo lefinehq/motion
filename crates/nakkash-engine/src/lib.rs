@@ -58,8 +58,8 @@ pub use geometry::{
 pub use held::frames_copied;
 pub use import::{import, import_scene, is_template, measure_layouts, substitute_fonts};
 pub use nakkash_import::export::{Change as ExportChange, Plan as ExportPlan};
-pub use nakkash_raster::drawings_reused;
 pub use nakkash_raster::memory::{MemoryStats, stats as memory_stats};
+pub use nakkash_raster::{drawings_reused, effects_reused};
 pub use session::{BAKED_FOLDER, Session, limit_memory, limit_threads};
 
 pub use nakkash_edit::{EditValue, parse_edit};
