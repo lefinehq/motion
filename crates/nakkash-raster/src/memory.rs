@@ -25,7 +25,11 @@
 //! normal for [`CALM`]. A probe set by the caller ([`set_probe`]) is read
 //! at most every [`PROBE_EVERY`], as grids are made and frames start; it
 //! also says what the process holds resident, which is held to the budget
-//! as well, since grids are not all a render holds.
+//! as well, since grids are not all a render holds. What it holds beside
+//! the grids (its code, the scene, fonts, the rasteriser's own buffers,
+//! frames kept to be copied) is taken off the room the grids have, at the
+//! most it was seen to be: the pool and kept drawings fill what is left,
+//! not the whole budget.
 //!
 //! The counts are kept for the whole process; [`stats`] reads them.
 //!
@@ -99,6 +103,14 @@ pub struct MemoryStats {
     pub held_back: u64,
     /// Readings of the pressure probe above normal.
     pub pressed: u64,
+    /// What is held now: grids being worked and grids pooled, in bytes.
+    pub held: u64,
+    /// The most the process was seen to hold resident beside the grids,
+    /// in bytes: what the room for grids leaves out of the budget.
+    pub outside: u64,
+    /// The most frames drawn at once, as the caller notes them
+    /// ([`note_frames_at_once`]).
+    pub frames_at_once: u64,
 }
 
 /// The process's budget and its counts.
@@ -120,6 +132,9 @@ struct Ledger {
     trimmed: AtomicU64,
     held_back: AtomicU64,
     pressed: AtomicU64,
+    /// The most resident beside the grids held, at a reading.
+    outside: AtomicU64,
+    frames_at_once: AtomicU64,
     clobber: AtomicBool,
     /// When the probe was last read and when pressure was last seen, in
     /// milliseconds since the ledger was made.
@@ -142,6 +157,8 @@ static LEDGER: Ledger = Ledger {
     trimmed: AtomicU64::new(0),
     held_back: AtomicU64::new(0),
     pressed: AtomicU64::new(0),
+    outside: AtomicU64::new(0),
+    frames_at_once: AtomicU64::new(0),
     clobber: AtomicBool::new(false),
     probed: AtomicU64::new(0),
     last_pressed: AtomicU64::new(0),
@@ -188,12 +205,16 @@ fn pool() -> MutexGuard<'static, Option<HashMap<usize, Vec<Vec<Pixel>>>>> {
 pub fn set_budget(bytes: u64) {
     LEDGER.budget.store(bytes, Relaxed);
     LEDGER.effective.store(bytes, Relaxed);
-    trim_to(bytes);
+    trim_to(room());
 }
 
 /// Starts the peaks [`stats`] reports over from what is held now: for a
-/// measurement of one stretch of work.
+/// measurement of one stretch of work. What is resident beside the grids
+/// is learnt again from the next reading, and the most frames at once
+/// counted again.
 pub fn reset_peaks() {
+    LEDGER.outside.store(0, Relaxed);
+    LEDGER.frames_at_once.store(0, Relaxed);
     let live = LEDGER.live.load(Relaxed);
     LEDGER
         .peak
@@ -248,8 +269,34 @@ fn probe() {
         return;
     }
     let reading = probe();
-    RESIDENT.store(reading.resident.unwrap_or(0), Relaxed);
+    note_resident(reading.resident.unwrap_or(0));
     note_pressure(reading.pressure);
+}
+
+/// Takes in what the process holds resident, `bytes`, 0 when unknown, as
+/// the probe reads it: what it holds beyond the grids counted is the most
+/// seen so far, and the pool lets go of what no longer fits beside it.
+pub fn note_resident(bytes: u64) {
+    RESIDENT.store(bytes, Relaxed);
+    if bytes == 0 {
+        return;
+    }
+    // Grids are counted as held before their pages are resident and until
+    // after they are given back, so what is resident beyond them is never
+    // read as more than it is.
+    let outside = bytes.saturating_sub(held());
+    if LEDGER.outside.fetch_max(outside, Relaxed) < outside {
+        trim_to(room());
+    }
+}
+
+/// The room grids have: the budget in force, less the most the process
+/// was seen to hold resident beside them.
+fn room() -> u64 {
+    LEDGER
+        .effective
+        .load(Relaxed)
+        .saturating_sub(LEDGER.outside.load(Relaxed))
 }
 
 /// Whether what the process holds resident, at the last reading, is over
@@ -281,7 +328,7 @@ pub fn note_pressure(pressure: Pressure) {
                 _ => (held() / 4 * 3).min(budget),
             };
             LEDGER.effective.fetch_min(lowered, Relaxed);
-            trim_to(LEDGER.effective.load(Relaxed));
+            trim_to(room());
         }
     }
 }
@@ -303,12 +350,13 @@ fn note_peak() {
 /// empty.
 fn trim_to(bytes: u64) {
     let mut freed = Vec::new();
+    let mut freeing = 0;
     {
         let mut guard = pool();
         let Some(pool) = guard.as_mut() else {
             return;
         };
-        while held() > bytes {
+        while held().saturating_sub(freeing) > bytes {
             // The largest first: fewest grids let go for the room made.
             let Some(&len) = pool.keys().max() else {
                 break;
@@ -318,34 +366,37 @@ fn trim_to(bytes: u64) {
             if grids.is_empty() {
                 pool.remove(&len);
             }
-            LEDGER.pooled.fetch_sub(bytes_of(grid.len()), Relaxed);
+            freeing += bytes_of(grid.len());
             LEDGER.trimmed.fetch_add(1, Relaxed);
             freed.push(grid);
         }
     }
-    // Given back to the system outside the lock.
+    // Given back to the system outside the lock, and counted as gone once
+    // they are.
     drop(freed);
+    LEDGER.pooled.fetch_sub(freeing, Relaxed);
 }
 
 fn bytes_of(len: usize) -> u64 {
     len as u64 * PIXEL_BYTES
 }
 
-/// Whether what is held is over the budget in force. The pool lets its
+/// Whether what is held is over the room grids have in the budget in
+/// force, or what is resident over the budget itself. The pool lets its
 /// grids go first, so this is true only when grids being worked and kept
-/// drawings hold the budget; a caller then lets kept drawings go, or waits.
+/// drawings hold that room; a caller then lets kept drawings go, or waits.
 pub fn over() -> bool {
     probe();
     let effective = LEDGER.effective.load(Relaxed);
-    if held() <= effective && !resident_over(effective) {
+    if held() <= room() && !resident_over(effective) {
         return false;
     }
     match resident_over(effective) {
         // Over by memory the budget does not count: the pool goes first.
         true => trim_to(0),
-        false => trim_to(effective),
+        false => trim_to(room()),
     }
-    held() > effective || resident_over(effective)
+    held() > room() || resident_over(effective)
 }
 
 /// What the process held resident at the last reading, in bytes; `None`
@@ -359,6 +410,11 @@ pub fn resident() -> Option<u64> {
 pub fn note_held_back() {
     LEDGER.held_back.fetch_add(1, Relaxed);
     LEDGER.hits.fetch_add(1, Relaxed);
+}
+
+/// Notes that `frames` frames are being drawn at once.
+pub fn note_frames_at_once(frames: u64) {
+    LEDGER.frames_at_once.fetch_max(frames, Relaxed);
 }
 
 /// What the budget saw so far.
@@ -375,6 +431,9 @@ pub fn stats() -> MemoryStats {
         trimmed: LEDGER.trimmed.load(Relaxed),
         held_back: LEDGER.held_back.load(Relaxed),
         pressed: LEDGER.pressed.load(Relaxed),
+        held: held(),
+        outside: LEDGER.outside.load(Relaxed),
+        frames_at_once: LEDGER.frames_at_once.load(Relaxed),
     }
 }
 
@@ -410,6 +469,9 @@ pub(crate) fn grid(len: usize, start: Start) -> Vec<Pixel> {
     };
     let grid = match pooled {
         Some(mut grid) => {
+            // Counted as alive before it stops counting as pooled, so it
+            // is never held uncounted.
+            count_made(len);
             LEDGER.pooled.fetch_sub(bytes_of(len), Relaxed);
             LEDGER.reused.fetch_add(1, Relaxed);
             match start {
@@ -424,17 +486,18 @@ pub(crate) fn grid(len: usize, start: Start) -> Vec<Pixel> {
         None => {
             // A grid the pool has none of lets pooled grids of other sizes
             // go first, so the pool never sits beside new grids past the
-            // budget (degradation's first step).
+            // room grids have (degradation's first step).
             if len >= POOLED_LEAST {
-                let effective = LEDGER.effective.load(Relaxed);
-                if held() + bytes_of(len) > effective {
-                    trim_to(effective.saturating_sub(bytes_of(len)));
+                let room = room();
+                if held() + bytes_of(len) > room {
+                    trim_to(room.saturating_sub(bytes_of(len)));
                 }
             }
+            count_made(len);
             vec![[0.0; 4]; len]
         }
     };
-    made(len);
+    note_peak();
     grid
 }
 
@@ -459,30 +522,44 @@ pub fn frame_peak() -> u64 {
 
 /// Counts a grid of `len` pixels as alive, however it was made.
 pub(crate) fn made(len: usize) {
+    count_made(len);
+    note_peak();
+}
+
+/// [`made`] without noting the peak, for a caller that notes it once the
+/// grid is counted where it belongs.
+fn count_made(len: usize) {
     LEDGER.live.fetch_add(bytes_of(len), Relaxed);
     FRAME.with(|frame| {
         let (live, peak) = frame.get();
         let live = live + bytes_of(len);
         frame.set((live, peak.max(live)));
     });
-    note_peak();
 }
 
 /// Takes back a grid no longer alive: into the pool when it is large
-/// enough and what is held stays within the budget, else to the system.
+/// enough and what is held stays within the room grids have, else to the
+/// system.
 pub(crate) fn release(grid: Vec<Pixel>) {
     let len = grid.len();
-    LEDGER.live.fetch_sub(bytes_of(len), Relaxed);
     FRAME.with(|frame| {
         let (live, peak) = frame.get();
         frame.set((live.saturating_sub(bytes_of(len)), peak));
     });
+    // Counted as alive until it is pooled or given back, so it is never
+    // held uncounted.
+    let gone = || LEDGER.live.fetch_sub(bytes_of(len), Relaxed);
     if len < POOLED_LEAST || grid.capacity() != len {
+        drop(grid);
+        gone();
         return;
     }
     let effective = LEDGER.effective.load(Relaxed);
-    if held() + bytes_of(len) > effective || resident_over(effective) {
+    // `held` counts this grid as alive already.
+    if held() > room() || resident_over(effective) {
         LEDGER.hits.fetch_add(1, Relaxed);
+        drop(grid);
+        gone();
         return;
     }
     LEDGER.pooled.fetch_add(bytes_of(len), Relaxed);
@@ -491,18 +568,19 @@ pub(crate) fn release(grid: Vec<Pixel>) {
         .entry(len)
         .or_default()
         .push(grid);
+    gone();
     note_peak();
 }
 
 /// Whether `bytes` more of drawings kept for later uses fit their share of
-/// the budget in force: half of it. Kept drawings are what a frame would
+/// the room grids have: half of it. Kept drawings are what a frame would
 /// otherwise draw again, at the cost of more working grids than they hold,
 /// so they are bounded by their own share rather than let go whenever the
 /// working grids pass the budget; memory pressure lowers the budget, and
 /// so their share.
 pub(crate) fn room_to_keep(bytes: u64) -> bool {
     probe();
-    LEDGER.kept.load(Relaxed) + bytes <= LEDGER.effective.load(Relaxed) / 2
+    LEDGER.kept.load(Relaxed) + bytes <= room() / 2
 }
 
 /// Counts `bytes` of drawings as kept for later uses, or no longer.

@@ -191,3 +191,35 @@ fn grids_of_a_new_size_let_the_pool_go_rather_than_pass_the_budget() {
     assert!(stats.trimmed > trimmed, "{stats:?}");
     memory::set_budget(memory::DEFAULT_BUDGET);
 }
+
+#[test]
+fn what_is_resident_beside_the_grids_leaves_them_less_room() {
+    let _turn = turn();
+    let grid = u64::from(WIDTH * HEIGHT) * 16;
+    memory::set_budget(8 * grid);
+    let frame = heavy();
+    let roomy = draw(&frame, RenderOptions::default());
+    draw(&frame, RenderOptions::default());
+    // Nothing is being drawn: what is held is the pool.
+    let pooled = memory::stats().held;
+    assert!(pooled > grid, "the pool holds grids: {pooled}");
+    let trimmed = memory::stats().trimmed;
+    // The process holds seven grids' worth beside the grids: they have
+    // room for one.
+    memory::note_resident(pooled + 7 * grid);
+    let stats = memory::stats();
+    assert_eq!(stats.outside, 7 * grid, "{stats:?}");
+    assert!(stats.trimmed > trimmed, "{stats:?}");
+    assert!(stats.held <= grid, "{stats:?}");
+    // A smaller reading later does not give the room back: the most seen
+    // stands for what the process may hold again.
+    memory::note_resident(grid);
+    assert_eq!(memory::stats().outside, 7 * grid);
+    // Drawn again in that room: the same pixels, and the pool keeps
+    // within it once the frame's grids are let go.
+    assert!(draw(&frame, RenderOptions::default()) == roomy);
+    assert!(memory::stats().held <= grid, "{:?}", memory::stats());
+    memory::reset_peaks();
+    assert_eq!(memory::stats().outside, 0);
+    memory::set_budget(memory::DEFAULT_BUDGET);
+}

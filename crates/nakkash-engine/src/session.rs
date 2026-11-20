@@ -662,12 +662,25 @@ impl Session {
                     }
                     continue;
                 }
+                // The frame's place beside the others is taken only if no
+                // other thread took one since they were counted: else two
+                // threads that both saw `beside` frames would start beside
+                // each other, past what the budget let in.
+                if drawing
+                    .compare_exchange(beside, beside + 1, Ordering::AcqRel, Ordering::Acquire)
+                    .is_err()
+                {
+                    continue;
+                }
                 waited = false;
                 let frame = next.fetch_add(1, Ordering::Relaxed);
                 if frame >= frames.end {
+                    drawing.fetch_sub(1, Ordering::AcqRel);
+                    ended.1.notify_all();
                     break;
                 }
-                let first = drawing.fetch_add(1, Ordering::AcqRel) == 0;
+                nakkash_raster::memory::note_frames_at_once(beside as u64 + 1);
+                let first = beside == 0;
                 let started = starts.fetch_add(1, Ordering::AcqRel);
                 nakkash_raster::memory::frame_start();
                 let done = work(frame);

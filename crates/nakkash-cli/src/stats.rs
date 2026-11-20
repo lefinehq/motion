@@ -43,21 +43,23 @@ impl Start {
                 usage.system.as_secs_f64()
             ),
             format!(
-                "stats: memory: peak resident {:.1} MiB; budget {:.0} MiB, held at most {:.1} MiB, working grids at most {:.1} MiB ({:.1} MiB over the budget)",
+                "stats: memory: peak resident {:.1} MiB; budget {:.0} MiB, held at most {:.1} MiB, working grids at most {:.1} MiB ({:.1} MiB over the budget), beside the grids at most {:.1} MiB",
                 mib(usage.peak_resident),
                 mib(memory.budget),
                 mib(memory.peak),
                 mib(memory.peak_working),
                 mib(over),
+                mib(memory.outside),
             ),
             format!(
-                "stats: budget: reached {} times; drawings let go {}; grids reused {} of {}; pooled grids let go {}; frames held back {}; memory pressure {} times",
+                "stats: budget: reached {} times; drawings let go {}; grids reused {} of {}; pooled grids let go {}; frames held back {}; frames at once at most {}; memory pressure {} times",
                 memory.hits,
                 memory.evictions,
                 memory.reused,
                 memory.made,
                 memory.trimmed,
                 memory.held_back,
+                memory.frames_at_once,
                 memory.pressed,
             ),
             format!(
