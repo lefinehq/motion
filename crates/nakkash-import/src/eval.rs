@@ -81,10 +81,20 @@ impl Value {
     }
 }
 
-/// The value of keys sorted by time at `time`. Of several keys at one time,
-/// the last applies from then on.
+/// The value of keys in the layer's time order at `time`. A layer that runs
+/// backwards keeps its keys in that order, so their composition times fall
+/// along it: the keys are read along the layer's own time either way, each
+/// span as it plays there. Of several keys at one time, the last applies
+/// from then on, along the layer's time.
 fn keyed(keys: &[Keyframe], time: f64) -> Value {
-    let after = keys.partition_point(|k| k.time <= time);
+    let backwards = match (keys.first(), keys.last()) {
+        (Some(first), Some(last)) => last.time < first.time,
+        _ => false,
+    };
+    // How far along the layer's own time `t` lies: its composition time,
+    // or the reverse of it for a layer that runs backwards.
+    let along = |t: f64| if backwards { -t } else { t };
+    let after = keys.partition_point(|k| along(k.time) <= along(time));
     let Some(i) = after.checked_sub(1) else {
         return keys.first().map_or(Value::Number(0.0), |k| k.value.clone());
     };
@@ -94,8 +104,10 @@ fn keyed(keys: &[Keyframe], time: f64) -> Value {
     if key.out_interpolation == Interpolation::Hold {
         return key.value.clone();
     }
-    let seconds = next.time - key.time;
-    let p = (time - key.time) / seconds;
+    // The span's length and the progress through it, along the layer's
+    // time; the eases' speeds are per second whichever way it runs.
+    let seconds = (next.time - key.time).abs();
+    let p = (along(time) - along(key.time)) / seconds;
     let (Some(from), Some(to)) = (key.value.numbers(), next.value.numbers()) else {
         // Paths and text step at each key.
         return key.value.clone();

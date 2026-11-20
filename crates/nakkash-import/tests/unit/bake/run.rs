@@ -669,3 +669,94 @@ fn a_rectangle_that_could_not_be_measured_says_why() {
     );
     assert!(bakes.asks.is_empty() && bakes.unsettled.is_empty());
 }
+
+/// A linear key at composition time `time`.
+fn linear_key(time: f64, value: f64) -> crate::model::Keyframe {
+    crate::model::Keyframe {
+        time,
+        value: Value::Number(value),
+        in_interpolation: crate::model::Interpolation::Linear,
+        out_interpolation: crate::model::Interpolation::Linear,
+        in_ease: vec![],
+        out_ease: vec![],
+        spatial: None,
+        continuous: false,
+        auto_bezier: false,
+        roving: false,
+    }
+}
+
+/// EffectCraft's case 982 as the decoder gives it: stretch -100 %, start
+/// 5 s, in point 5 s after out point 0 s, Opacity keys at the layer's own
+/// 1 s (20 %) and 5 s (100 %), their composition times falling. An
+/// expression on it runs at the composition's frames from the out point to
+/// the in point and reads 80 % at 1 s and 40 % at 3 s.
+#[test]
+fn a_reversed_layer_bakes_its_frames_and_reads_its_keys_backwards() {
+    let at = |layer: f64| 5.0 - layer - 1.0 / 3000.0;
+    let keyed = Stream::Animated(vec![linear_key(at(1.0), 0.2), linear_key(at(5.0), 1.0)]);
+    let reversed = Layer {
+        in_point: 5.0,
+        out_point: 0.0,
+        start_time: 5.0,
+        stretch: -1.0,
+        ..layer(
+            1,
+            "Title",
+            vec![transform(vec![expressed("ADBE Opacity", keyed, "value")])],
+        )
+    };
+    let project = project(vec![(5, "Main", comp(vec![reversed], 6.0))]);
+    let bakes = bake(&project, Some(5));
+    let (times, channels) = numbers(bake_of(&bakes, &project, "Title", "ADBE Opacity"));
+    assert_eq!(times.len(), 50, "0 to 4.9 s at 10 frames a second");
+    assert!(times.windows(2).all(|w| w[0] < w[1]));
+    // Values come back in the project's units: opacity as a share.
+    for (time, want) in [(1.0, 0.8), (3.0, 0.4)] {
+        let i = times
+            .iter()
+            .position(|&t| (t - time).abs() < 1e-9)
+            .expect("a frame");
+        assert!(
+            (channels[0][i] - want).abs() < 1e-4,
+            "{time}: {}",
+            channels[0][i]
+        );
+    }
+}
+
+/// A precomp shown through a layer that runs backwards is baked over the
+/// span of it the layer shows, which it plays from its end to its start.
+#[test]
+fn a_precomp_shown_backwards_bakes_the_span_it_shows() {
+    let inner = Layer {
+        out_point: 3600.0,
+        ..layer(
+            1,
+            "Spinner",
+            vec![transform(vec![expressed(
+                "ADBE Rotate Z",
+                number(0.0),
+                "time * 10",
+            )])],
+        )
+    };
+    let shown = Layer {
+        source: Some(6),
+        in_point: 2.0,
+        out_point: 0.0,
+        start_time: 12.0,
+        stretch: -1.0,
+        ..layer(1, "Precomp", vec![])
+    };
+    let project = project(vec![
+        (5, "Main", comp(vec![shown], 2.0)),
+        (6, "Long", comp(vec![inner], 3600.0)),
+    ]);
+    let bakes = bake(&project, Some(5));
+    let (times, channels) = numbers(bake_of(&bakes, &project, "Spinner", "ADBE Rotate Z"));
+    // The scene's 0 to 2 s show the precomp's 12 s down to 10 s.
+    assert_eq!(times.len(), 20, "10 s to 11.9 s");
+    assert!((times[0] - 10.0).abs() < 1e-9, "{}", times[0]);
+    assert!((channels[0][0] - 100.0).abs() < 1e-6);
+}

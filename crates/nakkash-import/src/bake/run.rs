@@ -222,11 +222,6 @@ impl Baker {
     }
 
     fn samples(&mut self, target: &Target<'_>) -> Result<Samples, Stop> {
-        if target.layer.stretch < 0.0 {
-            return Err(Stop::Failed(
-                "its layer runs backwards, which the bake does not follow yet".into(),
-            ));
-        }
         let span = self
             .spans
             .get(&target.item)
@@ -387,14 +382,15 @@ impl Baker {
 }
 
 /// The times of the frames `target`'s layer shows within `span` of its
-/// comp, in the comp's seconds.
+/// comp, in the comp's seconds, increasing, whichever way the layer runs.
 fn frames(target: &Target<'_>, (from, to): (f64, f64)) -> Result<Vec<f64>, String> {
     let fps = target.comp.frame_rate;
     if fps.is_nan() || fps <= 0.0 {
         return Err("its comp has no frame rate".into());
     }
-    let start = target.layer.in_point.max(from).max(0.0);
-    let end = target.layer.out_point.min(to).min(target.comp.duration);
+    let (shows, ends) = target.layer.shown();
+    let start = shows.max(from).max(0.0);
+    let end = ends.min(to).min(target.comp.duration);
     // Frames from the first the layer shows to the last before it ends.
     #[expect(
         clippy::cast_possible_truncation,
@@ -454,7 +450,8 @@ fn spans(project: &Project, root: Option<u32>) -> HashMap<u32, (f64, f64)> {
             let Some(inner) = layer.source.and_then(|s| comps.get(&s).map(|c| (s, c))) else {
                 continue;
             };
-            let (shown_from, shown_to) = (layer.in_point.max(from), layer.out_point.min(to));
+            let (shows, ends) = layer.shown();
+            let (shown_from, shown_to) = (shows.max(from), ends.min(to));
             if shown_from >= shown_to {
                 continue;
             }

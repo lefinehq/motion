@@ -262,8 +262,44 @@ impl Clock {
 
     /// A time as the scene writes it, in the layer's own seconds.
     pub(super) fn time(self, seconds: f64) -> String {
-        format!("{}s", text(self.local(seconds)))
+        seconds_text(self.local(seconds))
     }
+
+    /// The layer's own time the scene draws at composition time `seconds`,
+    /// by its own clock: where a key must sit for the scene to draw it at
+    /// that time. On a layer that runs forwards it is [`Clock::local`]; on
+    /// one that runs backwards it is a 3000th of a second later than the
+    /// time a stored key at `seconds` keeps.
+    pub(super) fn drawn(self, seconds: f64) -> f64 {
+        (seconds - self.start) / self.stretch
+    }
+}
+
+/// A time in seconds as the scene writes it.
+fn seconds_text(seconds: f64) -> String {
+    format!("{}s", text(seconds))
+}
+
+/// Samples taken at composition `times` (increasing), one value of each of
+/// `channels` at each, on the layer's own clock: the times the scene draws
+/// them at ([`Clock::drawn`]), increasing, and each channel in that order.
+/// On a layer that runs backwards that order is the reverse of the
+/// composition's, so the keys fitted to them follow the layer's own time,
+/// as the scene's keys do.
+pub(super) fn on_layer_clock(
+    times: &[f64],
+    channels: &[Vec<f64>],
+    clock: Clock,
+) -> (Vec<f64>, Vec<Vec<f64>>) {
+    let mut layer: Vec<f64> = times.iter().map(|&t| clock.drawn(t)).collect();
+    let mut channels = channels.to_vec();
+    if clock.stretch < 0.0 {
+        layer.reverse();
+        for channel in &mut channels {
+            channel.reverse();
+        }
+    }
+    (layer, channels)
 }
 
 /// A stream as the scene writes it.
@@ -525,19 +561,26 @@ fn spatial_split(
 }
 
 /// The times of a composition's frames strictly between `from` and `to`, in
-/// seconds, at `frame_rate`.
-fn frames_between(from: f64, to: f64, frame_rate: f64) -> impl Iterator<Item = f64> {
+/// seconds, at `frame_rate`, in order from `from` to `to`: falling between
+/// the keys of a layer that runs backwards, whose composition times fall.
+fn frames_between(from: f64, to: f64, frame_rate: f64) -> Vec<f64> {
     let rate = frame_rate.max(1.0);
     // A frame closer to a key than this is the key's own.
     let near = 1e-6;
+    let (lo, hi) = (from.min(to), from.max(to));
     #[expect(clippy::cast_possible_truncation, reason = "frames of a composition")]
     let (first, last) = (
-        (from * rate).floor() as i64 + 1,
-        (to * rate).ceil() as i64 - 1,
+        (lo * rate).floor() as i64 + 1,
+        (hi * rate).ceil() as i64 - 1,
     );
-    (first..=last)
-        .map(move |n| n as f64 / rate)
-        .filter(move |&t| t > from + near && t < to - near)
+    let mut frames: Vec<f64> = (first..=last)
+        .map(|n| n as f64 / rate)
+        .filter(|&t| t > lo + near && t < hi - near)
+        .collect();
+    if to < from {
+        frames.reverse();
+    }
+    frames
 }
 
 /// The curve from `key` to `next` ([`crate::eval::curve`]), one per component
@@ -642,19 +685,18 @@ fn bend(key: &Keyframe, next: &Keyframe, convert: Convert) -> Option<Json> {
 /// scene's cubic in time the fitter's Hermite curve.
 const FITTED_REACH: f64 = 1.0 / 3.0;
 
-/// Channels fitted with shared key times as a scene track. `template` is a
-/// value of the property's kind, which each key's numbers fill; slopes are
-/// per composition second and become speeds per second of the layer's own
-/// time. Each scene component gets the curve of its channel: a point's
-/// first two, a colour's four, a number's one.
+/// Channels fitted with shared key times as a scene track. Their times and
+/// slopes are in the layer's own seconds ([`on_layer_clock`]). `template`
+/// is a value of the property's kind, which each key's numbers fill. Each
+/// scene component gets the curve of its channel: a point's first two, a
+/// colour's four, a number's one.
 pub(super) fn fitted(
     channels: &[nakkash_expr::fit::Fitted],
     template: &Value,
     convert: Convert,
-    clock: Clock,
 ) -> Option<Written> {
     let count = channels.first()?.keys.len();
-    let factor = |dim: usize| convert.factor(dim) * clock.stretch;
+    let factor = |dim: usize| convert.factor(dim);
     let scene_dims = match template {
         Value::Color(_) => 4,
         _ => convert.dims(),
@@ -668,7 +710,7 @@ pub(super) fn fitted(
         let mut object = serde_json::Map::new();
         object.insert(
             "t".into(),
-            Json::String(clock.time(channels[0].keys[k].time)),
+            Json::String(seconds_text(channels[0].keys[k].time)),
         );
         object.insert("v".into(), value);
         if k + 1 < count {
@@ -694,14 +736,14 @@ pub(super) fn fitted(
     })
 }
 
-/// Samples at `times`, one channel per number of `template`'s kind, as a
-/// track keyed at each of them, straight from one to the next.
+/// Samples at `times`, in the layer's own seconds ([`on_layer_clock`]), one
+/// channel per number of `template`'s kind, as a track keyed at each of
+/// them, straight from one to the next.
 pub(super) fn every_frame(
     times: &[f64],
     channels: &[Vec<f64>],
     template: &Value,
     convert: Convert,
-    clock: Clock,
 ) -> Option<Written> {
     let keys: Vec<Json> = times
         .iter()
@@ -712,7 +754,7 @@ pub(super) fn every_frame(
                 .map(|c| c.get(i).copied())
                 .collect::<Option<_>>()?;
             let mut object = serde_json::Map::new();
-            object.insert("t".into(), Json::String(clock.time(time)));
+            object.insert("t".into(), Json::String(seconds_text(time)));
             object.insert("v".into(), convert.value(&template.with_numbers(&numbers))?);
             if i + 1 < times.len() {
                 object.insert("curve".into(), Json::String(curve_text(Curve::Linear)));

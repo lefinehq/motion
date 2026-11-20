@@ -463,3 +463,50 @@ fn a_path_that_bends_in_depth_is_keyed_at_every_frame() {
     assert_eq!(point[1]["curve"], "linear");
     assert!(point[0].get("path").is_none());
 }
+
+/// Samples an expression gave at a reversed layer's frames become keys in
+/// the layer's own time, increasing, at the times the scene draws those
+/// frames, with slopes per second of that time.
+#[test]
+fn samples_of_a_reversed_layer_are_keyed_along_its_own_time() {
+    let reversed = Clock {
+        start: 5.0,
+        stretch: -1.0,
+    };
+    // A ramp of 10 a second of the composition, at its 1 s to 3 s.
+    let times = [1.0, 1.5, 2.0, 2.5, 3.0];
+    let ramp: Vec<f64> = times.iter().map(|t| 10.0 * t).collect();
+    let (layer, channels) = on_layer_clock(&times, &[ramp], reversed);
+    assert_eq!(layer, vec![2.0, 2.5, 3.0, 3.5, 4.0]);
+    assert_eq!(channels, vec![vec![30.0, 25.0, 20.0, 15.0, 10.0]]);
+    // The scene's clock: its frame at 3 s reads the layer's 2 s.
+    assert_eq!(reversed.drawn(3.0), 2.0);
+    let fits = vec![nakkash_expr::fit::fit(&layer, &channels[0], 0.01)];
+    let Some(Written::Track { keys, .. }) = fitted(&fits, &Value::Number(0.0), Convert::Number)
+    else {
+        panic!("a track");
+    };
+    assert_eq!(keys[0]["t"], json!("2s"));
+    assert_eq!(keys[1]["t"], json!("4s"));
+    assert_eq!(keys[0]["v"], json!(30));
+    // Falling 10 a second of the layer's own time, both ways.
+    let curve = keys[0]["curve"].as_str().expect("a curve");
+    let speeds: Vec<f64> = curve
+        .trim_start_matches("speed(")
+        .trim_end_matches(')')
+        .split(',')
+        .map(|n| n.parse().expect("a number"))
+        .collect();
+    assert!((speeds[0] + 10.0).abs() < 1e-6, "{curve}");
+    assert!((speeds[2] + 10.0).abs() < 1e-6, "{curve}");
+    // A layer that runs forwards keeps the composition's order.
+    let (layer, channels) = on_layer_clock(&times, &[vec![0.0; 5]], SAME);
+    assert_eq!(layer, times.to_vec());
+    assert_eq!(channels.len(), 1);
+}
+
+#[test]
+fn frames_between_keys_follow_the_keys_order() {
+    assert_eq!(frames_between(0.0, 0.35, 10.0), vec![0.1, 0.2, 0.3]);
+    assert_eq!(frames_between(0.35, 0.0, 10.0), vec![0.3, 0.2, 0.1]);
+}

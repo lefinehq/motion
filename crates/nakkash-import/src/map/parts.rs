@@ -12,7 +12,7 @@ use serde_json::{Map, Value as Json, json};
 use super::Walk;
 use super::expressions::{engine_name, key_count};
 use super::items::{Place, plural};
-use super::keys::{Convert, Written, fitted};
+use super::keys::{Convert, Written, fitted, on_layer_clock};
 use super::report::{ExpressionReport, Outcome};
 use crate::bake::{Sampled, Samples, address, dialect};
 use crate::model::{Group, Property, Stream, Value};
@@ -161,7 +161,8 @@ impl Walk<'_> {
 
 /// The samples of an amount without an expression: its own values across
 /// and down at every frame from its first key to its last, in percent, the
-/// same for each part.
+/// same for each part, at increasing composition times whichever way its
+/// layer runs.
 fn held(amount: &Property, frame_rate: f64) -> Series {
     let at = |t: f64, i: usize| {
         amount
@@ -173,7 +174,8 @@ fn held(amount: &Property, frame_rate: f64) -> Series {
     };
     let times = match &amount.value {
         Stream::Animated(keys) if keys.len() > 1 && frame_rate > 0.0 => {
-            let (from, to) = (keys[0].time, keys[keys.len() - 1].time);
+            let (first, last) = (keys[0].time, keys[keys.len() - 1].time);
+            let (from, to) = (first.min(last), first.max(last));
             let step = 1.0 / frame_rate;
             let mut times: Vec<f64> = std::iter::successors(Some(from), |t| Some(t + step))
                 .take_while(|&t| t < to)
@@ -187,9 +189,12 @@ fn held(amount: &Property, frame_rate: f64) -> Series {
     (times, axes)
 }
 
-/// One `part` item from its amounts across and down, in percent, and how
-/// many keys it holds: one number when both axes agree, else a point.
-fn part_item(times: &[f64], [x, y]: &[Vec<f64>; 2], place: &Place<'_>) -> Option<(Json, usize)> {
+/// One `part` item from its amounts across and down, in percent, sampled at
+/// composition `times`, and how many keys it holds: one number when both
+/// axes agree, else a point.
+fn part_item(times: &[f64], axes: &[Vec<f64>; 2], place: &Place<'_>) -> Option<(Json, usize)> {
+    let (times, axes) = on_layer_clock(times, axes, place.clock);
+    let (times, [x, y]) = (&times[..], [&axes[0], &axes[1]]);
     let together = x.iter().zip(y).all(|(a, b)| (a - b).abs() <= TOLERANCE);
     let (fits, template, convert) = match together {
         true => (
@@ -216,7 +221,7 @@ fn part_item(times: &[f64], [x, y]: &[Vec<f64>; 2], place: &Place<'_>) -> Option
                 .value(&template.with_numbers(&numbers))
                 .map(Written::Value)?
         }
-        false => fitted(&fits, &template, convert, place.clock)?,
+        false => fitted(&fits, &template, convert)?,
     };
     let name = PART.rows[0].name;
     let mut keys = Map::new();

@@ -62,6 +62,77 @@ fn a_hold_keeps_its_value_until_the_next_key() {
     assert_eq!(number(&stream, 1.0), 5.0);
 }
 
+/// The composition time of a key at `layer` seconds of a layer starting at
+/// `start` with `stretch`, as the decoder maps it.
+fn comp_time(layer: f64, start: f64, stretch: f64) -> f64 {
+    start + layer * stretch + stretch.min(0.0) / 3000.0
+}
+
+/// A layer at stretch -100 % starting at 5 s, with Opacity keys at its own
+/// 1 s (20 %) and 5 s (100 %): the original reads 80 % at 1 s of the
+/// composition and 40 % at 3 s (EffectCraft's case 982, its
+/// `a_reversed_layer_plays_backwards`). Its keys stay in the layer's time
+/// order, so their composition times fall.
+#[test]
+fn a_reversed_layer_reads_its_keys_backwards() {
+    let at = |layer: f64| comp_time(layer, 5.0, -1.0);
+    let stream = Stream::Animated(vec![
+        key(at(1.0), Value::Number(20.0), 0.0, None),
+        key(at(5.0), Value::Number(100.0), 0.0, None),
+    ]);
+    for (comp, want) in [(1.0, 80.0), (3.0, 40.0)] {
+        let got = number(&stream, comp);
+        assert!((got - want).abs() < 0.01, "at {comp} s: {got}");
+    }
+    // Before its first key in its own time, which is later in the
+    // composition's, and after its last.
+    assert_eq!(number(&stream, 4.5), 20.0);
+    assert_eq!(number(&stream, -1.0), 100.0);
+}
+
+#[test]
+fn a_reversed_hold_keeps_its_value_until_the_next_key_in_layer_time() {
+    let at = |layer: f64| comp_time(layer, 5.0, -1.0);
+    let mut first = key(at(1.0), Value::Number(1.0), 0.0, None);
+    first.out_interpolation = Interpolation::Hold;
+    let stream = Stream::Animated(vec![first, key(at(4.0), Value::Number(5.0), 0.0, None)]);
+    assert_eq!(number(&stream, 3.9), 1.0);
+    assert_eq!(number(&stream, 1.1), 1.0);
+    assert_eq!(number(&stream, at(4.0)), 5.0);
+    assert_eq!(number(&stream, 0.5), 5.0);
+}
+
+/// Eased keys on a layer that runs backwards play the curve a layer that
+/// runs forwards plays, mirrored in the composition's time.
+#[test]
+fn reversed_eases_mirror_the_forward_curve() {
+    let keys = |stretch: f64| {
+        let at = |layer: f64| comp_time(layer, if stretch < 0.0 { 4.0 } else { 0.0 }, stretch);
+        let mut a = key(at(0.5), Value::Vector2([0.0, 10.0]), 25.0, Some(0.6));
+        a.out_ease.push(Ease {
+            speed: -4.0,
+            influence: 0.2,
+        });
+        let b = key(at(1.5), Value::Vector2([10.0, 0.0]), 3.0, Some(0.4));
+        let mut c = key(at(3.0), Value::Vector2([4.0, 6.0]), 0.0, Some(0.9));
+        c.in_interpolation = Interpolation::Linear;
+        Stream::Animated(vec![a, b, c])
+    };
+    let (forward, backward) = (keys(1.0), keys(-1.0));
+    for i in 0..=40 {
+        let layer = f64::from(i) / 10.0;
+        let (Value::Vector2(f), Value::Vector2(b)) = (
+            forward.value_at(layer),
+            backward.value_at(comp_time(layer, 4.0, -1.0)),
+        ) else {
+            panic!("vectors");
+        };
+        for d in 0..2 {
+            assert!((f[d] - b[d]).abs() < 1e-9, "at {layer}: {f:?} {b:?}");
+        }
+    }
+}
+
 /// Speeds with a third's influence are the slopes of a cubic Hermite in
 /// time, the curve the fitter writes.
 #[test]
