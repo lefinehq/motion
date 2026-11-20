@@ -45,6 +45,11 @@ pub struct Family {
     pub class: String,
     /// The weights it has, upright.
     pub weights: Vec<u16>,
+    /// How thick each weight's strokes are, in ems, in the order of
+    /// `weights` ([`Metrics::stroke`](nakkash_text::Metrics::stroke)):
+    /// what a text keeps when it changes family.
+    #[serde(default)]
+    pub strokes: Vec<f64>,
     /// The folder or file it comes from when the scene does not load it.
     pub source: Option<PathBuf>,
 }
@@ -54,7 +59,8 @@ pub struct Family {
 pub struct TypeStep {
     /// The headline's new family and weight.
     pub headline: Option<(String, u16)>,
-    /// The other texts' new family; each keeps the nearest weight.
+    /// The other texts' new family; each keeps the weight whose strokes
+    /// are nearest its own in thickness.
     pub body: Option<String>,
     /// The new copy: `long`, or the text itself.
     pub copy: Option<String>,
@@ -112,11 +118,13 @@ pub(crate) fn candidates(master: &Session, spec: &TypeSpec, base: &Path) -> Resu
                 name: face.family.clone(),
                 class: face.metrics().class.to_string(),
                 weights: Vec::new(),
+                strokes: Vec::new(),
                 source: from.get(&face.family).cloned(),
             });
         let weight = (face.weight / 100.0).round() as u16 * 100;
         if (100..=900).contains(&weight) && !entry.weights.contains(&weight) {
             entry.weights.push(weight);
+            entry.strokes.push(face.metrics().stroke);
         }
     }
     let wanted: BTreeSet<&str> = spec.families.iter().map(String::as_str).collect();
@@ -125,7 +133,9 @@ pub(crate) fn candidates(master: &Session, spec: &TypeSpec, base: &Path) -> Resu
         .filter(|f| !f.weights.is_empty())
         .filter(|f| wanted.is_empty() || wanted.contains(f.name.as_str()))
         .map(|mut f| {
-            f.weights.sort_unstable();
+            let mut pairs: Vec<(u16, f64)> = f.weights.iter().copied().zip(f.strokes).collect();
+            pairs.sort_unstable_by_key(|p| p.0);
+            (f.weights, f.strokes) = pairs.into_iter().unzip();
             f
         })
         .collect())
@@ -192,6 +202,7 @@ pub(crate) fn draw(
     let lead = texts.iter().find(|t| t.2);
     let lead_family = lead.map(|t| family_of(&t.1, set));
     let lead_weight = lead.map_or(400, |t| t.1.weight);
+    let lead_stroke = lead.and_then(|t| stroke_of(&t.1, set));
     let class_of = |name: &str| {
         families
             .iter()
@@ -222,7 +233,10 @@ pub(crate) fn draw(
             false => choices,
         };
         if let Some(family) = rng.pick(&choices) {
-            headline = Some((family.name.clone(), nearest(&family.weights, lead_weight)));
+            headline = Some((
+                family.name.clone(),
+                as_thick(family, lead_weight, lead_stroke),
+            ));
             // The rest pairs with the new headline: a sans under a serif or a
             // display face, a serif under a sans, from the master's own
             // families first.
@@ -283,8 +297,61 @@ fn relative_to(master: &Session, path: &Path) -> PathBuf {
     pathdiff::diff_paths(&absolute, &folder).unwrap_or(absolute)
 }
 
+/// How thick the strokes of the face `font` asks for are in `set`, in ems:
+/// the face it names, else its family's upright face nearest its weight.
+fn stroke_of(font: &Font, set: &FontSet) -> Option<f64> {
+    let face = set.named(&font.family).or_else(|| {
+        set.faces()
+            .iter()
+            .filter(|f| {
+                f.family.eq_ignore_ascii_case(&font.family)
+                    && f.slant == nakkash_text::Slant::Normal
+            })
+            .min_by(|a, b| {
+                let off = |f: &&nakkash_text::Face| (f.weight - f32::from(font.weight)).abs();
+                off(a).total_cmp(&off(b))
+            })
+    })?;
+    Some(face.metrics().stroke).filter(|s| *s > 0.0)
+}
+
+/// How thick the strokes of the master's heaviest text are, in ems, of
+/// those whose faces the master loads.
+pub(crate) fn thickest(master: &Session) -> Result<Option<f64>> {
+    let set = master.fonts()?;
+    Ok(texts(master)
+        .iter()
+        .filter_map(|t| stroke_of(&t.1, set))
+        .max_by(f64::total_cmp))
+}
+
+/// The weight of `family` a text set at `weight`, with strokes `stroke`
+/// thick, keeps: the one whose strokes are nearest in thickness, the
+/// heavier on a tie; by number when either thickness is unknown. A
+/// condensed poster face at 400 takes a text face's 800, not its 400.
+pub(crate) fn as_thick(family: &Family, weight: u16, stroke: Option<f64>) -> u16 {
+    match stroke {
+        Some(stroke)
+            if family.strokes.len() == family.weights.len() && !family.strokes.is_empty() =>
+        {
+            family
+                .weights
+                .iter()
+                .zip(&family.strokes)
+                .min_by(|a, b| {
+                    (a.1 - stroke)
+                        .abs()
+                        .total_cmp(&(b.1 - stroke).abs())
+                        .then(b.0.cmp(a.0))
+                })
+                .map_or(weight, |p| *p.0)
+        }
+        _ => nearest(&family.weights, weight),
+    }
+}
+
 /// The weight of `weights` nearest `want`, the heavier on a tie.
-fn nearest(weights: &[u16], want: u16) -> u16 {
+pub(crate) fn nearest(weights: &[u16], want: u16) -> u16 {
     weights
         .iter()
         .copied()
@@ -342,9 +409,21 @@ fn boxes(session: &Session) -> Result<BTreeMap<Place, (f64, f64)>> {
 /// The scene `session` makes with `step` applied, fitted, and a line on
 /// what it did.
 pub(crate) fn apply(session: &Session, held: &Held, step: &TypeStep) -> Result<(Json, String)> {
+    apply_within(session, session, held, step)
+}
+
+/// As [`apply`], with the boxes of `room`'s texts as the room each is
+/// fitted into: a look that spaces or recases the texts of `session` has
+/// already widened them, and must fit them into the master's boxes.
+pub(crate) fn apply_within(
+    session: &Session,
+    room: &Session,
+    held: &Held,
+    step: &TypeStep,
+) -> Result<(Json, String)> {
     let set = session.fonts()?;
     let texts = texts(session);
-    let before = boxes(session)?;
+    let before = boxes(room)?;
     let mut raw = session.document().raw().clone();
     if !step.fonts.is_empty() {
         let fonts = raw
@@ -359,13 +438,7 @@ pub(crate) fn apply(session: &Session, held: &Held, step: &TypeStep) -> Result<(
             }
         }
     }
-    let weights = |name: &str| -> Vec<u16> {
-        step.families
-            .iter()
-            .find(|f| f.name == name)
-            .map(|f| f.weights.clone())
-            .unwrap_or_default()
-    };
+    let family_named = |name: &str| step.families.iter().find(|f| f.name == name);
     // The new font of each text, before fitting.
     let mut fonts: BTreeMap<Place, (Font, bool)> = BTreeMap::new();
     // Texts with a `fit` (D77) are fitted by the renderer, not here.
@@ -384,7 +457,9 @@ pub(crate) fn apply(session: &Session, held: &Held, step: &TypeStep) -> Result<(
                 new.weight = *weight;
             }
             (false, _, Some(family)) => {
-                let w = nearest(&weights(family), font.weight);
+                let w = family_named(family).map_or(font.weight, |f| {
+                    as_thick(f, font.weight, stroke_of(font, set))
+                });
                 new.family.clone_from(family);
                 new.weight = w;
             }

@@ -253,6 +253,7 @@ pub(crate) fn time_map(session: &Session, step: &TimingStep) -> Result<(TimeMap,
     if let Some(last) = keys.last_mut() {
         last.1 = (n as f64 - 1.0).max(0.0) / fps;
     }
+    whole_frames(&mut keys, target, fps);
     let held = active.iter().filter(|a| !**a).count();
     let note = format!(
         "{step}: {n} frames to {target}, {} active, {held} held, {} keys{}",
@@ -270,6 +271,33 @@ pub(crate) fn time_map(session: &Session, step: &TimingStep) -> Result<(TimeMap,
         },
         note,
     ))
+}
+
+/// Moves `keys` onto whole frames of the variant, each at least a frame
+/// past the one before and the last at `target`: a stretch at the master's
+/// own rate (`fps` master frames a second) keeps its length from a whole
+/// frame, so it shows the master's very frames, not moments between two,
+/// which no check of the master has seen (a fade caught a third of the way
+/// in reads fainter than either frame it lies between). The other
+/// stretches, holds mostly, take up the rounding.
+fn whole_frames(keys: &mut [(f64, f64)], target: f64, fps: f64) {
+    let last = keys.len().saturating_sub(1);
+    let mut was = keys.first().copied().unwrap_or_default();
+    if let Some(first) = keys.first_mut() {
+        first.0 = first.0.round();
+    }
+    for i in 1..keys.len() {
+        let (t, m) = keys[i];
+        let own_rate = ((t - was.0) - (m - was.1) * fps).abs() < 1e-6;
+        let before = keys[i - 1].0;
+        let room = target - (last - i) as f64;
+        keys[i].0 = match (i == last, own_rate) {
+            (true, _) => target,
+            (false, true) => (before + (t - was.0).round()).min(room),
+            (false, false) => t.round().max(before + 1.0).min(room),
+        };
+        was = (t, m);
+    }
 }
 
 /// The length each of frames `a..b` of the master takes in the variant,

@@ -287,7 +287,11 @@ pub fn frame_identity(
         blending,
         nodes,
     } = frame;
-    let crate::render::RenderOptions { quality, simd } = options;
+    let crate::render::RenderOptions {
+        quality,
+        simd,
+        dither,
+    } = options;
     let nodes = Identities::default().list(nodes);
     let mut h = Hasher::new("frame");
     h.option(background.as_ref(), |h, c| h.color(*c));
@@ -303,6 +307,8 @@ pub fn frame_identity(
         crate::render::Simd::Native => 0,
         crate::render::Simd::Portable => 1,
     });
+    // A dithered frame differs from a plain one in its bytes.
+    h.u8(u8::from(dither));
     h.id().0
 }
 

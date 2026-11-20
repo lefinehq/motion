@@ -472,7 +472,17 @@ fn every_quality_and_instruction_set_draws_the_same_picture(
         ..Frame::default()
     };
     let golden = render_with(&frame, 8, 8, RenderOptions::GOLDEN).unwrap();
-    let image = render_with(&frame, 8, 8, RenderOptions { quality, simd }).unwrap();
+    let image = render_with(
+        &frame,
+        8,
+        8,
+        RenderOptions {
+            quality,
+            simd,
+            dither: false,
+        },
+    )
+    .unwrap();
     // Integer and float pipelines may round a step apart, never more.
     let worst = image
         .pixels()
@@ -565,6 +575,7 @@ fn distinct_colours(frame: &Frame, width: u32, quality: Quality) -> usize {
     let options = RenderOptions {
         quality,
         simd: Simd::Portable,
+        dither: false,
     };
     let image = render_with(frame, width, 4, options).unwrap();
     let row: std::collections::BTreeSet<[u8; 4]> =

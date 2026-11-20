@@ -158,7 +158,8 @@ enum Command {
         /// An axis, repeatable: `palette[=rotate|analogous|complementary|invert]`,
         /// `brand=#0F62FE`, `type[=contrast|same]`, `copy=long`, `fonts=<dir>`,
         /// `format=9:16`, `timing=15s`, `bpm=120`, `music=<file>`,
-        /// `pace=snappy|calm`, `rows=<file>`.
+        /// `pace=snappy|calm`, `rows=<file>`, `look[=chrome|acid|amber|paper|duotone|crimson]`,
+        /// `look-fonts=<dir>`.
         #[arg(long = "axis", value_name = "AXIS")]
         axes: Vec<String>,
         /// Apply the check's repairs after the axes, keeping each only when
@@ -171,6 +172,14 @@ enum Command {
         /// Check every variant, and render none.
         #[arg(long)]
         dry_run: bool,
+        /// Measure how far each variant lands from the scene as it looks:
+        /// the OKLab distance of their palettes and of their pixels.
+        #[arg(long)]
+        distance: bool,
+        /// Write each variant's scene and recipe without checking it, to
+        /// draw stills of first; nothing is gated.
+        #[arg(long)]
+        no_check: bool,
         /// Print the report as JSON.
         #[arg(long)]
         json: bool,
@@ -335,6 +344,11 @@ enum Command {
         /// for previews.
         #[arg(long, value_enum, default_value = "precise")]
         quality: QualityArg,
+        /// Round the float canvas to 8 bits through an ordered dither, so a
+        /// dim gradient shows no steps; off by default, as it moves every
+        /// such frame by up to a level.
+        #[arg(long)]
+        dither: bool,
         /// The codec of a video file; the first this build has of H.264 and
         /// AV1 when not given.
         #[arg(long, value_parser = PossibleValuesParser::new(<Codec as VariantNames>::VARIANTS))]
@@ -605,6 +619,8 @@ fn main() -> ExitCode {
             improve,
             apart,
             dry_run,
+            distance,
+            no_check,
             json,
             out,
         } => commands::vary::run(
@@ -617,6 +633,8 @@ fn main() -> ExitCode {
                 improve,
                 apart,
                 dry_run,
+                distance,
+                no_check,
                 json,
                 out,
             },
@@ -638,6 +656,7 @@ fn main() -> ExitCode {
             frame,
             out,
             quality,
+            dither,
             codec,
             video_quality,
             gpu,
@@ -649,6 +668,7 @@ fn main() -> ExitCode {
                     frames.or(frame.map(commands::render::Frames::one)),
                     out.as_deref().filter(|_| !digest),
                     quality.into(),
+                    dither,
                     encoding,
                     commands::render::Backend::from_flag(gpu),
                 )

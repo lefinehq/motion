@@ -1,6 +1,6 @@
 //! Bounds rules: `offscreen` for the canvas, `unsafe` for the title-safe area inside it.
 
-use super::{Overshoot, Rule, draws, overshoot, visible};
+use super::{EPSILON, Overshoot, Rule, draws, overshoot, visible};
 use crate::report::{Code, Severity};
 use kurbo::Rect;
 use nakkash_scene::{ContentState, SceneGraph, Visit};
@@ -46,7 +46,21 @@ fn offscreen(visit: &Visit<'_>, graph: &SceneGraph) -> Option<Overshoot> {
     if !(visible(visit) && draws(visit)) || shows_a_comp(visit) {
         return None;
     }
-    overshoot(visit, canvas(graph))
+    overshoot(visit, canvas(graph)).or_else(|| wider_text(visit, canvas(graph)))
+}
+
+/// A text wider or taller than `area`: a shape that size may be a backdrop
+/// cropped on purpose, but words that size are cut, by what they reach past
+/// it on its farther side.
+fn wider_text(visit: &Visit<'_>, area: Rect) -> Option<Overshoot> {
+    if !matches!(visit.node.content, ContentState::Text { .. }) {
+        return None;
+    }
+    let b = visit.drawn()?;
+    let x = (area.x0 - b.x0).max(b.x1 - area.x1);
+    let y = (area.y0 - b.y0).max(b.y1 - area.y1);
+    let amount = x.max(y);
+    (amount > EPSILON).then_some(Overshoot { amount })
 }
 
 fn outside_safe_area(visit: &Visit<'_>, graph: &SceneGraph) -> Option<Overshoot> {

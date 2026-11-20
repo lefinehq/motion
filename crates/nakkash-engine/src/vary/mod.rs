@@ -13,6 +13,7 @@ mod colour;
 mod content;
 mod format;
 mod improve;
+mod look;
 mod palette;
 mod places;
 mod rng;
@@ -32,6 +33,7 @@ use serde_json::Value as Json;
 
 use crate::session::Session;
 
+pub use look::{LOOKS, LookStep, Treatment};
 pub use palette::{SCHEMES, Scheme};
 pub use sheet::{Sheet, sheet};
 pub use timing::Pace;
@@ -60,6 +62,8 @@ pub struct Spec {
     pub timing: Option<TimingSpec>,
     /// The format axis.
     pub format: Option<FormatSpec>,
+    /// The look axis.
+    pub look: Option<LookSpec>,
     /// Whether the check's repairs run after the axes.
     pub improve: bool,
     /// Each variant takes one axis alone, the axes in turn, instead of one
@@ -127,6 +131,16 @@ pub struct FormatSpec {
     pub sizes: Vec<String>,
 }
 
+/// The look axis of a spec.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct LookSpec {
+    /// The looks to take in turn ([`LOOKS`]); every one when empty.
+    pub looks: Vec<String>,
+    /// Folders of fonts the looks may set the text in, besides the scene's.
+    pub fonts: Vec<PathBuf>,
+}
+
 /// One variant as planned: its id and the step of each axis it takes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Recipe {
@@ -166,6 +180,8 @@ pub enum Step {
         /// The new canvas's height, in px.
         height: u32,
     },
+    /// The master graded and its effects and text moved into a look.
+    Look(Box<look::LookStep>),
     /// The check's repairs.
     Improve,
 }
@@ -178,6 +194,7 @@ impl fmt::Display for Step {
             Step::Palette { scheme } => write!(f, "palette {scheme}"),
             Step::Timing(step) => write!(f, "{step}"),
             Step::Format { width, height } => write!(f, "format {width}x{height}"),
+            Step::Look(step) => write!(f, "{step}"),
             Step::Improve => write!(f, "improve"),
         }
     }
@@ -211,6 +228,21 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
         Some(t) => typeface::candidates(master, t, base)?,
         None => Vec::new(),
     };
+    let look_stroke = match &spec.look {
+        Some(_) => typeface::thickest(master)?,
+        None => None,
+    };
+    let look_faces = match &spec.look {
+        Some(l) => typeface::candidates(
+            master,
+            &TypeSpec {
+                fonts: l.fonts.clone(),
+                ..TypeSpec::default()
+            },
+            base,
+        )?,
+        None => Vec::new(),
+    };
     let mut recipes = Vec::with_capacity(count);
     let axes = [
         !rows.is_empty(),
@@ -218,6 +250,7 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
         spec.palette.is_some(),
         spec.timing.is_some(),
         spec.format.is_some(),
+        spec.look.is_some(),
     ];
     let named: Vec<usize> = (0..axes.len()).filter(|&i| axes[i]).collect();
     for index in 0..count {
@@ -263,6 +296,47 @@ pub fn plan(master: &Session, spec: &Spec, base: &Path) -> Result<Vec<Recipe>> {
             let mut rng = Rng::new(spec.seed, index, "format");
             let (width, height) = format::draw(master, &f.sizes, &mut rng)?;
             steps.push(Step::Format { width, height });
+        }
+        if let Some(l) = spec.look.as_ref().filter(|_| takes(5)) {
+            let mut rng = Rng::new(spec.seed, index, "look");
+            // Apart, the look of a variant is its turn among the looks.
+            let turn = match spec.apart {
+                true => recipes
+                    .iter()
+                    .filter(|r: &&Recipe| r.steps.iter().any(|s| matches!(s, Step::Look(_))))
+                    .count(),
+                false => index,
+            };
+            let step = look::draw(
+                &l.looks,
+                turn,
+                &look::Faces {
+                    families: &look_faces,
+                    fonts: &l.fonts,
+                    stroke: look_stroke,
+                },
+                held.typefaces,
+                &mut rng,
+            );
+            // A look's pace goes through the timing axis: onto the
+            // variant's own retime when it has one, else one of its own.
+            if let Some(pace) = step.pace {
+                match steps.iter_mut().find_map(|s| match s {
+                    Step::Timing(t) => Some(t),
+                    _ => None,
+                }) {
+                    Some(t) => {
+                        t.pace.get_or_insert(pace);
+                    }
+                    None => steps.push(Step::Timing(TimingStep {
+                        seconds: None,
+                        beats: None,
+                        pace: Some(pace),
+                        music: None,
+                    })),
+                }
+            }
+            steps.push(Step::Look(Box::new(step)));
         }
         if spec.improve {
             steps.push(Step::Improve);
@@ -319,6 +393,9 @@ pub fn make(master: &Session, recipe: &Recipe, base: &Path) -> Result<Made> {
             Step::Content { values, .. } => {
                 notes.push(content::apply(&mut raw, master, &held, values, base)?);
             }
+            Step::Look(step) => {
+                notes.push(look::apply(&mut raw, &held, step));
+            }
             Step::Palette { scheme } => {
                 let slots = master.slots();
                 let palette = palette::gather(&raw, &held, &slots);
@@ -342,7 +419,26 @@ pub fn make(master: &Session, recipe: &Recipe, base: &Path) -> Result<Made> {
             notes.push(note);
             session = master.with_raw(fitted)?;
         }
+        // A look's texts are fitted the same way, into the master's boxes:
+        // its case and tracking have already widened them, its own face or
+        // not.
+        if let Step::Look(l) = step {
+            let keep = TypeStep {
+                headline: None,
+                body: None,
+                copy: None,
+                fonts: Vec::new(),
+                families: Vec::new(),
+            };
+            let face = l.face.as_ref().unwrap_or(&keep);
+            let (fitted, note) = typeface::apply_within(&session, master, &held, face)?;
+            if l.face.is_some() {
+                notes.push(note);
+            }
+            session = master.with_raw(fitted)?;
+        }
     }
+    let grade: Vec<Json> = Vec::new();
     // Then time and size, which wrap the master instead of rewriting it.
     let timing = recipe.steps.iter().find_map(|s| match s {
         Step::Timing(t) => Some(t),
@@ -353,7 +449,7 @@ pub fn make(master: &Session, recipe: &Recipe, base: &Path) -> Result<Made> {
         _ => None,
     });
     let mut wrapped = None;
-    if timing.is_some() || size.is_some() {
+    if timing.is_some() || size.is_some() || !grade.is_empty() {
         let map = match timing {
             Some(t) => {
                 let (map, note) = timing::time_map(&session, t)?;
@@ -373,7 +469,7 @@ pub fn make(master: &Session, recipe: &Recipe, base: &Path) -> Result<Made> {
         let music = timing.and_then(|t| t.music.clone());
         let size = &master.scene().root.size;
         let canvas = (f64::from(size.width), f64::from(size.height));
-        let w = wrap::Wrap::new(canvas, map, groups, music);
+        let w = wrap::Wrap::new(canvas, map, groups, music, grade);
         session = master.with_raw(w.apply(session.document().raw()))?;
         wrapped = Some(w);
     }
@@ -441,6 +537,9 @@ pub fn gate(master: &Report, variant: Report, made: &Made) -> Gated {
         },
         known: 0,
     };
+    // Read once: a template drawn as many copies reports close to a
+    // million findings, and asking the whole report about each took hours.
+    let known = master.known();
     for v in variant.violations {
         let back = made.read_back(&v.address).map(|(address, scale)| {
             let mut read = v.clone();
@@ -454,7 +553,7 @@ pub fn gate(master: &Report, variant: Report, made: &Made) -> Gated {
             read
         });
         match back {
-            Some(read) if master.knows(&read) => gated.known += 1,
+            Some(read) if known.knows(&read) => gated.known += 1,
             _ => gated.new.violations.push(v),
         }
     }
@@ -491,6 +590,387 @@ fn unscaled(measure: Measure, scale: f64) -> Measure {
             unit,
         },
         other => other,
+    }
+}
+
+/// How far a variant lands from its master as it looks, in OKLab: the
+/// distance between their palettes, and the mean distance pixel by pixel.
+/// Measured on frames drawn small at the same share of each film's length,
+/// so "very different" is a number ([D78]).
+///
+/// [D78]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d78-generated-variants-move-along-measured-axes-and-pass-when-they-add-no-error
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
+pub struct Distance {
+    /// Each film's colours, binned in OKLab by how much of the frames
+    /// they cover: the mean distance from a colour of one to the nearest of
+    /// the other, both ways, weighted by cover. 0 is the same palette; 0.1
+    /// reads as another, 0.3 as far apart as black from mid grey.
+    pub palette: f64,
+    /// The mean OKLab distance between the two films' pixels at the same
+    /// place and moment; `None` when their canvases differ in shape.
+    pub frames: Option<f64>,
+    /// How far the two films' shapes are apart, whatever their colours:
+    /// one less the correlation of their edge maps (the gradient of OKLab
+    /// lightness) at the same place and moment. 0 is the same drawing
+    /// recoloured, or inverted; 1 shares no edge. `None` as for `frames`.
+    pub structure: Option<f64>,
+    /// For a look, how much of what it does to colour a filter cannot
+    /// explain ([`filter`]); `None` for other variants, or when not
+    /// measured.
+    pub filter: Option<f64>,
+    /// For a look, the share of its texts' boxes it shows clipped, and the
+    /// master's ([`clipped`]); `None` for other variants.
+    pub clipped: Option<[f64; 2]>,
+}
+
+/// The least [`filter`] a look must reach: below it, what the look does to
+/// colour is what one colour transform of the master would do, a filter,
+/// not a design. Measured on the two Speed Digital shots, the old looks'
+/// frame-wide gradient maps left 1.07 to 1.28 times what the bins leave of
+/// the master; the designed looks 2.8 to 10.
+pub const FILTER_FLOOR: f64 = 2.0;
+
+impl Recipe {
+    /// Whether one of its steps is a look.
+    pub fn has_look(&self) -> bool {
+        self.steps.iter().any(|s| matches!(s, Step::Look(_)))
+    }
+}
+
+/// Why a look measured `residual` by [`filter`] is a filter; `None` when
+/// it explains more than a filter could.
+pub fn filter_failure(residual: f64) -> Option<String> {
+    (residual < FILTER_FLOOR).then(|| {
+        format!(
+            "E filter a colour transform of the master explains the look: {residual:.2}x the master's own < {FILTER_FLOOR}x"
+        )
+    })
+}
+
+/// Frames of `session` for [`distance`]: `n` of them, evenly over its
+/// length, each drawn `height` px tall.
+///
+/// # Errors
+/// When a frame cannot be evaluated or drawn.
+pub fn samples(session: &Session, n: usize, height: f64) -> Result<Vec<crate::Image>> {
+    let (_, h) = session.canvas()?;
+    let shrink = (height / f64::from(h)).min(1.0);
+    sample_frames(session, n)?
+        .into_iter()
+        .map(|at| crate::gates::small(session, f64::from(at), shrink))
+        .collect()
+}
+
+/// The `n` frames [`samples`] draws, evenly over the film.
+fn sample_frames(session: &Session, n: usize) -> Result<Vec<u32>> {
+    let frames: Vec<u32> = session.frames()?.collect();
+    Ok((0..n.max(1))
+        .map(|i| {
+            let pick = ((i as f64 + 0.5) / n.max(1) as f64 * frames.len() as f64) as usize;
+            frames[pick.min(frames.len().saturating_sub(1))]
+        })
+        .collect())
+}
+
+/// The share of the px inside the boxes of `session`'s visible texts that
+/// `images`, its [`samples`], show clipped: every channel at
+/// [`CLIPPED_LEVEL`] or up, a highlight with no shape left in it. A text
+/// set in white shows its glyphs so; a look that blooms a title to a flat
+/// white slab shows its whole box so.
+///
+/// # Errors
+/// As evaluating the frames.
+pub fn clipped(session: &Session, images: &[crate::Image]) -> Result<f64> {
+    let graph = session.graph()?;
+    let frames = sample_frames(session, images.len())?;
+    let (_, h) = session.canvas()?;
+    let (mut lit, mut all) = (0usize, 0usize);
+    for (frame, image) in frames.iter().zip(images) {
+        let k = f64::from(image.height()) / f64::from(h);
+        let state = session.frame(f64::from(*frame))?;
+        let (w, ih) = (image.width() as usize, image.height() as usize);
+        let mut inside = vec![false; w * ih];
+        for visit in nakkash_scene::walk(graph, &state) {
+            if !visit.visible
+                || visit.opacity <= 0.1
+                || !matches!(visit.node.content, nakkash_scene::ContentState::Text { .. })
+            {
+                continue;
+            }
+            let Some(b) = visit.drawn() else { continue };
+            let x0 = (b.x0 * k).floor().max(0.0) as usize;
+            let y0 = (b.y0 * k).floor().max(0.0) as usize;
+            let x1 = ((b.x1 * k).ceil().max(0.0) as usize).min(w);
+            let y1 = ((b.y1 * k).ceil().max(0.0) as usize).min(ih);
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    inside[y * w + x] = true;
+                }
+            }
+        }
+        for (px, _) in image
+            .pixels()
+            .chunks_exact(4)
+            .zip(&inside)
+            .filter(|(_, i)| **i)
+        {
+            all += 1;
+            lit += usize::from(px[..3].iter().all(|c| *c >= CLIPPED_LEVEL));
+        }
+    }
+    Ok(match all {
+        0 => 0.0,
+        n => ((lit as f64 / n as f64) * 1e4).round() / 1e4,
+    })
+}
+
+/// The 8-bit level from which a channel counts as clipped for [`clipped`].
+pub const CLIPPED_LEVEL: u8 = 250;
+
+/// How much more of its texts' boxes a variant may show clipped than its
+/// master, as a share: a designed specular hit, not a bloom.
+pub const CLIPPED_MORE: f64 = 0.05;
+
+/// Why a variant whose texts' boxes show `variant` clipped, against the
+/// master's `master` ([`clipped`]), blows its highlights out; `None` when
+/// it keeps them.
+pub fn clipped_failure(master: f64, variant: f64) -> Option<String> {
+    (variant > master + CLIPPED_MORE).then(|| {
+        format!(
+            "E clipped the texts' boxes show {:.0} % clipped white, the master {:.0} % (+{:.0} % at most)",
+            variant * 100.0,
+            master * 100.0,
+            CLIPPED_MORE * 100.0
+        )
+    })
+}
+
+/// How far `variant`'s [`samples`] are from `master`'s.
+pub fn distance(master: &[crate::Image], variant: &[crate::Image]) -> Distance {
+    let lab = |px: &[u8]| {
+        let a = f64::from(px[3]) / 255.0;
+        let c = |v: u8| f64::from(v) / 255.0 * a;
+        let lch = colour::to_lch([c(px[0]), c(px[1]), c(px[2]), 1.0]);
+        let h = lch.h.to_radians();
+        [lch.l, lch.c * h.cos(), lch.c * h.sin()]
+    };
+    let gap = |p: [f64; 3], q: [f64; 3]| {
+        ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt()
+    };
+    // A palette: OKLab in bins, each its mean colour and its share.
+    let palette = |images: &[crate::Image]| {
+        let mut bins: BTreeMap<(i32, i32, i32), ([f64; 3], f64)> = BTreeMap::new();
+        let mut total: f64 = 0.0;
+        for image in images {
+            for px in image.pixels().chunks_exact(4) {
+                let p = lab(px);
+                let key = (
+                    (p[0] * 10.0).floor() as i32,
+                    (p[1] * 15.0).floor() as i32,
+                    (p[2] * 15.0).floor() as i32,
+                );
+                let bin = bins.entry(key).or_insert(([0.0; 3], 0.0));
+                for (sum, v) in bin.0.iter_mut().zip(p) {
+                    *sum += v;
+                }
+                bin.1 += 1.0;
+                total += 1.0;
+            }
+        }
+        bins.into_values()
+            .filter(|(_, n)| *n / total.max(1.0) >= 0.005)
+            .map(|(sum, n)| ([sum[0] / n, sum[1] / n, sum[2] / n], n))
+            .collect::<Vec<_>>()
+    };
+    let (pa, pb) = (palette(master), palette(variant));
+    let towards = |from: &[([f64; 3], f64)], to: &[([f64; 3], f64)]| {
+        let weight: f64 = from.iter().map(|(_, n)| n).sum();
+        from.iter()
+            .map(|(c, n)| {
+                n * to
+                    .iter()
+                    .map(|(d, _)| gap(*c, *d))
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .sum::<f64>()
+            / weight.max(1.0)
+    };
+    let palette = match pa.is_empty() || pb.is_empty() {
+        true => 0.0,
+        false => (towards(&pa, &pb) + towards(&pb, &pa)) / 2.0,
+    };
+    let same = master.len() == variant.len()
+        && master
+            .iter()
+            .zip(variant)
+            .all(|(a, b)| a.width() == b.width() && a.height() == b.height());
+    let frames = same.then(|| {
+        let (mut sum, mut n) = (0.0, 0.0);
+        for (a, b) in master.iter().zip(variant) {
+            for (p, q) in a.pixels().chunks_exact(4).zip(b.pixels().chunks_exact(4)) {
+                sum += gap(lab(p), lab(q));
+                n += 1.0;
+            }
+        }
+        sum / f64::max(n, 1.0)
+    });
+    let structure = same.then(|| {
+        let edges = |image: &crate::Image| {
+            let (w, h) = (image.width() as usize, image.height() as usize);
+            let l: Vec<f64> = image
+                .pixels()
+                .chunks_exact(4)
+                .map(|px| lab(px)[0])
+                .collect();
+            edges(&l, w, h)
+        };
+        let (a, b): (Vec<f64>, Vec<f64>) = master
+            .iter()
+            .zip(variant)
+            .flat_map(|(m, v)| edges(m).into_iter().zip(edges(v)))
+            .unzip();
+        (1.0 - correlation(&a, &b)).clamp(0.0, 1.0)
+    });
+    let round = |v: f64| (v * 1e4).round() / 1e4;
+    Distance {
+        palette: round(palette),
+        frames: frames.map(round),
+        structure: structure.map(round),
+        filter: None,
+        clipped: None,
+    }
+}
+
+/// How much of `twin`, [`colour_twin`]'s drawing of a look, no colour
+/// transform of `master`'s samples explains, against how much the binning
+/// leaves of the master itself: the unexplained colour of the twin over
+/// the master's own (at least [`FILTER_GRAIN`]). Near 1 is a filter: any
+/// frame-wide map, curve or LUT, whatever it does, gives each master
+/// colour one colour, and leaves of it what the bins leave.
+pub fn filter(master: &[crate::Image], twin: &[crate::Image]) -> f64 {
+    let own = unexplained(master, master).max(FILTER_GRAIN);
+    (unexplained(master, twin) / own * 100.0).round() / 100.0
+}
+
+/// The least the binning is taken to leave of a master, so a master of a
+/// few flat colours does not make every look's [`filter`] huge.
+pub const FILTER_GRAIN: f64 = 0.005;
+
+/// The mean OKLab distance from each px of `twin` to the mean colour of all
+/// its px whose `master` colour falls in the same bin (16 levels a
+/// channel): what is left after the best table from master colour to twin
+/// colour, fitted over all the samples.
+fn unexplained(master: &[crate::Image], twin: &[crate::Image]) -> f64 {
+    let lab = |px: &[u8]| {
+        let a = f64::from(px[3]) / 255.0;
+        let c = |v: u8| f64::from(v) / 255.0 * a;
+        let lch = colour::to_lch([c(px[0]), c(px[1]), c(px[2]), 1.0]);
+        let h = lch.h.to_radians();
+        [lch.l, lch.c * h.cos(), lch.c * h.sin()]
+    };
+    let gap = |p: [f64; 3], q: [f64; 3]| {
+        ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt()
+    };
+    let variant = twin;
+    // A master px's bin: its colour over black, 16 levels a channel.
+    let bin = |p: &[u8]| {
+        let a = u32::from(p[3]);
+        let c = |v: u8| ((u32::from(v) * a / 255) >> 4) as usize;
+        (c(p[0]) << 8) | (c(p[1]) << 4) | c(p[2])
+    };
+    let pairs: Vec<(usize, [f64; 3])> = master
+        .iter()
+        .zip(variant)
+        .flat_map(|(m, v)| {
+            m.pixels()
+                .chunks_exact(4)
+                .zip(v.pixels().chunks_exact(4))
+                .map(|(p, q)| (bin(p), lab(q)))
+        })
+        .collect();
+    let mut table = vec![([0.0f64; 3], 0.0f64); 4096];
+    for (b, v) in &pairs {
+        let cell = &mut table[*b];
+        for (s, x) in cell.0.iter_mut().zip(v) {
+            *s += x;
+        }
+        cell.1 += 1.0;
+    }
+    let sum: f64 = pairs
+        .iter()
+        .map(|(b, v)| {
+            let (s, n) = table[*b];
+            gap(*v, s.map(|x| x / n))
+        })
+        .sum();
+    sum / f64::max(pairs.len() as f64, 1.0)
+}
+
+/// A look's variant drawn with its colour and effect decisions only: the
+/// look of `recipe` without its moves (cells, speed, noise, rings, type,
+/// pace, ease, grain) and without the recipe's other steps, so its pixels
+/// sit where the master's do and [`filter`] can compare them one to one.
+/// `None` when the recipe has no look.
+///
+/// # Errors
+/// As [`make`].
+pub fn colour_twin(master: &Session, recipe: &Recipe, base: &Path) -> Result<Option<Made>> {
+    let Some(look) = recipe.steps.iter().find_map(|s| match s {
+        Step::Look(l) => Some(l),
+        _ => None,
+    }) else {
+        return Ok(None);
+    };
+    let twin = Recipe {
+        id: recipe.id.clone(),
+        seed: recipe.seed,
+        steps: vec![Step::Look(Box::new(look::colour_only(look)))],
+    };
+    make(master, &twin, base).map(Some)
+}
+
+/// The gradient magnitude of `l`, a `w` by `h` plane, by Sobel's kernels;
+/// the outermost px read their nearest neighbour inside.
+fn edges(l: &[f64], w: usize, h: usize) -> Vec<f64> {
+    let at = |x: isize, y: isize| {
+        let x = x.clamp(0, w as isize - 1) as usize;
+        let y = y.clamp(0, h as isize - 1) as usize;
+        l[y * w + x]
+    };
+    let mut out = Vec::with_capacity(w * h);
+    for y in 0..h as isize {
+        for x in 0..w as isize {
+            let gx = at(x + 1, y - 1) + 2.0 * at(x + 1, y) + at(x + 1, y + 1)
+                - at(x - 1, y - 1)
+                - 2.0 * at(x - 1, y)
+                - at(x - 1, y + 1);
+            let gy = at(x - 1, y + 1) + 2.0 * at(x, y + 1) + at(x + 1, y + 1)
+                - at(x - 1, y - 1)
+                - 2.0 * at(x, y - 1)
+                - at(x + 1, y - 1);
+            out.push(gx.hypot(gy));
+        }
+    }
+    out
+}
+
+/// Pearson's correlation of `a` and `b`; 1 when either is flat, as two
+/// blank films share all the edges they have.
+fn correlation(a: &[f64], b: &[f64]) -> f64 {
+    let n = a.len().min(b.len()) as f64;
+    if n == 0.0 {
+        return 1.0;
+    }
+    let (ma, mb) = (a.iter().sum::<f64>() / n, b.iter().sum::<f64>() / n);
+    let (mut ab, mut aa, mut bb) = (0.0, 0.0, 0.0);
+    for (x, y) in a.iter().zip(b) {
+        ab += (x - ma) * (y - mb);
+        aa += (x - ma).powi(2);
+        bb += (y - mb).powi(2);
+    }
+    match aa > 0.0 && bb > 0.0 {
+        true => ab / (aa * bb).sqrt(),
+        false => 1.0,
     }
 }
 

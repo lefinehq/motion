@@ -126,6 +126,48 @@ impl Pixels {
         })
     }
 
+    /// As [`Pixels::to_rgba8`], each channel offset before it is rounded
+    /// by an ordered dither: a 4 by 4 Bayer matrix, from half a level down
+    /// to half a level up, so a gradient too shallow for 8 bits breaks into
+    /// a fine pattern, not steps. The same pixels always give the same
+    /// bytes.
+    pub(crate) fn to_rgba8_dithered(&self) -> Vec<u8> {
+        const BAYER: [[f32; 4]; 4] = [
+            [0.0, 8.0, 2.0, 10.0],
+            [12.0, 4.0, 14.0, 6.0],
+            [3.0, 11.0, 1.0, 9.0],
+            [15.0, 7.0, 13.0, 5.0],
+        ];
+        let width = usize::from(self.width);
+        let mut bytes = vec![0; self.data.len() * 4];
+        let task = par::task();
+        par::rows(
+            &mut bytes,
+            4 * task,
+            || (),
+            |run, out, ()| {
+                let first = run * task;
+                for (i, px) in out.chunks_exact_mut(4).enumerate() {
+                    let at = first + i;
+                    let offset = (BAYER[(at / width) % 4][(at % width) % 4] + 0.5) / 16.0 - 0.5;
+                    let byte = |c: f32| {
+                        (c.clamp(0.0, 1.0) * 255.0 + offset)
+                            .round()
+                            .clamp(0.0, 255.0) as u8
+                    };
+                    let [r, g, b, a] = self.data[at];
+                    let a = a.clamp(0.0, 1.0);
+                    let alpha = (a * 255.0).round() as u8;
+                    px.copy_from_slice(&match alpha {
+                        0 => [0; 4],
+                        alpha => [byte(r / a), byte(g / a), byte(b / a), alpha],
+                    });
+                }
+            },
+        );
+        bytes
+    }
+
     /// The four bytes `byte` gives for each pixel, row by row.
     fn bytes(&self, byte: impl Fn(Pixel) -> [u8; 4] + Sync) -> Vec<u8> {
         let mut bytes = vec![0; self.data.len() * 4];

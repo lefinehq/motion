@@ -103,6 +103,11 @@ struct Seen {
     boxes: Vec<(usize, Rect)>,
     /// The share of the canvas it covered, summed over those frames.
     coverage: f64,
+    /// The union of its boxes at every frame, clipped: where it travels,
+    /// with the frames between samples a quick move may peak at.
+    reach: Option<Rect>,
+    /// Its box at every frame, unclipped, each once while it holds.
+    every: Vec<Rect>,
     /// Whether nothing may hide it: an adjusting or filter layer, a camera.
     kept: bool,
 }
@@ -129,7 +134,10 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
     let frames = session.frames()?;
     let step = (frames.len() / 90).max(1);
     let mut seen: BTreeMap<usize, Seen> = BTreeMap::new();
-    for (n, frame) in frames.clone().step_by(step).enumerate() {
+    // Every frame is walked for where each layer reaches; the samples
+    // alone are read for where it rests, what it covers and when it shows.
+    for (i, frame) in frames.clone().enumerate() {
+        let (n, sampled) = (i / step, i % step == 0);
         let state = session.frame(f64::from(frame))?;
         for visit in walk(graph, &state) {
             let entry = seen.entry(visit.index).or_insert_with(|| {
@@ -158,12 +166,18 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
                 continue;
             }
             let Some(drawn) = visit.drawn() else { continue };
+            if entry.every.last() != Some(&drawn) {
+                entry.every.push(drawn);
+            }
             let inside = drawn.intersect(canvas);
             if inside.width() <= 0.0 || inside.height() <= 0.0 {
                 continue;
             }
-            entry.coverage += inside.area() / area;
-            entry.boxes.push((n, inside));
+            entry.reach = Some(entry.reach.map_or(inside, |r| r.union(inside)));
+            if sampled {
+                entry.coverage += inside.area() / area;
+                entry.boxes.push((n, inside));
+            }
         }
     }
     // Containers are opened; what lies inside a piece belongs to it.
@@ -199,6 +213,10 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
             ..Seen::default()
         });
         piece.boxes.extend(s.boxes.iter().copied());
+        piece.reach = match (piece.reach, s.reach) {
+            (Some(a), Some(b)) => Some(a.union(b)),
+            (a, b) => a.or(b),
+        };
         piece.coverage = piece.coverage.max(s.coverage);
         if head.len() == s.ids.len() {
             piece.coverage = s.coverage;
@@ -230,6 +248,28 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
     let mut note_bg = String::from("no background");
     if !backgrounds.is_empty() || groups.is_empty() {
         let centre = busiest(session, &all_content, cover, (nw, nh))?;
+        // What the backgrounds draw whole on the master's canvas, at every
+        // frame: the new frame's edges should not cut through it.
+        let whole: Vec<Vec<Rect>> = seen
+            .values()
+            .filter(|s| {
+                s.kind != Piece::Comp
+                    && s.kind != Piece::Nothing
+                    && backgrounds
+                        .iter()
+                        .any(|b| s.ids.len() > b.ids.len() && s.ids.starts_with(&b.ids))
+            })
+            .filter(|s| {
+                s.every.iter().all(|r| {
+                    r.x0 > canvas.x0 + 0.5
+                        && r.y0 > canvas.y0 + 0.5
+                        && r.x1 < canvas.x1 - 0.5
+                        && r.y1 < canvas.y1 - 0.5
+                })
+            })
+            .map(|s| s.every.clone())
+            .collect();
+        let centre = uncut(centre, (nw / cover, nh / cover), &whole, (mw, mh));
         shown.push(Shown {
             hide: all_content.clone(),
             anchor: centre,
@@ -266,6 +306,9 @@ pub(crate) fn layout(session: &Session, width: u32, height: u32) -> Result<(Layo
         ));
     }
     stack(&mut placed, &groups, safe);
+    for (p, g) in placed.iter_mut().zip(&groups) {
+        keep_on_canvas(p, g.path, canvas, Rect::new(0.0, 0.0, nw, nh));
+    }
     for (g, (r, _, scale, anchor)) in groups.iter().zip(&placed) {
         let mut hide: Vec<String> = all_backgrounds.clone();
         hide.extend(
@@ -310,8 +353,10 @@ fn share(s: &Seen) -> f64 {
 struct Group {
     /// The addresses of its pieces.
     members: BTreeSet<String>,
-    /// The union of their boxes.
+    /// The union of their boxes where they rest ([`resting`]).
     bounds: Rect,
+    /// The union of all their boxes at every frame: where they travel.
+    path: Rect,
     /// The sampled frames it shows at.
     frames: BTreeSet<usize>,
     /// Its first piece, in paint order.
@@ -328,6 +373,13 @@ fn group(content: &[&Seen], gap: f64) -> Vec<Group> {
         .map(|(i, p)| Group {
             members: BTreeSet::from([p.ids.join("/")]),
             bounds: resting(&p.boxes),
+            path: p
+                .boxes
+                .iter()
+                .map(|(_, b)| *b)
+                .chain(p.reach)
+                .reduce(|a, b| a.union(b))
+                .unwrap_or_default(),
             frames: p.boxes.iter().map(|(n, _)| *n).collect(),
             first: i,
         })
@@ -378,6 +430,7 @@ fn group(content: &[&Seen], gap: f64) -> Vec<Group> {
 fn join(into: &mut Group, other: Group) {
     into.members.extend(other.members);
     into.bounds = into.bounds.union(other.bounds);
+    into.path = into.path.union(other.path);
     into.frames.extend(other.frames);
     into.first = into.first.min(other.first);
 }
@@ -447,6 +500,79 @@ fn stack(placed: &mut [(Rect, BTreeSet<usize>, f64, [f64; 2])], groups: &[Group]
     }
 }
 
+/// How far inside the new canvas a path the master keeps on its canvas
+/// is kept, as a share of the new canvas's short side: the samples a
+/// layout reads may miss a move's farthest frame by a little.
+const ON_CANVAS: f64 = 0.01;
+
+/// Keeps the whole of `path`, where a placed group travels in the master,
+/// on the new canvas on every side where the master keeps it on its own:
+/// a group placed by where it rests could otherwise swing or grow off the
+/// new canvas mid-move. A side the master's path touches is one it enters
+/// or leaves by, and stays open. Shrinks the group about where it is
+/// placed when the path is wider or taller than the room, then moves it.
+fn keep_on_canvas(
+    placed: &mut (Rect, BTreeSet<usize>, f64, [f64; 2]),
+    path: Rect,
+    master: Rect,
+    canvas: Rect,
+) {
+    let edge = 0.5;
+    let shut = [
+        path.x0 > master.x0 + edge,
+        path.y0 > master.y0 + edge,
+        path.x1 < master.x1 - edge,
+        path.y1 < master.y1 - edge,
+    ];
+    if !shut.contains(&true) {
+        return;
+    }
+    let margin = canvas.width().min(canvas.height()) * ON_CANVAS;
+    let room = canvas.inset(-margin);
+    let (rect, _, scale, anchor) = placed;
+    let mut centre = rect.center();
+    // Where the path lands with the group at `centre` and `scale`.
+    let landed = |centre: kurbo::Point, scale: f64| {
+        Rect::new(
+            centre.x + (path.x0 - anchor[0]) * scale,
+            centre.y + (path.y0 - anchor[1]) * scale,
+            centre.x + (path.x1 - anchor[0]) * scale,
+            centre.y + (path.y1 - anchor[1]) * scale,
+        )
+    };
+    let mut k: f64 = 1.0;
+    if shut[0] && shut[2] {
+        k = k.min(room.width() / (path.width() * *scale));
+    }
+    if shut[1] && shut[3] {
+        k = k.min(room.height() / (path.height() * *scale));
+    }
+    let k = k.min(1.0);
+    let new_scale = *scale * k;
+    let at = landed(centre, new_scale);
+    let mut dx: f64 = 0.0;
+    let mut dy: f64 = 0.0;
+    if shut[0] && at.x0 < room.x0 {
+        dx = room.x0 - at.x0;
+    } else if shut[2] && at.x1 > room.x1 {
+        dx = room.x1 - at.x1;
+    }
+    if shut[1] && at.y0 < room.y0 {
+        dy = room.y0 - at.y0;
+    } else if shut[3] && at.y1 > room.y1 {
+        dy = room.y1 - at.y1;
+    }
+    centre += kurbo::Vec2::new(dx, dy);
+    let (w, h) = (rect.width() * k, rect.height() * k);
+    *rect = Rect::new(
+        centre.x - w / 2.0,
+        centre.y - h / 2.0,
+        centre.x + w / 2.0,
+        centre.y + h / 2.0,
+    );
+    *scale = new_scale;
+}
+
 /// The point of the master's canvas to centre its backgrounds on: the
 /// middle of the window of the new aspect, scaled by `cover`, whose drawn
 /// edges are strongest, over a few frames drawn small with `content`
@@ -479,6 +605,7 @@ fn busiest(
             }],
         }),
         None,
+        Vec::new(),
     );
     let Ok(alone) = session.with_raw(backdrop.apply(session.document().raw())) else {
         return Ok(middle);
@@ -541,6 +668,71 @@ fn busiest(
         if ww >= mw { mw / 2.0 } else { x },
         if wh >= mh { mh / 2.0 } else { y },
     ])
+}
+
+/// How far, as a share of the window, [`uncut`] may move it.
+const UNCUT_REACH: f64 = 0.25;
+
+/// `centre`, the middle of a `window` of the master's canvas (`side` its
+/// size) that the new frame shows of the backgrounds, moved as little as
+/// lets fewest of `whole` cross the window's edges at any frame: each is
+/// an element the backgrounds draw whole on the master's canvas, by its box
+/// at every frame, and one the crop cuts hangs off the new frame. Moves no
+/// further than [`UNCUT_REACH`] of the window, axis by axis.
+fn uncut(centre: [f64; 2], window: (f64, f64), whole: &[Vec<Rect>], side: (f64, f64)) -> [f64; 2] {
+    let axis = |c: f64, w: f64, side: f64, spans: &[Vec<(f64, f64)>]| -> f64 {
+        if w >= side - 1.0 || spans.is_empty() {
+            return c;
+        }
+        let reach = w * UNCUT_REACH;
+        let lo = (c - reach).max(w / 2.0).floor() as i64;
+        let hi = (c + reach).min(side - w / 2.0).ceil() as i64;
+        if hi < lo {
+            return c;
+        }
+        // For each element, the centres whose window edge lies inside one
+        // of its boxes, as whole px from `lo`; counted once an element.
+        let n = (hi - lo + 1) as usize;
+        let mut cuts = vec![0usize; n];
+        let mut cut = vec![false; n];
+        for boxes in spans {
+            cut.iter_mut().for_each(|x| *x = false);
+            for &(a, b) in boxes.iter().filter(|(a, b)| b - a < w) {
+                for edge in [-w / 2.0, w / 2.0] {
+                    // `x + edge` strictly inside (a, b), half a px clear.
+                    let from = ((a + 0.5 - edge).floor() as i64 + 1).max(lo);
+                    let to = ((b - 0.5 - edge).ceil() as i64 - 1).min(hi);
+                    for x in from..=to {
+                        cut[(x - lo) as usize] = true;
+                    }
+                }
+            }
+            for (k, x) in cuts.iter_mut().zip(&cut) {
+                *k += usize::from(*x);
+            }
+        }
+        let at = |x: f64| ((x.round() as i64).clamp(lo, hi) - lo) as usize;
+        let mut best = (cuts[at(c)], 0.0, c);
+        for (i, k) in cuts.iter().enumerate() {
+            let x = (lo + i as i64) as f64;
+            if *k < best.0 || (*k == best.0 && (x - c).abs() < best.1) {
+                best = (*k, (x - c).abs(), x);
+            }
+        }
+        best.2
+    };
+    let xs: Vec<Vec<(f64, f64)>> = whole
+        .iter()
+        .map(|b| b.iter().map(|r| (r.x0, r.x1)).collect())
+        .collect();
+    let ys: Vec<Vec<(f64, f64)>> = whole
+        .iter()
+        .map(|b| b.iter().map(|r| (r.y0, r.y1)).collect())
+        .collect();
+    [
+        axis(centre[0], window.0, side.0, &xs),
+        axis(centre[1], window.1, side.1, &ys),
+    ]
 }
 
 #[cfg(test)]

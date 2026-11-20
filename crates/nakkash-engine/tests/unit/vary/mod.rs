@@ -38,3 +38,94 @@ fn the_same_spec_plans_the_same_recipes() {
     assert_eq!(a.len(), 3);
     assert!(matches!(a[0].steps[1], Step::Format { width: 1080, .. }));
 }
+
+/// A 16 by 16 picture: a bar `[x0, x1)` wide in `ink` on `ground`.
+fn bar(x0: usize, x1: usize, ink: [u8; 3], ground: [u8; 3]) -> crate::Image {
+    let px: Vec<u8> = (0..16 * 16)
+        .flat_map(|i| {
+            let c = if (x0..x1).contains(&(i % 16)) {
+                ink
+            } else {
+                ground
+            };
+            [c[0], c[1], c[2], 255]
+        })
+        .collect();
+    crate::Image::new(16, 16, px).expect("image")
+}
+
+#[test]
+fn structure_reads_shapes_and_not_their_colours() {
+    let master = [bar(4, 8, [255, 255, 255], [0, 0, 0])];
+    // Recoloured, or inverted, it is the same drawing.
+    let recoloured = distance(&master, &[bar(4, 8, [255, 40, 40], [10, 0, 40])]);
+    let inverted = distance(&master, &[bar(4, 8, [0, 0, 0], [255, 255, 255])]);
+    assert!(recoloured.structure.unwrap() < 0.01, "{recoloured:?}");
+    assert!(inverted.structure.unwrap() < 0.01, "{inverted:?}");
+    assert!(recoloured.palette > 0.05);
+    // A bar elsewhere and wider is another drawing.
+    let moved = distance(&master, &[bar(9, 15, [255, 255, 255], [0, 0, 0])]);
+    assert!(moved.structure.unwrap() > 0.5, "{moved:?}");
+    assert!(moved.palette < 0.01, "{moved:?}");
+}
+
+#[test]
+fn a_filter_leaves_no_residual_and_a_design_does() {
+    let master = [bar(4, 8, [255, 255, 255], [0, 0, 0])];
+    // Any one colour for each master colour is a filter, however far.
+    let mapped = [bar(4, 8, [255, 40, 40], [10, 0, 40])];
+    assert!(filter(&master, &mapped) < 1e-9);
+    assert!(filter(&master, &master) < 1e-9);
+    assert!(filter_failure(filter(&master, &mapped)).is_some());
+    // Two colours where the master has one: the ground split into a
+    // surface and a field no transform of it can draw.
+    let mut px = mapped[0].pixels().to_vec();
+    for row in 0..8 {
+        for x in [0, 1, 2, 9, 10, 11, 12, 13, 14, 15] {
+            px[(row * 16 + x) * 4..][..3].copy_from_slice(&[40, 200, 190]);
+        }
+    }
+    let designed = [crate::Image::new(16, 16, px).expect("image")];
+    let residual = filter(&master, &designed);
+    assert!(residual > FILTER_FLOOR, "{residual}");
+    assert!(filter_failure(residual).is_none());
+}
+
+#[test]
+fn a_recipe_without_a_look_has_no_colour_twin() {
+    let master: Session = r##"{"nakkash":1,"size":"64x64","dur":"1s","layers":[
+        {"id":"title","text":"Hi","font":"Inter Variable 24 700","fill":"#E63946"}]}"##
+        .parse()
+        .expect("a scene");
+    let recipe = Recipe {
+        id: "v1".into(),
+        seed: 1,
+        steps: Vec::new(),
+    };
+    assert!(!recipe.has_look());
+    let twin = colour_twin(&master, &recipe, Path::new("")).expect("made");
+    assert!(twin.is_none());
+}
+
+#[test]
+fn a_text_bloomed_to_a_white_slab_shows_its_box_clipped() {
+    let scene = |over: &str| -> Session {
+        format!(
+            r##"{{"nakkash":1,"size":"640x360","dur":"1s","bg":"#101020","layers":[
+            {{"id":"t","text":"HELLO","font":"Inter Variable 96 800","fill":"#E8ECFF","at":"center center"}}{over}]}}"##
+        )
+        .parse()
+        .expect("a scene")
+    };
+    let crisp = scene("");
+    let images = samples(&crisp, 2, 180.0).expect("samples");
+    let kept = clipped(&crisp, &images).expect("clipped");
+    assert!(kept < 0.01, "{kept}");
+    // A white slab over the whole title: every px of its box is clipped.
+    let slab = scene(r##",{"id":"slab","rect":"640x360","fill":"#FFFFFF"}"##);
+    let images = samples(&slab, 2, 180.0).expect("samples");
+    let blown = clipped(&slab, &images).expect("clipped");
+    assert!(blown > 0.99, "{blown}");
+    assert!(clipped_failure(kept, blown).is_some());
+    assert!(clipped_failure(kept, kept + CLIPPED_MORE / 2.0).is_none());
+}

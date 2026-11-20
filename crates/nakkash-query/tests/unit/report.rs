@@ -226,4 +226,16 @@ proptest::proptest! {
         // Compared as text: NaN is not equal to itself.
         proptest::prop_assert_eq!(format!("{:?}", report.violations), format!("{expected:?}"));
     }
+
+    #[test]
+    fn the_index_knows_what_the_report_knows(
+        now in proptest::collection::vec(any_violation(), 0..24),
+        then in proptest::collection::vec(any_violation(), 0..24),
+    ) {
+        let base = Report { violations: then, passed: 0 };
+        let known = base.known();
+        for v in &now {
+            proptest::prop_assert_eq!(known.knows(v), base.knows(v));
+        }
+    }
 }

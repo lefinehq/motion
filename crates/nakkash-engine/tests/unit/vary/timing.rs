@@ -62,3 +62,30 @@ fn a_scene_retimed_to_half_its_length_has_a_time_map_ending_there() {
     );
     assert!(b.0 - a.0 >= 13.0, "{:?}", map.keys);
 }
+
+#[test]
+fn a_move_after_a_shortened_hold_shows_the_masters_own_frames() {
+    // A 20-frame hold shortened by a fraction of a frame each, then a move.
+    let session: Session = r##"{"nakkash":1,"size":"1000x1000","fps":30,"dur":"2s","layers":[
+        {"id":"card","rect":"200x200","anim":{"x":"200 -> 800 @20-35f"}}]}"##
+        .parse()
+        .expect("a scene");
+    let step = TimingStep {
+        seconds: Some(1.7),
+        beats: None,
+        pace: None,
+        music: None,
+    };
+    let (map, _) = time_map(&session, &step).expect("a map");
+    for pair in map.keys.windows(2) {
+        let ((a, ma), (b, mb)) = (pair[0], pair[1]);
+        assert_eq!(a, a.round(), "{:?}", map.keys);
+        assert!(b > a, "{:?}", map.keys);
+        // Where the map runs at the master's rate, each of its frames is
+        // a frame of the master's.
+        if ((b - a) - (mb - ma) * 30.0).abs() < 1e-6 {
+            let offset = ma * 30.0 - a;
+            assert!((offset - offset.round()).abs() < 1e-6, "{:?}", map.keys);
+        }
+    }
+}
