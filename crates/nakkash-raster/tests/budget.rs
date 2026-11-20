@@ -138,10 +138,11 @@ fn pressure_lowers_the_budget_until_it_has_been_calm() {
     let roomy = draw(&frame, RenderOptions::default());
     memory::note_pressure(Pressure::Critical);
     assert_eq!(memory::stats().effective, 0);
-    assert!(draw(&frame, RenderOptions::default()) == roomy);
-    // Normal right after is not yet calm.
+    // Normal right after is not yet calm. Checked before drawing, which
+    // may itself take longer than the calm on a busy machine.
     memory::note_pressure(Pressure::Normal);
     assert_eq!(memory::stats().effective, 0);
+    assert!(draw(&frame, RenderOptions::default()) == roomy);
     std::thread::sleep(memory::CALM + Duration::from_millis(50));
     memory::note_pressure(Pressure::Normal);
     assert_eq!(memory::stats().effective, 1 << 30);
