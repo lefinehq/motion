@@ -439,7 +439,7 @@ An instance fills a template without copying it: a small file of slot values, pi
 - **`look`** chooses one of the template's `looks`; **`sections`** says what each `comp` layer of the template's root is for: `hook`, `problem`, `feature`, `proof`, `cta` or `unknown`.
 - **`raw`** is the one way to set a value no slot holds, each entry an address, the type it expects (`number`, `string`, `bool`, `color`, `point`, `json`) and a value. It never sets motion, timing, effects or drawn paths (`anim`, keys, `in`, `out`, `span`, `offset`, `dur`, `fx`, `shapes`, `mask` and the like), an address by list position, or anything a lock holds; `check` lists each entry it applies as a warning.
 - **Only what is declared is written.** A slot a lock holds ([Locks](#locks)), directly, through a role, or because a locked layer draws what follows it, is refused; under `palette`, a colour the template does not have is refused.
-- **Stages.** An instance is read in stages, each returning every problem it finds at once, and a stage with an error stops the stages after it: *parse* (the closed schema: an unknown field or schema is an error), *resolve* (the pin; ids, uids and aliases; the look; the sections), *type* (each value against its slot's type, bounds and locks; `raw`). Each problem is one object, `{"level","code","stage","slot","path","message","rule","measured","limit","hint"}`, which `nakkash check de.json --json` prints:
+- **Stages.** An instance is read in stages, each returning every problem it finds at once, and a stage with an error stops the stages after it: *parse* (the closed schema: an unknown field or schema is an error), *resolve* (the pin; ids, uids and aliases; the look; the sections), *type* (each value against its slot's type, bounds and locks; `raw`), *measure* (each text the instance gives set in the template's font into its fit, against `min-size`, `max-lines` and `overflow`; each colour pair's contrast; each file against `min-px` and `aspect`). Each problem is one object, `{"level","code","stage","slot","path","message","rule","measured","limit","hint"}`, which `nakkash check de.json --json` prints:
 
   | Code | Level | When |
   |---|---|---|
@@ -454,8 +454,13 @@ An instance fills a template without copying it: a small file of slot values, pi
   | `raw.refused` | error | A `raw` entry that is not allowed or does not fit |
   | `raw.applied` | warning | A `raw` entry set |
   | `scene.invalid` | error | The scene the instance makes does not read |
+  | `text.overflow` | error | A text that fits only below `min-size`, past `max-lines`, or at all under `overflow: reject`; the hint says how many characters to cut |
+  | `text.shrunk` | warning | A text its fit sets smaller than written, above the floor |
+  | `color.contrast` | error | A colour and its `pair` below `contrast` (WCAG ratio) |
+  | `media.small`, `media.crop` | warning | A picture smaller than `min-px`, or of other proportions than `aspect` |
 
-  An instance with an error renders nothing. `check` on an instance prints the problems, then what the scene it makes adds to its template's own check.
+  An instance with an error renders nothing. `check` on an instance prints the problems, then what the scene it makes adds to its template's own check. `check` on a template prints its own values that break these contracts first, as warnings.
+- **`nakkash brief promo.json [--json]`** is what an agent reads before it fills a template: the rules and locks first, then a table per kind, sections with their story role (`hook`, `problem`, `feature`, `proof`, `cta`, `unknown`; `?` when guessed from names), texts with about how many characters fit a line, the lines the fit's box holds and what the floor allows, colours by what they paint with their pair and contrast, files with their kind, aspect and smallest size, and choices and numbers with their bounds. On the imported 28 s promo of the measurements it is 1,643 tokens where the scene is about 57,000. `≈ch` is a guide; `check` sets the real font.
 - **`nakkash edit de.json '$headline="Jeden Markt"' 'look=light'`** sets slots and the look, and writes the instance only when no stage finds an error. Values equal to the template's are left out of what it writes; `$id=none` returns a slot to the template's value and `$id=$hide` hides it. The template is never written: a session on an instance refuses to save.
 - **`nakkash migrate de.json`** pins an instance to its template as it is now: relinked slots under their new ids, the value of a slot the template lost kept under `stale`, never dropped, and the hash pinned again.
 

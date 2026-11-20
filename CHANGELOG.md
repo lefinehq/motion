@@ -13,6 +13,9 @@ The project was named motion until 2026-11-17, when it became nakkash ([D73](doc
   - `nakkash edit <instance> '$id=value' … 'look=light'` writes the instance only when nothing is refused, and leaves out values equal to the template's.
   - `nakkash slots <template> --as-instance [--all] [--out FILE]` writes a pinned instance.
   - `nakkash migrate <instance>` pins an instance again, with relinked slots under their new ids and lost ones kept under `stale`.
+  - `nakkash brief <template|instance> [--json]` prints what an agent fills: rules and locks first, then sections with story roles, text budgets, colours with pairs and contrast, typed media and choices.
+  - A fourth stage, *measure*: `text.overflow`, `text.shrunk`, `color.contrast`, `media.small`, `media.crop`. `check` on a template warns where its own values break these contracts.
+  - `docs/guide/fill-a-template.md`, also the `nakkash-template` skill.
   - `nakkash edit` on a scene takes several lines, applied in order.
 
   An example template and instance are in `examples/instance/`.
