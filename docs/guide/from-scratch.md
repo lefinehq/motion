@@ -26,7 +26,7 @@ These are the limits the check holds every scene to. They are measured, and an a
 | `text_hold` | readable for its characters at 20 a second, and at least 0.5 s | Hold a line of 30 characters for 1.5 s once it has landed. |
 | `crowd` | at most 4 layers moving on their own at once | Stagger entrances; let a composition or a pivot carry a group. |
 | `overlap` | two read texts' glyphs do not run into each other | Leave room between lines in separate layers, descenders included. |
-| `contrast` (error) | 4.5:1 against what is behind, 3:1 at 24 px and up (on 1080 tall) | Light text on dark ground or the reverse; check text over pictures. |
+| `contrast` (error) | 4.5:1 against what is behind, 3:1 at 24 px and up (of a 1080 px short side) | Light text on dark ground or the reverse; check text over pictures. |
 | `flash` (error) | a quarter of the frame flashing at most 3 times a second | No strobing cuts or flicker. |
 | `pin` (error) | a `corner-pin`'s corners make a quad: not crossed, bent in, flat, or out of the layer's sight | Name corner pivots in order, top left then clockwise; `"pivots":"screen"` reads `screen-tl`, `-tr`, `-br`, `-bl`. |
 
