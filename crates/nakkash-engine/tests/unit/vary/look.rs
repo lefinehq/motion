@@ -121,9 +121,11 @@ fn the_title_takes_split_colours_and_loses_its_glitch_when_the_look_has_none() {
 }
 
 #[test]
-fn a_flat_look_drops_the_fields_glow_and_keeps_the_titles_glitch() {
-    let step = look("riso");
+fn a_flat_look_drops_the_fields_glow_and_a_glitched_one_keeps_the_titles_glitch() {
+    let mut step = look("riso");
     assert_eq!(step.field.glow, 0.0);
+    // No look keeps its glitch now; a recipe may.
+    step.title.glitch = true;
     let mut raw = template();
     apply(&mut raw, &Held::default(), &step);
     let a = raw["comps"]["rays"]["layers"][0]["fx"].as_array().unwrap();
