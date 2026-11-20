@@ -487,19 +487,10 @@ pub fn anchors(node: &TextNode, parts: &Parts) -> Vec<Point> {
 }
 
 /// A slant of `skew` degrees along the direction `axis` degrees clockwise
-/// from across: points move along that direction in proportion to how far
-/// they stand from it, so with `axis` 0 a positive skew leans a part's top
-/// forward (to the right, as an italic does). The skew is held inside -85
-/// to 85 degrees, where it stays finite.
+/// from across, as a shape group's skew slants
+/// ([`nakkash_format::property::slant`]).
 fn slant(skew: f64, axis: f64) -> Affine {
-    if skew == 0.0 {
-        return Affine::IDENTITY;
-    }
-    let turn = Affine::rotate(axis.to_radians());
-    // y grows downwards: a top above the anchor has y below 0, so it moves
-    // forward by a negative factor.
-    let lean = -skew.clamp(-85.0, 85.0).to_radians().tan();
-    turn * Affine::skew(lean, 0.0) * turn.inverse()
+    nakkash_format::property::slant(skew, axis)
 }
 
 /// The box the visible glyphs cover in the layer's coordinates: each glyph's

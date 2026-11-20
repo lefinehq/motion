@@ -1,0 +1,10 @@
+{"nakkash":1,"size":"480x240","fps":24,"dur":"1s","bg":"#F4F1EA",
+"layers":[
+{"id":"lean","at":"130 120","shapes":[
+ {"group":[{"rect":[140,90],"round":10,"position":[0,0]},{"fill":"#2F6FED"}],"skew":-14,"skew-axis":0,
+  "anim":{"skew-axis":"0 -> 45 @0-1s in-out-sine"}},
+ {"group":[{"ellipse":[40,40],"position":[0,0]},{"fill":"#FFE000"}],"position":[30,0],"anim":{"skew":"0 -> 30 @0-24f"}}]},
+{"id":"sheared","rect":"150x100 r8","fill":"#E0484E","at":"350 120",
+ "fx":[{"transform":1,"anchor":[75,50],"position":[75,50],"skew":-7,"anim":{"skew-axis":"0 -> 90 @0-1s"}},
+  {"transform":1,"skew-axis":30,"anim":{"skew":"0 -> 12 @0-24f"}}]}
+]}

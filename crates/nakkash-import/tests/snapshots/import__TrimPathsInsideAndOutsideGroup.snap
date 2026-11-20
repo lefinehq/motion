@@ -8,7 +8,7 @@ expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ]}
 
 imported `Shapes`
-  48 mapped, 32 defaulted, 23 ignored, 0 unsupported, over 46 match names
+  48 mapped, 36 defaulted, 23 ignored, 0 unsupported, over 47 match names
   ignored, drawing nothing:
     empty (4)
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (19)

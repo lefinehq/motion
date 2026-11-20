@@ -8,7 +8,7 @@ expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ]}
 
 imported `miter`
-  24 mapped, 23 defaulted, 17 ignored, 1 unsupported, over 36 match names
+  24 mapped, 26 defaulted, 17 ignored, 1 unsupported, over 37 match names
   ignored, drawing nothing:
     empty (3)
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (14)

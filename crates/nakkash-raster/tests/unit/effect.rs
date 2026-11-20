@@ -199,3 +199,140 @@ fn only_the_effects_that_say_so_draw_their_layers_time() {
         );
     }
 }
+
+/// Whether the transform effect with `params` on a 960 by 540 layer, laid
+/// with its top-left corner at (480, 270) of a 1920 by 1080 frame, covers
+/// the centre of each frame pixel as the original draws it.
+fn transform_covers(params: &[(&str, ParamValue)], points: &[(u32, u32, bool)]) -> usize {
+    let effect = Effect::new("transform", params).unwrap();
+    let moved = effect.movement().unwrap().transform.inverse();
+    points
+        .iter()
+        .filter(|&&(x, y, inside)| {
+            let at = moved * Point::new(f64::from(x) + 0.5 - 480.0, f64::from(y) + 0.5 - 270.0);
+            let covers = (0.0..960.0).contains(&at.x) && (0.0..540.0).contains(&at.y);
+            covers != inside
+        })
+        .count()
+}
+
+/// The transform effect's skew shears after the turn, across its axis:
+/// three renders of the original of a grey 960 by 540 solid centred in a
+/// 1920 by 1080 composition, sampled at 24 pixels each at least 3 px from
+/// an edge, as EffectCraft recorded them (`effects/src/distort.rs`, cases
+/// 723, 819 and 820). Every pixel lands on the side of the edge it shows.
+#[test]
+fn the_transform_skew_shears_after_the_turn_as_the_original_draws_it() {
+    let point = |x: f32, y: f32| ParamValue::Point([x, y]);
+    let n = ParamValue::Number;
+    let centred = [
+        ("anchor", point(480.0, 270.0)),
+        ("position", point(480.0, 270.0)),
+    ];
+    let case_723 = [
+        ("anchor", point(400.0, 200.0)),
+        ("position", point(500.0, 300.0)),
+        ("scale", point(1.2, 0.8)),
+        ("skew", n(10.0)),
+        ("skew-axis", n(20.0)),
+        ("rotate", n(30.0)),
+    ];
+    let points_723 = [
+        (1465, 954, true),
+        (1127, 821, true),
+        (1378, 846, true),
+        (1416, 878, true),
+        (1486, 850, true),
+        (492, 467, true),
+        (706, 239, true),
+        (1402, 1021, true),
+        (518, 440, true),
+        (1218, 882, true),
+        (454, 448, true),
+        (1473, 920, true),
+        (1048, 654, true),
+        (1050, 486, true),
+        (1060, 736, true),
+        (932, 804, true),
+        (1074, 562, true),
+        (653, 591, true),
+        (1353, 466, false),
+        (88, 1021, false),
+        (1855, 886, false),
+        (1796, 401, false),
+        (497, 913, false),
+        (1445, 515, false),
+    ];
+    assert_eq!(transform_covers(&case_723, &points_723), 0);
+    let mut case_819 = centred.to_vec();
+    case_819.extend([("skew", n(15.0)), ("skew-axis", n(60.0))]);
+    let points_819 = [
+        (465, 367, true),
+        (554, 793, false),
+        (481, 529, true),
+        (1451, 599, true),
+        (428, 575, true),
+        (432, 600, true),
+        (463, 444, true),
+        (759, 803, false),
+        (445, 684, true),
+        (1411, 757, true),
+        (915, 784, false),
+        (480, 737, true),
+        (758, 620, true),
+        (975, 705, true),
+        (1289, 376, true),
+        (575, 420, true),
+        (1015, 507, true),
+        (1377, 448, true),
+        (1679, 171, false),
+        (194, 435, false),
+        (413, 159, false),
+        (327, 741, false),
+        (1824, 138, false),
+        (1093, 29, false),
+    ];
+    assert_eq!(transform_covers(&case_819, &points_819), 0);
+    let case_820 = [
+        ("anchor", point(100.0, 50.0)),
+        ("position", point(480.0, 270.0)),
+        ("scale", point(1.3, 0.7)),
+        ("skew", n(15.0)),
+        ("skew-axis", n(60.0)),
+        ("rotate", n(-25.0)),
+    ];
+    let points_820 = [
+        (1674, 566, true),
+        (1425, 317, false),
+        (1788, 278, true),
+        (1530, 390, true),
+        (1531, 652, true),
+        (1589, 545, true),
+        (1890, 441, true),
+        (1724, 400, true),
+        (1657, 511, true),
+        (1895, 261, true),
+        (1697, 344, true),
+        (933, 840, true),
+        (1413, 467, true),
+        (1295, 691, true),
+        (1353, 548, true),
+        (1293, 548, true),
+        (1103, 551, true),
+        (973, 758, true),
+        (446, 484, false),
+        (1009, 420, false),
+        (144, 761, false),
+        (1812, 111, false),
+        (1241, 10, false),
+        (900, 854, false),
+    ];
+    assert_eq!(transform_covers(&case_820, &points_820), 0);
+    // A slant like a group's, before the turn, misses some of them.
+    let wrong = |params: &[(&str, ParamValue)]| {
+        let mut skewless = params.to_vec();
+        skewless.retain(|(name, _)| !name.starts_with("skew"));
+        transform_covers(&skewless, &points_820)
+    };
+    assert!(wrong(&case_820) > 0);
+}

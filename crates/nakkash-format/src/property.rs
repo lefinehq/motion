@@ -236,6 +236,36 @@ const fn number_row(
     }
 }
 
+/// The slant a group's `skew` of `skew` degrees along `skew-axis` `axis`
+/// gives: points move along the axis, turned `axis` degrees clockwise from
+/// across, in proportion to how far they stand from it, so with the axis at
+/// 0 a positive skew leans a top forward (to the right, as an italic does).
+/// The skew is held within -85 and 85 degrees, where the slant stays finite.
+pub fn slant(skew: f64, axis: f64) -> kurbo::Affine {
+    if skew == 0.0 {
+        return kurbo::Affine::IDENTITY;
+    }
+    let turn = kurbo::Affine::rotate(axis.to_radians());
+    // y grows downwards: a top above the anchor has y below 0, so it moves
+    // forward by a negative factor.
+    let lean = -skew.clamp(-85.0, 85.0).to_radians().tan();
+    turn * kurbo::Affine::skew(lean, 0.0) * turn.inverse()
+}
+
+/// The shear the transform effect's `skew` of `skew` degrees across
+/// `skew-axis` `axis` gives: across the axis turned `axis` degrees
+/// clockwise, points move down the axis's normal in proportion to how far
+/// along it they stand, so with the axis at 0 a positive skew moves the
+/// right side down. The skew is held within -85 and 85 degrees.
+pub fn shear(skew: f64, axis: f64) -> kurbo::Affine {
+    if skew == 0.0 {
+        return kurbo::Affine::IDENTITY;
+    }
+    let turn = kurbo::Affine::rotate(axis.to_radians());
+    let k = skew.clamp(-85.0, 85.0).to_radians().tan();
+    turn.inverse() * kurbo::Affine::skew(0.0, k) * turn
+}
+
 /// A layer's rows: its transform, the gain of the sound it plays, then the
 /// depth of a 3D layer and what a camera sees ([D58]), then the time of its
 /// content ([D62]).
@@ -351,11 +381,25 @@ const LAYER_ROWS: [PropertySpec; 16] = transform!(
     },
 );
 
-const GROUP_ROWS: [PropertySpec; 5] = transform!(
+const GROUP_ROWS: [PropertySpec; 7] = transform!(
     Rest::Value(Value::Point([0.0, 0.0])),
     Rest::Value(Value::Point([0.0, 0.0])),
     "the point of the group that sits at `position` and that it scales and turns about, \
      in px of the shape's coordinates",
+    number_row(
+        "skew",
+        0.0,
+        None,
+        "a slant in degrees along `skew-axis`, after the scale and before the turn: with the \
+         axis at 0 a positive skew leans the group's top forward, as an italic does; held \
+         within -85 and 85",
+    ),
+    number_row(
+        "skew-axis",
+        0.0,
+        None,
+        "the direction `skew` slants along, in degrees clockwise from across",
+    ),
 );
 
 /// The properties of a layer: its transform and opacity. `position` rests
@@ -371,11 +415,24 @@ pub static GROUP: Registry = Registry {
     rows: &GROUP_ROWS,
 };
 
-const TRANSFORM_EFFECT_ROWS: [PropertySpec; 5] = transform!(
+const TRANSFORM_EFFECT_ROWS: [PropertySpec; 7] = transform!(
     Rest::Value(Value::Point([0.0, 0.0])),
     Rest::Value(Value::Point([0.0, 0.0])),
     "the point of the layer's content that sits at `position` and that it scales and turns \
      about, in px of the layer's own coordinates",
+    number_row(
+        "skew",
+        0.0,
+        None,
+        "a shear in degrees across `skew-axis`, after the turn: with the axis at 0 a positive \
+         skew moves the content's right side down; held within -85 and 85",
+    ),
+    number_row(
+        "skew-axis",
+        0.0,
+        None,
+        "the direction `skew` shears across, in degrees clockwise",
+    ),
 );
 
 /// The properties of the transform effect: a group's transform, applied to
