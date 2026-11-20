@@ -1,5 +1,6 @@
 //! `nakkash compact`: a scene in its compact form ([D91]), proven the same
-//! scene before it is written.
+//! scene before it is written; `nakkash split` and `nakkash flatten`: a
+//! scene with its compositions in files of their own, and back.
 //!
 //! [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
 
@@ -8,7 +9,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use nakkash_engine::compact::{Compacted, Parts, compact_keeping, default_rows};
-use nakkash_engine::{Diagnostic, Document, Kind, Result, write_document};
+use nakkash_engine::{Diagnostic, Document, Kind, Result, Session, write_document};
 use serde_json::{Value as Json, json};
 
 /// The parts tried in turn: all of them, then each left out in the order
@@ -168,4 +169,28 @@ impl std::fmt::Display for Report {
         }
         Ok(())
     }
+}
+
+/// Writes the scene at `path` split to `out`, with its compositions in
+/// `comps/` beside it; prints the files written.
+///
+/// # Errors
+/// A diagnostic when the scene does not read or a file cannot be written.
+pub fn split(path: &Path, out: &Path) -> Result<ExitCode> {
+    let session = Session::open(path)?;
+    session.save_split(out)?;
+    let comps = session.scene().comps.len();
+    println!("{} and {comps} composition files in comps/", out.display());
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Writes the scene at `path`, split or not, as one file, `out`.
+///
+/// # Errors
+/// A diagnostic when the scene does not read or `out` cannot be written.
+pub fn flatten(path: &Path, out: &Path) -> Result<ExitCode> {
+    let session = Session::open(path)?;
+    session.save_as(out)?;
+    println!("{}", out.display());
+    Ok(ExitCode::SUCCESS)
 }

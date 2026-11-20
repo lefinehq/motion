@@ -260,6 +260,25 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Write a scene with each composition in a file of its own,
+    /// `comps/<id>.json` beside the scene, so one section can be opened
+    /// alone; every command reads it as the one scene (D91).
+    Split {
+        /// Path to the scene file.
+        scene: PathBuf,
+        /// The scene file to write; its compositions go in `comps/` beside it.
+        #[arg(short, long, value_name = "FILE")]
+        out: PathBuf,
+    },
+    /// Write a scene whose compositions are in files of their own as one
+    /// file again (D91).
+    Flatten {
+        /// Path to the scene file.
+        scene: PathBuf,
+        /// The file to write.
+        #[arg(short, long, value_name = "FILE")]
+        out: PathBuf,
+    },
     /// Apply an edit line such as `card fill=#FF0000`, save the scene and
     /// print what the edit added to its check; exits 1 when it added an error.
     Edit {
@@ -481,6 +500,8 @@ impl Command {
             | Command::At { scene, .. }
             | Command::Slots { scene, .. }
             | Command::Compact { scene, .. }
+            | Command::Split { scene, .. }
+            | Command::Flatten { scene, .. }
             | Command::Roles { scene, .. }
             | Command::Edit { scene, .. }
             | Command::Render { scene, .. }
@@ -568,6 +589,8 @@ fn main() -> ExitCode {
         ),
         Command::Roles { scene, json } => commands::roles::run(&scene, json),
         Command::Compact { scene, out, json } => commands::compact::run(&scene, &out, json),
+        Command::Split { scene, out } => commands::compact::split(&scene, &out),
+        Command::Flatten { scene, out } => commands::compact::flatten(&scene, &out),
         Command::Batch {
             manifest,
             check,

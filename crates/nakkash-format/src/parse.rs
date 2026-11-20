@@ -34,6 +34,8 @@ pub mod key {
     pub const EASES: &str = "eases";
     /// The styles a layer takes its keys from (D91).
     pub const INHERITS: &str = "inherits";
+    /// The file a composition is written in (D91).
+    pub const INCLUDE: &str = "include";
     /// The scene's compositions.
     pub const COMPS: &str = "comps";
     /// A composition's named moments.
@@ -178,6 +180,10 @@ pub const SCENE_KEYS: [&str; 17] = [
     key::LAYERS,
 ];
 /// The keys allowed on a composition, in the order of `CompDoc`'s fields.
+///
+/// An entry of `comps` may instead be `{"include":"<file>"}`, the
+/// composition in a file of its own, which `crate::include` reads before
+/// the scene is read.
 pub const COMP_KEYS: [&str; 8] = [
     key::SIZE,
     key::FPS,
@@ -262,6 +268,9 @@ pub fn parse_document(json: &str) -> Result<Document> {
 /// Slot references are resolved first, on a copy, so the values read are
 /// the slots' (D44).
 pub(crate) fn scene_from_value(written: &Value) -> Result<Scene> {
+    if crate::include::has_includes(written) {
+        return Err(crate::include::unread());
+    }
     let checked = styles::expand(written).and_then(|expanded| scene_from_expanded(&expanded));
     // Validation stops at the first rule that fails, so this is that rule.
     checked.inspect_err(|d| {

@@ -15,6 +15,7 @@ mod diagnostic;
 mod doc;
 pub mod edit_word;
 pub mod grammar;
+pub mod include;
 pub mod item;
 pub mod locks;
 mod number;

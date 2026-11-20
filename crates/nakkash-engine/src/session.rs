@@ -94,7 +94,8 @@ impl Session {
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
         let path = path.into();
         let text = stage("read", || {
-            fs::read_to_string(&path).map_err(|e| Diagnostic::io("read", &path, &e))
+            let text = fs::read_to_string(&path).map_err(|e| Diagnostic::io("read", &path, &e))?;
+            crate::includes::flattened(&path, text)
         })?;
         if text.contains("\"nakkash.Instance.")
             && let Ok(json) = serde_json::from_str::<serde_json::Value>(&text)
@@ -971,6 +972,36 @@ impl Session {
         })
     }
 
+    /// Writes the scene split ([D91]): the scene to `path`, with each
+    /// composition's entry an include of `comps/<id>.json`, and each
+    /// composition to that file beside it, every file it names written
+    /// relative to `path`'s folder. Opened again, it reads as this scene.
+    ///
+    /// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+    ///
+    /// # Errors
+    /// A [`Kind::Io`] diagnostic when a file or the folder cannot be written.
+    pub fn save_split(&self, path: &Path) -> Result<()> {
+        let mut raw = self.doc.raw().clone();
+        let from = self
+            .path
+            .as_deref()
+            .and_then(Path::parent)
+            .unwrap_or(Path::new(""));
+        let to = path.parent().unwrap_or(Path::new(""));
+        crate::relocate::files(&mut raw, from, to);
+        let (top, comps) = nakkash_format::include::split(&raw);
+        for (file, comp) in &comps {
+            let file = to.join(file);
+            if let Some(folder) = file.parent() {
+                fs::create_dir_all(folder).map_err(|e| Diagnostic::io("create", folder, &e))?;
+            }
+            fs::write(&file, write_document(comp))
+                .map_err(|e| Diagnostic::io("write", &file, &e))?;
+        }
+        fs::write(path, write_document(&top)).map_err(|e| Diagnostic::io("write", path, &e))
+    }
+
     /// Writes the scene, in canonical form, back to its file (step `save`),
     /// through a renamed temp file so a failed write never leaves half a scene.
     ///
@@ -995,6 +1026,9 @@ impl Session {
                 Diagnostic::new(Kind::Missing, "the scene has no file to save to")
                     .expected("a session from `Session::open`")
             })?;
+            if crate::includes::is_split(path) {
+                return Err(crate::includes::refused(path));
+            }
             let tmp = temp_path(path);
             fs::write(&tmp, write_document(self.doc.raw()))
                 .map_err(|e| Diagnostic::io("write", path, &e))?;

@@ -25,6 +25,7 @@ mod geometry;
 pub mod gpu;
 mod held;
 mod import;
+mod includes;
 pub mod instance;
 mod level;
 mod mix;
