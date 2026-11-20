@@ -2,7 +2,7 @@
 source: crates/nakkash-import/tests/import.rs
 expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ---
-{"nakkash":1,"size":"351x856","fps":21,"dur":"$duration","bg":"$background","slots":{"background":{"color":[0.058824,0.294118,0.321569,1],"label":"cyan #0F4B52","role":"background"},"duration":{"number":31,"label":"Duration in seconds","role":"duration"}},
+{"nakkash":1,"size":"351x856","fps":21,"dur":"$duration","bg":"$background","slots":{"background":{"color":[0.058824,0.294118,0.321569,1],"label":"cyan #0F4B52","role":"background","uid":"color:#0F4B52FF"},"duration":{"number":31,"label":"Duration in seconds","role":"duration","uid":"duration"}},
 "layers":[
 {"id":"shape-layer-1","shapes":[],"anchor":[0,0],"position":[175.5,428]},
 {"id":"null-1","pivot":true,"anchor":[0,0],"position":[175.5,428]}
@@ -12,5 +12,5 @@ imported `Comp 01`
   2 mapped, 10 defaulted, 26 ignored, 0 unsupported, over 21 match names
   ignored, drawing nothing:
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (26)
-  slots to vary: 0 text, 1 colour, 0 media, 1 timing
+  slots to vary: 0 text, 1 colour, 0 media, 0 placeholder, 1 timing
   unsupported: none
