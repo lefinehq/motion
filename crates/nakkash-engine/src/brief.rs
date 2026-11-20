@@ -601,22 +601,31 @@ fn hex(color: [f64; 4]) -> String {
     }
 }
 
+/// What a brief of an instance adds to its template's.
+#[derive(Debug, Clone, Copy)]
+pub struct Pinned<'a> {
+    /// The template's file.
+    pub template: &'a str,
+    /// The hash the instance is pinned to.
+    pub hash: &'a str,
+    /// The look the instance chooses.
+    pub look: Option<&'a str>,
+    /// The story role the instance gives each section.
+    pub sections: &'a BTreeMap<String, String>,
+}
+
 /// Makes the brief of `session`, read from `file`; `instance` when it is
 /// an instance: the template's file and hash, the instance's look and
 /// sections.
 ///
 /// # Errors
 /// The session's own, when its fonts cannot be read.
-pub fn brief(
-    session: &Session,
-    file: &str,
-    instance: Option<(&str, &str, Option<&str>, &BTreeMap<String, String>)>,
-) -> Result<Brief> {
+pub fn brief(session: &Session, file: &str, instance: Option<Pinned<'_>>) -> Result<Brief> {
     let scene = session.scene();
     let raw = session.document().raw();
     let root = &scene.root;
     let mut typesetter = Typesetter::new(session.fonts()?.clone());
-    let given_roles = instance.map(|(_, _, _, s)| s.clone()).unwrap_or_default();
+    let given_roles = instance.map(|i| i.sections.clone()).unwrap_or_default();
 
     // Sections: the root's `comp` layers, in time order.
     let mut sections: Vec<Section> = Vec::new();
@@ -856,16 +865,13 @@ pub fn brief(
         .unwrap_or_default();
     Ok(Brief {
         file: file.to_owned(),
-        template: instance.map(|(t, _, _, _)| t.to_owned()),
-        hash: instance.map_or_else(
-            || nakkash_format::canon::hash(raw),
-            |(_, h, _, _)| h.to_owned(),
-        ),
+        template: instance.map(|i| i.template.to_owned()),
+        hash: instance.map_or_else(|| nakkash_format::canon::hash(raw), |i| i.hash.to_owned()),
         size: [f64::from(root.size.width), f64::from(root.size.height)],
         fps: root.fps,
         duration: seconds(root.duration, root.fps),
         looks,
-        look: instance.and_then(|(_, _, l, _)| l.map(str::to_owned)),
+        look: instance.and_then(|i| i.look.map(str::to_owned)),
         locks: raw
             .get("locks")
             .and_then(Json::as_array)

@@ -699,7 +699,7 @@ pub fn merge(
             Err(problem) => problems.push(Problem {
                 path,
                 slot: Some(n.key.clone()),
-                ..problem
+                ..*problem
             }),
         }
     }
@@ -787,7 +787,7 @@ fn typed(
     n: &Named,
     value: &Json,
     file: &dyn Fn(&str) -> String,
-) -> Result<(SlotType, Json), Problem> {
+) -> Result<(SlotType, Json), Box<Problem>> {
     let mismatch = |message: String| Problem::new(Level::Error, "type.mismatch", 3, "", message);
     let slot = &n.slot;
     let (ty, value) = match (slot.ty.is_file(), value) {
@@ -803,22 +803,26 @@ fn typed(
                         ty
                     }
                     Some(ty) if ty.is_file() => {
-                        return Err(mismatch(format!("the slot `{}` takes no {ty}", n.key))
-                            .hint(format!("a {}", slot.ty)));
+                        return Err(Box::new(
+                            mismatch(format!("the slot `{}` takes no {ty}", n.key))
+                                .hint(format!("a {}", slot.ty)),
+                        ));
                     }
                     _ => {
-                        return Err(mismatch(format!("unknown field `{key}` for a file slot"))
-                            .hint("`image` or `video`, as the slot accepts"));
+                        return Err(Box::new(
+                            mismatch(format!("unknown field `{key}` for a file slot"))
+                                .hint("`image` or `video`, as the slot accepts"),
+                        ));
                     }
                 };
                 let Some(path) = given.as_str().filter(|p| !p.is_empty()) else {
-                    return Err(mismatch(format!("`{given}` is not a file")));
+                    return Err(Box::new(mismatch(format!("`{given}` is not a file"))));
                 };
                 if chosen.replace((ty, json!(file(path)))).is_some() {
-                    return Err(mismatch("one file, `image` or `video`".into()));
+                    return Err(Box::new(mismatch("one file, `image` or `video`".into())));
                 }
             }
-            chosen.ok_or_else(|| mismatch("no file".into()))?
+            chosen.ok_or_else(|| Box::new(mismatch("no file".into())))?
         }
         (false, Json::Object(fields))
             if fields.len() == 1 && fields.contains_key(slot.ty.name()) =>
@@ -851,7 +855,7 @@ fn typed(
             problem.measured = Some(value.clone());
             problem.limit = Some(json!({"min": slot.contract.min, "max": slot.contract.max}));
         }
-        return Err(problem);
+        return Err(Box::new(problem));
     }
     Ok((ty, value))
 }

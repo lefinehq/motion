@@ -25,7 +25,12 @@ pub fn run(path: &Path, json: bool) -> Result<ExitCode> {
             nakkash_engine::brief::brief(
                 session,
                 &file,
-                Some((&template, &opened.hash, i.look.as_deref(), &i.sections)),
+                Some(nakkash_engine::brief::Pinned {
+                    template: &template,
+                    hash: &opened.hash,
+                    look: i.look.as_deref(),
+                    sections: &i.sections,
+                }),
             )?
         }
         false => nakkash_engine::brief::brief(&Session::open(path)?, &file, None)?,
