@@ -91,15 +91,28 @@ fn brute_with(
             (true, Stretch::Behind(s) | Stretch::Across(s)) => (r, r * s),
             (false, Stretch::Behind(s) | Stretch::Across(s)) => (a, s),
         };
-        let mean = match stretch {
-            Stretch::Behind(_) => sampled(near, near - extent, fade, line),
-            Stretch::Across(_) => {
-                let (low, high) = (
-                    sampled(near, near - extent / 2.0, fade, line),
-                    sampled(near, near + extent / 2.0, fade, line),
-                );
-                std::array::from_fn(|c| (low[c] + high[c]) / 2.0)
+        // A zoom's stretch ends at the centre; the mean weighs each part
+        // of the stretch by its length.
+        let end = |far: f64| if zoom { far.max(0.0) } else { far };
+        let fars = match stretch {
+            Stretch::Behind(_) => vec![end(near - extent)],
+            Stretch::Across(_) => vec![end(near - extent / 2.0), end(near + extent / 2.0)],
+        };
+        let (mut sum, mut weight) = ([0.0; 4], 0.0);
+        for far in fars {
+            let length = (far - near).abs();
+            if length < 1e-9 {
+                continue;
             }
+            let part = sampled(near, far, fade, &line);
+            for c in 0..4 {
+                sum[c] += part[c] * length;
+            }
+            weight += length;
+        }
+        let mean: [f64; 4] = match weight > 0.0 {
+            true => sum.map(|s| s / weight),
+            false => line(near).map(f64::from),
         };
         *p = mean.map(|c| c as f32);
     }

@@ -909,16 +909,15 @@ mod effects {
             json!({"radial-blur":50,"type":"zoom","stretch":"behind","fade":"linear","center":[-50,0]}),
             "{fx}"
         );
-        assert_eq!(
-            fx[1],
-            json!({"radial-blur":10,"type":"spin","stretch":"across","edges":"repeat"}),
-            "{fx}"
-        );
-        assert_eq!(
-            fx[3],
-            json!({"radial-blur":4,"stretch":"across","edges":"repeat"}),
-            "{fx}"
-        );
+        for (i, amount, kind) in [(1, 10, "spin"), (3, 4, "zoom")] {
+            assert_eq!(fx[i]["radial-blur"], amount, "{fx}");
+            assert_eq!(fx[i]["type"], kind, "{fx}");
+            assert_eq!(fx[i]["stretch"], "across", "{fx}");
+            assert_eq!(fx[i]["fade"], "none", "{fx}");
+            assert_eq!(fx[i]["edges"], "repeat", "{fx}");
+        }
+        // `CC Radial Blur` keeps the default edges.
+        assert_eq!(fx[0].get("edges"), None, "{fx}");
         let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
         assert_eq!(what, ["a `type` the scene does not have"]);
     }
