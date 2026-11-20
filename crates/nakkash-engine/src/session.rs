@@ -1119,29 +1119,24 @@ fn temp_path(path: &Path) -> PathBuf {
     path.with_file_name(name)
 }
 
-/// The most threads a render draws on, set by [`limit_threads`]; 0 for
-/// one per processor.
-static THREADS: AtomicUsize = AtomicUsize::new(0);
-
-/// Draws on at most `threads` threads from now on, in this process: the
-/// frames of a render and the rows of each frame share them ([D75]). Each
+/// Works on at most `threads` threads from now on, in this process: the
+/// frames of a render and the rows of each frame share them ([D75]), and
+/// checks, comparisons and the encoder keep to them too
+/// ([`nakkash_machine::set_thread_limit`]). Each
 /// thread holds the frame it draws, so fewer threads take less memory: on
 /// a machine shared with other work, or for scenes whose frames are large
 /// (3D planes seen up close).
 ///
 /// [D75]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d75-a-frame-is-drawn-on-every-thread-of-its-render
 pub fn limit_threads(threads: NonZero<usize>) {
-    THREADS.store(threads.get(), Ordering::Relaxed);
+    nakkash_machine::set_thread_limit(Some(threads));
 }
 
 /// How many threads draw: the limit set, or the machine's default (its
 /// performance cores on macOS, the processors the process may use
 /// elsewhere, [`nakkash_machine::default_threads`]).
 pub(crate) fn threads() -> usize {
-    match THREADS.load(Ordering::Relaxed) {
-        0 => nakkash_machine::default_threads(),
-        limit => limit,
-    }
+    nakkash_machine::threads()
 }
 
 /// Whether a frame may start beside `beside` frames being drawn: the
@@ -1211,7 +1206,7 @@ fn workers(frames: usize) -> u32 {
     threads_for(
         frames,
         nakkash_machine::default_threads(),
-        THREADS.load(Ordering::Relaxed),
+        nakkash_machine::thread_limit().map_or(0, NonZero::get),
     )
 }
 
@@ -1247,7 +1242,7 @@ fn pool() -> Option<Arc<ThreadPool>> {
 
 /// Runs `work` on the drawing pool, so the rows it splits share the
 /// render's threads: on this thread when it is one of them.
-fn on_pool<R: Send>(work: impl FnOnce() -> R + Send) -> R {
+pub(crate) fn on_pool<R: Send>(work: impl FnOnce() -> R + Send) -> R {
     match pool() {
         Some(pool) if pool.current_thread_index().is_none() => pool.install(work),
         _ => work(),

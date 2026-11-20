@@ -13,6 +13,8 @@ strum.workspace = true
 kurbo.workspace = true
 rustc-hash.workspace = true
 nakkash-format = { path = "../nakkash-format" }
+# The threads the process works on (`--threads`).
+nakkash-machine = { path = "../nakkash-machine" }
 nakkash-scene = { path = "../nakkash-scene" }
 tracing.workspace = true
 

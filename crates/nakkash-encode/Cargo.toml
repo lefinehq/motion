@@ -10,6 +10,8 @@ publish.workspace = true
 
 [dependencies]
 nakkash-format = { path = "../nakkash-format" }
+# The threads the process works on (`--threads`).
+nakkash-machine = { path = "../nakkash-machine" }
 # AV1, in pure Rust under BSD-2-Clause, without its assembly (D13, D46),
 # with its tiles encoded in parallel.
 rav1e = { version = "0.8", default-features = false, features = ["threading"] }

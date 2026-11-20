@@ -116,3 +116,18 @@ fn an_environment_cap_limits_the_default_threads() {
     assert_eq!(capped(12, None), 12);
     assert_eq!(capped(0, None), 1);
 }
+
+#[test]
+fn a_thread_limit_is_what_every_part_works_on_until_taken_away() {
+    let before = thread_limit();
+    set_thread_limit(NonZero::new(3));
+    assert_eq!(thread_limit(), NonZero::new(3));
+    assert_eq!(threads(), 3);
+    // Above the machine too: `--threads` decides when given.
+    set_thread_limit(NonZero::new(4096));
+    assert_eq!(threads(), 4096);
+    set_thread_limit(None);
+    assert_eq!(thread_limit(), None);
+    assert_eq!(threads(), default_threads());
+    set_thread_limit(before);
+}

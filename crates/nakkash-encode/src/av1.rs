@@ -52,9 +52,10 @@ fn tiles(spec: VideoSpec) -> usize {
 
 impl Av1 {
     /// An encoder of `spec`-sized frames at `quality`, tagged BT.709
-    /// limited range, on every core.
+    /// limited range, on as many threads as the process works on
+    /// ([`nakkash_machine::threads`]).
     pub(crate) fn new(spec: VideoSpec, quality: VideoQuality) -> Result<Av1> {
-        Av1::with_threads(spec, quality, 0)
+        Av1::with_threads(spec, quality, nakkash_machine::threads())
     }
 
     /// As [`Av1::new`], on `threads` threads, or every core when zero.

@@ -44,7 +44,9 @@ impl Planes {
 /// right or bottom edge averages the pixels it has.
 ///
 /// Each pixel is read once, and bands of rows are converted on threads of
-/// their own; every sample is the same as a pixel-by-pixel pass gives.
+/// their own, as many as the process works on
+/// ([`nakkash_machine::threads`]); every sample is the same as a
+/// pixel-by-pixel pass gives.
 ///
 /// # Panics
 /// If `rgba` does not hold `width * height * 4` bytes; the caller checks.
@@ -56,7 +58,7 @@ pub fn to_planes(rgba: &[u8], width: u32, height: u32) -> Planes {
     let mut cb = vec![0; cw * ch];
     let mut cr = vec![0; cw * ch];
     // Whole blocks rows per band, so a band's chroma needs no other band.
-    let workers = thread::available_parallelism().map_or(1, usize::from);
+    let workers = nakkash_machine::threads();
     let blocks = ch.div_ceil(workers.min(ch.div_ceil(BAND_BLOCK_ROWS)).max(1));
     thread::scope(|scope| {
         let bands = y

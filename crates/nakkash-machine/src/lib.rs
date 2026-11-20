@@ -15,6 +15,8 @@
 //! [D48]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d48-unsafe-code-lives-only-in-platform-bindings
 //! [D90]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d90-a-frame-is-drawn-from-a-plan-that-knows-what-each-drawing-is-under-one-memory-budget
 
+use std::num::NonZero;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 // Each platform reads some of these; the tests read all of them.
@@ -106,6 +108,30 @@ pub fn default_threads() -> usize {
         usable,
         cap(THREADS_VAR).or_else(|| cap(RAYON_VAR)).as_deref(),
     )
+}
+
+/// The most threads the process's work uses, as [`set_thread_limit`] set
+/// it; 0 when it set none.
+static THREAD_LIMIT: AtomicUsize = AtomicUsize::new(0);
+
+/// Caps the threads every part of this process works on from now on, or,
+/// with `None`, takes the cap away: drawing, checking, comparing and
+/// encoding all ask [`threads`]. What `--threads` sets.
+pub fn set_thread_limit(limit: Option<NonZero<usize>>) {
+    THREAD_LIMIT.store(limit.map_or(0, NonZero::get), Ordering::Relaxed);
+}
+
+/// The cap [`set_thread_limit`] set, if any.
+pub fn thread_limit() -> Option<NonZero<usize>> {
+    NonZero::new(THREAD_LIMIT.load(Ordering::Relaxed))
+}
+
+/// How many threads a part of this process works on: the cap
+/// [`set_thread_limit`] set, else [`default_threads`]. Every pool and every
+/// fan-out of threads in the workspace is this size, so one cap holds them
+/// all.
+pub fn threads() -> usize {
+    thread_limit().map_or_else(default_threads, NonZero::get)
 }
 
 /// The variable that caps a process's threads.
