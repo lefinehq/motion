@@ -26,6 +26,7 @@ use vello_cpu::kurbo::{Affine, Point, Rect};
 use crate::blend::BlendMode;
 use crate::colour::{choice, number, rgb};
 use crate::effect::{ParamValue, Space};
+use crate::par;
 use crate::pixels::{Pixel, Pixels};
 
 /// How an effect's result (`over`) combines with the pixels under it
@@ -166,7 +167,32 @@ impl Operation {
 
     /// Each pixel of `over` combined with the one under it in `under`, in
     /// place, as [`Operation::pixel`] does.
+    ///
+    /// The pixels are combined on every thread; where both are `+0.0` in
+    /// every channel the pixel is left as it is, since every operation
+    /// gives `+0.0` there ([D93]).
+    ///
+    /// [D93]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d93-glow-and-blurs-do-less-of-the-same-work
     pub fn pixels(self, under: &mut Pixels, over: &Pixels) {
+        let width = u32::from(under.width()).max(1);
+        let nothing = |p: &Pixel| p.iter().all(|c| c.to_bits() == 0);
+        par::each_with(under.data_mut(), over.data(), |i, u, o| {
+            if nothing(u) && nothing(o) {
+                return;
+            }
+            let i = i as u32;
+            *u = self.pixel(*u, *o, [i % width, i / width]);
+        });
+    }
+}
+
+impl Operation {
+    /// [`Operation::pixels`] as it was before it ran on every thread and
+    /// left pixels of nothing alone: its reference ([D90], rule 7).
+    ///
+    /// [D90]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d90-a-frame-is-drawn-from-a-plan-that-knows-what-each-drawing-is-under-one-memory-budget
+    #[cfg(test)]
+    pub(crate) fn pixels_reference(self, under: &mut Pixels, over: &Pixels) {
         let width = u32::from(under.width()).max(1);
         for (i, (u, o)) in under.data_mut().iter_mut().zip(over.data()).enumerate() {
             let i = i as u32;

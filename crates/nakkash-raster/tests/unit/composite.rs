@@ -330,3 +330,58 @@ fn the_solid_covers_the_share_of_a_pixel_its_box_does() {
     let alpha: Vec<f32> = pixels.data()[..4].iter().map(|p| p[3]).collect();
     assert_eq!(alpha, [1.0, 1.0, 0.5, 0.0]);
 }
+
+#[test]
+fn every_operation_leaves_nothing_on_nothing() {
+    // Where both sides are +0.0, `pixels` leaves the pixel as it is: every
+    // operation must give +0.0 there, at every place of the pattern.
+    for spec in OPERATIONS {
+        for x in 0..64 {
+            for y in 0..64 {
+                let got = spec.operation.pixel([0.0; 4], [0.0; 4], [x * 37, y * 11]);
+                assert!(
+                    got.iter().all(|c| c.to_bits() == 0),
+                    "{} at {x}, {y} gives {got:?}",
+                    spec.name
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn combined_pixels_have_the_bits_of_their_reference() {
+    use crate::oracle::{Noise, assert_same_bits, on_threads};
+    let (width, height) = (83u16, 41u16);
+    let mut noise = Noise::new(4);
+    // Noise with patches of nothing on either side, of -0.0, and both.
+    let grid = |noise: &mut Noise, hole: (usize, usize)| {
+        let data = (0..usize::from(width) * usize::from(height))
+            .map(|i| {
+                let (x, y) = (i % usize::from(width), i / usize::from(width));
+                match ((x / 10 + y / 7) % 4, x > hole.0 && y > hole.1) {
+                    (_, true) | (0, _) => [0.0; 4],
+                    (1, _) => [-0.0, 0.0, 0.0, -0.0],
+                    _ => noise.pixel(),
+                }
+            })
+            .collect();
+        Pixels::from_data(width, height, data)
+    };
+    let under = grid(&mut noise, (60, 20));
+    let over = grid(&mut noise, (30, 30));
+    for spec in OPERATIONS {
+        let mut want = under.clone();
+        spec.operation.pixels_reference(&mut want, &over);
+        for threads in [1, 4] {
+            for split in [Some(1), Some(7), Some(333), None] {
+                crate::par::split_in_tests(split);
+                let mut got = under.clone();
+                on_threads(threads, || spec.operation.pixels(&mut got, &over));
+                crate::par::split_in_tests(None);
+                let what = format!("{}, {threads} threads, split {split:?}", spec.name);
+                assert_same_bits(&what, want.data(), got.data());
+            }
+        }
+    }
+}

@@ -17,6 +17,7 @@ use vello_cpu::kurbo::Vec2;
 use crate::blur::{Edges, SIGMA_PER_BLURRINESS, gaussian};
 use crate::colour::{choice, number};
 use crate::effect::{ParamValue, Space};
+use crate::par;
 use crate::pixels::{Pixel, Pixels};
 use crate::plan::Blur;
 
@@ -129,18 +130,18 @@ fn slopes(levels: &[f32], width: usize, height: usize, smoothing: f32) -> Vec<[f
     // The slope as the field's x and y in one grid, so one blur softens
     // both: x in red, y in green.
     let mut field = Pixels::transparent(width as u16, height as u16);
-    for (i, p) in field.data_mut().iter_mut().enumerate() {
+    par::each(field.data_mut(), |i, p| {
         let (x, y) = (i % width, i / width);
         let (left, right) = (x.saturating_sub(1), (x + 1).min(width - 1));
         let (up, down) = (y.saturating_sub(1), (y + 1).min(height - 1));
         let dx = (at(right, y) - at(left, y)) / (right - left).max(1) as f32;
         let dy = (at(x, down) - at(x, up)) / (down - up).max(1) as f32;
         *p = [dx, dy, 0.0, 0.0];
-    }
+    });
     if smoothing > 0.0 {
         gaussian(&mut field, [smoothing; 2], Edges::Repeat);
     }
-    field.data().iter().map(|p| [p[0], p[1]]).collect()
+    par::map(field.data(), |_, p| [p[0], p[1]])
 }
 
 /// Smears `pixels` along `field`, a vector a pixel whose length is a
@@ -157,11 +158,14 @@ fn smear(
     let width = usize::from(pixels.width());
     let source = pixels.clone();
     let (sin, cos) = turn.sin_cos();
-    for (i, out) in pixels.data_mut().iter_mut().enumerate() {
+    // Each pixel is its own, worked out on every thread ([D93]).
+    //
+    // [D93]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d93-glow-and-blurs-do-less-of-the-same-work
+    par::each(pixels.data_mut(), |i, out| {
         let [gx, gy] = field[i];
         let slope = gx.hypot(gy);
         if slope <= 1e-9 {
-            continue;
+            return;
         }
         let (mut dx, mut dy) = (gx / slope, gy / slope);
         (dx, dy) = (dx * cos - dy * sin, dx * sin + dy * cos);
@@ -173,7 +177,7 @@ fn smear(
             _ => amount * (slope / steepest).min(1.0),
         };
         if length.abs() < 0.05 {
-            continue;
+            return;
         }
         let (from, to) = match streak {
             Streak::Behind | Streak::Fading => (-length, 0.0),
@@ -200,7 +204,7 @@ fn smear(
             weight += w;
         }
         *out = sum.map(|c| c / weight);
-    }
+    });
 }
 
 /// `vector-blur`'s plan: the layer smeared along the slope of a level of
@@ -287,7 +291,7 @@ pub(crate) fn vector_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Sp
     if softness > 0.0 {
         gaussian(map.to_mut(), [softness * scale; 2], Edges::Repeat);
     }
-    let levels: Vec<f32> = map.data().iter().map(|p| level.of(*p)).collect();
+    let levels: Vec<f32> = par::map(map.data(), |_, p| level.of(*p));
     let field = slopes(&levels, width, height, ridge * scale);
     let steepest = field
         .iter()
