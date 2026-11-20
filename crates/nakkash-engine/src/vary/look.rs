@@ -245,8 +245,8 @@ struct Preset {
 ///   noise in teal, pink and periwinkle layer by layer, as light as each
 ///   other so they part by hue, glowing and streaked long; no rings; a
 ///   clean white capital title, widely spaced, its glitch off; a calm pace.
-/// - `riso`: a warm charcoal ground; the master's blocky noise in the cool
-///   inks, blue, green and teal, flat (no glow) and barely streaked, its
+/// - `riso`: a warm charcoal ground; the master's blocky noise in green,
+///   orange and teal inks, flat (no glow) and barely streaked, its
 ///   cells tall and thin; wide rings; a paper-white capital title whose
 ///   split copies misregister in the warm inks, pink and yellow, like a
 ///   print; grain; a snappy pace.
