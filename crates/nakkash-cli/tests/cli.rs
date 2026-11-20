@@ -111,11 +111,13 @@ fn check_clean_example_exits_zero() {
 
 /// The agent skill is the guide with its links made absolute, so an agent
 /// that has only the skill reads the same text.
-#[test]
-fn the_skill_is_the_guide() {
+#[rstest]
+#[case::from_scratch("from-scratch", "nakkash")]
+#[case::template("fill-a-template", "nakkash-template")]
+fn the_skill_is_the_guide(#[case] guide: &str, #[case] skill: &str) {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let guide = fs::read_to_string(format!("{root}/docs/guide/from-scratch.md")).expect("guide");
-    let skill = fs::read_to_string(format!("{root}/skills/nakkash/SKILL.md")).expect("skill");
+    let guide = fs::read_to_string(format!("{root}/docs/guide/{guide}.md")).expect("guide");
+    let skill = fs::read_to_string(format!("{root}/skills/{skill}/SKILL.md")).expect("skill");
     let base = "https://github.com/lefinehq/nakkash/blob/main/";
     let linked = guide
         .replace("](../../examples/", &format!("]({base}examples/"))
@@ -125,10 +127,7 @@ fn the_skill_is_the_guide() {
         .nth(2)
         .expect("the skill starts with frontmatter")
         .trim_start_matches('\n');
-    assert_eq!(
-        body, linked,
-        "regenerate skills/nakkash/SKILL.md from the guide"
-    );
+    assert_eq!(body, linked, "regenerate the skill from its guide");
 }
 
 /// The scenes written from scratch in `examples/`, which agents read as a

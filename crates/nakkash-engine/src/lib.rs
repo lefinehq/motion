@@ -12,6 +12,7 @@
 //! assert!(report.has_errors());
 //! ```
 
+pub mod brief;
 mod clips;
 mod diff;
 mod export;
@@ -60,6 +61,7 @@ pub use nakkash_raster::drawings_reused;
 pub use nakkash_raster::memory::{MemoryStats, stats as memory_stats};
 pub use session::{BAKED_FOLDER, Session, limit_memory, limit_threads};
 
+pub use nakkash_edit::{EditValue, parse_edit};
 pub use nakkash_format::Id;
 pub use nakkash_format::address::{json_at, key_text};
 pub use nakkash_format::roles::Role;
@@ -69,7 +71,6 @@ pub use nakkash_format::{
     Address, Content, Diagnostic, Document, Kind, Listed, Lock, Result, RoleTarget, Scene,
     write_document,
 };
-pub use nakkash_edit::{EditValue, parse_edit};
 pub use nakkash_format::{SlotType, canon, color, colors, oklch};
 pub use nakkash_import::map::{Import, Mapping, Options as ImportOptions, StoredText};
 pub use nakkash_import::{Project, Report as ImportReport};

@@ -427,7 +427,7 @@ An instance fills a template without copying it: a small file of slot values, pi
 {"schema":"nakkash.Instance.1",
  "template":{"path":"promo.json","hash":"sha256:9f3c…","uids":{"headline":"u-4f9a"}},
  "look":"light",
- "slots":{"headline":"Jeden Markt auf einmal erreichen","accent":"#0B6E4F",
+ "slots":{"headline":"Jeder Markt auf einmal","accent":"#0B6E4F",
           "screen":{"video":"shots/app-de.mp4"},"ending":"end-left",
           "feature":{"$unset":true},"cta":{"$hide":true}},
  "sections":{"hook":{"role":"hook"},"product":{"role":"feature"},"end":{"role":"cta"}},

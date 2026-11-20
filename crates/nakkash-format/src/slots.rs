@@ -121,7 +121,9 @@ pub struct Slot {
 /// How a text that does not fit its `fit` is treated ([D91]).
 ///
 /// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, strum::VariantNames)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, strum::VariantNames,
+)]
 #[strum(serialize_all = "lowercase")]
 pub enum Overflow {
     /// Set smaller, down to `min-size`.
@@ -135,7 +137,9 @@ pub enum Overflow {
 /// What a file slot stands for ([D91]).
 ///
 /// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, strum::VariantNames)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, strum::VariantNames,
+)]
 #[strum(serialize_all = "lowercase")]
 pub enum MediaKind {
     /// A product's screen: an app, a page, a dashboard.
@@ -216,14 +220,18 @@ impl Contract {
         };
         let only = |key: &str, types: &[SlotType]| -> Result<()> {
             match fields.contains_key(key) && !types.contains(&ty) {
-                true => Err(Diagnostic::new(
-                    Kind::Invalid,
-                    format!("`{key}` on a {ty} slot"),
-                )
-                .expected(format!(
-                    "`{key}` on a {} slot",
-                    types.iter().map(|t| t.name()).collect::<Vec<_>>().join(" or ")
-                ))),
+                true => Err(
+                    Diagnostic::new(Kind::Invalid, format!("`{key}` on a {ty} slot")).expected(
+                        format!(
+                            "`{key}` on a {} slot",
+                            types
+                                .iter()
+                                .map(|t| t.name())
+                                .collect::<Vec<_>>()
+                                .join(" or ")
+                        ),
+                    ),
+                ),
                 false => Ok(()),
             }
         };
@@ -232,7 +240,11 @@ impl Contract {
                 None => Ok(Vec::new()),
                 Some(Json::Array(items)) => items
                     .iter()
-                    .map(|i| i.as_str().map(str::to_owned).ok_or_else(|| bad(key, "a list of words")))
+                    .map(|i| {
+                        i.as_str()
+                            .map(str::to_owned)
+                            .ok_or_else(|| bad(key, "a list of words"))
+                    })
                     .collect(),
                 Some(_) => Err(bad(key, "a list of words")),
             }
@@ -250,7 +262,9 @@ impl Contract {
         let named = |key: &str, choices: &[&str]| -> Result<Option<String>> {
             match fields.get(key) {
                 None => Ok(None),
-                Some(Json::String(word)) if choices.contains(&word.as_str()) => Ok(Some(word.clone())),
+                Some(Json::String(word)) if choices.contains(&word.as_str()) => {
+                    Ok(Some(word.clone()))
+                }
                 Some(_) => Err(bad(key, &format!("one of {}", choices.join(", ")))),
             }
         };
@@ -279,7 +293,9 @@ impl Contract {
                 .expected(r#"{"choice":"centred","values":["centred","left"]}"#));
         }
         let max_lines = match number(MAX_LINES, 1.0)? {
-            Some(n) if n.fract() != 0.0 => return Err(bad(MAX_LINES, "a whole number of at least 1")),
+            Some(n) if n.fract() != 0.0 => {
+                return Err(bad(MAX_LINES, "a whole number of at least 1"));
+            }
             n => n.map(|n| n as u32),
         };
         let pair = match fields.get(PAIR) {
@@ -461,9 +477,25 @@ fn slot(id: &str, written: &Json) -> Result<Slot> {
 }
 
 /// A slot of type `ty` written as its bare value.
-type Read = (SlotType, Json, Option<String>, Option<Id>, bool, Option<String>, Contract);
+type Read = (
+    SlotType,
+    Json,
+    Option<String>,
+    Option<Id>,
+    bool,
+    Option<String>,
+    Contract,
+);
 fn plain(ty: SlotType, written: &Json) -> Read {
-    (ty, written.clone(), None, None, true, None, Contract::default())
+    (
+        ty,
+        written.clone(),
+        None,
+        None,
+        true,
+        None,
+        Contract::default(),
+    )
 }
 
 impl Slot {
@@ -487,12 +519,16 @@ impl Slot {
         let c = &self.contract;
         if let Some(n) = value.as_f64() {
             if let Some(min) = c.min.filter(|&min| n < min) {
-                return Err(Diagnostic::new(Kind::OutOfRange, format!("{n} is below {min}"))
-                    .expected(format!("a number from {min}")));
+                return Err(
+                    Diagnostic::new(Kind::OutOfRange, format!("{n} is below {min}"))
+                        .expected(format!("a number from {min}")),
+                );
             }
             if let Some(max) = c.max.filter(|&max| n > max) {
-                return Err(Diagnostic::new(Kind::OutOfRange, format!("{n} is above {max}"))
-                    .expected(format!("a number up to {max}")));
+                return Err(
+                    Diagnostic::new(Kind::OutOfRange, format!("{n} is above {max}"))
+                        .expected(format!("a number up to {max}")),
+                );
             }
         }
         if self.ty == SlotType::Choice
@@ -538,12 +574,23 @@ fn check_fits(ty: SlotType, value: &Json) -> Result<()> {
 /// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
 pub(crate) fn named<'d>(declared: &'d Declared, key: &str) -> Option<(Option<&'d str>, &'d Slot)> {
     match key.split_once('/') {
-        None => declared.scene.iter().find(|s| &*s.id == key).map(|s| (None, s)),
-        Some((comp, id)) => declared
-            .comps
+        None => declared
+            .scene
             .iter()
-            .find(|(c, _)| c == comp)
-            .and_then(|(c, slots)| slots.iter().find(|s| &*s.id == id).map(|s| (Some(c.as_str()), s))),
+            .find(|s| &*s.id == key)
+            .map(|s| (None, s)),
+        Some((comp, id)) => {
+            declared
+                .comps
+                .iter()
+                .find(|(c, _)| c == comp)
+                .and_then(|(c, slots)| {
+                    slots
+                        .iter()
+                        .find(|s| &*s.id == id)
+                        .map(|s| (Some(c.as_str()), s))
+                })
+        }
     }
 }
 
@@ -564,11 +611,18 @@ pub(crate) fn read_looks(written: Option<&Json>, declared: &Declared) -> Result<
         return Ok(());
     };
     let form = r##"an object of looks by name, each an object of slot values, e.g. {"dark":{"background":"#0B0D12","text":"#FFFFFF"}}"##;
-    let place = |keys: Vec<Step>| Place::Scene(Address { layers: Vec::new(), keys });
+    let place = |keys: Vec<Step>| {
+        Place::Scene(Address {
+            layers: Vec::new(),
+            keys,
+        })
+    };
     let Some(looks) = written.as_object() else {
-        return Err(Diagnostic::new(Kind::Invalid, "looks that are not an object")
-            .expected(form)
-            .at(place(vec![Step::Key(LOOKS.into())])));
+        return Err(
+            Diagnostic::new(Kind::Invalid, "looks that are not an object")
+                .expected(form)
+                .at(place(vec![Step::Key(LOOKS.into())])),
+        );
     };
     for (name, values) in looks {
         let at = |more: &[&str]| {
@@ -578,9 +632,12 @@ pub(crate) fn read_looks(written: Option<&Json>, declared: &Declared) -> Result<
         };
         name.parse::<Id>().map_err(|d| d.at(at(&[])))?;
         let Some(values) = values.as_object() else {
-            return Err(Diagnostic::new(Kind::Invalid, format!("the look `{name}` is not an object"))
-                .expected(form)
-                .at(at(&[])));
+            return Err(Diagnostic::new(
+                Kind::Invalid,
+                format!("the look `{name}` is not an object"),
+            )
+            .expected(form)
+            .at(at(&[])));
         };
         for (key, value) in values {
             let Some((_, slot)) = named(declared, key) else {
@@ -594,7 +651,10 @@ pub(crate) fn read_looks(written: Option<&Json>, declared: &Declared) -> Result<
             };
             check_fits(slot.ty, value)
                 .and_then(|()| slot.within_bounds(value))
-                .map_err(|d| d.expected(format!("a {}, like `{}`", slot.ty, slot.value)).at(at(&[key])))?;
+                .map_err(|d| {
+                    d.expected(format!("a {}, like `{}`", slot.ty, slot.value))
+                        .at(at(&[key]))
+                })?;
         }
     }
     Ok(())

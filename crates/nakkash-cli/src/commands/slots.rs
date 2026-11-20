@@ -827,7 +827,9 @@ fn changed(listed: &Listed, picture: &Path, clip: Option<&Path>) -> Option<Strin
         // The next of its words, the first after the last.
         SlotType::Choice => {
             let values = &listed.slot.contract.values;
-            let at = values.iter().position(|v| Some(v.as_str()) == value.as_str());
+            let at = values
+                .iter()
+                .position(|v| Some(v.as_str()) == value.as_str());
             let next = values.get(at.map_or(0, |i| (i + 1) % values.len()))?;
             quoted(next)
         }

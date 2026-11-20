@@ -101,7 +101,11 @@ impl Session {
             && crate::instance::is_instance(&json)
         {
             let opened = crate::instance::open_json(&path, &json)?;
-            for problem in opened.problems.iter().filter(|p| p.level == crate::instance::Level::Warning) {
+            for problem in opened
+                .problems
+                .iter()
+                .filter(|p| p.level == crate::instance::Level::Warning)
+            {
                 tracing::warn!(target: "nakkash::instance", "{problem}");
             }
             return match opened.session {
@@ -121,7 +125,11 @@ impl Session {
     ///
     /// # Errors
     /// The first problem in `raw` as a scene.
-    pub(crate) fn on_instance(template: &Path, instance: &Path, raw: serde_json::Value) -> Result<Self> {
+    pub(crate) fn on_instance(
+        template: &Path,
+        instance: &Path,
+        raw: serde_json::Value,
+    ) -> Result<Self> {
         let doc = stage("parse", || Document::from_value(raw))?;
         Ok(Self {
             path: Some(template.to_owned()),
@@ -205,6 +213,18 @@ impl Session {
             .map(|entry| base.join(entry))
             .filter(|path| is_lock(path))
             .collect()
+    }
+
+    /// The size in px of the picture `file`, relative to the scene's folder,
+    /// decoded once and kept for the render; `None` when it is not a raster
+    /// picture that reads.
+    pub fn picture_size(&self, file: &str) -> Option<[f64; 2]> {
+        match self.pictures.get(&self.base().join(file)).ok()? {
+            crate::pictures::Still::Picture(picture) => {
+                Some([f64::from(picture.width()), f64::from(picture.height())])
+            }
+            crate::pictures::Still::Drawing(_) => None,
+        }
     }
 
     /// The folder the scene's `fonts` and pictures are relative to.
@@ -964,7 +984,10 @@ impl Session {
             if let Some(instance) = &self.instance {
                 return Err(Diagnostic::new(
                     Kind::Conflict,
-                    format!("the scene of the instance `{}` is its template, which is locked", instance.display()),
+                    format!(
+                        "the scene of the instance `{}` is its template, which is locked",
+                        instance.display()
+                    ),
                 )
                 .expected("an edit of the instance: `nakkash edit <instance> '$id=value'`"));
             }

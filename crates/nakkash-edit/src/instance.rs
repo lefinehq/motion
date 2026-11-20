@@ -21,7 +21,9 @@ use serde_json::{Map, Value as Json, json};
 pub const SCHEMA: &str = "nakkash.Instance.1";
 
 /// The keys an instance may have.
-const KEYS: [&str; 7] = ["schema", "template", "look", "slots", "sections", "raw", "stale"];
+const KEYS: [&str; 7] = [
+    "schema", "template", "look", "slots", "sections", "raw", "stale",
+];
 /// The keys of an instance's `template`.
 const PIN_KEYS: [&str; 3] = ["path", "hash", "uids"];
 /// The keys of a `raw` entry.
@@ -32,8 +34,22 @@ pub const STORY_ROLES: [&str; 6] = ["hook", "problem", "feature", "proof", "cta"
 /// The first keys `raw` may never set: motion, timing, effects and drawn
 /// paths, which only the template's designer changes.
 pub const RAW_REFUSED: [&str; 16] = [
-    "anim", "keys", "in", "out", "loop", "span", "offset", "dur", "remap", "speed", "fx",
-    "shapes", "mask", "animate", "behaviour", "presets",
+    "anim",
+    "keys",
+    "in",
+    "out",
+    "loop",
+    "span",
+    "offset",
+    "dur",
+    "remap",
+    "speed",
+    "fx",
+    "shapes",
+    "mask",
+    "animate",
+    "behaviour",
+    "presets",
 ];
 /// The sentinel that returns a slot to the template's value.
 pub const UNSET: &str = "$unset";
@@ -184,7 +200,12 @@ impl Problem {
         }
         out.insert("path".into(), json!(self.path));
         out.insert("message".into(), json!(self.message));
-        for (key, value) in [("rule", self.rule.as_ref().map(|r| json!(r))), ("measured", self.measured.clone()), ("limit", self.limit.clone()), ("hint", self.hint.as_ref().map(|h| json!(h)))] {
+        for (key, value) in [
+            ("rule", self.rule.as_ref().map(|r| json!(r))),
+            ("measured", self.measured.clone()),
+            ("limit", self.limit.clone()),
+            ("hint", self.hint.as_ref().map(|h| json!(h))),
+        ] {
             if let Some(value) = value {
                 out.insert(key.into(), value);
             }
@@ -195,7 +216,11 @@ impl Problem {
 
 impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} at {}: {}", self.level, self.code, self.path, self.message)?;
+        write!(
+            f,
+            "{} {} at {}: {}",
+            self.level, self.code, self.path, self.message
+        )?;
         if let (Some(measured), Some(limit)) = (&self.measured, &self.limit) {
             write!(f, " (measured {measured}, limit {limit})")?;
         }
@@ -244,20 +269,41 @@ impl Instance {
     /// label this reader does not know, a value of the wrong shape.
     pub fn read(json: &Json) -> Result<Instance, Vec<Problem>> {
         let mut problems = Vec::new();
-        let error = |code, path: &str, message: String| Problem::new(Level::Error, code, 1, path, message);
+        let error =
+            |code, path: &str, message: String| Problem::new(Level::Error, code, 1, path, message);
         let Some(fields) = json.as_object() else {
-            return Err(vec![error("schema.not_object", "", "an instance is a JSON object".into())]);
+            return Err(vec![error(
+                "schema.not_object",
+                "",
+                "an instance is a JSON object".into(),
+            )]);
         };
         for key in fields.keys().filter(|k| !KEYS.contains(&k.as_str())) {
-            problems.push(error("schema.unknown_field", key, format!("unknown field `{key}`")).hint(format!("the fields are {}", KEYS.join(", "))));
+            problems.push(
+                error(
+                    "schema.unknown_field",
+                    key,
+                    format!("unknown field `{key}`"),
+                )
+                .hint(format!("the fields are {}", KEYS.join(", "))),
+            );
         }
         match fields.get("schema").and_then(Json::as_str) {
             Some(SCHEMA) => {}
             Some(other) => problems.push(
-                error("schema.version_unsupported", "schema", format!("`{other}` is not a schema this nakkash reads"))
-                    .hint(format!("`{SCHEMA}`; `nakkash migrate` upgrades older instances")),
+                error(
+                    "schema.version_unsupported",
+                    "schema",
+                    format!("`{other}` is not a schema this nakkash reads"),
+                )
+                .hint(format!(
+                    "`{SCHEMA}`; `nakkash migrate` upgrades older instances"
+                )),
             ),
-            None => problems.push(error("schema.missing", "schema", "no `schema`".into()).hint(format!("\"schema\":\"{SCHEMA}\""))),
+            None => problems.push(
+                error("schema.missing", "schema", "no `schema`".into())
+                    .hint(format!("\"schema\":\"{SCHEMA}\"")),
+            ),
         }
         let mut pin = Pin::default();
         match fields.get("template").and_then(Json::as_object) {
@@ -286,7 +332,11 @@ impl Instance {
             None => None,
             Some(Json::String(look)) => Some(look.clone()),
             Some(_) => {
-                problems.push(error("schema.invalid", "look", "a look is the name of one of the template's `looks`".into()));
+                problems.push(error(
+                    "schema.invalid",
+                    "look",
+                    "a look is the name of one of the template's `looks`".into(),
+                ));
                 None
             }
         };
@@ -294,7 +344,11 @@ impl Instance {
             None => Map::new(),
             Some(Json::Object(map)) => map.clone(),
             Some(_) => {
-                problems.push(error("schema.invalid", key, format!("`{key}` is an object")));
+                problems.push(error(
+                    "schema.invalid",
+                    key,
+                    format!("`{key}` is an object"),
+                ));
                 Map::new()
             }
         };
@@ -307,7 +361,11 @@ impl Instance {
                 Some(role) if section.as_object().is_some_and(|s| s.len() == 1) => {
                     sections.insert(id, role.to_owned());
                 }
-                _ => problems.push(error("schema.invalid", &path, r#"a section is {"role":"…"}"#.into())),
+                _ => problems.push(error(
+                    "schema.invalid",
+                    &path,
+                    r#"a section is {"role":"…"}"#.into(),
+                )),
             }
         }
         let mut raw = Vec::new();
@@ -317,22 +375,50 @@ impl Instance {
                 for (i, entry) in entries.iter().enumerate() {
                     let path = format!("raw[{i}]");
                     let Some(e) = entry.as_object() else {
-                        problems.push(error("schema.invalid", &path, "a raw entry is an object".into()));
+                        problems.push(error(
+                            "schema.invalid",
+                            &path,
+                            "a raw entry is an object".into(),
+                        ));
                         continue;
                     };
                     for key in e.keys().filter(|k| !RAW_KEYS.contains(&k.as_str())) {
-                        problems.push(error("schema.unknown_field", &format!("{path}.{key}"), format!("unknown field `{key}`")));
+                        problems.push(error(
+                            "schema.unknown_field",
+                            &format!("{path}.{key}"),
+                            format!("unknown field `{key}`"),
+                        ));
                     }
-                    match (e.get("at").and_then(Json::as_str), e.get("expect").and_then(Json::as_str), e.get("value")) {
-                        (Some(at), Some(expect), Some(value)) => raw.push(RawSet { at: at.to_owned(), expect: expect.to_owned(), value: value.clone() }),
-                        _ => problems.push(error("schema.invalid", &path, r#"a raw entry is {"at":"layer.key","expect":"number","value":…}"#.into())),
+                    match (
+                        e.get("at").and_then(Json::as_str),
+                        e.get("expect").and_then(Json::as_str),
+                        e.get("value"),
+                    ) {
+                        (Some(at), Some(expect), Some(value)) => raw.push(RawSet {
+                            at: at.to_owned(),
+                            expect: expect.to_owned(),
+                            value: value.clone(),
+                        }),
+                        _ => problems.push(error(
+                            "schema.invalid",
+                            &path,
+                            r#"a raw entry is {"at":"layer.key","expect":"number","value":…}"#
+                                .into(),
+                        )),
                     }
                 }
             }
             Some(_) => problems.push(error("schema.invalid", "raw", "`raw` is a list".into())),
         }
         match problems.is_empty() {
-            true => Ok(Instance { template: pin, look, slots, sections, raw, stale }),
+            true => Ok(Instance {
+                template: pin,
+                look,
+                slots,
+                sections,
+                raw,
+                stale,
+            }),
             false => Err(problems),
         }
     }
@@ -353,11 +439,19 @@ impl Instance {
         }
         out.insert("slots".into(), Json::Object(self.slots.clone()));
         if !self.sections.is_empty() {
-            let sections: Map<String, Json> = self.sections.iter().map(|(id, role)| (id.clone(), json!({ "role": role }))).collect();
+            let sections: Map<String, Json> = self
+                .sections
+                .iter()
+                .map(|(id, role)| (id.clone(), json!({ "role": role })))
+                .collect();
             out.insert("sections".into(), Json::Object(sections));
         }
         if !self.raw.is_empty() {
-            let raw: Vec<Json> = self.raw.iter().map(|r| json!({"at": r.at, "expect": r.expect, "value": r.value})).collect();
+            let raw: Vec<Json> = self
+                .raw
+                .iter()
+                .map(|r| json!({"at": r.at, "expect": r.expect, "value": r.value}))
+                .collect();
             out.insert("raw".into(), Json::Array(raw));
         }
         if !self.stale.is_empty() {
@@ -413,12 +507,21 @@ pub struct Merged {
 /// Merges `instance` into `template`, whose canonical hash is `hash`
 /// (stages 2 and 3). `file` turns a file an instance gives, relative to
 /// the instance's folder, into one relative to the template's.
-pub fn merge(template: &Document, hash: &str, instance: &Instance, file: &dyn Fn(&str) -> String) -> Merged {
+pub fn merge(
+    template: &Document,
+    hash: &str,
+    instance: &Instance,
+    file: &dyn Fn(&str) -> String,
+) -> Merged {
     let slots = named(template);
     let mut problems = Vec::new();
     let mut relinked = instance.clone();
-    let err = |code, stage, path: String, message: String| Problem::new(Level::Error, code, stage, path, message);
-    let warn = |code, stage, path: String, message: String| Problem::new(Level::Warning, code, stage, path, message);
+    let err = |code, stage, path: String, message: String| {
+        Problem::new(Level::Error, code, stage, path, message)
+    };
+    let warn = |code, stage, path: String, message: String| {
+        Problem::new(Level::Warning, code, stage, path, message)
+    };
 
     // Stage 2: the pin, the ids, the look and the sections.
     let changed = instance.template.hash != hash;
@@ -437,11 +540,27 @@ pub fn merge(template: &Document, hash: &str, instance: &Instance, file: &dyn Fn
             Some(n) => Some(n),
             None => {
                 // By the uid it was pinned with, then by an alias.
-                let by_uid = pinned_uid.and_then(|uid| slots.iter().find(|n| n.slot.uid.as_deref() == Some(uid.as_str())));
-                let by_alias = || slots.iter().find(|n| n.slot.contract.aliases.iter().any(|a| a == key));
+                let by_uid = pinned_uid.and_then(|uid| {
+                    slots
+                        .iter()
+                        .find(|n| n.slot.uid.as_deref() == Some(uid.as_str()))
+                });
+                let by_alias = || {
+                    slots
+                        .iter()
+                        .find(|n| n.slot.contract.aliases.iter().any(|a| a == key))
+                };
                 match by_uid.or_else(by_alias) {
                     Some(n) => {
-                        problems.push(warn("target.relinked", 2, path.clone(), format!("`{key}` is now `{}`", n.key)).slot(n.key.clone()));
+                        problems.push(
+                            warn(
+                                "target.relinked",
+                                2,
+                                path.clone(),
+                                format!("`{key}` is now `{}`", n.key),
+                            )
+                            .slot(n.key.clone()),
+                        );
                         Some(n)
                     }
                     None if pinned_uid.is_some() => {
@@ -449,7 +568,16 @@ pub fn merge(template: &Document, hash: &str, instance: &Instance, file: &dyn Fn
                         None
                     }
                     None => {
-                        problems.push(err("slot.unknown", 2, path.clone(), format!("the template has no slot `{key}`")).slot(key.clone()).hint(nearest(key, slots.iter().map(|n| n.key.as_str()))));
+                        problems.push(
+                            err(
+                                "slot.unknown",
+                                2,
+                                path.clone(),
+                                format!("the template has no slot `{key}`"),
+                            )
+                            .slot(key.clone())
+                            .hint(nearest(key, slots.iter().map(|n| n.key.as_str()))),
+                        );
                         None
                     }
                 }
@@ -476,7 +604,18 @@ pub fn merge(template: &Document, hash: &str, instance: &Instance, file: &dyn Fn
         Some(name) => match looks.and_then(|l| l.get(name)).and_then(Json::as_object) {
             Some(look) => Some(look),
             None => {
-                problems.push(err("look.unknown", 2, "look".into(), format!("the template has no look `{name}`")).hint(nearest(name, looks.into_iter().flat_map(|l| l.keys().map(String::as_str)))));
+                problems.push(
+                    err(
+                        "look.unknown",
+                        2,
+                        "look".into(),
+                        format!("the template has no look `{name}`"),
+                    )
+                    .hint(nearest(
+                        name,
+                        looks.into_iter().flat_map(|l| l.keys().map(String::as_str)),
+                    )),
+                );
                 None
             }
         },
@@ -485,14 +624,35 @@ pub fn merge(template: &Document, hash: &str, instance: &Instance, file: &dyn Fn
     for (id, role) in &instance.sections {
         let path = format!("sections.{id}");
         if !sections.contains(id) {
-            problems.push(err("section.unknown", 2, path.clone(), format!("the template has no section `{id}`")).hint(nearest(id, sections.iter().map(String::as_str))));
+            problems.push(
+                err(
+                    "section.unknown",
+                    2,
+                    path.clone(),
+                    format!("the template has no section `{id}`"),
+                )
+                .hint(nearest(id, sections.iter().map(String::as_str))),
+            );
         }
         if !STORY_ROLES.contains(&role.as_str()) {
-            problems.push(err("choice.unknown", 2, format!("{path}.role"), format!("`{role}` is not a story role")).hint(format!("one of {}", STORY_ROLES.join(", "))));
+            problems.push(
+                err(
+                    "choice.unknown",
+                    2,
+                    format!("{path}.role"),
+                    format!("`{role}` is not a story role"),
+                )
+                .hint(format!("one of {}", STORY_ROLES.join(", "))),
+            );
         }
     }
     if has_errors(&problems) {
-        return Merged { raw: None, problems, given, relinked };
+        return Merged {
+            raw: None,
+            problems,
+            given,
+            relinked,
+        };
     }
 
     // Stage 3: each value against its slot, then the locks, then raw.
@@ -511,7 +671,11 @@ pub fn merge(template: &Document, hash: &str, instance: &Instance, file: &dyn Fn
     }
     for (n, value, from) in values {
         let path = match from {
-            "look" => format!("looks.{}.{}", instance.look.as_deref().unwrap_or_default(), n.key),
+            "look" => format!(
+                "looks.{}.{}",
+                instance.look.as_deref().unwrap_or_default(),
+                n.key
+            ),
             _ => format!("slots.{}", n.key),
         };
         if let Some(problem) = locked(template, &held, n, value) {
@@ -532,7 +696,11 @@ pub fn merge(template: &Document, hash: &str, instance: &Instance, file: &dyn Fn
         }
         match typed(n, value, file) {
             Ok((ty, value)) => set_slot(&mut raw, n, ty, value),
-            Err(problem) => problems.push(Problem { path, slot: Some(n.key.clone()), ..problem }),
+            Err(problem) => problems.push(Problem {
+                path,
+                slot: Some(n.key.clone()),
+                ..problem
+            }),
         }
     }
     for (i, entry) in instance.raw.iter().enumerate() {
@@ -555,13 +723,33 @@ pub fn merge(template: &Document, hash: &str, instance: &Instance, file: &dyn Fn
         }
     }
     if has_errors(&problems) {
-        return Merged { raw: None, problems, given, relinked };
+        return Merged {
+            raw: None,
+            problems,
+            given,
+            relinked,
+        };
     }
     match Document::from_value(raw) {
-        Ok(doc) => Merged { raw: Some(doc.into_raw()), problems, given, relinked },
+        Ok(doc) => Merged {
+            raw: Some(doc.into_raw()),
+            problems,
+            given,
+            relinked,
+        },
         Err(d) => {
-            problems.push(err("scene.invalid", 3, d.path_text().unwrap_or_default(), d.to_string()));
-            Merged { raw: None, problems, given, relinked }
+            problems.push(err(
+                "scene.invalid",
+                3,
+                d.path_text().unwrap_or_default(),
+                d.to_string(),
+            ));
+            Merged {
+                raw: None,
+                problems,
+                given,
+                relinked,
+            }
         }
     }
 }
@@ -586,14 +774,20 @@ fn sentinel(value: &Json) -> Option<&'static str> {
     if fields.len() != 1 {
         return None;
     }
-    [UNSET, HIDE].into_iter().find(|s| fields.get(*s) == Some(&Json::Bool(true)))
+    [UNSET, HIDE]
+        .into_iter()
+        .find(|s| fields.get(*s) == Some(&Json::Bool(true)))
 }
 
 /// The value an instance gives slot `n`, checked against its type and
 /// bounds: a bare value of its type, or for a file slot an object of
 /// `image` or `video` (when the slot accepts it); with the type the
 /// declaration takes.
-fn typed(n: &Named, value: &Json, file: &dyn Fn(&str) -> String) -> Result<(SlotType, Json), Problem> {
+fn typed(
+    n: &Named,
+    value: &Json,
+    file: &dyn Fn(&str) -> String,
+) -> Result<(SlotType, Json), Problem> {
     let mismatch = |message: String| Problem::new(Level::Error, "type.mismatch", 3, "", message);
     let slot = &n.slot;
     let (ty, value) = match (slot.ty.is_file(), value) {
@@ -602,9 +796,20 @@ fn typed(n: &Named, value: &Json, file: &dyn Fn(&str) -> String) -> Result<(Slot
             let mut chosen = None;
             for (key, given) in fields {
                 let ty = match SlotType::named(key) {
-                    Some(ty) if ty.is_file() && (ty == slot.ty || slot.contract.accepts.contains(&ty)) => ty,
-                    Some(ty) if ty.is_file() => return Err(mismatch(format!("the slot `{}` takes no {ty}", n.key)).hint(format!("a {}", slot.ty))),
-                    _ => return Err(mismatch(format!("unknown field `{key}` for a file slot")).hint("`image` or `video`, as the slot accepts")),
+                    Some(ty)
+                        if ty.is_file()
+                            && (ty == slot.ty || slot.contract.accepts.contains(&ty)) =>
+                    {
+                        ty
+                    }
+                    Some(ty) if ty.is_file() => {
+                        return Err(mismatch(format!("the slot `{}` takes no {ty}", n.key))
+                            .hint(format!("a {}", slot.ty)));
+                    }
+                    _ => {
+                        return Err(mismatch(format!("unknown field `{key}` for a file slot"))
+                            .hint("`image` or `video`, as the slot accepts"));
+                    }
                 };
                 let Some(path) = given.as_str().filter(|p| !p.is_empty()) else {
                     return Err(mismatch(format!("`{given}` is not a file")));
@@ -615,7 +820,11 @@ fn typed(n: &Named, value: &Json, file: &dyn Fn(&str) -> String) -> Result<(Slot
             }
             chosen.ok_or_else(|| mismatch("no file".into()))?
         }
-        (false, Json::Object(fields)) if fields.len() == 1 && fields.contains_key(slot.ty.name()) => (slot.ty, fields[slot.ty.name()].clone()),
+        (false, Json::Object(fields))
+            if fields.len() == 1 && fields.contains_key(slot.ty.name()) =>
+        {
+            (slot.ty, fields[slot.ty.name()].clone())
+        }
         (_, value) => (slot.ty, value.clone()),
     };
     let checked = match ty == slot.ty {
@@ -629,9 +838,16 @@ fn typed(n: &Named, value: &Json, file: &dyn Fn(&str) -> String) -> Result<(Slot
             _ => "type.mismatch",
         };
         let mut problem = Problem::new(Level::Error, code, 3, "", d.message.clone());
-        problem.hint = Some(d.expected.as_deref().map_or_else(|| format!("a {}, like `{}`", slot.ty, slot.value), str::to_owned));
+        problem.hint = Some(d.expected.as_deref().map_or_else(
+            || format!("a {}, like `{}`", slot.ty, slot.value),
+            str::to_owned,
+        ));
         if code == "value.out_of_range" {
-            problem.rule = Some(if value.as_f64() < slot.contract.min { "min".into() } else { "max".into() });
+            problem.rule = Some(if value.as_f64() < slot.contract.min {
+                "min".into()
+            } else {
+                "max".into()
+            });
             problem.measured = Some(value.clone());
             problem.limit = Some(json!({"min": slot.contract.min, "max": slot.contract.max}));
         }
@@ -654,20 +870,28 @@ fn locked(template: &Document, held: &[(Lock, &Lock)], n: &Named, value: &Json) 
                 if let Some(r) = scene.role(role)
                     && matches!(&r.target, RoleTarget::Slot(id) if n.comp.is_none() && **id == *n.slot.id)
                 {
-                    return Some(format!("slot `{}` is the role `@{role}`, locked by `{written}`", n.key));
+                    return Some(format!(
+                        "slot `{}` is the role `@{role}`, locked by `{written}`",
+                        n.key
+                    ));
                 }
             }
             Lock::Layer(address) => {
                 let ids = layer_ids(template.raw(), n);
                 if ids.iter().any(|path| path.starts_with(&address.layers)) {
-                    return Some(format!("what follows `{}` is drawn inside `{address}`, locked by `{written}`", n.key));
+                    return Some(format!(
+                        "what follows `{}` is drawn inside `{address}`, locked by `{written}`",
+                        n.key
+                    ));
                 }
             }
             Lock::Palette if n.slot.ty == SlotType::Color && sentinel(value).is_none() => {
                 let new = nakkash_format::color(value)?;
                 let known = palette(template.raw());
                 if !known.iter().any(|c| same_colour(c, &new)) {
-                    return Some(format!("`{value}` is not one of the template's colours, locked by `{written}`"));
+                    return Some(format!(
+                        "`{value}` is not one of the template's colours, locked by `{written}`"
+                    ));
                 }
             }
             _ => {}
@@ -696,7 +920,9 @@ fn palette(json: &Json) -> Vec<[f64; 4]> {
 
 /// Whether two colours are the same to 8 bits.
 fn same_colour(a: &[f64; 4], b: &[f64; 4]) -> bool {
-    a.iter().zip(b).all(|(a, b)| (a * 255.0).round() == (b * 255.0).round())
+    a.iter()
+        .zip(b)
+        .all(|(a, b)| (a * 255.0).round() == (b * 255.0).round())
 }
 
 /// The layers a slot's followers sit on: the composition (none for the
@@ -708,21 +934,38 @@ pub fn followers(raw: &Json, n_key: &impl SlotKey) -> Vec<(Option<String>, usize
     let reference = |text: &str| {
         text.strip_prefix('$')
             .filter(|rest| !rest.starts_with('$'))
-            .is_some_and(|rest| rest == id || rest.strip_prefix(id).is_some_and(|r| r.starts_with(' ')))
+            .is_some_and(|rest| {
+                rest == id || rest.strip_prefix(id).is_some_and(|r| r.starts_with(' '))
+            })
     };
     let mut out = Vec::new();
     let mut scan = |list: Option<&Json>, owner: Option<&str>| {
-        for (index, layer) in list.and_then(Json::as_array).into_iter().flatten().enumerate() {
+        for (index, layer) in list
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
             if refers(layer, &reference) {
                 out.push((owner.map(str::to_owned), index));
             }
         }
     };
     match comp {
-        Some(comp) => scan(raw.get(COMPS).and_then(|c| c.get(comp)).and_then(|c| c.get(LAYERS)), Some(comp)),
+        Some(comp) => scan(
+            raw.get(COMPS)
+                .and_then(|c| c.get(comp))
+                .and_then(|c| c.get(LAYERS)),
+            Some(comp),
+        ),
         None => {
             scan(raw.get(LAYERS), None);
-            for (key, c) in raw.get(COMPS).and_then(Json::as_object).into_iter().flatten() {
+            for (key, c) in raw
+                .get(COMPS)
+                .and_then(Json::as_object)
+                .into_iter()
+                .flatten()
+            {
                 let shadowed = c.get(SLOTS).and_then(|s| s.get(id)).is_some();
                 if !shadowed {
                     scan(c.get(LAYERS), Some(key));
@@ -757,7 +1000,10 @@ fn refers(layer: &Json, is: &dyn Fn(&str) -> bool) -> bool {
     match layer {
         Json::String(text) => is(text),
         Json::Array(items) => items.iter().any(|i| refers(i, is)),
-        Json::Object(fields) => fields.iter().filter(|(k, _)| *k != "id").any(|(_, v)| refers(v, is)),
+        Json::Object(fields) => fields
+            .iter()
+            .filter(|(k, _)| *k != "id")
+            .any(|(_, v)| refers(v, is)),
         _ => false,
     }
 }
@@ -769,7 +1015,10 @@ fn layer_ids(raw: &Json, n: &Named) -> Vec<Vec<nakkash_format::Id>> {
     for (comp, index) in followers(raw, n) {
         let list = match &comp {
             None => raw.get(LAYERS),
-            Some(c) => raw.get(COMPS).and_then(|cs| cs.get(c)).and_then(|c| c.get(LAYERS)),
+            Some(c) => raw
+                .get(COMPS)
+                .and_then(|cs| cs.get(c))
+                .and_then(|c| c.get(LAYERS)),
         };
         let id = list
             .and_then(|l| l.get(index))
@@ -797,8 +1046,14 @@ fn paths_to(raw: &Json, comp: Option<&str>, depth: usize) -> Vec<Vec<nakkash_for
         return Vec::new();
     }
     let mut out = Vec::new();
-    let mut lists: Vec<(Option<&str>, &Json)> = raw.get(LAYERS).map(|l| (None, l)).into_iter().collect();
-    for (key, c) in raw.get(COMPS).and_then(Json::as_object).into_iter().flatten() {
+    let mut lists: Vec<(Option<&str>, &Json)> =
+        raw.get(LAYERS).map(|l| (None, l)).into_iter().collect();
+    for (key, c) in raw
+        .get(COMPS)
+        .and_then(Json::as_object)
+        .into_iter()
+        .flatten()
+    {
         if let Some(l) = c.get(LAYERS) {
             lists.push((Some(key.as_str()), l));
         }
@@ -808,7 +1063,11 @@ fn paths_to(raw: &Json, comp: Option<&str>, depth: usize) -> Vec<Vec<nakkash_for
             if layer.get(COMP).and_then(Json::as_str) != Some(comp) {
                 continue;
             }
-            let Some(id) = layer.get("id").and_then(Json::as_str).and_then(|id| id.parse::<nakkash_format::Id>().ok()) else {
+            let Some(id) = layer
+                .get("id")
+                .and_then(Json::as_str)
+                .and_then(|id| id.parse::<nakkash_format::Id>().ok())
+            else {
                 continue;
             };
             for mut path in paths_to(raw, owner, depth + 1) {
@@ -821,7 +1080,11 @@ fn paths_to(raw: &Json, comp: Option<&str>, depth: usize) -> Vec<Vec<nakkash_for
 }
 
 /// The layer at `index` of composition `comp`'s list, or of the scene's.
-fn layer_mut<'j>(raw: &'j mut Json, comp: Option<&str>, index: usize) -> Option<&'j mut Map<String, Json>> {
+fn layer_mut<'j>(
+    raw: &'j mut Json,
+    comp: Option<&str>,
+    index: usize,
+) -> Option<&'j mut Map<String, Json>> {
     let list = match comp {
         None => raw.get_mut(LAYERS)?,
         Some(c) => raw.get_mut(COMPS)?.get_mut(c)?.get_mut(LAYERS)?,
@@ -847,12 +1110,18 @@ fn set_slot(raw: &mut Json, n: &Named, ty: SlotType, value: Json) {
         None => Some(&mut *raw),
         Some(c) => raw.get_mut(COMPS).and_then(|cs| cs.get_mut(c.as_str())),
     };
-    let Some(declared) = owner.and_then(|o| o.get_mut(SLOTS)).and_then(|s| s.get_mut(&*n.slot.id)) else {
+    let Some(declared) = owner
+        .and_then(|o| o.get_mut(SLOTS))
+        .and_then(|s| s.get_mut(&*n.slot.id))
+    else {
         return;
     };
     match declared {
         Json::Object(fields) => {
-            let old = SlotType::NAMES.iter().map(|(name, _)| *name).find(|name| fields.contains_key(*name));
+            let old = SlotType::NAMES
+                .iter()
+                .map(|(name, _)| *name)
+                .find(|name| fields.contains_key(*name));
             match old {
                 Some(old) if old != ty.name() => {
                     // A new type takes the old one's place, the other keys kept.
@@ -876,35 +1145,60 @@ fn set_slot(raw: &mut Json, n: &Named, ty: SlotType, value: Json) {
 
 /// The edit line a `raw` entry makes, or why it is refused.
 fn raw_line(entry: &RawSet) -> Result<String, String> {
-    let address: Address = entry.at.parse().map_err(|d: nakkash_format::Diagnostic| format!("`{}` is not an address: {}", entry.at, d.message))?;
+    let address: Address = entry.at.parse().map_err(|d: nakkash_format::Diagnostic| {
+        format!("`{}` is not an address: {}", entry.at, d.message)
+    })?;
     if address.layers.is_empty() {
-        return Err(format!("`{}` names the scene, which `raw` never sets", entry.at));
+        return Err(format!(
+            "`{}` names the scene, which `raw` never sets",
+            entry.at
+        ));
     }
     let Some(Step::Key(first)) = address.keys.first() else {
         return Err(format!("`{}` names a layer, not a value of it", entry.at));
     };
     if RAW_REFUSED.contains(&first.as_str()) || first.starts_with('$') || first == "overrides" {
-        return Err(format!("`{first}` is motion, timing, an effect or a drawn path, which only the template's designer changes"));
+        return Err(format!(
+            "`{first}` is motion, timing, an effect or a drawn path, which only the template's designer changes"
+        ));
     }
     if address.keys.iter().any(|s| matches!(s, Step::Index(_))) {
-        return Err(format!("`{}` chooses by position; name list items by their id", entry.at));
+        return Err(format!(
+            "`{}` chooses by position; name list items by their id",
+            entry.at
+        ));
     }
     let fits = match entry.expect.as_str() {
         "number" => entry.value.is_number(),
         "string" => entry.value.is_string(),
         "bool" => entry.value.is_boolean(),
         "color" => nakkash_format::is_color(&entry.value),
-        "point" => entry.value.as_array().is_some_and(|xy| xy.len() == 2 && xy.iter().all(Json::is_number)),
+        "point" => entry
+            .value
+            .as_array()
+            .is_some_and(|xy| xy.len() == 2 && xy.iter().all(Json::is_number)),
         "json" => true,
-        other => return Err(format!("`{other}` is not a type `raw` expects: number, string, bool, color, point or json")),
+        other => {
+            return Err(format!(
+                "`{other}` is not a type `raw` expects: number, string, bool, color, point or json"
+            ));
+        }
     };
     if !fits {
         return Err(format!("`{}` is not a {}", entry.value, entry.expect));
     }
     let layers: Vec<String> = address.layers.iter().map(ToString::to_string).collect();
-    let keys = Address { layers: Vec::new(), keys: address.keys.clone() }.to_string();
+    let keys = Address {
+        layers: Vec::new(),
+        keys: address.keys.clone(),
+    }
+    .to_string();
     let keys = keys.trim_start_matches("scene").trim_start_matches('.');
-    Ok(format!("{} {keys}={}", layers.join("/"), serde_json::to_string(&entry.value).unwrap_or_default()))
+    Ok(format!(
+        "{} {keys}={}",
+        layers.join("/"),
+        serde_json::to_string(&entry.value).unwrap_or_default()
+    ))
 }
 
 /// The nearest of `known` to `name`, as a hint.
@@ -914,7 +1208,13 @@ fn nearest<'k>(name: &str, known: impl Iterator<Item = &'k str>) -> String {
     let best: Vec<&str> = scored.iter().take(3).map(|(_, k)| *k).collect();
     match best.is_empty() {
         true => "the template declares none".to_owned(),
-        false => format!("did you mean {}?", best.iter().map(|k| format!("`{k}`")).collect::<Vec<_>>().join(", ")),
+        false => format!(
+            "did you mean {}?",
+            best.iter()
+                .map(|k| format!("`{k}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
 
@@ -926,7 +1226,9 @@ fn distance(a: &str, b: &str) -> usize {
         let mut prev = row[0];
         row[0] = i + 1;
         for (j, cb) in b.iter().enumerate() {
-            let next = (row[j + 1] + 1).min(row[j] + 1).min(prev + usize::from(ca != *cb));
+            let next = (row[j + 1] + 1)
+                .min(row[j] + 1)
+                .min(prev + usize::from(ca != *cb));
             prev = row[j + 1];
             row[j + 1] = next;
         }
@@ -947,7 +1249,10 @@ pub fn elide(instance: &mut Instance, template: &Document) {
             || value.as_object().is_some_and(|o| o.len() == 1 && o.get(n.slot.ty.name()) == Some(&n.slot.value));
         !same && sentinel(value) != Some(UNSET)
     });
-    instance.template.uids.retain(|key, _| instance.slots.contains_key(key));
+    instance
+        .template
+        .uids
+        .retain(|key, _| instance.slots.contains_key(key));
 }
 
 #[cfg(test)]

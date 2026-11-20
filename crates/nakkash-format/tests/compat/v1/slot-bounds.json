@@ -1,0 +1,24 @@
+{
+  "nakkash": 1,
+  "size": "640x360",
+  "dur": "1s",
+  "bg": "$background",
+  "slots": {
+    "title": {"text": "Bounds", "role": "title", "uid": "u-title", "aliases": ["headline"], "overflow": "shrink", "min-size": 30, "max-lines": 1},
+    "background": {"color": "#101418", "role": "background"},
+    "text": {"color": "#F2F4F6", "role": "text", "pair": "background", "contrast": 7},
+    "picture": {"image": null, "kind": "screen", "accepts": ["image", "video"], "aspect": "16:10", "min-px": [320, 200]},
+    "panel": {"choice": "left", "values": ["left", "right"]},
+    "lift": {"number": 24, "min": 0, "max": 60}
+  },
+  "looks": {"light": {"background": "#F2F4F6", "text": "#101418", "panel": "right"}},
+  "comps": {
+    "left": {"size": "640x360", "dur": "1s", "layers": [{"id": "plate", "rect": "200x120 r12", "fill": "$text", "position": [180, 200], "opacity": 0.2}]},
+    "right": {"size": "640x360", "dur": "1s", "layers": [{"id": "plate", "rect": "200x120 r12", "fill": "$text", "position": [460, 200], "opacity": 0.2}]}
+  },
+  "layers": [
+    {"id": "panel", "comp": "$panel"},
+    {"id": "screen", "image": "$picture", "box": [320, 200], "fit": "cover", "position": [160, 80]},
+    {"id": "title", "text": "$title", "font": "Inter Variable 48 700", "fill": "$text", "position": [320, 110], "style": {"align": "center"}, "fit": "shrink 560x60", "anim": {"y": [{"t": "0s", "v": "$lift"}, {"t": "0.5s", "v": 0, "curve": "ease-out"}]}}
+  ]
+}

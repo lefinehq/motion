@@ -49,7 +49,10 @@ pub fn check(path: &Path, json: bool) -> Result<ExitCode> {
                 "known": known,
                 "report": report.as_ref().map(|r| r.to_string().lines().map(str::to_owned).collect::<Vec<_>>()),
             });
-            println!("{}", serde_json::to_string_pretty(&out).expect("JSON writes"));
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&out).expect("JSON writes")
+            );
         }
         false => {
             print_problems(&opened.problems);
@@ -61,7 +64,11 @@ pub fn check(path: &Path, json: bool) -> Result<ExitCode> {
             }
         }
     }
-    Ok(if failed { ExitCode::from(1) } else { ExitCode::SUCCESS })
+    Ok(if failed {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    })
 }
 
 /// Prints `problems`, one line each, errors first.
@@ -92,7 +99,10 @@ pub fn edit(path: &Path, lines: &[String]) -> Result<ExitCode> {
     let after = instance::open_json(path, &json)?;
     if has_errors(&after.problems) || after.session.is_none() {
         print_problems(&after.problems);
-        println!("nothing written: the instance keeps its {} values", before.instance.as_ref().map_or(0, |i| i.slots.len()));
+        println!(
+            "nothing written: the instance keeps its {} values",
+            before.instance.as_ref().map_or(0, |i| i.slots.len())
+        );
         return Ok(ExitCode::from(1));
     }
     let mut written = after.relinked.clone().unwrap_or(edited);
@@ -124,7 +134,10 @@ fn apply(instance: &mut Instance, line: &str) -> Result<()> {
         };
         return Ok(());
     }
-    let id = key.strip_prefix('$').filter(|id| !id.is_empty()).ok_or_else(refuse)?;
+    let id = key
+        .strip_prefix('$')
+        .filter(|id| !id.is_empty())
+        .ok_or_else(refuse)?;
     let value = match value.trim() {
         "none" | "$unset" => json!({ instance::UNSET: true }),
         "$hide" => json!({ instance::HIDE: true }),
@@ -159,11 +172,17 @@ fn write(path: &Path, instance: &Instance) -> Result<()> {
 /// pin relative to the working folder).
 pub fn as_instance(template: &Path, all: bool, out: Option<&Path>) -> Result<ExitCode> {
     if is_instance(template) {
-        return Err(Diagnostic::new(Kind::Invalid, format!("`{}` is already an instance", template.display()))
-            .expected("the template's scene file"));
+        return Err(Diagnostic::new(
+            Kind::Invalid,
+            format!("`{}` is already an instance", template.display()),
+        )
+        .expected("the template's scene file"));
     }
     let session = Session::open(template)?;
-    let folder = out.and_then(Path::parent).map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+    let folder = out
+        .and_then(Path::parent)
+        .filter(|folder| !folder.as_os_str().is_empty())
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
     let pinned = pathdiff(template, &folder);
     let hash = nakkash_engine::canon::hash(session.document().raw());
     let mut made = Instance::pinned(&pinned, &hash);
@@ -184,7 +203,10 @@ pub fn as_instance(template: &Path, all: bool, out: Option<&Path>) -> Result<Exi
             write(out, &made)?;
             println!("{} pinned to {pinned} ({hash})", out.display());
         }
-        None => println!("{}", serde_json::to_string_pretty(&made.to_json()).expect("JSON writes")),
+        None => println!(
+            "{}",
+            serde_json::to_string_pretty(&made.to_json()).expect("JSON writes")
+        ),
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -194,14 +216,25 @@ pub fn as_instance(template: &Path, all: bool, out: Option<&Path>) -> Result<Exi
 /// system finds it.
 fn pathdiff(template: &Path, folder: &Path) -> String {
     let absolute = |p: &Path| {
-        fs::canonicalize(p).unwrap_or_else(|_| std::path::absolute(p).unwrap_or_else(|_| p.to_owned()))
+        fs::canonicalize(p)
+            .unwrap_or_else(|_| std::path::absolute(p).unwrap_or_else(|_| p.to_owned()))
     };
     let (t, f) = (absolute(template), absolute(folder));
     let t: Vec<_> = t.components().collect();
-    let f: Vec<_> = f.components().filter(|c| !matches!(c, std::path::Component::CurDir)).collect();
+    let f: Vec<_> = f
+        .components()
+        .filter(|c| !matches!(c, std::path::Component::CurDir))
+        .collect();
     let shared = t.iter().zip(&f).take_while(|(a, b)| a == b).count();
+    if shared == 0 {
+        return t.iter().collect::<PathBuf>().display().to_string();
+    }
     let mut parts: Vec<String> = std::iter::repeat_n("..".to_owned(), f.len() - shared).collect();
-    parts.extend(t[shared..].iter().map(|c| c.as_os_str().to_string_lossy().into_owned()));
+    parts.extend(
+        t[shared..]
+            .iter()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned()),
+    );
     parts.join("/")
 }
 
@@ -217,7 +250,11 @@ pub fn migrate(path: &Path, dry_run: bool) -> Result<ExitCode> {
         return Ok(ExitCode::from(1));
     };
     let mut moved = Vec::new();
-    for problem in opened.problems.iter().filter(|p| p.code == "target.stale" || p.code == "slot.unknown") {
+    for problem in opened
+        .problems
+        .iter()
+        .filter(|p| p.code == "target.stale" || p.code == "slot.unknown")
+    {
         let Some(key) = &problem.slot else { continue };
         if let Some(value) = opened.instance.as_ref().and_then(|i| i.slots.get(key)) {
             migrated.stale.insert(key.clone(), value.clone());
@@ -228,8 +265,16 @@ pub fn migrate(path: &Path, dry_run: bool) -> Result<ExitCode> {
     }
     let json = migrated.to_json();
     let again = instance::open_json(path, &json)?;
-    let left: Vec<&Problem> = again.problems.iter().filter(|p| p.level == Level::Error).collect();
-    for problem in opened.problems.iter().filter(|p| p.code == "target.relinked") {
+    let left: Vec<&Problem> = again
+        .problems
+        .iter()
+        .filter(|p| p.level == Level::Error)
+        .collect();
+    for problem in opened
+        .problems
+        .iter()
+        .filter(|p| p.code == "target.relinked")
+    {
         println!("relinked {}: {}", problem.path, problem.message);
     }
     for key in &moved {

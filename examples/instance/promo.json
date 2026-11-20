@@ -5,7 +5,7 @@
   "dur": "$duration",
   "bg": "$background",
   "slots": {
-    "headline": {"text": "Ship every market at once", "label": "Opening line", "role": "title", "overflow": "shrink", "min-size": 72, "max-lines": 2},
+    "headline": {"text": "Ship every market at once", "label": "Opening line", "role": "title", "overflow": "shrink", "min-size": 72, "max-lines": 1},
     "feature": {"text": "One screen, every language", "label": "Feature line", "role": "subtitle", "overflow": "wrap", "min-size": 40, "max-lines": 2},
     "cta": {"text": "Start free", "label": "Call to action", "role": "cta", "overflow": "reject"},
     "background": {"color": "#0B0D12", "role": "background"},

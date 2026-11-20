@@ -257,6 +257,16 @@ enum Command {
         #[arg(required = true)]
         lines: Vec<String>,
     },
+    /// Print everything an agent may set in a template, measured in its own
+    /// fonts: rules and locks, sections with their story roles and times,
+    /// texts with what fits, colours by what they paint, files, choices.
+    Brief {
+        /// Path to the template's scene file, or an instance of it.
+        scene: PathBuf,
+        /// Print it as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Pin an instance to its template as it is now: relinked slots under
     /// their new ids, values of slots the template lost kept under
     /// `stale`, the hash pinned again.
@@ -463,6 +473,7 @@ impl Command {
             | Command::Export { scene, .. }
             | Command::Vary { scene, .. } => scene,
             Command::Migrate { instance, .. } => instance,
+            Command::Brief { scene, .. } => scene,
             Command::Import { project, .. } | Command::Inspect { project, .. } => project,
             Command::Fidelity { manifest, .. } | Command::Batch { manifest, .. } => manifest,
             Command::Bench { briefs, .. } => briefs,
@@ -512,6 +523,7 @@ fn main() -> ExitCode {
             false => commands::check::run(&scene, baseline.as_deref()),
         },
         Command::Migrate { instance, dry_run } => commands::instance::migrate(&instance, dry_run),
+        Command::Brief { scene, json } => commands::brief::run(&scene, json),
         Command::Slots {
             scene,
             as_instance: true,
