@@ -137,6 +137,7 @@ fn the_skill_is_the_guide(#[case] guide: &str, #[case] skill: &str) {
 #[case::lower_third("lower-third.json")]
 #[case::title_card("title-card.json")]
 #[case::instance_template("instance/promo.json")]
+#[case::styled_cards("styled-cards.json")]
 fn an_example_written_from_scratch_passes_check(#[case] name: &str) {
     let path = format!("{}/../../examples/{name}", env!("CARGO_MANIFEST_DIR"));
     let out = nakkash(&["check", &path]);

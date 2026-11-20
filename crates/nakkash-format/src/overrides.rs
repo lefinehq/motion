@@ -62,6 +62,8 @@ pub(crate) fn written_id(layer: &Value) -> Option<&str> {
 /// layer with every override on the way set over it. `None` when an id is
 /// not there, or one on the way is not a `comp` layer.
 pub fn layer_json(raw: &Value, ids: &[Id]) -> Option<Keys> {
+    // As drawn: a layer's styles are its keys too.
+    let raw = &*crate::styles::expand(raw).ok()?;
     let (last, outer) = ids.split_last()?;
     let mut layers: Vec<Value> = raw.get(LAYERS)?.as_array()?.clone();
     for id in outer {

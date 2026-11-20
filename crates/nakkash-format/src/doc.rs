@@ -45,6 +45,10 @@ pub(crate) struct SceneDoc {
     pub(crate) shutter: Present<Shorthand<Shutter>>,
     pub(crate) labels: Object<LabelsDoc>,
     pub(crate) presets: Object<PresetsDoc>,
+    /// Expanded by `crate::styles` before the document is read; kept so the key is known.
+    pub(crate) styles: Present<serde_json::Value>,
+    /// Expanded by `crate::styles` before the document is read; kept so the key is known.
+    pub(crate) eases: Present<serde_json::Value>,
     pub(crate) fonts: Present<List<FontsDoc>>,
     /// Read by `crate::slots` before the document is; kept so the key is known.
     pub(crate) slots: Present<serde_json::Value>,
@@ -69,6 +73,8 @@ impl Form for SceneDoc {
 #[serde(default)]
 pub(crate) struct LayerDoc {
     pub(crate) id: Present<String>,
+    /// Expanded by `crate::styles` before the document is read; kept so the key is known.
+    pub(crate) inherits: Present<serde_json::Value>,
     pub(crate) text: Present<String>,
     pub(crate) rect: Present<Shorthand<RectShape>>,
     pub(crate) shapes: Present<List<ItemsDoc>>,

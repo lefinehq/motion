@@ -838,6 +838,24 @@ nakkash never goes to the network while rendering. A render depends only on the 
 - **System fonts** work, but the checker warns about them, because the result then depends on the machine.
 - **A missing font or glyph** is an error, never a silent fallback. Only an import substitutes a font it does not have, by writing another face's name into the scene and reporting it ([D40](decisions.md#d40-missing-fonts-are-substituted-at-import)).
 
+## Styles, eases and defaults
+
+A scene says a repeated set of layer keys, or a repeated curve, once ([D91](decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point)). Both are read before anything else, slots included, so a scene written with them is, once read, the scene written without them, and draws the same bits; the file keeps them as written.
+
+```json
+"styles":{"fx-glow-drop-shadow":{"fx":[{"glow":24},{"drop-shadow":20,"color":"$accent"}]},
+          "anim-rise":{"anim":{"y":[{"t":"0s","v":40,"curve":"still-to-stop-95-97"},{"t":"1s","v":0}]}}},
+"eases":{"still-to-stop-95-97":"speed(0,0.95,0,0.97)"},
+"layers":[{"id":"plate","rect":"600x300","inherits":["fx-glow-drop-shadow","anim-rise"]},
+          {"id":"card","rect":"400x200","inherits":"fx-glow-drop-shadow","fx":[{"glow":40}]}]
+```
+
+- **`styles`** holds named sets of layer keys. A layer takes them with `inherits`, one name or a list applied in order, the later winning; a list lets an effect stack and an animation that repeat apart each be one style. A key the layer writes itself wins over every style's, whole: `card` above draws one glow, not three effects. A style may hold any layer key but `id` and `inherits`. A slot reference in a style follows the slots of each layer's own composition, as if written on the layer. An `inherits` that names no style is an error at it, listing the styles there are.
+- **`eases`** holds named curves. The `curve` of a key written as an object, `{"t":…,"v":…,"curve":"still-to-stop-95-97"}`, may name one, alone or in a list of one per component. A name that already reads as a curve (`ease-out`, `out-cubic`, `speed(…)`) cannot be taken.
+- **Edits.** An edit of a styled layer writes the layer, which then wins over its style for that key; an edit inside a key the layer only inherits starts from the style's value. Removing a key the layer only inherits is refused, since the style would still give it: set a value instead, or edit the style.
+- **Defaults.** A property written at the fixed resting value the format's version gives it, and a setting written at its default choice, may be left out; the table of those values belongs to the format's version, so changing one bumps it, and its migration writes the old value back where a scene left it out ([D36](decisions.md#d36-the-format-only-changes-in-the-open)). A snapshot of the table (`crates/nakkash-format/tests/defaults.rs`) fails when one moves.
+- **`nakkash compact scene.json -o out.json`** writes the compact form: repeated effect stacks and animations as styles, repeated `speed(…)` and `cubic(…)` curves as eases named by their shape, values at their defaults left out. It reads the result back and writes it only when it is the same scene: a property the reader keeps as written even at its rest (a `rotate` of 0 on a layer, today) stays written, and the report names it; a part that would still change the scene is left out. Names are long and readable, since agents read them.
+
 ## Validation
 
 - **JSON Schema.** A schema is generated from the engine's own types and published, so editors and agents can validate scenes.

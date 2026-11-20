@@ -6,6 +6,7 @@ pub mod batch;
 pub mod bench;
 pub mod brief;
 pub mod check;
+pub mod compact;
 pub mod diff;
 pub mod edit;
 pub mod export;

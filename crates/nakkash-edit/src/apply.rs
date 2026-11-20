@@ -148,7 +148,53 @@ fn apply_changes(doc: &Document, edit: &Edit) -> Result<(Value, Target)> {
         Target::Inner { .. } => doc.layer_json(&edit.target.layers),
         _ => None,
     };
+    // A styled layer's keys include its styles' ([D91]): a change inside
+    // one starts from the key as the style gives it, and a key the layer
+    // only inherits cannot be removed from it.
+    //
+    // [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+    let styled = match (
+        &target,
+        raw[LAYERS]
+            .get(target_index(&target))
+            .and_then(Value::as_object),
+    ) {
+        (Target::Layer(_), Some(layer)) if layer.contains_key(nakkash_format::key::INHERITS) => {
+            let layer = layer.clone();
+            Some((nakkash_format::styles::inherited(doc.raw(), &layer)?, layer))
+        }
+        _ => None,
+    };
+    if let Some((styled, own)) = &styled
+        && let Some(change) = changes.iter().find(|c| {
+            matches!(c.value, EditValue::Remove)
+                && c.key.steps().len() == 1
+                && !own.contains_key(c.key.first())
+                && styled.contains_key(c.key.first())
+        })
+    {
+        let names = nakkash_format::styles::style_names(own).join("`, `");
+        return Err(Diagnostic::new(
+                Kind::Conflict,
+                format!(
+                    "`{}` comes from the style `{names}`, so removing it from the layer changes nothing",
+                    change.key.first()
+                ),
+            )
+            .expected("a value for the key on the layer, which wins over the style's, or an edit of the style"));
+    }
     let object = target.object(&mut raw);
+    if let (Some((styled, _)), Some(object)) = (&styled, object.as_object_mut()) {
+        for change in &changes {
+            let first = change.key.first();
+            if change.key.steps().len() > 1
+                && !object.contains_key(first)
+                && let Some(value) = styled.get(first)
+            {
+                object.insert(first.to_owned(), value.clone());
+            }
+        }
+    }
     for change in &changes {
         if let (Some(drawn), Some(object)) = (&drawn, object.as_object_mut()) {
             let first = change.key.first();
@@ -171,6 +217,15 @@ fn apply_changes(doc: &Document, edit: &Edit) -> Result<(Value, Target)> {
         removed_through_override(&raw, edit)?;
     }
     Ok((raw, target))
+}
+
+/// The index in the scene's layers of a layer target; past any list for
+/// another.
+fn target_index(target: &Target) -> usize {
+    match target {
+        Target::Layer(index) => *index,
+        _ => usize::MAX,
+    }
 }
 
 /// Drops an override an edit left empty, then `overrides` if it is empty.

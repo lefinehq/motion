@@ -246,6 +246,20 @@ enum Command {
         #[arg(long, value_name = "FILE", requires = "as_instance")]
         out: Option<PathBuf>,
     },
+    /// Write a scene in its compact form: repeated effect stacks and
+    /// animations as styles, repeated curves as eases, values at their
+    /// defaults left out. The result is read back and written only when it
+    /// is the same scene (D91).
+    Compact {
+        /// Path to the scene file.
+        scene: PathBuf,
+        /// The file to write; may be the scene itself.
+        #[arg(short, long, value_name = "FILE")]
+        out: PathBuf,
+        /// Print what was written as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Apply an edit line such as `card fill=#FF0000`, save the scene and
     /// print what the edit added to its check; exits 1 when it added an error.
     Edit {
@@ -466,6 +480,7 @@ impl Command {
             Command::Check { scene, .. }
             | Command::At { scene, .. }
             | Command::Slots { scene, .. }
+            | Command::Compact { scene, .. }
             | Command::Roles { scene, .. }
             | Command::Edit { scene, .. }
             | Command::Render { scene, .. }
@@ -552,6 +567,7 @@ fn main() -> ExitCode {
             },
         ),
         Command::Roles { scene, json } => commands::roles::run(&scene, json),
+        Command::Compact { scene, out, json } => commands::compact::run(&scene, &out, json),
         Command::Batch {
             manifest,
             check,

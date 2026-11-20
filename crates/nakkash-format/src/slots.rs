@@ -851,8 +851,9 @@ fn resolve_canvas(
 /// The diagnostic of a slot that does not read, or of a reference to no
 /// slot in scope.
 pub fn resolved(raw: &Json) -> Result<Json> {
-    let declared = declared(raw)?;
-    resolve(raw, &declared).map(|(json, _)| json.into_owned())
+    let raw = crate::styles::expand(raw)?;
+    let declared = declared(&raw)?;
+    resolve(&raw, &declared).map(|(json, _)| json.into_owned())
 }
 
 /// Whether any string in `json` starts with `$`.
@@ -1012,6 +1013,11 @@ pub struct Listed {
 /// Every slot of a valid scene's JSON, the scene's first and then each
 /// composition's, with the values that follow it.
 pub(crate) fn listed(raw: &Json) -> Vec<Listed> {
+    // Styles hold values that follow slots as layers do.
+    let Ok(raw) = crate::styles::expand(raw) else {
+        return Vec::new();
+    };
+    let raw = &*raw;
     let Ok(declared) = declared(raw) else {
         return Vec::new();
     };

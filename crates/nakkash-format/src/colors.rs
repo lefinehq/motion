@@ -80,6 +80,14 @@ pub fn places(scene: &Json) -> Vec<ColorPlace> {
             layer_places(scene, layer, &steps, background, &mut found);
         }
     }
+    // A style's keys are the keys of every layer that inherits it (D91), so
+    // its colours are places too, once each.
+    if let Some(styles) = scene["styles"].as_object() {
+        for (name, style) in styles {
+            let steps = vec![key("styles"), key(name)];
+            layer_places(scene, style, &steps, false, &mut found);
+        }
+    }
     found
 }
 
