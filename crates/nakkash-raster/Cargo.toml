@@ -35,7 +35,8 @@ fearless_simd = { version = "1.2", features = ["force_support_fallback"] }
 proptest.workspace = true
 rstest.workspace = true
 
-# `fearless_simd` is named only to turn on its portable fallback.
+# `fearless_simd` is named to turn on its portable fallback; only tests call
+# it, to force each instruction set in turn.
 [package.metadata.cargo-machete]
 ignored = ["fearless_simd"]
 

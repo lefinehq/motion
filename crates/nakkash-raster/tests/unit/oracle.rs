@@ -323,3 +323,89 @@ fn a_frame_is_the_same_at_every_thread_count_and_split_on_every_level() {
         }
     }
 }
+
+// The rasteriser's highp pack (K1): the bytes it was published with.
+
+/// The bytes of a pixmap of `width` columns between guards of junk, after
+/// `pack` packed `scratch` into `height` rows of it.
+fn packed(
+    width: usize,
+    height: u16,
+    scratch: &[f32],
+    pack: impl FnOnce(&[f32], usize, &mut vello_cpu::region::Region<'_>),
+) -> Vec<u8> {
+    const GUARD: u16 = 5;
+    let columns = u16::try_from(width).expect("a narrow tile row");
+    let mut pixmap = vello_cpu::Pixmap::new(columns + 2 * GUARD, 4);
+    pixmap.data_as_u8_slice_mut().fill(0xA5);
+    {
+        let mut target = pixmap.as_mut();
+        let rect = vello_cpu::geometry::RectU16::new(GUARD, 0, GUARD + columns, height);
+        let mut region = vello_cpu::region::Region::new(&mut target, rect);
+        pack(scratch, width, &mut region);
+    }
+    pixmap.data_as_u8_slice().to_vec()
+}
+
+#[test]
+fn the_rasterisers_pack_gives_the_bytes_it_was_published_with() {
+    use vello_cpu::fine::{F32Kernel, FineKernel};
+    let mut noise = Noise::new(11);
+    let edges = edge_floats();
+    for (name, level) in levels() {
+        for &width in WIDTHS.iter().chain(&[63, 64, 65, 127, 128, 129, 300]) {
+            for height in 1..=4 {
+                let random = noise.floats(width * 16);
+                let edge: Vec<f32> = edges.iter().copied().cycle().take(width * 16).collect();
+                for scratch in [random, edge] {
+                    let published = packed(width, height, &scratch, F32Kernel::pack_as_published);
+                    // The guards are untouched, and so are the rows below.
+                    let row = (width + 10) * 4;
+                    assert!(published[..20].iter().all(|&b| b == 0xA5));
+                    assert!(
+                        published[usize::from(height) * row..]
+                            .iter()
+                            .all(|&b| b == 0xA5)
+                    );
+                    let changed = packed(width, height, &scratch, |scratch, width, region| {
+                        fearless_simd::dispatch!(level, simd => {
+                            <F32Kernel as FineKernel<_>>::pack(simd, scratch, width, region)
+                        });
+                    });
+                    assert_same_bits(
+                        &format!("{name}, {width} by {height}"),
+                        &published,
+                        &changed,
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn the_rasterisers_pack_makes_the_published_byte_of_every_float() {
+    use rayon::prelude::*;
+    use vello_cpu::fine::F32Kernel;
+    const RUN: u32 = 1 << 16;
+    for (name, level) in levels() {
+        (0..=u32::MAX / RUN).into_par_iter().for_each_init(
+            || (vec![0; RUN as usize], vec![0; RUN as usize]),
+            |(packed, published), run| {
+                F32Kernel::packed_and_published(level, run * RUN, packed, published);
+                if packed != published {
+                    let at = (0..RUN as usize)
+                        .find(|&i| packed[i] != published[i])
+                        .unwrap();
+                    let value = f32::from_bits(run * RUN + at as u32);
+                    panic!(
+                        "{name}: {value:?} ({:#010x}) packs to {}, published {}",
+                        value.to_bits(),
+                        packed[at],
+                        published[at]
+                    );
+                }
+            },
+        );
+    }
+}

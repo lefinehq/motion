@@ -302,20 +302,34 @@ impl<S: Simd> FineKernel<S> for U8Kernel {
 
 #[inline(always)]
 fn pack<S: Simd>(simd: S, scratch: &[u8], width: usize, region: &mut Region<'_>) {
+    pack_at(simd, scratch, 0, width, region);
+}
+
+/// Packs `scratch` into the `width` columns of `region` from column `x`.
+/// Changed for nakkash (D90): `pack` with the column it starts at, so the
+/// highp pack can move its bytes a run of columns at a time.
+#[inline(always)]
+pub(crate) fn pack_at<S: Simd>(
+    simd: S,
+    scratch: &[u8],
+    x: usize,
+    width: usize,
+    region: &mut Region<'_>,
+) {
     let block_width = if region.height == Tile::HEIGHT {
         (width / Tile::WIDTH as usize) * Tile::WIDTH as usize
     } else {
         0
     };
     if block_width > 0 {
-        pack_block(simd, scratch, block_width, region);
+        pack_block(simd, scratch, x, block_width, region);
     }
 
     let tail_width = width - block_width;
     if tail_width > 0 {
         pack_tail(
             &scratch[block_width * TILE_HEIGHT_COMPONENTS..],
-            block_width,
+            x + block_width,
             tail_width,
             region,
         );
@@ -323,15 +337,15 @@ fn pack<S: Simd>(simd: S, scratch: &[u8], width: usize, region: &mut Region<'_>)
 }
 
 #[inline(always)]
-fn pack_block<S: Simd>(simd: S, scratch: &[u8], width: usize, region: &mut Region<'_>) {
+fn pack_block<S: Simd>(simd: S, scratch: &[u8], x: usize, width: usize, region: &mut Region<'_>) {
     const CHUNK_LENGTH: usize = Tile::WIDTH as usize * TILE_HEIGHT_COMPONENTS;
 
     let [row0, row1, row2, row3] = region.areas();
-    let row_len = width * COLOR_COMPONENTS;
-    let mut row0 = &mut row0[..row_len];
-    let mut row1 = &mut row1[..row_len];
-    let mut row2 = &mut row2[..row_len];
-    let mut row3 = &mut row3[..row_len];
+    let row = x * COLOR_COMPONENTS..(x + width) * COLOR_COMPONENTS;
+    let mut row0 = &mut row0[row.clone()];
+    let mut row1 = &mut row1[row.clone()];
+    let mut row2 = &mut row2[row.clone()];
+    let mut row3 = &mut row3[row];
 
     for col in scratch[..width * TILE_HEIGHT_COMPONENTS]
         .as_chunks::<CHUNK_LENGTH>()
@@ -690,7 +704,7 @@ mod tests {
             test_pack_unpack_roundtrip(
                 width,
                 |region, scratch| {
-                    simd.vectorize(|| pack_block(simd, scratch, usize::from(width), region));
+                    simd.vectorize(|| pack_block(simd, scratch, 0, usize::from(width), region));
                 },
                 |region, scratch| {
                     simd.vectorize(|| unpack_block(simd, region, usize::from(width), scratch));
