@@ -293,3 +293,46 @@ fn edges_keep_the_layers_alpha() {
     find_edges(&mut pixels, &[Number(0.0), Choice(0)], &ONE);
     assert_eq!(pixels.get(1, 1), [1.0; 4]);
 }
+
+#[test]
+fn a_blur_skips_only_lines_a_pass_leaves_as_they_are() {
+    use crate::oracle::assert_same_bits;
+    // Lines of +0.0 beside ones of -0.0 and ones crossing a speck.
+    let (width, height) = (37usize, 23usize);
+    let mut pixels = Pixels::transparent(width as u16, height as u16);
+    for (i, p) in pixels.data_mut().iter_mut().enumerate() {
+        let (x, y) = (i % width, i / width);
+        if y == 5 || x == 9 {
+            *p = [-0.0; 4];
+        }
+        if (x, y) == (20, 15) {
+            *p = [0.5, 0.25, 0.0, 1.0];
+        }
+    }
+    for edges in [Edges::Transparent, Edges::Repeat] {
+        for radius in [0.4f32, 1.0, 3.7] {
+            let (whole, part) = (radius.floor() as usize, radius.fract());
+            // The reference: every row, then every column, passed alone.
+            let mut want = pixels.data().to_vec();
+            let mut padded = Vec::new();
+            for row in want.chunks_exact_mut(width) {
+                for _ in 0..3 {
+                    box_pass(row, whole, part, edges, &mut padded);
+                }
+            }
+            for x in 0..width {
+                let mut column: Vec<Pixel> = want.iter().skip(x).step_by(width).copied().collect();
+                for _ in 0..3 {
+                    box_pass(&mut column, whole, part, edges, &mut padded);
+                }
+                for (item, v) in want.iter_mut().skip(x).step_by(width).zip(column) {
+                    *item = v;
+                }
+            }
+            let mut got = pixels.clone();
+            along(&mut got, 0, radius, 3, edges);
+            along(&mut got, 1, radius, 3, edges);
+            assert_same_bits(&format!("radius {radius}, {edges:?}"), &want, got.data());
+        }
+    }
+}
