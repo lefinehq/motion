@@ -4160,10 +4160,18 @@ pub fn effect_kind(name: &str) -> Option<&'static ItemKind> {
 /// The properties code depends on, for the drawing and measuring of items.
 pub mod props {
     use super::{
-        ANIMATOR, ELLIPSE, EXPAND, FILL, FILL_EFFECT, MASK, PART, PATH, Prop, RANGE, RECT,
-        REPEATER, ROUND_CORNERS, STAR, STROKE, TRIM,
+        ANIMATOR, ELLIPSE, EXPAND, FILL, FILL_EFFECT, GROUP, MASK, PART, PATH, Prop, RANGE, RECT,
+        REPEATER, ROUND_CORNERS, STAR, STROKE, TRANSFORM_EFFECT, TRIM,
     };
 
+    /// How far a shape group slants, in degrees.
+    pub const GROUP_SKEW: Prop = Prop::of(&GROUP, 5);
+    /// The direction a shape group slants along, in degrees.
+    pub const GROUP_SKEW_AXIS: Prop = Prop::of(&GROUP, 6);
+    /// How far the transform effect shears, in degrees.
+    pub const TRANSFORM_SKEW: Prop = Prop::of(&TRANSFORM_EFFECT, 5);
+    /// The direction the transform effect shears across, in degrees.
+    pub const TRANSFORM_SKEW_AXIS: Prop = Prop::of(&TRANSFORM_EFFECT, 6);
     /// A rectangle's width and height.
     pub const RECT_SIZE: Prop = Prop::of(&RECT, 0);
     /// A rectangle's centre.

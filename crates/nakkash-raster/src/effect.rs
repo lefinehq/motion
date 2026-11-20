@@ -470,8 +470,22 @@ pub const EFFECTS: &[EffectSpec] = &[
                 choices: &[],
                 doc: "what the content's opacity is multiplied by, 0 to 1",
             },
+            ParamSpec {
+                name: "skew",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "a shear in degrees across `skew-axis`, after the turn",
+            },
+            ParamSpec {
+                name: "skew-axis",
+                default: ParamValue::Number(0.0),
+                range: None,
+                choices: &[],
+                doc: "the direction `skew` shears across, in degrees clockwise",
+            },
         ],
-        doc: "moves, scales, turns and fades the content inside the layer",
+        doc: "moves, scales, turns, shears and fades the content inside the layer",
         reach: stays,
         apply: Apply::Move(transform),
     },
@@ -3821,7 +3835,8 @@ fn fill_pixels(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
 }
 
 /// The `transform` effect: the content's anchor goes to `position`, scaled
-/// and turned about it, as a shape group's transform places its items.
+/// and turned about it, as a shape group's transform places its items, then
+/// sheared by its skew ([`nakkash_format::property::shear`]).
 fn transform(values: &[ParamValue]) -> Move {
     let [
         ParamValue::Point(position),
@@ -3829,6 +3844,8 @@ fn transform(values: &[ParamValue]) -> Move {
         ParamValue::Point(scale),
         ParamValue::Number(rotate),
         ParamValue::Number(opacity),
+        ParamValue::Number(skew),
+        ParamValue::Number(skew_axis),
     ] = values
     else {
         unreachable!("`Effect::new` checks the transform parameters");
@@ -3836,6 +3853,7 @@ fn transform(values: &[ParamValue]) -> Move {
     let point = |[x, y]: [f32; 2]| Vec2::new(f64::from(x), f64::from(y));
     Move {
         transform: Affine::translate(point(*position))
+            * nakkash_format::property::shear(f64::from(*skew), f64::from(*skew_axis))
             * Affine::rotate(f64::from(*rotate).to_radians())
             * Affine::scale_non_uniform(f64::from(scale[0]), f64::from(scale[1]))
             * Affine::translate(-point(*anchor)),

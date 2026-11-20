@@ -181,7 +181,7 @@ How items combine:
 - **Expansions.** An `expand` moves every outline listed before it in its group out, the outlines inside earlier groups included, each in its own space, as a trim cuts them: every fill and stroke that draws the outline draws the moved one, wherever it sits in the list. It acts in list order with the other modifiers of its group, after those of the groups inside it.
 - **Space.** A paint fills and strokes in its own group's space, so a stroke's width scales with the groups around it, not with the groups it reaches into.
 - **Fill rule.** All the outlines one fill covers count as one path for its `rule`, so `evenodd` cuts holes where they overlap.
-- **Groups.** A group has a layer's transform (`position`, `anchor`, `scale`, `rotate`, `opacity`), resting at the origin. Its opacity multiplies the paints inside it.
+- **Groups.** A group has a layer's transform (`position`, `anchor`, `scale`, `rotate`, `opacity`), resting at the origin, and a `skew`: a slant of that many degrees along `skew-axis` (degrees clockwise from across), after the scale and before the turn, so with the axis at 0 a positive skew leans the group's top forward, as an italic does. As a product: `T(position) · R · K · S · T(−anchor)`. Its opacity multiplies the paints inside it.
 - **Box.** A shape layer's own coordinates start at its anchor, `[0, 0]`; `check` measures the outlines it draws, widened by half of each stroke.
 - **Ids and `hidden`.** An item may have an `id`, unique within its layer; `"hidden":true` leaves it out of the frame.
 
@@ -189,7 +189,7 @@ Each kind lists its properties in `crates/nakkash-format/src/item.rs`; this tabl
 
 | Item | Key holds | Properties | Settings |
 |---|---|---|---|
-| `group` | its items | `position`, `anchor`, `scale`, `rotate`, `opacity` | |
+| `group` | its items | `position`, `anchor`, `scale`, `rotate`, `opacity`, `skew`, `skew-axis` | |
 | `rect` | `size` | `size`, `position`, `round` | |
 | `ellipse` | `size` | `size`, `position` | |
 | `star` | `points` | `points`, `position`, `rotate`, `outer-radius`, `inner-radius`, `outer-roundness`, `inner-roundness` | `type`: `star`, `polygon`; `direction`: `clockwise`, `counterclockwise` |
@@ -249,7 +249,7 @@ An `expand` moves every side of an outline `amount` px to its left, which is out
 |---|---|---|---|
 | `fill` | `color` | `color`, `opacity` | `inverted`: `off`, `on` |
 | `solid-composite` | `color` | `source-opacity`, `color`, `opacity` | `mode`: `normal`, `add`, `multiply`, `screen`, `overlay`, `soft-light`, `hard-light`, `color-dodge`, `color-burn`, `darken`, `lighten`, `difference`, `exclusion`, `hue`, `saturation`, `color`, `luminosity` |
-| `transform` | `scale` | `position`, `anchor`, `scale`, `rotate`, `opacity` | |
+| `transform` | `scale` | `position`, `anchor`, `scale`, `rotate`, `opacity`, `skew`, `skew-axis` | |
 | `tint` | `amount` | `black`, `white`, `amount` | |
 | `hue-saturation` | `hue` | `hue`, `saturation`, `lightness`, `colorize-hue`, `colorize-saturation`, `colorize-lightness` | `mode`: `adjust`, `colorize` |
 | `color-cycle` | `phase-from` | `red`, `green`, `blue`, `alpha`, `shift`, `repetitions`, `blend` | `add-from`: `intensity`, `red`, `green`, `blue`, `hue`, `lightness`, `saturation`, `value`, `alpha`, `zero`; `add-mode`: `wrap`, `clamp`, `average`, `screen`; `modify`: `all`, `red`, `green`, `blue`, `red-green`, `green-blue`, `red-blue`, `hue`, `lightness`, `saturation`, `hue-lightness`, `lightness-saturation`, `hue-saturation`, `none`; `interpolate`: `on`, `off`; `modify-alpha`: `on`, `off` |
@@ -294,7 +294,7 @@ An `expand` moves every side of an outline `amount` px to its left, which is out
 | `curves` | `rgb` | `rgb`, `red`, `green`, `blue`, `alpha` | |
 | `invert` | `channel` | `blend` | |
 
-A `transform` moves everything the layer draws, inside the layer, as a group's transform moves its items: `anchor` (px of the layer's own coordinates) goes to `position`, scaled and turned about it, and `opacity` multiplies the layer's. Both points rest at the origin, so `{"transform":1.5}` scales about the layer's origin; an import writes both. Several apply in order, each moving what the ones before it moved.
+A `transform` moves everything the layer draws, inside the layer, as a group's transform moves its items: `anchor` (px of the layer's own coordinates) goes to `position`, scaled and turned about it, and `opacity` multiplies the layer's. Its `skew` shears after the turn, unlike a group's: across `skew-axis`, turned that many degrees clockwise, points move along the axis's normal by the tangent of `skew` times how far along the axis they stand, so with the axis at 0 a positive skew moves the right side down. As a product: `T(position) · K · R · S · T(−anchor)`, with `K = R(−axis) · shear(tan skew) · R(axis)`. Both skews are held within −85 and 85 degrees. Both points rest at the origin, so `{"transform":1.5}` scales about the layer's origin; an import writes both. Several apply in order, each moving what the ones before it moved.
 
 `particles` draws, in place of the layer, particles a producer sends out over the layer's own time: `rate` a second from an ellipse `radius-x` by `radius-y` px around `position`, each living `longevity` seconds, leaving at `velocity` px a second every way or towards `direction`, varied by `extra`, falling with `gravity` and slowed by `resistance`. Each grows from `birth-size` to `death-size` px and turns from `birth-color` to `death-color`. `rate` acts on births only: particle `i` is born when the running total of `rate` over the layer's own time, from 0, first passes `i` (at `i / rate` seconds while the rate holds), and then lives its `longevity` whatever the rate does, so a rate keyed down to 0 leaves a burst that lives out its time. The running total is worked out once from `rate`'s keys: exactly over held and straight spans, and over any other ease by cutting the span into 32 equal parts taken as straight, so a birth falls at the same moment whichever frame or shutter moment draws it. Its random draws come from `seed` and `i`, so every frame draws alone and the same, with at most 20,000 at once, the oldest left out. Every other property is read at the moment drawn and acts on every living particle.
 

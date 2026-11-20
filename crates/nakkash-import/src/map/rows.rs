@@ -715,13 +715,8 @@ macro_rules! transform_effect_rows {
                 Absent,
             ),
             $($scale,)+
-            row("ADBE Geometry2-0005", To::OnlyDefault("skew"), Number, Absent),
-            row(
-                "ADBE Geometry2-0006",
-                To::Ignore("the axis of a skew of 0"),
-                Number,
-                Absent,
-            ),
+            row("ADBE Geometry2-0005", To::Prop("skew"), Number, Absent),
+            row("ADBE Geometry2-0006", To::Prop("skew-axis"), Number, Absent),
             row("ADBE Geometry2-0007", To::Prop("rotate"), Number, Absent),
             row("ADBE Geometry2-0008", To::Prop("opacity"), Percent, Absent),
             row(
@@ -1292,13 +1287,13 @@ const VECTOR_TRANSFORM: [Row; 7] = [
     ),
     row(
         "ADBE Vector Skew",
-        To::OnlyDefault("skew"),
+        To::Prop("skew"),
         Number,
         Missing::Number(0.0),
     ),
     row(
         "ADBE Vector Skew Axis",
-        To::Ignore("the axis of a skew of 0"),
+        To::Prop("skew-axis"),
         Number,
         Absent,
     ),

@@ -20,7 +20,7 @@
 
 use kurbo::{Affine, BezPath, Point, Rect, Shape, Vec2};
 use nakkash_format::item::{Role, props};
-use nakkash_format::property::GROUP;
+use nakkash_format::property::{GROUP, Prop, slant};
 
 use crate::evaluate::local_transform;
 use crate::state::ItemState;
@@ -267,13 +267,33 @@ impl Walk {
 }
 
 /// A group's transform into the space around it, and its opacity. Its rows
-/// are a layer's transform rows, so the layer's transform reads them.
+/// begin with a layer's transform rows, so the layer's transform reads them;
+/// its skew slants it after its scale and before its turn.
 fn group_transform(group: &ItemState) -> (Affine, f64) {
     debug_assert!(std::ptr::eq(group.kind.registry, &GROUP));
-    let opacity = group.values[nakkash_format::property::Prop::OPACITY.index()]
+    let opacity = group.values[Prop::OPACITY.index()]
         .as_number()
         .expect("a number property");
-    (local_transform(&group.values), opacity)
+    let skew = group.number(props::GROUP_SKEW);
+    if skew == 0.0 {
+        return (local_transform(&group.values), opacity);
+    }
+    let point = |prop: Prop| {
+        let [x, y] = group.values[prop.index()]
+            .as_point()
+            .expect("a point property");
+        Vec2::new(x, y)
+    };
+    let scale = point(Prop::SCALE);
+    let turn = group.values[Prop::ROTATE.index()]
+        .as_number()
+        .expect("a number property");
+    let transform = Affine::translate(point(Prop::POSITION))
+        * Affine::rotate(turn.to_radians())
+        * slant(skew, group.number(props::GROUP_SKEW_AXIS))
+        * Affine::scale_non_uniform(scale.x, scale.y)
+        * Affine::translate(-point(Prop::ANCHOR));
+    (transform, opacity)
 }
 
 /// A rectangle about its centre, clockwise from the top of its right edge,

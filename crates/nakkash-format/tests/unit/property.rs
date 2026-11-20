@@ -157,3 +157,33 @@ fn scene_format_doc_lists_exactly_the_registry_names() {
     let registry: Vec<&str> = PROPERTIES.iter().map(|p| p.name).collect();
     assert_eq!(documented, registry);
 }
+
+#[test]
+fn a_slant_leans_a_top_forward_and_a_shear_moves_a_right_side_down() {
+    let close = |a: kurbo::Point, b: (f64, f64)| {
+        assert!(
+            (a.x - b.0).abs() < 1e-9 && (a.y - b.1).abs() < 1e-9,
+            "{a:?} {b:?}"
+        );
+    };
+    // 45 degrees: a point 10 px above the axis moves 10 px forward.
+    close(
+        slant(45.0, 0.0) * kurbo::Point::new(0.0, -10.0),
+        (10.0, -10.0),
+    );
+    close(slant(45.0, 0.0) * kurbo::Point::new(10.0, 0.0), (10.0, 0.0));
+    // Turned a quarter, the slant runs down the axis instead.
+    close(
+        slant(45.0, 90.0) * kurbo::Point::new(10.0, 0.0),
+        (10.0, -10.0),
+    );
+    close(
+        shear(45.0, 0.0) * kurbo::Point::new(10.0, 0.0),
+        (10.0, 10.0),
+    );
+    close(shear(45.0, 0.0) * kurbo::Point::new(0.0, 10.0), (0.0, 10.0));
+    // Held short of a right angle, so both stay finite.
+    assert!(slant(90.0, 0.0).determinant().is_finite());
+    assert_eq!(shear(89.0, 30.0), shear(85.0, 30.0));
+    assert_eq!(slant(0.0, 30.0), kurbo::Affine::IDENTITY);
+}

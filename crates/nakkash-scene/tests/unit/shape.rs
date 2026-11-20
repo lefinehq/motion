@@ -61,9 +61,30 @@ fn every_modifier_kind_has_a_row() {
 #[test]
 fn group_rows_are_the_layer_transform_rows() {
     let names = |r: &'static nakkash_format::property::Registry| r.names().collect::<Vec<_>>();
-    // A layer then has the gain of its sound, which a group does not.
-    assert_eq!(names(&GROUP), names(&LAYER)[..5]);
+    // A group's first rows are a layer's transform; then a layer has the
+    // gain of its sound and a group its skew.
+    assert_eq!(names(&GROUP)[..5], names(&LAYER)[..5]);
     assert_eq!(names(&LAYER)[5], "volume");
+    assert_eq!(names(&GROUP)[5..], ["skew", "skew-axis"]);
+}
+
+#[test]
+fn a_group_slants_after_its_scale_and_before_its_turn() {
+    // A 10 px square scaled twice as wide, slanted 45 degrees: its top
+    // edge, 5 px up, leans 5 px forward.
+    let draws =
+        draws_of(r##"{"group":[{"rect":[10,10]},{"fill":"#FF0000"}],"scale":[2,1],"skew":45}"##);
+    close(draws[0].bounds(), Rect::new(-15.0, -5.0, 15.0, 5.0));
+    // Turned a quarter after the slant, the lean runs down the frame.
+    let turned = draws_of(
+        r##"{"group":[{"rect":[10,10]},{"fill":"#FF0000"}],"scale":[2,1],"skew":45,"rotate":90}"##,
+    );
+    close(turned[0].bounds(), Rect::new(-5.0, -15.0, 5.0, 15.0));
+    // The axis turns the slant: along the vertical, the right side moves
+    // down.
+    let along =
+        draws_of(r##"{"group":[{"rect":[10,10]},{"fill":"#FF0000"}],"skew":45,"skew-axis":90}"##);
+    close(along[0].bounds(), Rect::new(-5.0, -10.0, 5.0, 10.0));
 }
 
 #[test]
