@@ -136,6 +136,7 @@ fn stencilled(mode: &str, shape: Node, opacity: f32, quality: Quality) -> Image 
     let options = RenderOptions {
         quality,
         simd: Simd::Portable,
+        dither: false,
     };
     render_with(&frame, 8, 8, options).unwrap()
 }
@@ -224,6 +225,7 @@ fn a_stencil_cuts_only_its_own_composition(
     let options = RenderOptions {
         quality,
         simd: Simd::Portable,
+        dither: false,
     };
     let image = render_with(&frame, 8, 8, options).unwrap();
     assert_eq!(image.pixel(1, 4), Some([0, 0, 255, 255]), "{quality:?}");
@@ -250,6 +252,7 @@ fn linear_light_burns_and_dodges_by_twice_the_layer(
     let options = RenderOptions {
         quality,
         simd: Simd::Portable,
+        dither: false,
     };
     let image = render_with(&frame, 8, 8, options).unwrap();
     let left = image.pixel(1, 4).unwrap();
