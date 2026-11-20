@@ -11,6 +11,7 @@ fn space(scale: f64) -> Space {
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     }
 }
 

@@ -17,6 +17,7 @@ fn space() -> Space {
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     }
 }
 

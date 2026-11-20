@@ -31,6 +31,7 @@ fn after(
             sound: None,
             outline: None,
             totals: Vec::new(),
+            draft: false,
         },
     );
     straight(pixels.data()[0])

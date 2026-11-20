@@ -13,6 +13,7 @@ const ONE: Space = Space {
     sound: None,
     outline: None,
     totals: Vec::new(),
+    draft: false,
 };
 
 /// A `width` by 1 opaque grey layer.
@@ -73,6 +74,7 @@ fn a_ramp_draws_only_where_the_layer_is_and_moves_with_it() {
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     };
     ramp(&mut pixels, &values, &space);
     // Pixel 5's centre is (0.5, 0.5) in the layer, √0.5 px from `start`.

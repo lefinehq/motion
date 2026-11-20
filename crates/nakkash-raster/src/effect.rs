@@ -265,6 +265,12 @@ pub struct Space {
     /// The running totals of the parameters that have one, each by the
     /// parameter's index ([`Effect::with_total`]).
     pub totals: Vec<(usize, std::sync::Arc<Total>)>,
+    /// Whether the frame is a draft ([`crate::Quality::Draft`]): its large
+    /// blurs may then be worked out approximately ([D93]). False at every
+    /// other quality, so for every delivered frame.
+    ///
+    /// [D93]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d93-glow-and-blurs-do-less-of-the-same-work
+    pub draft: bool,
 }
 
 impl Space {

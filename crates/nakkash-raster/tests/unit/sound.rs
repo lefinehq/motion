@@ -37,6 +37,7 @@ fn space(width: f64, height: f64, sound: Option<Arc<Heard>>) -> Space {
         sound,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     }
 }
 

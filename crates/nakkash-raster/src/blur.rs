@@ -251,13 +251,19 @@ pub(crate) fn gaussian(pixels: &mut Pixels, sigma: [f32; 2], edges: Edges) {
 
 /// Runs `blur`'s passes on `pixels`: along rows, then along columns.
 pub(crate) fn blur(pixels: &mut Pixels, blur: &Blur) {
-    // A draft frame's large blurs, approximately, on a smaller copy.
-    if crate::pyramid::approximating() && crate::pyramid::blur(pixels, blur) {
-        return;
-    }
     for (way, Passes { radius, count }) in [blur.rows, blur.columns].into_iter().enumerate() {
         along(pixels, way, radius, count, blur.edges);
     }
+}
+
+/// Runs an effect's `plan` on `pixels`: in a draft frame, a large blur
+/// approximately, on a smaller copy ([`crate::pyramid`]); otherwise, and
+/// at every other quality, exactly, as [`blur`].
+fn effect_blur(pixels: &mut Pixels, plan: &Blur, space: &Space) {
+    if space.draft && crate::pyramid::blur(pixels, plan) {
+        return;
+    }
+    blur(pixels, plan);
 }
 
 /// `gaussian-blur`'s passes: a Gaussian whose standard deviation is
@@ -275,7 +281,7 @@ pub(crate) fn gaussian_blur_plan(values: &[ParamValue], space: &Space) -> Blur {
 
 /// `gaussian-blur`, see [`gaussian_blur_plan`].
 pub(crate) fn gaussian_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
-    blur(pixels, &gaussian_blur_plan(values, space));
+    effect_blur(pixels, &gaussian_blur_plan(values, space), space);
 }
 
 /// `box-blur`'s passes: `iterations` box passes of `radius`, in the
@@ -304,7 +310,7 @@ pub(crate) fn box_blur_plan(values: &[ParamValue], space: &Space) -> Blur {
 
 /// `box-blur`, see [`box_blur_plan`].
 pub(crate) fn box_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
-    blur(pixels, &box_blur_plan(values, space));
+    effect_blur(pixels, &box_blur_plan(values, space), space);
 }
 
 /// `drop-shadow`'s steps: the layer's alpha in `color` at `opacity`, moved
@@ -348,7 +354,7 @@ pub(crate) fn drop_shadow(pixels: &mut Pixels, values: &[ParamValue], space: &Sp
         let a = p[3] * opacity;
         *p = [color[0] * a, color[1] * a, color[2] * a, a];
     });
-    blur(&mut shadow, &softened);
+    effect_blur(&mut shadow, &softened, space);
     if alone {
         *pixels = shadow;
         return;
@@ -450,7 +456,7 @@ pub(crate) fn glow(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
             false => p,
         }
     });
-    blur(&mut light, &spread);
+    effect_blur(&mut light, &spread, space);
     par::each(light.data_mut(), |_, p| {
         *p = p.map(|c| (c * intensity).min(1.0));
     });

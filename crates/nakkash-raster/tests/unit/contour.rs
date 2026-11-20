@@ -109,6 +109,7 @@ fn white_square() -> (Pixels, Space) {
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     };
     (pixels, space)
 }

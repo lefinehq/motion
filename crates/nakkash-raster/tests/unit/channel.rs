@@ -21,6 +21,7 @@ fn white() -> (Pixels, Space) {
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     };
     (pixels, space)
 }

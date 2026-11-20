@@ -150,6 +150,7 @@ fn every_effect_gives_the_same_bits_however_its_work_is_split() {
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     };
     let apply = |effect: &Effect| {
         on_threads(3, || {

@@ -13,6 +13,7 @@ const ONE: Space = Space {
     sound: None,
     outline: None,
     totals: Vec::new(),
+    draft: false,
 };
 
 /// A `width` by `height` grid, transparent but for one opaque white pixel.
@@ -89,6 +90,7 @@ fn a_blur_scales_with_the_layer() {
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     };
     gaussian_blur(&mut twice, &values, &doubled);
     let (_, _, v1) = row_moments(&once, 0);

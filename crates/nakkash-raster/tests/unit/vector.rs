@@ -28,6 +28,7 @@ fn reading(map: Pixels) -> Space {
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     }
 }
 

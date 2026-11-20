@@ -5,14 +5,15 @@
 //! a copy shrunk by 2, 4 or 8 (block means), with passes of the same
 //! variance at that scale less what the shrinking and the bilinear way back
 //! up spread, and sampled back up. The exact passes ([`crate::blur`]) do
-//! the work on the copy. Nothing here is reached by a render of any other
-//! quality: [`approximating`] is only true inside a frame drawn at
-//! [`Quality::Draft`].
+//! the work on the copy. Only an effect's blur drawn in a draft frame comes
+//! here: the effect's [`Space`] says so ([`Space::draft`]), which the
+//! painter sets from the frame's quality and from nothing else, so a frame
+//! of any other quality, on whatever thread it is drawn, never does.
 //!
 //! [`Quality::Draft`]: crate::Quality::Draft
+//! [`Space`]: crate::effect::Space
+//! [`Space::draft`]: crate::effect::Space::draft
 //! [D93]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d93-glow-and-blurs-do-less-of-the-same-work
-
-use std::cell::Cell;
 
 use crate::blur::{Edges, along};
 use crate::pixels::{Pixel, Pixels};
@@ -27,30 +28,6 @@ const KEPT_RADIUS: f32 = 8.0;
 
 /// The most the copy is shrunk by, as a power of 2.
 const MOST_LEVELS: u32 = 3;
-
-thread_local! {
-    static APPROXIMATING: Cell<bool> = const { Cell::new(false) };
-}
-
-/// While alive, blurs on this thread may be approximate.
-pub(crate) struct Approximating(bool);
-
-impl Drop for Approximating {
-    fn drop(&mut self) {
-        APPROXIMATING.with(|a| a.set(self.0));
-    }
-}
-
-/// Lets blurs on this thread be approximate until the guard goes, when
-/// `on`; a render at [`crate::Quality::Draft`] holds one over its frame.
-pub(crate) fn approximate(on: bool) -> Approximating {
-    Approximating(APPROXIMATING.with(|a| a.replace(on)))
-}
-
-/// Whether blurs on this thread may be approximate.
-pub(crate) fn approximating() -> bool {
-    APPROXIMATING.with(Cell::get)
-}
 
 /// The variance of one extended box pass of radius `r`.
 fn variance(r: f32) -> f64 {

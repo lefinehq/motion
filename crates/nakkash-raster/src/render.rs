@@ -151,8 +151,6 @@ pub fn render_on(
         )
         .expected("the processor's default float mode (D90)"));
     }
-    // Blurs are approximate only inside a draft frame.
-    let _approximate = crate::pyramid::approximate(options.quality == Quality::Draft);
     drawn_at(frame, width, height, options, options.level(), accel)
 }
 
@@ -709,6 +707,7 @@ impl<'a> Painter<'a> {
             sound: effect.sound().cloned(),
             outline: effect.outline().cloned(),
             totals: effect.totals().to_vec(),
+            draft: self.options.quality == Quality::Draft,
         })
     }
 

@@ -15,6 +15,7 @@ const ONE: Space = Space {
     sound: None,
     outline: None,
     totals: Vec::new(),
+    draft: false,
 };
 
 /// A smooth, opaque test picture: colours that change over tens of px.

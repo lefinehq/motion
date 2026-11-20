@@ -145,6 +145,7 @@ fn every_effect_gives_the_same_bits_on_one_thread_and_on_many() {
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     };
     let on = |threads: usize, effect: &Effect| {
         let pool = rayon::ThreadPoolBuilder::new()
@@ -180,6 +181,7 @@ fn only_the_effects_that_say_so_draw_their_layers_time() {
             sound: None,
             outline: None,
             totals: Vec::new(),
+            draft: false,
         };
         let mut pixels = textured();
         effect.apply(&mut pixels, &space);

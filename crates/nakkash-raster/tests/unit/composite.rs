@@ -246,6 +246,7 @@ fn layer() -> (Pixels, Space) {
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     };
     (pixels, space)
 }
@@ -308,6 +309,7 @@ fn the_solid_covers_the_share_of_a_pixel_its_box_does() {
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     };
     let values = [
         ParamValue::Number(1.0),

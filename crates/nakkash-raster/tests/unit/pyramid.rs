@@ -17,39 +17,51 @@ fn error(a: &Pixels, b: &Pixels) -> (f32, f32) {
     (most, (sum / (a.data().len() * 4) as f64) as f32)
 }
 
-#[test]
-fn nothing_is_approximate_unless_asked() {
-    assert!(!approximating());
-    let source = textured();
-    let large = Blur::gaussian([30.0, 30.0], Edges::Transparent);
-    let mut exact = source.clone();
-    blur::blur(&mut exact, &large);
-    let mut again = source.clone();
-    blur::blur(&mut again, &large);
-    assert_same_bits("outside a draft", exact.data(), again.data());
-    {
-        let _off = approximate(false);
-        let mut within = source.clone();
-        blur::blur(&mut within, &large);
-        assert_same_bits(
-            "in a scope that is not a draft's",
-            exact.data(),
-            within.data(),
-        );
+/// A space drawn in a draft frame, or not.
+fn space(draft: bool) -> crate::effect::Space {
+    crate::effect::Space {
+        draft,
+        ..crate::effect::Space::default()
     }
 }
 
 #[test]
-fn small_blurs_stay_exact_in_a_draft() {
+fn an_effect_approximates_only_in_a_draft() {
+    use crate::effect::ParamValue;
     let source = textured();
-    for sigma in [0.5f32, 3.0, 8.0] {
-        let small = Blur::gaussian([sigma, sigma], Edges::Repeat);
+    let large = Blur::gaussian([30.0, 30.0], Edges::Transparent);
+    let mut exact = source.clone();
+    blur::blur(&mut exact, &large);
+    // Blurriness 100 is a standard deviation of 30 px.
+    let values = [
+        ParamValue::Number(100.0),
+        ParamValue::Choice(0),
+        ParamValue::Choice(0),
+    ];
+    let mut not_draft = source.clone();
+    blur::gaussian_blur(&mut not_draft, &values, &space(false));
+    assert_same_bits("outside a draft", exact.data(), not_draft.data());
+    let mut draft = source.clone();
+    blur::gaussian_blur(&mut draft, &values, &space(true));
+    assert_ne!(exact.data(), draft.data(), "a draft works it out small");
+}
+
+#[test]
+fn small_blurs_stay_exact_in_a_draft() {
+    use crate::effect::ParamValue;
+    let source = textured();
+    for blurriness in [1.5f32, 10.0, 26.0] {
+        let values = [
+            ParamValue::Number(blurriness),
+            ParamValue::Choice(0),
+            ParamValue::Choice(1),
+        ];
         let mut exact = source.clone();
-        blur::blur(&mut exact, &small);
-        let _on = approximate(true);
+        blur::gaussian_blur(&mut exact, &values, &space(false));
         let mut draft = source.clone();
-        blur::blur(&mut draft, &small);
-        assert_same_bits(&format!("sigma {sigma}"), exact.data(), draft.data());
+        blur::gaussian_blur(&mut draft, &values, &space(true));
+        let what = format!("blurriness {blurriness}");
+        assert_same_bits(&what, exact.data(), draft.data());
     }
 }
 
@@ -76,10 +88,7 @@ fn large_blurs_in_a_draft_are_close_to_exact() {
             let mut exact = source.clone();
             blur::blur(&mut exact, &large);
             let mut draft = source.clone();
-            let did = {
-                let _on = approximate(true);
-                pyramid_blur(&mut draft, &large)
-            };
+            let did = pyramid_blur(&mut draft, &large);
             assert!(did, "sigma {sigma} is worked out small");
             let (most, mean) = error(&exact, &draft);
             // Under half an 8-bit level on average, under 8 anywhere: the
@@ -118,40 +127,34 @@ fn blurred_square() -> crate::list::Frame {
 }
 
 #[test]
-fn a_precise_or_fast_frame_never_approximates_whatever_its_thread_did() {
+fn only_a_draft_frame_approximates_whatever_else_its_threads_draw() {
     use crate::render::{Quality, RenderOptions, render_with};
     let frame = blurred_square();
-    for quality in [Quality::Precise, Quality::Fast] {
-        let options = RenderOptions {
-            quality,
-            ..RenderOptions::default()
-        };
-        let want = render_with(&frame, 160, 100, options).unwrap();
-        let got = {
-            let _on = approximate(true);
-            render_with(&frame, 160, 100, options).unwrap()
-        };
-        assert_eq!(want.pixels(), got.pixels(), "{quality:?}");
-        assert!(!approximating());
-    }
-    // A draft frame does approximate, and comes close.
-    let draft = RenderOptions {
-        quality: Quality::Draft,
+    let at = |quality| RenderOptions {
+        quality,
         ..RenderOptions::default()
     };
-    let fast = RenderOptions {
-        quality: Quality::Fast,
-        ..RenderOptions::default()
-    };
-    let (a, b) = (
-        render_with(&frame, 160, 100, fast).unwrap(),
-        render_with(&frame, 160, 100, draft).unwrap(),
-    );
-    assert_ne!(a.pixels(), b.pixels(), "a draft works its blur out small");
-    let most = a
+    let precise = render_with(&frame, 160, 100, at(Quality::Precise)).unwrap();
+    let fast = render_with(&frame, 160, 100, at(Quality::Fast)).unwrap();
+    let draft = render_with(&frame, 160, 100, at(Quality::Draft)).unwrap();
+    // Draft and precise frames drawn side by side on one pool, whose
+    // threads take each other's work: every precise frame keeps its bits.
+    crate::oracle::on_threads(4, || {
+        for _ in 0..8 {
+            let (a, b) = rayon::join(
+                || render_with(&frame, 160, 100, at(Quality::Draft)).unwrap(),
+                || render_with(&frame, 160, 100, at(Quality::Precise)).unwrap(),
+            );
+            assert_eq!(a.pixels(), draft.pixels(), "the draft, beside a precise frame");
+            assert_eq!(b.pixels(), precise.pixels(), "precise, beside a draft");
+        }
+    });
+    // A draft does approximate, and comes close to fast.
+    assert_ne!(fast.pixels(), draft.pixels(), "a draft works its blur out small");
+    let most = fast
         .pixels()
         .iter()
-        .zip(b.pixels())
+        .zip(draft.pixels())
         .map(|(x, y)| x.abs_diff(*y))
         .max()
         .unwrap();

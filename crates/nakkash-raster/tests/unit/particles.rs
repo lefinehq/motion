@@ -58,6 +58,7 @@ fn counted(
             .into_iter()
             .map(|total| (0, std::sync::Arc::new(total)))
             .collect(),
+        draft: false,
     };
     particles(&mut pixels, &values, &space);
     pixels

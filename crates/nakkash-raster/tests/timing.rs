@@ -254,6 +254,7 @@ fn effect_ms(effect: &Effect, pixels: &Pixels, threads: usize, runs: usize) -> (
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     };
     pool.install(|| {
         let mut drawn = pixels.clone();

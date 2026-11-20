@@ -15,6 +15,7 @@ const ONE: Space = Space {
     sound: None,
     outline: None,
     totals: Vec::new(),
+    draft: false,
 };
 
 /// A 40 by 40 grid with an opaque mid-grey square from 10 to 30.

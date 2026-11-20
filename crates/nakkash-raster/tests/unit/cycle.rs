@@ -17,6 +17,7 @@ const ONE: Space = Space {
     sound: None,
     outline: None,
     totals: Vec::new(),
+    draft: false,
 };
 
 /// A cycle from black at 0 to white at 0.5, opaque: a grey that rises

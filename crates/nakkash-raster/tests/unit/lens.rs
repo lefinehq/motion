@@ -14,6 +14,7 @@ const ONE: Space = Space {
     sound: None,
     outline: None,
     totals: Vec::new(),
+    draft: false,
 };
 
 /// A `width` by `height` grid, transparent but for one opaque white pixel.

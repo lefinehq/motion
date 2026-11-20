@@ -254,6 +254,7 @@ pub(crate) fn space(transform: Affine) -> Space {
         sound: None,
         outline: None,
         totals: Vec::new(),
+        draft: false,
     }
 }
 
