@@ -7,10 +7,6 @@
 const OP_REPLACE: u32 = 0u;
 const OP_BLEND: u32 = 1u;
 const OP_DISSOLVE: u32 = 2u;
-const OP_STENCIL_ALPHA: u32 = 3u;
-const OP_STENCIL_LUMA: u32 = 4u;
-const OP_SILHOUETTE_ALPHA: u32 = 5u;
-const OP_SILHOUETTE_LUMA: u32 = 6u;
 const OP_PREMULTIPLIED_OVER: u32 = 7u;
 const OP_ALPHA_ADD: u32 = 8u;
 
@@ -26,12 +22,6 @@ fn straight(p: vec4<f32>) -> vec3<f32> {
         return p.rgb / p.a;
     }
     return vec3(0.0);
-}
-
-// `luma`: the straight luma times the alpha, by Rec. 601's weights
-// (`LUMA`).
-fn luma(p: vec4<f32>) -> f32 {
-    return p.r * 0.299 + p.g * 0.587 + p.b * 0.114;
 }
 
 // `dither`: an integer hash of the pixel's position, 0 to 1.
@@ -66,10 +56,6 @@ fn operate_one(op: u32, mode: u32, width_in: u32, under_in: vec4<f32>, over_in: 
                 out = under;
             }
         }
-        case OP_STENCIL_ALPHA: { out = under * a_s; }
-        case OP_STENCIL_LUMA: { out = under * luma(over); }
-        case OP_SILHOUETTE_ALPHA: { out = under * (1.0 - a_s); }
-        case OP_SILHOUETTE_LUMA: { out = under * (1.0 - luma(over)); }
         case OP_PREMULTIPLIED_OVER: { out = lit + under * (1.0 - lit.a); }
         case OP_ALPHA_ADD: {
             var share = 0.0;
