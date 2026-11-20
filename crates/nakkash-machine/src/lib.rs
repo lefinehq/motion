@@ -28,6 +28,9 @@ mod macos;
 #[cfg(unix)]
 mod unix;
 
+mod alloc;
+
+pub use alloc::{BIG, GivesBack};
 pub use parse::Psi;
 
 /// One mebibyte.

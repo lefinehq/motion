@@ -16,6 +16,11 @@ use nakkash_engine::Quality;
 use nakkash_engine::telemetry::timing::{REPORT_TARGET, Timings, millis};
 use nakkash_engine::telemetry::{Format, LevelFilter, Options};
 use strum::VariantNames;
+
+/// Big blocks go back to the system when freed, so the memory budget's
+/// grids let go leave the process (D90).
+#[global_allocator]
+static ALLOCATOR: nakkash_machine::GivesBack = nakkash_machine::GivesBack;
 use tracing::{info, warn};
 
 /// Set by `src/bin/motion.rs`, the command under its old name, so this one

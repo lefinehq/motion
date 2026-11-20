@@ -420,6 +420,28 @@ fn frames_share_the_pool_with_their_rows() {
     );
 }
 
+/// A frame starts beside others only once one was drawn alone and what a
+/// frame costs is known: two threads that both see no frame being drawn
+/// do not both start one.
+#[test]
+fn the_first_frame_of_a_render_is_drawn_alone() {
+    let session: Session = TINY.parse().unwrap();
+    for _ in 0..20 {
+        let events = Mutex::new(Vec::new());
+        session
+            .on_threads(0..8, |frame| {
+                events.lock().unwrap().push((frame, "starts"));
+                std::thread::sleep(std::time::Duration::from_millis(1));
+                events.lock().unwrap().push((frame, "ends"));
+                Ok(())
+            })
+            .unwrap();
+        let events = events.into_inner().unwrap();
+        assert_eq!(events.len(), 16);
+        assert_eq!(events[1], (events[0].0, "ends"), "{events:?}");
+    }
+}
+
 #[rstest::rstest]
 #[case::one_per_processor(100, 8, 0, 8)]
 #[case::the_limit(100, 8, 2, 2)]
