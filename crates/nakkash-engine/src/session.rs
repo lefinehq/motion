@@ -1187,6 +1187,7 @@ fn memory_ready() {
             nakkash_raster::memory::set_budget(nakkash_machine::default_budget());
         }
         nakkash_raster::memory::set_probe(reading);
+        nakkash_raster::memory::set_resident_probe(nakkash_machine::resident);
     });
 }
 

@@ -170,6 +170,10 @@ static POOL: Mutex<Option<HashMap<usize, Vec<Vec<Pixel>>>>> = Mutex::new(None);
 /// The probe the caller set.
 static PROBE: OnceLock<fn() -> Reading> = OnceLock::new();
 
+/// The reading of what is resident alone the caller set, quick enough to
+/// read at every decision.
+static RESIDENT_PROBE: OnceLock<fn() -> Option<u64>> = OnceLock::new();
+
 /// What the process held resident at the probe's last reading, in bytes;
 /// 0 when unknown.
 static RESIDENT: AtomicU64 = AtomicU64::new(0);
@@ -252,8 +256,22 @@ pub fn set_probe(probe: fn() -> Reading) {
     let _ = PROBE.set(probe);
 }
 
-/// Reads the probe if it was not read in the last [`PROBE_EVERY`].
+/// Sets a reading of what the process holds resident alone, read at every
+/// decision of the budget (a grid made or let go, a frame about to start)
+/// rather than every [`PROBE_EVERY`]: what the process holds beside its
+/// grids changes between two readings of the whole probe (a frame's 8-bit
+/// image, frames kept to be copied), and the room grids have follows it at
+/// once. The first one set stays.
+pub fn set_resident_probe(probe: fn() -> Option<u64>) {
+    let _ = RESIDENT_PROBE.set(probe);
+}
+
+/// Reads what is resident, and the whole probe if it was not read in the
+/// last [`PROBE_EVERY`].
 fn probe() {
+    if let Some(resident) = RESIDENT_PROBE.get() {
+        note_resident(resident().unwrap_or(0));
+    }
     let Some(probe) = PROBE.get() else {
         return;
     };
@@ -269,7 +287,9 @@ fn probe() {
         return;
     }
     let reading = probe();
-    note_resident(reading.resident.unwrap_or(0));
+    if RESIDENT_PROBE.get().is_none() {
+        note_resident(reading.resident.unwrap_or(0));
+    }
     note_pressure(reading.pressure);
 }
 
@@ -554,6 +574,7 @@ pub(crate) fn release(grid: Vec<Pixel>) {
         gone();
         return;
     }
+    probe();
     let effective = LEDGER.effective.load(Relaxed);
     // `held` counts this grid as alive already.
     if held() > room() || resident_over(effective) {
