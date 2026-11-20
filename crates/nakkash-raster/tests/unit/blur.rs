@@ -340,13 +340,13 @@ fn a_blur_skips_only_lines_a_pass_leaves_as_they_are() {
             let mut padded = Vec::new();
             for row in want.chunks_exact_mut(width) {
                 for _ in 0..3 {
-                    box_pass(row, whole, part, edges, &mut padded);
+                    box_pass_reference(row, whole, part, edges, &mut padded);
                 }
             }
             for x in 0..width {
                 let mut column: Vec<Pixel> = want.iter().skip(x).step_by(width).copied().collect();
                 for _ in 0..3 {
-                    box_pass(&mut column, whole, part, edges, &mut padded);
+                    box_pass_reference(&mut column, whole, part, edges, &mut padded);
                 }
                 for (item, v) in want.iter_mut().skip(x).step_by(width).zip(column) {
                     *item = v;
@@ -356,6 +356,151 @@ fn a_blur_skips_only_lines_a_pass_leaves_as_they_are() {
             along(&mut got, 0, radius, 3, edges);
             along(&mut got, 1, radius, 3, edges);
             assert_same_bits(&format!("radius {radius}, {edges:?}"), &want, got.data());
+        }
+    }
+}
+
+/// A line of runs: stretches of one pixel, each a zero of either sign, an
+/// edge value or a noise pixel, from one pixel long to past any window,
+/// between stretches of noise.
+fn runs_line(noise: &mut crate::oracle::Noise, len: usize) -> Vec<Pixel> {
+    let mut line = Vec::with_capacity(len);
+    while line.len() < len {
+        let value = match noise.bits() % 6 {
+            0 => [0.0; 4],
+            1 => [-0.0; 4],
+            2 => [0.0, -0.0, 0.0, 0.0],
+            3 => [noise.float(); 4],
+            _ => noise.pixel(),
+        };
+        let long = match noise.bits() % 4 {
+            0 => 1 + noise.bits() as usize % 4,
+            1 => 1 + noise.bits() as usize % 40,
+            _ => 1 + noise.bits() as usize % 400,
+        };
+        line.extend(std::iter::repeat_n(value, long.min(len - line.len())));
+        // Noise between runs, so runs end inside windows.
+        let between = noise.bits() as usize % 6;
+        for _ in 0..between.min(len - line.len()) {
+            line.push(noise.pixel());
+        }
+    }
+    line
+}
+
+#[test]
+fn a_box_pass_over_runs_has_the_bits_of_its_reference() {
+    use crate::oracle::{Noise, WIDTHS, assert_same_bits};
+    let mut noise = Noise::new(93);
+    let lengths = WIDTHS.iter().copied().chain([64, 100, 257, 1000, 2049]);
+    let mut padded = Vec::new();
+    for len in lengths {
+        for case in 0..24 {
+            let whole = match case % 4 {
+                0 => case % 3,
+                1 => noise.bits() as usize % 8,
+                2 => noise.bits() as usize % 64,
+                _ => noise.bits() as usize % 600,
+            };
+            let part = [0.0, 0.25, 0.5, noise.unit()][case % 4];
+            if whole == 0 && part <= 0.0 {
+                continue;
+            }
+            for edges in [Edges::Transparent, Edges::Repeat] {
+                let line = runs_line(&mut noise, len);
+                // Three passes in a row, as a Gaussian runs them: the
+                // later ones read what the first made of the runs.
+                let (mut want, mut got) = (line.clone(), line);
+                for pass in 0..3 {
+                    box_pass_reference(&mut want, whole, part, edges, &mut padded);
+                    box_pass(&mut got, whole, part, edges, &mut padded);
+                    let what =
+                        format!("length {len}, radius {whole} + {part}, {edges:?}, pass {pass}");
+                    assert_same_bits(&what, &want, &got);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_box_pass_steps_over_runs_of_any_value_but_not_past_them() {
+    use crate::oracle::{assert_same_bits, edge_floats};
+    // Every edge value as a run that fills the line, ends inside it, or
+    // sits between two others, at radii shorter and longer than the run.
+    let mut padded = Vec::new();
+    for value in edge_floats() {
+        for (len, at, long) in [(40, 0, 40), (40, 5, 30), (40, 10, 3), (300, 100, 120)] {
+            for whole in [0, 1, 4, 13, 50] {
+                for edges in [Edges::Transparent, Edges::Repeat] {
+                    let mut line: Vec<Pixel> =
+                        (0..len).map(|i| [i as f32 / 7.0, 0.5, -0.0, 1.0]).collect();
+                    line[at..at + long].fill([value, value, 0.25, value]);
+                    let (mut want, mut got) = (line.clone(), line);
+                    box_pass_reference(&mut want, whole, 0.375, edges, &mut padded);
+                    box_pass(&mut got, whole, 0.375, edges, &mut padded);
+                    let what = format!(
+                        "{value:?} from {at} for {long} of {len}, radius {whole}, {edges:?}"
+                    );
+                    assert_same_bits(&what, &want, &got);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_blur_over_runs_and_empty_columns_has_the_bits_of_its_reference() {
+    use crate::oracle::{Noise, assert_same_bits, on_threads};
+    // A grid mostly of nothing, with a patch of runs and noise, a column of
+    // -0.0 and a row of one colour: rows and columns of +0.0, runs inside
+    // windows, and sums an f64 holds only rounded.
+    let (width, height) = (211usize, 97usize);
+    let mut noise = Noise::new(7);
+    let mut pixels = Pixels::transparent(width as u16, height as u16);
+    for y in 30..70 {
+        let line = runs_line(&mut noise, 90);
+        pixels.data_mut()[y * width + 60..y * width + 150].copy_from_slice(&line);
+    }
+    for y in 0..height {
+        pixels.data_mut()[y * width + 5] = [-0.0; 4];
+    }
+    pixels.data_mut()[80 * width..81 * width].fill([0.25, 0.5, 0.0, 0.75]);
+    for edges in [Edges::Transparent, Edges::Repeat] {
+        for radius in [0.6f32, 2.0, 9.25, 40.5] {
+            let (whole, part) = (radius.floor() as usize, radius.fract());
+            let mut want = pixels.data().to_vec();
+            let mut padded = Vec::new();
+            for row in want.chunks_exact_mut(width) {
+                for _ in 0..3 {
+                    box_pass_reference(row, whole, part, edges, &mut padded);
+                }
+            }
+            for x in 0..width {
+                let mut column: Vec<Pixel> = want.iter().skip(x).step_by(width).copied().collect();
+                for _ in 0..3 {
+                    box_pass_reference(&mut column, whole, part, edges, &mut padded);
+                }
+                for (item, v) in want.iter_mut().skip(x).step_by(width).zip(column) {
+                    *item = v;
+                }
+            }
+            for threads in [1, 4] {
+                for split in [Some(1), Some(7), Some(333), None] {
+                    crate::memory::set_clobber(true);
+                    crate::par::split_in_tests(split);
+                    let mut got = pixels.clone();
+                    on_threads(threads, || {
+                        along(&mut got, 0, radius, 3, edges);
+                        along(&mut got, 1, radius, 3, edges);
+                    });
+                    crate::par::split_in_tests(None);
+                    crate::memory::set_clobber(false);
+                    let what =
+                        format!("radius {radius}, {edges:?}, {threads} threads, split {split:?}");
+                    assert_same_bits(&what, &want, got.data());
+                }
+            }
         }
     }
 }

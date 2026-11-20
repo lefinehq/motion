@@ -19,6 +19,7 @@ use crate::colour::{choice, number, rgb};
 pub const GLOW_LUMA: [f32; 3] = [0.2126, 0.7152, 0.0722];
 use crate::composite::Operation;
 use crate::effect::{ParamValue, Space};
+use crate::memory::{self, Start};
 use crate::par;
 use crate::pixels::{Pixel, Pixels};
 use crate::plan::{Blur, Glow, GlowComposite, Passes, Shadow};
@@ -63,7 +64,97 @@ fn scales(space: &Space) -> [f32; 2] {
 
 /// One extended box pass along `line`, in place: radius `whole` plus the
 /// share `part` of one pixel more on each side.
+///
+/// Where the window and both its partial pixels lie on a run of one pixel,
+/// the same bits again and again ([D93]), the pass writes the pixel it
+/// worked out at the run's start over the rest of it instead of working
+/// each out: every slide inside the run takes a value from the sum and
+/// adds the same value back, `v − v = +0.0`, and a sum plus `+0.0` is the
+/// sum (it is never `−0.0`: it starts at `+0.0`, and an exact zero comes
+/// out `+0.0`), so every pixel there has the sum, the partial pixels and
+/// the bits of the first. Runs of a value that is not finite, and windows
+/// whose sum is not, are worked out pixel by pixel as before.
+///
+/// [D93]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d93-glow-and-blurs-do-less-of-the-same-work
 fn box_pass(line: &mut [Pixel], whole: usize, part: f32, edges: Edges, padded: &mut Vec<Pixel>) {
+    let n = line.len();
+    if n == 0 || (whole == 0 && part <= 0.0) {
+        return;
+    }
+    let pad = whole + 1;
+    padded.clear();
+    let beyond = |at: usize| match edges {
+        Edges::Transparent => [0.0; 4],
+        Edges::Repeat => line[at],
+    };
+    padded.extend((0..pad).map(|_| beyond(0)));
+    padded.extend_from_slice(line);
+    padded.extend((0..pad).map(|_| beyond(n - 1)));
+    let width = (2 * whole + 1) as f32 + 2.0 * part;
+    // The window's sum, slid one pixel at a time, in f64 against drift.
+    let mut sum = [0.0f64; 4];
+    for p in &padded[1..2 * whole + 2] {
+        for c in 0..4 {
+            sum[c] += f64::from(p[c]);
+        }
+    }
+    // Pixel i of `line` sits at i + pad in `padded`; the window runs from
+    // i + 1 to i + 2·whole + 1, its two partial pixels at i and i + span.
+    let span = 2 * whole + 2;
+    let same = |a: &Pixel, b: &Pixel| a.map(f32::to_bits) == b.map(f32::to_bits);
+    // How many pixels up to the head of the window, padded[i + span] and
+    // those before it, are the same bits.
+    let mut run = 1 + padded[..span]
+        .iter()
+        .rev()
+        .take_while(|p| same(p, &padded[span]))
+        .count();
+    let mut i = 0;
+    while i < n {
+        let (low, high) = (padded[i], padded[i + span]);
+        let mut out = [0.0f32; 4];
+        for c in 0..4 {
+            out[c] = ((sum[c] + f64::from(part) * f64::from(low[c] + high[c])) as f32) / width;
+        }
+        line[i] = out;
+        if run > span && high.iter().all(|c| c.is_finite()) && sum.iter().all(|s| s.is_finite()) {
+            // padded[i..=i + span] is one run: it lasts to `end`, and every
+            // pixel whose window and partial pixels it holds is this one.
+            let mut end = i + span;
+            while end + 1 < padded.len() && same(&padded[end + 1], &high) {
+                end += 1;
+            }
+            let last = (end - span).min(n - 1);
+            line[i + 1..=last].fill(out);
+            run += last - i;
+            i = last;
+        }
+        if i + 1 < n {
+            let (leaving, entering) = (padded[i + 1], padded[i + span]);
+            for c in 0..4 {
+                sum[c] += f64::from(entering[c]) - f64::from(leaving[c]);
+            }
+            run = match same(&padded[i + 1 + span], &padded[i + span]) {
+                true => run + 1,
+                false => 1,
+            };
+        }
+        i += 1;
+    }
+}
+
+/// [`box_pass`] as it was before it stepped over runs: its reference
+/// ([D90], rule 7), which tests hold it to bit for bit.
+///
+/// [D90]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d90-a-frame-is-drawn-from-a-plan-that-knows-what-each-drawing-is-under-one-memory-budget
+#[cfg(test)]
+fn box_pass_reference(
+    line: &mut [Pixel],
+    whole: usize,
+    part: f32,
+    edges: Edges,
+    padded: &mut Vec<Pixel>,
+) {
     let n = line.len();
     if n == 0 || (whole == 0 && part <= 0.0) {
         return;
@@ -126,7 +217,17 @@ fn along(pixels: &mut Pixels, way: usize, radius: f32, passes: usize, edges: Edg
     };
     match way {
         0 => par::rows(data, width, Vec::new, |_, row, padded| line(row, padded)),
-        _ => par::columns(data, width, height, Vec::new, line),
+        _ => {
+            // Columns of nothing but `+0.0` are left as they are, as above,
+            // so their bands are not even copied out ([D93]); the room the
+            // others are copied to is a grid of the budget's.
+            //
+            // [D93]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d93-glow-and-blurs-do-less-of-the-same-work
+            let held = par::columns_holding(data, width, |p| p.iter().any(|c| c.to_bits() != 0));
+            let mut bands = memory::grid(width * height, Start::Written);
+            par::columns_in(data, width, height, &mut bands, |x| held[x], Vec::new, line);
+            memory::release(bands);
+        }
     }
 }
 

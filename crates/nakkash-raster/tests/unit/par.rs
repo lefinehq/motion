@@ -120,3 +120,66 @@ fn nothing_is_worked_on_an_empty_grid() {
     columns(&mut data, 0, 0, || (), |_, ()| unreachable!("no columns"));
     bands(&mut data, 0, 4, |_, _| unreachable!("no bands"));
 }
+
+#[rstest]
+#[case(1, 1)]
+#[case(17, 5)]
+#[case(300, 200)]
+#[case(1000, 1)]
+#[case(1, 1000)]
+fn columns_in_works_only_the_columns_it_is_told_to(#[case] width: usize, #[case] height: usize) {
+    // Every third column, and a run of them a whole band wide, worked; the
+    // others stay as they were though their room starts as junk.
+    let works = |x: usize| x % 3 == 1 || (40..80).contains(&x);
+    let mut want = grid(width, height);
+    let mut room = Vec::new();
+    let mut column = vec![0.0; height];
+    for x in (0..width).filter(|&x| works(x)) {
+        for (y, v) in column.iter_mut().enumerate() {
+            *v = want[y * width + x];
+        }
+        running(&mut column, &mut room);
+        for (y, v) in column.iter().enumerate() {
+            want[y * width + x] = *v;
+        }
+    }
+    for threads in [1, 4] {
+        for split in [Some(1), Some(7), None] {
+            split_in_tests(split);
+            let mut data = grid(width, height);
+            let mut bands = vec![f32::NAN; width * height];
+            on(threads, || {
+                columns_in(
+                    &mut data,
+                    width,
+                    height,
+                    &mut bands,
+                    works,
+                    Vec::new,
+                    running,
+                )
+            });
+            split_in_tests(None);
+            assert_eq!(data, want, "{threads} threads, split {split:?}");
+        }
+    }
+}
+
+#[test]
+fn columns_holding_names_each_column_with_an_item_whatever_the_split() {
+    let (width, height) = (37, 61);
+    let data: Vec<usize> = (0..width * height)
+        .map(|i| usize::from((i % width) % 5 == 2 && (i / width) == (i % width)))
+        .collect();
+    let want: Vec<bool> = (0..width)
+        .map(|x| (0..height).any(|y| data[y * width + x] == 1))
+        .collect();
+    for threads in [1, 4] {
+        for split in [Some(1), Some(7), Some(64), None] {
+            split_in_tests(split);
+            let got = on(threads, || columns_holding(&data, width, |v| *v == 1));
+            split_in_tests(None);
+            assert_eq!(got, want, "{threads} threads, split {split:?}");
+        }
+    }
+}
