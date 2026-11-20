@@ -2779,6 +2779,13 @@ pub const EFFECTS: &[EffectSpec] = &[
                 doc: "the pixels of a streak weighing alike, or from all at the pixel to none \
                       at its end",
             },
+            ParamSpec {
+                name: "edges",
+                default: ParamValue::Choice(0),
+                range: None,
+                choices: &["transparent", "repeat"],
+                doc: "whether what lies beyond the frame is nothing or its edge pixels repeated",
+            },
         ],
         doc: "streaks the layer along rays out from a point, or rings round it",
         reach: anywhere,

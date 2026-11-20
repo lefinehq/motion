@@ -57,6 +57,9 @@ struct Params {
     spin: u32,
     // A zoom's ray steps are whole numbers over 2^shift, and a rest.
     shift: u32,
+    // 1 when the edge pixels repeat beyond the grid, 0 when nothing lies
+    // there.
+    repeat: u32,
     // The centre's whole px, x and y, and what it has past them.
     centre_whole: vec4<i32>,
     centre_part: vec4<f32>,
@@ -170,8 +173,16 @@ fn point(whole: vec2<i32>, part: vec2<f32>) -> Point {
     return Point(whole + vec2<i32>(w), part - w);
 }
 
+// The pixel (x, y): beyond the grid nothing, or with `repeat` the
+// nearest edge pixel, which `Pixels::sample_repeating` reads by holding
+// the point to the outermost pixel centres.
 fn pixel_at(x: i32, y: i32) -> vec4<f32> {
-    if x < 0 || y < 0 || x >= i32(params.width) || y >= i32(params.height) {
+    let w = i32(params.width);
+    let h = i32(params.height);
+    if params.repeat != 0u {
+        return grid[u32(clamp(y, 0, h - 1)) * params.width + u32(clamp(x, 0, w - 1))];
+    }
+    if x < 0 || y < 0 || x >= w || y >= h {
         return vec4(0.0);
     }
     return grid[u32(y) * params.width + u32(x)];

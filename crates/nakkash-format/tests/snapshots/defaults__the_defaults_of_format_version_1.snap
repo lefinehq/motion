@@ -333,6 +333,7 @@ radial-blur center = Point([0.0, 0.0])
 radial-blur type = "zoom"
 radial-blur stretch = "behind"
 radial-blur fade = "none"
+radial-blur edges = "transparent"
 vector-blur amount = Number(0.0)
 vector-blur angle = Number(0.0)
 vector-blur ridge-smoothness = Number(1.0)

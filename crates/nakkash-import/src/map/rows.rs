@@ -4031,14 +4031,9 @@ pub(super) static KINDS: [Kind; 62] = [
         match_name: "ADBE Radial Blur",
         item: "radial-blur",
         table: &EFFECTS,
-        rows: &SPIN_BLUR,
+        rows: &RADIAL_BLUR,
         parts: &[],
-        switch: Some(Switch {
-            match_name: "ADBE Radial Blur-0003",
-            missing: 1.0,
-            on: spins,
-            off_rows: &ZOOM_BLUR,
-        }),
+        switch: None,
     },
     Kind {
         match_name: "CC Radial Blur",
@@ -4879,87 +4874,76 @@ pub(super) fn policy(match_name: &str) -> Option<Policy> {
         .map(|(_, policy)| *policy)
 }
 
-/// The rows of the spin/zoom radial blur, its type and amount given.
-macro_rules! radial_blur_rows {
-    ($type:expr, $amount:expr) => {
-        [
-            row(
-                "ADBE Radial Blur-0000",
-                To::Ignore("the layer the effect reads, its own"),
-                Number,
-                Absent,
-            ),
-            row(
-                "ADBE Radial Blur-0005",
-                To::Ignore("the effect's own preview in its panel"),
-                Number,
-                Absent,
-            ),
-            $amount,
-            row(
-                "ADBE Radial Blur-0002",
-                To::Prop("center"),
-                Point,
-                Parameter,
-            ),
-            $type,
-            row(
-                "ADBE Radial Blur-0004",
-                To::Ignore(SAMPLED_STREAK),
-                Number,
-                Absent,
-            ),
-            row(
-                "ADBE Force CPU GPU",
-                To::Ignore("where the original renders it"),
-                Number,
-                Absent,
-            ),
-        ]
-    };
-}
+/// The spin/zoom radial blur's types: a spin of Amount degrees round the
+/// centre, or a zoom over Amount percent of each pixel's distance from
+/// it, each half either side of the pixel and flat, beyond the frame its
+/// edge pixels repeated (`aep-evidence.md`, radial blurs, R3 and R4).
+const RADIAL_BLUR_TYPES: &[Choices] = &[
+    (
+        1,
+        &[
+            ("type", "spin"),
+            ("stretch", "across"),
+            ("fade", "none"),
+            ("edges", "repeat"),
+        ],
+    ),
+    (
+        2,
+        &[
+            ("type", "zoom"),
+            ("stretch", "across"),
+            ("fade", "none"),
+            ("edges", "repeat"),
+        ],
+    ),
+];
 
-/// The spin/zoom radial blur spinning: Amount degrees round the centre,
-/// half either side of each pixel.
-static SPIN_BLUR: [Row; 7] = radial_blur_rows!(
+/// The spin/zoom radial blur.
+static RADIAL_BLUR: [Row; 7] = [
     row(
-        "ADBE Radial Blur-0003",
-        To::Settings(&[(
-            1,
-            &[("type", "spin"), ("stretch", "across"), ("fade", "none")],
-        )]),
+        "ADBE Radial Blur-0000",
+        To::Ignore("the layer the effect reads, its own"),
         Number,
-        Parameter,
+        Absent,
+    ),
+    row(
+        "ADBE Radial Blur-0005",
+        To::Ignore("the effect's own preview in its panel"),
+        Number,
+        Absent,
     ),
     row(
         "ADBE Radial Blur-0001",
         To::Prop("amount"),
         Number,
         Parameter,
-    )
-);
-
-/// The spin/zoom radial blur zooming, whose amount's scale no sample
-/// shows: reported, and drawn as no blur at all.
-static ZOOM_BLUR: [Row; 7] = radial_blur_rows!(
+    ),
+    row(
+        "ADBE Radial Blur-0002",
+        To::Prop("center"),
+        Point,
+        Parameter,
+    ),
     row(
         "ADBE Radial Blur-0003",
-        To::OnlyDefault("a zoom, whose amount's scale no sample shows"),
+        To::Settings(RADIAL_BLUR_TYPES),
         Number,
         Parameter,
     ),
     row(
-        "ADBE Radial Blur-0001",
-        To::Ignore("the amount of a zoom, which is reported"),
+        "ADBE Radial Blur-0004",
+        To::Ignore(SAMPLED_STREAK),
         Number,
         Absent,
-    )
-);
-
-/// Whether the spin/zoom radial blur's type `code` spins.
-fn spins(code: f64) -> bool {
-    code != 2.0
-}
+    ),
+    row(
+        "ADBE Force CPU GPU",
+        To::Ignore("where the original renders it"),
+        Number,
+        Absent,
+    ),
+];
 
 /// The properties of a layer's root group and their fate, by match name.
 pub(super) static LAYER_ROOT: [Row; 3] = [

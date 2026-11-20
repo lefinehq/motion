@@ -3482,6 +3482,13 @@ pub static EFFECTS: [ItemKind; 45] = [
                 doc: "how the pixels of a streak weigh: all alike, or from all at the pixel to \
                       none at the streak's end",
             },
+            SettingSpec {
+                name: "edges",
+                choices: &["transparent", "repeat"],
+                default: "transparent",
+                doc: "what a streak reads beyond the frame: nothing, so colour fades towards \
+                      the edges, or the edge pixels repeated, so it stays solid up to them",
+            },
         ],
         input: None,
         outline: None,

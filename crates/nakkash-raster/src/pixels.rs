@@ -217,6 +217,17 @@ impl Pixels {
         mix(top, bottom, fy)
     }
 
+    /// [`Pixels::sample`] with the edge pixels repeated beyond the grid:
+    /// the point held to the grid's outermost pixel centres first. A grid
+    /// of no pixels is transparent everywhere.
+    pub fn sample_repeating(&self, x: f64, y: f64) -> Pixel {
+        let (width, height) = (f64::from(self.width), f64::from(self.height));
+        if width == 0.0 || height == 0.0 {
+            return [0.0; 4];
+        }
+        self.sample(x.clamp(0.5, width - 0.5), y.clamp(0.5, height - 0.5))
+    }
+
     /// The pixels moved by `transform`, in pixels of the grid: the pixel at
     /// a point is the one `transform` brings there, sampled bilinearly.
     pub fn transformed(&self, transform: Affine) -> Pixels {
