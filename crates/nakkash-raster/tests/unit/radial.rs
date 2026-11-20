@@ -104,7 +104,7 @@ fn brute_with(
             if length < 1e-9 {
                 continue;
             }
-            let part = sampled(near, far, fade, &line);
+            let part = sampled(near, far, fade, line);
             for c in 0..4 {
                 sum[c] += part[c] * length;
             }
