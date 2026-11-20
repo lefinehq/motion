@@ -1,6 +1,7 @@
 //! Two forms of one scene are one scene: every way of writing a scene that
 //! the format offers as the same (a scene written out pretty or compact, its
-//! styles and eases written once, and later its instance and split forms) must
+//! styles and eases written once, or each composition in a file of its
+//! own) must
 //! read into the same validated [`Scene`](nakkash_format::Scene) and draw the
 //! same frames, to the bit. Key order is not one of them: a layer keeps its
 //! resting values in the order they are written. Every scene of the compatibility corpus, the
@@ -84,6 +85,8 @@ struct Form {
     name: &'static str,
     /// The text of the scene's JSON in this form.
     write: fn(&Json) -> String,
+    /// Whether the form keeps each composition in a file of its own (D91).
+    split: bool,
 }
 
 /// The forms every scene is written in.
@@ -91,10 +94,12 @@ const FORMS: &[Form] = &[
     Form {
         name: "pretty",
         write: |json| serde_json::to_string_pretty(json).expect("JSON writes"),
+        split: false,
     },
     Form {
         name: "compact",
         write: |json| serde_json::to_string(json).expect("JSON writes"),
+        split: false,
     },
     // Repeated effect stacks and animations as styles, repeated curves as
     // eases (D91); defaults are left to `nakkash compact`, which proves
@@ -111,15 +116,26 @@ const FORMS: &[Form] = &[
                 .map_or_else(|_| json.clone(), |(styled, _)| styled);
             serde_json::to_string(&styled).expect("JSON writes")
         },
+        split: false,
+    },
+    // Each composition in a file of its own, read back through its include.
+    Form {
+        name: "split",
+        write: |json| serde_json::to_string(json).expect("JSON writes"),
+        split: true,
     },
 ];
 
-/// A file that is removed when dropped.
-struct Written(PathBuf);
+/// A file, and the folder of its compositions' files if it has one, which
+/// are removed when dropped.
+struct Written(PathBuf, Option<PathBuf>);
 
 impl Drop for Written {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.0);
+        if let Some(folder) = &self.1 {
+            let _ = fs::remove_dir_all(folder);
+        }
     }
 }
 
@@ -128,8 +144,24 @@ fn write(scene: &Path, json: &Json, form: &Form) -> Written {
     let stem = scene.file_stem().expect("a file name").to_string_lossy();
     let name = format!(".{stem}.{}.{}.json", form.name, std::process::id());
     let path = scene.with_file_name(name);
-    fs::write(&path, (form.write)(json)).expect("write the form");
-    Written(path)
+    if !form.split {
+        fs::write(&path, (form.write)(json)).expect("write the form");
+        return Written(path, None);
+    }
+    // The compositions' files go in a folder of this form's own, so forms of
+    // other scenes in the same folder, and other runs, keep apart.
+    let folder = format!(".{stem}.{}.{}.comps", form.name, std::process::id());
+    let (mut top, comps) = nakkash_format::include::split(json);
+    fs::create_dir_all(scene.with_file_name(&folder)).expect("make the folder");
+    for (file, comp) in comps {
+        let name = file.strip_prefix("comps/").expect("a composition's file");
+        let id = name.strip_suffix(".json").expect("a JSON file");
+        fs::write(scene.with_file_name(&folder).join(name), comp.to_string())
+            .expect("write a composition");
+        top["comps"][id]["include"] = Json::String(format!("{folder}/{name}"));
+    }
+    fs::write(&path, (form.write)(&top)).expect("write the form");
+    Written(path, Some(scene.with_file_name(folder)))
 }
 
 /// The frames of `session` to draw: `n` spread from the first to the last,

@@ -1,0 +1,6 @@
+{"size":"1080x1920","dur":"2s",
+"layers":[
+{"id":"title","text":"It starts at 6:45","font":"Inter Variable 72 700","fill":"#FFFFFF","style":{"align":"center"},"at":"center 420"},
+{"id":"dial","rect":"560x560 r280","fill":"#1C1F26","at":"center 1050"},
+{"id":"time","text":"6:45","font":"Inter Variable 160 800","fill":"#FFD166","style":{"align":"center"},"at":"center 1105","offset":"12f","in":"pop 10f out-back"}
+]}

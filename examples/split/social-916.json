@@ -1,0 +1,9 @@
+{"nakkash":1,"size":"1080x1920","fps":30,"dur":"9s","bg":"#0F1115","labels":{"punch":"1.2s","body":"2.8s","brew":"body+1.6s","done":"brew+1.6s","end":"done+1.6s"},"comps":{"hook":{"include":"comps/hook.json"},"plan":{"include":"comps/plan.json"},"brew":{"include":"comps/brew.json"},"done":{"include":"comps/done.json"},"end":{"include":"comps/end.json"}},
+"layers":[
+{"id":"glow","rect":"760x760 r380","fill":"#3A3AE0","opacity":0.35,"at":"center 820","anim":{"scale":"1 -> 1.15 @0-9s in-out-sine","x":"520 -> 560 @0-9s in-out-sine"}},
+{"id":"hook","comp":"hook","span":"0s-body+12f","out":"push-up 12f in-out-cubic","mblur":true},
+{"id":"plan","comp":"plan","span":"body-brew+12f","offset":"body","in":"push-up 12f in-out-cubic","out":"push-up 12f in-out-cubic","mblur":true},
+{"id":"brew","comp":"brew","span":"brew-done+12f","offset":"brew","in":"push-up 12f in-out-cubic","out":"push-up 12f in-out-cubic","mblur":true},
+{"id":"done","comp":"done","span":"done-end+12f","offset":"done","in":"push-up 12f in-out-cubic","out":"push-up 12f in-out-cubic","mblur":true},
+{"id":"end","comp":"end","span":"end-9s","offset":"end","in":"push-up 12f in-out-cubic","mblur":true}
+]}

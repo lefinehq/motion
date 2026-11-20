@@ -1,0 +1,6 @@
+{"size":"1080x1920","dur":"2s",
+"layers":[
+{"id":"mark","rect":"220x220 r56","fill":"#3A3AE0","at":"center 760","offset":"12f","in":"pop 8f out-back"},
+{"id":"name","text":"Brewly","font":"Inter Variable 150 800","fill":"#FFFFFF","style":{"align":"center"},"at":"center 1060"},
+{"id":"tagline","text":"Mornings, sorted.","font":"Inter Variable 64 500","fill":"#C9CBD3","style":{"align":"center"},"at":"center 1200"}
+]}

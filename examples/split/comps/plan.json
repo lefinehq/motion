@@ -1,0 +1,8 @@
+{"size":"1080x1920","dur":"2s",
+"layers":[
+{"id":"title","text":"Plan it the night before","font":"Inter Variable 72 700","fill":"#FFFFFF","style":{"align":"center"},"at":"center 420"},
+{"id":"screen","rect":"640x900 r48","fill":"#1C1F26","at":"center 1100"},
+{"id":"row-1","rect":"520x110 r24","fill":"#3A3AE0","at":"center 820","offset":"12f","in":"fade-left 60px 10f out-cubic"},
+{"id":"row-2","rect":"520x110 r24","fill":"#2A2E38","at":"center 960","offset":"15f","in":"fade-left 60px 10f out-cubic"},
+{"id":"row-3","rect":"520x110 r24","fill":"#2A2E38","at":"center 1100","offset":"18f","in":"fade-left 60px 10f out-cubic"}
+]}

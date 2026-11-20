@@ -11,10 +11,12 @@ use serde_json::Value as Json;
 const FILES: [&str; 3] = ["image", "video", "audio"];
 
 /// Rewrites every relative file `raw` names from the folder `from` to the
-/// folder `to`.
+/// folder `to`: in its layers, its compositions, its slots and its styles. A
+/// value that follows a slot, `"$logo"`, names no file and is left as it is.
 pub(crate) fn files(raw: &mut Json, from: &Path, to: &Path) {
     let moved = |path: &mut String| {
-        if Path::new(path.as_str()).is_relative()
+        if !nakkash_format::slots::is_reference(path)
+            && Path::new(path.as_str()).is_relative()
             && let Some(relative) = relative(&from.join(path.as_str()), to)
         {
             *path = relative;
@@ -43,7 +45,7 @@ pub(crate) fn files(raw: &mut Json, from: &Path, to: &Path) {
             _ => {}
         }
     }
-    for key in ["layers", "comps"] {
+    for key in ["layers", "comps", "slots", "styles"] {
         if let Some(part) = raw.get_mut(key) {
             walk(part, &moved);
         }

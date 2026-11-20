@@ -1,0 +1,5 @@
+{"size":"1080x1920","dur":"3.2s","labels":{"punch":"1.2s"},
+"layers":[
+{"id":"headline","text":"Mornings,\nsorted.","font":"Inter Variable 140 800","fill":"#FFFFFF","style":{"align":"center","leading":150},"at":"center 700","offset":"-6f","in":"slam 10f out-expo"},
+{"id":"punchline","text":"Coffee's already on.","font":"Inter Variable 72 700","fill":"#FFD166","style":{"align":"center"},"at":"center 1040","span":"punch-3.2s","offset":"punch-2f","in":"rise 60px 10f out-back"}
+]}

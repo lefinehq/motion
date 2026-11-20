@@ -1227,6 +1227,22 @@ fn a_split_scene_draws_as_the_scene_and_flattens_back() {
         serde_json::from_str(&fs::read_to_string(&flat).unwrap()).unwrap();
     // Key order too, which the scene reads and its hash covers.
     assert_eq!(flattened.to_string(), original.to_string());
+    // The split example is that split, kept in step.
+    let example = format!(
+        "{}/../../examples/split/social-916.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let example_flat = dir.join("example-flat.json");
+    let example_flat = example_flat.to_str().unwrap();
+    assert_eq!(
+        nakkash(&["flatten", &example, "-o", example_flat])
+            .status
+            .code(),
+        Some(0)
+    );
+    let example_flat: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(example_flat).unwrap()).unwrap();
+    assert_eq!(example_flat.to_string(), original.to_string());
     let edit = nakkash(&["edit", split_path, "hook hidden=true"]);
     assert_ne!(edit.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&edit.stderr).contains("flatten"));
