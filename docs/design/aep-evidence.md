@@ -816,6 +816,7 @@ Frames passing the floor are unchanged (m547 0 of 14, m651 4 of 15, m828 0 of 20
 Other things we take without evidence:
 - **Keys.** No local project keys its Source Text. A keyed Source Text is taken as the original's documentation gives it: each key holds its whole document until the next. The import keeps each key's words in the first key's style and reports a key that restyles.
 - **The layout's anchor.** A changing text is laid out about the same origin with the same alignment, as point text always is; the scene keeps the layer's own words for its box, which for imported layers only `check` reads, since an import writes the anchor and position.
+
 ## Stencils, silhouettes, linear light and subtract
 
 The layer blend modes stored as codes 17 to 20 (stencil alpha, stencil luma, silhouette alpha, silhouette luma) and 31 (linear light) were reported, and so was 37 (subtract). EffectCraft identified codes 2 to 34 by rendering each over a test image (its `docs/aep-format.md`, case 907: every code matched exactly one of its modes); 37 is the layer table's own code for subtract, past that sweep, which no measured case checks. EffectCraft gives their formulas in `crates/color/src/blend.rs`. They become the layer blend modes `stencil-alpha`, `stencil-luma`, `silhouette-alpha`, `silhouette-luma`, `linear-light` and `subtract` ([scene format](scene-format.md#layers)), the same names an effect's compositing already took; the effects now read them from the one table of layer modes.
