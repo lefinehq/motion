@@ -53,8 +53,8 @@ pub enum NodeContent {
         /// The words, their style and their layout: its own, which its box
         /// and its anchor's rest follow.
         text: Arc<TextNode>,
-        /// The words it shows over time, if they are keyed, in time order
-        /// ([`crate::text::shown`]).
+        /// The words it shows over time, if they are keyed, in time order;
+        /// each frame shows the last key it has reached.
         keys: Vec<TextKeyNode>,
         /// Its animators, in order; hidden ones are left out.
         animators: Vec<ItemNode>,
