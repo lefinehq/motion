@@ -133,6 +133,7 @@ pub(crate) const COLOUR: FamilySpec = FamilySpec {
         "tint",
         "hue_saturation",
         "exposure",
+        "brightness_contrast",
         "levels",
         "invert",
         "black_white",

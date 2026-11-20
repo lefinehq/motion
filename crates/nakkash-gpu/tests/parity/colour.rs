@@ -99,6 +99,7 @@ fn every_effect_of_the_family_runs_on_the_gpu() {
         "levels",
         "hue-saturation",
         "exposure",
+        "brightness-contrast",
         "black-white",
     ] {
         let effect = Effect::new(name, &[]).expect("an effect");
@@ -202,6 +203,44 @@ fn exposures_match_in_both_spaces() {
             );
         }
     }
+}
+
+#[test]
+fn brightness_and_contrast_match_on_every_branch() {
+    // Curves with no brightness, brightening and darkening, contrast held
+    // at -0.5 and at its ends; the legacy line, its threshold and flat
+    // grey.
+    for (brightness, contrast) in [
+        (0.0, 0.6),
+        (0.55, 1.0),
+        (0.25, -0.08),
+        (1.5, -1.0),
+        (-0.4, 0.0),
+        (-1.5, 0.5),
+        (-0.1, 0.44),
+        (0.0, 0.0),
+    ] {
+        for legacy in [0, 1] {
+            matches(
+                "brightness-contrast",
+                "brightness-contrast",
+                &[
+                    ("brightness", ParamValue::Number(brightness)),
+                    ("contrast", ParamValue::Number(contrast)),
+                    ("legacy", ParamValue::Choice(legacy)),
+                ],
+            );
+        }
+    }
+    matches(
+        "brightness-contrast",
+        "brightness-contrast",
+        &[
+            ("brightness", ParamValue::Number(0.1)),
+            ("contrast", ParamValue::Number(1.0)),
+            ("legacy", ParamValue::Choice(1)),
+        ],
+    );
 }
 
 #[test]

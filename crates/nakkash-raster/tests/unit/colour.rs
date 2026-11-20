@@ -281,3 +281,125 @@ fn black_white_turns_each_hue_as_light_as_its_share() {
         [0.0, 0.0, 1.0, 1.0],
     );
 }
+
+/// What the straight grey level `x` becomes by `brightness-contrast` with
+/// `brightness`, `contrast` and `legacy` (0 off, 1 on).
+fn brightness_contrast_of(brightness: f32, contrast: f32, legacy: u8, x: f32) -> f32 {
+    let values = [Number(brightness), Number(contrast), Choice(legacy)];
+    after(brightness_contrast, &values, [x, x, x, 1.0])[0]
+}
+
+/// The original's 8-bit levels for grey ramps through the curves, measured
+/// by EffectCraft (`crates/effects/src/color_fx/tests.rs`,
+/// `brightness_contrast_modern_matches_ae_ramp_samples` and
+/// `negative_brightness_and_contrast_invert_the_positive_curves`):
+/// brightness and contrast as the original's sliders, the input level and
+/// what the original drew.
+const MEASURED_LEVELS: [(f32, f32, u8, u8); 19] = [
+    (0.0, 100.0, 64, 40),
+    (0.0, 100.0, 128, 129),
+    (0.0, 100.0, 192, 217),
+    (0.0, 50.0, 64, 53),
+    (0.0, 50.0, 192, 205),
+    (0.0, -50.0, 64, 77),
+    (100.0, 0.0, 128, 209),
+    (50.0, 0.0, 128, 171),
+    (106.0, -18.0, 128, 214),
+    (-40.0, 0.0, 64, 50),
+    (-40.0, 0.0, 128, 99),
+    (-40.0, 0.0, 191, 155),
+    (-40.0, 0.0, 234, 207),
+    (0.0, -50.0, 21, 28),
+    (0.0, -50.0, 64, 76),
+    (0.0, -50.0, 191, 179),
+    (0.0, -50.0, 234, 227),
+    (40.0, 0.0, 128, 162),
+    (0.0, 50.0, 64, 52),
+];
+
+#[test]
+fn brightness_contrast_curves_draw_the_measured_levels_within_one_step() {
+    let mut worst = 0.0f32;
+    let mut sum = 0.0;
+    for (brightness, contrast, input, measured) in MEASURED_LEVELS {
+        let x = f32::from(input) / 255.0;
+        let level = brightness_contrast_of(brightness / 100.0, contrast / 100.0, 0, x) * 255.0;
+        let off = (level - f32::from(measured)).abs();
+        assert!(
+            (level.round() - f32::from(measured)).abs() <= 1.0,
+            "brightness {brightness} contrast {contrast} at {input}: {level} for {measured}"
+        );
+        worst = worst.max(off);
+        sum += off;
+    }
+    // The fit: at most 1.14 of a step off, 0.54 on average.
+    assert!(worst < 1.15, "{worst}");
+    assert!(sum / 19.0 < 0.55, "{}", sum / 19.0);
+}
+
+#[test]
+fn darkening_curves_invert_the_brightening_ones() {
+    for brightness in [0.1, 0.4, 1.0, 1.5] {
+        for i in 0..=20 {
+            let x = i as f32 / 20.0;
+            let up = brightness_contrast_of(brightness, 0.0, 0, x);
+            let back = brightness_contrast_of(-brightness, 0.0, 0, up);
+            assert!((back - x).abs() < 1e-4, "{brightness} at {x}: {back}");
+        }
+    }
+}
+
+#[test]
+fn brightness_contrast_curves_keep_black_white_and_their_order() {
+    for brightness in [-1.5, -0.7, 0.0, 0.3, 1.5] {
+        for contrast in [-1.0, -0.5, 0.0, 0.6, 1.0] {
+            assert_eq!(brightness_contrast_of(brightness, contrast, 0, 0.0), 0.0);
+            assert!((brightness_contrast_of(brightness, contrast, 0, 1.0) - 1.0).abs() < 1e-6);
+            let mut last = 0.0;
+            for i in 1..=100 {
+                let level = brightness_contrast_of(brightness, contrast, 0, i as f32 / 100.0);
+                assert!(level >= last, "{brightness} {contrast} at {i}");
+                last = level;
+            }
+        }
+    }
+}
+
+#[test]
+fn contrast_below_a_half_draws_as_a_half() {
+    for x in [0.1, 0.3, 0.8] {
+        assert_eq!(
+            brightness_contrast_of(0.2, -1.0, 0, x),
+            brightness_contrast_of(0.2, -0.5, 0, x)
+        );
+    }
+}
+
+#[test]
+fn brightness_contrast_at_rest_changes_nothing() {
+    for x in [0.0, 0.13, 0.5, 0.77, 1.0] {
+        // The curves leave the level exactly; the line moves it to mid grey
+        // and back, which may round it by a bit.
+        assert_eq!(brightness_contrast_of(0.0, 0.0, 0, x), x);
+        assert!((brightness_contrast_of(0.0, 0.0, 1, x) - x).abs() < 1e-7);
+    }
+}
+
+#[test]
+fn legacy_brightness_contrast_is_a_line_about_mid_grey_clipped_at_the_end() {
+    // Brightness adds its share of the full range.
+    assert!((brightness_contrast_of(0.5, 0.0, 1, 0.2) - 0.7).abs() < 1e-6);
+    // Contrast 0.5 doubles the distance from mid grey, -0.5 halves it.
+    assert!((brightness_contrast_of(0.0, 0.5, 1, 0.6) - 0.7).abs() < 1e-6);
+    assert!((brightness_contrast_of(0.0, -0.5, 1, 0.9) - 0.7).abs() < 1e-6);
+    // Nothing is clipped between the two: 0.9 + 0.5 is 0.9 from grey,
+    // halved.
+    assert!((brightness_contrast_of(0.5, -0.5, 1, 0.9) - 0.95).abs() < 1e-6);
+    // Contrast 1 is a threshold at mid grey, -1 flat grey.
+    assert_eq!(brightness_contrast_of(0.0, 1.0, 1, 0.5), 1.0);
+    assert_eq!(brightness_contrast_of(0.0, 1.0, 1, 0.49), 0.0);
+    assert_eq!(brightness_contrast_of(0.1, 1.0, 1, 0.41), 1.0);
+    assert_eq!(brightness_contrast_of(0.3, -1.0, 1, 0.9), 0.5);
+    // The result is clipped.
+    assert_eq!(brightness_contrast_of(1.0, 0.0, 1, 0.3), 1.0);
+}

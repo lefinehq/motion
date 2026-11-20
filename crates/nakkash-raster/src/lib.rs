@@ -56,9 +56,10 @@ pub use blur::Edges;
 pub use blur::GLOW_LUMA;
 pub use blur::{FindEdges, Sharpen};
 pub use channel::{LayerBox, Level, Reading, SetMatte, ShiftChannels};
-pub use colour::LUMA;
+pub use colour::{BRIGHTNESS_SHAPE, BRIGHTNESS_STEEPNESS, LEAST_CONTRAST, LUMA};
 pub use colour::{
-    BlackWhite, BoxTest, CurveTable, Curves, Exposure, Fill, HueSaturation, Invert, Levels, Tint,
+    BlackWhite, BoxTest, BrightnessContrast, CurveTable, Curves, Exposure, Fill, HueSaturation,
+    Invert, Levels, Tint,
 };
 pub use composite::{BoxCover, OPERATIONS, Operation, OperationSpec, SolidComposite};
 pub use cycle::ColorCycle;

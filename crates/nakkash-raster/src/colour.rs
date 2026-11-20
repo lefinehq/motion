@@ -289,6 +289,115 @@ pub(crate) fn exposure(pixels: &mut Pixels, values: &[ParamValue], space: &Space
     each(pixels, |[r, g, b, a]| [change(r), change(g), change(b), a]);
 }
 
+/// How steeply `brightness-contrast`'s brightness bends its curve: its
+/// power is 2 to this times the brightness's size, fitted to the original's
+/// levels ([evidence B1](https://github.com/lefinehq/nakkash/blob/main/docs/design/aep-evidence.md#brightness-and-contrast)).
+pub const BRIGHTNESS_STEEPNESS: f32 = 1.7;
+
+/// How the shape of `brightness-contrast`'s brightness curve follows its
+/// power: the shape is the power raised to this, fitted with
+/// [`BRIGHTNESS_STEEPNESS`].
+pub const BRIGHTNESS_SHAPE: f32 = 0.21;
+
+/// The least contrast `brightness-contrast`'s curves take: any lower
+/// draws as this, as the original does.
+pub const LEAST_CONTRAST: f32 = -0.5;
+
+/// `brightness-contrast`'s plan: each colour level bent by curves that keep
+/// black and white, or moved along a straight line (`legacy`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BrightnessContrast {
+    /// The level, held to 0 to 1, first moved by `contrast` times
+    /// `x(1 − x)(2x − 1)`, an S curve about mid grey (`contrast` at least
+    /// [`LEAST_CONTRAST`]); then, while `power` is not 1, through
+    /// `1 − (1 − x^shape)^power` to brighten, or the inverse of that
+    /// curve, `(1 − (1 − x)^(1/power))^(1/shape)`, to darken.
+    Curved {
+        /// The share of the S curve added.
+        contrast: f32,
+        /// 2 to [`BRIGHTNESS_STEEPNESS`] times the brightness's size.
+        power: f32,
+        /// `power` to [`BRIGHTNESS_SHAPE`].
+        shape: f32,
+        /// Whether the brightness is below 0, so the curve is inverted.
+        darken: bool,
+    },
+    /// The level plus `offset`, its distance from mid grey then times
+    /// `slope`, unclipped until the result; an infinite slope is a
+    /// threshold, mid grey and above going to 1.
+    Legacy {
+        /// The brightness, added to the level.
+        offset: f32,
+        /// `1 / (1 − contrast)` for a contrast of 0 or more, `1 + contrast`
+        /// below.
+        slope: f32,
+    },
+}
+
+impl BrightnessContrast {
+    /// What the level `c`, straight, becomes, before it is held to 0 to 1.
+    pub fn level(&self, c: f32) -> f32 {
+        match *self {
+            BrightnessContrast::Curved {
+                contrast,
+                power,
+                shape,
+                darken,
+            } => {
+                let x = c.clamp(0.0, 1.0);
+                // Rounding may take the curve a bit past 0 or 1, which a
+                // power would turn into nothing.
+                let x = (x + contrast * x * (1.0 - x) * (2.0 * x - 1.0)).clamp(0.0, 1.0);
+                match (power == 1.0, darken) {
+                    (true, _) => x,
+                    (false, false) => 1.0 - (1.0 - x.powf(shape)).max(0.0).powf(power),
+                    (false, true) => (1.0 - (1.0 - x).max(0.0).powf(1.0 / power))
+                        .max(0.0)
+                        .powf(1.0 / shape),
+                }
+            }
+            BrightnessContrast::Legacy { offset, slope } => {
+                let from_grey = c + offset - 0.5;
+                match slope.is_finite() {
+                    true => from_grey * slope + 0.5,
+                    false => f32::from(u8::from(from_grey >= 0.0)),
+                }
+            }
+        }
+    }
+}
+
+/// [`BrightnessContrast`] from `brightness-contrast`'s values.
+pub(crate) fn brightness_contrast_plan(values: &[ParamValue], _: &Space) -> BrightnessContrast {
+    let (brightness, contrast) = (number(values, 0), number(values, 1));
+    match choice(values, 2) {
+        0 => {
+            let power = (BRIGHTNESS_STEEPNESS * brightness.abs()).exp2();
+            BrightnessContrast::Curved {
+                contrast: contrast.max(LEAST_CONTRAST),
+                power,
+                shape: power.powf(BRIGHTNESS_SHAPE),
+                darken: brightness < 0.0,
+            }
+        }
+        _ => BrightnessContrast::Legacy {
+            offset: brightness,
+            slope: match contrast >= 0.0 {
+                true => 1.0 / (1.0 - contrast),
+                false => 1.0 + contrast,
+            },
+        },
+    }
+}
+
+/// `brightness-contrast`, see [`BrightnessContrast`].
+pub(crate) fn brightness_contrast(pixels: &mut Pixels, values: &[ParamValue], space: &Space) {
+    let plan = brightness_contrast_plan(values, space);
+    each(pixels, |[r, g, b, a]| {
+        [plan.level(r), plan.level(g), plan.level(b), a]
+    });
+}
+
 /// `levels`' plan: each level of the channels maps from `input_black`–
 /// `input_white` to `output_black`–`output_white` through a power of
 /// 1/`gamma`, clipped. An input range of no width is a threshold at

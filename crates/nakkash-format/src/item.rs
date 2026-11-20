@@ -1952,6 +1952,28 @@ pub static EXPOSURE: Registry = Registry {
     ],
 };
 
+/// The properties of the brightness and contrast effect.
+pub static BRIGHTNESS_CONTRAST: Registry = Registry {
+    kind: "brightness-contrast",
+    rows: &[
+        number(
+            "brightness",
+            0.0,
+            Some((-1.5, 1.5)),
+            "how far the levels rise (above 0) or fall: a curve that keeps black and white, or \
+             with `legacy` the share of the full range added to every level",
+        ),
+        number(
+            "contrast",
+            0.0,
+            Some((-1.0, 1.0)),
+            "how far the levels move away from mid grey (above 0) or towards it: an S curve that \
+             keeps black and white, held at -0.5, or with `legacy` a slope about mid grey that \
+             reaches a threshold at 1 and flat grey at -1",
+        ),
+    ],
+};
+
 /// The properties of the levels effect.
 pub static LEVELS: Registry = Registry {
     kind: "levels",
@@ -2486,7 +2508,7 @@ pub static SHAPES: [ItemKind; 12] = [
 ];
 
 /// Every kind of effect.
-pub static EFFECTS: [ItemKind; 45] = [
+pub static EFFECTS: [ItemKind; 46] = [
     ItemKind {
         name: "fill",
         role: Role::Effect,
@@ -2659,6 +2681,24 @@ pub static EFFECTS: [ItemKind; 45] = [
         pivots: None,
         timed: false,
         doc: "changes exposure in stops, as a camera does",
+    },
+    ItemKind {
+        name: "brightness-contrast",
+        role: Role::Effect,
+        registry: &BRIGHTNESS_CONTRAST,
+        primary: Primary::Property("brightness"),
+        settings: &[SettingSpec {
+            name: "legacy",
+            choices: &["off", "on"],
+            default: "off",
+            doc: "`off` bends the levels by curves that keep black and white; `on` moves them \
+                  along a straight line, clipped",
+        }],
+        input: None,
+        outline: None,
+        pivots: None,
+        timed: false,
+        doc: "brightens or darkens the levels and moves them from or towards mid grey",
     },
     ItemKind {
         name: "levels",

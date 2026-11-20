@@ -615,6 +615,33 @@ Other things we take without evidence:
 - **Modify Alpha.** On, the cycle's alpha multiplies the pixel's. m591 turns it off on cycles that are opaque throughout, so neither reading changes its frames.
 - **Not drawn, reported.** Pixel selection by a matching colour (`-0020` to `-0026`), masking by a layer (`-0028`, `-0030`), colouring empty pixels (`-0034`) and the checkbox `-0032` are reported at any value but their defaults, which every local instance keeps. A cycle of more than 16 stops is reported: the scene's curves hold 16 points.
 
+## Brightness and contrast
+
+`ADBE Brightness & Contrast 2` becomes the `brightness-contrast` effect ([scene format](scene-format.md#shapes-masks-effects-and-compositions)). Its parameters by match name, as the projects' effect definitions give them: `-0001` Brightness, a slider from −150 to 150; `-0002` Contrast, −100 to 100; `-0003` Use Legacy (supports HDR), a checkbox, off by default; `-0000` the layer it reads, its own. The import divides the sliders by 100. Three corpus samples hold it: m563 four times without Use Legacy (Brightness 55 and Contrast 100 twice, Brightness 25 and Contrast −8, and a keyed Brightness), m595 once with it (Brightness keyed 0 → 147 → 0 over 2 s), and m591, excluded, ten times with it (Brightness −10, Contrast 44).
+
+The curves are our own family, fitted to 19 levels EffectCraft measured the original drawing on grey ramps (`crates/effects/src/color_fx/tests.rs`, `brightness_contrast_modern_matches_ae_ramp_samples` and `negative_brightness_and_contrast_invert_the_positive_curves`): Brightness and Contrast as set, the input level and the original's 8-bit level, such as (0, 100, 64, 40) and (−40, 0, 191, 155). The unit tests hold the scene to every one of them.
+
+| Belief | Evidence | Held, 2026-11-20 |
+|---|---|---|
+| B1. Without Use Legacy, contrast c moves each level x by c·x(1 − x)(2x − 1), an S curve about mid grey that keeps black and white; brightness b then bends it through 1 − (1 − x^s)^p, with p = 2^(1.7 b) and s = p^0.21, a curve that keeps black and white and lifts the light tones more than the dark ones. | Fitted by least squares on the 19 levels over the brightness's two numbers, the contrast's scale left at 1: every level is drawn within one 8-bit step once rounded, at most 1.14 of a step off before rounding and 0.54 on average. The families we tried before it fit worse: the same contrast with brightness as 1 − (1 − x)^p, at most 3.63 off (it lifts the shadows too much at Brightness −40: 64 gives 46.4 for 50), a power about mid grey for the contrast, 4.85, a gamma x^(1/p) for the brightness, 23.7. EffectCraft's own fitted model, a different family, is at most 8.3 off on the same levels and 2.96 on average. | 19 measured levels; m563 (below) |
+| B2. A negative brightness is the inverse of the positive curve of its size: (1 − (1 − x)^(1/p))^(1/s). | EffectCraft measured Brightness −40 as the inverse of +40 within 2.6/255 and Contrast −50 as the inverse of +50 (the tests above, `crates/effects/src/color_fx.rs`, `bc_modern`). Four of the 19 levels are at Brightness −40, and B1 meets them within 1.14 of a step this way. The contrast's cubic is not inverted for a negative contrast: at −50 its four levels fit within 1.06 as it is. | 19 measured levels |
+| B3. A contrast below −50 draws as −50. | EffectCraft's ramps at Contrast −100 matched those at −50 (the comment above `brightness_contrast_modern_matches_ae_ramp_samples`). | EffectCraft's ramps |
+| B4. Contrast applies before brightness. | One measured level sets both: Brightness 106 and Contrast −18 take 128 to 214. Contrast first draws 214.0, brightness first 209.9. | 1 measured level |
+
+Other things we take without evidence:
+- **Use Legacy.** The documentation calls it the old, linear adjustment, which clips: brightness shifts every level up or down, and contrast stretches or squeezes the levels about the middle. We take Brightness / 100 of the full range added to each level, then the level's distance from mid grey times 1/(1 − c) for a Contrast c / 100 of 0 or more (a threshold at mid grey at 100) and times 1 + c below (flat grey at −100), clipped only at the end. The scale of the brightness has one hint and no measure. m595 keys its legacy Brightness to 147 at 5.03 s, and its reference frame at 5.0 s is white nearly everywhere (a tenth of its pixels below 248/255, where its frames before have a tenth below 25). An offset of 1.47 whitens everything; 147/255 would leave the dark tenth near 170. Its light leaks add light at the same time, though, and the scene cannot draw this frame yet: the effect sits on an adjustment layer inside a collapsed composition, which changes nothing the scene draws there. The frame at 5.0 s is the same with the effect, without it, and with the brightness at 147/255. m591, excluded, holds the only legacy contrast.
+- **Out-of-range levels.** Without Use Legacy each level is held to 0 to 1 first; with it nothing is held until the end, where every colour effect of the scene holds its result to 0 to 1. Every sample's project is 8 or 16 bits a channel, where the original holds levels to that range too.
+- **Keys of Use Legacy.** The checkbox is animatable; a keyed one keeps its first value and is reported, as any keyed setting is. No sample keys it.
+
+Measured over all frames, on the render box (no macOS fonts, no H.264), before and after:
+
+| Sample | Failing share | Content error | Frames passing over the floor |
+|---|---|---|---|
+| m563 | 23.03 % → 22.02 % | 0.0194 → 0.0186 | 8 → 8 of 13 |
+| m595 | 78.41 % → 78.41 % | 0.2867 → 0.2867 | 1 → 1 of 20 |
+
+m563's four effects lie on its logo and flare layers, three of which also carry effects the scene does not draw (`CC Light Burst 2.5`, `CC Radial Fast Blur`, `ADBE Lens Flare`). m595's sits on the adjustment layer above (Use Legacy). m591, excluded, cannot be measured on the box, whose fonts it names; its scene imports and draws.
+
 ## Levels
 
 `ADBE Easy Levels2` keeps its levels in its histogram parameter (`-0002`), as data: 108 bytes in every local sample. The effect definitions the projects carry mark that parameter animatable and the sliders (`-0003` to `-0007`) and the channel menu (`-0001`) not. These beliefs say how the data reads and how the effect applies it. They were checked by hand over every local sample; the sweep does not check them yet.

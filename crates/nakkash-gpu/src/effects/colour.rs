@@ -5,8 +5,9 @@
 
 use nakkash_raster::kurbo::Affine;
 use nakkash_raster::{
-    BlackWhite, BoxTest, ColorCycle, Curve, Curves, Exposure, Fill, FindEdges, HueSaturation,
-    Invert, Level, Levels, Plan, Reading, SetMatte, Sharpen, ShiftChannels, Space, Tint,
+    BlackWhite, BoxTest, BrightnessContrast, ColorCycle, Curve, Curves, Exposure, Fill, FindEdges,
+    HueSaturation, Invert, Level, Levels, Plan, Reading, SetMatte, Sharpen, ShiftChannels, Space,
+    Tint,
 };
 
 use crate::Gpu;
@@ -39,6 +40,7 @@ fn family(plan: &Plan) -> bool {
             | Plan::Levels(_)
             | Plan::HueSaturation(_)
             | Plan::Exposure(_)
+            | Plan::BrightnessContrast(_)
             | Plan::BlackWhite(_)
             | Plan::ColorCycle(_)
     )
@@ -75,6 +77,7 @@ pub(super) fn run(gpu: &Gpu, batch: &mut Batch<'_>, grid: &mut Grid, plan: &Plan
         Plan::Tint(tint) => gpu.tint(batch, grid, tint),
         Plan::HueSaturation(hue) => gpu.hue_saturation(batch, grid, hue),
         Plan::Exposure(exposure) => gpu.exposure(batch, grid, exposure),
+        Plan::BrightnessContrast(bc) => gpu.brightness_contrast(batch, grid, bc),
         Plan::Levels(levels) => gpu.levels(batch, grid, levels),
         Plan::Invert(invert) => gpu.invert(batch, grid, invert),
         Plan::BlackWhite(black_white) => gpu.black_white(batch, grid, black_white),
@@ -353,6 +356,46 @@ impl Gpu {
                 [0.0; 4],
                 [0.0; 4],
             ],
+        );
+    }
+
+    /// Records `brightness-contrast` on `grid`. The kernel's choice is the
+    /// plan's branch: curves with no brightness (0), brightening (1) or
+    /// darkening (2), a legacy line (3) or a legacy threshold (4).
+    pub(crate) fn brightness_contrast(
+        &self,
+        batch: &mut Batch<'_>,
+        grid: &Grid,
+        plan: &BrightnessContrast,
+    ) {
+        let (choice, numbers, more) = match *plan {
+            BrightnessContrast::Curved {
+                contrast,
+                power,
+                shape,
+                darken,
+            } => {
+                let choice = match (power == 1.0, darken) {
+                    (true, _) => 0,
+                    (false, false) => 1,
+                    (false, true) => 2,
+                };
+                // The powers the CPU raises to, worked out as it does.
+                let more = [1.0 / power, 1.0 / shape, 0.0, 0.0];
+                (choice, [contrast, power, shape, 0.0], more)
+            }
+            BrightnessContrast::Legacy { offset, slope } => match slope.is_finite() {
+                true => (3, [offset, slope, 0.0, 0.0], [0.0; 4]),
+                false => (4, [offset, 0.0, 0.0, 0.0], [0.0; 4]),
+            },
+        };
+        self.colour_pass(
+            batch,
+            "brightness_contrast",
+            grid,
+            None,
+            [0, choice, 0],
+            [numbers, more, [0.0; 4], [0.0; 4]],
         );
     }
 
