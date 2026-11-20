@@ -67,11 +67,8 @@ fn repeated_effect_stacks_and_animations_become_styles_with_readable_names() {
     let styles = compacted["styles"].as_object().unwrap();
     assert!(styles.contains_key("fx-glow-box-blur-levels"), "{styles:?}");
     assert!(styles.contains_key("anim-position"), "{styles:?}");
-    assert_eq!(done.eases, 1);
-    assert!(
-        compacted["eases"].get("still-to-stop-95-97").is_some(),
-        "{compacted}"
-    );
+    // Once in a style, the curve is written twice: too few to be worth a name.
+    assert_eq!(done.eases, 0);
     assert_eq!(
         compacted["layers"][0]["inherits"],
         json!(["fx-glow-box-blur-levels", "anim-position"])
@@ -106,4 +103,39 @@ fn curves_are_named_by_their_shape() {
         Some("cubic-40-0-20-100")
     );
     assert_eq!(shape_words("ease-out"), None);
+}
+
+#[test]
+fn a_curve_many_keys_write_becomes_an_ease_named_by_its_shape() {
+    let layers: Vec<Json> = (0..6)
+        .map(|i| {
+            let curve = "speed(0,0.95,0,0.97)";
+            json!({"id":format!("l{i}"),"rect":"10x10",
+                   "anim":{"x":[{"t":"0s","v":i,"curve":curve},{"t":"1s","v":i + 50,"curve":curve},{"t":"2s","v":i}]}})
+        })
+        .collect();
+    let raw = scene(Json::Array(layers));
+    let (compacted, done) = compact(
+        &raw,
+        Parts {
+            defaults: false,
+            styles: true,
+            eases: true,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        (done.styles, done.eases, done.eased),
+        (0, 1, 12),
+        "{compacted}"
+    );
+    assert_eq!(
+        compacted["eases"]["still-to-stop-95-97"],
+        "speed(0,0.95,0,0.97)"
+    );
+    assert_eq!(
+        compacted["layers"][0]["anim"]["x"][0]["curve"],
+        "still-to-stop-95-97"
+    );
+    same_scene(&raw, &compacted);
 }
