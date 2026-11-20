@@ -4,6 +4,7 @@
 pub mod at;
 pub mod batch;
 pub mod bench;
+pub mod brief;
 pub mod check;
 pub mod diff;
 pub mod edit;
@@ -12,6 +13,7 @@ pub mod fidelity;
 pub mod fonts;
 pub mod import;
 pub mod inspect;
+pub mod instance;
 #[cfg(feature = "ml")]
 pub mod ml;
 pub mod render;

@@ -61,6 +61,8 @@ fn a_neutral_is_changed_into_a_colour() {
             label: None,
             role: None,
             seen: true,
+            uid: None,
+            contract: nakkash_format::Contract::default(),
         },
         followers: Vec::new(),
     };

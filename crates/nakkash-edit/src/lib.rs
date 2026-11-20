@@ -9,6 +9,7 @@
 //! ```
 
 mod apply;
+pub mod instance;
 mod key_path;
 mod lock;
 mod parse;

@@ -36,7 +36,7 @@ expression: "report.join(\"\\n\")"
 `card anim.x.y=1 anim.x=2` → keys `anim.x` and `anim.x.y` overlap; set them in separate edits or merge them into one value
 `ghost fill=#FFF` → unknown layer `ghost`; expected one of title, card
 `card colour=#FFF` → unknown layer key `colour`; expected one of id, text, rect, shapes, comp, overrides, image, video, audio, pivot, camera, font, fill, style, runs, paragraphs, box, crop, continuous, fit, cutout, tracks, animate, at, in, out, anim, parent, span, offset, stretch, mask, fx, adjust, collapse, hidden, matte, blend, mblur, 3d, position, anchor, scale, rotate, opacity, volume, z, anchor-z, scale-z, rotate-x, rotate-y, orient, zoom, target, target-z, remap
-`scene colour=red` → unknown scene key `colour`; expected one of nakkash, size, fps, dur, bg, shutter, labels, presets, fonts, slots, roles, locks, comps, layers
+`scene colour=red` → unknown scene key `colour`; expected one of nakkash, size, fps, dur, bg, shutter, labels, presets, fonts, slots, roles, locks, looks, comps, layers
 `card in.opacity=1` → cannot set `in.opacity`: `in` is not an object
 `title text=2024` → title.text: invalid type: integer `2024`; expected a quoted value: `text="2024"`
 `title text=true` → title.text: invalid type: boolean `true`; expected a quoted value: `text="true"`

@@ -62,7 +62,7 @@ fn an_unknown_type_names_the_types() {
     let err = slot("accent", &json!({"colour":"#fff"})).unwrap_err();
     assert_eq!(
         err.expected.as_deref(),
-        Some("one of number, point, color, text, image, video")
+        Some("one of number, point, color, text, image, video, choice")
     );
 }
 

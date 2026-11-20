@@ -50,6 +50,14 @@ pub(crate) fn files(raw: &mut Json, from: &Path, to: &Path) {
     }
 }
 
+/// `path` relative to the folder `base`, as [`relative`] writes it: how an
+/// instance's file is named from its template's folder ([D91]).
+///
+/// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+pub(crate) fn relative_to(path: &Path, base: &Path) -> Option<String> {
+    relative(path, base)
+}
+
 /// `path` relative to the folder `base`, both made absolute, written with
 /// `/`.
 fn relative(path: &Path, base: &Path) -> Option<String> {

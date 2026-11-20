@@ -1,6 +1,12 @@
 [files]
-# Fixture projects and their snapshots hold the authors' own spelling.
-extend-exclude = ["crates/nakkash-import/tests/fixtures/", "*.snap", "vendor/"]
+# Fixture projects and their snapshots hold the authors' own spelling;
+# the German example instance holds German copy.
+extend-exclude = [
+  "crates/nakkash-import/tests/fixtures/",
+  "*.snap",
+  "vendor/",
+  "examples/instance/promo-de.json",
+]
 
 [default.extend-words]
 # Four-character chunk and box tags and short codes, not words.

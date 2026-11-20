@@ -39,6 +39,7 @@ The first build compiles the workspace once. Then open the scene, change a word 
 - [Getting started](docs/guide/getting-started.md): why nakkash, use cases, every command.
 - [Scene format](docs/design/scene-format.md): every key a scene can hold.
 - [Writing a video from scratch](docs/guide/from-scratch.md): the guide for agents.
+- [Filling a template](docs/guide/fill-a-template.md): how an agent makes a variant of a template from its brief and an instance.
 - [Compatibility](docs/compatibility.md): `.aep`, `.mogrt`, vector footage, what is planned.
 - [All documentation](docs/README.md) · [Architecture](ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md)
 

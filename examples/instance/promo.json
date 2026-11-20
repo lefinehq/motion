@@ -1,0 +1,57 @@
+{
+  "nakkash": 1,
+  "size": "1920x1080",
+  "fps": 30,
+  "dur": "$duration",
+  "bg": "$background",
+  "slots": {
+    "headline": {"text": "Ship every market at once", "label": "Opening line", "role": "title", "overflow": "shrink", "min-size": 72, "max-lines": 1},
+    "feature": {"text": "One screen, every language", "label": "Feature line", "role": "subtitle", "overflow": "wrap", "min-size": 40, "max-lines": 2},
+    "cta": {"text": "Start free", "label": "Call to action", "role": "cta", "overflow": "reject"},
+    "background": {"color": "#0B0D12", "role": "background"},
+    "text": {"color": "#F5F7FA", "role": "text", "pair": "background", "contrast": 7},
+    "accent": {"color": "#6E56F8", "role": "accent", "pair": "background", "contrast": 3},
+    "on-accent": {"color": "#FFFFFF", "role": "text", "pair": "accent", "contrast": 4.5},
+    "screen": {"image": null, "label": "Product screen", "role": "image", "kind": "screen", "accepts": ["image", "video"], "aspect": "16:10", "min-px": [1600, 1000]},
+    "ending": {"choice": "end-centred", "label": "Closing layout", "values": ["end-centred", "end-left"]},
+    "duration": {"number": 6, "label": "Duration in seconds", "role": "duration", "min": 5, "max": 8}
+  },
+  "looks": {
+    "light": {"background": "#F5F7FA", "text": "#0B0D12", "accent": "#4B32D9"}
+  },
+  "comps": {
+    "hook": {
+      "size": "1920x1080", "dur": "2s",
+      "layers": [
+        {"id": "headline", "text": "$headline", "font": "Inter Variable 96 700", "fill": "$text", "position": [960, 560], "style": {"align": "center"}, "fit": "shrink 1500x130", "in": "fade-up 40px 14f ease-out"}
+      ]
+    },
+    "feature": {
+      "size": "1920x1080", "dur": "2.2s",
+      "layers": [
+        {"id": "plate", "rect": "1640x1025 r28", "fill": "$accent", "opacity": 0.18, "position": [960, 560]},
+        {"id": "screen", "image": "$screen", "box": [1600, 1000], "fit": "cover", "anchor": [800, 500], "position": [960, 560]},
+        {"id": "feature", "text": "$feature", "font": "Inter Variable 56 600", "fill": "$text", "position": [960, 140], "style": {"align": "center"}, "fit": "wrap 1500x150", "in": "fade-up 30px 12f ease-out"}
+      ]
+    },
+    "end-centred": {
+      "size": "1920x1080", "dur": "1.8s",
+      "layers": [
+        {"id": "button", "rect": "520x140 r70", "fill": "$accent", "position": [960, 560], "mblur": true, "in": "pop 12f ease-out"},
+        {"id": "cta", "text": "$cta", "font": "Inter Variable 64 700", "fill": "$on-accent", "position": [960, 582], "style": {"align": "center"}, "fit": "shrink 440x80", "in": "fade 10f ease-out"}
+      ]
+    },
+    "end-left": {
+      "size": "1920x1080", "dur": "1.8s",
+      "layers": [
+        {"id": "button", "rect": "520x140 r70", "fill": "$accent", "position": [480, 560], "mblur": true, "in": "fade-right 60px 12f ease-out"},
+        {"id": "cta", "text": "$cta", "font": "Inter Variable 64 700", "fill": "$on-accent", "position": [480, 582], "style": {"align": "center"}, "fit": "shrink 440x80", "in": "fade 10f ease-out"}
+      ]
+    }
+  },
+  "layers": [
+    {"id": "hook", "comp": "hook", "span": "0s-2s"},
+    {"id": "product", "comp": "feature", "span": "2s-4.2s", "offset": "2s"},
+    {"id": "end", "comp": "$ending", "span": "4.2s-6s", "offset": "4.2s"}
+  ]
+}

@@ -4,6 +4,7 @@
 
 pub mod address;
 pub mod anim;
+pub mod canon;
 pub mod colors;
 mod curve;
 mod cutout;
@@ -53,7 +54,7 @@ pub use scene::{
     ImageContent, Layer, MediaFit, Scene, VideoContent,
 };
 pub use sha256::{Sha256, Sha256Hasher};
-pub use slots::{Listed, Slot, SlotType};
+pub use slots::{Contract, Listed, MediaKind, Overflow, Slot, SlotType, aspect_ratio};
 
 /// Whether `value` is a colour in any form the scene writes one: `#RGB`,
 /// `#RRGGBB`, `#RRGGBBAA`, or `[r, g, b, a]` with each channel 0 to 1.
