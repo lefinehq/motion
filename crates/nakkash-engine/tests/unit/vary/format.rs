@@ -108,6 +108,36 @@ fn a_move_that_peaks_between_samples_stays_on_the_new_canvas() {
 }
 
 #[test]
+fn a_flash_that_shows_only_between_samples_is_placed_with_the_content() {
+    // 300 frames are sampled every third; the line flashes at frame 31
+    // alone, which no sample sees.
+    let session: Session = r##"{"nakkash":1,"size":"1920x1080","fps":30,"dur":"10s","layers":[
+        {"id":"bg","rect":"1920x1080","fill":"#101820"},
+        {"id":"title","rect":"600x120","at":"center center","fill":"#FFFFFF"},
+        {"id":"flash","rect":"800x10","at":"center 700","fill":"#FFFFFF",
+         "anim":{"opacity":[{"t":"0f","v":0,"curve":"hold"},{"t":"31f","v":1,"curve":"hold"},{"t":"32f","v":0}]}}]}"##
+        .parse()
+        .expect("a scene");
+    let (layout, _) = layout(&session, 1080, 1920).expect("a layout");
+    // The cropped background does not draw it, and one group does, inside
+    // the new canvas.
+    assert!(
+        layout.shown[0].hide.iter().any(|h| h == "flash"),
+        "{layout:?}"
+    );
+    let drawn: Vec<&Shown> = layout.shown[1..]
+        .iter()
+        .filter(|s| !s.hide.iter().any(|h| h == "flash"))
+        .collect();
+    assert_eq!(drawn.len(), 1, "{layout:?}");
+    let flash = drawn[0];
+    for x in [560.0, 1360.0] {
+        let at = flash.position[0] + (x - flash.anchor[0]) * flash.scale;
+        assert!((0.0..=1080.0).contains(&at), "{flash:?} draws {x} at {at}");
+    }
+}
+
+#[test]
 fn a_cropped_background_is_not_cut_through_an_element() {
     // A 600 px window centred at 960 would cut the dot at 640..700.
     let dot = Rect::new(640.0, 500.0, 700.0, 560.0);
