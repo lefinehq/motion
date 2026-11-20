@@ -1,0 +1,11 @@
+{"nakkash":1,"size":"1080p","fps":30,"dur":"4s","bg":"#0B0D12",
+"styles":{
+ "card":{"rect":"420x520 r32","fill":"#F5F3EE","fx":[{"drop-shadow":24,"color":"#000000","opacity":0.45,"direction":180}]},
+ "anim-enter":{"anim":{"scale":[{"t":"0s","v":[0.86,0.86],"curve":"settle"},{"t":"0.6s","v":[1,1]}],"opacity":[{"t":"0s","v":0,"curve":"settle"},{"t":"0.4s","v":1}]}}},
+"eases":{"settle":"cubic(0.16,1,0.3,1)"},
+"layers":[
+{"id":"title","text":"Three plans","font":"Inter Variable 88 700","fill":"#F5F3EE","at":"center 170","in":"fade-up 40px 12f out-cubic"},
+{"id":"basic","inherits":["card","anim-enter"],"at":"420 640","offset":"0.3s"},
+{"id":"team","inherits":["card","anim-enter"],"at":"960 640","offset":"0.45s","fill":"#FFD166"},
+{"id":"studio","inherits":["card","anim-enter"],"at":"1500 640","offset":"0.6s"}
+]}

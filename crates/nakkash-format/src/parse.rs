@@ -6,7 +6,7 @@ use serde_json::Value;
 use tracing::{Span, debug, field, instrument};
 
 use crate::doc::{Form, Object, SceneDoc};
-use crate::{Document, Scene, de, deprecated, slots, validate};
+use crate::{Document, Scene, de, deprecated, slots, styles, validate};
 
 /// The spelling of every scene and layer key, so no code can name a key the
 /// format does not have.
@@ -28,6 +28,12 @@ pub mod key {
     pub const BG: &str = "bg";
     /// The scene's own presets.
     pub const PRESETS: &str = "presets";
+    /// Named sets of layer keys, which layers inherit (D91).
+    pub const STYLES: &str = "styles";
+    /// Named easing curves, which keys name (D91).
+    pub const EASES: &str = "eases";
+    /// The styles a layer takes its keys from (D91).
+    pub const INHERITS: &str = "inherits";
     /// The scene's compositions.
     pub const COMPS: &str = "comps";
     /// A composition's named moments.
@@ -152,7 +158,7 @@ pub mod key {
 }
 
 /// The keys allowed at the top level, in the order of `SceneDoc`'s fields.
-pub const SCENE_KEYS: [&str; 15] = [
+pub const SCENE_KEYS: [&str; 17] = [
     key::NAKKASH,
     key::SIZE,
     key::FPS,
@@ -161,6 +167,8 @@ pub const SCENE_KEYS: [&str; 15] = [
     key::SHUTTER,
     key::LABELS,
     key::PRESETS,
+    key::STYLES,
+    key::EASES,
     key::FONTS,
     key::SLOTS,
     key::ROLES,
@@ -183,8 +191,9 @@ pub const COMP_KEYS: [&str; 8] = [
 /// The keys allowed on a layer besides property names, in the order of
 /// `LayerDoc`'s fields. A property in the registry is also a layer key,
 /// holding its resting value; [`layer_keys`] lists both.
-pub const LAYER_KEYS: [&str; 40] = [
+pub const LAYER_KEYS: [&str; 41] = [
     key::ID,
+    key::INHERITS,
     key::TEXT,
     key::RECT,
     key::SHAPES,
@@ -253,7 +262,16 @@ pub fn parse_document(json: &str) -> Result<Document> {
 /// Slot references are resolved first, on a copy, so the values read are
 /// the slots' (D44).
 pub(crate) fn scene_from_value(written: &Value) -> Result<Scene> {
-    let checked = deprecated::no_name_twice(written)
+    let checked = styles::expand(written).and_then(|expanded| scene_from_expanded(&expanded));
+    // Validation stops at the first rule that fails, so this is that rule.
+    checked.inspect_err(|d| {
+        debug!(kind = ?d.kind, path = d.path_text().as_deref(), "rejected: {}", d.message);
+    })
+}
+
+/// [`scene_from_value`] of a scene whose styles and eases are expanded.
+fn scene_from_expanded(written: &Value) -> Result<Scene> {
+    deprecated::no_name_twice(written)
         .and_then(|()| slots::declared(written))
         .and_then(|declared| {
             let (value, resolved) = slots::resolve(written, &declared)?;
@@ -263,11 +281,7 @@ pub(crate) fn scene_from_value(written: &Value) -> Result<Scene> {
             });
             read.and_then(|Object::<SceneDoc>(doc)| validate::scene(&doc, written, &declared))
                 .map_err(|d| resolved.explain(d))
-        });
-    // Validation stops at the first rule that fails, so this is that rule.
-    checked.inspect_err(|d| {
-        debug!(kind = ?d.kind, path = d.path_text().as_deref(), "rejected: {}", d.message);
-    })
+        })
 }
 
 #[cfg(test)]

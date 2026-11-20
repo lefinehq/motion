@@ -50,6 +50,7 @@ A move is one key on the layer. Presets are in [Scene format](https://github.com
 | A slow drift that keeps the frame alive | `"anim":{"scale":"1 -> 1.15 @0-9s in-out-sine"}` |
 | A layer that enters before the film starts | a negative `offset`, `"offset":"-6f"`, so frame 0 shows it landed |
 | A screen or label pinned onto tracked footage | `nakkash ml track scene.json phone.tracks[screen] --to screen --corners`, then on the layer to pin `"fx":[{"corner-pin":[0,0],"pivots":"screen"}]`; nudge a corner in px of the layer with `"top-left":[4,4]` |
+| The same effect stack or entrance on several layers | write it once in `styles` and give each layer `"inherits":"<name>"`; a key the layer writes itself wins ([Scene format](https://github.com/lefinehq/nakkash/blob/main/docs/design/scene-format.md#styles-eases-and-defaults)). `nakkash compact` does it for a finished scene and proves it draws the same |
 
 ## Pitfalls
 

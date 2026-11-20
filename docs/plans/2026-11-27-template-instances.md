@@ -45,7 +45,7 @@ Each is one pull request, merged when the workspace's checks pass. Bit-identical
 | 2 | Instances: schema, pin and canonical hash, slot patch, `$unset`, `$hide`, `raw`, choices, bounds, looks, `accepts`, the four stages and the problem objects; `render`, `check`, `vary`, `batch`, `export`, `edit`, `slots --as-instance`, `migrate` read them | an empty instance, and one of every template value, against the template |
 | 3 | Typed slots at import: placeholder compositions as screen slots, uids, text `overflow`/`min-size`/`max-lines`, colour pairs, file `kind`/`aspect`/`min-px`; `focus` on `cover` | the import corpus: an empty instance against the scene |
 | 4 | `nakkash brief`: sections and roles, fit budgets, colours by what they paint, files, choices, locks; text and JSON | — |
-| 5 | Compaction: `styles`, named `curves`, defaults left out, `nakkash compact`, the defaults snapshot | every scene compact against itself, and the import corpus |
+| 5 | Compaction: `styles`, named `eases`, defaults left out, `nakkash compact`, the defaults snapshot | every scene compact against itself, and the import corpus |
 | 6 | Includes: `nakkash split`, `nakkash flatten`, the canonical hash unchanged by either | every scene split, then flattened |
 | 7 | Agent guide, examples and the scripted agent check: an agent filling the template through the brief and an instance against one editing the scene, tokens and check errors | — |
 

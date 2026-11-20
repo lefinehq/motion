@@ -1,0 +1,14 @@
+{"nakkash":1,"size":"1080x1080","fps":25,"dur":"2s","bg":"#101820",
+"styles":{
+ "fx-glow-drop-shadow":{"fx":[{"glow":24,"intensity":0.8},{"drop-shadow":20,"color":"$accent","opacity":0.6}]},
+ "anim-position-opacity":{"anim":{"position":[{"t":"0s","v":[540,700],"curve":"still-to-stop-95-97"},{"t":"1s","v":[540,540]}],"opacity":[{"t":"0s","v":0,"curve":"still-to-stop-95-97"},{"t":"0.6s","v":1}]}}},
+"eases":{"still-to-stop-95-97":"speed(0,0.95,0,0.97)"},
+"slots":{"accent":{"color":"#E63946","label":"Accent"}},
+"comps":{
+ "badge":{"size":"400x200","dur":"2s","slots":{"accent":"#2A9D8F"},"layers":[
+  {"id":"pill","rect":"300x120 r60","fill":"#FFFFFF","at":"200 100","inherits":"fx-glow-drop-shadow"}]}},
+"layers":[
+{"id":"plate","rect":"600x300 r24","fill":"$accent","inherits":["fx-glow-drop-shadow","anim-position-opacity"]},
+{"id":"card","rect":"400x200 r24","fill":"#F4A261","opacity":0.9,"inherits":["anim-position-opacity","fx-glow-drop-shadow"],"anim":{"rotate":[{"t":"0s","v":-8,"curve":"still-to-stop-95-97"},{"t":"1s","v":0}]}},
+{"id":"badge","comp":"badge","at":"540 860"}
+]}

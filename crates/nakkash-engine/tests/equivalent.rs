@@ -1,6 +1,6 @@
 //! Two forms of one scene are one scene: every way of writing a scene that
 //! the format offers as the same (a scene written out pretty or compact, its
-//! and later its compact, instance and split forms) must
+//! styles and eases written once, and later its instance and split forms) must
 //! read into the same validated [`Scene`](nakkash_format::Scene) and draw the
 //! same frames, to the bit. Key order is not one of them: a layer keeps its
 //! resting values in the order they are written. Every scene of the compatibility corpus, the
@@ -95,6 +95,22 @@ const FORMS: &[Form] = &[
     Form {
         name: "compact",
         write: |json| serde_json::to_string(json).expect("JSON writes"),
+    },
+    // Repeated effect stacks and animations as styles, repeated curves as
+    // eases (D91); defaults are left to `nakkash compact`, which proves
+    // each one, since a layer keeps the resting values written on it.
+    Form {
+        name: "styled",
+        write: |json| {
+            let parts = nakkash_engine::compact::Parts {
+                defaults: false,
+                styles: true,
+                eases: true,
+            };
+            let styled = nakkash_engine::compact::compact(json, parts)
+                .map_or_else(|_| json.clone(), |(styled, _)| styled);
+            serde_json::to_string(&styled).expect("JSON writes")
+        },
     },
 ];
 
