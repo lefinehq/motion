@@ -821,3 +821,23 @@ fn a_text_wider_than_the_canvas_is_offscreen_though_a_shape_that_wide_is_bleed()
     assert_eq!(off.len(), 1, "{report}");
     assert_eq!(off[0].address.to_string(), "t");
 }
+
+#[test]
+fn an_adjustment_layer_past_the_edge_is_not_offscreen() {
+    // An adjustment layer draws nothing of its own: past the edge it only
+    // adjusts less of the canvas. The same rect drawn is offscreen.
+    let rect = r#""rect":"400x300","position":[1800,540],"fx":[{"sharpen":5}]"#;
+    let adjusting = one(&format!(r#"{{"id":"a",{rect},"adjust":true}}"#));
+    assert!(
+        adjusting
+            .violations
+            .iter()
+            .all(|v| !matches!(v.code, Code::Offscreen | Code::Unsafe)),
+        "{adjusting}"
+    );
+    let drawn = one(&format!(r##"{{"id":"a",{rect},"fill":"#FFFFFF"}}"##));
+    assert!(
+        drawn.violations.iter().any(|v| v.code == Code::Offscreen),
+        "{drawn}"
+    );
+}
