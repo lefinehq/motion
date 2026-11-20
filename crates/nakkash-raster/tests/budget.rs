@@ -215,11 +215,22 @@ fn what_is_resident_beside_the_grids_leaves_them_less_room() {
     // stands for what the process may hold again.
     memory::note_resident(grid);
     assert_eq!(memory::stats().outside, 7 * grid);
+    assert_eq!(memory::stats().rise, 0, "the first reading is no rise");
     // Drawn again in that room: the same pixels, and the pool keeps
     // within it once the frame's grids are let go.
     assert!(draw(&frame, RenderOptions::default()) == roomy);
     assert!(memory::stats().held <= grid, "{:?}", memory::stats());
+    // A rise of half a grid between readings is kept free too: the room
+    // falls by the rise as well as by what rose.
+    let held = memory::stats().held;
+    memory::note_resident(held + 7 * grid + grid / 2);
+    let stats = memory::stats();
+    assert_eq!((stats.outside, stats.rise), (7 * grid + grid / 2, grid / 2));
+    assert!(
+        stats.held + stats.outside + stats.rise <= 8 * grid,
+        "{stats:?}"
+    );
     memory::reset_peaks();
-    assert_eq!(memory::stats().outside, 0);
+    assert_eq!((memory::stats().outside, memory::stats().rise), (0, 0));
     memory::set_budget(memory::DEFAULT_BUDGET);
 }

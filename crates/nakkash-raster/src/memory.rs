@@ -28,8 +28,9 @@
 //! as well, since grids are not all a render holds. What it holds beside
 //! the grids (its code, the scene, fonts, the rasteriser's own buffers,
 //! frames kept to be copied) is taken off the room the grids have, at the
-//! most it was seen to be: the pool and kept drawings fill what is left,
-//! not the whole budget.
+//! most it was seen to be, with the most it rose between two readings
+//! kept free besides: the pool and kept drawings fill what is left, not
+//! the whole budget.
 //!
 //! The counts are kept for the whole process; [`stats`] reads them.
 //!
@@ -108,6 +109,10 @@ pub struct MemoryStats {
     /// The most the process was seen to hold resident beside the grids,
     /// in bytes: what the room for grids leaves out of the budget.
     pub outside: u64,
+    /// The most what is resident beside the grids rose by between two
+    /// readings, in bytes: kept free as well, since it may rise as far
+    /// again before a reading sees it.
+    pub rise: u64,
     /// The most frames drawn at once, as the caller notes them
     /// ([`note_frames_at_once`]).
     pub frames_at_once: u64,
@@ -134,6 +139,9 @@ struct Ledger {
     pressed: AtomicU64,
     /// The most resident beside the grids held, at a reading.
     outside: AtomicU64,
+    /// The most `outside` rose by from one reading that raised it to the
+    /// next.
+    rise: AtomicU64,
     frames_at_once: AtomicU64,
     clobber: AtomicBool,
     /// When the probe was last read and when pressure was last seen, in
@@ -158,6 +166,7 @@ static LEDGER: Ledger = Ledger {
     held_back: AtomicU64::new(0),
     pressed: AtomicU64::new(0),
     outside: AtomicU64::new(0),
+    rise: AtomicU64::new(0),
     frames_at_once: AtomicU64::new(0),
     clobber: AtomicBool::new(false),
     probed: AtomicU64::new(0),
@@ -218,6 +227,7 @@ pub fn set_budget(bytes: u64) {
 /// counted again.
 pub fn reset_peaks() {
     LEDGER.outside.store(0, Relaxed);
+    LEDGER.rise.store(0, Relaxed);
     LEDGER.frames_at_once.store(0, Relaxed);
     let live = LEDGER.live.load(Relaxed);
     LEDGER
@@ -305,18 +315,27 @@ pub fn note_resident(bytes: u64) {
     // after they are given back, so what is resident beyond them is never
     // read as more than it is.
     let outside = bytes.saturating_sub(held());
-    if LEDGER.outside.fetch_max(outside, Relaxed) < outside {
+    let before = LEDGER.outside.fetch_max(outside, Relaxed);
+    if before < outside {
+        // How far it rose since the last reading that raised it: it can
+        // rise as far again before a reading sees it. The first reading
+        // is where it starts from, not a rise.
+        if before > 0 {
+            LEDGER.rise.fetch_max(outside - before, Relaxed);
+        }
         trim_to(room());
     }
 }
 
 /// The room grids have: the budget in force, less the most the process
-/// was seen to hold resident beside them.
+/// was seen to hold resident beside them and the most that rose between
+/// two readings, which it may rise by again before the next.
 fn room() -> u64 {
     LEDGER
         .effective
         .load(Relaxed)
         .saturating_sub(LEDGER.outside.load(Relaxed))
+        .saturating_sub(LEDGER.rise.load(Relaxed))
 }
 
 /// Whether what the process holds resident, at the last reading, is over
@@ -453,6 +472,7 @@ pub fn stats() -> MemoryStats {
         pressed: LEDGER.pressed.load(Relaxed),
         held: held(),
         outside: LEDGER.outside.load(Relaxed),
+        rise: LEDGER.rise.load(Relaxed),
         frames_at_once: LEDGER.frames_at_once.load(Relaxed),
     }
 }
