@@ -103,3 +103,16 @@ fn the_machine_says_what_it_holds_and_what_was_used() {
         "{resident}"
     );
 }
+
+#[test]
+fn an_environment_cap_limits_the_default_threads() {
+    // A job runner caps its child's threads in the environment: the
+    // default keeps under it, and a cap that does not read changes nothing.
+    assert_eq!(capped(12, Some("2")), 2);
+    assert_eq!(capped(12, Some(" 5 ")), 5);
+    assert_eq!(capped(4, Some("16")), 4);
+    assert_eq!(capped(12, Some("0")), 12);
+    assert_eq!(capped(12, Some("many")), 12);
+    assert_eq!(capped(12, None), 12);
+    assert_eq!(capped(0, None), 1);
+}

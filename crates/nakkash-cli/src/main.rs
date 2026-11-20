@@ -44,7 +44,8 @@ struct Cli {
     #[arg(long, global = true)]
     timings: bool,
     /// Draw on at most N threads: when not given, the performance cores on
-    /// macOS and the processors the process may use elsewhere. Frames and
+    /// macOS and the processors the process may use elsewhere, capped by
+    /// `NAKKASH_THREADS`, else `RAYON_NUM_THREADS`, when set. Frames and
     /// the rows of each frame share them, so one frame is drawn on all of
     /// them. Each thread holds the frame it draws, so fewer take less
     /// memory.
