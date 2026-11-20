@@ -146,16 +146,36 @@ pub(crate) fn columns<T: Copy + Default + Send + Sync, S>(
     scratch: impl Fn() -> S + Sync,
     work: impl Fn(&mut [T], &mut S) + Sync,
 ) {
+    let mut bands = vec![T::default(); width * height];
+    columns_in(data, width, height, &mut bands, |_| true, scratch, work);
+}
+
+/// [`columns`], with the room the bands are copied to given, `width` ×
+/// `height` items whose values do not matter, and only the columns
+/// `works` says yes to worked: a band of columns it says no to all of is
+/// neither copied out nor back, and stays as it is in `data` ([D93]).
+///
+/// [D93]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d93-glow-and-blurs-do-less-of-the-same-work
+pub(crate) fn columns_in<T: Copy + Send + Sync, S>(
+    data: &mut [T],
+    width: usize,
+    height: usize,
+    bands: &mut [T],
+    works: impl Fn(usize) -> bool + Sync,
+    scratch: impl Fn() -> S + Sync,
+    work: impl Fn(&mut [T], &mut S) + Sync,
+) {
     if width == 0 || height == 0 {
         return;
     }
     debug_assert_eq!(data.len(), width * height, "a grid of width by height");
+    debug_assert_eq!(bands.len(), width * height, "room for every band");
     let columns = columns_per_task();
+    let worked = |x0: usize| (x0..(x0 + columns).min(width)).any(&works);
     // The bands one after another, each its rows of `columns` items: a
     // band is copied out and back a row at a time, and its columns are
     // read and written within it while it sits in cache.
     let source = &*data;
-    let mut bands = vec![T::default(); width * height];
     bands
         .par_chunks_mut(columns * height)
         .enumerate()
@@ -163,11 +183,17 @@ pub(crate) fn columns<T: Copy + Default + Send + Sync, S>(
             || (scratch(), Vec::with_capacity(height)),
             |(room, column), (band, out)| {
                 let x0 = band * columns;
+                if !worked(x0) {
+                    return;
+                }
                 let wide = out.len() / height;
                 for (y, row) in out.chunks_exact_mut(wide).enumerate() {
                     row.copy_from_slice(&source[y * width + x0..y * width + x0 + wide]);
                 }
                 for k in 0..wide {
+                    if !works(x0 + k) {
+                        continue;
+                    }
                     column.clear();
                     column.extend(out.iter().skip(k).step_by(wide));
                     work(column, room);
@@ -177,17 +203,53 @@ pub(crate) fn columns<T: Copy + Default + Send + Sync, S>(
                 }
             },
         );
-    let bands = &bands;
+    let bands = &*bands;
     data.par_chunks_mut(width)
         .with_min_len(rows_per_task(width))
         .enumerate()
         .for_each(|(y, row)| {
             for x0 in (0..width).step_by(columns) {
+                if !worked(x0) {
+                    continue;
+                }
                 let wide = columns.min(width - x0);
                 let band = &bands[x0 * height..];
                 row[x0..x0 + wide].copy_from_slice(&band[y * wide..(y + 1) * wide]);
             }
         });
+}
+
+/// Which of the `width` columns of `data` hold an item `holds` says yes
+/// to, worked out over runs of rows on every thread; each answer is the
+/// same however the rows are split, as an "or" is.
+pub(crate) fn columns_holding<T: Sync>(
+    data: &[T],
+    width: usize,
+    holds: impl Fn(&T) -> bool + Sync,
+) -> Vec<bool> {
+    if width == 0 {
+        return Vec::new();
+    }
+    data.par_chunks(width)
+        .with_min_len(rows_per_task(width))
+        .fold(
+            || vec![false; width],
+            |mut held, row| {
+                for (h, item) in held.iter_mut().zip(row) {
+                    *h = *h || holds(item);
+                }
+                held
+            },
+        )
+        .reduce(
+            || vec![false; width],
+            |mut a, b| {
+                for (x, y) in a.iter_mut().zip(b) {
+                    *x = *x || y;
+                }
+                a
+            },
+        )
 }
 
 /// The size tests split work at, in items and in columns; 0 is the size
