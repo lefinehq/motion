@@ -81,7 +81,6 @@ impl Named for SettingSpec {
 }
 
 /// One kind of item.
-#[derive(Debug)]
 pub struct ItemKind {
     /// The key that makes an object an item of this kind.
     pub name: &'static str,
@@ -113,6 +112,17 @@ pub struct ItemKind {
     pub timed: bool,
     /// What it draws or does, for people and agents.
     pub doc: &'static str,
+}
+
+/// A kind is a fixed entry of the catalogue, so an item shows it by its
+/// name: written out in full, with its registry, it overflowed the stack
+/// of a scene's debug form at a shape group.
+impl std::fmt::Debug for ItemKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ItemKind")
+            .field("name", &self.name)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Another layer of the same list an effect reads.
