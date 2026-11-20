@@ -840,3 +840,26 @@ Laid by these modes rather than as normal layers, over all frames (content faili
 Other things we take without evidence:
 - **Opacity.** A stencil at partial opacity keeps by its share times its opacity, as its alpha would; no local sample fades a stencil.
 - **Quality.** Linear light, subtract and the luma stencils have no counterpart in the vector rasteriser, and a destructive mode there composes only inside its clip's box; layers in these modes are laid in floats at either quality, which the precise quality already does for every layer.
+
+## Skew
+
+The shape group's transform and the transform effect take a skew and its axis: the group's `ADBE Vector Skew` and `ADBE Vector Skew Axis`, the effect's `-0005` and `-0006`, both in degrees. They become `skew` and `skew-axis` on the scene's `group` and `transform` ([scene format](scene-format.md#shapes-masks-effects-and-compositions)), where the import reported them. The effect's order was measured by EffectCraft against reference renders of the original (its `crates/effects/src/distort.rs`, cases 723, 819 and 820); the group's comes from the definition and from our text animators' slant, which a skew of the same name already draws.
+
+| Belief | Evidence | Held, 2026-11-20 |
+|---|---|---|
+| SK1. The transform effect moves a point `p` of the layer to `position + K · R · S · (p − anchor)`: scaled, turned, then sheared, where `K = R(−axis) · shearY(tan skew) · R(axis)` and the skew is clamped to ±85 degrees. | EffectCraft's cases 723, 819 and 820 draw a 960 by 540 grey solid through the effect, with skews 10 at axis 20, 15 at axis 60 and 15 at axis 60 with the scale and turn of 723; 24 probe pixels a case, 18 inside the solid and 6 outside, read from the references. Our effect covers all 72 as the references do (a unit test holds them). Of the other orders and senses tried, none holds all three: the same shear before the turn misses 1 of 723's and 2 of 820's points, the text animators' slant after the turn 1, 1 and 5, and the opposite senses up to 12 of 819's. | 3 cases, 72 points |
+
+
+Read and drawn rather than reported, over all frames on the render box, against a build of development without the change:
+
+| Sample | Failing, before → after | Mean error, before → after | Frames passing over the floor |
+|---|---|---|---|
+| m847 (eight group skews) | 97.86 % → 97.84 % | 0.5437 → 0.5436 | 0 → 0 of 19 |
+| m637 (excluded) | 98.51 % → 98.33 % | 0.1198 → 0.1179 | 0 → 0 of 10 |
+| m636, m639, m640, m641, m581 | unchanged | unchanged | unchanged |
+
+m636's skew sits in a transform effect on an adjustment layer at opacity 0, which applies nothing. m639 to m641 drive their effects' skew by an expression from a slider; their numbers do not move, which is not explained yet. m847 fails on nearly all of its content before and after, for reasons other than its skews.
+
+Other things we take without evidence:
+- **The group's order.** A group draws `T(position) · R(rotate) · slant(skew, axis) · S(scale) · T(−anchor)`: scaled, slanted along its axis, then turned, as the definition orders the group's rows and as our text animators lean their glyphs. No measured case checks a group's skew; m847 slants eight shape groups by it, and its numbers barely move (below).
+- **Past 85 degrees.** The group's skew is clamped as the effect's is; no local sample comes near it.
