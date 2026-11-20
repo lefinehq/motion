@@ -1,0 +1,6 @@
+{"nakkash":1,"size":"240x120","fps":24,"dur":"1s","bg":"#FFFFFF",
+"layers":[
+{"id":"ramp","rect":"240x120","fill":"#808080","at":"120 60","fx":[{"ramp":0,"start":[0,60],"start-color":"#000000","end":[240,60],"end-color":"#FFFFFF","shape":"linear"}]},
+{"id":"curved","rect":"100x100","fill":"#6080C0","at":"60 60","fx":[{"brightness-contrast":0.55,"contrast":1,"legacy":"off"},{"brightness-contrast":-0.4,"contrast":-0.8,"anim":{"brightness":"-0.4 -> 0.4 @0-1s"}}]},
+{"id":"straight","rect":"100x100","fill":"#C06040","at":"180 60","fx":[{"brightness-contrast":-0.1,"contrast":0.44,"legacy":"on","anim":{"contrast":"0.44 -> 1 @0-1s"}}]}
+]}

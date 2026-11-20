@@ -344,7 +344,10 @@ fn darkening_curves_invert_the_brightening_ones() {
             let x = i as f32 / 20.0;
             let up = brightness_contrast_of(brightness, 0.0, 0, x);
             let back = brightness_contrast_of(-brightness, 0.0, 0, up);
-            assert!((back - x).abs() < 1e-4, "{brightness} at {x}: {back}");
+            // Within a quarter of an 8-bit step: at brightness 1.5, 0.95
+            // brightens to within two f32 steps of 1, and the way back
+            // cannot recover what the float does not hold (8.5e-4 off).
+            assert!((back - x).abs() < 1e-3, "{brightness} at {x}: {back}");
         }
     }
 }
