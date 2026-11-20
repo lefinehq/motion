@@ -551,9 +551,29 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
     let id = required(doc.id.as_deref(), ID, r#""title""#)?;
     layer_id(id)?;
     let Object(tracks) = &doc.anim;
+    let content = content(doc, context)?;
+    // A text layer's words are keyed in `anim` too, but they are its
+    // content's, not a property's ([D92]).
+    let tracks = match (&content, tracks.contains_key(TEXT)) {
+        (Content::Text(_), true) => {
+            let mut others = tracks.clone();
+            others.shift_remove(TEXT);
+            std::borrow::Cow::Owned(others)
+        }
+        (_, true) => {
+            return Err(Diagnostic::new(
+                Kind::Conflict,
+                "`text` keys the words of a text layer, and this layer draws no text",
+            )
+            .at(TEXT)
+            .under(ANIM)
+            .expected(r#"`anim.text` on a layer with "text""#));
+        }
+        (_, false) => std::borrow::Cow::Borrowed(tracks),
+    };
     let layer = Layer {
         id: id.to_owned(),
-        content: content(doc, context)?,
+        content,
         fill: match &*doc.fill {
             Some(written) => crate::text::color(written).map_err(|e| e.under(FILL))?,
             None => DEFAULT_FILL,
@@ -570,7 +590,7 @@ fn layer(doc: &LayerDoc, context: &Context, before: Option<(Time, Time)>) -> Res
             .as_ref()
             .map(|written| behaviour(written, context.shared.presets, OUT))
             .transpose()?,
-        anim: anim(tracks, &LAYER, context.fps).map_err(|e| e.under(ANIM))?,
+        anim: anim(&tracks, &LAYER, context.fps).map_err(|e| e.under(ANIM))?,
         parent: doc.parent.clone(),
         span: optional(doc.span.as_ref(), SPAN)?
             .map(|Moments { start, end }| {

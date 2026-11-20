@@ -594,7 +594,7 @@ A value is written in its property's type: `0.5`, `[540, 960]` or `"#FFE000"`. A
 
 `path` holds two offsets: the handle leaving this key, from its value, and the handle arriving at the next key, from that key's value. Without it the path is straight. A point that moves in space takes one curve, which times the whole move along the path; a point that does not (`scale`) can take one curve per component, `["ease-out","linear"]`.
 
-A bare time is frames; a string such as `"1s"` carries its unit. A key may fall before the layer's own zero (`-6` or `"-0.2s"`). Keys go in time order. The curve on a key leads to the next key. The last key's curve is unused. Before its first key a property holds the first value, and after its last key the last value.
+A text layer's words take a key list too, of held words (see **Keyed words** under Text). A bare time is frames; a string such as `"1s"` carries its unit. A key may fall before the layer's own zero (`-6` or `"-0.2s"`). Keys go in time order. The curve on a key leads to the next key. The last key's curve is unused. Before its first key a property holds the first value, and after its last key the last value.
 
 We store the highest level that fits. A delay or a stagger therefore stays a single value, and changing it is a single edit.
 
@@ -726,6 +726,18 @@ A text layer sets its words (`text`, where `\n` ends a paragraph) from font asse
   - `"shrink"`, on box text: when the wrapped lines are taller or wider than the box, the text shrinks as above until they fit, still wrapping at the box's width.
 
   `w` and `h` are numbers of px above zero, written as `rect` writes its size (`600x300`, decimals allowed). The factor is found by trying the real layout, since line breaks and kerning do not follow the size exactly, and comes within 0.1 % of the largest that fits. `check`, text animators and everything else that reads the lines see them fitted. A size on box text, a bare `shrink` on point text, or a text `fit` on a layer that is not text, is an error at `fit`.
+
+- **Keyed words.** `anim.text` changes the words over time ([D92](decisions.md#d92-a-text-layers-words-may-be-keyed)): a key list, each key `[time, words]` or `{"t":time,"v":words}`, in the layer's own time like any key. Each key's words hold from its time to the next key, and the first key's before it; nothing moves between keys, so a key takes no curve but `hold` and no `path`. Words may follow a text slot, `[0, "$title"]`.
+
+  ```json
+  {"id":"count","text":"10","font":"Inter Variable 160 700","at":"center center",
+   "anim":{"text":[[0,"3"],["1s","2"],["2s","1"],["3s","Go"]]}}
+  ```
+
+  - A key's words are set in the layer's style: its `font`, `fill` and `style`, with every paragraph in the first paragraph's keys. `runs` and `paragraphs` count the characters and paragraphs of the layer's own `text`, so they style only those words.
+  - Each key's words are laid out on their own, once, when the scene is read; keys of the same words share one layout. The layer's own `text` still sets its box, where `anchor` rests and what `at` centres, so a centred count stays where the layer was placed while its words change; what each frame draws, and what `check` measures, are the words shown then.
+  - Animators and `in` presets on the text's parts count the parts of the words shown at each frame: a `range` by `char` spans the characters there are then, and a `parts` selector's items choose those parts in reading order.
+  - With `fit`, the layer's own words and every key's are set at one scale, the smallest any of them would take alone, so the size does not change from key to key.
 
 The layer's box is the box its lines cover, which for point text starts above and maybe left of the origin; `anchor` rests at its centre, so `at` centres the text. The keys are listed once, in `crates/nakkash-format/src/text.rs`; this table mirrors that list, and a test checks it.
 

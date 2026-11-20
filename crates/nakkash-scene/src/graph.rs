@@ -8,7 +8,7 @@ use kurbo::Rect;
 use nakkash_format::shorthand::{MatteMode, RectShape};
 use nakkash_format::{AudioContent, ImageContent, VideoContent};
 
-use crate::text::TextNode;
+use crate::text::{TextKeyNode, TextNode};
 use nakkash_format::{Value, ValueType};
 
 use crate::track::{Integral, Track};
@@ -50,8 +50,12 @@ pub struct CompGraph {
 pub enum NodeContent {
     /// Text, set, and its animators.
     Text {
-        /// The words, their style and their layout.
+        /// The words, their style and their layout: its own, which its box
+        /// and its anchor's rest follow.
         text: Arc<TextNode>,
+        /// The words it shows over time, if they are keyed, in time order
+        /// ([`crate::text::shown`]).
+        keys: Vec<TextKeyNode>,
         /// Its animators, in order; hidden ones are left out.
         animators: Vec<ItemNode>,
     },

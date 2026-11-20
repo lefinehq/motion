@@ -141,6 +141,32 @@ impl Typesetter {
         Ok(layout)
     }
 
+    /// Lays out `text`, checked, as its fit sets it at `scale` instead of
+    /// the scale it would find on its own: every size scaled by `scale`,
+    /// and the lines moved to keep what the fit keeps of them as written.
+    /// Several texts that take turns in one place, such as the keys of a
+    /// layer's words, share the smallest of their own scales this way, so
+    /// none of them is set larger than another would be. At a `scale` of 1
+    /// or more, or without a fit, it is [`Typesetter::layout`].
+    ///
+    /// # Errors
+    /// As [`Typesetter::layout`].
+    pub fn layout_at(&mut self, text: &StyledText, scale: f64) -> Result<TextLayout> {
+        let Some(fit) = text.fit.filter(|_| scale < 1.0) else {
+            return self.layout(text);
+        };
+        text.check()?;
+        let target = Target::of(fit, text.frame);
+        let written = self.set(text, target.wrap)?;
+        let mut layout = self.set(&text.scaled(scale), target.wrap)?;
+        let dy = target.keep.offset(written.bounds(), layout.bounds());
+        if dy != 0.0 {
+            layout.shift_down(dy);
+        }
+        layout.scale = scale;
+        Ok(layout)
+    }
+
     /// The largest scale, to within [`PRECISION`], at which `text` fits
     /// `target`, and its layout. `written`, the layout at scale 1, does not
     /// fit. A guess from its size is halved until it fits, then the scale

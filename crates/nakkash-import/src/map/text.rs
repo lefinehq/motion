@@ -7,14 +7,15 @@ use nakkash_format::text::style_key;
 use serde_json::{Map, Value as Json, json};
 
 use super::Walk;
+use super::expressions::BakedText;
 use super::items::{Out, Place};
 use super::keys::{color_json, num};
 use super::report::Fate;
 use super::slots::{Held, address};
 use crate::bake::{Sampled, Samples};
 use crate::model::{
-    BaselineOption, Caps, CharacterStyle, Child, Group, Justification, Kerning, LeadingType,
-    ParagraphStyle, Property, Stream, TextDocument, TextFrame, Value,
+    BaselineOption, Caps, CharacterStyle, Child, Group, Justification, Kerning, Keyframe,
+    LeadingType, ParagraphStyle, Property, Stream, TextDocument, TextFrame, Value,
 };
 
 /// The match names of a text layer's document and its animators.
@@ -179,21 +180,19 @@ impl Walk<'_> {
         first_value(&property.value)
     }
 
-    /// The document of a Source Text property.
+    /// The document of a Source Text property. Words that change over
+    /// time, keyed or from an expression, become held keys of the layer's
+    /// words over the document they start from ([D92]).
+    ///
+    /// [D92]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d92-a-text-layers-words-may-be-keyed
     fn document(&mut self, property: &Property, out: &mut Out, place: &Place<'_>) {
         let baked = self.evaluated(property, place);
         let document = match &property.value {
             Stream::Static(Value::Text(document)) => Some(document),
-            Stream::Animated(keys) => {
-                if keys.len() > 1 && baked.is_none() {
-                    self.mapping
-                        .unsupported(&place.at, "keyframed source text (its first text is kept)");
-                }
-                keys.first().and_then(|key| match &key.value {
-                    Value::Text(document) => Some(document),
-                    _ => None,
-                })
-            }
+            Stream::Animated(keys) => keys.first().and_then(|key| match &key.value {
+                Value::Text(document) => Some(document),
+                _ => None,
+            }),
             Stream::Static(_) => None,
         };
         let Some(document) = document else {
@@ -204,14 +203,76 @@ impl Walk<'_> {
         };
         self.mapping.count(DOCUMENT, Fate::Mapped);
         let still = baked.is_none() && matches!(property.value, Stream::Static(_));
-        let set = baked.and_then(|bake| self.baked_document(bake, document, property, place));
-        self.write_document(set.as_ref().unwrap_or(document), out, place);
+        match baked.and_then(|bake| self.baked_document(bake, document, property, place)) {
+            Some(BakedText::Still(set)) => self.write_document(&set, out, place),
+            Some(BakedText::Keyed(keys)) => {
+                self.write_document(document, out, place);
+                out.anim.insert("text".into(), keys);
+            }
+            None => {
+                self.write_document(document, out, place);
+                if let Stream::Animated(keys) = &property.value
+                    && keys.len() > 1
+                {
+                    self.keyed_words(keys, document, out, place);
+                }
+            }
+        }
         // A still text a panel control drives follows its slot.
         if let Some(text) = out.keys.get_mut("text").filter(|_| still)
             && let Some(marked) = self.follow_panel(&Held::Stored(address(property)), text, None)
         {
             *text = marked;
         }
+    }
+
+    /// The keys of a keyed Source Text as held keys of the layer's words,
+    /// at the times the project keeps them ([D92]). Each key's words are set
+    /// in the style of the first key's first characters and paragraph; a
+    /// key whose own style differs is reported, its words kept.
+    ///
+    /// [D92]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d92-a-text-layers-words-may-be-keyed
+    fn keyed_words(
+        &mut self,
+        keys: &[Keyframe],
+        first: &TextDocument,
+        out: &mut Out,
+        place: &Place<'_>,
+    ) {
+        let base = first.characters.first().map(|run| &run.style);
+        let paragraph = first.paragraphs.first().map(|run| &run.style);
+        let mut restyled = 0;
+        let mut written = Vec::with_capacity(keys.len());
+        for key in keys {
+            let Value::Text(document) = &key.value else {
+                return self
+                    .mapping
+                    .unsupported(&place.at, "a text document it could not read");
+            };
+            let same = document
+                .characters
+                .iter()
+                .all(|run| Some(&run.style) == base)
+                && document
+                    .paragraphs
+                    .iter()
+                    .all(|run| Some(&run.style) == paragraph);
+            restyled += usize::from(!same);
+            written.push(json!([
+                place.clock.time(key.time),
+                document.text.replace('\r', "\n")
+            ]));
+        }
+        if restyled > 0 {
+            self.mapping.unsupported(
+                &place.at,
+                format!(
+                    "keyed source text whose keys change its style: {} (their words are kept, in the first key's style)",
+                    super::items::plural(restyled, "key")
+                ),
+            );
+        }
+        out.anim.insert("text".into(), Json::Array(written));
     }
 
     /// Writes `document` into `out`.

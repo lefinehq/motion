@@ -16,7 +16,7 @@ use nakkash_format::property::Target;
 
 use super::Walk;
 use super::items::{Place, plural, range_text};
-use super::keys::{Convert, Written, every_frame, fitted, on_layer_clock};
+use super::keys::{Convert, Written, every_frame, fitted, held_words, on_layer_clock};
 use super::report::{ExpressionReport, Outcome};
 use crate::bake::{Bake, Sampled, Samples};
 use crate::model::{Property, Stream, TextDocument, Value};
@@ -265,15 +265,21 @@ impl<'p> Walk<'p> {
         }
     }
 
-    /// The document a source text expression sets, when its text never
-    /// changes; one that changes keeps its first frame's text, reported.
+    /// What a source text expression sets: the document, when its text
+    /// never changes; when it does, the property's own document stays the
+    /// layer's words, its box and its style, and the words it gives become
+    /// held keys where they change ([D92]), each set in the style of the
+    /// document's first characters and paragraph, as the original sets the
+    /// text an expression gives.
+    ///
+    /// [D92]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d92-a-text-layers-words-may-be-keyed
     pub(super) fn baked_document(
         &mut self,
         bake: &Bake,
         document: &TextDocument,
         property: &Property,
         place: &Place<'_>,
-    ) -> Option<TextDocument> {
+    ) -> Option<BakedText> {
         let Ok(Samples {
             values: Sampled::Text(texts),
             times,
@@ -291,12 +297,14 @@ impl<'p> Walk<'p> {
         };
         let first = texts.first()?.replace('\r', "\n");
         let changes = texts.iter().any(|t| t.replace('\r', "\n") != first);
-        if changes {
-            self.mapping.unsupported(
-                &place.at,
-                "source text that an expression changes over time (its first frame's text is kept)",
-            );
-        }
+        let (baked, keys) = match changes {
+            true => {
+                let keys = held_words(times, texts, place.clock);
+                let count = keys.as_array().map_or(0, Vec::len);
+                (BakedText::Keyed(keys), count)
+            }
+            false => (BakedText::Still(with_text(document, &first)), 1),
+        };
         self.mapping.expressions.push(ExpressionReport {
             at: place.at.clone(),
             source: bake.source.clone(),
@@ -305,12 +313,21 @@ impl<'p> Walk<'p> {
             outcome: Outcome::Baked {
                 approximate: *approximate,
                 keys_before: key_count(&property.value),
-                keys: usize::from(changes) + 1,
+                keys,
                 max_error: Vec::new(),
             },
         });
-        Some(with_text(document, &first))
+        Some(baked)
     }
+}
+
+/// What a source text expression sets ([`Walk::baked_document`]).
+pub(super) enum BakedText {
+    /// One document at every frame.
+    Still(TextDocument),
+    /// Words that change: the keys of `anim.text`, over the property's own
+    /// document.
+    Keyed(serde_json::Value),
 }
 
 /// `document` with `text` in place of its own: unchanged when it is the

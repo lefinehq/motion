@@ -4,14 +4,18 @@
 use serde_json::Value as Json;
 
 use super::item;
-use crate::doc::{LayerDoc, List, Number, Object, StyleDoc, ValueDoc};
+use crate::Curve;
+use crate::doc::{
+    EasingDoc, KeyDoc, KeyTime, LayerDoc, List, Number, Object, StyleDoc, TrackDoc, ValueDoc,
+};
 use crate::item::ANIMATORS;
-use crate::parse::key::{ANIMATE, BOX, FILL, FIT, FONT, PARAGRAPHS, RUNS, STYLE};
+use crate::parse::key::{ANIM, ANIMATE, BOX, FILL, FIT, FONT, PARAGRAPHS, RUNS, STYLE, TEXT};
 use crate::shorthand::Font;
 use crate::text::{
     CharacterStyle, Level, ParagraphStyle, STYLE_KEYS, Setter, StyleKey, TextContent, TextFit,
-    TextRun, WholeStyle, color, style_key,
+    TextKey, TextRun, WholeStyle, color, style_key,
 };
+use crate::units::Time;
 use crate::{Diagnostic, Kind, Result};
 
 /// The key of a run that says which characters it styles.
@@ -112,6 +116,84 @@ pub(super) fn text(
         },
         frame,
         fit,
+        keys: match doc.anim.0.get(TEXT) {
+            Some(track) => keys(track, fps).map_err(|e| e.under(TEXT).under(ANIM))?,
+            None => Vec::new(),
+        },
+    })
+}
+
+/// The accepted form of keyed words.
+const KEYS_FORM: &str = r#"a list of keys, each [time, words] or {"t":time,"v":words}, e.g. [[0, "3"], ["1s", "2"], ["2s", "1"]]"#;
+
+/// The keys of a text layer's words, `anim.text` ([D92]): a key list in
+/// time order, each value a string, held to the next key.
+///
+/// [D92]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d92-a-text-layers-words-may-be-keyed
+fn keys(track: &TrackDoc, fps: f64) -> Result<Vec<TextKey>> {
+    let TrackDoc::Keys(docs) = track else {
+        return Err(Diagnostic::new(
+            Kind::Invalid,
+            "words are keyed with a key list: they are held from one key to the next, not moved between",
+        )
+        .expected(KEYS_FORM));
+    };
+    if docs.is_empty() {
+        return Err(Diagnostic::new(Kind::Missing, "needs at least one key").expected(KEYS_FORM));
+    }
+    let keys = docs
+        .iter()
+        .enumerate()
+        .map(|(i, doc)| key(doc).map_err(|e| e.under(format!("[{i}]"))))
+        .collect::<Result<Vec<TextKey>>>()?;
+    if let Some(i) = keys
+        .windows(2)
+        .position(|pair| pair[1].time.to_frames(fps) < pair[0].time.to_frames(fps))
+    {
+        return Err(
+            Diagnostic::new(Kind::Invalid, "key is earlier than the one before it")
+                .at(format!("[{}]", i + 1))
+                .expected("keys in time order, earliest first"),
+        );
+    }
+    Ok(keys)
+}
+
+/// One key of a text layer's words: a time, a string, and no curve but
+/// `hold` and no path.
+fn key(doc: &KeyDoc) -> Result<TextKey> {
+    let time = match &doc.time {
+        KeyTime::Written(text) => text.parse()?.0,
+        KeyTime::Frames(frames) => Time::Frames(*frames),
+    };
+    let ValueDoc::Text(text) = &doc.value else {
+        return Err(Diagnostic::new(Kind::Invalid, "a key's words are a string")
+            .at(doc.value_path())
+            .expected(r#"words in quotes, e.g. "10""#));
+    };
+    let held = match &doc.curve {
+        None => true,
+        Some(EasingDoc::One(curve)) => curve.parse()? == Curve::Hold,
+        Some(EasingDoc::Each(_)) => false,
+    };
+    if !held {
+        return Err(Diagnostic::new(
+            Kind::Invalid,
+            "words are held from one key to the next; no curve moves between them",
+        )
+        .at(doc.curve_path())
+        .expected(r#"no curve, or "hold""#));
+    }
+    if doc.path.is_some() {
+        return Err(
+            Diagnostic::new(Kind::Invalid, "words do not move along a path")
+                .at("path")
+                .expected("no `path` on a key of words"),
+        );
+    }
+    Ok(TextKey {
+        time,
+        text: text.clone(),
     })
 }
 

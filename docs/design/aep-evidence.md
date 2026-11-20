@@ -793,3 +793,18 @@ Other things we take without evidence:
 - **Which methods.** The names a legacy expression reaches are the string methods of the language's third edition, the one the legacy engine follows, and `substr`: `charAt`, `charCodeAt`, `concat`, `indexOf`, `lastIndexOf`, `localeCompare`, `match`, `replace`, `search`, `slice`, `split`, `substr`, `substring`, and the four case changes. A property of the string, such as `length`, is not reached; `length` stays the vector function. Only `substr` is seen in the corpus.
 - **Other values.** On a property whose value is not text, these names are not defined, as m547's failure said before. Whether the original reaches a number's methods by name in the same way is not known.
 - **The modern engine.** It is not given these names: no local modern project calls one bare, so nothing shows whether the modern engine reaches them. `value.substr(…)` works in both.
+
+## Words that change over time
+
+A text layer's Source Text may change from frame to frame, by an expression or by keys; the scene keys the words ([D92](decisions.md#d92-a-text-layers-words-may-be-keyed)). These beliefs say what the original draws. They were checked by hand on the local samples that change their words; the sweep does not check them.
+
+| Belief | Evidence | Held, 2026-11-20 |
+|---|---|---|
+| H1. An expression on Source Text is evaluated at every frame, and the original draws, at that frame, the words it gives, laid out on their own. | m828's `Countdown NYE Main/1` gives `(10 − floor(time)) + ""`: its reference shows 10 at 0 s and 0.5 s, 9 at 1 s and 1.5 s, 8 at 2 s and 2.5 s, down to 1, each centred where the 10 was. m547's titles give `substr(0, n) + "_"` and show each title typed out (Q1). m651's `TIME_Slider` gives a slider's value, a player's running time. | 6 expressions in 3 samples, every local Source Text expression whose words change |
+| H2. The words an expression gives are set in the style of the document's first characters and its first paragraph. | m828's digits and m547's typed titles are drawn in their document's font, size, colour and alignment. EffectCraft sets a string an expression gives in a default style (`crates/render/src/text.rs`, `source_text`), which none of these references shows. | 3 samples |
+
+FIDELITY_TABLE
+
+Other things we take without evidence:
+- **Keys.** No local project keys its Source Text. A keyed Source Text is taken as the original's documentation gives it: each key holds its whole document until the next. The import keeps each key's words in the first key's style and reports a key that restyles.
+- **The layout's anchor.** A changing text is laid out about the same origin with the same alignment, as point text always is; the scene keeps the layer's own words for its box, which for imported layers only `check` reads, since an import writes the anchor and position.

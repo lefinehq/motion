@@ -1,12 +1,13 @@
 //! Text set from font assets: a text layer's content handed to
 //! [`nakkash_text`] once, at compile time, since a layout does not animate.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use nakkash_format::Result;
 
 use crate::animate::Parts;
-use nakkash_format::key::{FONT, RUNS};
+use nakkash_format::key::{ANIM, FONT, RUNS, TEXT};
 use nakkash_format::text::{Align, Caps, CharacterStyle, Kerning, Leading, TextContent, TextFit};
 use nakkash_text::{
     Fit, FontQuery, FontSet, Slant, StyledRun, StyledText, TextFrame, TextLayout, Typesetter,
@@ -40,6 +41,97 @@ impl TextNode {
 /// have or holds a character its font has no glyph for; a missing font is
 /// never replaced by another.
 pub fn set(content: &TextContent, typesetter: &mut Typesetter) -> Result<Arc<TextNode>> {
+    set_with(content, typesetter, None)
+}
+
+/// A text layer's own words and the words of each of its keys ([D92]), set:
+/// its own as [`set`] sets them, and each key's in its own layout, in the
+/// layer's style ([`TextContent::with_words`]), at the frame it starts to
+/// hold in the layer's own time at `fps`. A fit sets them all at one
+/// scale, the smallest any of them takes on its own, so the size does not
+/// change from key to key. Keys of the same words share one layout.
+///
+/// # Errors
+/// As [`set`], at the key whose words break a rule.
+///
+/// [D92]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d92-a-text-layers-words-may-be-keyed
+pub fn set_keyed(
+    content: &TextContent,
+    typesetter: &mut Typesetter,
+    fps: f64,
+) -> Result<(Arc<TextNode>, Vec<TextKeyNode>)> {
+    let own = set(content, typesetter)?;
+    if content.keys.is_empty() {
+        return Ok((own, Vec::new()));
+    }
+    let mut by_words: HashMap<&str, Arc<TextNode>> = HashMap::new();
+    for (i, key) in content.keys.iter().enumerate() {
+        if !by_words.contains_key(key.text.as_str()) {
+            let node = set(&content.with_words(&key.text), typesetter)
+                .map_err(|e| e.under(format!("[{i}]")).under(TEXT).under(ANIM))?;
+            by_words.insert(&key.text, node);
+        }
+    }
+    // One scale for all, the smallest any takes; without a fit every
+    // scale is 1.
+    let scale = by_words
+        .values()
+        .chain(std::iter::once(&own))
+        .map(|node| node.layout.scale)
+        .fold(1.0_f64, f64::min);
+    let mut at_scale = |node: Arc<TextNode>, content: &TextContent| match node.layout.scale > scale
+    {
+        true => set_with(content, typesetter, Some(scale)),
+        false => Ok(node),
+    };
+    let own = at_scale(own, content)?;
+    let mut set_words = HashMap::with_capacity(by_words.len());
+    for (words, node) in by_words {
+        set_words.insert(words, at_scale(node, &content.with_words(words))?);
+    }
+    let keys = content
+        .keys
+        .iter()
+        .map(|key| TextKeyNode {
+            frame: key.time.to_frames(fps),
+            text: Arc::clone(&set_words[key.text.as_str()]),
+        })
+        .collect();
+    Ok((own, keys))
+}
+
+/// A key of a text node's words, set: from `frame` of the layer's own
+/// time on, until the next key, it shows `text`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextKeyNode {
+    /// When it starts to hold, in frames of the layer's own time.
+    pub frame: f64,
+    /// Its words, their style and their layout.
+    pub text: Arc<TextNode>,
+}
+
+/// How close to a key's frame a frame drawn counts as reached: imported key
+/// times are written to the microsecond, so a frame the original changed
+/// the words at may come out a hair before its key.
+const REACHED: f64 = 1e-3;
+
+/// The text a node with its own words `own` and keys `keys` shows at
+/// `local`, a frame of its own time: the last key reached, the first
+/// before any, and its own without keys.
+pub fn shown<'t>(own: &'t Arc<TextNode>, keys: &'t [TextKeyNode], local: f64) -> &'t Arc<TextNode> {
+    match keys.partition_point(|key| key.frame <= local + REACHED) {
+        _ if keys.is_empty() => own,
+        0 => &keys[0].text,
+        after => &keys[after - 1].text,
+    }
+}
+
+/// [`set`], at `scale` in place of the scale its fit finds when one is given.
+fn set_with(
+    content: &TextContent,
+    typesetter: &mut Typesetter,
+    scale: Option<f64>,
+) -> Result<Arc<TextNode>> {
     let styled = styled(content, typesetter.fonts());
     // Find every face first, so a missing one is reported at the scene key that names it.
     for (run, asked) in content.runs.iter().zip(&styled.runs) {
@@ -59,7 +151,10 @@ pub fn set(content: &TextContent, typesetter: &mut Typesetter) -> Result<Arc<Tex
                 e.at(FONT).under(at)
             })?;
     }
-    let layout = typesetter.layout(&styled)?;
+    let layout = match scale {
+        Some(scale) => typesetter.layout_at(&styled, scale)?,
+        None => typesetter.layout(&styled)?,
+    };
     let mut node = TextNode {
         // A fit that scaled the text scales its stroke and the sizes animators read too.
         content: if layout.scale == 1.0 {

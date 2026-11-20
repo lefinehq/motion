@@ -293,8 +293,9 @@ fn texts(
         let Some(layer) = at_mut(scene, &at.steps()) else {
             continue;
         };
-        // A layer left out draws no words to vary.
-        if hidden(layer) {
+        // A layer left out draws no words to vary, and one whose words are
+        // keyed shows its keys, not the words a slot would hold (D92).
+        if hidden(layer) || layer.pointer("/anim/text").is_some() {
             continue;
         }
         let Some(Json::String(written)) = layer.get("text") else {

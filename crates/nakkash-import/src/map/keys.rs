@@ -286,11 +286,11 @@ fn seconds_text(seconds: f64) -> String {
 /// On a layer that runs backwards that order is the reverse of the
 /// composition's, so the keys fitted to them follow the layer's own time,
 /// as the scene's keys do.
-pub(super) fn on_layer_clock(
+pub(super) fn on_layer_clock<T: Clone>(
     times: &[f64],
-    channels: &[Vec<f64>],
+    channels: &[Vec<T>],
     clock: Clock,
-) -> (Vec<f64>, Vec<Vec<f64>>) {
+) -> (Vec<f64>, Vec<Vec<T>>) {
     let mut layer: Vec<f64> = times.iter().map(|&t| clock.drawn(t)).collect();
     let mut channels = channels.to_vec();
     if clock.stretch < 0.0 {
@@ -767,6 +767,27 @@ pub(super) fn every_frame(
         keys: Json::Array(keys),
         first,
     })
+}
+
+/// Words sampled at composition `times` (increasing) as the keys of a text
+/// layer's words ([D92]): on the layer's own clock ([`on_layer_clock`]), one
+/// key where the words change and at the first sample, each held to the
+/// next. A paragraph ends at `\n`, as the scene writes it, where the
+/// project writes `\r`.
+///
+/// [D92]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d92-a-text-layers-words-may-be-keyed
+pub(super) fn held_words(times: &[f64], words: &[String], clock: Clock) -> Json {
+    let (times, words) = on_layer_clock(times, std::slice::from_ref(&words.to_vec()), clock);
+    let mut keys = Vec::new();
+    let mut last: Option<String> = None;
+    for (&time, written) in times.iter().zip(&words[0]) {
+        let written = written.replace('\r', "\n");
+        if last.as_ref() != Some(&written) {
+            keys.push(json!([seconds_text(time), written]));
+            last = Some(written);
+        }
+    }
+    Json::Array(keys)
 }
 
 #[cfg(test)]

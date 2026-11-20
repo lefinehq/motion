@@ -167,3 +167,87 @@ fn a_fitted_text_scales_the_content_it_keeps_and_as_written_leaves_the_fit_out()
     assert!(written.layout.size().width > 150.0);
     assert_eq!(written.content.first_style().font.size, 40.0);
 }
+
+/// Keyed words ([D92]) are set each on its own and shown from their key's
+/// frame of the layer's own time to the next, the first before any; keys
+/// of the same words share one layout.
+#[test]
+fn keyed_words_are_set_on_their_own_and_shown_from_their_key() {
+    let keyed = content(
+        r#""text":"10","font":"Inter Variable 40","anim":{"text":[[0,"3"],["1s","22"],["2s","3"]]}"#,
+    );
+    let mut typesetter = Typesetter::new(FontSet::builtin());
+    let (own, keys) = set_keyed(&keyed, &mut typesetter, 30.0).unwrap();
+    assert_eq!(own.content.text, "10");
+    let frames: Vec<f64> = keys.iter().map(|k| k.frame).collect();
+    assert_eq!(frames, [0.0, 30.0, 60.0]);
+    assert!(
+        Arc::ptr_eq(&keys[0].text, &keys[2].text),
+        "one layout for one text"
+    );
+    let at = |local: f64| shown(&own, &keys, local).content.text.as_str();
+    assert_eq!(at(-5.0), "3", "the first key's before it");
+    assert_eq!(at(29.0), "3");
+    assert_eq!(
+        at(30.0 - 1e-4),
+        "22",
+        "a key a hair after the frame counts as reached"
+    );
+    assert_eq!(at(59.0), "22");
+    assert_eq!(at(1000.0), "3");
+    assert!(keys[1].text.layout.bounds().width() > keys[0].text.layout.bounds().width());
+    // Without keys, the layer shows its own words.
+    let still = content(r#""text":"10","font":"Inter Variable 40""#);
+    let (own, keys) = set_keyed(&still, &mut typesetter, 30.0).unwrap();
+    assert!(keys.is_empty());
+    assert_eq!(shown(&own, &keys, 12.0).content.text, "10");
+}
+
+/// A fit sets the layer's own words and every key's at one scale, the
+/// smallest any of them takes, so the size does not jump from key to key.
+#[test]
+fn a_fit_sets_every_keyed_text_at_one_scale() {
+    let keyed = content(
+        r#""text":"Hi","font":"Inter Variable 40","fit":"shrink 150x100","anim":{"text":[[0,"Hi"],[10,"Extraordinarily"]]}"#,
+    );
+    let mut typesetter = Typesetter::new(FontSet::builtin());
+    let (own, keys) = set_keyed(&keyed, &mut typesetter, 30.0).unwrap();
+    let alone = set(
+        &content(r#""text":"Extraordinarily","font":"Inter Variable 40","fit":"shrink 150x100""#),
+        &mut typesetter,
+    )
+    .unwrap();
+    let s = alone.layout.scale;
+    assert!(s < 1.0);
+    for node in [&own, &keys[0].text, &keys[1].text] {
+        assert_eq!(node.layout.scale, s, "{}", node.content.text);
+        assert_eq!(node.content.first_style().font.size, 40.0 * s);
+    }
+    assert_eq!(keys[1].text.layout, alone.layout);
+    // A text that fits keeps its place: shrink keeps the middle of its lines.
+    let small = set(
+        &content(r#""text":"Hi","font":"Inter Variable 40""#),
+        &mut typesetter,
+    )
+    .unwrap();
+    let (a, b) = (
+        small.layout.bounds().center().y,
+        own.layout.bounds().center().y,
+    );
+    assert!((a - b).abs() < 1e-6, "{a} {b}");
+}
+
+/// A key whose words the font cannot set is an error at that key.
+#[test]
+fn keyed_words_a_font_cannot_set_are_an_error_at_the_key() {
+    let keyed =
+        content(r#""text":"a","font":"Inter Variable 40","anim":{"text":[[0,"b"],[5,"͸"]]}"#);
+    let mut typesetter = Typesetter::new(FontSet::builtin());
+    let error = set_keyed(&keyed, &mut typesetter, 30.0).unwrap_err();
+    assert!(
+        error
+            .path_text()
+            .is_some_and(|p| p.starts_with("anim.text[1]")),
+        "{error:?}"
+    );
+}

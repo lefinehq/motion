@@ -11,6 +11,7 @@ use crate::item::Item;
 use crate::shorthand::Font;
 pub use crate::shorthand::TextFit;
 use crate::table::{self, Named};
+use crate::units::Time;
 use crate::value::{Value, ValueType};
 use crate::{Diagnostic, Kind, Result, fmt_num};
 
@@ -37,9 +38,52 @@ pub struct TextContent {
     /// What the whole text sets once: the anchors its parts take and how
     /// its paints stack.
     pub whole: WholeStyle,
+    /// The words it shows over time, from `anim.text`, in time order: each
+    /// held from its key to the next, the first before it ([D92]). Empty when
+    /// its words do not change.
+    ///
+    /// [D92]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d92-a-text-layers-words-may-be-keyed
+    pub keys: Vec<TextKey>,
+}
+
+/// A key of a text layer's words: from `time` on, until the next key, the
+/// layer shows `text`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextKey {
+    /// When it starts to hold, in the layer's own time.
+    pub time: Time,
+    /// The words; `\n` ends a paragraph.
+    pub text: String,
 }
 
 impl TextContent {
+    /// The content showing `words` instead of its own, as a key of its
+    /// words shows them: every character in the base style, every paragraph
+    /// in the first paragraph's, the same box, fit, animators and whole-text
+    /// style, and no keys of its own ([D92]). The layer's runs and paragraph
+    /// styles count the characters and paragraphs of its own words, so they
+    /// do not carry over to others.
+    ///
+    /// [D92]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d92-a-text-layers-words-may-be-keyed
+    pub fn with_words(&self, words: &str) -> TextContent {
+        let paragraph = self.paragraphs.first().cloned().unwrap_or_default();
+        TextContent {
+            text: words.to_owned(),
+            base: self.base.clone(),
+            runs: vec![TextRun {
+                range: 0..words.chars().count(),
+                style: self.base.clone(),
+                source: None,
+            }],
+            paragraphs: vec![paragraph; words.split('\n').count()],
+            frame: self.frame,
+            fit: self.fit,
+            animators: self.animators.clone(),
+            whole: self.whole,
+            keys: Vec::new(),
+        }
+    }
+
     /// The style of the first character, or the base style of empty text.
     pub fn first_style(&self) -> &CharacterStyle {
         &self.runs[0].style

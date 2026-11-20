@@ -298,16 +298,20 @@ impl Build<'_> {
         ear: Ear<'_>,
     ) -> Result<NodeContent> {
         Ok(match &layer.content {
-            Content::Text(content) => NodeContent::Text {
-                text: text::set(content, self.typesetter)?,
-                animators: entrance(layer, self.scene)
-                    .and_then(|(behaviour, spec)| parts_animator(spec, behaviour, fps, canvas))
-                    .iter()
-                    .chain(&content.animators)
-                    .filter(|item| !item.hidden)
-                    .map(|item| item_node(item, fps, ear))
-                    .collect(),
-            },
+            Content::Text(content) => {
+                let (text, keys) = text::set_keyed(content, self.typesetter, fps)?;
+                NodeContent::Text {
+                    text,
+                    keys,
+                    animators: entrance(layer, self.scene)
+                        .and_then(|(behaviour, spec)| parts_animator(spec, behaviour, fps, canvas))
+                        .iter()
+                        .chain(&content.animators)
+                        .filter(|item| !item.hidden)
+                        .map(|item| item_node(item, fps, ear))
+                        .collect(),
+                }
+            }
             Content::Rect(r) => NodeContent::Rect(*r),
             Content::Shapes(items) => NodeContent::Shapes(item_nodes(items, fps, ear)),
             Content::Comp(comp) => {

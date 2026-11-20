@@ -64,24 +64,32 @@ fn evaluate_nodes(graph: &SceneGraph, comp: &CompGraph, frame: f64) -> FrameStat
             let content_frame = node.timing.content(local, remap, fps);
             let mut shown = node.timing.shows_at(frame);
             let content = match &node.content {
-                NodeContent::Text { text, animators } => ContentState::Text {
-                    text: text.clone(),
-                    glyphs: match animators.is_empty() {
-                        true => Vec::new(),
-                        false => {
-                            let animators: Vec<AnimatorState> = animators
-                                .iter()
-                                .zip(items_at(animators, local))
-                                .map(|(node, item)| AnimatorState {
-                                    turns: turns(node, &item, &text.parts, local),
-                                    item,
-                                    applies: node.written.clone(),
-                                })
-                                .collect();
-                            animate::glyph_states(text, &text.parts, &animators)
-                        }
-                    },
-                },
+                NodeContent::Text {
+                    text,
+                    keys,
+                    animators,
+                } => {
+                    // Animators count the parts of the words shown now.
+                    let text = crate::text::shown(text, keys, local);
+                    ContentState::Text {
+                        text: text.clone(),
+                        glyphs: match animators.is_empty() {
+                            true => Vec::new(),
+                            false => {
+                                let animators: Vec<AnimatorState> = animators
+                                    .iter()
+                                    .zip(items_at(animators, local))
+                                    .map(|(node, item)| AnimatorState {
+                                        turns: turns(node, &item, &text.parts, local),
+                                        item,
+                                        applies: node.written.clone(),
+                                    })
+                                    .collect();
+                                animate::glyph_states(text, &text.parts, &animators)
+                            }
+                        },
+                    }
+                }
                 NodeContent::Rect(r) => ContentState::Rect(*r),
                 NodeContent::Shapes(items) => {
                     ContentState::Shapes(shape::draws(&items_at(items, local)))
@@ -109,6 +117,9 @@ fn evaluate_nodes(graph: &SceneGraph, comp: &CompGraph, frame: f64) -> FrameStat
                 ContentState::Text { text, glyphs } if !glyphs.is_empty() => {
                     animate::bounds(text, glyphs)
                 }
+                // Keyed words cover the lines shown now; a text's own
+                // words cover its box.
+                ContentState::Text { text, .. } => text.layout.bounds(),
                 ContentState::Shapes(draws) => draws
                     .iter()
                     .map(ShapeDraw::bounds)

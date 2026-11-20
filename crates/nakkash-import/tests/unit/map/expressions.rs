@@ -226,3 +226,146 @@ fn a_colour_an_expression_gives_is_opaque_whatever_its_alpha() {
     let effect = &title(&import)["fx"][0];
     assert_eq!(effect["fill"], json!([0.25, 0.5, 0.75, 1]), "{effect}");
 }
+
+/// A text layer `Title` in Main (2 s at 10 frames a second) whose Source
+/// Text holds `document` under `source`, or keys of documents.
+fn text_layer(value: Stream, source: Option<&str>) -> Import {
+    use crate::model::{Child, LayerKind};
+    use crate::test_support::build::{group, property};
+    let document = match source {
+        Some(source) => expressed("ADBE Text Document", value, source),
+        None => property("ADBE Text Document", value),
+    };
+    let title = crate::model::Layer {
+        kind: LayerKind::Text,
+        ..layer(
+            1,
+            "Title",
+            vec![Child::Group(group(
+                "ADBE Text Properties",
+                vec![Child::Property(document)],
+            ))],
+        )
+    };
+    import(
+        &project(vec![(5, "Main", comp(vec![title], 2.0))]),
+        &Options::default(),
+    )
+    .expect("it imports")
+}
+
+/// Words a source text expression changes become held keys of the layer's
+/// words where they change, over the property's own document ([D92]), and
+/// nothing is reported unsupported.
+#[test]
+fn source_text_an_expression_changes_becomes_keyed_words() {
+    use crate::test_support::sample_document;
+    let own = Stream::Static(Value::Text(Box::new(sample_document())));
+    let import = text_layer(
+        own,
+        Some("['3', '2', '1'][Math.min(2, Math.floor(time * 2))]"),
+    );
+    let layer = title(&import);
+    assert_eq!(layer["text"], json!(sample_document().text));
+    assert_eq!(
+        layer["anim"]["text"],
+        json!([["0s", "3"], ["0.5s", "2"], ["1s", "1"]])
+    );
+    assert!(
+        !import
+            .mapping
+            .unsupported
+            .iter()
+            .any(|u| u.what.contains("source text")),
+        "{:?}",
+        import.mapping.unsupported
+    );
+    assert!(
+        matches!(
+            &import.mapping.expressions[0].outcome,
+            Outcome::Baked { keys: 3, .. }
+        ),
+        "{:?}",
+        import.mapping.expressions[0]
+    );
+    // Text that never changes is the layer's words, with no keys.
+    let still = text_layer(
+        Stream::Static(Value::Text(Box::new(sample_document()))),
+        Some("'Go'"),
+    );
+    // The words become a text slot (D77), which holds them.
+    let resolved = nakkash_format::slots::resolved(&still.json).expect("it resolves");
+    assert_eq!(resolved["layers"][0]["text"], json!("Go"));
+    assert!(
+        title(&still)
+            .get("anim")
+            .is_none_or(|a| a.get("text").is_none())
+    );
+}
+
+/// A keyed Source Text becomes held keys at the times the project keeps,
+/// its first key's document the layer's words and style; a key that
+/// changes the style is reported, its words kept.
+#[test]
+fn keyed_source_text_becomes_keyed_words() {
+    use crate::model::{Interpolation, Keyframe};
+    use crate::test_support::sample_document;
+    let key = |time: f64, words: &str, size: f64| {
+        let mut document = sample_document();
+        document.text = words.into();
+        for run in &mut document.characters {
+            run.range = 0..words.len();
+            run.style.size = size;
+        }
+        for run in &mut document.paragraphs {
+            run.range = 0..words.len();
+        }
+        Keyframe {
+            time,
+            value: Value::Text(Box::new(document)),
+            in_interpolation: Interpolation::Hold,
+            out_interpolation: Interpolation::Hold,
+            in_ease: vec![],
+            out_ease: vec![],
+            spatial: None,
+            continuous: false,
+            auto_bezier: false,
+            roving: false,
+        }
+    };
+    let import = text_layer(
+        Stream::Animated(vec![key(0.0, "Ready", 44.0), key(1.0, "Set\rGo", 44.0)]),
+        None,
+    );
+    let layer = title(&import);
+    assert_eq!(layer["text"], json!("Ready"));
+    assert_eq!(
+        layer["anim"]["text"],
+        json!([["0s", "Ready"], ["1s", "Set\nGo"]])
+    );
+    assert!(
+        !import
+            .mapping
+            .unsupported
+            .iter()
+            .any(|u| u.what.contains("source text")),
+        "{:?}",
+        import.mapping.unsupported
+    );
+    let restyled = text_layer(
+        Stream::Animated(vec![key(0.0, "Ready", 44.0), key(1.0, "Go", 60.0)]),
+        None,
+    );
+    let reported: Vec<&str> = restyled
+        .mapping
+        .unsupported
+        .iter()
+        .map(|u| u.what.as_str())
+        .collect();
+    assert!(
+        reported
+            .iter()
+            .any(|w| w.starts_with("keyed source text whose keys change its style: 1 key")),
+        "{reported:?}"
+    );
+}
