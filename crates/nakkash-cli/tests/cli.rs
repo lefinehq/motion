@@ -1249,6 +1249,136 @@ fn a_split_scene_draws_as_the_scene_and_flattens_back() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Layers that write one effect stack and one animation, curves written
+/// eight times and values at their rests the scene reads apart from
+/// absent ones: what `nakkash compact` has to find (D91).
+const REPEATED: &str = r##"{"nakkash":1,"size":"320x180","fps":10,"dur":"1s","bg":"#10131A","layers":[
+{"id":"a","rect":"60x40","fill":"#E9C46A","at":"60 90","rotate":0,"scale":[1,1],"fx":[{"glow":8,"threshold":0.4,"intensity":0.8}],"anim":{"opacity":[{"t":"0s","v":0,"curve":"cubic(0.2,0,0,1)"},{"t":"0.5s","v":1}]}},
+{"id":"b","rect":"60x40","fill":"#2A9D8F","at":"160 90","rotate":0,"fx":[{"glow":8,"threshold":0.4,"intensity":0.8}],"anim":{"opacity":[{"t":"0s","v":0,"curve":"cubic(0.2,0,0,1)"},{"t":"0.5s","v":1}]}},
+{"id":"c","rect":"60x40","fill":"#E76F51","at":"260 90","fx":[{"glow":8,"threshold":0.4,"intensity":0.8}],"anim":{"opacity":[{"t":"0s","v":0,"curve":"cubic(0.2,0,0,1)"},{"t":"0.5s","v":1}]}},
+{"id":"m0","rect":"20x20","fill":"#FFFFFF","at":"20 30","anim":{"y":[{"t":"0s","v":30,"curve":"cubic(0.33,0.01,0.21,0.99)"},{"t":"0.5s","v":40,"curve":"cubic(0.33,0.01,0.21,0.99)"},{"t":"1s","v":30}]}},
+{"id":"m1","rect":"20x20","fill":"#FFFFFF","at":"90 30","anim":{"y":[{"t":"0s","v":30,"curve":"cubic(0.33,0.01,0.21,0.99)"},{"t":"0.5s","v":45,"curve":"cubic(0.33,0.01,0.21,0.99)"},{"t":"1s","v":30}]}},
+{"id":"m2","rect":"20x20","fill":"#FFFFFF","at":"160 30","anim":{"y":[{"t":"0s","v":30,"curve":"cubic(0.33,0.01,0.21,0.99)"},{"t":"0.5s","v":50,"curve":"cubic(0.33,0.01,0.21,0.99)"},{"t":"1s","v":30}]}},
+{"id":"m3","rect":"20x20","fill":"#FFFFFF","at":"230 30","anim":{"y":[{"t":"0s","v":30,"curve":"cubic(0.33,0.01,0.21,0.99)"},{"t":"0.5s","v":55,"curve":"cubic(0.33,0.01,0.21,0.99)"},{"t":"1s","v":30}]}}
+]}"##;
+
+/// `nakkash compact` writes repeated stacks and animations as styles and
+/// repeated curves as eases, keeps the rests the scene reads apart, and
+/// writes nothing it has not read back as the same scene: the frames are
+/// the frames (D91).
+#[test]
+fn a_compacted_scene_names_its_repeats_and_draws_as_the_scene() {
+    let dir = std::env::temp_dir().join(format!("nakkash-compact-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let scene = dir.join("scene.json");
+    fs::write(&scene, REPEATED).unwrap();
+    let scene = scene.to_str().unwrap();
+    let out = dir.join("compact.json");
+    let out = out.to_str().unwrap();
+    let text = nakkash(&["compact", scene, "-o", out]);
+    assert_eq!(text.status.code(), Some(0), "{}", stderr(&text));
+    let text = stdout(&text);
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(lines[0].ends_with("% less)"), "{text}");
+    assert_eq!(
+        lines[1],
+        "  0 defaults left out, 2 styles inherited by 3 layers, 1 eases named by 8 keys"
+    );
+    assert_eq!(
+        lines[2],
+        "  defaults kept, since leaving them out reads as another scene: layer rotate, layer scale"
+    );
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout(&nakkash(&["compact", scene, "-o", out, "--json"])))
+            .expect("the report as JSON");
+    assert_eq!(report["styles"], 2);
+    assert_eq!(report["inheriting"], 3);
+    assert_eq!(report["eases"], 1);
+    assert_eq!(report["eased"], 8);
+    assert_eq!(report["left_out"], serde_json::json!([]));
+    assert_eq!(
+        report["defaults_kept"],
+        serde_json::json!(["layer rotate", "layer scale"])
+    );
+    let (before, after) = (
+        report["bytes"]["before"].as_u64(),
+        report["bytes"]["after"].as_u64(),
+    );
+    assert!(after < before, "{report}");
+    let written: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(out).unwrap()).unwrap();
+    assert_eq!(
+        written["eases"],
+        serde_json::json!({"cubic-33-1-21-99": "cubic(0.33,0.01,0.21,0.99)"})
+    );
+    assert_eq!(
+        written["layers"][2]["inherits"],
+        serde_json::json!(["fx-glow", "anim-opacity"])
+    );
+    // The rests the scene reads apart from absent ones stay written.
+    assert_eq!(written["layers"][0]["rotate"], 0);
+    assert_eq!(written["layers"][0]["scale"], serde_json::json!([1, 1]));
+    let digests = |path: &str| stdout(&nakkash(&["render", path, "--digest"]));
+    let want = digests(scene);
+    assert_eq!(want.lines().count(), 10);
+    assert_eq!(digests(out), want);
+    // Over the scene itself.
+    let again = nakkash(&["compact", out, "-o", out]);
+    assert_eq!(again.status.code(), Some(0), "{}", stderr(&again));
+    assert_eq!(digests(out), want);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Values left at their defaults are left out where the scene reads the
+/// same without them, and a file that is not a scene is refused before
+/// anything is written.
+#[test]
+fn compact_leaves_out_defaults_and_refuses_what_does_not_read() {
+    let scene = format!(
+        "{}/../../examples/showcase/brand-system.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let dir = std::env::temp_dir().join(format!("nakkash-compact-defaults-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let out = dir.join("compact.json");
+    let out_path = out.to_str().unwrap();
+    let run = nakkash(&["compact", &scene, "-o", out_path, "--json"]);
+    assert_eq!(run.status.code(), Some(0), "{}", stderr(&run));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&run)).unwrap();
+    assert!(
+        report["defaults"].as_u64().is_some_and(|n| n > 0),
+        "{report}"
+    );
+    assert!(
+        report["defaults_kept"]
+            .as_array()
+            .is_some_and(|kept| kept.iter().any(|row| row == "stroke width")),
+        "{report}"
+    );
+    assert!(Session::open(&out).is_ok(), "the compacted scene reads");
+    // Not JSON: a syntax error, and no file.
+    let broken = dir.join("broken.json");
+    fs::write(&broken, "{\"nakkash\":").unwrap();
+    let refused = dir.join("refused.json");
+    let run = nakkash(&[
+        "compact",
+        broken.to_str().unwrap(),
+        "-o",
+        refused.to_str().unwrap(),
+    ]);
+    assert_eq!(run.status.code(), Some(2));
+    assert!(stderr(&run).contains("invalid JSON"), "{}", stderr(&run));
+    assert!(!refused.exists());
+    // Missing: an I/O error naming it.
+    let missing = dir.join("missing.json");
+    let run = nakkash(&["compact", missing.to_str().unwrap(), "-o", out_path]);
+    assert_ne!(run.status.code(), Some(0));
+    assert!(stderr(&run).contains("missing.json"), "{}", stderr(&run));
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// A template's hash is of the one scene it reads as, so splitting it
 /// leaves the pin of its instances as it was (D91).
 #[test]
