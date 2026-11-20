@@ -376,14 +376,20 @@ fn texts(
         if let Some(uid) = text_uid(known, first) {
             declared["uid"] = json!(uid);
         }
-        let (overflow, max_lines) = match (first.boxed, first.lines > 1 || first.words.contains('\n')) {
-            (true, _) => ("shrink", None),
-            (false, true) => ("wrap", Some(first.lines.max(first.words.lines().count()) + 1)),
-            (false, false) => ("shrink", Some(1)),
-        };
+        let (overflow, max_lines) =
+            match (first.boxed, first.lines > 1 || first.words.contains('\n')) {
+                (true, _) => ("shrink", None),
+                (false, true) => (
+                    "wrap",
+                    Some(first.lines.max(first.words.lines().count()) + 1),
+                ),
+                (false, false) => ("shrink", Some(1)),
+            };
         declared["overflow"] = json!(overflow);
         if first.size > 0.0 {
-            declared["min-size"] = json!(super::keys::num((first.size * MIN_SHARE * 100.0).round() / 100.0));
+            declared["min-size"] = json!(super::keys::num(
+                (first.size * MIN_SHARE * 100.0).round() / 100.0
+            ));
         }
         if let Some(lines) = max_lines {
             declared["max-lines"] = json!(lines);
@@ -414,7 +420,9 @@ const MIN_SHARE: f64 = 0.75;
 /// composition's item id and the layer's own id, which a later import of
 /// the same project gives again.
 fn text_uid(known: &Known<'_>, text: &Text) -> Option<String> {
-    let layer_id = known.layer_items.get(&(text.at.scope.clone(), text.layer_id.clone()))?;
+    let layer_id = known
+        .layer_items
+        .get(&(text.at.scope.clone(), text.layer_id.clone()))?;
     let comp = known.comp_items.get(&text.at.scope).copied().unwrap_or(0);
     Some(format!("text:{comp}/{layer_id}"))
 }
@@ -732,7 +740,10 @@ fn media(
             .and_then(Json::as_array)
             .and_then(|b| Some((b.first()?.as_f64()?, b.get(1)?.as_f64()?)));
         if let Some((w, h)) = boxed.filter(|(w, h)| *w >= 1.0 && *h >= 1.0) {
-            declared.insert("aspect".into(), json!(ratio(w.round() as u64, h.round() as u64)));
+            declared.insert(
+                "aspect".into(),
+                json!(ratio(w.round() as u64, h.round() as u64)),
+            );
             declared.insert("min-px".into(), json!([w.round(), h.round()]));
         }
         slots.insert(id.clone(), Json::Object(declared));
@@ -817,7 +828,10 @@ fn screens(
             .collect();
         let mut sizes_seen = sizes.clone();
         sizes_seen.dedup();
-        let first = keys.first().and_then(|k| known.comp_items.get(&Some(k.clone()))).copied();
+        let first = keys
+            .first()
+            .and_then(|k| known.comp_items.get(&Some(k.clone())))
+            .copied();
         let mut declared = json!({
             "image": null,
             "label": format!("{name}, {}, empty in the project", sizes_seen.join(" and ")),
@@ -828,7 +842,11 @@ fn screens(
         if let Some(item) = first {
             declared["uid"] = json!(format!("comp:{item}"));
         }
-        if let Some((w, h)) = sizes.first().and_then(|s| s.split_once('x')).and_then(|(w, h)| Some((w.parse::<u64>().ok()?, h.parse::<u64>().ok()?))) {
+        if let Some((w, h)) = sizes
+            .first()
+            .and_then(|s| s.split_once('x'))
+            .and_then(|(w, h)| Some((w.parse::<u64>().ok()?, h.parse::<u64>().ok()?)))
+        {
             declared["aspect"] = json!(ratio(w, h));
             declared["min-px"] = json!([w, h]);
         }
@@ -857,7 +875,8 @@ fn screens(
                 })
                 .find(|candidate| !taken.contains(&candidate.as_str()))
                 .expect("some number is free");
-            let layer = json!({"id": layer_id, "image": format!("${id}"), "box": [w, h], "fit": "cover"});
+            let layer =
+                json!({"id": layer_id, "image": format!("${id}"), "box": [w, h], "fit": "cover"});
             if let Some(list) = scene["comps"][key]["layers"].as_array_mut() {
                 list.insert(0, layer);
             } else if let Some(comp) = scene["comps"][key].as_object_mut() {

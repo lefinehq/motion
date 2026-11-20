@@ -254,8 +254,14 @@ fn an_empty_placeholder_composition_becomes_a_screen_slot() {
     });
     let names = HashMap::from([
         (None, "Main".to_owned()),
-        (Some("placeholder-01".to_owned()), "Placeholder_01".to_owned()),
-        (Some("placeholder-01-2".to_owned()), "Placeholder_01".to_owned()),
+        (
+            Some("placeholder-01".to_owned()),
+            "Placeholder_01".to_owned(),
+        ),
+        (
+            Some("placeholder-01-2".to_owned()),
+            "Placeholder_01".to_owned(),
+        ),
         (Some("spare".to_owned()), "Spare".to_owned()),
         (Some("plate".to_owned()), "Screen plate".to_owned()),
     ]);
@@ -270,7 +276,10 @@ fn an_empty_placeholder_composition_becomes_a_screen_slot() {
         layer_items: &layer_items,
     };
     let made = make(&mut scene, &known);
-    assert_eq!(made.screens, 1, "one slot for both compositions of one name; an unnamed empty one and one that draws are left");
+    assert_eq!(
+        made.screens, 1,
+        "one slot for both compositions of one name; an unnamed empty one and one that draws are left"
+    );
     assert_eq!(
         scene["slots"]["screen"],
         json!({"image": null, "label": "Placeholder_01, 960x1920, empty in the project", "role": "screen", "kind": "screen", "accepts": ["image", "video"], "uid": "comp:29", "aspect": "1:2", "min-px": [960, 1920]})
