@@ -168,3 +168,26 @@ fn what_is_held_stays_within_the_budget_but_for_the_grids_being_worked() {
     assert!(stats.peak <= stats.peak_working + 3 * grid, "{stats:?}");
     memory::set_budget(memory::DEFAULT_BUDGET);
 }
+
+#[test]
+fn grids_of_a_new_size_let_the_pool_go_rather_than_pass_the_budget() {
+    let _turn = turn();
+    let small = u64::from(WIDTH * HEIGHT) * 16;
+    memory::set_budget(4 * small);
+    let frame = heavy();
+    // The pool fills with grids of one size...
+    draw(&frame, RenderOptions::default());
+    memory::reset_peaks();
+    let trimmed = memory::stats().trimmed;
+    // ...and a frame twice as wide and tall makes grids of another.
+    render_with(&frame, 2 * WIDTH, 2 * HEIGHT, RenderOptions::default()).expect("drawn");
+    let stats = memory::stats();
+    // What is held passes the budget only by what is being worked and
+    // kept, never by pooled grids beside them.
+    assert!(
+        stats.peak <= stats.budget.max(stats.peak_working + stats.budget / 2),
+        "{stats:?}"
+    );
+    assert!(stats.trimmed > trimmed, "{stats:?}");
+    memory::set_budget(memory::DEFAULT_BUDGET);
+}

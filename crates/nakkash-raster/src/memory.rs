@@ -191,6 +191,18 @@ pub fn set_budget(bytes: u64) {
     trim_to(bytes);
 }
 
+/// Starts the peaks [`stats`] reports over from what is held now: for a
+/// measurement of one stretch of work.
+pub fn reset_peaks() {
+    let live = LEDGER.live.load(Relaxed);
+    LEDGER
+        .peak
+        .store(live + LEDGER.pooled.load(Relaxed), Relaxed);
+    LEDGER
+        .peak_working
+        .store(live.saturating_sub(LEDGER.kept.load(Relaxed)), Relaxed);
+}
+
 /// The budget set, in bytes.
 pub fn budget() -> u64 {
     LEDGER.budget.load(Relaxed)
@@ -409,7 +421,18 @@ pub(crate) fn grid(len: usize, start: Start) -> Vec<Pixel> {
             }
             grid
         }
-        None => vec![[0.0; 4]; len],
+        None => {
+            // A grid the pool has none of lets pooled grids of other sizes
+            // go first, so the pool never sits beside new grids past the
+            // budget (degradation's first step).
+            if len >= POOLED_LEAST {
+                let effective = LEDGER.effective.load(Relaxed);
+                if held() + bytes_of(len) > effective {
+                    trim_to(effective.saturating_sub(bytes_of(len)));
+                }
+            }
+            vec![[0.0; 4]; len]
+        }
     };
     made(len);
     grid
