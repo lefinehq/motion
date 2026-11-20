@@ -131,6 +131,42 @@ pub fn render_on(
     options: RenderOptions,
     accel: Option<&dyn Accelerator>,
 ) -> Result<Image> {
+    if !subnormals_kept() {
+        return Err(Diagnostic::new(
+            Kind::Invalid,
+            "this thread flushes subnormal floats to zero, as code built with fast math may set it to: frames would differ from the reference",
+        )
+        .expected("the processor's default float mode (D90)"));
+    }
+    drawn_at(frame, width, height, options, options.level(), accel)
+}
+
+/// Whether this thread's floats keep subnormal numbers, as the reference
+/// arithmetic does. A processor set to flush them to zero, as a host built
+/// with fast math may set it, gives other bits; the check is a multiply
+/// whose result is subnormal and one that reads it back, for both widths.
+pub(crate) fn subnormals_kept() -> bool {
+    use std::hint::black_box;
+    let least = black_box(f32::MIN_POSITIVE);
+    let half = black_box(least * black_box(0.5));
+    let wide = black_box(f64::MIN_POSITIVE);
+    let wide_half = black_box(wide * black_box(0.5));
+    half != 0.0
+        && black_box(half) * black_box(2.0) == least
+        && wide_half != 0.0
+        && black_box(wide_half) * black_box(2.0) == wide
+}
+
+/// Draws `frame` at the instruction set `level`: [`render_on`]'s work, and
+/// in tests any level the processor has, forced.
+pub(crate) fn drawn_at(
+    frame: &Frame,
+    width: u32,
+    height: u32,
+    options: RenderOptions,
+    level: Level,
+    accel: Option<&dyn Accelerator>,
+) -> Result<Image> {
     let (w, h) = (side(width, "width")?, side(height, "height")?);
     if frame.blending == Blending::Linear {
         return Err(Diagnostic::new(
@@ -144,7 +180,7 @@ pub fn render_on(
     let accel = accel.filter(|accel| has_work(*accel, &frame.nodes));
     let floats = options.quality == Quality::Precise;
     let reads = Arc::new(Reads::of(&frame.nodes, floats));
-    let mut painter = Painter::new(w, h, options, reads, accel);
+    let mut painter = Painter::new(w, h, options, level, reads, accel);
     // The background is drawn as the bottom-most shape, not used to clear the
     // target: the rasteriser keeps a cleared target out of blending, and a
     // layer that multiplies must multiply with the background too.
@@ -314,6 +350,8 @@ struct Painter<'a> {
     width: u16,
     height: u16,
     options: RenderOptions,
+    /// The instruction set the rasteriser uses, chosen once per frame.
+    level: Level,
     /// The float canvas, once something was laid on it.
     canvas: Option<Surface>,
     /// What the float canvas's work is handed to, if anything ([D74]).
@@ -330,12 +368,13 @@ struct Painter<'a> {
 }
 
 impl<'a> Painter<'a> {
-    /// A painter for a `width` by `height` target, drawing with `options`,
-    /// sharing the frame's `reads` and handing work to `accel`.
+    /// A painter for a `width` by `height` target, drawing with `options`
+    /// at `level`, sharing the frame's `reads` and handing work to `accel`.
     fn new(
         width: u16,
         height: u16,
         options: RenderOptions,
+        level: Level,
         reads: Arc<Reads>,
         accel: Option<&'a dyn Accelerator>,
     ) -> Painter<'a> {
@@ -344,7 +383,7 @@ impl<'a> Painter<'a> {
                 width,
                 height,
                 RenderSettings {
-                    level: options.level(),
+                    level,
                     num_threads: 0,
                 },
             ),
@@ -352,6 +391,7 @@ impl<'a> Painter<'a> {
             width,
             height,
             options,
+            level,
             canvas: None,
             accel: accel.filter(|accel| accel.holds(width, height)),
             pending: false,
@@ -366,6 +406,7 @@ impl<'a> Painter<'a> {
             self.width,
             self.height,
             self.options,
+            self.level,
             Arc::clone(&self.reads),
             self.accel,
         )
@@ -1115,6 +1156,7 @@ impl<'a> Painter<'a> {
             plan.width,
             plan.height,
             self.options,
+            self.level,
             Arc::clone(&self.reads),
             self.accel,
         );

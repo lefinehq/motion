@@ -129,12 +129,13 @@ impl Pixels {
     /// The four bytes `byte` gives for each pixel, row by row.
     fn bytes(&self, byte: impl Fn(Pixel) -> [u8; 4] + Sync) -> Vec<u8> {
         let mut bytes = vec![0; self.data.len() * 4];
+        let task = par::task();
         par::rows(
             &mut bytes,
-            4 * par::TASK,
+            4 * task,
             || (),
             |run, out, ()| {
-                let first = run * par::TASK;
+                let first = run * task;
                 for (i, px) in out.chunks_exact_mut(4).enumerate() {
                     px.copy_from_slice(&byte(self.data[first + i]));
                 }

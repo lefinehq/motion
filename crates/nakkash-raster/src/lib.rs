@@ -33,6 +33,8 @@ mod light;
 mod list;
 mod mask;
 pub mod memory;
+#[cfg(test)]
+mod oracle;
 mod par;
 mod particles;
 mod pen;
