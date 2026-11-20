@@ -188,6 +188,29 @@ fn only_colours_past_the_threshold_glow() {
     assert_eq!(bright.get(10, 0)[3], 1.0);
 }
 
+#[test]
+fn the_threshold_reads_rec_709_luma() {
+    // A green whose Rec. 709 luma (0.658) is past 0.6 and whose Rec. 601
+    // luma (0.594) is not: it glows.
+    let mut pixels = Pixels::transparent(21, 1);
+    pixels.data_mut()[10] = [0.3, 0.8, 0.3, 1.0];
+    let values = [
+        ParamValue::Number(0.6),
+        ParamValue::Number(10.0),
+        ParamValue::Number(1.0),
+        ParamValue::Choice(0),
+        ParamValue::Choice(1),
+        ParamValue::Choice(0),
+    ];
+    glow(&mut pixels, &values, &ONE);
+    assert!(pixels.get(12, 0)[3] > 0.0);
+    // A blue past neither gives no light.
+    let mut pixels = Pixels::transparent(21, 1);
+    pixels.data_mut()[10] = [0.3, 0.3, 1.0, 1.0];
+    glow(&mut pixels, &values, &ONE);
+    assert_eq!(pixels.get(12, 0), [0.0; 4]);
+}
+
 /// A grey bar with a white pixel in its middle, glowing by `composite`
 /// and the operation called `operation`.
 fn glow_by(composite: u8, operation: &str) -> Pixels {

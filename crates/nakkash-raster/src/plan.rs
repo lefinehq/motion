@@ -160,7 +160,8 @@ pub struct Glow {
     /// The luma, of the unpremultiplied colour by `luma`'s weights, below
     /// which a pixel gives no light.
     pub threshold: f32,
-    /// The weights of red, green and blue in the luma: Rec. 601's.
+    /// The weights of red, green and blue in the luma: Rec. 709's
+    /// ([`crate::GLOW_LUMA`]).
     pub luma: [f32; 3],
     /// How the light spreads, beyond the edges transparent.
     pub blur: Blur,
