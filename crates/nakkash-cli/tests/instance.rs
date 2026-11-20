@@ -289,3 +289,70 @@ fn an_instance_written_by_a_bare_name_pins_its_template_by_a_relative_path() {
         "promo.json"
     );
 }
+
+/// The other commands an instance goes through: its brief names it and its
+/// template's pin, `check` prints the report as text, an edit that is not
+/// one of an instance and an instance taken for a template are refused, and
+/// `migrate` keeps a value whose slot the template lost under `stale`.
+#[test]
+fn an_instance_is_briefed_checked_refused_and_migrated_with_its_lost_values_kept() {
+    let dir = scratch("lifecycle");
+    let at = pinned(&dir, "de.json", false);
+    let mut instance = read(&at);
+    instance["slots"] = json!({"headline": "Hallo"});
+    write(&at, &instance);
+    let brief = nakkash(&["brief", path(&at)]);
+    assert_eq!(brief.status.code(), Some(0));
+    let first = stdout(&brief).lines().next().unwrap_or_default().to_owned();
+    assert!(
+        first.starts_with("# nakkash brief · ") && first.contains("promo.json · sha256:"),
+        "{first}"
+    );
+    assert!(
+        stdout(&brief).contains("into `slots` of "),
+        "{}",
+        stdout(&brief)
+    );
+    let check = nakkash(&["check", path(&at)]);
+    assert_eq!(check.status.code(), Some(0));
+    assert!(stdout(&check).starts_with("OK "), "{}", stdout(&check));
+    let before = fs::read_to_string(&at).expect("read");
+    let edit = nakkash(&["edit", path(&at), "nonsense"]);
+    assert_eq!(edit.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&edit.stderr).contains("is not an edit of an instance"),
+        "{}",
+        String::from_utf8_lossy(&edit.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(&at).expect("read"),
+        before,
+        "nothing written"
+    );
+    let again = nakkash(&["slots", path(&at), "--as-instance"]);
+    assert_eq!(again.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&again.stderr).contains("is already an instance"));
+    // The template renames the slot the instance fills.
+    let template = dir.join("promo.json");
+    let mut renamed = read(&template);
+    let slots = renamed["slots"].as_object_mut().expect("slots");
+    let headline = slots.remove("headline").expect("a headline slot");
+    slots.insert("title2".into(), headline);
+    let renamed: Json =
+        serde_json::from_str(&renamed.to_string().replace("\"$headline\"", "\"$title2\""))
+            .expect("JSON");
+    write(&template, &renamed);
+    let report: Json =
+        serde_json::from_str(&stdout(&nakkash(&["check", path(&at), "--json"]))).expect("JSON");
+    assert_eq!(report["problems"][0]["code"], json!("slot.unknown"));
+    assert_eq!(report["report"], Json::Null);
+    let migrate = nakkash(&["migrate", path(&at)]);
+    assert_eq!(migrate.status.code(), Some(0), "{}", stdout(&migrate));
+    assert!(stdout(&migrate).contains("stale headline: kept under `stale`"));
+    let migrated = read(&at);
+    assert_eq!(migrated["slots"], json!({}));
+    assert_eq!(migrated["stale"], json!({"headline": "Hallo"}));
+    let report: Json =
+        serde_json::from_str(&stdout(&nakkash(&["check", path(&at), "--json"]))).expect("JSON");
+    assert_eq!(report["problems"], json!([]));
+}

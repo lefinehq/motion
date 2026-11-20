@@ -258,3 +258,140 @@ fn a_problem_is_one_object() {
     assert_eq!(p["stage"], json!(3));
     assert_eq!(p["level"], json!("error"));
 }
+
+#[test]
+fn every_part_of_an_instance_that_does_not_read_is_named_at_its_path() {
+    let refused = |json: Json| -> Vec<(&'static str, String)> {
+        Instance::read(&json)
+            .expect_err("refused")
+            .iter()
+            .map(|p| (p.code, p.path.clone()))
+            .collect()
+    };
+    assert_eq!(
+        refused(json!(["not", "an", "object"])),
+        [("schema.not_object", String::new())]
+    );
+    assert_eq!(
+        refused(json!({})),
+        [
+            ("schema.missing", "schema".to_owned()),
+            ("schema.missing", "template".to_owned())
+        ]
+    );
+    let pin = json!({"path": "t.json", "hash": canon::hash(&template())});
+    assert_eq!(
+        refused(json!({
+            "schema": SCHEMA, "template": pin, "look": 3, "slots": [], "stale": "x",
+            "sections": {"intro": {"role": "hook", "at": 0}, "end": "cta"},
+            "raw": [7, {"at": "dot.opacity", "expect": "number", "value": 1, "why": "x"}, {"at": "dot.opacity"}]
+        })),
+        [
+            ("schema.invalid", "look".to_owned()),
+            ("schema.invalid", "slots".to_owned()),
+            ("schema.invalid", "stale".to_owned()),
+            ("schema.invalid", "sections.intro".to_owned()),
+            ("schema.invalid", "sections.end".to_owned()),
+            ("schema.invalid", "raw[0]".to_owned()),
+            ("schema.unknown_field", "raw[1].why".to_owned()),
+            ("schema.invalid", "raw[2]".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn sections_name_the_templates_own_with_a_story_role() {
+    let m =
+        merged(json!({"sections": {"sectoin": {"role": "hook"}, "section": {"role": "villain"}}}));
+    assert_eq!(codes(&m), ["choice.unknown", "section.unknown"]);
+    let unknown = m
+        .problems
+        .iter()
+        .find(|p| p.code == "section.unknown")
+        .expect("reported");
+    assert!(
+        unknown
+            .hint
+            .as_deref()
+            .is_some_and(|h| h.contains("`section`")),
+        "{unknown:?}"
+    );
+    assert!(m.raw.is_none());
+    let ok = merged(json!({"sections": {"section": {"role": "hook"}}}));
+    assert!(ok.problems.is_empty(), "{:?}", ok.problems);
+}
+
+/// Locks on a role, on a layer that shows a composition and on the
+/// palette refuse what they hold, and only that.
+#[test]
+fn locks_on_roles_layers_and_the_palette_hold_what_they_name() {
+    let mut locked = template();
+    locked["roles"] = json!({"headline": "$title"});
+    locked["layers"]
+        .as_array_mut()
+        .expect("layers")
+        .push(json!({"id": "inset", "comp": "a"}));
+    locked["locks"] = json!(["@headline", "headline", "inset", "palette"]);
+    let doc = Document::from_value(locked.clone()).expect("the template is valid");
+    let hash = canon::hash(&locked);
+    let merge_with = |slots: Json| {
+        let i = Instance::read(&json!({"schema": SCHEMA, "template": {"path": "t.json", "hash": hash}, "slots": slots}))
+            .expect("reads");
+        merge(&doc, &hash, &i, &|p| p.to_owned())
+    };
+    for (slots, says) in [
+        (json!({"title": "Hallo"}), "locked by `@headline`"),
+        (json!({"accent": "#2A9D8F"}), "drawn inside `headline`"),
+        (json!({"a/tint": "#2A9D8F"}), "drawn inside `inset`"),
+        (
+            json!({"locked": "#123456"}),
+            "not one of the template's colours",
+        ),
+    ] {
+        let m = merge_with(slots.clone());
+        assert_eq!(codes(&m), ["slot.locked"], "{slots}");
+        assert!(
+            m.problems[0].message.contains(says),
+            "{slots}: {:?}",
+            m.problems[0]
+        );
+        assert!(m.raw.is_none());
+    }
+    // A colour the template has, written another way, passes the palette.
+    let m = merge_with(json!({"locked": "#2a9d8f", "speed": 1.5}));
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+    assert_eq!(
+        m.raw.expect("merged")["slots"]["locked"]["color"],
+        json!("#2a9d8f")
+    );
+}
+
+#[test]
+fn raw_values_are_held_to_the_type_they_expect() {
+    // Each type is checked before the value is set.
+    for (expect, value) in [
+        ("string", json!(1)),
+        ("bool", json!("yes")),
+        ("color", json!("not a colour")),
+        ("point", json!([1])),
+    ] {
+        let m = merged(json!({"raw": [{"at": "dot.opacity", "expect": expect, "value": value}]}));
+        assert_eq!(codes(&m), ["raw.refused"], "{expect}");
+    }
+    let unknown = merged(json!({"raw": [{"at": "dot.opacity", "expect": "matrix", "value": 1}]}));
+    assert_eq!(codes(&unknown), ["raw.refused"]);
+    assert!(
+        unknown.problems[0]
+            .message
+            .contains("not a type `raw` expects"),
+        "{:?}",
+        unknown.problems
+    );
+    let indexed = merged(json!({"raw": [{"at": "dot.box[0]", "expect": "number", "value": 1}]}));
+    assert_eq!(codes(&indexed), ["raw.refused"]);
+    assert!(
+        indexed.problems[0].message.contains("by position"),
+        "{:?}",
+        indexed.problems
+    );
+}
