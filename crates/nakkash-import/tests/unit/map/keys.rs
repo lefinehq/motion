@@ -510,3 +510,23 @@ fn frames_between_keys_follow_the_keys_order() {
     assert_eq!(frames_between(0.0, 0.35, 10.0), vec![0.1, 0.2, 0.3]);
     assert_eq!(frames_between(0.35, 0.0, 10.0), vec![0.3, 0.2, 0.1]);
 }
+
+/// Words an expression gave at each frame become one held key where they
+/// change, in the layer's own time, rising on a layer that runs backwards.
+#[test]
+fn words_are_keyed_where_they_change() {
+    let words: Vec<String> = ["3", "3", "2", "2\r1", "2\r1"].map(String::from).to_vec();
+    let times = [0.0, 0.5, 1.0, 1.5, 2.0];
+    assert_eq!(
+        held_words(&times, &words, SAME),
+        json!([["0s", "3"], ["1s", "2"], ["1.5s", "2\n1"]])
+    );
+    let reversed = Clock {
+        start: 2.0,
+        stretch: -1.0,
+    };
+    assert_eq!(
+        held_words(&times, &words, reversed),
+        json!([["0s", "2\n1"], ["1s", "2"], ["1.5s", "3"]])
+    );
+}

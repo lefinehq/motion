@@ -185,3 +185,74 @@ fn a_fit_scales_every_length_that_goes_with_the_size() {
     );
     assert_eq!((half.text.as_str(), half.frame), ("Hi\nthere", t.frame));
 }
+
+/// A text layer's words keyed in `anim.text` ([D92]): held keys of strings
+/// in time order, read into the content, not into the layer's tracks.
+#[test]
+fn keyed_words_are_the_contents_keys() {
+    let t = text(
+        r##""text":"10","font":"Inter 40","anim":{"text":[[0,"3"],["1s","2",  "hold"],{"t":"2s","v":"1\nGo"}]}"##,
+    );
+    let keys: Vec<(f64, &str)> = t
+        .keys
+        .iter()
+        .map(|k| (k.time.to_frames(30.0), k.text.as_str()))
+        .collect();
+    assert_eq!(keys, [(0.0, "3"), (30.0, "2"), (60.0, "1\nGo")]);
+    assert_eq!(t.text, "10");
+    let json = r#"{"nakkash":1,"dur":"1s","layers":[{"id":"t","text":"a","anim":{"text":[[0,"b"]],"opacity":"0 -> 1 @0-5f"}}]}"#;
+    let scene = parse_document(json).unwrap();
+    assert_eq!(scene.scene().root.layers[0].anim.len(), 1, "opacity only");
+}
+
+#[test]
+fn keyed_words_that_break_a_rule_are_errors_at_the_key() {
+    let error = |layer: &str| {
+        let json = format!(r#"{{"nakkash":1,"dur":"1s","layers":[{{"id":"t",{layer}}}]}}"#);
+        let e = parse_document(&json).unwrap_err();
+        (e.kind, e.path_text().unwrap_or_default())
+    };
+    let keyed = |track: &str| error(&format!(r#""text":"a","anim":{{"text":{track}}}"#));
+    assert_eq!(
+        keyed(r#""a -> b @0-5f""#),
+        (Kind::Invalid, "t.anim.text".into())
+    );
+    assert_eq!(keyed("[]"), (Kind::Missing, "t.anim.text".into()));
+    assert_eq!(
+        keyed(r#"[[0, 3]]"#),
+        (Kind::Invalid, "t.anim.text[0][1]".into())
+    );
+    assert_eq!(
+        keyed(r#"[[0, "a", "linear"]]"#),
+        (Kind::Invalid, "t.anim.text[0][2]".into())
+    );
+    assert_eq!(
+        keyed(r#"[{"t":0,"v":"a","path":[[0,0],[0,0]]}]"#),
+        (Kind::Invalid, "t.anim.text[0].path".into())
+    );
+    assert_eq!(
+        keyed(r#"[["1s","a"],[0,"b"]]"#),
+        (Kind::Invalid, "t.anim.text[1]".into())
+    );
+    assert_eq!(
+        error(r#""rect":"10x10","anim":{"text":[[0,"a"]]}"#),
+        (Kind::Conflict, "t.anim.text".into())
+    );
+}
+
+/// A key's words take the layer's base style and first paragraph's: the
+/// layer's runs and paragraph styles count its own words.
+#[test]
+fn a_keys_words_take_the_layers_base_style() {
+    let t = text(
+        r##""text":"Hi\nthere","font":"Inter 40","fill":"#FF0000","style":{"align":"center"},"runs":[{"range":[0,1],"fill":"#00FF00"}],"paragraphs":[{},{"align":"right"}]"##,
+    );
+    let keyed = t.with_words("a\nb\nc");
+    assert_eq!(keyed.text, "a\nb\nc");
+    assert_eq!(keyed.runs.len(), 1);
+    assert_eq!(keyed.runs[0].range, 0..5);
+    assert_eq!(keyed.runs[0].style.fill, [1.0, 0.0, 0.0, 1.0]);
+    assert_eq!(keyed.paragraphs.len(), 3);
+    assert!(keyed.paragraphs.iter().all(|p| p.align == Align::Center));
+    assert!(keyed.keys.is_empty());
+}

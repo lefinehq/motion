@@ -59,6 +59,7 @@ struct Ids {
     position: NodeId,
     opacity: NodeId,
     rotation: NodeId,
+    text: NodeId,
 }
 
 fn v2(x: f64, y: f64) -> Val {
@@ -120,12 +121,19 @@ fn project() -> (Rc<TestHost>, Ids) {
         "ADBE Scale",
         vec![(0.0, v2(0.0, 0.0)), (1.0, v2(100.0, 100.0))],
     );
+    let words = h.add(Some(title), NodeKind::Group, "ADBE Text Properties");
+    let text = h.property(
+        words,
+        "ADBE Text Document",
+        Val::Text("Awesome creative assets".into()),
+    );
     (
         Rc::new(h),
         Ids {
             position,
             opacity,
             rotation,
+            text,
         },
     )
 }
@@ -570,4 +578,95 @@ fn a_layer_rectangle_reads_its_time_and_extents() {
         ),
         Err(Failure::Unmeasured)
     ));
+}
+
+/// `substr` as ECMA-262 Annex B.2.2.1 gives it, which both of the
+/// original's engines have and the embedded one lacks.
+#[test]
+fn substr_follows_annex_b() {
+    let o = ids().opacity;
+    let text = |source: &str| match value(eval(source, o, 0.0)) {
+        Val::Text(t) => t,
+        other => panic!("{source}: not text: {other:?}"),
+    };
+    for (source, want) in [
+        ("'abcdef'.substr(2, 3)", "cde"),
+        // A negative start counts from the end, and stops at the start.
+        ("'abcdef'.substr(-2)", "ef"),
+        ("'abcdef'.substr(-10, 2)", "ab"),
+        ("'abcdef'.substr(-Infinity, 2)", "ab"),
+        // A start past the end gives nothing.
+        ("'abcdef'.substr(10)", ""),
+        ("'abcdef'.substr(Infinity)", ""),
+        // NaN is 0, fractions are cut toward 0, strings are numbers.
+        ("'abcdef'.substr(NaN, 2)", "ab"),
+        ("'abcdef'.substr(1.9, 2.9)", "bc"),
+        ("'abcdef'.substr(-1.9)", "f"),
+        ("'abcdef'.substr('1', '2')", "bc"),
+        // A length left out or undefined runs to the end; any other is
+        // clamped between 0 and the length.
+        ("'abcdef'.substr(2)", "cdef"),
+        ("'abcdef'.substr(2, undefined)", "cdef"),
+        ("'abcdef'.substr(2, NaN)", ""),
+        ("'abcdef'.substr(2, -1)", ""),
+        ("'abcdef'.substr(0, Infinity)", "abcdef"),
+        ("'abcdef'.substr(4, 10)", "ef"),
+        ("'abcdef'.substr()", "abcdef"),
+        ("''.substr(0, 1)", ""),
+        // Any value is a string first.
+        ("String.prototype.substr.call(12345, 1, 2)", "23"),
+        // It counts code units, as every string method does.
+        ("String('\\uD83D\\uDE00x'.substr(1).length)", "2"),
+        // A built-in method: two arguments, not enumerated.
+        ("String(String.prototype.substr.length)", "2"),
+        (
+            "var k = []; for (var p in 'ab') k.push(p); k.join(',')",
+            "0,1",
+        ),
+    ] {
+        assert_eq!(text(source), want, "{source}");
+    }
+    for source in [
+        "String.prototype.substr.call(null, 0)",
+        "String.prototype.substr.call(undefined, 0)",
+    ] {
+        assert!(
+            matches!(eval(source, o, 0.0), Err(Failure::Error(e)) if e.contains("TypeError")),
+            "{source}"
+        );
+    }
+}
+
+/// m547's typing titles, in a legacy project, call `substr(0, n)` bare on
+/// source text, and its reference shows the text typed out.
+#[test]
+fn legacy_source_text_reaches_its_string_methods_by_name() {
+    let ids = ids();
+    let legacy = |source: &str, this: NodeId| eval_in(Dialect::Legacy, source, this, 0.0);
+    assert_eq!(
+        value(legacy("n = 7;\r\nsubstr(0, n) + \"_\"", ids.text)),
+        Val::Text("Awesome_".into())
+    );
+    assert_eq!(
+        value(legacy("toUpperCase().split(' ')[1]", ids.text)),
+        Val::Text("CREATIVE".into())
+    );
+    // An expression may still name its own.
+    assert_eq!(
+        value(legacy("var slice = 3; slice + 1", ids.text)),
+        Val::Number(4.0)
+    );
+    // Not on a value that is not text, and not in the modern engine.
+    assert!(matches!(
+        legacy("substr(0, 1)", ids.opacity),
+        Err(Failure::Error(e)) if e.contains("substr is not defined")
+    ));
+    assert!(matches!(
+        eval("substr(0, 1)", ids.text, 0.0),
+        Err(Failure::Error(e)) if e.contains("substr is not defined")
+    ));
+    assert_eq!(
+        value(eval("value.substr(0, 7)", ids.text, 0.0)),
+        Val::Text("Awesome".into())
+    );
 }

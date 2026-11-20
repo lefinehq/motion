@@ -5,7 +5,8 @@
 //!   the forms that engine accepted.
 //! - An [`Engine`] compiles sources once and runs them at any time over a
 //!   [`Host`], the importer's view of the project, with the language's
-//!   objects and functions. Runs are deterministic: no clock, our own
+//!   objects and functions, among them Annex B's `String.prototype.substr`,
+//!   which the embedded engine leaves out. Runs are deterministic: no clock, our own
 //!   randomness, and maths that gives the same bits on every platform.
 //! - [`fit`] turns the values sampled at every frame back into a few
 //!   editable keys within a tolerance.
@@ -38,6 +39,7 @@ pub enum Dialect {
     /// The modern engine: ECMAScript 2018.
     Modern,
     /// The legacy engine: ECMAScript 3, with `if … else` on one line, the
-    /// snake_case aliases and `this(…)` for `thisLayer(…)`.
+    /// snake_case aliases, `this(…)` for `thisLayer(…)`, and on source text
+    /// the string methods by name (`substr(0, n)`).
     Legacy,
 }

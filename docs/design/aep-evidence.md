@@ -778,3 +778,41 @@ The three plain files reach what converting them to PDF outside nakkash and draw
 |---|---|---|
 | E1. Device CMYK is drawn by the language's own rule, each primary `1 − min(1, c + k)`, not through a press profile. | m772's button is `0 .993347 1 0` CMYK. The reference draws it (255, 3, 2), (254, 2, 1) and (255, 0, 0) at four points of frame 12. The rule gives (255, 2, 0); the system's generic CMYK profile gives (217, 37, 42). | 1 colour of 1 sample; m794's one CMYK colour is recoloured by a fill effect, so its reference cannot tell. |
 | E2. The footage's size is the whole-point `%%BoundingBox`, and the art sits in it one point a pixel from its top-left corner, not stretched to it from the precise `%%HiResBoundingBox`. | Every project gives its EPS footage the whole-point box's size: m772 258 × 64 (precise 257.9711 × 63.9789), m794 78 × 24 (precise 77.3357 × 23.0674), m788 384 × 384, m837 410 × 366, m838 511 × 491. Drawn over the whole-point box, m794's content error is 0.01919 against 0.01961 stretched from the precise box (41.18% against 41.21% failing); m772's differs by under 0.001 points. | 5 of 5 files |
+
+## Text methods in expressions
+
+The embedded expression engine leaves out the language's Annex B, which both of the original's engines have; it takes `String.prototype.substr` from it as its own native method, to ECMA-262 Annex B.2.2.1. The belief says what a legacy expression on source text may call by name. It was checked by hand on the one local sample that does it; the sweep does not check it.
+
+| Belief | Evidence | Held, 2026-11-20 |
+|---|---|---|
+| Q1. In the legacy engine, an expression on source text reaches the string methods of its property's value by name, as it reaches `value`: `substr(0, n)` is the first `n` characters of the text. | m547's four typing titles, in a legacy project, end with `substr(0, src) + pipe`, `src` a slider that counts up and `pipe` an underscore. Its reference shows each title typed out behind an underscore (`Awesome cre_`, `Your dail_`, `d_`), never whole with no underscore, which a failing expression would leave. | 4 expressions in 1 sample, all bare `substr` |
+
+The four expressions failed before with "substr is not defined" and kept the whole titles; they now bake, and with keyed words (D92, H1 below) each title is typed out behind its underscore. m547 is excluded: its reference lays the titles over stock footage the project lacks. Its numbers are in the table under H1.
+
+Other things we take without evidence:
+- **Which methods.** The names a legacy expression reaches are the string methods of the language's third edition, the one the legacy engine follows, and `substr`: `charAt`, `charCodeAt`, `concat`, `indexOf`, `lastIndexOf`, `localeCompare`, `match`, `replace`, `search`, `slice`, `split`, `substr`, `substring`, and the four case changes. A property of the string, such as `length`, is not reached; `length` stays the vector function. Only `substr` is seen in the corpus.
+- **Other values.** On a property whose value is not text, these names are not defined, as m547's failure said before. Whether the original reaches a number's methods by name in the same way is not known.
+- **The modern engine.** It is not given these names: no local modern project calls one bare, so nothing shows whether the modern engine reaches them. `value.substr(…)` works in both.
+
+## Words that change over time
+
+A text layer's Source Text may change from frame to frame, by an expression or by keys; the scene keys the words ([D92](decisions.md#d92-a-text-layers-words-may-be-keyed)). These beliefs say what the original draws. They were checked by hand on the local samples that change their words; the sweep does not check them.
+
+| Belief | Evidence | Held, 2026-11-20 |
+|---|---|---|
+| H1. An expression on Source Text is evaluated at every frame, and the original draws, at that frame, the words it gives, laid out on their own. | m828's `Countdown NYE Main/1` gives `(10 − floor(time)) + ""`: its reference shows 10 at 0 s and 0.5 s, 9 at 1 s and 1.5 s, 8 at 2 s and 2.5 s, down to 1, each centred where the 10 was. m547's titles give `substr(0, n) + "_"` and show each title typed out (Q1). m651's `TIME_Slider` gives a slider's value, a player's running time. | 6 expressions in 3 samples, every local Source Text expression whose words change |
+| H2. The words an expression gives are set in the style of the document's first characters and its first paragraph. | m828's digits and m547's typed titles are drawn in their document's font, size, colour and alignment. EffectCraft sets a string an expression gives in a default style (`crates/render/src/text.rs`, `source_text`), which none of these references shows. | 3 samples |
+
+Measured on the Linux render machine (its fonts and footage differ from the reference machine's; before and after on the same machine, at the fidelity frames each sample's ledger takes): error and the share of content failing, over all frames and settled.
+
+| Sample | All frames | Settled |
+|---|---|---|
+| m547 (excluded: footage the project lacks) | 0.3077 → 0.3005, 90.61 % → 90.47 % | 0.3583 → 0.3555, 88.17 % → 87.99 % |
+| m651 | 0.0788 → 0.0780, 70.80 % → 70.77 % | 0.0630 → 0.0619, 66.98 % → 66.94 % |
+| m828 | 0.1631 → 0.1476, 85.40 % → 84.82 % | 0.1771 → 0.1607, 90.00 % → 89.43 % |
+
+Frames passing the floor are unchanged (m547 0 of 14, m651 4 of 15, m828 0 of 20). Only these three samples' scenes change; m547's four expressions that failed now bake (146 → 142 not baked over the corpus). Text samples that are not keyed draw the same: `render --digest`, frames 0–90, is bit-identical before and after for m613, m736 and m543.
+
+Other things we take without evidence:
+- **Keys.** No local project keys its Source Text. A keyed Source Text is taken as the original's documentation gives it: each key holds its whole document until the next. The import keeps each key's words in the first key's style and reports a key that restyles.
+- **The layout's anchor.** A changing text is laid out about the same origin with the same alignment, as point text always is; the scene keeps the layer's own words for its box, which for imported layers only `check` reads, since an import writes the anchor and position.

@@ -481,6 +481,53 @@ fn natives() -> Vec<(&'static str, usize, NativeFunction)> {
     ]
 }
 
+/// `String.prototype` methods that both of the original's engines have and
+/// the embedded one lacks: those of the language's Annex B, which the
+/// embedded engine leaves out ([`substr`]).
+fn strings() -> Vec<(&'static str, usize, NativeFunction)> {
+    vec![("substr", 2, NativeFunction::from_fn_ptr(substr))]
+}
+
+/// `String.prototype.substr(start, length)`, as ECMA-262 Annex B.2.2.1
+/// gives it: the `length` code units of the string from `start`. A negative
+/// `start` counts from the end; a start past either end stops there; a
+/// `length` left out or undefined runs to the end, and any other is
+/// clamped between 0 and the string's length. Numbers become integers as
+/// `ToIntegerOrInfinity` makes them: NaN is 0, a fraction is cut toward 0.
+///
+/// # Errors
+/// A `TypeError` on `null` or `undefined`, and whatever converting the
+/// string or a number throws.
+fn substr(this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let text = this.require_object_coercible()?.to_string(ctx)?;
+    #[expect(clippy::cast_precision_loss, reason = "string lengths far below 2^52")]
+    let size = text.len() as f64;
+    let start = integer_or_infinity(&arg(args, 0), ctx)?;
+    let start = match start < 0.0 {
+        true => (size + start).max(0.0),
+        false => start.min(size),
+    };
+    let length = match arg(args, 1) {
+        length if length.is_undefined() => size,
+        length => integer_or_infinity(&length, ctx)?.clamp(0.0, size),
+    };
+    let end = (start + length).min(size);
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "whole numbers between 0 and the string's length"
+    )]
+    let range = start as usize..end as usize;
+    Ok(text.get(range).unwrap_or_default().into())
+}
+
+/// ECMA-262's `ToIntegerOrInfinity`: `value` as a number, NaN as 0, cut
+/// toward 0, infinities kept.
+fn integer_or_infinity(value: &JsValue, ctx: &mut Context) -> JsResult<f64> {
+    let n = value.to_number(ctx)?;
+    Ok(if n.is_nan() { 0.0 } else { n.trunc() })
+}
+
 /// `Math` functions that are not exact in IEEE arithmetic, on `libm`, so a
 /// bake gives the same bits on every platform.
 fn maths() -> Vec<(&'static str, usize, NativeFunction)> {
@@ -586,6 +633,23 @@ impl Engine {
                 .length(length)
                 .build();
             math.set(JsString::from(name), f, false, &mut context)
+                .map_err(failed)?;
+        }
+        // Built-in methods, as the language's own are: writable,
+        // configurable and not enumerated.
+        let string = context.intrinsics().constructors().string().prototype();
+        for (name, length, function) in strings() {
+            let f = boa_engine::object::FunctionObjectBuilder::new(context.realm(), function)
+                .name(JsString::from(name))
+                .length(length)
+                .build();
+            let method = boa_engine::property::PropertyDescriptor::builder()
+                .value(f)
+                .writable(true)
+                .enumerable(false)
+                .configurable(true);
+            string
+                .define_property_or_throw(JsString::from(name), method, &mut context)
                 .map_err(failed)?;
         }
         let mut prelude = String::from(TIME);
