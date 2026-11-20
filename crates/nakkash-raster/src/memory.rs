@@ -16,8 +16,8 @@
 //!
 //! Over the budget the render gets slower, never larger, and never other:
 //! the pool lets its grids go and frames wait to start ([`over`]). Kept
-//! drawings take at most half the budget ([`room_to_keep`]), and are let go
-//! to be drawn again beyond it. None of it changes a pixel.
+//! drawings take at most half the budget, and are let go to be drawn again
+//! beyond it. None of it changes a pixel.
 //!
 //! Memory pressure lowers the budget for a while ([`note_pressure`]): at a
 //! warning to three quarters of what is held, at a critical level to
