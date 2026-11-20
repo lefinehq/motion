@@ -26,19 +26,30 @@ use rayon::prelude::*;
 /// About how many items one task works: enough that splitting costs
 /// little beside the work, few enough that a frame splits into hundreds
 /// of tasks for the threads to share.
-pub(crate) const TASK: usize = 1 << 14;
+const TASK: usize = 1 << 14;
+
+/// How many items one task works: [`TASK`], or in tests the size they
+/// split at (`split_in_tests`).
+pub(crate) fn task() -> usize {
+    #[cfg(test)]
+    if let Some(split) = split() {
+        return split;
+    }
+    TASK
+}
 
 /// How many whole rows of `width` items a task works.
 fn rows_per_task(width: usize) -> usize {
-    (TASK / width.max(1)).max(1)
+    (task() / width.max(1)).max(1)
 }
 
 /// Runs `work` on every item of `data` with its index.
 pub(crate) fn each<T: Send>(data: &mut [T], work: impl Fn(usize, &mut T) + Sync) {
-    data.par_chunks_mut(TASK)
+    let size = task();
+    data.par_chunks_mut(size)
         .enumerate()
         .for_each(|(task, items)| {
-            let first = task * TASK;
+            let first = task * size;
             for (i, item) in items.iter_mut().enumerate() {
                 work(first + i, item);
             }
@@ -53,10 +64,11 @@ pub(crate) fn each_with<T: Send, U: Sync>(
     work: impl Fn(usize, &mut T, &U) + Sync,
 ) {
     debug_assert!(other.len() >= data.len(), "every item has its pair");
-    data.par_chunks_mut(TASK)
+    let size = task();
+    data.par_chunks_mut(size)
         .enumerate()
         .for_each(|(task, items)| {
-            let first = task * TASK;
+            let first = task * size;
             for (i, (item, with)) in items.iter_mut().zip(&other[first..]).enumerate() {
                 work(first + i, item, with);
             }
@@ -112,6 +124,16 @@ pub(crate) fn bands<T: Send>(
 /// pixels long enough to fill cache lines.
 const COLUMNS: usize = 16;
 
+/// How many columns one task of [`columns`] works: [`COLUMNS`], or in tests
+/// the size they split at (`split_in_tests`).
+fn columns_per_task() -> usize {
+    #[cfg(test)]
+    if let Some(split) = split() {
+        return split;
+    }
+    COLUMNS
+}
+
 /// Runs `work` on every column of `data`, `width` items wide and `height`
 /// tall, as one run of items from the top, with scratch room `scratch`
 /// made once per task; the column then replaces the one in `data`. Each
@@ -128,18 +150,19 @@ pub(crate) fn columns<T: Copy + Default + Send + Sync, S>(
         return;
     }
     debug_assert_eq!(data.len(), width * height, "a grid of width by height");
-    // The bands one after another, each its rows of [`COLUMNS`] items: a
+    let columns = columns_per_task();
+    // The bands one after another, each its rows of `columns` items: a
     // band is copied out and back a row at a time, and its columns are
     // read and written within it while it sits in cache.
     let source = &*data;
     let mut bands = vec![T::default(); width * height];
     bands
-        .par_chunks_mut(COLUMNS * height)
+        .par_chunks_mut(columns * height)
         .enumerate()
         .for_each_init(
             || (scratch(), Vec::with_capacity(height)),
             |(room, column), (band, out)| {
-                let x0 = band * COLUMNS;
+                let x0 = band * columns;
                 let wide = out.len() / height;
                 for (y, row) in out.chunks_exact_mut(wide).enumerate() {
                     row.copy_from_slice(&source[y * width + x0..y * width + x0 + wide]);
@@ -159,12 +182,37 @@ pub(crate) fn columns<T: Copy + Default + Send + Sync, S>(
         .with_min_len(rows_per_task(width))
         .enumerate()
         .for_each(|(y, row)| {
-            for x0 in (0..width).step_by(COLUMNS) {
-                let wide = COLUMNS.min(width - x0);
+            for x0 in (0..width).step_by(columns) {
+                let wide = columns.min(width - x0);
                 let band = &bands[x0 * height..];
                 row[x0..x0 + wide].copy_from_slice(&band[y * wide..(y + 1) * wide]);
             }
         });
+}
+
+/// The size tests split work at, in items and in columns; 0 is the size
+/// renders split at. Work split at any size gives the same bits, and tests
+/// show it (`split_in_tests`).
+#[cfg(test)]
+static SPLIT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
+fn split() -> Option<usize> {
+    match SPLIT.load(std::sync::atomic::Ordering::Relaxed) {
+        0 => None,
+        split => Some(split),
+    }
+}
+
+/// Splits work from here on into tasks of `split` items and of `split`
+/// columns, or as renders do for `None`. Other tests of the process may
+/// draw split so meanwhile, which changes nothing they draw.
+#[cfg(test)]
+pub(crate) fn split_in_tests(split: Option<usize>) {
+    SPLIT.store(
+        split.unwrap_or(0).max(usize::from(split.is_some())),
+        std::sync::atomic::Ordering::Relaxed,
+    );
 }
 
 #[cfg(test)]

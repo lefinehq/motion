@@ -1,0 +1,7 @@
+# The precise path is exact (D90): the same operations on every pixel, in
+# the same order. A fused multiply-add rounds once where `a * b + c` rounds
+# twice, so it gives other bits than the reference.
+disallowed-methods = [
+  { path = "f32::mul_add", reason = "rounds once where the reference's multiply then add rounds twice (D90)" },
+  { path = "f64::mul_add", reason = "rounds once where the reference's multiply then add rounds twice (D90)" },
+]
