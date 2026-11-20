@@ -368,8 +368,9 @@ impl Typesetter {
     }
 
     /// How far below its box's top a box's first line puts its baseline:
-    /// the largest of its runs' [`first::below_top`], each at its run's
-    /// size as written, neither scale nor small capitals applied. A line
+    /// the largest of its runs' [`first::below_top`], raised by faux bold's
+    /// thickening ([`first::faux_bold_rise`]), each at its run's size as
+    /// written, neither scale nor small capitals applied. A line
     /// without glyphs, an empty paragraph's, takes the run its paragraph
     /// starts in.
     fn below_top(
@@ -380,8 +381,9 @@ impl Typesetter {
         line: &parley::Line<'_, usize>,
     ) -> f64 {
         let at = |run: usize| {
+            let style = &text.runs[run].style;
             let em = self.below_top[faces[run]].expect("box text's faces are measured");
-            em * text.runs[run].style.size
+            (em + first::faux_bold_rise(style)) * style.size
         };
         line.items()
             .filter_map(|item| match item {

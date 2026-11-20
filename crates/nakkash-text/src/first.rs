@@ -4,7 +4,8 @@
 //! The `d` is what a Latin face's lowercase ascenders reach, so the first
 //! line's ascenders touch the top while its capitals and accents may rise
 //! above it. A face whose `d` is missing, or too short to be an ascender
-//! (a symbol face's), sits a font ascent down instead.
+//! (a symbol face's), sits a font ascent down instead. Faux bold, which
+//! thickens the `d`, lowers the line by as much as the `d` grows.
 
 use kurbo::{BezPath, Shape};
 use skrifa::instance::Size;
@@ -12,6 +13,7 @@ use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::{FontRef, MetadataProvider};
 
 use crate::font::Face;
+use crate::style::{CharacterStyle, FAUX_BOLD_TRACKING};
 
 /// The shortest `d`, as a share of the font's ascent, still taken as a
 /// lowercase ascender. A Latin `d` reaches about 0.7 of an em against an
@@ -51,6 +53,16 @@ pub(crate) fn below_top(face: &Face) -> f64 {
     match d {
         Some(d) if is_ascender(d, ascent) => d,
         _ => ascent,
+    }
+}
+
+/// How much faux bold raises the top of a `d` in `style`, in ems: half the
+/// space it adds after each character, since a glyph thickened by that
+/// much across grows by half of it on each side.
+pub(crate) fn faux_bold_rise(style: &CharacterStyle) -> f64 {
+    match style.faux_bold {
+        true => FAUX_BOLD_TRACKING / 2.0 / 1000.0,
+        false => 0.0,
     }
 }
 

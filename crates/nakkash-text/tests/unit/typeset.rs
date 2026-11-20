@@ -357,6 +357,18 @@ fn a_first_line_of_several_sizes_sits_below_the_top_by_its_largest() {
 }
 
 #[test]
+fn faux_bold_lowers_the_first_baseline_by_half_its_added_space() {
+    let mut styled = boxed("Bold", REGULAR, 54.0, Justification::Left);
+    styled.runs[0].style.faux_bold = true;
+    let layout = lay(&styled);
+    let rise = FAUX_BOLD_TRACKING / 2.0 / 1000.0;
+    assert!(close(
+        layout.lines[0].baseline,
+        20.0 + (INTER_D + rise) * 54.0
+    ));
+}
+
+#[test]
 fn an_empty_first_paragraph_sits_below_the_top_by_its_own_run() {
     let mut styled = boxed("\nWord", REGULAR, 50.0, Justification::Left);
     styled.runs = vec![
