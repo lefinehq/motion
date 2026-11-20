@@ -1,5 +1,7 @@
 [workspace]
 members = ["crates/*"]
+# Crates owned here as published, with changes of our own (see `[patch]`).
+exclude = ["vendor"]
 resolver = "3"
 
 [workspace.package]
@@ -131,3 +133,8 @@ opt-level = 3
 # where `nakkash-encode` names `u8`: that crate, a thin layer, is optimised too.
 [profile.dev.package.nakkash-encode]
 opt-level = 3
+
+# The rasteriser as published (0.4.0, verbatim but for what D90 changes):
+# its highp `pack` converts tiles to bytes with SIMD, giving the same bits.
+[patch.crates-io]
+vello_cpu = { path = "vendor/vello_cpu" }
