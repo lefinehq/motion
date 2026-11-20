@@ -282,12 +282,127 @@ impl Pixels {
             return out;
         }
         let width = usize::from(self.width);
+        // Only the pixels whose four samples can reach what is drawn are
+        // worked out ([D93]): a sample of four pixels of `+0.0` mixes to
+        // `+0.0` at any finite share, which is what the others already hold.
+        //
+        // [D93]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d93-glow-and-blurs-do-less-of-the-same-work
+        let Some([x0, y0, x1, y1]) = self.reached(transform) else {
+            return out;
+        };
+        par::rows(
+            &mut out.data,
+            width,
+            || (),
+            |y, row, ()| {
+                if y < y0 || y > y1 {
+                    return;
+                }
+                for (x, pixel) in row.iter_mut().enumerate().take(x1 + 1).skip(x0) {
+                    let from = back * Point::new(x as f64 + 0.5, y as f64 + 0.5);
+                    *pixel = self.sample(from.x, from.y);
+                }
+            },
+        );
+        out
+    }
+
+    /// [`Pixels::transformed`] as it was before it worked out only the
+    /// pixels that can reach what is drawn: its reference ([D90], rule 7).
+    ///
+    /// [D90]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d90-a-frame-is-drawn-from-a-plan-that-knows-what-each-drawing-is-under-one-memory-budget
+    #[cfg(test)]
+    pub(crate) fn transformed_reference(&self, transform: Affine) -> Pixels {
+        let back = transform.inverse();
+        let mut out = Pixels::transparent(self.width, self.height);
+        if !back.as_coeffs().iter().all(|c| c.is_finite()) {
+            return out;
+        }
+        let width = usize::from(self.width);
         par::each(&mut out.data, |i, pixel| {
             let (x, y) = ((i % width) as f64 + 0.5, (i / width) as f64 + 0.5);
             let from = back * Point::new(x, y);
             *pixel = self.sample(from.x, from.y);
         });
         out
+    }
+
+    /// The box, first and last column and row, of pixels that are not
+    /// `+0.0` in every channel, or `None` when there are none; worked out
+    /// over runs of rows on every thread, the same however they are split.
+    pub(crate) fn drawn_box(&self) -> Option<[usize; 4]> {
+        let width = usize::from(self.width);
+        if width == 0 {
+            return None;
+        }
+        let drawn = |p: &Pixel| p.iter().any(|c| c.to_bits() != 0);
+        par::rows_reduce(
+            &self.data,
+            width,
+            |y, row| {
+                let x0 = row.iter().position(drawn)?;
+                let x1 = row.iter().rposition(drawn)?;
+                Some([x0, y, x1, y])
+            },
+            |a, b| match (a, b) {
+                (Some(a), Some(b)) => Some([
+                    a[0].min(b[0]),
+                    a[1].min(b[1]),
+                    a[2].max(b[2]),
+                    a[3].max(b[3]),
+                ]),
+                (a, None) => a,
+                (None, b) => b,
+            },
+        )
+    }
+
+    /// Of these pixels moved by `transform`, the box of the grid's pixels
+    /// whose four samples ([`Pixels::sample`]) may read a pixel that is not
+    /// `+0.0`: the image of what is drawn, grown by a pixel for the samples
+    /// either side and by two more against rounding; the whole grid where
+    /// the move turns or skews, or is too large or small to bound so, and
+    /// `None` when nothing is drawn.
+    fn reached(&self, transform: Affine) -> Option<[usize; 4]> {
+        let [bx0, by0, bx1, by1] = self.drawn_box()?;
+        let (width, height) = (usize::from(self.width), usize::from(self.height));
+        let whole = Some([0, 0, width - 1, height - 1]);
+        let [a, b, c, d, ..] = transform.as_coeffs();
+        let bounded = |s: f64| (1e-6..=1e6).contains(&s.abs());
+        if b != 0.0 || c != 0.0 || !bounded(a) || !bounded(d) {
+            return whole;
+        }
+        // A point reads pixels x0 and x0 + 1 with x0 = ⌊x − ½⌋: it reads the
+        // box when x lies in [bx0 − ½, bx1 + 1½).
+        let reach = vello_cpu::kurbo::Rect::new(
+            bx0 as f64 - 0.5,
+            by0 as f64 - 0.5,
+            bx1 as f64 + 1.5,
+            by1 as f64 + 1.5,
+        );
+        let landed = transform.transform_rect_bbox(reach);
+        if ![landed.x0, landed.y0, landed.x1, landed.y1]
+            .iter()
+            .all(|v| v.is_finite())
+        {
+            return whole;
+        }
+        // Pixel x is the point x + ½.
+        let first = |v: f64, n: usize| ((v - 0.5).floor() - 2.0).clamp(0.0, n as f64) as usize;
+        let last = |v: f64, n: usize| ((v - 0.5).ceil() + 2.0).clamp(-1.0, (n - 1) as f64);
+        let (x0, y0) = (first(landed.x0, width), first(landed.y0, height));
+        let (x1, y1) = (last(landed.x1, width), last(landed.y1, height));
+        if x1 < 0.0
+            || y1 < 0.0
+            || x0 >= width
+            || y0 >= height
+            || (x1 as usize) < x0
+            || (y1 as usize) < y0
+        {
+            // It lands off the grid: every sample reads nothing.
+            return None;
+        }
+        Some([x0, y0, x1 as usize, y1 as usize])
     }
 
     /// Each pixel moved from this one towards `other`'s by the share

@@ -102,6 +102,26 @@ pub(crate) fn rows<T: Send, S>(
         .for_each_init(&scratch, |room, (y, row)| work(y, row, room));
 }
 
+/// What `make` gives for each row of `data`, `width` items long, with the
+/// row's index, combined by `join`; the answer is the same however the
+/// rows are split only where `join` is associative and commutative, as a
+/// smallest or a largest is.
+pub(crate) fn rows_reduce<T: Sync, R: Send>(
+    data: &[T],
+    width: usize,
+    make: impl Fn(usize, &[T]) -> Option<R> + Sync,
+    join: impl Fn(Option<R>, Option<R>) -> Option<R> + Send + Sync,
+) -> Option<R> {
+    if width == 0 {
+        return None;
+    }
+    data.par_chunks(width)
+        .with_min_len(rows_per_task(width))
+        .enumerate()
+        .map(|(y, row)| make(y, row))
+        .reduce(|| None, join)
+}
+
 /// Runs `work` on every band of `band` rows of `data`, `width` items
 /// long, with the index of the band's first row: for work that keeps rows
 /// together, such as tiles.

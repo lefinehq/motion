@@ -119,3 +119,58 @@ fn a_dithered_gradient_breaks_its_steps_and_keeps_its_level() {
     assert_eq!(dithered, pixels.to_rgba8_dithered());
     assert!(dithered.chunks_exact(4).all(|p| p[3] == 255));
 }
+
+#[test]
+fn moved_pixels_have_the_bits_of_their_reference() {
+    use crate::oracle::{Noise, assert_same_bits, edge_floats, on_threads};
+    use vello_cpu::kurbo::Vec2;
+    let (width, height) = (97u16, 61u16);
+    let mut noise = Noise::new(11);
+    let edges = edge_floats();
+    // A patch of noise and edge values, a speck of -0.0 and one of NaN
+    // apart from it, on nothing; and a grid of nothing at all.
+    let mut drawn = Pixels::transparent(width, height);
+    for y in 20..35 {
+        for x in 40..70 {
+            drawn.data_mut()[y * 97 + x] = match noise.bits() % 3 {
+                0 => [edges[noise.bits() as usize % edges.len()]; 4],
+                _ => noise.pixel(),
+            };
+        }
+    }
+    drawn.data_mut()[5 * 97 + 3] = [-0.0; 4];
+    drawn.data_mut()[55 * 97 + 90] = [f32::NAN, 0.0, 0.0, 0.0];
+    let empty = Pixels::transparent(width, height);
+    let moves = [
+        Affine::IDENTITY,
+        Affine::translate(Vec2::new(3.0, -2.0)),
+        Affine::translate(Vec2::new(-12.37, 8.6)),
+        Affine::translate(Vec2::new(0.5, 0.5)),
+        Affine::translate(Vec2::new(1e-9, -1e-9)),
+        Affine::translate(Vec2::new(500.0, 3.0)),
+        Affine::translate(Vec2::new(-96.6, -60.4)),
+        Affine::scale_non_uniform(1.7, 0.4),
+        Affine::scale(-1.0) * Affine::translate(Vec2::new(-90.0, -50.0)),
+        Affine::translate(Vec2::new(10.0, 10.0)) * Affine::scale(1e-7),
+        Affine::rotate(0.3) * Affine::translate(Vec2::new(4.0, 1.0)),
+        Affine::new([1.0, 0.2, 0.0, 1.0, 2.5, -1.5]),
+        Affine::scale(0.0),
+    ];
+    for (name, pixels) in [("drawn", &drawn), ("empty", &empty)] {
+        for transform in moves {
+            let want = pixels.transformed_reference(transform);
+            for threads in [1, 4] {
+                for split in [Some(1), Some(7), None] {
+                    crate::memory::set_clobber(true);
+                    crate::par::split_in_tests(split);
+                    let got = on_threads(threads, || pixels.transformed(transform));
+                    crate::par::split_in_tests(None);
+                    crate::memory::set_clobber(false);
+                    let what =
+                        format!("{name} by {transform:?}, {threads} threads, split {split:?}");
+                    assert_same_bits(&what, want.data(), got.data());
+                }
+            }
+        }
+    }
+}
