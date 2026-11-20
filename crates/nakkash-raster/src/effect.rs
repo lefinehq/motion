@@ -3255,6 +3255,91 @@ pub struct Effect {
     moments: Vec<Vec<ParamValue>>,
 }
 
+/// The effects that read their layer's own time ([`Space::time`]): only
+/// these make a layer's time part of what it draws, so a layer otherwise
+/// still draws the same at every time and its frames are known to repeat.
+/// A test runs every effect at two times and fails for one that changes
+/// without being here.
+pub(crate) const READS_TIME: &[&str] = &["particles"];
+
+impl Effect {
+    /// Writes what the effect is into `h`, for its layer's identity: its
+    /// name, values and everything it was given, with `input` the identity
+    /// of the layer it reads ([`crate::identity`]).
+    pub(crate) fn ident(
+        &self,
+        h: &mut crate::identity::Hasher,
+        input: Option<crate::identity::Id>,
+    ) {
+        let Effect {
+            spec,
+            values,
+            input: _,
+            sound,
+            outline,
+            totals,
+            rest,
+            moments,
+        } = self;
+        h.text(spec.name);
+        h.all(values, |h, v| v.ident(h));
+        h.option(input.as_ref(), |h, id| h.id_of(*id));
+        h.option(sound.as_deref(), |h, heard| {
+            let crate::sound::Heard { left, right, rate } = heard;
+            h.all(left, |h, v| h.f32(*v));
+            h.all(right, |h, v| h.f32(*v));
+            h.f32(*rate);
+        });
+        h.option(outline.as_deref(), |h, path| h.path(path));
+        h.all(totals, |h, (at, total)| {
+            h.u64(*at as u64);
+            total.ident(h);
+        });
+        h.option(rest.as_ref(), |h, r| h.rect(*r));
+        h.all(moments, |h, values| h.all(values, |h, v| v.ident(h)));
+    }
+
+    /// Whether it reads its layer's own time ([`READS_TIME`]).
+    pub(crate) fn reads_time(&self) -> bool {
+        READS_TIME.contains(&self.spec.name)
+    }
+}
+
+impl ParamValue {
+    /// Writes the value into `h`, numbers by their bits.
+    fn ident(&self, h: &mut crate::identity::Hasher) {
+        match *self {
+            ParamValue::Number(n) => {
+                h.u8(0);
+                h.f32(n);
+            }
+            ParamValue::Color(c) => {
+                h.u8(1);
+                h.color(c);
+            }
+            ParamValue::Point([x, y]) => {
+                h.u8(2);
+                h.f32(x);
+                h.f32(y);
+            }
+            ParamValue::Choice(c) => {
+                h.u8(3);
+                h.u8(c);
+            }
+            ParamValue::Curve(Curve { len, points }) => {
+                h.u8(4);
+                h.u8(len);
+                // Every point, those past `len` too: they are part of the
+                // value as it compares.
+                for [x, y] in points {
+                    h.f32(x);
+                    h.f32(y);
+                }
+            }
+        }
+    }
+}
+
 impl Effect {
     /// The effect called `name` with the parameters given by name; the
     /// others take their defaults.

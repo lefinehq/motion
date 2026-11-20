@@ -205,3 +205,34 @@ fn every_effect_gives_the_same_bits_on_one_thread_and_on_many() {
         assert!(same, "{what} differs between one thread and six");
     }
 }
+
+#[test]
+fn only_the_effects_that_say_so_draw_their_layers_time() {
+    let at = |time: f64, effect: &Effect| {
+        let space = Space {
+            transform: Affine::translate((30.0, 20.0)),
+            bounds: Some(Rect::new(0.0, 0.0, 240.0, 160.0)),
+            input: Some(Input::new(textured(), None)),
+            time,
+            sound: None,
+            outline: None,
+            totals: Vec::new(),
+        };
+        let mut pixels = textured();
+        effect.apply(&mut pixels, &space);
+        pixels
+            .data()
+            .iter()
+            .map(|p| p.map(f32::to_bits))
+            .collect::<Vec<_>>()
+    };
+    for (what, effect) in every_effect_set() {
+        if effect.reads_time() {
+            continue;
+        }
+        assert!(
+            at(0.25, &effect) == at(7.5, &effect),
+            "{what} draws its layer's time: list it in READS_TIME"
+        );
+    }
+}

@@ -146,7 +146,7 @@ impl Gradient {
 }
 
 /// Which parts of a self-overlapping outline count as inside.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FillRule {
     /// Inside where the outline winds around a point a non-zero number of times.
     NonZero,
@@ -161,7 +161,7 @@ pub const FILL_RULES: &[(&str, FillRule, peniko::Fill)] = &[
 ];
 
 /// The shape drawn at the open ends of a stroke.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Cap {
     /// Flat, ending exactly at the end point.
     Butt,
@@ -179,7 +179,7 @@ pub const CAPS: &[(&str, Cap, kurbo::Cap)] = &[
 ];
 
 /// The shape drawn where two segments of a stroke meet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Join {
     /// A sharp corner, cut off past the miter limit.
     Miter,
