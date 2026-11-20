@@ -872,6 +872,12 @@ fn blend(mode: BlendMode) -> Option<&'static str> {
         BlendMode::Saturation => "saturation",
         BlendMode::Color => "color",
         BlendMode::Luminosity => "luminosity",
+        BlendMode::LinearLight => "linear-light",
+        BlendMode::Subtract => "subtract",
+        BlendMode::StencilAlpha => "stencil-alpha",
+        BlendMode::StencilLuma => "stencil-luma",
+        BlendMode::SilhouetteAlpha => "silhouette-alpha",
+        BlendMode::SilhouetteLuma => "silhouette-luma",
         _ => return None,
     })
 }
