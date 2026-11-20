@@ -9,7 +9,7 @@ expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ]}
 
 imported `DyanamicGradient`
-  14 mapped, 14 defaulted, 24 ignored, 4 unsupported, over 28 match names
+  14 mapped, 16 defaulted, 24 ignored, 4 unsupported, over 29 match names
   ignored, drawing nothing:
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (24)
   slots to vary: 0 text, 1 colour, 0 media, 0 placeholder, 1 timing

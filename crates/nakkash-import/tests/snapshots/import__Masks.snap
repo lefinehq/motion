@@ -8,7 +8,7 @@ expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ]}
 
 imported `Add`
-  12 mapped, 12 defaulted, 11 ignored, 0 unsupported, over 35 match names
+  12 mapped, 13 defaulted, 11 ignored, 0 unsupported, over 36 match names
   ignored, drawing nothing:
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (11)
   slots to vary: 0 text, 2 colour, 0 media, 0 placeholder, 1 timing
