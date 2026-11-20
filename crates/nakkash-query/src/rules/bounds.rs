@@ -43,7 +43,7 @@ fn safe_area(graph: &SceneGraph) -> Rect {
 }
 
 fn offscreen(visit: &Visit<'_>, graph: &SceneGraph) -> Option<Overshoot> {
-    if !(visible(visit) && draws(visit)) || shows_a_comp(visit) {
+    if !(visible(visit) && draws(visit)) || shows_a_comp(visit) || adjusts(visit, graph) {
         return None;
     }
     overshoot(visit, canvas(graph)).or_else(|| wider_text(visit, canvas(graph)))
@@ -64,7 +64,7 @@ fn wider_text(visit: &Visit<'_>, area: Rect) -> Option<Overshoot> {
 }
 
 fn outside_safe_area(visit: &Visit<'_>, graph: &SceneGraph) -> Option<Overshoot> {
-    if !(visible(visit) && draws(visit)) || shows_a_comp(visit) {
+    if !(visible(visit) && draws(visit)) || shows_a_comp(visit) || adjusts(visit, graph) {
         return None;
     }
     overshoot(visit, safe_area(graph))
@@ -76,6 +76,15 @@ fn outside_safe_area(visit: &Visit<'_>, graph: &SceneGraph) -> Option<Overshoot>
 /// composition placed, scaled or cropped whole is judged by its content.
 fn shows_a_comp(visit: &Visit<'_>) -> bool {
     matches!(visit.node.content, ContentState::Comp(..))
+}
+
+/// Whether the node is an adjustment layer: its effects change what is
+/// below it where its box lies, and it draws nothing of its own, so a box
+/// past the edge cuts nothing and only leaves less of the canvas adjusted.
+fn adjusts(visit: &Visit<'_>, graph: &SceneGraph) -> bool {
+    graph
+        .node_at(&visit.ids)
+        .is_some_and(|(node, _)| node.adjust)
 }
 
 #[cfg(test)]
