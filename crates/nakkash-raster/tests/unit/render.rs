@@ -156,17 +156,18 @@ fn stencils_keep_and_silhouettes_cut_everything_below(
     let silhouette = stencilled("silhouette-alpha", left_white.clone(), 1.0, quality);
     assert_eq!(at(&silhouette, 1), [0, 0, 0, 0], "{quality:?}");
     assert_eq!(at(&silhouette, 6), [255, 0, 0, 255], "{quality:?}");
-    // Grey keeps what is below by its luma: about 50 % of it.
+    // Grey keeps what is below by its luma: about 50 % of it, read back
+    // as straight colour.
     let grey = band(0.0, 4.0, Color::rgba(0.5, 0.5, 0.5, 1.0));
     let luma = stencilled("stencil-luma", grey.clone(), 1.0, quality);
-    assert!(near(at(&luma, 1), [128, 0, 0, 128]), "{:?}", at(&luma, 1));
+    assert!(near(at(&luma, 1), [255, 0, 0, 128]), "{:?}", at(&luma, 1));
     assert_eq!(at(&luma, 6), [0, 0, 0, 0], "{quality:?}");
     let cut = stencilled("silhouette-luma", grey, 1.0, quality);
-    assert!(near(at(&cut, 1), [127, 0, 0, 127]), "{:?}", at(&cut, 1));
+    assert!(near(at(&cut, 1), [255, 0, 0, 127]), "{:?}", at(&cut, 1));
     assert_eq!(at(&cut, 6), [255, 0, 0, 255], "{quality:?}");
     // The layer's opacity scales the share it gives.
     let half = stencilled("stencil-alpha", left_white, 0.5, quality);
-    assert!(near(at(&half, 1), [128, 0, 0, 128]), "{:?}", at(&half, 1));
+    assert!(near(at(&half, 1), [255, 0, 0, 128]), "{:?}", at(&half, 1));
     assert_eq!(at(&half, 6), [0, 0, 0, 0], "{quality:?}");
 }
 

@@ -64,10 +64,10 @@ fn every_blend_mode_has_a_constant_the_kernel_names() {
 }
 
 #[test]
-fn the_operations_read_luma_by_the_rasteriser_s_weights() {
+fn the_stencils_read_luma_by_the_rasteriser_s_weights() {
     let [r, g, b] = nakkash_raster::LUMA;
     let weights = format!("p.r * {r:?} + p.g * {g:?} + p.b * {b:?}");
-    assert!(OPERATION.contains(&weights), "{weights}");
+    assert!(BLEND.contains(&weights), "{weights}");
 }
 
 #[test]

@@ -92,9 +92,14 @@ fn soft_light_lifts_or_lowers_by_the_colour_above() {
 fn where_one_side_is_clear_the_other_shows() {
     let red = [0.5, 0.0, 0.0, 0.5];
     for spec in OPERATIONS {
-        let Operation::Blend(_) = spec.operation else {
+        // A stencil keeps nothing under a clear result: it cuts what is
+        // under it everywhere it is not.
+        let Operation::Blend(mode) = spec.operation else {
             continue;
         };
+        if mode.keeps_below() {
+            continue;
+        }
         close(at(spec.name, CLEAR, red), red);
         close(at(spec.name, red, CLEAR), red);
     }

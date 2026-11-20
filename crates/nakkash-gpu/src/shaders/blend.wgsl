@@ -128,8 +128,9 @@ fn keeps_below(mode: u32) -> bool {
 
 // The share of `below` a stencil or silhouette keeps for `source`,
 // premultiplied: its alpha or its luma, by the effects' weights (`LUMA`).
-fn kept_share(mode: u32, source: vec4<f32>) -> f32 {
-    let bright = dot(source.rgb, vec3(0.299, 0.587, 0.114));
+fn kept_share(mode: u32, p: vec4<f32>) -> f32 {
+    let source = p;
+    let bright = p.r * 0.299 + p.g * 0.587 + p.b * 0.114;
     switch mode {
         case MODE_STENCIL_ALPHA: { return source.a; }
         case MODE_STENCIL_LUMA: { return bright; }

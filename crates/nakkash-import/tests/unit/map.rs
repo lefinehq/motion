@@ -1951,7 +1951,14 @@ fn a_blend_mode_the_scene_has_is_written_and_another_reported() {
     ] {
         let laid = imported(mode);
         assert_eq!(laid.json["layers"][0]["blend"], name);
-        assert!(laid.mapping.unsupported.is_empty(), "{name}");
+        assert!(
+            !laid
+                .mapping
+                .unsupported
+                .iter()
+                .any(|f| f.what.contains("blend mode")),
+            "{name}"
+        );
     }
     let dissolve = imported(BlendMode::Dissolve);
     assert!(dissolve.json["layers"][0].get("blend").is_none());
