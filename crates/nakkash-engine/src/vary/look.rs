@@ -129,6 +129,11 @@ pub struct Title {
     /// letterforms come through a texture more whole.
     #[serde(default = "one")]
     pub displace: f64,
+    /// How light its copies' curves run at their top, times the look's
+    /// colour: below 1 the copies, which add up where they overlap, stop
+    /// short of clipping.
+    #[serde(default = "one")]
+    pub top: f64,
     /// Filled, outlined or extruded.
     pub treatment: Treatment,
     /// Its case.
@@ -218,6 +223,10 @@ struct Preset {
     blur: f64,
     rings: Rings,
     title_glow: f64,
+    /// How light a title copy's curve runs at its top, as a share of the
+    /// look's colour: the copies add up where they overlap, so a look
+    /// whose title would clip stops them short of full light.
+    title_top: f64,
     glitch: bool,
     displace: f64,
     treatment: Treatment,
@@ -259,7 +268,8 @@ const PRESETS: [Preset; 3] = [
         field_glow: 1.1,
         blur: 1.3,
         rings: Rings::Off,
-        title_glow: 1.0,
+        title_glow: 0.4,
+        title_top: 0.75,
         glitch: false,
         displace: 1.0,
         treatment: Treatment::Fill,
@@ -273,7 +283,7 @@ const PRESETS: [Preset; 3] = [
     Preset {
         name: "riso",
         ground: ["#2A2118", "#0E0B08"],
-        field: &["#0078BF", "#00A95C", "#00838A"],
+        field: &["#00A95C", "#FF6C2F", "#00838A"],
         split: ["#FF48B0", "#FFE800", "#F4EEDC"],
         text: "#F4EEDC",
         noise: None,
@@ -285,6 +295,7 @@ const PRESETS: [Preset; 3] = [
         blur: 0.4,
         rings: Rings::Width(6.0),
         title_glow: 1.0,
+        title_top: 1.0,
         glitch: true,
         displace: 0.4,
         treatment: Treatment::Fill,
@@ -309,7 +320,8 @@ const PRESETS: [Preset; 3] = [
         field_glow: 1.0,
         blur: 1.0,
         rings: Rings::Echo(2),
-        title_glow: 1.0,
+        title_glow: 0.6,
+        title_top: 0.75,
         glitch: false,
         displace: 1.0,
         treatment: Treatment::Extrude(0.03),
@@ -372,6 +384,7 @@ pub(crate) fn draw(
         glow: jitter(preset.title_glow),
         glitch: preset.glitch,
         displace: preset.displace,
+        top: preset.title_top,
         treatment: preset.treatment,
         case: preset.case,
         tracking: preset.tracking,
@@ -1031,6 +1044,12 @@ fn recolour(
         }
         let Some(c) = rgb(&json!(colour)) else {
             return false;
+        };
+        // A title's copies add up where they overlap: each stops short of
+        // full light, so the highlights stay below clipping.
+        let c = match role {
+            Role::Title => c.map(|v| v * step.title.top),
+            _ => c,
         };
         for (i, key) in ["red", "green", "blue"].iter().enumerate() {
             item.insert(
