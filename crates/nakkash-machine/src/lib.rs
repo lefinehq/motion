@@ -90,12 +90,34 @@ pub fn default_budget() -> u64 {
 /// How many threads a render uses when not told: on macOS its performance
 /// cores, so the efficiency cores stay free for the desktop; elsewhere the
 /// processors the process may use, which on Linux are its job's or its
-/// container's. Never more than the process may use, never 0.
+/// container's. A process whose environment caps its threads uses no more:
+/// `NAKKASH_THREADS`, else `RAYON_NUM_THREADS` (what a job runner sets for
+/// a child it starts without `--threads`). Never more than the process may
+/// use, never 0.
 pub fn default_threads() -> usize {
     let usable = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
     #[cfg(target_os = "macos")]
     let usable = macos::performance_cores().map_or(usable, |cores| cores.min(usable));
-    usable.max(1)
+    let cap = |name: &str| std::env::var(name).ok();
+    capped(
+        usable,
+        cap(THREADS_VAR).or_else(|| cap(RAYON_VAR)).as_deref(),
+    )
+}
+
+/// The variable that caps a process's threads.
+pub const THREADS_VAR: &str = "NAKKASH_THREADS";
+
+/// The thread pool library's own cap, read when [`THREADS_VAR`] is not set.
+const RAYON_VAR: &str = "RAYON_NUM_THREADS";
+
+/// `usable` threads, at most the whole number `cap` reads as when it is
+/// one above 0; never 0.
+fn capped(usable: usize, cap: Option<&str>) -> usize {
+    let cap = cap
+        .and_then(|c| c.trim().parse::<usize>().ok())
+        .filter(|c| *c > 0);
+    cap.map_or(usable, |c| c.min(usable)).max(1)
 }
 
 /// How hard the machine is pressed for memory now. On macOS, the kernel's
