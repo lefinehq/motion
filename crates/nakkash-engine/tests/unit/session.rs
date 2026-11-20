@@ -392,13 +392,13 @@ fn a_frame_is_the_same_drawn_on_one_thread_and_on_many() {
         "/../../examples/advanced/ui-reveal.json"
     );
     let session = Session::open(UI_REVEAL).unwrap();
-    let before = THREADS.load(Ordering::Relaxed);
+    let before = nakkash_machine::thread_limit();
     let drawn = |threads: usize| {
         limit_threads(NonZero::new(threads).unwrap());
         session.render_with(40.0, RenderOptions::GOLDEN).unwrap()
     };
     let (one, many) = (drawn(1), drawn(5));
-    THREADS.store(before, Ordering::Relaxed);
+    nakkash_machine::set_thread_limit(before);
     assert!(one == many, "the frame differs between one thread and five");
 }
 

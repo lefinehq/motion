@@ -31,14 +31,15 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 use tracing::{Span, field, instrument};
 
 /// Runs the standard rules on `scene` over every frame of `graph`, its
-/// compiled form, on every node at any depth, in scene space, on one thread
-/// per processor ([`check_on`]).
+/// compiled form, on every node at any depth, in scene space, on as many
+/// threads as the process works on ([`nakkash_machine::threads`],
+/// [`check_on`]).
 pub fn check(scene: &Scene, graph: &SceneGraph) -> Report {
-    let processors = std::thread::available_parallelism().map_or(1, NonZero::get);
+    let threads = nakkash_machine::threads();
     check_on(
         scene,
         graph,
-        NonZero::new(processors).unwrap_or(NonZero::<usize>::MIN),
+        NonZero::new(threads).unwrap_or(NonZero::<usize>::MIN),
     )
 }
 

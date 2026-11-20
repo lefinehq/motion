@@ -1879,6 +1879,7 @@ version = "0.0.0"
 dependencies = [
  "mp4-atom",
  "nakkash-format",
+ "nakkash-machine",
  "nakkash-videotoolbox",
  "pretty_assertions",
  "proptest",
@@ -2066,6 +2067,7 @@ dependencies = [
  "insta",
  "kurbo",
  "nakkash-format",
+ "nakkash-machine",
  "nakkash-scene",
  "nakkash-text",
  "pretty_assertions",

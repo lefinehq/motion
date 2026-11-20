@@ -65,7 +65,12 @@ pub(crate) fn shrunk_by(
             shared: None,
         })],
     };
-    nakkash_raster::render_with(&small, side(width), side(height), options)
+    // On the render's threads, as every drawing is: off them, the rows
+    // would go to the thread pool library's own pool, one thread per
+    // processor whatever `--threads` says.
+    crate::session::on_pool(|| {
+        nakkash_raster::render_with(&small, side(width), side(height), options)
+    })
 }
 
 /// Frame `frame` of `session`'s scene drawn at `shrink` of its size: what
