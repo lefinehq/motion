@@ -45,6 +45,10 @@ fn boxed(text: &str, name: &str, size: f64, justification: Justification) -> Sty
     styled
 }
 
+/// The height of Inter's `d`, in ems, to whole thousandths: how far below a
+/// box's top its first baseline sits.
+const INTER_D: f64 = 0.728;
+
 fn close(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-3
 }
@@ -160,8 +164,8 @@ fn box_text_breaks_between_words_that_do_not_fit() {
             assert!(plain(&longer, BOLD, 40.0).lines[0].width > 300.0);
         }
     }
-    let first = &layout.lines[0];
-    assert!(close(first.baseline, 20.0 + first.ascent));
+    // The first baseline is the face's `d` below the box's top.
+    assert!(close(layout.lines[0].baseline, 20.0 + INTER_D * 40.0));
     for pair in layout.lines.windows(2) {
         assert!(close(
             pair[1].baseline - pair[0].baseline,
@@ -313,6 +317,71 @@ fn characters_scaled_up_keep_their_advances_and_grow_their_lines() {
     let (inks, plain_inks) = (tall.runs[0].inks(), base.runs[0].inks());
     let (t, p) = (inks[0].unwrap(), plain_inks[0].unwrap());
     assert!(close(t.height(), p.height() * 1.5) && close(t.y1, p.y1));
+}
+
+#[rstest]
+#[case::regular(REGULAR, 100.0)]
+#[case::bold(BOLD, 37.0)]
+fn box_texts_first_baseline_is_its_faces_d_below_the_top(#[case] name: &str, #[case] size: f64) {
+    let layout = lay(&boxed("Hxg", name, size, Justification::Left));
+    let line = &layout.lines[0];
+    assert!(
+        close(line.baseline, 20.0 + INTER_D * size),
+        "{}",
+        line.baseline
+    );
+    // Less than an ascent down: capitals and accents may rise above the top.
+    assert!(line.baseline < 20.0 + line.ascent);
+}
+
+#[test]
+fn a_first_line_of_several_sizes_sits_below_the_top_by_its_largest() {
+    let mut styled = boxed("ab\ncd", REGULAR, 30.0, Justification::Left);
+    styled.runs = vec![
+        StyledRun {
+            range: 0..1,
+            style: style(REGULAR, 30.0),
+        },
+        StyledRun {
+            range: 1..5,
+            style: style(BOLD, 60.0),
+        },
+    ];
+    let layout = lay(&styled);
+    assert!(close(layout.lines[0].baseline, 20.0 + INTER_D * 60.0));
+    // Only the first line: the next is a leading below it.
+    assert!(close(
+        layout.lines[1].baseline - layout.lines[0].baseline,
+        60.0 * AUTO_LEADING
+    ));
+}
+
+#[test]
+fn an_empty_first_paragraph_sits_below_the_top_by_its_own_run() {
+    let mut styled = boxed("\nWord", REGULAR, 50.0, Justification::Left);
+    styled.runs = vec![
+        StyledRun {
+            range: 0..1,
+            style: style(REGULAR, 50.0),
+        },
+        StyledRun {
+            range: 1..5,
+            style: style(REGULAR, 20.0),
+        },
+    ];
+    let layout = lay(&styled);
+    assert!(close(layout.lines[0].baseline, 20.0 + INTER_D * 50.0));
+}
+
+#[test]
+fn scales_leave_the_first_baseline_where_the_written_size_puts_it() {
+    let plain = lay(&boxed("Wide", REGULAR, 80.0, Justification::Left));
+    let mut scaled = boxed("Wide", REGULAR, 80.0, Justification::Left);
+    scaled.runs[0].style.horizontal_scale = 1.5;
+    scaled.runs[0].style.vertical_scale = 1.5;
+    let scaled = lay(&scaled);
+    assert!(close(scaled.lines[0].baseline, plain.lines[0].baseline));
+    assert!(close(plain.lines[0].baseline, 20.0 + INTER_D * 80.0));
 }
 
 #[rstest]
