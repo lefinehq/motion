@@ -8,8 +8,20 @@
 use super::*;
 
 /// A radial blur of `amount` about `centre`: `spin` or a zoom, `across`
-/// or behind, fading or flat.
+/// or behind, fading or flat, beyond the grid nothing.
 fn radial(amount: f32, centre: [f32; 2], spin: bool, across: bool, linear: bool) -> Effect {
+    radial_edged(amount, centre, spin, across, linear, false)
+}
+
+/// [`radial`], beyond the grid its edge pixels repeated when `repeat`.
+fn radial_edged(
+    amount: f32,
+    centre: [f32; 2],
+    spin: bool,
+    across: bool,
+    linear: bool,
+    repeat: bool,
+) -> Effect {
     Effect::new(
         "radial-blur",
         &[
@@ -18,6 +30,7 @@ fn radial(amount: f32, centre: [f32; 2], spin: bool, across: bool, linear: bool)
             ("type", ParamValue::Choice(u8::from(spin))),
             ("stretch", ParamValue::Choice(u8::from(across))),
             ("fade", ParamValue::Choice(u8::from(linear))),
+            ("edges", ParamValue::Choice(u8::from(repeat))),
         ],
     )
     .expect("a radial blur")
@@ -25,17 +38,31 @@ fn radial(amount: f32, centre: [f32; 2], spin: bool, across: bool, linear: bool)
 
 /// Every stretch and fade of one kind, amount and centre.
 fn radial_cases(spin: bool, amount: f32, centre: [f32; 2], pixels: &Pixels, space: &Space) {
+    radial_cases_edged(spin, amount, centre, pixels, space, false);
+}
+
+/// [`radial_cases`], beyond the grid its edge pixels repeated when
+/// `repeat`.
+fn radial_cases_edged(
+    spin: bool,
+    amount: f32,
+    centre: [f32; 2],
+    pixels: &Pixels,
+    space: &Space,
+    repeat: bool,
+) {
     let name = if spin { "radial-spin" } else { "radial-zoom" };
     for across in [false, true] {
         for linear in [false, true] {
             effect_matches(
                 name,
                 &format!(
-                    "{amount} at {centre:?} across {across} linear {linear} {}x{}",
+                    "{amount} at {centre:?} across {across} linear {linear} repeat {repeat} \
+                     {}x{}",
                     pixels.width(),
                     pixels.height()
                 ),
-                &radial(amount, centre, spin, across, linear),
+                &radial_edged(amount, centre, spin, across, linear, repeat),
                 pixels,
                 space,
             );
@@ -72,6 +99,39 @@ fn spins_match() {
         for amount in [2.0, 17.0, -45.0, 360.0, 3_600.0, -3_600.0] {
             radial_cases(true, amount, centre, &pixels, &one);
         }
+    }
+}
+
+#[test]
+fn radial_blurs_with_repeated_edges_match() {
+    // Rays reach in past where the grid is nearest and out past where it
+    // is farthest, and rings are read all the way round.
+    let pixels = pattern(181, 117, 57);
+    let one = space(Affine::IDENTITY);
+    for centre in CENTRES {
+        for (spin, amount) in [
+            (false, 20.0),
+            (false, -60.0),
+            (false, 250.0),
+            (true, 17.0),
+            (true, -45.0),
+            (true, 360.0),
+        ] {
+            radial_cases_edged(spin, amount, centre, &pixels, &one, true);
+        }
+    }
+}
+
+#[test]
+fn radial_blurs_with_repeated_edges_match_on_a_large_grid() {
+    let pixels = pattern(1_920, 1_080, 58);
+    let one = space(Affine::IDENTITY);
+    for (spin, amount, centre) in [
+        (false, 20.0, [960.0, 540.0]),
+        (false, 55.0, [2_400.0, 1_500.0]),
+        (true, 10.0, [-200.0, 300.0]),
+    ] {
+        radial_cases_edged(spin, amount, centre, &pixels, &one, true);
     }
 }
 

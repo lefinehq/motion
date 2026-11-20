@@ -12,7 +12,7 @@ use std::f64::consts::TAU;
 use std::sync::OnceLock;
 
 use nakkash_raster::kurbo::Point;
-use nakkash_raster::{RadialBlur, RadialFade, RadialKind, RadialStretch, Rays, Rings};
+use nakkash_raster::{Edges, RadialBlur, RadialFade, RadialKind, RadialStretch, Rays, Rings};
 
 use crate::Gpu;
 use crate::grid::Grid;
@@ -92,6 +92,7 @@ struct RadialParams {
     chunk_first: u32,
     spin: bool,
     shift: u32,
+    repeat: bool,
     centre: Point,
     view: [f32; 4],
 }
@@ -125,6 +126,7 @@ impl RadialParams {
             .u32(self.chunk_first)
             .u32(u32::from(self.spin))
             .u32(self.shift)
+            .u32(u32::from(self.repeat))
             .vec4([whole(cw.0), whole(cw.1), 0.0, 0.0])
             .vec4([
                 (self.centre.x - cw.0) as f32,
@@ -236,6 +238,7 @@ impl Gpu {
             row,
             linear: plan.fade == RadialFade::Linear,
             across,
+            repeat: plan.edges == Edges::Repeat,
             centre: plan.centre,
             ..RadialParams::default()
         };

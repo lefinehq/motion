@@ -15,11 +15,17 @@
 //! the mean along the two lines either side of it, mixed by how near it
 //! lies to each, so what is read between them is read as a bilinear sample
 //! is.
+//!
+//! What lies beyond the grid is nothing, or its edge pixels repeated
+//! ([`Edges`]). Repeated, a line is read as far as any stretch on it
+//! reaches, inside the grid or not: a ray from as near the centre as a
+//! stretch ends to as far out as one ends, and a ring all the way round.
 
 use std::f64::consts::TAU;
 
 use vello_cpu::kurbo::{Point, Rect, Vec2};
 
+use crate::blur::Edges;
 use crate::colour::{choice, number};
 use crate::effect::{ParamValue, Space};
 use crate::pixels::{Pixel, Pixels};
@@ -306,18 +312,34 @@ pub struct Rays {
 
 impl Rays {
     /// The rays from `view`: one px apart where the grid is farthest from
-    /// the centre, a ray every 1/far radians.
-    fn of(view: &View) -> Rays {
+    /// the centre, a ray every 1/far radians. Each reads from the nearest
+    /// pixel's distance to the farthest's, and with `edges` repeated as
+    /// far either way as `stretch` reaches from them.
+    fn of(view: &View, stretch: Stretch, edges: Edges) -> Rays {
         let rays = ((view.width * view.far).ceil() as usize).max(1);
-        let first = view.near.floor();
+        let (inward, outward) = match edges {
+            Edges::Transparent => (0.0, 0.0),
+            Edges::Repeat => reach(stretch),
+        };
+        let first = (view.near * (1.0 - inward).max(0.0)).floor();
+        let last = view.far * (1.0 + outward);
         Rays {
             from: view.from,
             step: view.width / rays as f64,
             count: rays,
             first,
-            samples: (view.far.ceil() - first) as usize + 2,
+            samples: (last.ceil() - first) as usize + 2,
             whole: view.whole(),
         }
+    }
+}
+
+/// How far a zoom's `stretch` reaches from a pixel towards the centre and
+/// away from it, as shares of the pixel's distance from the centre.
+fn reach(stretch: Stretch) -> (f64, f64) {
+    match stretch {
+        Stretch::Behind(s) => (s.max(0.0), (-s).max(0.0)),
+        Stretch::Across(s) => (s.abs() / 2.0, s.abs() / 2.0),
     }
 }
 
@@ -338,6 +360,9 @@ pub struct Rings {
     pub width: f64,
     /// Whether the grid spans a whole turn about the centre.
     pub whole: bool,
+    /// Whether what lies beyond the grid is its edge pixels repeated, so
+    /// that every ring is read all the way round.
+    pub repeat: bool,
 }
 
 /// One ring of [`Rings`]: its coordinate is the angle in samples, sample
@@ -359,8 +384,9 @@ pub struct Ring {
 
 impl Rings {
     /// The rings from `view`, one px apart from the nearest pixel's
-    /// distance to the farthest's.
-    fn of(view: &View) -> Rings {
+    /// distance to the farthest's, beyond the grid nothing or its `edges`
+    /// repeated.
+    fn of(view: &View, edges: Edges) -> Rings {
         let inner = view.near.floor() as usize;
         Rings {
             inner,
@@ -368,6 +394,7 @@ impl Rings {
             from: view.from,
             width: view.width,
             whole: view.whole(),
+            repeat: edges == Edges::Repeat,
         }
     }
 
@@ -380,7 +407,7 @@ impl Rings {
     pub fn ring(&self, k: usize) -> Ring {
         let n = self.round(k);
         let step = TAU / n as f64;
-        let (first, samples) = match self.whole {
+        let (first, samples) = match self.whole || self.repeat {
             true => (0.0, n),
             false => (
                 (self.from / step).floor(),
@@ -457,6 +484,15 @@ impl Pair {
     }
 }
 
+/// `pixels` at the point (`x`, `y`), bilinearly, with nothing or the edge
+/// pixels beyond the grid.
+fn sample(pixels: &Pixels, edges: Edges, x: f64, y: f64) -> Pixel {
+    match edges {
+        Edges::Transparent => pixels.sample(x, y),
+        Edges::Repeat => pixels.sample_repeating(x, y),
+    }
+}
+
 /// The centre of pixel `i` of a grid `width` wide.
 fn centre_of(i: usize, width: usize) -> Point {
     Point::new((i % width) as f64 + 0.5, (i / width) as f64 + 0.5)
@@ -476,10 +512,11 @@ fn ends(near: f64, stretch: Stretch, extent: f64, fars: &mut Vec<f64>) {
 }
 
 /// A zoom: every pixel the mean of its ray from `centre` over `stretch`,
-/// a share of its distance from the centre, ending at the centre. Rays
-/// are one px apart where the grid is farthest from the centre and are
-/// read one px at a time.
-pub(crate) fn zoom(pixels: &mut Pixels, centre: Point, stretch: Stretch, fade: Fade) {
+/// a share of its distance from the centre, ending at the centre, with
+/// nothing or the edge pixels beyond the grid (`edges`). Rays are one px
+/// apart where the grid is farthest from the centre and are read one px
+/// at a time.
+pub(crate) fn zoom(pixels: &mut Pixels, centre: Point, stretch: Stretch, fade: Fade, edges: Edges) {
     let (width, height) = (usize::from(pixels.width()), usize::from(pixels.height()));
     let share = match stretch {
         Stretch::Behind(s) | Stretch::Across(s) => s,
@@ -494,7 +531,7 @@ pub(crate) fn zoom(pixels: &mut Pixels, centre: Point, stretch: Stretch, fade: F
         first,
         samples: count,
         ..
-    } = Rays::of(&view);
+    } = Rays::of(&view, stretch, edges);
     let along = |i: usize| (view.unwind(angle(centre_of(i, width) - centre)) - view.from) / step;
     let keys: Vec<u32> = (0..width * height)
         .map(|i| (along(i).floor().max(0.0) as usize).min(rays - 1) as u32)
@@ -505,7 +542,7 @@ pub(crate) fn zoom(pixels: &mut Pixels, centre: Point, stretch: Stretch, fade: F
         let a = view.from + j as f64 * step;
         let (dx, dy) = (a.cos(), -a.sin());
         line.read(first, count, None, |r| {
-            source.sample(centre.x + dx * r, centre.y + dy * r)
+            sample(&source, edges, centre.x + dx * r, centre.y + dy * r)
         });
     };
     let mut pair = Pair::new();
@@ -533,9 +570,10 @@ pub(crate) fn zoom(pixels: &mut Pixels, centre: Point, stretch: Stretch, fade: F
 }
 
 /// A spin: every pixel the mean of its ring about `centre` over
-/// `stretch`, an angle in radians. Rings are one px apart and read one px
-/// at a time along them.
-pub(crate) fn spin(pixels: &mut Pixels, centre: Point, stretch: Stretch, fade: Fade) {
+/// `stretch`, an angle in radians, with nothing or the edge pixels beyond
+/// the grid (`edges`). Rings are one px apart and read one px at a time
+/// along them.
+pub(crate) fn spin(pixels: &mut Pixels, centre: Point, stretch: Stretch, fade: Fade, edges: Edges) {
     let (width, height) = (usize::from(pixels.width()), usize::from(pixels.height()));
     let turn = match stretch {
         Stretch::Behind(s) | Stretch::Across(s) => s,
@@ -544,7 +582,7 @@ pub(crate) fn spin(pixels: &mut Pixels, centre: Point, stretch: Stretch, fade: F
         return;
     }
     let view = View::of(width as f64, height as f64, centre);
-    let geometry = Rings::of(&view);
+    let geometry = Rings::of(&view, edges);
     let Rings {
         inner,
         count: rings,
@@ -567,7 +605,12 @@ pub(crate) fn spin(pixels: &mut Pixels, centre: Point, stretch: Stretch, fade: F
         } = geometry.ring(k);
         line.read(first, count, Some(n as f64), |u| {
             let a = u * step;
-            source.sample(centre.x + radius * a.cos(), centre.y - radius * a.sin())
+            sample(
+                &source,
+                edges,
+                centre.x + radius * a.cos(),
+                centre.y - radius * a.sin(),
+            )
         });
     };
     let mut pair = Pair::new();
@@ -606,8 +649,9 @@ pub enum RadialKind {
 
 /// `radial-blur`'s plan: every pixel the mean of the layer along a
 /// stretch of its ray out from `centre` (a zoom) or its ring round it (a
-/// spin), as `stretch` and `fade` say. A zoom's stretch is a share of
-/// each pixel's distance from the centre, a spin's an angle in radians.
+/// spin), as `stretch` and `fade` say, with nothing or the edge pixels
+/// beyond the grid (`edges`). A zoom's stretch is a share of each pixel's
+/// distance from the centre, a spin's an angle in radians.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RadialBlur {
     /// The centre, in px of the grid.
@@ -618,17 +662,23 @@ pub struct RadialBlur {
     pub stretch: Stretch,
     /// How the pixels of a stretch weigh in its mean.
     pub fade: Fade,
+    /// What lies beyond the grid: nothing, or its edge pixels repeated.
+    pub edges: Edges,
 }
 
 impl RadialBlur {
     /// The rays a zoom reads on a `width` by `height` grid.
     pub fn rays(&self, width: usize, height: usize) -> Rays {
-        Rays::of(&View::of(width as f64, height as f64, self.centre))
+        let view = View::of(width as f64, height as f64, self.centre);
+        Rays::of(&view, self.stretch, self.edges)
     }
 
     /// The rings a spin reads on a `width` by `height` grid.
     pub fn rings(&self, width: usize, height: usize) -> Rings {
-        Rings::of(&View::of(width as f64, height as f64, self.centre))
+        Rings::of(
+            &View::of(width as f64, height as f64, self.centre),
+            self.edges,
+        )
     }
 
     /// Whether it changes nothing: a stretch of no length.
@@ -646,7 +696,8 @@ impl RadialBlur {
 /// the centre or clockwise, so the layer streaks outwards or
 /// counterclockwise (the other way for a negative amount); `across` takes
 /// it half each way. `fade` `linear` weighs the pixels of a stretch from
-/// all at the pixel to none at its end.
+/// all at the pixel to none at its end. `edges` `repeat` reads the edge
+/// pixels beyond the grid, where `transparent` reads nothing.
 pub(crate) fn radial_blur_plan(values: &[ParamValue], space: &Space) -> RadialBlur {
     let amount = f64::from(number(values, 0));
     let [x, y] = point(values, 1);
@@ -667,11 +718,16 @@ pub(crate) fn radial_blur_plan(values: &[ParamValue], space: &Space) -> RadialBl
         0 => RadialKind::Zoom,
         _ => RadialKind::Spin,
     };
+    let edges = match choice(values, 5) {
+        0 => Edges::Transparent,
+        _ => Edges::Repeat,
+    };
     RadialBlur {
         centre,
         kind,
         stretch,
         fade,
+        edges,
     }
 }
 
@@ -683,10 +739,11 @@ pub(crate) fn radial_blur(pixels: &mut Pixels, values: &[ParamValue], space: &Sp
         kind,
         stretch,
         fade,
+        edges,
     } = radial_blur_plan(values, space);
     match kind {
-        RadialKind::Zoom => zoom(pixels, centre, stretch, fade),
-        RadialKind::Spin => spin(pixels, centre, stretch, fade),
+        RadialKind::Zoom => zoom(pixels, centre, stretch, fade, edges),
+        RadialKind::Spin => spin(pixels, centre, stretch, fade, edges),
     }
 }
 

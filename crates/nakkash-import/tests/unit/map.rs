@@ -845,10 +845,11 @@ mod effects {
         assert_eq!(what, ["a `mode` the scene does not have"]);
     }
 
-    /// A radial blur's type is three settings at once: which lines, which
-    /// stretch of them and whether it fades. A type the scene does not
-    /// draw is reported, and so is a zoom of the spin/zoom blur, whose
-    /// amount's scale is not known, drawn as no blur.
+    /// A radial blur's type is several settings at once: which lines, which
+    /// stretch of them, whether it fades and, for the spin/zoom blur, that
+    /// its edges repeat. A type the scene does not draw is reported; the
+    /// spin/zoom blur's zoom takes Amount as a percentage of the distance,
+    /// half either side of each pixel.
     #[test]
     fn radial_blurs_take_their_streaks_from_their_type() {
         let center = |match_name: &str| {
@@ -908,17 +909,18 @@ mod effects {
             json!({"radial-blur":50,"type":"zoom","stretch":"behind","fade":"linear","center":[-50,0]}),
             "{fx}"
         );
-        assert_eq!(fx[1]["type"], "spin", "{fx}");
-        assert_eq!(fx[1]["stretch"], "across", "{fx}");
-        assert_eq!(fx[3]["radial-blur"], 0, "{fx}");
-        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
         assert_eq!(
-            what,
-            [
-                "a `type` the scene does not have",
-                "a zoom, whose amount's scale no sample shows"
-            ]
+            fx[1],
+            json!({"radial-blur":10,"type":"spin","stretch":"across","edges":"repeat"}),
+            "{fx}"
         );
+        assert_eq!(
+            fx[3],
+            json!({"radial-blur":4,"stretch":"across","edges":"repeat"}),
+            "{fx}"
+        );
+        let what: Vec<&str> = import.mapping.by_what().into_keys().collect();
+        assert_eq!(what, ["a `type` the scene does not have"]);
     }
 
     /// A vector blur keeps its amount, angle and softness as they are and
