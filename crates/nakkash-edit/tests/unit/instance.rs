@@ -99,7 +99,7 @@ fn values_reach_their_declarations_in_the_form_written() {
 
 #[test]
 fn every_unknown_id_is_reported_at_once_with_the_nearest() {
-    let m = merged(json!({"slots": {"titel": "x", "acent": "#000"}}));
+    let m = merged(json!({"slots": {"tittle": "x", "accentt": "#000"}}));
     assert_eq!(codes(&m), ["slot.unknown", "slot.unknown"]);
     assert!(
         m.problems[0]
