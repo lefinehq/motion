@@ -3,13 +3,16 @@ use serde_json::json;
 use super::*;
 
 #[test]
-fn key_order_and_spacing_leave_the_hash() {
+fn spacing_leaves_the_hash_and_key_order_moves_it() {
     let a: Json = serde_json::from_str(r#"{"nakkash":1,"size":"1080p","layers":[{"id":"a","fill":"#fff"}]}"#)
         .expect("JSON");
-    let b: Json = serde_json::from_str("{ \"layers\": [ {\"fill\": \"#fff\", \"id\": \"a\"} ],\n \"size\": \"1080p\", \"nakkash\": 1 }")
+    let spaced: Json = serde_json::from_str("{ \"nakkash\": 1,\n \"size\": \"1080p\", \"layers\": [ {\"id\": \"a\", \"fill\": \"#fff\"} ] }")
         .expect("JSON");
-    assert_eq!(canonical(&a), canonical(&b));
-    assert_eq!(hash(&a), hash(&b));
+    let reordered: Json = serde_json::from_str(r#"{"size":"1080p","nakkash":1,"layers":[{"fill":"#fff","id":"a"}]}"#)
+        .expect("JSON");
+    assert_eq!(canonical(&a), canonical(&spaced));
+    assert_eq!(hash(&a), hash(&spaced));
+    assert_ne!(hash(&a), hash(&reordered), "a layer keeps its values in the order written");
     assert!(hash(&a).starts_with("sha256:") && hash(&a).len() == 7 + 64);
 }
 
