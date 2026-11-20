@@ -2,7 +2,7 @@
 source: crates/nakkash-import/tests/import.rs
 expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ---
-{"nakkash":1,"size":"1920x1080","fps":60,"dur":"$duration","bg":"$background","slots":{"background":{"color":[0,0,0,1],"label":"black #000000","role":"background"},"duration":{"number":60,"label":"Duration in seconds","role":"duration"}},
+{"nakkash":1,"size":"1920x1080","fps":60,"dur":"$duration","bg":"$background","slots":{"background":{"color":[0,0,0,1],"label":"black #000000","role":"background","uid":"color:#000000FF"},"duration":{"number":60,"label":"Duration in seconds","role":"duration","uid":"duration"}},
 "layers":[
 {"id":"default","pivot":true,"anchor":[0,0],"position":[960,540]},
 {"id":"bicubic-sampling","pivot":true,"anchor":[0,0],"position":[960,540]},
@@ -29,6 +29,6 @@ imported `Comp 01`
     empty (1)
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (248)
     materials of 3D layers, which only lights change (they are reported) (1)
-  slots to vary: 0 text, 1 colour, 0 media, 1 timing
+  slots to vary: 0 text, 1 colour, 0 media, 0 placeholder, 1 timing
   unsupported:
     solo layers (2): Comp 01/Solo; Comp 01/Transformations Collapsed

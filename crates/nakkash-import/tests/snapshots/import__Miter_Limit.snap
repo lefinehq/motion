@@ -2,7 +2,7 @@
 source: crates/nakkash-import/tests/import.rs
 expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ---
-{"nakkash":1,"size":"300x300","fps":60,"dur":"$duration","bg":"$background","slots":{"accent":{"color":[0.928263,0,0,1],"label":"red #ED0000","role":"accent"},"background":{"color":[1,1,1,1],"label":"white #FFFFFF","role":"background"},"duration":{"number":3,"label":"Duration in seconds","role":"duration"}},
+{"nakkash":1,"size":"300x300","fps":60,"dur":"$duration","bg":"$background","slots":{"accent":{"color":[0.928263,0,0,1],"label":"red #ED0000","role":"accent","uid":"color:#ED0000FF"},"background":{"color":[1,1,1,1],"label":"white #FFFFFF","role":"background","uid":"color:#FFFFFFFF"},"duration":{"number":3,"label":"Duration in seconds","role":"duration","uid":"duration"}},
 "layers":[
 {"id":"shape-layer-1","shapes":[{"group":[{"path":"M80,153 "},{"stroke":[1,1,1,1],"width":13,"hidden":true},{"fill":"$accent"}]},{"group":[{"path":"M105,78 "},{"stroke":"$accent l+0.034398 c+0.014115","width":13},{"fill":"$accent"}]},{"group":[{"path":"M-63.431641,-124.568359 C-63.431641,-124.568359 37.568359,62.568359 37.568359,62.568359 C37.568359,62.568359 -61.568359,61.568361 -61.568359,61.568361 C-61.568359,61.568361 -63.431641,-124.568359 -63.431641,-124.568359 Z"},{"stroke":"$accent l+0.034398 c+0.014115","width":13}],"position":[3.568359,12.568359]}],"anchor":[0,0],"position":[150,150]}
 ]}
@@ -12,6 +12,6 @@ imported `miter`
   ignored, drawing nothing:
     empty (3)
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (14)
-  slots to vary: 0 text, 2 colour, 0 media, 1 timing
+  slots to vary: 0 text, 2 colour, 0 media, 0 placeholder, 1 timing
   unsupported:
     `ADBE Vector Graphic - G-Stroke` (1): miter/Shape Layer 1/ADBE Root Vectors Group/ADBE Vector Group/ADBE Vectors Group/ADBE Vector Graphic - G-Stroke

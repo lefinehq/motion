@@ -2,7 +2,7 @@
 source: crates/nakkash-import/tests/import.rs
 expression: "format!(\"{scene}\\n{}\", import.mapping)"
 ---
-{"nakkash":1,"size":"1920x1080","fps":60,"dur":"$duration","bg":"$background","slots":{"title":{"text":"Text Layer","label":"Text Layer in Comp 01","role":"title"},"background":{"color":[0,0,0,1],"label":"black #000000","role":"background"},"text":{"color":[1,1,1,1],"label":"white #FFFFFF","role":"text"},"duration":{"number":60,"label":"Duration in seconds","role":"duration"}},
+{"nakkash":1,"size":"1920x1080","fps":60,"dur":"$duration","bg":"$background","slots":{"title":{"text":"Text Layer","label":"Text Layer in Comp 01","role":"title","uid":"text:1/15","overflow":"shrink","min-size":138.75,"max-lines":1},"background":{"color":[0,0,0,1],"label":"black #000000","role":"background","uid":"color:#000000FF"},"text":{"color":[1,1,1,1],"label":"white #FFFFFF","role":"text","uid":"color:#FFFFFFFF","pair":"background","contrast":4.5},"duration":{"number":60,"label":"Duration in seconds","role":"duration","uid":"duration"}},
 "layers":[
 {"id":"text-layer","text":"$title","anchor":[0,0],"position":[960,540],"font":"BritannicBold 185","fill":"$text","style":{"paint":"stroke-over","align":"center"},"fit":"shrink 772.92x222"}
 ]}
@@ -14,5 +14,5 @@ imported `Comp 01`
     an expression control, which draws nothing (7)
     empty (2)
     it does not apply to the layer as it is (3D-only, or the unused half of a position) (27)
-  slots to vary: 1 text, 2 colour, 0 media, 1 timing
+  slots to vary: 1 text, 2 colour, 0 media, 0 placeholder, 1 timing
   unsupported: none

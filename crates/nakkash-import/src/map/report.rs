@@ -282,11 +282,11 @@ impl fmt::Display for Mapping {
             }
         }
         let v = &self.variables;
-        if v.text + v.colors + v.media + v.timing > 0 {
+        if v.text + v.colors + v.media + v.screens + v.timing > 0 {
             writeln!(
                 f,
-                "  slots to vary: {} text, {} colour, {} media, {} timing",
-                v.text, v.colors, v.media, v.timing
+                "  slots to vary: {} text, {} colour, {} media, {} placeholder, {} timing",
+                v.text, v.colors, v.media, v.screens, v.timing
             )?;
         }
         if !v.edit_comps.is_empty() {

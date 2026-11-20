@@ -35,6 +35,16 @@ use super::ids::Ids;
 /// [`MediaFact`], until the slots are made.
 pub(super) const MEDIA: &str = "\u{0}media";
 
+/// The least contrast the import asks of words against the background: the
+/// ratio for body text in the web's accessibility guidelines.
+const TEXT_CONTRAST: f64 = 4.5;
+
+/// `color` as `#RRGGBBAA`.
+fn hex8(color: [f64; 4]) -> String {
+    let [r, g, b, a] = color.map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8);
+    format!("#{r:02X}{g:02X}{b:02X}{a:02X}")
+}
+
 /// How far apart in OKLab two colours may be and still be one palette
 /// entry: about two differences a viewer just notices.
 pub const TOLERANCE: f64 = 0.04;
@@ -79,6 +89,11 @@ pub(super) struct Known<'a> {
     pub comp_names: &'a HashMap<Option<String>, String>,
     /// The lines the project laid each text out in.
     pub texts: &'a [StoredText],
+    /// The project's item id of each scope's composition, none for the
+    /// scene's own.
+    pub comp_items: &'a HashMap<Option<String>, u32>,
+    /// The project's id of each layer written, by scope and id.
+    pub layer_items: &'a HashMap<(Option<String>, String), u32>,
 }
 
 /// What the import made a designer can vary ([D77]).
@@ -94,6 +109,11 @@ pub struct Variables {
     pub media: usize,
     /// The timing slots.
     pub timing: usize,
+    /// The slots of placeholder compositions: compositions a designer left
+    /// empty for a product screen or a logo ([D91]).
+    ///
+    /// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+    pub screens: usize,
     /// The compositions whose names say they are for editing.
     pub edit_comps: Vec<String>,
 }
@@ -197,6 +217,7 @@ pub(super) fn make(scene: &mut Json, known: &Known<'_>) -> Variables {
     let mut slots = Map::new();
     made.text = texts(scene, known, &all, &edit, &mut ids, &mut slots);
     made.media = media(scene, known, &all, &edit, &mut ids, &mut slots);
+    made.screens = screens(scene, known, &mut ids, &mut slots);
     made.colors = palette(scene, &mut ids, &mut slots);
     made.timing = timing(scene, &mut ids, &mut slots);
     if !slots.is_empty() {
@@ -253,6 +274,8 @@ struct Text {
     covers: Option<[f64; 2]>,
     /// How many lines the project laid it out in.
     lines: usize,
+    /// Its layer's id in the scene.
+    layer_id: String,
 }
 
 /// The text slots: one per text layer, copies stacked in one composition
@@ -303,13 +326,14 @@ fn texts(
             boxed: layer.get("box").is_some(),
             name: known
                 .layer_names
-                .get(&(at.scope.clone(), id))
+                .get(&(at.scope.clone(), id.clone()))
                 .cloned()
                 .unwrap_or_default(),
             comp: known.comp_names.get(&at.scope).cloned().unwrap_or_default(),
             edit: edit.contains(&at.scope),
             covers: stored.map(|t| covers(&t.lines, size)),
             lines: stored.map_or(1, |t| t.lines.len().max(1)),
+            layer_id: id,
         });
     }
     // Copies stacked in one composition share the first one's slot.
@@ -348,10 +372,29 @@ fn texts(
             true => name,
             false => format!("{name} in {}", first.comp),
         };
-        slots.insert(
-            id.clone(),
-            json!({"text": first.words, "label": label, "role": roles[g]}),
-        );
+        let mut declared = json!({"text": first.words, "label": label, "role": roles[g]});
+        if let Some(uid) = text_uid(known, first) {
+            declared["uid"] = json!(uid);
+        }
+        let (overflow, max_lines) =
+            match (first.boxed, first.lines > 1 || first.words.contains('\n')) {
+                (true, _) => ("shrink", None),
+                (false, true) => (
+                    "wrap",
+                    Some(first.lines.max(first.words.lines().count()) + 1),
+                ),
+                (false, false) => ("shrink", Some(1)),
+            };
+        declared["overflow"] = json!(overflow);
+        if first.size > 0.0 {
+            declared["min-size"] = json!(super::keys::num(
+                (first.size * MIN_SHARE * 100.0).round() / 100.0
+            ));
+        }
+        if let Some(lines) = max_lines {
+            declared["max-lines"] = json!(lines);
+        }
+        slots.insert(id.clone(), declared);
         for &i in &groups[g] {
             let text = &met[i];
             let Some(layer) = at_mut(scene, &text.at.steps()).and_then(Json::as_object_mut) else {
@@ -364,6 +407,24 @@ fn texts(
         }
     }
     groups.len()
+}
+
+/// The share of its size a text may shrink to before it is too small: the
+/// floor the import writes as a text slot's `min-size` ([D91]). Our choice,
+/// about a step down a type scale; the designer moves it.
+///
+/// [D91]: https://github.com/lefinehq/nakkash/blob/main/docs/design/decisions.md#d91-an-agent-fills-a-template-through-a-pinned-instance-a-brief-and-one-merge-point
+const MIN_SHARE: f64 = 0.75;
+
+/// The uid of a text's slot: its layer in the project, by the
+/// composition's item id and the layer's own id, which a later import of
+/// the same project gives again.
+fn text_uid(known: &Known<'_>, text: &Text) -> Option<String> {
+    let layer_id = known
+        .layer_items
+        .get(&(text.at.scope.clone(), text.layer_id.clone()))?;
+    let comp = known.comp_items.get(&text.at.scope).copied().unwrap_or(0);
+    Some(format!("text:{comp}/{layer_id}"))
 }
 
 /// The size `lines` of text in `size` px cover, as the project laid them
@@ -672,6 +733,19 @@ fn media(
         declared.insert(fact.key.to_owned(), value.clone());
         declared.insert("label".into(), json!(label));
         declared.insert("role".into(), json!(role));
+        declared.insert("uid".into(), json!(format!("footage:{}", fact.item)));
+        declared.insert("kind".into(), json!(role));
+        let boxed = at(scene, &layers[0].steps())
+            .and_then(|l| l.get("box"))
+            .and_then(Json::as_array)
+            .and_then(|b| Some((b.first()?.as_f64()?, b.get(1)?.as_f64()?)));
+        if let Some((w, h)) = boxed.filter(|(w, h)| *w >= 1.0 && *h >= 1.0) {
+            declared.insert(
+                "aspect".into(),
+                json!(ratio(w.round() as u64, h.round() as u64)),
+            );
+            declared.insert("min-px".into(), json!([w.round(), h.round()]));
+        }
         slots.insert(id.clone(), Json::Object(declared));
         for at in layers {
             if let Some(layer) = at_mut(scene, &at.steps()).and_then(Json::as_object_mut) {
@@ -682,6 +756,144 @@ fn media(
         made.push((id, fact));
     }
     made.len()
+}
+
+/// Words in a composition's name that say it stands for a screen.
+const SCREEN_WORDS: [&str; 9] = [
+    "screen",
+    "screenshot",
+    "mockup",
+    "ui",
+    "app",
+    "display",
+    "device",
+    "website",
+    "dashboard",
+];
+
+/// The slots of placeholder compositions: a composition that draws nothing
+/// (no layers, or only pivots, cameras and hidden layers), that a visible
+/// `comp` layer draws, and whose name says it is for editing or is a
+/// screen. A designer ships it empty for the buyer's picture, so the import
+/// gives it an image layer over its whole canvas, which follows a slot of
+/// no file yet and so draws nothing until a variant gives it one.
+/// Compositions of one name are one slot, as copies of one placeholder the
+/// project keeps at two lengths or rates.
+fn screens(
+    scene: &mut Json,
+    known: &Known<'_>,
+    ids: &mut Ids,
+    slots: &mut Map<String, Json>,
+) -> usize {
+    let drawn: std::collections::BTreeSet<String> = layers(scene)
+        .iter()
+        .filter_map(|place| at(scene, &place.steps()))
+        .filter(|layer| !hidden(layer))
+        .filter_map(|layer| layer.get("comp").and_then(Json::as_str).map(str::to_owned))
+        .collect();
+    // By the project's name: the compositions of that name, in scene order.
+    let mut placeholders: Vec<(String, Vec<String>)> = Vec::new();
+    let Some(comps) = scene["comps"].as_object() else {
+        return 0;
+    };
+    for (key, comp) in comps {
+        let name = known
+            .comp_names
+            .get(&Some(key.clone()))
+            .cloned()
+            .unwrap_or_default();
+        let draws = comp["layers"].as_array().is_some_and(|layers| {
+            layers.iter().any(|layer| {
+                !hidden(layer)
+                    && layer.get("pivot") != Some(&Json::Bool(true))
+                    && layer.get("camera").is_none()
+            })
+        });
+        let named = is_edit_comp(&name) || words(&name).any(|w| SCREEN_WORDS.contains(&w.as_str()));
+        if draws || !named || !drawn.contains(key) {
+            continue;
+        }
+        match placeholders.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, keys)) => keys.push(key.clone()),
+            None => placeholders.push((name, vec![key.clone()])),
+        }
+    }
+    for (name, keys) in &placeholders {
+        let logo = words(name).any(|w| ["logo", "brand", "emblem"].contains(&w.as_str()));
+        let role = if logo { "logo" } else { "screen" };
+        let id = ids.give(role, "media");
+        let sizes: Vec<String> = keys
+            .iter()
+            .filter_map(|key| scene["comps"][key]["size"].as_str().map(str::to_owned))
+            .collect();
+        let mut sizes_seen = sizes.clone();
+        sizes_seen.dedup();
+        let first = keys
+            .first()
+            .and_then(|k| known.comp_items.get(&Some(k.clone())))
+            .copied();
+        let mut declared = json!({
+            "image": null,
+            "label": format!("{name}, {}, empty in the project", sizes_seen.join(" and ")),
+            "role": role,
+            "kind": role,
+            "accepts": ["image", "video"],
+        });
+        if let Some(item) = first {
+            declared["uid"] = json!(format!("comp:{item}"));
+        }
+        if let Some((w, h)) = sizes
+            .first()
+            .and_then(|s| s.split_once('x'))
+            .and_then(|(w, h)| Some((w.parse::<u64>().ok()?, h.parse::<u64>().ok()?)))
+        {
+            declared["aspect"] = json!(ratio(w, h));
+            declared["min-px"] = json!([w, h]);
+        }
+        slots.insert(id.clone(), declared);
+        for key in keys {
+            let size = scene["comps"][key]["size"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned();
+            let Some((w, h)) = size
+                .split_once('x')
+                .and_then(|(w, h)| Some((w.parse::<f64>().ok()?, h.parse::<f64>().ok()?)))
+            else {
+                continue;
+            };
+            let taken: Vec<&str> = scene["comps"][key]["layers"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|l| l.get("id").and_then(Json::as_str))
+                .collect();
+            let layer_id = (1..)
+                .map(|n| match n {
+                    1 => role.to_owned(),
+                    n => format!("{role}-{n}"),
+                })
+                .find(|candidate| !taken.contains(&candidate.as_str()))
+                .expect("some number is free");
+            let layer =
+                json!({"id": layer_id, "image": format!("${id}"), "box": [w, h], "fit": "cover"});
+            if let Some(list) = scene["comps"][key]["layers"].as_array_mut() {
+                list.insert(0, layer);
+            } else if let Some(comp) = scene["comps"][key].as_object_mut() {
+                comp.insert("layers".into(), json!([layer]));
+            }
+        }
+    }
+    placeholders.len()
+}
+
+/// `w:h` in lowest terms.
+fn ratio(w: u64, h: u64) -> String {
+    fn gcd(a: u64, b: u64) -> u64 {
+        if b == 0 { a } else { gcd(b, a % b) }
+    }
+    let g = gcd(w, h).max(1);
+    format!("{}:{}", w / g, h / g)
 }
 
 /// What a footage file is for: a logo by its name or its composition's, a
@@ -818,10 +1030,22 @@ fn palette(scene: &mut Json, ids: &mut Ids, slots: &mut Map<String, Json>) -> us
             None => {
                 slots.insert(
                     entry_ids[e].clone(),
-                    json!({"color": channels(*color), "label": color_label(*color), "role": role}),
+                    json!({"color": channels(*color), "label": color_label(*color), "role": role, "uid": format!("color:{}", hex8(*color))}),
                 );
             }
         }
+    }
+    // Words are read against the background: the text entry's pair.
+    let new = |role: &str| {
+        (0..entries.len())
+            .find(|&e| names[e].1 == role && controls.get(e).is_none())
+            .map(|e| entry_ids[e].clone())
+    };
+    if let (Some(text), Some(background)) = (new("text"), new("background"))
+        && let Some(declared) = slots.get_mut(&text)
+    {
+        declared["pair"] = json!(background);
+        declared["contrast"] = json!(TEXT_CONTRAST);
     }
     for (u, e) in uses.iter().zip(&owner) {
         let shift = Shift::between(entries[*e], u.color);
@@ -957,7 +1181,7 @@ fn timing(scene: &mut Json, ids: &mut Ids, slots: &mut Map<String, Json>) -> usi
     let id = ids.give("duration", "timing");
     slots.insert(
         id.clone(),
-        json!({"number": super::keys::num(seconds), "label": "Duration in seconds", "role": "duration"}),
+        json!({"number": super::keys::num(seconds), "label": "Duration in seconds", "role": "duration", "uid": "duration"}),
     );
     scene["dur"] = json!(format!("${id}"));
     1

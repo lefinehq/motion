@@ -45,11 +45,14 @@ fn names_say_what_some_texts_are(#[case] name: &str, #[case] role: Option<&str>)
 /// facts beyond `media`.
 fn made(mut scene: Json, media: &[MediaFact]) -> (Json, Variables) {
     let names = HashMap::from([(None, "Main".to_owned())]);
+    let (layer_names, comp_items, layer_items) = (HashMap::new(), HashMap::new(), HashMap::new());
     let known = Known {
         media,
-        layer_names: &HashMap::new(),
+        layer_names: &layer_names,
         comp_names: &names,
         texts: &[],
+        comp_items: &comp_items,
+        layer_items: &layer_items,
     };
     let variables = make(&mut scene, &known);
     (scene, variables)
@@ -230,4 +233,63 @@ fn a_fit_takes_the_size_measured_in_the_scenes_fonts() {
     );
     // The scene read back holds the new size.
     assert!(format!("{:?}", imported.document.scene()).contains("12.35"));
+}
+
+#[test]
+fn an_empty_placeholder_composition_becomes_a_screen_slot() {
+    let mut scene = json!({
+        "nakkash": 1, "size": "1920x1080", "dur": "4s",
+        "comps": {
+            "placeholder-01": {"size": "960x1920", "dur": "4s", "layers": [{"id": "rig", "pivot": true}]},
+            "placeholder-01-2": {"size": "960x1920", "dur": "8s", "layers": []},
+            "spare": {"size": "100x100", "dur": "4s", "layers": []},
+            "plate": {"size": "100x100", "dur": "4s", "layers": [{"id": "dot", "rect": "10x10"}]}
+        },
+        "layers": [
+            {"id": "phone", "comp": "placeholder-01"},
+            {"id": "phone-2", "comp": "placeholder-01-2"},
+            {"id": "spare", "comp": "spare"},
+            {"id": "plate", "comp": "plate"}
+        ]
+    });
+    let names = HashMap::from([
+        (None, "Main".to_owned()),
+        (
+            Some("placeholder-01".to_owned()),
+            "Placeholder_01".to_owned(),
+        ),
+        (
+            Some("placeholder-01-2".to_owned()),
+            "Placeholder_01".to_owned(),
+        ),
+        (Some("spare".to_owned()), "Spare".to_owned()),
+        (Some("plate".to_owned()), "Screen plate".to_owned()),
+    ]);
+    let comp_items = HashMap::from([(Some("placeholder-01".to_owned()), 29)]);
+    let (layer_names, layer_items) = (HashMap::new(), HashMap::new());
+    let known = Known {
+        media: &[],
+        layer_names: &layer_names,
+        comp_names: &names,
+        texts: &[],
+        comp_items: &comp_items,
+        layer_items: &layer_items,
+    };
+    let made = make(&mut scene, &known);
+    assert_eq!(
+        made.screens, 1,
+        "one slot for both compositions of one name; an unnamed empty one and one that draws are left"
+    );
+    assert_eq!(
+        scene["slots"]["screen"],
+        json!({"image": null, "label": "Placeholder_01, 960x1920, empty in the project", "role": "screen", "kind": "screen", "accepts": ["image", "video"], "uid": "comp:29", "aspect": "1:2", "min-px": [960, 1920]})
+    );
+    for comp in ["placeholder-01", "placeholder-01-2"] {
+        assert_eq!(
+            scene["comps"][comp]["layers"][0],
+            json!({"id": "screen", "image": "$screen", "box": [960.0, 1920.0], "fit": "cover"})
+        );
+    }
+    assert_eq!(scene["comps"]["spare"]["layers"], json!([]));
+    nakkash_format::Document::from_value(scene).expect("the scene stays valid");
 }
