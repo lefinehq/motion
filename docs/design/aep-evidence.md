@@ -803,7 +803,15 @@ A text layer's Source Text may change from frame to frame, by an expression or b
 | H1. An expression on Source Text is evaluated at every frame, and the original draws, at that frame, the words it gives, laid out on their own. | m828's `Countdown NYE Main/1` gives `(10 − floor(time)) + ""`: its reference shows 10 at 0 s and 0.5 s, 9 at 1 s and 1.5 s, 8 at 2 s and 2.5 s, down to 1, each centred where the 10 was. m547's titles give `substr(0, n) + "_"` and show each title typed out (Q1). m651's `TIME_Slider` gives a slider's value, a player's running time. | 6 expressions in 3 samples, every local Source Text expression whose words change |
 | H2. The words an expression gives are set in the style of the document's first characters and its first paragraph. | m828's digits and m547's typed titles are drawn in their document's font, size, colour and alignment. EffectCraft sets a string an expression gives in a default style (`crates/render/src/text.rs`, `source_text`), which none of these references shows. | 3 samples |
 
-FIDELITY_TABLE
+Measured on the Linux render machine (its fonts and footage differ from the reference machine's; before and after on the same machine, at the fidelity frames each sample's ledger takes): error and the share of content failing, over all frames and settled.
+
+| Sample | All frames | Settled |
+|---|---|---|
+| m547 (excluded: footage the project lacks) | 0.3077 → 0.3005, 90.61 % → 90.47 % | 0.3583 → 0.3555, 88.17 % → 87.99 % |
+| m651 | 0.0788 → 0.0780, 70.80 % → 70.77 % | 0.0630 → 0.0619, 66.98 % → 66.94 % |
+M828_ROW
+
+Frames passing the floor are unchanged (m547 0 of 14, m651 4 of 15). Only these three samples' scenes change; m547's four expressions that failed now bake (146 → 142 not baked over the corpus). Text samples that are not keyed draw the same: `render --digest`, frames 0–90, is bit-identical before and after for m613, m736 and m543.
 
 Other things we take without evidence:
 - **Keys.** No local project keys its Source Text. A keyed Source Text is taken as the original's documentation gives it: each key holds its whole document until the next. The import keeps each key's words in the first key's style and reports a key that restyles.
