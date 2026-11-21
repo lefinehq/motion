@@ -4,3 +4,5 @@
 *.pending-snap
 # What `nakkash batch` writes for the variants example.
 /examples/advanced/variants/out/
+# Stock footage the showcase films play: fetched by examples/showcase/fetch-media.py, never committed.
+/examples/showcase/media/

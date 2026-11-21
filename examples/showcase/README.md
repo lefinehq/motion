@@ -1,6 +1,16 @@
 # Showcase sequences
 
-Long, dense films written from scratch, each in several acts, with something meaningful moving at every moment. They use only the built-in `Inter Variable` and no media files, invent their products, brands and data, and pass `nakkash check` with nothing found; a test in `crates/nakkash-cli/tests/showcase.rs` keeps each one so. The [examples](../README.md) show one idea each; these show how the ideas combine at the scale of a finished piece.
+Long, dense films written from scratch, each in several acts, with something meaningful moving at every moment. They use only the built-in `Inter Variable`, invent their products, brands and data, and pass `nakkash check` with nothing found; a test in `crates/nakkash-cli/tests/showcase.rs` keeps each one so. Each section says whether its film plays stock footage. The [examples](../README.md) show one idea each; these show how the ideas combine at the scale of a finished piece.
+
+## Footage
+
+A film that plays stock footage lists its clips in a manifest beside its scene, `<name>.media.json`: each clip's page, author, licence, resolution, the sha256 of the file downloaded, and the cut the scene plays. The clips are free stock whose licences do not allow handing them on unaltered, so they are not in the repository; fetch them before rendering:
+
+```sh
+python3 examples/showcase/fetch-media.py examples/showcase/<name>.media.json
+```
+
+The script uses Python's standard library, downloads each clip into `examples/showcase/media/` (ignored by git), refuses a file whose sha256 differs from the manifest's, and, with `ffmpeg` installed, writes the cut the scene names: a span of the clip at the film's size and frame rate, without its sound track, in QuickTime Photo JPEG (which nakkash decodes on every platform) unless the manifest asks for H.264 (macOS only). `--status` says which clips are present without touching the network.
 
 ## Product launch
 
