@@ -103,23 +103,52 @@ Staggers are 2 frames (67 ms). A move leads and its fade follows: opacity has it
 
 ## Data story
 
-[`data-story.json`](data-story.json), 1920x1080, 30 fps, 38.2 s. An editorial explainer about one fictional city's day of electricity, on illustrative data that the end card labels as such. Every number on screen comes from one hourly table, so the acts agree: the clock's bars sum to the running total, the twelve districts add up to the city at every hour, and the sectors add up to the city at 09:00 and 19:00.
+[`data-story.json`](data-story.json), 1920x1080, 30 fps, 39.2 s. "Every line got faster": a newspaper's data page about the trams of Estermark, a city that does not exist, on figures the page itself says are invented. The finding: every one of the four tram lines got faster from 2019 to 2025, yet the average trip got slower (23.2 to 26.0 minutes), because more riders now take the longest line. Every number on screen comes from one table of trip times and shares of trips by line and year, and the city average is their weighted mean, so the acts agree.
 
-![The clock unrolling into the line chart, and the scrub to the evening peak](../../docs/media/showcase/data-story.gif)
+![The rule under the number draws on into the next chart while the eye follows it; the average line draws with its value riding the pen](../../docs/media/showcase/data-story.gif)
+
+The film is one page, 3840x2160, of four modules, each one 1920x1080 reading view. A camera reads it the way an eye reads a page: left to right, back to the start of the next row, and finally back up to the headline. At rest nothing on the page is cut by the frame.
 
 | Act | Label | What moves |
 |---|---|---|
-| 1 | `open` | `2.4×` counts up from `1.0` on odometer wheels, the sentence rises word by word with highlight sweeps, and the × flies to the clock's centre, turning into its crosshair. |
-| 2 | `clock` | A 24-hour clock with noon at the top: its ring, grid rings and ticks build (trims, repeaters), a hand with a fading wake (a repeater of wedges) leads the bars round, a running total counts to 100 GWh, and callouts mark the peak and the low. |
-| 3 | `curve` | The clock unrolls into the line chart, a match cut through shared geometry: its ring becomes the x axis, its bars the columns, its outline the demand line. Gridlines and labels build, the solar series draws with its legend riding the drawing head, and a cursor scrubs the day hour by hour while its readout's digits roll. The evening band then grows into the next act's panel. |
-| 4 | `mix` | Stacked bars by sector at 09:00; the clock in the corner rolls to 19:00, the bars re-measure, and the rows re-sort: falling rows step into a dimmed left lane, rising rows travel a near lane, three at a time at most. A sheen crosses the new leader. |
-| 5 | `grid` | Twelve district cards in 3D, seen through a camera that pulls back from the first card in one key pair. Each card shows once it is wholly inside the title-safe area, and the two exceptions dim. |
-| 6 | `close` | The takeaway in kinetic type (per-character skew, blur and a tracking wave bent by `ease-high` and `ease-low`, words rising), an underline, the day's curve as a signature, and the end card. |
+| Question | `question` 0 s | The headline "Are the trams getting slower?" is set word by word. The average trip counts from 23.2 to 26.0 minutes in 260 px figures while its label steps from 2019 to 2025, walking the table's years. |
+| Evidence | `evidence` 5.1 s | The rule under the number keeps drawing to the right and becomes the x axis of the next chart, and the camera follows its tip, laying each year's tick as the pen passes. The average line draws through the years with its value riding the pen and counting; a dashed line holds the 2019 level and a red bracket measures "+2.8 min". |
+| Turn | `turn` 12.9 s | Back to the left, a row down: four small multiples. One repeater copies the city average into each panel as a grey line; then a black line leaves it in each panel and bends to that line's own data, its end value counting down from 26.0. Every one falls, and its change is set in red. |
+| Why | `why` 21.2 s | The 2019 share of trips fills a stacked bar through a mask that opens from the left. A copy slides out from under it, drops a row to become 2025 and re-measures through the years: lines 1 to 3 narrow, Line 4 grows from 8 % to 38 %. A leader draws to the reason. |
+| Takeaway | `home` 30.5 s | The eye travels back up to the headline, easing back on the way so the page is seen whole for a moment. A red pen strikes the question, its words drop out, and "Every line got faster. The average got slower." is set in their place, with the cause under it. Complete at 37 s and held to the end. |
 
-**Motion system.** One set of curves runs the piece: entrances `cubic(.16,1,.3,1)`, exits `cubic(.7,0,.84,0)`, moves on screen `cubic(.55,0,.45,1)`, the camera and the unroll `cubic(.45,0,.55,1)`, and `out-back(1)` (3.7 % overshoot) only where a mark lands. Durations grow with distance (12 frames at 40 px, 19 at 200, 27 at 1500), staggers are 2 frames (67 ms), and fades start after their move and never run linear.
+**Type and colour.** Paper `#F3EFE6`, ink `#141414`, a grey for decks (6.6:1) and one spot colour, a print red (5.4:1), used only for the number to notice next. Inter Variable throughout: the headline at 140 px weight 800 tracked −25, module titles at 64 px 700, decks at 40 px, the figure at 260 px 800. No text is smaller than 36 px at a reading view: no tick values, gridline labels or source lines. Values appear only where they carry the finding, and the invented-figures note is set at 36 px at the top of the page, where the film also ends.
 
-**Counting numbers.** The format has no expressions, so every number that counts is an odometer: a composition whose canvas is the window, holding one text layer per digit with its digits one per line, rolled by a text animator's `position`. A second animator leaves the rows outside the window faint, so `check` does not read hidden digits as text running into their neighbours.
+**The motion system.** Every curve starts from rest, and none overshoots: print is exact, so nothing lands past its mark.
 
-**The unroll.** Path keys move vertex by vertex, so a circle cannot bend into a line by two keys. The generator bakes the unroll, an arc whose length and turn change together, as one key a frame for the three paths that carry it.
+| Curve | Used for |
+|---|---|
+| `cubic(.25,0,.1,1)` | type being set: words and lines rise a quarter of their size into place, 16–18 frames |
+| `cubic(.45,0,.2,1)` | the pen: rules, data lines, the dashed level, leaders and the strike, 14 frames plus one per 80 px |
+| `cubic(.6,0,.3,1)` | data that changes: the morphs, the bar's re-measure, every count |
+| `cubic(.75,0,.25,1)` | the eye, one key pair a move, 74–90 frames: it leans off while the last words are read, then travels |
+| `cubic(.5,0,.85,.45)` | the question's words leaving |
+
+Opacity follows its move (`out-quad` in, `in-quad` out), never linear. Words follow each other 3 frames apart (100 ms, a reading pace) and the items of a set 6 frames apart. The choreography follows what the data does: words rise in reading order, time draws left to right, quantities fill from their baseline, a change morphs from what was there, a count steps through the years.
+
+**Tabular figures.** Inter has tabular figures, but a scene cannot switch OpenType features on, so every number that counts is set in fixed columns: one text layer per digit, each holding its digit as keyed words (`anim.text`), centred in a column as wide as Inter's widest digit at that size. The counts walk the table's years on a monotone curve through them, so a count, and anything that moves with it, has no kink at a year.
+
+**What it uses.** A 3D `camera` with `target` and motion blur over a flat page plane, and a dolly on the way home; keyed words for every count; `trim` on the rules, the data lines, the dashed level (a `repeater` of dashes cut by one `joined` trim), the bracket, the leader and the strike; repeaters for the ticks, the dashes and the four grey copies of the average; path morphs from the average to each line's data; a composition drawn four times as the panels, with `slots` for the name and change and `overrides` for each line's path; a mask with a keyed path; text animators by word and line, with an exit of their own; compositions collapsed into the page and started late with `offset` so each module's title lands with the eye; root `labels` for the acts.
+
+**Numbers.**
+
+| Measure | Value |
+|---|---|
+| `nakkash check` | `OK 455`, nothing found |
+| Compositions, layers | 6 compositions, 111 layers written, 126 drawn once the panel composition is expanded |
+| Animation | 970 keys, 25 layers of keyed words, 5 path morphs, 4 repeaters, 11 trims |
+| Smoothness | 12 movers sampled every frame with `nakkash at` (the camera, the pen, the riding values, the bar and its labels): no change of velocity between two frames above 23 % of the mover's peak speed |
+| Paths | no turn above 6° between two frames while a mover goes faster than 10 % of its peak speed |
+| Stillness | the longest stretch with nothing changing, outside the 2.2 s end card, is 24 frames, while the figure is read before the eye leaves |
+| Render | 31 s for 1176 frames on an M-series Mac, H.264 |
 
 The scene is written by a generator kept outside the repository; the JSON is its output, formatted to be read.
+
+```sh
+nakkash render examples/showcase/data-story.json --out data-story.mp4
+```
