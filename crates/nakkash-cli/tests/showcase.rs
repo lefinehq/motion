@@ -118,7 +118,8 @@ fn brand_system_passes_check() {
     assert_eq!(out.status.code(), Some(0));
 }
 
-/// The data story (1146 frames) passes `nakkash check`.
+/// The data story (1176 frames, one page read by a camera) passes `nakkash
+/// check`.
 #[test]
 fn data_story_passes_check() {
     if cfg!(debug_assertions) {
